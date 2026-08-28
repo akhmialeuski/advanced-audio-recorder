@@ -34,6 +34,7 @@ import {
 	audioMimeFromExtension,
 	audioPrepOptions,
 	prepareAudio,
+	type PreparedAudio,
 	type PreparedPayload,
 } from './audioPrep';
 import type {
@@ -66,13 +67,14 @@ import {
 import { buildPostProcessPrompt } from './llmPostProcess';
 import { describeDictionaryOmission } from './dictionaryBias';
 import { planDictionaryBias } from './providers/engines';
+import { advancedBiasUnsupportedReason } from './advanced/advancedBias';
 import {
-	advancedBiasChannel,
-	advancedBiasUnsupportedReason,
-	meetsLengthSafeguard,
-	planAdvancedBias,
-} from './advanced/advancedBias';
-import { generateContext } from './advanced/contextPipeline';
+	AdvancedTwoPassRunner,
+	type PassResult,
+	reportAdvancedSkip,
+	type TranscribePass,
+} from './advanced/AdvancedTwoPassRunner';
+import { missingPartsWarning, type PartFailure } from './partFailure';
 import {
 	resolveDictionaryTermList,
 	resolveLlmPrompt,
@@ -203,6 +205,24 @@ export interface TranscriptionServiceDeps {
 	) => LlmProvider;
 }
 
+/**
+ * What a transcription pass needs that does not change between the two passes
+ * of a run: the parts, the engine, the cancellation, and where progress, cost
+ * and discarded usage are reported.
+ */
+interface PassContext {
+	readonly payloads: readonly PreparedPayload[];
+	readonly partCount: number;
+	readonly provider: TranscriptionProvider;
+	readonly token: CancellationToken;
+	readonly discardedUsage: TranscriptionUsage[];
+	readonly onProgress?:
+		| ((fraction: number, label: string) => void)
+		| undefined;
+	readonly onCost?: ((cost: TranscribeRunCost) => void) | undefined;
+	readonly runCost: () => TranscribeRunCost;
+}
+
 /** One part of a run, and everywhere its outcome is recorded. */
 interface PartRun {
 	/** The active transcription provider. */
@@ -222,7 +242,7 @@ interface PartRun {
 		usage?: TranscriptionUsage;
 	}[];
 	/** Accumulates recoverable per-part failures (mutated). */
-	readonly failedParts: { label: string; message: string }[];
+	readonly failedParts: PartFailure[];
 	/**
 	 * Accumulates usage from billed-but-discarded truncated attempts, so their
 	 * cost is counted even though their transcript is thrown away and retried
@@ -364,35 +384,14 @@ export class TranscriptionService {
 		};
 
 		options.onProgress?.(0, 'Preparing audio...');
-		// Reuse the caller's already-read bytes when provided (the dialog reads
-		// them to probe the duration), so a manual run never reads the whole
-		// file twice.
-		const raw =
-			options.audioBytes ?? (await this.app.vault.readBinary(file));
-		const prepared = await prepareAudio(
-			raw,
-			file.name,
-			audioMimeFromExtension(file.extension),
-			audioPrepOptions(
-				provider.capabilities,
-				provider.requiresNetwork,
-				Math.max(1, settings.transcriptionChunkMb) * BYTES_PER_MB,
-				transcribeOptions.diarize,
-			),
+		const prepared = await this.prepareParts(
+			file,
+			settings,
+			provider,
+			transcribeOptions.diarize,
+			options.audioBytes,
 		);
 		this.throwIfCancelled(token);
-
-		if (prepared.diarizationSplitWarning) {
-			// The recording was too long (or too large) for one request and had
-			// to be split. Every engine numbers speakers per request, so labels
-			// can differ between parts; tell the user rather than emitting
-			// silently inconsistent speaker labels.
-			new Notice(
-				'Recording was split into parts for this engine; speaker labels may ' +
-					'differ between parts. Use Deepgram or split the recording for ' +
-					'consistent speakers.',
-			);
-		}
 
 		const payloads = prepared.payloads;
 		const partCount = payloads.length;
@@ -401,7 +400,7 @@ export class TranscriptionService {
 			transcript: Transcript;
 			usage?: TranscriptionUsage;
 		}[] = [];
-		const failedParts: { label: string; message: string }[] = [];
+		const failedParts: PartFailure[] = [];
 		// Billed results of the advanced second pass. Kept apart from the
 		// first pass's `results` (which remain the fallback transcript) but
 		// summed into the same run cost, since both passes are real - and on
@@ -450,66 +449,22 @@ export class TranscriptionService {
 		const firstPassCeiling = willTwoPass
 			? TRANSCRIBE_CHUNK_PROGRESS_CEILING / 2
 			: TRANSCRIBE_CHUNK_PROGRESS_CEILING;
-		/**
-		 * Transcribes every prepared part once with the given options,
-		 * reporting progress inside [progressBase, progressBase + span).
-		 * Shared by both passes so their behavior (labels, per-part salvage,
-		 * billing) cannot diverge.
-		 */
-		const transcribePass = async (
-			passOptions: TranscribeOptions,
-			passResults: typeof results,
-			passFailed: typeof failedParts,
-			progressBase: number,
-			progressSpan: number,
-			verb: string,
-		): Promise<void> => {
-			for (let i = 0; i < partCount; i++) {
-				this.throwIfCancelled(token);
-				const payload = payloads[i];
-				if (!payload) {
-					continue;
-				}
-				const partLabel =
-					partCount > 1
-						? this.describePart(payload, i, partCount)
-						: '';
-				const partProgress =
-					progressBase + (i / partCount) * progressSpan;
-				options.onProgress?.(
-					partProgress,
-					partLabel ? `${verb} ${partLabel}...` : `${verb}...`,
-				);
-				await this.transcribePart({
-					provider,
-					prepared: payload,
-					providerOptions: passOptions,
-					token,
-					label: partLabel,
-					results: passResults,
-					failedParts: passFailed,
-					discardedUsage,
-					onRetryWait: (waitMs, label) => {
-						// A pause is the run still working, and a progress
-						// line that stopped moving reads as a hang. It says
-						// what is happening and not why: the same pause
-						// covers a rate limit and a provider fault, this
-						// line cannot tell them apart, and naming one of
-						// them told a user waiting out a 502 that they had
-						// been sending too many requests. Which refusal it
-						// was reaches them in the error the run reports if
-						// the attempts run out.
-						options.onProgress?.(
-							partProgress,
-							`Retrying ${label || 'the audio'} in ${String(
-								Math.ceil(waitMs / MS_PER_SECOND),
-							)}s...`,
-						);
-					},
-				});
-				options.onCost?.(runCost());
-			}
+		// Everything a pass needs that does not change between the two, built
+		// once so the first pass and the advanced second pass cannot drift apart
+		// in how they label parts, salvage failures, or bill.
+		const passContext: PassContext = {
+			payloads,
+			partCount,
+			provider,
+			token,
+			discardedUsage,
+			onProgress: options.onProgress,
+			onCost: options.onCost,
+			runCost,
 		};
+		const transcribePass: TranscribePass = (...args) =>
+			this.transcribePass(passContext, ...args);
+
 		await transcribePass(
 			transcribeOptions,
 			results,
@@ -545,137 +500,42 @@ export class TranscriptionService {
 		});
 
 		// Advanced two-pass mode: LLM agents mine the first pass's draft for
-		// domain context (topic, names, jargon, English acronyms), and the
-		// same audio is decoded again with that context as a bias and the
-		// language pinned to the first pass's. Strictly best-effort: an
-		// engine that cannot bias, a failed agent, a failed second pass, or a
-		// suspiciously short result all keep the first pass's transcript, so
-		// the mode can never lose a completed (and paid) transcription.
+		// domain context, and the same audio is decoded again with that context
+		// as a bias. The scenario answers with a value instead of reaching in
+		// here, which is what makes its safety rule structural: `working` and
+		// `missingParts` hold the first pass until an improved result replaces
+		// them, so the mode can never lose a completed (and paid) transcription.
 		let working = stitched;
 		let missingParts = failedParts;
 		if (advancedRequested) {
-			if (advancedUnsupportedReason !== null) {
-				// Degrade to the normal single pass up front - before any LLM
-				// spend - and say so, instead of silently ignoring the toggle.
-				new Notice(
-					`Advanced two-pass transcription skipped: ${advancedUnsupportedReason}. ` +
-						'Keeping the single-pass transcript.',
-				);
+			const outcome = await new AdvancedTwoPassRunner({
+				settings,
+				baseline: stitched,
+				transcribeOptions,
+				engineId: provider.id,
+				sourcePath: file.path,
+				secondPassResults,
+				progressBase: firstPassCeiling,
+				progressSpan:
+					TRANSCRIBE_CHUNK_PROGRESS_CEILING - firstPassCeiling,
+				onProgress: options.onProgress,
+				transcribePass,
+				createLlm: this.createLlm,
+				costSink: this.costSink,
+				token,
+				rethrowIfCancelled: (error, cancellation) => {
+					this.rethrowIfCancelled(error, cancellation);
+				},
+				throwIfCancelled: (cancellation) => {
+					this.throwIfCancelled(cancellation);
+				},
+				unsupportedReason: advancedUnsupportedReason,
+			}).run();
+			if (outcome.status === 'improved') {
+				working = outcome.transcript;
+				missingParts = outcome.failedParts;
 			} else {
-				try {
-					options.onProgress?.(
-						firstPassCeiling,
-						'Analyzing transcript context...',
-					);
-					// The agents run on the engine the two-pass mode names,
-					// which is a choice of its own rather than whatever
-					// post-processing points at. This run's Dictionary terms
-					// join as bias candidates, vetted against the draft so an
-					// off-topic term is not injected. The advanced mode reuses
-					// the same terms the single pass biases toward, not a second
-					// glossary. A keyword-biased engine (Deepgram) reads only
-					// the keyterm list, so the pipeline skips the prompt-sentence
-					// agents.
-					const llm = this.createLlm(
-						settings,
-						jobVendorId(settings, 'contextAgents'),
-					);
-					const context = await generateContext(stitched, llm, {
-						language:
-							transcribeOptions.language ?? stitched.language,
-						glossary: resolveDictionaryTermList(settings),
-						buildPromptSentence:
-							advancedBiasChannel(
-								settings.transcriptionProvider,
-							) === 'prompt',
-						token,
-						settings,
-						durationSeconds: stitched.segments.at(-1)?.end ?? null,
-						costSink: this.costSink,
-					});
-					const bias = context
-						? planAdvancedBias(
-								settings.transcriptionProvider,
-								context,
-							)
-						: {};
-					if (!bias.biasPrompt && !bias.keyterms?.length) {
-						new Notice(
-							'Advanced two-pass transcription found no usable ' +
-								'context; keeping the single-pass transcript.',
-						);
-					} else {
-						// Pin the second pass's language to the first pass's:
-						// the bias is dense with English tokens, and left to
-						// auto-detect it can flip a Russian recording into
-						// English - the documented failure mode this guards
-						// against.
-						const secondPassOptions: TranscribeOptions = {
-							...transcribeOptions,
-							language:
-								transcribeOptions.language ?? stitched.language,
-							...bias,
-						};
-						const secondFailed: typeof failedParts = [];
-						await transcribePass(
-							secondPassOptions,
-							secondPassResults,
-							secondFailed,
-							firstPassCeiling,
-							TRANSCRIBE_CHUNK_PROGRESS_CEILING -
-								firstPassCeiling,
-							'Second pass: transcribing',
-						);
-						this.throwIfCancelled(token);
-						const secondPass = stitchChunks(secondPassResults, {
-							model: provider.id,
-							createdAt: new Date().toISOString(),
-							sourcePath: file.path,
-						});
-						if (
-							secondFailed.length > 0 ||
-							secondPassResults.length === 0
-						) {
-							new Notice(
-								'Advanced second pass failed; keeping the ' +
-									'first-pass transcript.',
-							);
-						} else if (
-							!meetsLengthSafeguard(
-								plainText(stitched),
-								plainText(secondPass),
-								settings.advancedSecondPassMinRatio,
-							)
-						) {
-							// The over-correction guard from the paper: a
-							// biased decode that lost this much text is
-							// discarded in favor of the baseline.
-							new Notice(
-								'Advanced second pass came back too short; ' +
-									'keeping the first-pass transcript.',
-							);
-						} else {
-							working = secondPass;
-							// The adopted pass succeeded on every part,
-							// including any the first pass lost, so the
-							// incomplete-transcription warning follows it.
-							missingParts = secondFailed;
-						}
-					}
-				} catch (error) {
-					// Cancellation inside context generation surfaces as an
-					// ordinary error; map it back to the cancel the user asked
-					// for instead of a best-effort fallback.
-					this.rethrowIfCancelled(error, token);
-					console.warn(
-						`${PLUGIN_LOG_PREFIX} Advanced two-pass transcription failed; keeping the single-pass transcript.`,
-						error,
-					);
-					new Notice(
-						'Advanced two-pass transcription failed; keeping ' +
-							'the single-pass transcript.',
-					);
-				}
+				reportAdvancedSkip(outcome);
 			}
 		}
 
@@ -711,22 +571,11 @@ export class TranscriptionService {
 		);
 
 		// Some parts failed but others succeeded: keep the good parts and warn,
-		// rather than failing the whole run and discarding a transcript the user
-		// already paid for. The gap is flagged with a callout prepended only
-		// after post-processing (below), because an LLM cleanup/custom pass
-		// replaces the whole body and would otherwise strip the warning.
-		let incompleteWarning = '';
-		if (missingParts.length > 0) {
-			const labels = missingParts.map((part) => part.label).join(', ');
-			const verb = missingParts.length > 1 ? 'are' : 'is';
-			incompleteWarning =
-				`> [!warning] Transcription incomplete: ${labels} could not ` +
-				`be transcribed and ${verb} missing below.\n\n`;
-			new Notice(
-				`Some audio could not be transcribed (${labels}) and is missing ` +
-					'from the transcript; saving the parts that succeeded. ' +
-					(missingParts[0]?.message ?? ''),
-			);
+		// rather than failing the whole run and discarding a transcript the
+		// user already paid for.
+		const missing = missingPartsWarning(missingParts);
+		if (missing) {
+			new Notice(missing.notice);
 		}
 
 		if (settings.llmPostProcessEnabled) {
@@ -763,10 +612,124 @@ export class TranscriptionService {
 
 		// Flag any gap last, so the callout survives an LLM cleanup/custom pass
 		// that would otherwise replace the body and drop it.
-		markdown = incompleteWarning + markdown;
+		markdown = (missing?.callout ?? '') + markdown;
 
 		options.onProgress?.(1, 'Done');
 		return { transcript, markdown, cost: runCost() };
+	}
+
+	/**
+	 * Reads the audio and plans the parts one run will send.
+	 *
+	 * The caller's bytes are reused when it already holds them - the dialog
+	 * reads the file to probe its duration for the cost estimate - so a manual
+	 * run never reads the whole file twice.
+	 * @param file - The recording to transcribe
+	 * @param settings - Live settings, read for the chunk size
+	 * @param provider - The engine, whose limits decide how the audio is split
+	 * @param diarize - Whether this run asks for speaker labels
+	 * @param audioBytes - Bytes the caller already read, when it has them
+	 * @returns The prepared payloads for the run
+	 */
+	private async prepareParts(
+		file: TFile,
+		settings: AudioRecorderSettings,
+		provider: TranscriptionProvider,
+		diarize: boolean,
+		audioBytes: ArrayBuffer | undefined,
+	): Promise<PreparedAudio> {
+		const raw = audioBytes ?? (await this.app.vault.readBinary(file));
+		const prepared = await prepareAudio(
+			raw,
+			file.name,
+			audioMimeFromExtension(file.extension),
+			audioPrepOptions(
+				provider.capabilities,
+				provider.requiresNetwork,
+				Math.max(1, settings.transcriptionChunkMb) * BYTES_PER_MB,
+				diarize,
+			),
+		);
+		if (prepared.diarizationSplitWarning) {
+			// The recording was too long (or too large) for one request and had
+			// to be split. Every engine numbers speakers per request, so labels
+			// can differ between parts; tell the user rather than emitting
+			// silently inconsistent speaker labels.
+			new Notice(
+				'Recording was split into parts for this engine; speaker labels may ' +
+					'differ between parts. Use Deepgram or split the recording for ' +
+					'consistent speakers.',
+			);
+		}
+		return prepared;
+	}
+
+	/**
+	 * Transcribes every prepared part once with the given options, reporting
+	 * progress inside [progressBase, progressBase + span).
+	 *
+	 * Both passes go through here, so their labels, their per-part salvage and
+	 * their billing cannot diverge - which matters because the second pass is
+	 * only ever adopted when it succeeded on every part.
+	 * @param context - What does not change between the two passes
+	 * @param passOptions - Provider options this pass sends
+	 * @param passResults - Where this pass's transcribed parts accumulate
+	 * @param passFailed - Where this pass's failures accumulate
+	 * @param progressBase - Progress this pass starts from
+	 * @param progressSpan - Progress this pass may consume
+	 * @param verb - How the stage is named while this pass runs
+	 */
+	private async transcribePass(
+		context: PassContext,
+		passOptions: TranscribeOptions,
+		passResults: PassResult[],
+		passFailed: PartFailure[],
+		progressBase: number,
+		progressSpan: number,
+		verb: string,
+	): Promise<void> {
+		const { payloads, partCount, provider, token } = context;
+		for (let i = 0; i < partCount; i++) {
+			this.throwIfCancelled(token);
+			const payload = payloads[i];
+			if (!payload) {
+				continue;
+			}
+			const partLabel =
+				partCount > 1 ? this.describePart(payload, i, partCount) : '';
+			const partProgress = progressBase + (i / partCount) * progressSpan;
+			context.onProgress?.(
+				partProgress,
+				partLabel ? `${verb} ${partLabel}...` : `${verb}...`,
+			);
+			await this.transcribePart({
+				provider,
+				prepared: payload,
+				providerOptions: passOptions,
+				token,
+				label: partLabel,
+				results: passResults,
+				failedParts: passFailed,
+				discardedUsage: context.discardedUsage,
+				onRetryWait: (waitMs, label) => {
+					// A pause is the run still working, and a progress line
+					// that stopped moving reads as a hang. It says what is
+					// happening and not why: the same pause covers a rate
+					// limit and a provider fault, this line cannot tell them
+					// apart, and naming one of them told a user waiting out a
+					// 502 that they had been sending too many requests. Which
+					// refusal it was reaches them in the error the run reports
+					// if the attempts run out.
+					context.onProgress?.(
+						partProgress,
+						`Retrying ${label || 'the audio'} in ${String(
+							Math.ceil(waitMs / MS_PER_SECOND),
+						)}s...`,
+					);
+				},
+			});
+			context.onCost?.(context.runCost());
+		}
 	}
 
 	/**
