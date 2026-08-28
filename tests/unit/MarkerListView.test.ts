@@ -766,3 +766,101 @@ describe('a marker note and colour in the list', () => {
 		);
 	});
 });
+
+describe('a note typed into the list', () => {
+	beforeEach(() => {
+		jest.useFakeTimers();
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
+	it('saves the note shortly after typing stops, as a rename does', () => {
+		const { listContainer, callbacks } = setup(true);
+		const note = at(
+			allEls<HTMLTextAreaElement>(listContainer, MARKER.note),
+			0,
+		);
+
+		note.value = 'why this matters';
+		note.dispatchEvent(new Event('input', { bubbles: true }));
+		jest.advanceTimersByTime(400);
+
+		expect(callbacks.onEditNote).toHaveBeenCalledWith(
+			'a',
+			'why this matters',
+		);
+	});
+
+	it('saves nothing while the user is still typing it', () => {
+		const { listContainer, callbacks } = setup(true);
+		const note = at(
+			allEls<HTMLTextAreaElement>(listContainer, MARKER.note),
+			0,
+		);
+
+		note.value = 'why';
+		note.dispatchEvent(new Event('input', { bubbles: true }));
+		jest.advanceTimersByTime(200);
+
+		expect(callbacks.onEditNote).not.toHaveBeenCalled();
+	});
+});
+
+describe('an event from something the list does not own', () => {
+	it.each([
+		{ name: 'a typed value', type: 'input' },
+		{ name: 'a committed value', type: 'change' },
+	])('ignores $name with no marker behind it', ({ type }) => {
+		const { listContainer, callbacks } = setup(true);
+		const stray = el(listContainer, MARKER.list).createEl('input');
+
+		stray.value = 'nobody';
+		stray.dispatchEvent(new Event(type, { bubbles: true }));
+
+		expect(callbacks.onRename).not.toHaveBeenCalled();
+		expect(callbacks.onEditNote).not.toHaveBeenCalled();
+		expect(callbacks.onEditTime).not.toHaveBeenCalled();
+		expect(callbacks.onSetColor).not.toHaveBeenCalled();
+	});
+
+	it('ignores a committed value whose action it does not answer', () => {
+		const { listContainer, callbacks } = setup(true);
+		const stray = el(listContainer, MARKER.list).createEl('input');
+		stray.dataset['markerId'] = 'a';
+		stray.dataset['action'] = 'jump';
+
+		stray.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(callbacks.onRename).not.toHaveBeenCalled();
+		expect(callbacks.onEditTime).not.toHaveBeenCalled();
+	});
+
+	it('keeps what a time field showed when it was rendered without one', () => {
+		const { listContainer, callbacks } = setup(true);
+		// A field with no rendered timecode to fall back on keeps whatever the
+		// user left in it, rather than being blanked by the refusal.
+		const stray = el(listContainer, MARKER.list).createEl('input');
+		stray.dataset['markerId'] = 'a';
+		stray.dataset['action'] = 'edit-time';
+		stray.value = 'half past';
+
+		stray.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(callbacks.onEditTime).not.toHaveBeenCalled();
+		expect(stray.value).toBe('half past');
+	});
+
+	it('ignores a typed value whose action it does not answer', () => {
+		const { listContainer, callbacks } = setup(true);
+		const stray = el(listContainer, MARKER.list).createEl('input');
+		stray.dataset['markerId'] = 'a';
+		stray.dataset['action'] = 'jump';
+
+		stray.dispatchEvent(new Event('input', { bubbles: true }));
+
+		expect(callbacks.onRename).not.toHaveBeenCalled();
+		expect(callbacks.onEditNote).not.toHaveBeenCalled();
+	});
+});

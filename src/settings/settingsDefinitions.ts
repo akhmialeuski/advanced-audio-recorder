@@ -50,12 +50,12 @@ import { transcriptOutputGroup } from './sections/transcriptOutputSection';
 import { enginesStatus, type PageStatus } from './settingsAttention';
 import type { Setting, SettingDefinitionItem } from 'obsidian';
 
+// Re-exported for the settings tab, which reads the whole surface through
+// this module. Only what it actually reads is passed on: a name the tab does
+// not take is imported from the module that owns it.
 export {
-	MAX_TRACK_COUNT,
 	parseProfileControlKey,
 	parseTrackControlKey,
-	profileControlKey,
-	trackControlKey,
 } from './sections/controlKeys';
 
 export {
@@ -64,17 +64,12 @@ export {
 	SETTINGS_SECTION_CLASS,
 	SETTINGS_TAB_CLASS,
 	STACKED_TEXT_CLASS,
-	TRACK_ROWS_CLASS,
 } from './sections/context';
 
 export type {
-	DeviceOptions,
 	DiagnosticsActions,
-	OutputFormatRows,
 	ProfileCatalogue,
-	ProfileEntry,
 	SettingsDefinitionContext,
-	TranscriptionBlocks,
 } from './sections/context';
 
 export {
@@ -82,8 +77,6 @@ export {
 	controlValue,
 	numberControlRejection,
 } from './controlValues';
-
-export type { ControlWriteEffect } from './controlValues';
 
 /**
  * Builds the tab's definition tree.
