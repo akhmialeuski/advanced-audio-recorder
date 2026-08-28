@@ -353,6 +353,20 @@ describe('requestRaw abort support', () => {
 		);
 	}
 
+	/**
+	 * Puts the CORS-exempt transport behind the endpoint, answering with a
+	 * body that names itself. Which transport carried a request is the whole
+	 * question in this block, so every case that has a fallback to reach needs
+	 * the same double and tells it apart by that name.
+	 */
+	function fallbackAnswers(): void {
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: '{"via":"requestUrl"}',
+		}));
+	}
+
 	// Each of these owns its host name: what an origin does with a browser
 	// request is learned once and remembered for the session, so two tests
 	// sharing a host would be reading each other's answer.
@@ -445,11 +459,7 @@ describe('requestRaw abort support', () => {
 		const fetchMock = mockFetch(() =>
 			Promise.reject(new TypeError('Failed to fetch')),
 		);
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: '{"via":"requestUrl"}',
-		}));
+		fallbackAnswers();
 		return fetchMock;
 	}
 
@@ -464,11 +474,7 @@ describe('requestRaw abort support', () => {
 				? Promise.resolve(fakeResponse(200, ''))
 				: Promise.reject(new TypeError('Failed to fetch')),
 		);
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: '{"via":"requestUrl"}',
-		}));
+		fallbackAnswers();
 		return fetchMock;
 	}
 
@@ -545,11 +551,7 @@ describe('requestRaw abort support', () => {
 				? Promise.reject(new TypeError('Failed to fetch'))
 				: Promise.resolve(fakeResponse(200, ''));
 		});
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: '{"via":"requestUrl"}',
-		}));
+		fallbackAnswers();
 		const url = 'https://probe-blipped.example.com/v1/transcribe';
 
 		const first = await sendAbortable(url);
@@ -570,11 +572,7 @@ describe('requestRaw abort support', () => {
 	it('gives up on a probe that never answers and uses the fallback', async () => {
 		jest.useFakeTimers();
 		const fetchMock = mockFetch(() => new Promise(() => undefined));
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: '{"via":"requestUrl"}',
-		}));
+		fallbackAnswers();
 
 		const settled = sendAbortable(
 			'https://silent-probe.example.com/v1/transcribe',
@@ -591,29 +589,80 @@ describe('requestRaw abort support', () => {
 	// asking again buys the same silence for the whole deadline, and a
 	// recording split into a dozen parts paid it a dozen times over, on top of
 	// each request's own limit.
-	it('asks a host that never answers the probe only once', async () => {
+	it('asks a host that never answers the probe twice, then stops', async () => {
 		jest.useFakeTimers();
 		const fetchMock = mockFetch(() => new Promise(() => undefined));
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: '{"via":"requestUrl"}',
-		}));
+		fallbackAnswers();
 		const url = 'https://always-silent.example.com/v1/transcribe';
 
 		const first = sendAbortable(url);
 		await jest.advanceTimersByTimeAsync(10_000);
 		expect(await first).toBe('{"via":"requestUrl"}');
 		const second = sendAbortable(url);
+		await jest.advanceTimersByTimeAsync(10_000);
+		expect(await second).toBe('{"via":"requestUrl"}');
+		const third = sendAbortable(url);
 		await flushMicrotasks();
-		// Counted before the clock moves, where a second probe would still be
+		// Counted before the clock moves, where a third probe would still be
 		// in flight. Asserting after would report the extra probe as a hung
 		// request rather than as the extra probe it is.
 		const probesBeforeTheClockMoved = fetchMock.mock.calls.length;
 		await jest.advanceTimersByTimeAsync(10_000);
 
-		expect(await second).toBe('{"via":"requestUrl"}');
-		expect(probesBeforeTheClockMoved).toBe(1);
+		expect(await third).toBe('{"via":"requestUrl"}');
+		expect(probesBeforeTheClockMoved).toBe(2);
+	});
+
+	// One unanswered probe describes a moment, not an endpoint: a serverless
+	// endpoint waking up, a local server loading a model, a link that
+	// hiccupped. Read as a verdict it cost the origin its abortable transport
+	// for the whole session, so Cancel stopped releasing the socket - the same
+	// loss that remembering a one-off refusal used to cause.
+	it('gives a host that was silent once another chance', async () => {
+		jest.useFakeTimers();
+		let probes = 0;
+		mockFetch((_url: unknown, init?: RequestInit) => {
+			if (init?.method !== 'HEAD') {
+				return Promise.resolve(fakeResponse(200, '{"via":"fetch"}'));
+			}
+			probes += 1;
+			// Too slow for the deadline once, ready by the next request.
+			return probes === 1
+				? new Promise<Response>(() => undefined)
+				: Promise.resolve(fakeResponse(200, ''));
+		});
+		fallbackAnswers();
+		const url = 'https://slow-to-wake.example.com/v1/transcribe';
+
+		const first = sendAbortable(url);
+		await jest.advanceTimersByTimeAsync(10_000);
+		expect(await first).toBe('{"via":"requestUrl"}');
+
+		expect(await sendAbortable(url)).toBe('{"via":"fetch"}');
+	});
+
+	// The repeat is worth paying a bounded number of times and no more. Left
+	// unbounded it could never converge: an unanswered origin skips fetch
+	// altogether, so the real request never gets to earn the refusal that
+	// would settle the question, and every call to a CORS-refusing endpoint
+	// spent a probe that could not teach it anything for the rest of the
+	// session.
+	it('stops probing an origin whose probe is never readable', async () => {
+		let probes = 0;
+		mockFetch((_url: unknown, init?: RequestInit) => {
+			if (init?.method === 'HEAD') {
+				probes += 1;
+			}
+			return Promise.reject(new TypeError('Failed to fetch'));
+		});
+		fallbackAnswers();
+		const url = 'https://unreadable-forever.example.com/v1/transcribe';
+
+		await sendAbortable(url);
+		await sendAbortable(url);
+		await sendAbortable(url);
+
+		expect(probes).toBe(2);
 	});
 
 	// Nothing goes out at all for a run the user has already cancelled, on
@@ -732,11 +781,7 @@ describe('requestRaw abort support', () => {
 
 		// The link came back, and the origin is owed its fetch: nothing was
 		// ever learned about whether it takes one.
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: '{"via":"requestUrl"}',
-		}));
+		fallbackAnswers();
 		await sendAbortable(url);
 
 		expect(fetchMock).toHaveBeenCalledTimes(2);

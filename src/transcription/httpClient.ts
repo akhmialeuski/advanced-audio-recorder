@@ -408,30 +408,45 @@ const CORS_PROBE_TIMEOUT_MS = 10 * MS_PER_SECOND;
  *
  * `answered` is a response the browser could read, whatever its status.
  * `unreadable` is a refusal, a dropped link, or the run's own cancel, which
- * arrive indistinguishably and say nothing that outlives this request.
- * `silent` is the host accepting the connection and never answering, which is
- * the one ending that describes the host rather than the moment.
+ * arrive indistinguishably. `silent` is the host accepting the connection and
+ * never answering. The two endings are told apart because they cost different
+ * amounts to reach, not because the caller acts on them differently: neither
+ * answers the question, and {@link PROBES_PER_ORIGIN} governs both.
  */
 type CorsProbeOutcome = 'answered' | 'unreadable' | 'silent';
 
 /**
- * Origins that let the probe's deadline run out.
+ * Probes in a row an origin may leave unanswered before it stops being asked.
  *
- * The other way a probe fails is worth repeating and this one is not, on both
- * counts that matter. A refusal and a dropped link are the same opaque
- * TypeError, so the next request asks again in case the link is simply back,
- * and it pays a round trip to find out. A host that accepts the connection and
- * then says nothing is not a blip that clears by the next request, and asking
- * it again costs {@link CORS_PROBE_TIMEOUT_MS} rather than a round trip - on a
- * recording split into a dozen parts, two minutes of the run spent waiting out
- * the same silence twelve times, on top of each request's own limit.
+ * Two rather than one, because a single failed probe describes a moment and
+ * not an endpoint. A refusal, a dropped link and a deadline that ran out all
+ * arrive here as the same unanswered question, and any of them can be a
+ * machine waking up or a link coming back a second later - which is why
+ * {@link originTakesFetch} refuses to read a refusal off one observation
+ * either. Two in a row is a different claim: a link that was genuinely down
+ * would have taken `requestUrl` with it and ended the run, so an origin that
+ * keeps failing the browser transport alone while the fallback answers is
+ * describing itself rather than the moment.
+ *
+ * Two rather than more, because the second attempt is the last one that can
+ * still learn something cheaply. Asking a silent host again spends
+ * {@link CORS_PROBE_TIMEOUT_MS} and asking an unreadable one spends a round
+ * trip; what neither is worth is the twelfth ask, which a recording split into
+ * a dozen parts used to pay once per part.
+ */
+const PROBES_PER_ORIGIN = 2;
+
+/**
+ * Probes each origin has left unanswered in a row, for origins still worth
+ * asking. An answer clears it, because the question this counter tracks is
+ * whether asking again could tell us anything, and an answer says it can.
  *
  * Held apart from {@link originTakesFetch} rather than written into it,
  * because it answers a different question: not what this origin does with a
  * browser request, which is still unknown, but whether asking again could tell
  * us. The body goes by `requestUrl` either way.
  */
-const silentOrigins = new Set<string>();
+const unansweredProbes = new Map<string, number>();
 
 /**
  * What each origin does with a browser request, learned once per session.
@@ -457,8 +472,8 @@ const silentOrigins = new Set<string>();
  * CORS headers on 2xx alone does. Such an origin stays unanswered and is asked
  * again by the next request, at the cost of one bodyless round trip; the body
  * meanwhile goes by the transport that cannot be made to send it twice. The
- * exception is a host that answers nothing at all, which is remembered in
- * {@link silentOrigins} so the asking stops costing a deadline apiece.
+ * asking is bounded rather than endless - see {@link PROBES_PER_ORIGIN} - so
+ * an origin that never answers costs a fixed price instead of one per request.
  */
 const originTakesFetch = new Map<string, boolean>();
 
@@ -534,9 +549,10 @@ async function probeCors(
  * Whether the abortable transport is usable for this URL: true when the origin
  * answers browser requests, false when it is known not to, and null when the
  * question went unanswered, which leaves the origin exactly as unknown as it
- * was. An unknown origin is asked again by the next request, unless the last
- * ask ran out its deadline - see {@link silentOrigins} for why that one is not
- * repeated.
+ * was. An unknown origin is asked again by the next request until
+ * {@link PROBES_PER_ORIGIN} asks have gone unanswered, after which it is left
+ * to the fallback rather than probed on every request for the rest of the
+ * session.
  * @param url - Full request URL
  * @param origin - The URL's origin, or null when it has none to remember
  * @param outer - The run's own cancel, handed to the probe so a Cancel during
@@ -558,17 +574,20 @@ async function fetchIsUsable(
 	if (known !== undefined) {
 		return known;
 	}
-	if (silentOrigins.has(origin)) {
+	const unanswered = unansweredProbes.get(origin) ?? 0;
+	if (unanswered >= PROBES_PER_ORIGIN) {
 		return null;
 	}
 	const outcome = await probeCors(url, outer);
 	if (outcome === 'answered') {
+		unansweredProbes.delete(origin);
 		originTakesFetch.set(origin, true);
 		return true;
 	}
-	if (outcome === 'silent') {
-		silentOrigins.add(origin);
-	}
+	// Both remaining endings are counted, because both leave the question
+	// where it was and neither is worth asking indefinitely. Which of the two
+	// it was decides only what the ask cost, not what it taught.
+	unansweredProbes.set(origin, unanswered + 1);
 	// Nothing goes into originTakesFetch either way: a HEAD the browser could
 	// not read rules out neither a reachable host nor an endpoint that takes
 	// the real request. The caller sends this one through the transport that
