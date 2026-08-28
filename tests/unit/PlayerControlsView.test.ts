@@ -435,4 +435,37 @@ describe('reporting a toggle state to assistive technology', () => {
 
 		expect(pressed(container, 'Mute / unmute')).toBe('false');
 	});
+
+	// The play button had the gap in its stronger form: it carried its state
+	// in the icon alone, without even the class the other two had, so a
+	// listener using a screen reader was told what the button is for and never
+	// which of the two states the track was in.
+	it('reports playback as running when the audio already was', () => {
+		const { container } = createSut({ paused: false });
+
+		expect(pressed(container, 'Play / pause')).toBe('true');
+	});
+
+	it('reports playback as stopped when the audio is paused', () => {
+		const { container } = createSut({ paused: true });
+
+		expect(pressed(container, 'Play / pause')).toBe('false');
+	});
+
+	it('reports the playback state the player moved to', () => {
+		const { view, container } = createSut({ paused: true });
+
+		view.setPlaying(true);
+
+		expect(pressed(container, 'Play / pause')).toBe('true');
+	});
+
+	// The accent class belongs to the two controls that use it to show they
+	// are engaged. The play button shows its state in the icon, and tinting it
+	// while the track runs would be a change to the row nobody asked for.
+	it('leaves the play button without the engaged styling', () => {
+		const { container } = createSut({ paused: false });
+
+		expect(control(container, 'Play / pause')).not.toBeActiveControl();
+	});
 });
