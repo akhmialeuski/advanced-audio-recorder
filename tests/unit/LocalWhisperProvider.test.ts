@@ -114,6 +114,39 @@ describe('running the binary', () => {
 		).rejects.toThrow('model file not found');
 	});
 
+	// Node's error for a non-zero exit says "Command failed with exit code 1"
+	// and no more, while the binary has already written the reason on stderr.
+	// Reporting the status code alone sends a user with a mistyped model path
+	// hunting through the console for a sentence that was there all along. The
+	// last line is the one that names the failure; the lines above it are the
+	// trace that led to it.
+	it('reports the reason the binary printed rather than its exit status', async () => {
+		installNode({
+			execError: new Error('Command failed with exit code 1'),
+			stderr:
+				'whisper_init_from_file: loading model\n' +
+				'error: failed to initialize whisper context',
+		});
+
+		await expect(
+			createSut().transcribe(payload(), options()),
+		).rejects.toThrow('failed to initialize whisper context');
+	});
+
+	it('keeps what Node saw as the cause of the error it reports', async () => {
+		const exitFailure = new Error('Command failed with exit code 1');
+		installNode({
+			execError: exitFailure,
+			stderr: 'error: unknown argument: --nonsense',
+		});
+
+		const settled = await createSut()
+			.transcribe(payload(), options())
+			.catch((error: unknown) => error);
+
+		expect(settled).toHaveProperty('cause', exitFailure);
+	});
+
 	it('says the binary wrote no output rather than that the audio was empty', async () => {
 		installNode({
 			writesNoOutput: true,

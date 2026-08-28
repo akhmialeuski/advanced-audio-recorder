@@ -138,13 +138,25 @@ const MAX_BUFFER_ERROR_CODE = 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
  * user pressed Cancel, the limit ran out, the output outgrew the buffer, or
  * the model path was wrong. Only the caller can tell them apart, because only
  * it holds the cancel and set the limit.
+ *
+ * The fourth is the binary's own to explain, and it does explain it: a model
+ * it could not load or a flag it does not know is named on stderr, while the
+ * error beside it says no more than that the exit was non-zero. Every ending
+ * keeps the original as its `cause`, so the console still has what Node saw.
  * @param error - What execFile handed back
  * @param options - The run's options, holding its cancel
+ * @param stderr - What the binary wrote to stderr, empty when it wrote nothing
  * @returns The error to reject with
  */
-function describeRunFailure(error: Error, options: TranscribeOptions): Error {
+function describeRunFailure(
+	error: Error,
+	options: TranscribeOptions,
+	stderr: string,
+): Error {
 	if (options.signal?.aborted) {
-		return new Error('Local whisper.cpp run was cancelled.');
+		return new Error('Local whisper.cpp run was cancelled.', {
+			cause: error,
+		});
 	}
 	const { killed, code } = error as { killed?: boolean; code?: string };
 	// Ahead of the branch below, which reads the same `killed` marker: Node
@@ -155,6 +167,7 @@ function describeRunFailure(error: Error, options: TranscribeOptions): Error {
 		return new Error(
 			'Local whisper.cpp produced more output than the plugin can read. ' +
 				'Split the recording and transcribe it in parts.',
+			{ cause: error },
 		);
 	}
 	// Node's own marker for a process it killed, which here means the limit.
@@ -163,9 +176,18 @@ function describeRunFailure(error: Error, options: TranscribeOptions): Error {
 			'Local whisper.cpp did not finish within the run timeout and was ' +
 				'stopped. Raise Local run timeout in the settings, or use a ' +
 				'smaller model.',
+			{ cause: error },
 		);
 	}
-	return error;
+	// Everything else is the binary's own failure, and the last line it wrote
+	// is where it says which one. Node's message for it is "Command failed
+	// with exit code 1", which sends a user with a mistyped model path looking
+	// for a status code instead of the sentence naming the file.
+	const detail = stderr.trim().split('\n').at(-1);
+	if (!detail) {
+		return error;
+	}
+	return new Error(`Local whisper.cpp failed: ${detail}`, { cause: error });
 }
 
 /**
@@ -252,9 +274,9 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 						timeout: this.config.processTimeoutMs,
 						...(options.signal ? { signal: options.signal } : {}),
 					},
-					(error) => {
+					(error, _stdout, stderr) => {
 						if (error) {
-							reject(describeRunFailure(error, options));
+							reject(describeRunFailure(error, options, stderr));
 						} else {
 							resolve();
 						}

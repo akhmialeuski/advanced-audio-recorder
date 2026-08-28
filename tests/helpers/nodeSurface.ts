@@ -17,6 +17,13 @@
 export interface NodeSurfaceBehaviour {
 	/** Error handed to the execFile callback, for a binary that fails. */
 	execError?: Error;
+	/**
+	 * What the binary writes to stderr. whisper.cpp names its own failure
+	 * there - a model it could not load, a flag it does not know - while the
+	 * error handed back beside it says no more than that the exit was
+	 * non-zero.
+	 */
+	stderr?: string;
 	/** What the binary writes to its output file. */
 	output?: string;
 	/**
@@ -185,7 +192,11 @@ export function installNodeSurface(
 						behaviour.output ?? DEFAULT_OUTPUT,
 					);
 				}
-				callback(behaviour.execError ?? null, '', '');
+				callback(
+					behaviour.execError ?? null,
+					'',
+					behaviour.stderr ?? '',
+				);
 			},
 		},
 		fs: {
