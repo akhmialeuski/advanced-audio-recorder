@@ -58,7 +58,7 @@ The player also keeps working in **pop-out windows**: moving a note that embeds 
 
 ## The controls
 
-Every control below is **fixed** - none of them is configurable. Only the master **Enhanced audio player** toggle and the two windows (**Show waveform**, **Markers and chapters**) can be changed in settings.
+Every control below is **fixed** in what it does. Only the master **Enhanced audio player** toggle, the two windows (**Show waveform**, **Markers and chapters**), and the **Skip step** can be changed in settings.
 
 ![Enhanced player control row showing play, skip back, skip forward, speed, mute, volume, loop, chapter navigation, time, and copy-link buttons](images/player-controls.png)
 _Figure: the full control row of the enhanced player._
@@ -122,7 +122,7 @@ _Figure: the status-bar playback controls shown while a recording plays, with tr
 
 The strip carries:
 
-- **Skip back and skip forward** by 10 seconds, the same step as the embed's skip buttons.
+- **Skip back and skip forward** by the configured **Skip step** (10 seconds by default), the same step as the embed's skip buttons.
 - **Play or pause** and **stop**. The button reflects the live state, and stop resets the position to the start.
 - **Mute** and a **volume slider** from 0 to 1. Dragging the slider above 0 while muted unmutes it, matching the embed.
 - **Add marker** and **add chapter** at the current position. These two appear only when **Markers and chapters** is enabled for the playing recording.
@@ -142,8 +142,8 @@ Every playback action is also a **command**, so a recording can be driven entire
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | Play/pause playback                       | Starts the paused recording or pauses the running one, exactly as the play button does. |
 | Stop playback                             | Stops playback, resets it to the start, and dismisses the status-bar strip.             |
-| Skip playback back 10 seconds             | Moves back by the same step the skip buttons use.                                       |
-| Skip playback forward 10 seconds          | Moves forward by that same step.                                                        |
+| Skip playback back                        | Moves back by the same step the skip buttons use.                                       |
+| Skip playback forward                     | Moves forward by that same step.                                                        |
 | Mute/unmute playback                      | Toggles the output without touching the volume level.                                   |
 | Increase playback speed                   | Steps up to the next speed preset and stops at the fastest one.                         |
 | Decrease playback speed                   | Steps down to the previous preset and stops at the slowest one.                         |
@@ -278,7 +278,7 @@ The waveform is drawn for supported audio files up to the **1 GB** decode ceilin
 
 ## Related settings
 
-All three controls live under **Settings > Advanced Audio Recorder > Audio player**. The player's other controls (speed, skip, volume, mute, loop, time display, copy-timestamp link) are fixed and are not listed here because there is nothing to configure.
+Those settings live under **Settings > Advanced Audio Recorder > Audio player**, together with the **Skip step**. The player's other controls (speed, volume, mute, loop, time display, copy-timestamp link) are fixed and are not listed here because there is nothing to configure.
 
 | Setting                   | Description                                                                                                                                                | Default |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |

@@ -34,6 +34,7 @@ import {
 const WITH_MARKERS: ResolvedPlayerSettings = {
 	showWaveform: false,
 	enableMarkers: true,
+	skipSeconds: 10,
 };
 
 const MARKERS: PlayerMarker[] = [
@@ -189,7 +190,11 @@ describe('the marker list', () => {
 
 	it('reads no markers while the marker window is off', async () => {
 		const { player, store } = await openWithMarkers();
-		player.applySettings({ showWaveform: false, enableMarkers: false });
+		player.applySettings({
+			showWaveform: false,
+			enableMarkers: false,
+			skipSeconds: 10,
+		});
 		jest.mocked(store.getMarkers).mockClear();
 
 		player.reloadMarkers();

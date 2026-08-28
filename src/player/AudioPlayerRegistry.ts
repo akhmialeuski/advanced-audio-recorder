@@ -9,7 +9,7 @@
  * @module player/AudioPlayerRegistry
  */
 
-import { SHARED_AUDIO_GRACE_MS } from '../constants';
+import { PLAYER_SKIP_SECONDS, SHARED_AUDIO_GRACE_MS } from '../constants';
 import type { MarkerKind } from '../markers/markerModel';
 import type { ResolvedPlayerSettings } from '../player/playerSettings';
 import {
@@ -296,6 +296,13 @@ export class AudioPlayerRegistry {
 			playbackRate: snapshot.playbackRate,
 			markersEnabled: this.controllerFor(entry, withMarkers) !== null,
 			chaptersEnabled: this.controllerFor(entry, withChapters) !== null,
+			// Read from whichever player owns this playback, so the status bar
+			// and the commands skip by the same step the embed does. Nothing
+			// owns it only while the element is being released, and the
+			// default is what the plugin shipped with.
+			skipSeconds:
+				this.controllerFor(entry, anyController)?.skipSeconds() ??
+				PLAYER_SKIP_SECONDS,
 			onTogglePlay: () => {
 				this.runPlaybackCommand(key, (controller) => {
 					controller.togglePlay();

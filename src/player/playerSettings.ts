@@ -20,6 +20,11 @@ export interface ResolvedPlayerSettings {
 	showWaveform: boolean;
 	/** Show the markers and chapters window (list, ticks, edit controls). */
 	enableMarkers: boolean;
+	/**
+	 * Seconds a skip moves by. Resolved once here so the embed, the status bar
+	 * and the commands cannot offer three different steps.
+	 */
+	skipSeconds: number;
 }
 
 /**
@@ -33,6 +38,7 @@ export function resolvePlayerSettings(
 	return {
 		showWaveform: settings.playerShowWaveform,
 		enableMarkers: settings.playerEnableMarkers,
+		skipSeconds: settings.playerSkipSeconds,
 	};
 }
 

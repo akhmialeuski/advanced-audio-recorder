@@ -19,19 +19,24 @@ describe('enhanced player settings', () => {
 		expect(DEFAULT_SETTINGS.playerEnableMarkers).toBe(true);
 	});
 
-	it('exposes only the two window toggles (no per-button settings)', () => {
+	// Every fixed control stays fixed. The skip step is the one exception and
+	// it is deliberate: five seconds suits picking apart speech and thirty
+	// suits a lecture, so the right value belongs to the recording rather than
+	// to the plugin. Everything else the player draws is still not a setting.
+	it('exposes the two windows and the skip step, and nothing else', () => {
 		const playerKeys = Object.keys(DEFAULT_SETTINGS).filter((key) =>
 			key.startsWith('player'),
 		);
 		expect(playerKeys.sort()).toEqual([
 			'playerEnableMarkers',
 			'playerShowWaveform',
+			'playerSkipSeconds',
 		]);
 	});
 });
 
 describe('resolvePlayerSettings', () => {
-	it('carries only the two window toggles (fixed elements are not fields)', () => {
+	it('carries the two windows and the step every surface skips by', () => {
 		const resolved = resolvePlayerSettings(
 			mergeSettings({
 				playerShowWaveform: true,
@@ -42,6 +47,7 @@ describe('resolvePlayerSettings', () => {
 		expect(resolved).toEqual({
 			showWaveform: true,
 			enableMarkers: true,
+			skipSeconds: 10,
 		});
 	});
 
@@ -72,8 +78,8 @@ describe('playerSettingsEqual', () => {
 	it('is true for identical layouts', () => {
 		expect(
 			playerSettingsEqual(
-				{ showWaveform: true, enableMarkers: false },
-				{ showWaveform: true, enableMarkers: false },
+				{ showWaveform: true, enableMarkers: false, skipSeconds: 10 },
+				{ showWaveform: true, enableMarkers: false, skipSeconds: 10 },
 			),
 		).toBe(true);
 	});
@@ -81,8 +87,8 @@ describe('playerSettingsEqual', () => {
 	it('is false when the waveform toggle differs', () => {
 		expect(
 			playerSettingsEqual(
-				{ showWaveform: true, enableMarkers: true },
-				{ showWaveform: false, enableMarkers: true },
+				{ showWaveform: true, enableMarkers: true, skipSeconds: 10 },
+				{ showWaveform: false, enableMarkers: true, skipSeconds: 10 },
 			),
 		).toBe(false);
 	});
@@ -90,8 +96,8 @@ describe('playerSettingsEqual', () => {
 	it('is false when the markers toggle differs', () => {
 		expect(
 			playerSettingsEqual(
-				{ showWaveform: true, enableMarkers: true },
-				{ showWaveform: true, enableMarkers: false },
+				{ showWaveform: true, enableMarkers: true, skipSeconds: 10 },
+				{ showWaveform: true, enableMarkers: false, skipSeconds: 10 },
 			),
 		).toBe(false);
 	});

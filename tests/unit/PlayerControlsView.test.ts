@@ -76,6 +76,7 @@ function createSut(state: Partial<PlayerControlsState> = {}): Sut {
 		muted: false,
 		loop: false,
 		markersEnabled: true,
+		skipSeconds: 10,
 		...state,
 	});
 	return { view, container, callbacks };

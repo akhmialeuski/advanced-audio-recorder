@@ -710,6 +710,7 @@ export class EnhancedPlayerRegistrar {
 			() => {
 				this.detachedPlayback = null;
 			},
+			resolvePlayerSettings(this.getSettings()).skipSeconds,
 		);
 	}
 

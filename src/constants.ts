@@ -205,8 +205,21 @@ export const SPLIT_PART_SUFFIX_RULE_TEXT =
 /** Waveform height in pixels. */
 export const PLAYER_WAVEFORM_HEIGHT = 48;
 
-/** Seconds skipped by the player's skip-forward/back buttons. */
+/**
+ * Seconds skipped by the player's skip-forward/back buttons, by default.
+ *
+ * The value is a setting now: five seconds suits picking apart speech, thirty
+ * suits sitting through a lecture, and which one is right is a property of the
+ * recording rather than of the plugin. This stays as the default and as the
+ * value every surface falls back to before settings are resolved.
+ */
 export const PLAYER_SKIP_SECONDS = 10;
+
+/** Fewest seconds a skip may be set to. */
+export const MIN_PLAYER_SKIP_SECONDS = 1;
+
+/** Most seconds a skip may be set to. */
+export const MAX_PLAYER_SKIP_SECONDS = 120;
 
 /**
  * Step of the player volume sliders, shared by the embedded control row and

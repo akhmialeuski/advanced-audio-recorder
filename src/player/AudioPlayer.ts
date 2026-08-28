@@ -407,6 +407,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				// available in reading view exactly as the embedded chapter
 				// buttons do
 				canNavigateChapters: () => this.settings.enableMarkers,
+				skipSeconds: () => this.settings.skipSeconds,
 				togglePlay: () => {
 					this.togglePlay();
 				},
@@ -727,6 +728,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			muted: this.audio.muted,
 			loop: this.audio.loop,
 			markersEnabled: this.settings.enableMarkers,
+			skipSeconds: this.settings.skipSeconds,
 		});
 	}
 

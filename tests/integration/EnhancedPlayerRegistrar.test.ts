@@ -829,6 +829,9 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			expect.objectContaining({ path: 'rec.mp4' }),
 			30,
 			expect.any(Function),
+			// The step the settings resolved, so a detached playback skips by
+			// the same amount an embed would.
+			10,
 		);
 		expect(prevent).toHaveBeenCalledTimes(1);
 	});
@@ -926,6 +929,9 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			expect.objectContaining({ path: 'rec.mp4' }),
 			30,
 			expect.any(Function),
+			// The step the settings resolved, so a detached playback skips by
+			// the same amount an embed would.
+			10,
 		);
 		expect(prevent).toHaveBeenCalledTimes(1);
 	});

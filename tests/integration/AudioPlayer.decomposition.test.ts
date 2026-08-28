@@ -35,6 +35,7 @@ import {
 const PLAIN: ResolvedPlayerSettings = {
 	showWaveform: false,
 	enableMarkers: false,
+	skipSeconds: 10,
 };
 
 function makePlayer(
@@ -358,6 +359,7 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 	const WITH_MARKERS: ResolvedPlayerSettings = {
 		showWaveform: false,
 		enableMarkers: true,
+		skipSeconds: 10,
 	};
 
 	it('adding a marker from the controls persists it and renders the list', async () => {

@@ -1515,6 +1515,7 @@ describe('settings definitions', () => {
 				'Enhanced audio player',
 				'Show waveform',
 				'Markers and chapters',
+				'Skip step',
 			]);
 			expect(rowOf(build(), PLAYER, 'Show waveform').control).toEqual({
 				type: 'toggle',

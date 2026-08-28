@@ -44,6 +44,7 @@ import {
 	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
 	DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
 	DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
+	PLAYER_SKIP_SECONDS,
 } from '../constants';
 import type {
 	TranscriptDestination,
@@ -245,6 +246,8 @@ export interface AudioRecorderSettings {
 	playerShowWaveform: boolean;
 	/** Show the markers and chapters window below the player */
 	playerEnableMarkers: boolean;
+	/** Seconds the player's skip-forward and skip-back move by */
+	playerSkipSeconds: number;
 	/** Enable the transcription feature */
 	transcriptionEnabled: boolean;
 	/** Automatically transcribe a recording after it is saved */
@@ -667,6 +670,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	enhancedPlayerEnabled: false,
 	playerShowWaveform: true,
 	playerEnableMarkers: true,
+	playerSkipSeconds: PLAYER_SKIP_SECONDS,
 	transcriptionEnabled: false,
 	transcribeOnSave: false,
 	transcriptionShowCostEstimates: true,

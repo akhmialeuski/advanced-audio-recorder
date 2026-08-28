@@ -8,11 +8,7 @@
  */
 
 import { setIcon } from 'obsidian';
-import {
-	PLAYER_ICONS,
-	PLAYER_SKIP_SECONDS,
-	PLAYER_VOLUME_SLIDER_STEP,
-} from '../../constants';
+import { PLAYER_ICONS, PLAYER_VOLUME_SLIDER_STEP } from '../../constants';
 import { MARKER_KIND, type MarkerKind } from '../../markers/markerModel';
 import { formatTimecode } from '../../utils/TimeUtils';
 import { formatPlaybackRate } from '../playbackRate';
@@ -30,6 +26,8 @@ export interface PlayerControlsState {
 	loop: boolean;
 	/** Render the marker/chapter buttons. */
 	markersEnabled: boolean;
+	/** Seconds the skip buttons move by, and the number their labels name. */
+	skipSeconds: number;
 }
 
 /** What each control does (owned by the player). */
@@ -115,20 +113,23 @@ export class PlayerControlsView {
 		// already does it, so the icon and the state have one place to be set.
 		this.setPlaying(!state.paused);
 
+		// The label names the step so the button says what it will do, and the
+		// handler uses the same number rather than a second copy of it.
+		const skip = state.skipSeconds;
 		this.createIconButton(
 			controls,
 			PLAYER_ICONS.skipBack,
-			`Back ${String(PLAYER_SKIP_SECONDS)}s`,
+			`Back ${String(skip)}s`,
 			() => {
-				this.callbacks.onSkip(-PLAYER_SKIP_SECONDS);
+				this.callbacks.onSkip(-skip);
 			},
 		);
 		this.createIconButton(
 			controls,
 			PLAYER_ICONS.skipForward,
-			`Forward ${String(PLAYER_SKIP_SECONDS)}s`,
+			`Forward ${String(skip)}s`,
 			() => {
-				this.callbacks.onSkip(PLAYER_SKIP_SECONDS);
+				this.callbacks.onSkip(skip);
 			},
 		);
 

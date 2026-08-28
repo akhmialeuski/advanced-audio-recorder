@@ -52,6 +52,7 @@ export function fullyPopulatedSettings(): Omit<
 		enhancedPlayerEnabled: true,
 		playerShowWaveform: false,
 		playerEnableMarkers: false,
+		playerSkipSeconds: 10,
 		transcriptionEnabled: true,
 		transcribeOnSave: true,
 		transcriptionShowCostEstimates: true,

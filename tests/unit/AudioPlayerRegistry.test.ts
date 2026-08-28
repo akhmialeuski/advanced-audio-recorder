@@ -25,6 +25,7 @@ function makePlaybackController(
 	return {
 		canAddMarkers: jest.fn(() => true),
 		canNavigateChapters: jest.fn(() => true),
+		skipSeconds: jest.fn(() => 10),
 		togglePlay: jest.fn(),
 		stop: jest.fn(),
 		skip: jest.fn(),

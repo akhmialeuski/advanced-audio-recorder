@@ -66,6 +66,7 @@ function makePlayer(
 const PLAIN: ResolvedPlayerSettings = {
 	showWaveform: false,
 	enableMarkers: false,
+	skipSeconds: 10,
 };
 
 /**
@@ -136,7 +137,11 @@ describe('shared playback state survives a re-render (F1)', () => {
 
 		audio.playbackRate = 1.5;
 		// A real layout change forces a re-render
-		player.applySettings({ showWaveform: false, enableMarkers: true });
+		player.applySettings({
+			showWaveform: false,
+			enableMarkers: true,
+			skipSeconds: 10,
+		});
 
 		expect(audio.playbackRate).toBe(1.5);
 	});
@@ -157,7 +162,11 @@ describe('shared playback state survives a re-render (F1)', () => {
 		const player = makePlayer(makeContainer(), makeRegistry(audio), PLAIN);
 		player.onload();
 		audio.playbackRate = 1.75;
-		player.applySettings({ showWaveform: false, enableMarkers: true });
+		player.applySettings({
+			showWaveform: false,
+			enableMarkers: true,
+			skipSeconds: 10,
+		});
 
 		expect(el(document, PLAYER.speed).textContent).toBe('1.75x');
 	});
@@ -188,7 +197,11 @@ describe('settings re-render only when the layout changes (F4)', () => {
 		player.onload();
 		const controlsBefore = el(document, PLAYER.controls);
 
-		player.applySettings({ showWaveform: false, enableMarkers: true });
+		player.applySettings({
+			showWaveform: false,
+			enableMarkers: true,
+			skipSeconds: 10,
+		});
 
 		expect(el(document, PLAYER.controls)).not.toBe(controlsBefore);
 	});
@@ -238,6 +251,7 @@ describe('waveform rendering decision (F2/F3)', () => {
 		makePlayer(container, makeRegistry(makeFakeAudio()), {
 			showWaveform: true,
 			enableMarkers: false,
+			skipSeconds: 10,
 		}).onload();
 		expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
 		expect(maybeEl(container, PLAYER.waveform)).not.toBeNull();
@@ -257,7 +271,7 @@ describe('waveform rendering decision (F2/F3)', () => {
 		makePlayer(
 			container,
 			makeRegistry(makeFakeAudio()),
-			{ showWaveform: true, enableMarkers: false },
+			{ showWaveform: true, enableMarkers: false, skipSeconds: 10 },
 			makeFile(500 * 1024 * 1024, 'wav'),
 		).onload();
 		expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
@@ -275,7 +289,7 @@ describe('waveform rendering decision (F2/F3)', () => {
 		makePlayer(
 			container,
 			makeRegistry(makeFakeAudio()),
-			{ showWaveform: true, enableMarkers: false },
+			{ showWaveform: true, enableMarkers: false, skipSeconds: 10 },
 			makeFile(2 * 1024 * 1024 * 1024, 'wav'),
 		).onload();
 		expect(maybeEl(container, PLAYER.seekWaveform)).toBeNull();
@@ -515,6 +529,7 @@ describe('lazy waveform decode (B2)', () => {
 	const WAVEFORM: ResolvedPlayerSettings = {
 		showWaveform: true,
 		enableMarkers: false,
+		skipSeconds: 10,
 	};
 
 	let originalIO: typeof IntersectionObserver | undefined;
@@ -660,6 +675,7 @@ describe('render-scoped teardown across in-place re-renders (F1)', () => {
 			player.applySettings({
 				showWaveform: false,
 				enableMarkers: i % 2 === 0,
+				skipSeconds: 10,
 			});
 		}
 

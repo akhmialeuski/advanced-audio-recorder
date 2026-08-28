@@ -11,6 +11,8 @@ export interface PlaybackController {
 	canAddMarkers(): boolean;
 	/** Whether this player can jump between chapters. */
 	canNavigateChapters(): boolean;
+	/** Seconds a skip moves by, as this player's settings resolved it. */
+	skipSeconds(): number;
 	/** Starts paused playback or pauses running playback. */
 	togglePlay(): void;
 	/** Stops playback and resets the player position. */
@@ -50,6 +52,8 @@ export interface PlaybackControlsState {
 	playbackRate: number;
 	/** Whether marker and chapter creation is available. */
 	markersEnabled: boolean;
+	/** Seconds a skip moves by, as the settings resolved it. */
+	skipSeconds: number;
 	/** Whether chapter navigation is available. */
 	chaptersEnabled: boolean;
 	/** Starts paused playback or pauses running playback. */

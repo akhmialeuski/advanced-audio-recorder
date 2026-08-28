@@ -54,11 +54,13 @@ const decoder: AudioDecoder = {
 const PLAIN: ResolvedPlayerSettings = {
 	showWaveform: false,
 	enableMarkers: false,
+	skipSeconds: 10,
 };
 
 const WITH_MARKERS: ResolvedPlayerSettings = {
 	showWaveform: false,
 	enableMarkers: true,
+	skipSeconds: 10,
 };
 
 function makeFile(): TFile {

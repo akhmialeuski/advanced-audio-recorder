@@ -11,7 +11,6 @@ import {
 	COMMAND_IDS,
 	PLAYER_ICONS,
 	PLAYER_PLAYBACK_RATE_PRESETS,
-	PLAYER_SKIP_SECONDS,
 } from '../constants';
 import { MARKER_KIND } from '../markers/markerModel';
 import { steppedPlaybackRate } from '../player/playbackRate';
@@ -48,20 +47,23 @@ export const PLAYBACK_ACTIONS: readonly PlaybackAction[] = [
 	},
 	{
 		commandId: COMMAND_IDS.skipPlaybackBack,
-		title: `Skip playback back ${String(PLAYER_SKIP_SECONDS)} seconds`,
+		// The step is a setting now, and a command's title is fixed when the
+		// plugin loads, so it names the action and leaves the number to the
+		// setting rather than promising one it may no longer skip by.
+		title: 'Skip playback back',
 		icon: PLAYER_ICONS.skipBack,
 		isAvailable: whilePlaying,
 		run: (state): void => {
-			state.onSkip(-PLAYER_SKIP_SECONDS);
+			state.onSkip(-state.skipSeconds);
 		},
 	},
 	{
 		commandId: COMMAND_IDS.skipPlaybackForward,
-		title: `Skip playback forward ${String(PLAYER_SKIP_SECONDS)} seconds`,
+		title: 'Skip playback forward',
 		icon: PLAYER_ICONS.skipForward,
 		isAvailable: whilePlaying,
 		run: (state): void => {
-			state.onSkip(PLAYER_SKIP_SECONDS);
+			state.onSkip(state.skipSeconds);
 		},
 	},
 	{

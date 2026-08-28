@@ -33,7 +33,7 @@ A few settings reveal or hide other controls when toggled, so the tab redraws in
 
 - Turning **Save recordings near active file** on reveals **Active file subfolder**.
 - Turning **Enable multi-track recording** on reveals **Maximum tracks**, **Output mode**, and one **Track N input** and **Track N channels** dropdown pair per track.
-- Turning **Enhanced audio player** on reveals **Show waveform** and **Markers and chapters**.
+- Turning **Enhanced audio player** on reveals **Show waveform**, **Markers and chapters**, and **Skip step**.
 - Turning **Enable transcription** on reveals the **Transcription engine** row, transcript output, and LLM sub-sections; the engine page holds the picker and the fields of whichever engine it points at, so choosing another one swaps them there.
 - Turning **Enable LLM post-processing** on reveals its **Post-processing engine** row and the task and prompt controls; the key, the model, and the token ceiling belong to that engine and live on its page under **Engines**.
 - Turning **Auto chapters** on reveals its own **Chapters engine** row, so chapters can run on a different service from post-processing, and it reveals **Generate after transcription** whenever there are transcriptions for that generation to follow.
@@ -134,7 +134,7 @@ _Figure: The Multi-track recording section with one source dropdown per track._
 
 ## Audio player
 
-Replace Obsidian's built-in audio embed with the enhanced player. The two window toggles (**Show waveform**, **Markers and chapters**) only appear once **Enhanced audio player** is on. The player's other controls - playback speed (0.5×-3×), ±10 s skip, volume, mute, loop, time display, and the copy-timestamp-link button - are fixed and not configurable here. See [Audio player](audio-player.md).
+Replace Obsidian's built-in audio embed with the enhanced player. The two window toggles (**Show waveform**, **Markers and chapters**) only appear once **Enhanced audio player** is on. The player's other controls - playback speed (0.5×-3×), volume, mute, loop, time display, and the copy-timestamp-link button - are fixed and not configurable here. See [Audio player](audio-player.md).
 
 ![Audio player settings section with the enhanced player toggle, show waveform toggle, and markers and chapters toggle](images/settings-audio-player.png)
 _Figure: The Audio player section with the two window toggles revealed._
@@ -144,6 +144,7 @@ _Figure: The Audio player section with the two window toggles revealed._
 | **Enhanced audio player** | Replace the built-in embed with the richer player (waveform, speed, skip, volume, mute, loop, time display, timecode links, markers, chapters). Video files keep the built-in player. Reveals the two options below.         | On / Off        | Off     |
 | **Show waveform**         | Draw a waveform behind the seek bar. When off, a plain (still seekable) bar is shown and no audio is decoded. **Only shown when the enhanced player is on.**                                                                 | On / Off        | On      |
 | **Markers and chapters**  | Show the markers and chapters list below the player, with add, jump, rename, delete, and chapter-navigation controls. Markers are stored in a sidecar next to each recording. **Only shown when the enhanced player is on.** | On / Off        | On      |
+| **Skip step**             | Seconds the skip-forward and skip-back controls move by, in the player, in the status bar, and from their commands. Five suits picking apart speech, thirty suits a lecture. **Only shown when the enhanced player is on.**  | 1-120 seconds   | 10      |
 
 ---
 

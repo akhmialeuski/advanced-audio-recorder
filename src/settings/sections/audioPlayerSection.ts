@@ -3,6 +3,10 @@
  * @module settings/sections/audioPlayerSection
  */
 
+import {
+	MAX_PLAYER_SKIP_SECONDS,
+	MIN_PLAYER_SKIP_SECONDS,
+} from '../../constants';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import { sectionItems } from './rowHelpers';
 import type { SettingGroupItem } from 'obsidian';
@@ -40,6 +44,19 @@ export function audioPlayerPage(
 				desc: 'Show the markers and chapters list below the player. Markers are stored next to the recording, not in your vault.',
 				visible: enhanced,
 				control: { type: 'toggle', key: 'playerEnableMarkers' },
+			},
+			{
+				name: 'Skip step',
+				aliases: ['skip seconds', 'jump'],
+				desc: 'Seconds the skip-forward and skip-back controls move by, in the player, in the status bar, and from their commands. Five suits picking apart speech, thirty suits a lecture.',
+				visible: enhanced,
+				control: {
+					type: 'number',
+					key: 'playerSkipSeconds',
+					min: MIN_PLAYER_SKIP_SECONDS,
+					max: MAX_PLAYER_SKIP_SECONDS,
+					step: 1,
+				},
 			},
 		]),
 	};

@@ -13,7 +13,7 @@
  */
 
 import type { App, TFile } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
+import { PLAYER_SKIP_SECONDS, PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 import { DurationProbe } from './DurationProbe';
 import {
@@ -59,6 +59,7 @@ export class DetachedPlayback {
 	 * @param key - Playback key the audio was acquired under
 	 * @param audio - Shared audio element for the file
 	 * @param onDispose - Called once when this playback tears down
+	 * @param skipSeconds - Seconds a skip moves by
 	 */
 	private constructor(
 		private readonly registry: AudioPlayerRegistry,
@@ -66,6 +67,7 @@ export class DetachedPlayback {
 		private readonly key: string,
 		private readonly audio: HTMLAudioElement,
 		private readonly onDispose: () => void,
+		private readonly skipSeconds: number,
 	) {
 		// Once the far-seek probe resolves the real duration it restores the
 		// start, so the pending offset is applied afterwards - never mid-probe
@@ -91,6 +93,7 @@ export class DetachedPlayback {
 		file: TFile,
 		seconds: number,
 		onDispose: () => void,
+		skipSeconds: number = PLAYER_SKIP_SECONDS,
 	): DetachedPlayback {
 		const key = playbackKey(file.path, null);
 		const { audio } = registry.acquireAudio(
@@ -103,6 +106,7 @@ export class DetachedPlayback {
 			key,
 			audio,
 			onDispose,
+			skipSeconds,
 		);
 		playback.register();
 		playback.seek(seconds);
@@ -160,6 +164,7 @@ export class DetachedPlayback {
 				// would define
 				canAddMarkers: () => false,
 				canNavigateChapters: () => false,
+				skipSeconds: () => this.skipSeconds,
 				togglePlay: () => {
 					togglePlayback(this.audio, this.onPlayError);
 				},

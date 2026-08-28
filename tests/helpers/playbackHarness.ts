@@ -129,6 +129,7 @@ export function makePlaybackState(
 		muted: false,
 		playbackRate: 1,
 		markersEnabled: true,
+		skipSeconds: 10,
 		chaptersEnabled: true,
 		onTogglePlay: jest.fn(),
 		onStop: jest.fn(),

@@ -26,6 +26,8 @@ const playbackStates = new WeakMap<HTMLElement, PlaybackControlsState>();
  */
 const PLAYBACK_CONTROLS_CLASS = 'aar-playback-controls';
 const PLAYBACK_TOGGLE_CLASS = 'aar-playback-toggle';
+const PLAYBACK_SKIP_BACK_CLASS = 'aar-playback-skip-back';
+const PLAYBACK_SKIP_FORWARD_CLASS = 'aar-playback-skip-forward';
 const PLAYBACK_MUTE_CLASS = 'aar-playback-mute';
 const PLAYBACK_VOLUME_CLASS = 'aar-playback-volume';
 const PLAYBACK_MARKER_CONTROLS_CLASS = 'aar-playback-marker-controls';
@@ -315,28 +317,35 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 		cls: PLAYBACK_CONTROLS_CLASS,
 	});
 	const transport = container.createSpan({ cls: 'aar-playback-buttons' });
-	createControlButton(
+	// The label is set here and refreshed by updatePlaybackControls, because
+	// the controls are built once and the step can change under them. The
+	// handler reads the live snapshot rather than closing over a number.
+	const skipBack = createControlButton(
 		transport,
 		PLAYER_ICONS.skipBack,
 		`Back ${String(PLAYER_SKIP_SECONDS)}s`,
 		() => {
-			playbackStates.get(statusBarItem)?.onSkip(-PLAYER_SKIP_SECONDS);
+			const state = playbackStates.get(statusBarItem);
+			state?.onSkip(-state.skipSeconds);
 		},
 	);
+	skipBack.addClass(PLAYBACK_SKIP_BACK_CLASS);
 	createControlButton(transport, PLAYER_ICONS.pause, 'Pause playback', () => {
 		playbackStates.get(statusBarItem)?.onTogglePlay();
 	}).addClass(PLAYBACK_TOGGLE_CLASS);
 	createControlButton(transport, PLAYER_ICONS.stop, 'Stop playback', () => {
 		playbackStates.get(statusBarItem)?.onStop();
 	});
-	createControlButton(
+	const skipForward = createControlButton(
 		transport,
 		PLAYER_ICONS.skipForward,
 		`Forward ${String(PLAYER_SKIP_SECONDS)}s`,
 		() => {
-			playbackStates.get(statusBarItem)?.onSkip(PLAYER_SKIP_SECONDS);
+			const state = playbackStates.get(statusBarItem);
+			state?.onSkip(state.skipSeconds);
 		},
 	);
+	skipForward.addClass(PLAYBACK_SKIP_FORWARD_CLASS);
 
 	const audioControls = container.createSpan({
 		cls: 'aar-playback-audio-controls',
@@ -402,6 +411,18 @@ function updatePlaybackControls(
 	container: HTMLElement,
 	state: PlaybackControlsState,
 ): void {
+	// The step is a setting, so the two skip buttons say what they will
+	// actually do rather than the number they were built with.
+	const skipBack = container.querySelector(`.${PLAYBACK_SKIP_BACK_CLASS}`);
+	skipBack?.setAttribute('aria-label', `Back ${String(state.skipSeconds)}s`);
+	const skipForward = container.querySelector(
+		`.${PLAYBACK_SKIP_FORWARD_CLASS}`,
+	);
+	skipForward?.setAttribute(
+		'aria-label',
+		`Forward ${String(state.skipSeconds)}s`,
+	);
+
 	const toggle = container.querySelector<HTMLElement>(
 		`.${PLAYBACK_TOGGLE_CLASS}`,
 	);
