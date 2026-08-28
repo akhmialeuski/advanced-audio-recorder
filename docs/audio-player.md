@@ -1,6 +1,6 @@
 # Enhanced audio player
 
-The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a chapter repeat, a time display, per-file markers and chapters, and a copy-timestamp-link action. A recording left part-heard resumes where it stopped. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed, and every one of those actions is also a command you can bind to a hotkey. The takeover is opt-in, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is off.
+The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a chapter repeat, a time display, per-file markers and chapters, and a copy-timestamp-link action. A recording left part-heard resumes where it stopped, and playback is announced to the operating system so the lock screen and the media keys can drive it. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed, and every one of those actions is also a command you can bind to a hotkey. The takeover is opt-in, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is off.
 
 - [Enabling the player](#enabling-the-player)
 - [How the takeover works](#how-the-takeover-works)
@@ -15,6 +15,7 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
     - [Copy timestamp link](#copy-timestamp-link)
 - [Resuming where you left off](#resuming-where-you-left-off)
 - [Playback controls in the status bar](#playback-controls-in-the-status-bar)
+- [System media controls](#system-media-controls)
 - [Playback commands and hotkeys](#playback-commands-and-hotkeys)
 - [Markers and chapters](#markers-and-chapters)
 - [Timecode links](#timecode-links)
@@ -154,6 +155,20 @@ The strip carries:
 Playback speed is deliberately left out here to keep the strip compact; change the speed from the embed's speed button or with the [speed commands](#playback-commands-and-hotkeys) instead. Every button drives the **same playback** as the embedded control row, because both delegate to one shared audio element per recording, so an action in one surface is reflected in the other.
 
 The strip **appears when playback starts** and **disappears when you stop it** - with the stop button here, with the stop action in the embed, or when the recording reaches its end. Pausing keeps the strip visible, showing the play icon, so you can resume from the status bar; only stopping or reaching the end dismisses it. Recording and saving always take precedence: starting a recording while a player is paused shows the recording controls instead, and the playback strip returns once recording stops if the audio is still active.
+
+---
+
+## System media controls
+
+While a recording plays, the plugin announces it to the operating system, so it can be driven from **the lock screen, the media keys, and a headset button** without bringing Obsidian to the front. The announcement names the recording and the chapter playback is inside, and reports the position so a lock screen can draw a scrubber.
+
+The system is offered **play**, **pause**, **stop**, **skip back**, **skip forward**, and **seek to a position**. A recording with chapters is additionally offered **previous track** and **next track**, which move between chapters rather than between files; a recording without them is not, because there would be nothing for the plugin to do with the press.
+
+Every one of those controls drives the **same playback** as the embed and the status bar, because all three go through one shared audio element per recording. A skip from the media keys moves the embed's time display, and a pause from the lock screen shows the play icon in both surfaces.
+
+The skip controls move by the configured **Skip step**, unless the system asks for a specific offset of its own, in which case that offset is used.
+
+The announcement is **taken down** when playback stops and when the plugin unloads, so the system controls never outlive the plugin that answers them. A platform that offers no media session integration gets no announcement and is otherwise unaffected.
 
 ---
 

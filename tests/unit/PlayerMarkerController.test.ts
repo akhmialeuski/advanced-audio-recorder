@@ -266,3 +266,37 @@ describe('moving, noting and colouring a marker', () => {
 		);
 	});
 });
+
+describe('naming the chapter a position falls in', () => {
+	const CHAPTERS: PlayerMarker[] = [
+		{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+		{ id: 'b', time: 120, label: 'Middle', kind: 'chapter' },
+		{ id: 'c', time: 60, label: 'A bookmark', kind: 'bookmark' },
+	];
+
+	it.each([
+		{ where: 'inside the first chapter', time: 30, label: 'Intro' },
+		{ where: 'exactly on a boundary', time: 120, label: 'Middle' },
+		{ where: 'past the last chapter', time: 400, label: 'Middle' },
+	])('names the chapter $where', async ({ time, label }) => {
+		const { controller } = await createLoadedSut(CHAPTERS);
+
+		expect(controller.currentChapterLabel(time)).toBe(label);
+	});
+
+	it('names nothing for a recording with no chapters at all', async () => {
+		const { controller } = await createLoadedSut([
+			{ id: 'c', time: 0, label: 'A bookmark', kind: 'bookmark' },
+		]);
+
+		expect(controller.currentChapterLabel(30)).toBeNull();
+	});
+
+	it('names nothing before the first chapter starts', async () => {
+		const { controller } = await createLoadedSut([
+			{ id: 'b', time: 120, label: 'Middle', kind: 'chapter' },
+		]);
+
+		expect(controller.currentChapterLabel(30)).toBeNull();
+	});
+});

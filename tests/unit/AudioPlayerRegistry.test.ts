@@ -27,6 +27,7 @@ function makePlaybackController(
 		canNavigateChapters: jest.fn(() => true),
 		chapterLoopEnabled: jest.fn(() => false),
 		toggleChapterLoop: jest.fn(),
+		currentChapterLabel: jest.fn(() => null),
 		skipSeconds: jest.fn(() => 10),
 		togglePlay: jest.fn(),
 		stop: jest.fn(),

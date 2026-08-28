@@ -12,6 +12,7 @@ import { formatTimecode } from '../utils/TimeUtils';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import {
 	addMarker,
+	activeMarkerIndex,
 	chapters,
 	chapterSpan,
 	nextChapterTime,
@@ -204,6 +205,18 @@ export class PlayerMarkerController {
 	 */
 	currentChapterSpan(currentTime: number): ChapterSpan | null {
 		return chapterSpan(chapters(this.markers), currentTime);
+	}
+
+	/**
+	 * The title of the chapter the given position falls in, or null when it
+	 * falls before the first one. What the system media controls name.
+	 * @param currentTime - Current playback position in seconds
+	 */
+	currentChapterLabel(currentTime: number): string | null {
+		const sorted = chapters(this.markers);
+		// An index of -1 reads as undefined, which is the same "no chapter
+		// covers this position" answer as an empty list.
+		return sorted[activeMarkerIndex(sorted, currentTime)]?.label ?? null;
 	}
 
 	/**

@@ -58,6 +58,16 @@ export function playbackKey(path: string, startSeconds: number | null): string {
 	return `${path}${PLAYBACK_KEY_SEPARATOR}t=${startSeconds === null ? '' : String(startSeconds)}`;
 }
 
+/**
+ * The recording path a playback key was built from. The separator cannot
+ * occur in a vault path, so the split is exact.
+ * @param key - Playback key of the embed (see playbackKey)
+ * @returns The vault-relative recording path
+ */
+export function playbackPath(key: string): string {
+	return key.slice(0, key.lastIndexOf(PLAYBACK_KEY_SEPARATOR));
+}
+
 /** A reference-counted audio element shared by every player of one
  * playback key (the same embed shown in several views/panes). */
 interface SharedAudio {
@@ -302,6 +312,15 @@ export class AudioPlayerRegistry {
 			chapterLoopEnabled:
 				this.controllerFor(entry, withChapters)?.chapterLoopEnabled() ??
 				false,
+			recordingPath: playbackPath(key),
+			// Read from the same player the chapter jumps go to, so the
+			// system media controls name the chapter that player would move
+			// away from.
+			chapterLabel:
+				this.controllerFor(
+					entry,
+					withChapters,
+				)?.currentChapterLabel() ?? null,
 			// Read from whichever player owns this playback, so the status bar
 			// and the commands skip by the same step the embed does. Nothing
 			// owns it only while the element is being released, and the

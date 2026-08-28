@@ -450,6 +450,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				toggleChapterLoop: () => {
 					this.toggleChapterLoop();
 				},
+				currentChapterLabel: () =>
+					this.markerCtl.currentChapterLabel(this.audio.currentTime),
 				skipSeconds: () => this.settings.skipSeconds,
 				togglePlay: () => {
 					this.togglePlay();

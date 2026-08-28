@@ -138,6 +138,8 @@ export function makePlaybackState(
 		skipSeconds: 10,
 		chaptersEnabled: true,
 		chapterLoopEnabled: false,
+		recordingPath: 'Recordings/lecture.webm',
+		chapterLabel: null,
 		onTogglePlay: jest.fn(),
 		onStop: jest.fn(),
 		onSkip: jest.fn(),

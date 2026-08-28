@@ -169,6 +169,7 @@ export class DetachedPlayback {
 				// never reach these.
 				chapterLoopEnabled: () => false,
 				toggleChapterLoop: () => undefined,
+				currentChapterLabel: () => null,
 				skipSeconds: () => this.skipSeconds,
 				togglePlay: () => {
 					togglePlayback(this.audio, this.onPlayError);

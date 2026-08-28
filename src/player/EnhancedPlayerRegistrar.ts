@@ -46,6 +46,7 @@ import {
 } from '../player/playerSettings';
 import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 import { DetachedPlayback } from './DetachedPlayback';
+import { MediaSessionBridge } from './MediaSessionBridge';
 import type {
 	PlaybackControlsListener,
 	PlaybackControlsState,
@@ -108,6 +109,12 @@ export class EnhancedPlayerRegistrar {
 	 * moment instead of opening the raw file.
 	 */
 	private detachedPlayback: DetachedPlayback | null = null;
+
+	/**
+	 * Announces playback to the system media controls; null where the
+	 * platform offers no media session.
+	 */
+	private mediaSession: MediaSessionBridge | null = null;
 	/** Debounced flush that coalesces a burst of re-render requests. */
 	private readonly scheduleRerender = debounce(
 		() => this.flushRerender(),
@@ -144,6 +151,9 @@ export class EnhancedPlayerRegistrar {
 			? resolvePlayerSettings(this.getSettings())
 			: null;
 		this.setupEmbedRegistry();
+		// Independent of the master toggle: a timecode link plays a recording
+		// with no embed at all, and that playback is worth announcing too.
+		this.mediaSession = MediaSessionBridge.create(this.registry);
 
 		this.plugin.registerMarkdownPostProcessor((el, ctx) => {
 			// The embed registry already handles every mode; the
@@ -258,6 +268,10 @@ export class EnhancedPlayerRegistrar {
 		// Stop any timecode playback that has no embed to unload it
 		this.detachedPlayback?.dispose();
 		this.detachedPlayback = null;
+		// Before the registry is cleared, so the system controls are taken
+		// down rather than left answering a plugin that has gone
+		this.mediaSession?.dispose();
+		this.mediaSession = null;
 		this.registry.clear();
 		this.peakCache.clear();
 		this.mediaKindCache.clear();

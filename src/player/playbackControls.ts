@@ -13,6 +13,11 @@ export interface PlaybackController {
 	canNavigateChapters(): boolean;
 	/** Whether playback is currently repeating the chapter it is inside. */
 	chapterLoopEnabled(): boolean;
+	/**
+	 * Title of the chapter the current position falls in, or null when it
+	 * falls before the first one (a recording with no chapters included).
+	 */
+	currentChapterLabel(): string | null;
 	/** Turns repeating of the current chapter on or off. */
 	toggleChapterLoop(): void;
 	/** Seconds a skip moves by, as this player's settings resolved it. */
@@ -62,6 +67,10 @@ export interface PlaybackControlsState {
 	chaptersEnabled: boolean;
 	/** Whether playback is repeating the chapter it is inside. */
 	chapterLoopEnabled: boolean;
+	/** Vault-relative path of the recording being played. */
+	recordingPath: string;
+	/** Title of the chapter the position falls in, or null when there is none. */
+	chapterLabel: string | null;
 	/** Starts paused playback or pauses running playback. */
 	onTogglePlay(): void;
 	/** Stops playback, resets it to the start, and dismisses the controls. */
