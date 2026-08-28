@@ -8,7 +8,7 @@
 import { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
 import { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
 import { DebugLogger } from 'src/utils/DebugLogger';
-import type { RecordingSessionConfig } from 'src/types';
+import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
@@ -669,6 +669,80 @@ describe('RecordingFinalizer', () => {
 					'Temporary segment files could not be removed',
 				),
 				['a.tmp', 'b.tmp'],
+			);
+		});
+
+		/**
+		 * A per-track PCM session of two tracks, the first of which the
+		 * container refuses. Both cases below need this same arrangement and
+		 * differ only in what they go on to ask about it.
+		 * @returns The targets, in the order the finalizer walks them
+		 */
+		const twoTracksFirstPastTheCeiling = (): RecordingTarget[] => {
+			jest.mocked(assembleWavFromPcmSegmentFiles).mockRejectedValueOnce(
+				new WavSizeLimitError(),
+			);
+			buildFinalizer(
+				createSession({
+					isWavPcm: true,
+					outputMode: 'multiple',
+					outputFormat: 'wav',
+				}),
+			);
+			return [
+				createTarget({
+					fileBaseName: 'recording-Stereo-stamp',
+					segmentPaths: ['stereo-pcm.tmp'],
+				}),
+				createTarget({
+					fileBaseName: 'recording-Mono-stamp',
+					segmentPaths: ['mono-pcm.tmp'],
+				}),
+			];
+		};
+
+		// The ceiling belongs to one file, and in this mode every track is its
+		// own file: a stereo track meets it around the sixth hour while the
+		// mono one recorded beside it still has hours to go. Letting the first
+		// refusal end the loop meant the tracks that were still well inside
+		// the limit were never written at all, and a session of four came back
+		// as a single error naming 4 GB.
+		it('saves the tracks under the ceiling when one track is past it', async () => {
+			const targets = twoTracksFirstPastTheCeiling();
+
+			const result = await finalizer.saveRecording(
+				targets,
+				'stamp',
+				null,
+			);
+
+			expect(result.audioPaths).toEqual([
+				expect.stringMatching(/recording-Mono-stamp\.wav$/),
+			]);
+		});
+
+		// The refused track's PCM segments are the only copy of its audio, and
+		// the refusal happens before the assembly removes any of them. Saying
+		// which track it was and why is what makes them findable, and naming
+		// the limit is what tells the user to record the next session in
+		// parts.
+		it('names the refused track and leaves its segments on disk', async () => {
+			const targets = twoTracksFirstPastTheCeiling();
+
+			await finalizer.saveRecording(targets, 'stamp', null);
+
+			expect(
+				getNotices().some(
+					(notice) =>
+						notice.includes('recording-Stereo-stamp') &&
+						notice.includes('cannot exceed 4 GB'),
+				),
+			).toBe(true);
+			expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
+				'mono-pcm.tmp',
+			);
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalledWith(
+				'stereo-pcm.tmp',
 			);
 		});
 	});

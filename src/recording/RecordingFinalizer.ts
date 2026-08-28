@@ -22,6 +22,7 @@ import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
 	assembleWavFromPcmSegmentFiles,
+	WAV_SIZE_LIMIT_MESSAGE,
 	WavSizeLimitError,
 } from '../audio/WavEncoder';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
@@ -276,6 +277,8 @@ export class RecordingFinalizer {
 				}
 			}
 		} else {
+			const refusedTracks: string[] = [];
+			const keptSegments: string[] = [];
 			for (
 				let trackIndex = 0;
 				trackIndex < targets.length;
@@ -285,10 +288,40 @@ export class RecordingFinalizer {
 				if (!target) {
 					continue;
 				}
-				const paths = await this.finalizeTrackFiles(target);
-				const files = [...target.partPaths, ...paths];
-				fileLinks.push(...files);
-				trackFiles.push({ trackIndex, files });
+				// A track the container cannot hold is that track's problem
+				// and no sibling's: each writes its own file, each faces the
+				// ceiling alone, and a mono track beside a stereo one reaches
+				// it hours later. Letting the first refusal end the loop cost
+				// every track after it a save it had already earned. Only this
+				// one failure is caught, because only this one is about the
+				// track: a vault that will not take the write is about the
+				// session and still ends it.
+				try {
+					const paths = await this.finalizeTrackFiles(target);
+					const files = [...target.partPaths, ...paths];
+					fileLinks.push(...files);
+					trackFiles.push({ trackIndex, files });
+				} catch (error) {
+					if (!(error instanceof WavSizeLimitError)) {
+						throw error;
+					}
+					refusedTracks.push(target.fileBaseName);
+					keptSegments.push(...target.segmentPaths);
+				}
+			}
+			if (refusedTracks.length > 0) {
+				// The refusal happens before the assembly removes anything, so
+				// this track's PCM segments are still on disk and are the only
+				// copy of its audio. Reported the way the merged branch above
+				// reports its own leftovers: the paths to the console, where a
+				// list of them fits, and the reason to the user.
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Track too long for a WAV container; its PCM segments were kept:`,
+					keptSegments,
+				);
+				new Notice(
+					`${refusedTracks.join(', ')}: ${WAV_SIZE_LIMIT_MESSAGE}`,
+				);
 			}
 		}
 

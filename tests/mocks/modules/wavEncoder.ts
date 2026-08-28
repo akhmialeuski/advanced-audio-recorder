@@ -42,6 +42,17 @@ export const WavSizeLimitError = jest.requireActual<
 	typeof import('src/audio/WavEncoder')
 >('src/audio/WavEncoder').WavSizeLimitError;
 
+/**
+ * The refusal's wording, taken from the real module for the same reason again.
+ *
+ * The finalizer puts it in the notice naming the tracks it could not write, so
+ * a double omitting it would have those suites assert against "undefined" and
+ * pass whatever the sentence said.
+ */
+export const WAV_SIZE_LIMIT_MESSAGE = jest.requireActual<
+	typeof import('src/audio/WavEncoder')
+>('src/audio/WavEncoder').WAV_SIZE_LIMIT_MESSAGE;
+
 export const assembleWavFromPcmSegmentFiles = jest
 	.fn()
 	.mockResolvedValue(new ArrayBuffer(WAV_HEADER_BYTES));
