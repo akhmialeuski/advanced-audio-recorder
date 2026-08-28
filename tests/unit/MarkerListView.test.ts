@@ -48,6 +48,10 @@ function makeCallbacks(): jest.Mocked<MarkerListCallbacks> {
 		onJump: jest.fn(),
 		onDelete: jest.fn(),
 		onRename: jest.fn(),
+		onEditTime: jest.fn(),
+		onUseCurrentTime: jest.fn(),
+		onEditNote: jest.fn(),
+		onSetColor: jest.fn(),
 		onAddAt: jest.fn(),
 		timeAtClientX: jest.fn((_clientX: number): number | null => 42),
 	};
@@ -576,5 +580,189 @@ describe('MarkerListView teardown', () => {
 		jest.advanceTimersByTime(400);
 
 		expect(callbacks.onRename).not.toHaveBeenCalled();
+	});
+});
+
+describe('editing a marker time from the list', () => {
+	it('reports a typed timecode as seconds', () => {
+		const { listContainer, callbacks } = setup(true);
+		const field = at(
+			allEls<HTMLInputElement>(listContainer, MARKER.timeEdit),
+			0,
+		);
+
+		field.value = '1:05';
+		field.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(callbacks.onEditTime).toHaveBeenCalledWith('a', 65);
+	});
+
+	it.each([
+		{ name: 'plain seconds', typed: '90', seconds: 90 },
+		{ name: 'minutes and seconds', typed: '2:30', seconds: 150 },
+		{ name: 'hours, minutes and seconds', typed: '1:00:01', seconds: 3601 },
+	])('understands $name', ({ typed, seconds }) => {
+		const { listContainer, callbacks } = setup(true);
+		const field = at(
+			allEls<HTMLInputElement>(listContainer, MARKER.timeEdit),
+			0,
+		);
+
+		field.value = typed;
+		field.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(callbacks.onEditTime).toHaveBeenCalledWith('a', seconds);
+	});
+
+	it('puts the rendered time back when the typed one means nothing', () => {
+		const { listContainer, callbacks } = setup(true);
+		const field = at(
+			allEls<HTMLInputElement>(listContainer, MARKER.timeEdit),
+			0,
+		);
+
+		field.value = 'half past';
+		field.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(callbacks.onEditTime).not.toHaveBeenCalled();
+		expect(field.value).toBe('0:10');
+	});
+
+	it('offers moving the marker to the current position', () => {
+		const { listContainer, callbacks } = setup(true);
+
+		at(allEls(listContainer, MARKER.here), 0).click();
+
+		expect(callbacks.onUseCurrentTime).toHaveBeenCalledWith('a');
+	});
+});
+
+describe('a marker note and colour in the list', () => {
+	it('reports a committed note', () => {
+		const { listContainer, callbacks } = setup(true);
+		const field = at(
+			allEls<HTMLTextAreaElement>(listContainer, MARKER.note),
+			0,
+		);
+
+		field.value = 'the bit about pricing';
+		field.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(callbacks.onEditNote).toHaveBeenCalledWith(
+			'a',
+			'the bit about pricing',
+		);
+	});
+
+	it('shows the note a marker already carries', () => {
+		const { listContainer } = setup(true, {
+			markers: [
+				{
+					id: 'a',
+					time: 10,
+					label: 'Intro',
+					kind: 'chapter',
+					note: 'why',
+				},
+			],
+		});
+
+		expect(
+			at(allEls<HTMLTextAreaElement>(listContainer, MARKER.note), 0)
+				.value,
+		).toBe('why');
+	});
+
+	it('reports a chosen colour', () => {
+		const { listContainer, callbacks } = setup(true);
+		const picker = at(
+			allEls<HTMLSelectElement>(listContainer, MARKER.color),
+			0,
+		);
+
+		picker.value = 'blue';
+		picker.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(callbacks.onSetColor).toHaveBeenCalledWith('a', 'blue');
+	});
+
+	it('reports the empty choice as no colour at all', () => {
+		const { listContainer, callbacks } = setup(true, {
+			markers: [
+				{
+					id: 'a',
+					time: 10,
+					label: 'Intro',
+					kind: 'chapter',
+					color: 'red',
+				},
+			],
+		});
+		const picker = at(
+			allEls<HTMLSelectElement>(listContainer, MARKER.color),
+			0,
+		);
+
+		picker.value = '';
+		picker.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(callbacks.onSetColor).toHaveBeenCalledWith('a', null);
+	});
+
+	it('marks a coloured row so the stylesheet can draw its edge', () => {
+		const { listContainer } = setup(true, {
+			markers: [
+				{
+					id: 'a',
+					time: 10,
+					label: 'Intro',
+					kind: 'chapter',
+					color: 'green',
+				},
+			],
+		});
+
+		expect(allEls(listContainer, MARKER.coloredRow)).toHaveLength(1);
+	});
+
+	it('leaves an uncoloured row unmarked, so it looks as it always did', () => {
+		const { listContainer } = setup(true);
+
+		expect(allEls(listContainer, MARKER.coloredRow)).toHaveLength(0);
+	});
+
+	it('shows the note as text in reading view, where it cannot be edited', () => {
+		const { listContainer } = setup(false, {
+			markers: [
+				{
+					id: 'a',
+					time: 10,
+					label: 'Intro',
+					kind: 'chapter',
+					note: 'why',
+				},
+			],
+		});
+
+		expect(allEls(listContainer, MARKER.note)).toHaveLength(0);
+		expect(el(listContainer, MARKER.staticNote).textContent).toBe('why');
+	});
+
+	it('says the note in the row name, which is the whole button', () => {
+		const { listContainer } = setup(false, {
+			markers: [
+				{
+					id: 'a',
+					time: 10,
+					label: 'Intro',
+					kind: 'chapter',
+					note: 'why',
+				},
+			],
+		});
+
+		expect(el(listContainer, MARKER.row).getAttribute('aria-label')).toBe(
+			'Jump to chapter: Intro at 0:10. why',
+		);
 	});
 });

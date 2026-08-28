@@ -619,6 +619,30 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			onRename: (id, label) => {
 				void this.markerCtl.rename(id, label);
 			},
+			onEditTime: (id, seconds) => {
+				// Bounded here rather than in the model: the length of the
+				// recording is something this player knows and the marker
+				// list does not. An unknown length bounds nothing, which is
+				// the honest answer before metadata has arrived.
+				const duration = this.knownDuration();
+				if (seconds < 0 || (duration !== null && seconds > duration)) {
+					new Notice(
+						'That time is outside the recording; the marker was left where it was.',
+					);
+					this.renderMarkers();
+					return;
+				}
+				void this.markerCtl.setTime(id, seconds);
+			},
+			onUseCurrentTime: (id) => {
+				void this.markerCtl.setTime(id, this.audio.currentTime);
+			},
+			onEditNote: (id, note) => {
+				void this.markerCtl.setNote(id, note);
+			},
+			onSetColor: (id, color) => {
+				void this.markerCtl.setColor(id, color);
+			},
 			onAddAt: (time, kind) => {
 				void this.markerCtl.addAt(time, kind);
 			},

@@ -59,6 +59,31 @@ describe('read-only player styles', () => {
 		expect(active).toMatch(/background-color/);
 	});
 
+	it('leaves an uncoloured tick the colour its kind always gave it', () => {
+		const bookmark = ruleBody(MARKER.tickBookmark);
+		expect(bookmark).not.toBeNull();
+		// The property is read with a fallback, so a marker that carries no
+		// colour is drawn exactly as it was before colours existed.
+		expect(bookmark).toMatch(
+			/background-color:\s*var\(--aar-marker-color,\s*var\(--text-accent\)\)/,
+		);
+	});
+
+	it('draws a coloured row with an edge in the colour it carries', () => {
+		const row = ruleBody(MARKER.coloredRow);
+		expect(row).not.toBeNull();
+		expect(row).toMatch(/var\(--aar-marker-color\)/);
+	});
+
+	it('gives the note a line of its own under the row it belongs to', () => {
+		const note = ruleBody(MARKER.noteRule);
+		expect(note).not.toBeNull();
+		expect(note).toMatch(/flex-basis:\s*100%/);
+
+		const row = ruleBody(MARKER.row);
+		expect(row).toMatch(/flex-wrap:\s*wrap/);
+	});
+
 	it('frames the waveform in a padded bordered rectangle', () => {
 		const waveform = ruleBody(PLAYER.seekWaveform);
 		expect(waveform).not.toBeNull();

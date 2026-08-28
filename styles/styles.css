@@ -550,8 +550,22 @@ input.aar-input-invalid {
     cursor: pointer;
 }
 
+/*
+ * The colours a marker may carry, mapped to the theme's own accents so a
+ * coloured marker stays legible in light and dark alike. A marker with no
+ * colour sets no property, which leaves the default each rule below declares.
+ */
+.aar-player {
+    --aar-marker-red: var(--color-red);
+    --aar-marker-orange: var(--color-orange);
+    --aar-marker-yellow: var(--color-yellow);
+    --aar-marker-green: var(--color-green);
+    --aar-marker-blue: var(--color-blue);
+    --aar-marker-purple: var(--color-purple);
+}
+
 .aar-player-tick-bookmark {
-    background-color: var(--text-accent);
+    background-color: var(--aar-marker-color, var(--text-accent));
     opacity: 0.7;
 }
 
@@ -560,7 +574,10 @@ input.aar-input-invalid {
 }
 
 .aar-player-tick-chapter {
-    background-color: var(--text-warning, var(--color-orange));
+    background-color: var(
+        --aar-marker-color,
+        var(--text-warning, var(--color-orange))
+    );
     width: 2px;
     opacity: 0.85;
 }
@@ -571,7 +588,10 @@ input.aar-input-invalid {
     top: 0;
     left: -2px;
     border: 3px solid transparent;
-    border-top-color: var(--text-warning, var(--color-orange));
+    border-top-color: var(
+        --aar-marker-color,
+        var(--text-warning, var(--color-orange))
+    );
 }
 
 /* Marker / chapter list below the player */
@@ -583,6 +603,8 @@ input.aar-input-invalid {
 
 .aar-player-marker-row {
     display: flex;
+    /* The note takes a line of its own under the controls, so the row wraps. */
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     padding: 1px 4px;
@@ -624,6 +646,82 @@ input.aar-input-invalid {
 .aar-player-marker-label:focus {
     border-color: var(--background-modifier-border);
     background-color: var(--background-primary);
+}
+
+.aar-player-marker-row-colored {
+    box-shadow: inset 3px 0 0 var(--aar-marker-color);
+}
+
+.aar-player-marker-time-edit {
+    width: 7ch;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85em;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-muted);
+}
+
+.aar-player-marker-time-edit:hover,
+.aar-player-marker-time-edit:focus {
+    border-color: var(--background-modifier-border);
+    background-color: var(--background-primary);
+}
+
+.aar-player-marker-here {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-faint);
+    cursor: pointer;
+}
+
+.aar-player-marker-here:hover {
+    color: var(--text-accent);
+}
+
+.aar-player-marker-here svg {
+    width: 14px;
+    height: 14px;
+}
+
+.aar-player-marker-color {
+    flex: none;
+    font-size: 0.8em;
+    max-width: 8em;
+}
+
+/*
+ * The note is prose, so it takes the whole width under the row's own line
+ * rather than a share of the control column, which would show four characters
+ * of it.
+ */
+.aar-player-marker-note {
+    flex-basis: 100%;
+    min-height: 1.6em;
+    resize: vertical;
+    font-size: 0.8em;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-muted);
+}
+
+.aar-player-marker-note:hover,
+.aar-player-marker-note:focus {
+    border-color: var(--background-modifier-border);
+    background-color: var(--background-primary);
+}
+
+.aar-player-marker-note-static {
+    flex-basis: 100%;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    text-align: left;
 }
 
 .aar-player-marker-delete {

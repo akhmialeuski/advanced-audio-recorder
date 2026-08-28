@@ -47,6 +47,16 @@ export const MARKER = {
 	label: '.aar-player-marker-label',
 	segment: '.aar-player-marker-segment',
 	delete: '.aar-player-marker-delete',
+	timeEdit: 'input.aar-player-marker-time-edit',
+	here: '.aar-player-marker-here',
+	color: 'select.aar-player-marker-color',
+	note: 'textarea.aar-player-marker-note',
+	staticNote: '.aar-player-marker-note-static',
+	coloredRow: '.aar-player-marker-row-colored',
+	/** The note field by its class alone, for reading its CSS rule. */
+	noteRule: '.aar-player-marker-note',
+	/** A bookmark tick on the timeline. */
+	tickBookmark: '.aar-player-tick-bookmark',
 	/** The overlay the ticks are drawn onto, over the seek area. */
 	overlay: '.aar-player-markers',
 	/** The list of marker rows under the player. */

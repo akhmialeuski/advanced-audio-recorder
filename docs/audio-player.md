@@ -188,7 +188,15 @@ The list below the player shows every marker and chapter in time order. From it 
 
 - **Jump** to an entry by clicking its time (or the whole row in Reading view).
 - **Rename** an entry by editing its label inline (saved shortly after you stop typing).
+- **Move** an entry to another time by typing into its time field, in any of the forms a timecode link accepts (`90`, `1:30`, `0:01:30`). A time that means nothing is refused and the field goes back to what it showed.
+- **Move** an entry to wherever playback currently is with the crosshair button beside its time. A marker is almost always pressed a beat after the thing worth marking, so this is the quickest way to correct one.
+- **Note** an entry in the field under its row, for the reason a short label cannot hold.
+- **Colour** an entry from its colour picker, to tell apart what different markers are for.
 - **Delete** an entry with its trash button.
+
+A time outside the recording is refused with a notice and the marker stays where it was. Moving a marker re-orders the list around it and recomputes the neighbouring segment lengths.
+
+A marker's colour shows as an edge on its row and as the colour of its tick on the seek bar, so a long recording's markers can be told apart at a glance. A marker with no colour looks exactly as it always did. In Reading view the note is shown under the row and is part of the row's accessible name, so it reaches a screen reader as well as the eye.
 
 The currently playing segment is highlighted as playback crosses chapter boundaries. The read-only list also shows each segment's length.
 
@@ -205,11 +213,11 @@ _Figure: the right-click menu on the player, with position-aware marker, chapter
 
 **Editing versus read-only**
 
-Adding, renaming, and deleting markers is available while **editing** the note (Live Preview). In **Reading view** the markers and chapters are **read-only** - they are shown and remain clickable to jump, but cannot be edited. The player defaults to read-only and only enables edit controls once it confirms it is inside the editor, so Reading view never wrongly shows edit affordances.
+Adding, renaming, moving, noting, colouring, and deleting markers is available while **editing** the note (Live Preview). In **Reading view** the markers and chapters are **read-only** - they are shown and remain clickable to jump, but cannot be edited. The player defaults to read-only and only enables edit controls once it confirms it is inside the editor, so Reading view never wrongly shows edit affordances.
 
 **Storage and portability**
 
-Markers are stored in a **sidecar file** next to each recording, named `<recording>.markers.json` (for example `recording.webm.markers.json`). The file is the recording's **shared sidecar** (format version 2): besides the markers and chapters it also carries the transcription data behind [speaker renaming](transcription.md#naming-speakers) - the speaker roster with assigned names, the outputs each transcription wrote, and the rename history. Sidecars written by older plugin versions (version 1, markers only) are read as-is and upgraded on the next write without losing anything. Because the sidecar lives in your vault:
+Markers are stored in a **sidecar file** next to each recording, named `<recording>.markers.json` (for example `recording.webm.markers.json`). The file is the recording's **shared sidecar** (format version 2): besides the markers and chapters it also carries the transcription data behind [speaker renaming](transcription.md#naming-speakers) - the speaker roster with assigned names, the outputs each transcription wrote, and the rename history. A marker's note and colour are stored with it, and only when it carries them: a marker without either is written exactly as it was before the two existed, so a sidecar does not change merely by being read and written again. Sidecars written by older plugin versions (version 1, markers only) are read as-is and upgraded on the next write without losing anything. Because the sidecar lives in your vault:
 
 - Markers **survive a plugin reinstall**.
 - They **travel with the vault**.

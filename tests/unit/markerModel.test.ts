@@ -14,6 +14,8 @@ import {
 	serializeMarkers,
 	sortMarkers,
 	updateMarker,
+	isMarkerColor,
+	MARKER_COLORS,
 	type PlayerMarker,
 } from 'src/markers/markerModel';
 
@@ -262,7 +264,15 @@ describe('markerRows - single source for both render modes', () => {
 		const editable = markerRows(list, true);
 		const readonly = markerRows(list, false);
 		expect(editable.map((r) => r.id)).toEqual(readonly.map((r) => r.id));
-		expect(editable[0]?.actions).toEqual(['jump', 'rename', 'delete']);
+		expect(editable[0]?.actions).toEqual([
+			'jump',
+			'rename',
+			'delete',
+			'edit-time',
+			'use-current-time',
+			'edit-note',
+			'set-color',
+		]);
 		expect(readonly[0]?.actions).toEqual(['jump']);
 	});
 
@@ -320,5 +330,127 @@ describe('activeMarkerIndex', () => {
 		const later = sortMarkers([marker('a', 3)]);
 		expect(activeMarkerIndex(later, 1)).toBe(-1);
 		expect(activeMarkerIndex([], 5)).toBe(-1);
+	});
+});
+
+describe('editing a marker time', () => {
+	it('moves the marker and re-sorts the list around it', () => {
+		const list = [marker('a', 1), marker('b', 2), marker('c', 3)];
+
+		const moved = updateMarker(list, 'a', { time: 2.5 });
+
+		expect(moved.map((m) => m.id)).toEqual(['b', 'a', 'c']);
+		expect(moved.find((m) => m.id === 'a')?.time).toBe(2.5);
+	});
+
+	it('recomputes the segment length of the marker before the moved one', () => {
+		const list = [marker('a', 0), marker('b', 10), marker('c', 30)];
+
+		const rows = markerRows(
+			updateMarker(list, 'b', { time: 20 }),
+			false,
+			40,
+		);
+
+		expect(rows.map((row) => row.segmentSeconds)).toEqual([20, 10, 10]);
+	});
+
+	it('leaves every other field of the moved marker alone', () => {
+		const list = [
+			{ ...marker('a', 1), note: 'why', color: 'red' as const },
+		];
+
+		const [moved] = updateMarker(list, 'a', { time: 9 });
+
+		expect(moved).toEqual({
+			id: 'a',
+			time: 9,
+			label: 'a',
+			kind: 'bookmark',
+			note: 'why',
+			color: 'red',
+		});
+	});
+});
+
+describe('a marker note and colour', () => {
+	it('round-trips both through storage', () => {
+		const list = [
+			{
+				...marker('a', 1),
+				note: 'the bit about pricing',
+				color: 'blue' as const,
+			},
+		];
+
+		expect(parseMarkers(serializeMarkers(list))).toEqual(list);
+	});
+
+	it('reads a marker written before either field existed', () => {
+		const parsed = parseMarkers([
+			{ id: 'a', time: 4, label: 'old', kind: 'chapter' },
+		]);
+
+		// No key appears that the file did not carry, so writing the marker
+		// back produces the same JSON an older version would have written.
+		expect(parsed).toEqual([
+			{ id: 'a', time: 4, label: 'old', kind: 'chapter' },
+		]);
+		expect(serializeMarkers(parsed)).toEqual([
+			{ id: 'a', time: 4, label: 'old', kind: 'chapter' },
+		]);
+	});
+
+	it.each([
+		{ name: 'a colour it does not offer', value: 'chartreuse' },
+		{ name: 'a number', value: 7 },
+		{ name: 'an object', value: {} },
+	])('drops $name rather than storing it', ({ value }) => {
+		const parsed = parseMarkers([
+			{ id: 'a', time: 0, label: '', kind: 'bookmark', color: value },
+		]);
+
+		expect(parsed[0]).not.toHaveProperty('color');
+	});
+
+	it('drops a blank note instead of keeping an empty field', () => {
+		const parsed = parseMarkers([
+			{ id: 'a', time: 0, label: '', kind: 'bookmark', note: '' },
+		]);
+
+		expect(parsed[0]).not.toHaveProperty('note');
+	});
+
+	it('clears a note when the patch names it undefined', () => {
+		const list = [{ ...marker('a', 1), note: 'gone soon' }];
+
+		const [cleared] = updateMarker(list, 'a', { note: undefined });
+
+		expect(cleared).not.toHaveProperty('note');
+	});
+
+	it('clears a colour when the patch names it undefined', () => {
+		const list = [{ ...marker('a', 1), color: 'green' as const }];
+
+		const [cleared] = updateMarker(list, 'a', { color: undefined });
+
+		expect(cleared).not.toHaveProperty('color');
+	});
+
+	it.each(MARKER_COLORS.map((color) => ({ color })))(
+		'accepts $color as one of the offered colours',
+		({ color }) => {
+			expect(isMarkerColor(color)).toBe(true);
+		},
+	);
+
+	it('carries both fields onto the row the list renders', () => {
+		const list = [
+			{ ...marker('a', 1), note: 'context', color: 'purple' as const },
+		];
+
+		const [row] = markerRows(list, true);
+
+		expect(row).toMatchObject({ note: 'context', color: 'purple' });
 	});
 });

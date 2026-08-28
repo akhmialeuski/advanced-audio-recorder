@@ -18,13 +18,16 @@
  */
 
 import { setIcon } from 'obsidian';
-import { formatTimecode } from '../../utils/TimeUtils';
+import { formatTimecode, parseTimecode } from '../../utils/TimeUtils';
 import {
 	activeMarkerIndex,
 	MARKER_KIND,
+	MARKER_COLORS,
 	MARKER_ROW_ACTION,
 	markerRows,
 	sortMarkers,
+	isMarkerColor,
+	type MarkerColor,
 	type MarkerKind,
 	type MarkerRow,
 	type PlayerMarker,
@@ -68,6 +71,14 @@ export interface MarkerListCallbacks {
 	onDelete(id: string): void;
 	/** Persist a renamed marker. */
 	onRename(id: string, label: string): void;
+	/** Move a marker to a typed time, in seconds. */
+	onEditTime(id: string, seconds: number): void;
+	/** Move a marker to wherever playback currently is. */
+	onUseCurrentTime(id: string): void;
+	/** Persist a marker's note; blank clears it. */
+	onEditNote(id: string, note: string): void;
+	/** Persist a marker's colour, or null to clear it. */
+	onSetColor(id: string, color: MarkerColor | null): void;
 	/** Add a marker/chapter at a clicked time (double-click, edit only). */
 	onAddAt(time: number, kind: MarkerKind): void;
 	/** Resolve a viewport X coordinate to a playback time, or null. */
@@ -165,35 +176,81 @@ export class MarkerListView {
 				}
 			} else if (target.dataset.action === MARKER_ROW_ACTION.delete) {
 				this.callbacks.onDelete(id);
+			} else if (
+				target.dataset.action === MARKER_ROW_ACTION.useCurrentTime
+			) {
+				this.callbacks.onUseCurrentTime(id);
 			}
 		});
 		// Persist a rename shortly after typing (debounced), so the change is
 		// saved and synced even when no change/blur event fires
 		this.host.registerDomEvent(this.listEl, 'input', (event) => {
-			const input = event.target as HTMLInputElement | null;
+			const input = event.target as
+				| HTMLInputElement
+				| HTMLTextAreaElement
+				| null;
 			const id = input?.dataset.markerId;
-			if (
-				input &&
-				id &&
-				input.dataset.action === MARKER_ROW_ACTION.rename
-			) {
-				const value = input.value;
-				window.clearTimeout(this.renameTimer);
-				this.renameTimer = window.setTimeout(() => {
-					this.callbacks.onRename(id, value);
-				}, RENAME_DEBOUNCE_MS);
+			if (!input || !id) {
+				return;
 			}
+			const action = input.dataset.action;
+			if (
+				action !== MARKER_ROW_ACTION.rename &&
+				action !== MARKER_ROW_ACTION.editNote
+			) {
+				return;
+			}
+			const value = input.value;
+			window.clearTimeout(this.renameTimer);
+			this.renameTimer = window.setTimeout(() => {
+				if (action === MARKER_ROW_ACTION.rename) {
+					this.callbacks.onRename(id, value);
+				} else {
+					this.callbacks.onEditNote(id, value);
+				}
+			}, RENAME_DEBOUNCE_MS);
 		});
 		this.host.registerDomEvent(this.listEl, 'change', (event) => {
-			const input = event.target as HTMLInputElement | null;
+			const input = event.target as
+				| HTMLInputElement
+				| HTMLSelectElement
+				| HTMLTextAreaElement
+				| null;
 			const id = input?.dataset.markerId;
-			if (
-				input &&
-				id &&
-				input.dataset.action === MARKER_ROW_ACTION.rename
-			) {
-				window.clearTimeout(this.renameTimer);
-				this.callbacks.onRename(id, input.value);
+			if (!input || !id) {
+				return;
+			}
+			switch (input.dataset.action) {
+				case MARKER_ROW_ACTION.rename:
+					window.clearTimeout(this.renameTimer);
+					this.callbacks.onRename(id, input.value);
+					break;
+				case MARKER_ROW_ACTION.editNote:
+					window.clearTimeout(this.renameTimer);
+					this.callbacks.onEditNote(id, input.value);
+					break;
+				case MARKER_ROW_ACTION.editTime: {
+					// The same parser the timecode links use, so a marker
+					// accepts every shape a link does: 90, 1:30, 0:01:30.
+					const seconds = parseTimecode(input.value);
+					if (seconds === null) {
+						// Nothing was understood, so put back what the row was
+						// rendered with rather than moving the marker
+						// somewhere the user did not ask for.
+						input.value = input.dataset.timecode ?? input.value;
+						return;
+					}
+					this.callbacks.onEditTime(id, seconds);
+					break;
+				}
+				case MARKER_ROW_ACTION.setColor:
+					this.callbacks.onSetColor(
+						id,
+						isMarkerColor(input.value) ? input.value : null,
+					);
+					break;
+				default:
+					break;
 			}
 		});
 		this.host.register(() => {
@@ -286,7 +343,16 @@ export class MarkerListView {
 						? 'aar-player-tick aar-player-tick-chapter'
 						: 'aar-player-tick aar-player-tick-bookmark',
 			});
-			tick.setCssProps({ '--aar-tick-left': `${String(left)}%` });
+			tick.setCssProps({
+				'--aar-tick-left': `${String(left)}%`,
+				// Absent leaves the stylesheet's own default in place, which
+				// is what an uncoloured marker has always looked like.
+				...(marker.color
+					? {
+							'--aar-marker-color': `var(--aar-marker-${marker.color})`,
+						}
+					: {}),
+			});
 			tick.dataset.time = String(marker.time);
 			tick.setAttribute(
 				'aria-label',
@@ -323,6 +389,12 @@ export class MarkerListView {
 						attr: { type: 'button' },
 					});
 			this.rowEls.push(rowEl);
+			if (row.color) {
+				rowEl.addClass('aar-player-marker-row-colored');
+				rowEl.setCssProps({
+					'--aar-marker-color': `var(--aar-marker-${row.color})`,
+				});
+			}
 			if (this.editable) {
 				this.buildEditableRow(rowEl, row, reference);
 			} else {
@@ -361,6 +433,43 @@ export class MarkerListView {
 		});
 		label.dataset.action = MARKER_ROW_ACTION.rename;
 		label.dataset.markerId = row.id;
+		const timecode = formatTimecode(row.time, referenceSeconds);
+		// A marker is almost always dropped a beat late, so moving it is the
+		// commonest edit there is. Typed as a timecode rather than as seconds,
+		// in the shapes a timecode link already accepts.
+		const timeEdit = rowEl.createEl('input', {
+			cls: 'aar-player-marker-time-edit',
+			attr: {
+				type: 'text',
+				value: timecode,
+				'aria-label': 'Marker time',
+			},
+		});
+		timeEdit.dataset.action = MARKER_ROW_ACTION.editTime;
+		timeEdit.dataset.markerId = row.id;
+		timeEdit.dataset.timecode = timecode;
+		const here = rowEl.createEl('button', {
+			cls: 'aar-player-marker-here',
+			attr: { 'aria-label': 'Move marker to the current position' },
+		});
+		here.dataset.action = MARKER_ROW_ACTION.useCurrentTime;
+		here.dataset.markerId = row.id;
+		setIcon(here, 'crosshair');
+		const color = rowEl.createEl('select', {
+			cls: 'aar-player-marker-color',
+			attr: { 'aria-label': 'Marker colour' },
+		});
+		color.dataset.action = MARKER_ROW_ACTION.setColor;
+		color.dataset.markerId = row.id;
+		color.createEl('option', { value: '', text: 'No colour' });
+		for (const name of MARKER_COLORS) {
+			color.createEl('option', {
+				value: name,
+				// Capitalised for the menu; the value stays the stored name.
+				text: `${name.charAt(0).toUpperCase()}${name.slice(1)}`,
+			});
+		}
+		color.value = row.color ?? '';
 		const remove = rowEl.createEl('button', {
 			cls: 'aar-player-marker-delete',
 			attr: { 'aria-label': 'Delete' },
@@ -368,6 +477,19 @@ export class MarkerListView {
 		remove.dataset.action = MARKER_ROW_ACTION.delete;
 		remove.dataset.markerId = row.id;
 		setIcon(remove, 'trash-2');
+		// The note sits under the row's own line: it is prose, and a field
+		// sized to the control column would show four characters of it.
+		const note = rowEl.createEl('textarea', {
+			cls: 'aar-player-marker-note',
+			attr: {
+				rows: '1',
+				placeholder: 'Note',
+				'aria-label': 'Marker note',
+			},
+		});
+		note.value = row.note ?? '';
+		note.dataset.action = MARKER_ROW_ACTION.editNote;
+		note.dataset.markerId = row.id;
 	}
 
 	/**
@@ -392,11 +514,14 @@ export class MarkerListView {
 		// rather than introducing it: what the spans below show has to be said
 		// here too, or every chapter in the list announces identically. A
 		// marker with no name of its own is told apart by its time alone.
+		const name = row.label
+			? `${jumpAction(row.kind)}: ${row.label} at ${timecode}`
+			: `${jumpAction(row.kind)} at ${timecode}`;
+		// The note is shown below, and the row is the button, so it has to be
+		// said here too or a reader who cannot see it never gets it.
 		rowEl.setAttribute(
 			'aria-label',
-			row.label
-				? `${jumpAction(row.kind)}: ${row.label} at ${timecode}`
-				: `${jumpAction(row.kind)} at ${timecode}`,
+			row.note ? `${name}. ${row.note}` : name,
 		);
 		rowEl.createSpan({
 			cls: 'aar-player-marker-time',
@@ -417,5 +542,11 @@ export class MarkerListView {
 					? formatTimecode(row.segmentSeconds, referenceSeconds)
 					: '',
 		});
+		if (row.note) {
+			rowEl.createSpan({
+				cls: 'aar-player-marker-note-static',
+				text: row.note,
+			});
+		}
 	}
 }
