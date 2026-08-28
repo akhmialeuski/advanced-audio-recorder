@@ -7,6 +7,7 @@ import {
 	addMarker,
 	chapters,
 	markerRows,
+	chapterSpan,
 	nextChapterTime,
 	parseMarkers,
 	previousChapterTime,
@@ -96,6 +97,37 @@ describe('chapter navigation', () => {
 		expect(previousChapterTime(sorted, 121)).toBe(60);
 		// Before any boundary past the lead-in: null
 		expect(previousChapterTime(sorted, 1)).toBeNull();
+	});
+});
+
+describe('the stretch one chapter covers', () => {
+	const sorted = sortMarkers([
+		marker('c1', 0, 'chapter'),
+		marker('c2', 60, 'chapter'),
+		marker('c3', 120, 'chapter'),
+	]);
+
+	it.each([
+		{ where: 'at its start', time: 60 },
+		{ where: 'inside it', time: 90 },
+		{ where: 'a hair before its end', time: 119.9 },
+	])('spans the chapter from a position $where', ({ time }) => {
+		expect(chapterSpan(sorted, time)).toEqual({ start: 60, end: 120 });
+	});
+
+	it('leaves the last chapter open-ended, since the recording ends it', () => {
+		expect(chapterSpan(sorted, 200)).toEqual({ start: 120, end: null });
+	});
+
+	it.each([
+		{
+			case: 'a position before the first chapter',
+			list: sortMarkers([marker('c1', 30, 'chapter')]),
+			time: 10,
+		},
+		{ case: 'a recording with no chapters', list: [], time: 10 },
+	])('covers nothing for $case', ({ list, time }) => {
+		expect(chapterSpan(list, time)).toBeNull();
 	});
 });
 

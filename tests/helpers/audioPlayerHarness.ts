@@ -145,13 +145,54 @@ export const decoder: AudioDecoder = {
 	decode: () => Promise.reject(new Error('no decode in tests')),
 };
 
+/** The remembered-position half of a sidecar-store double. */
+export interface PlaybackDouble {
+	/** Remembered position per recording path, for assertions. */
+	positions: Map<string, number>;
+	getPlayback: RecordingSidecarStore['getPlayback'];
+	setPlayback: RecordingSidecarStore['setPlayback'];
+}
+
+/**
+ * Builds the playback half of a sidecar-store double, backed by a map the
+ * test can read. Shared by the two store doubles so a player under test
+ * remembers a position the same way in both.
+ * @returns The two playback methods and the map behind them
+ */
+export function makePlaybackDouble(): PlaybackDouble {
+	const positions = new Map<string, number>();
+	return {
+		positions,
+		getPlayback: jest.fn((path: string) => {
+			const position = positions.get(path);
+			return Promise.resolve(
+				position === undefined
+					? null
+					: { position, updatedAt: '2026-08-28T00:00:00.000Z' },
+			);
+		}),
+		setPlayback: jest.fn(
+			(path: string, state: { position: number } | null) => {
+				if (state) {
+					positions.set(path, state.position);
+				} else {
+					positions.delete(path);
+				}
+				return Promise.resolve();
+			},
+		),
+	};
+}
+
 /** An in-memory marker store the tests can inspect. */
 export function makeMarkerStore(): RecordingSidecarStore & {
 	data: Map<string, PlayerMarker[]>;
+	positions: Map<string, number>;
 } {
 	const data = new Map<string, PlayerMarker[]>();
 	return {
 		data,
+		...makePlaybackDouble(),
 		getMarkers: jest.fn((path: string) =>
 			Promise.resolve([...(data.get(path) ?? [])]),
 		),
@@ -169,6 +210,7 @@ export function makeMarkerStore(): RecordingSidecarStore & {
 		),
 	} as unknown as RecordingSidecarStore & {
 		data: Map<string, PlayerMarker[]>;
+		positions: Map<string, number>;
 	};
 }
 

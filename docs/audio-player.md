@@ -1,6 +1,6 @@
 # Enhanced audio player
 
-The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a time display, per-file markers and chapters, and a copy-timestamp-link action. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed, and every one of those actions is also a command you can bind to a hotkey. The takeover is opt-in, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is off.
+The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a chapter repeat, a time display, per-file markers and chapters, and a copy-timestamp-link action. A recording left part-heard resumes where it stopped. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed, and every one of those actions is also a command you can bind to a hotkey. The takeover is opt-in, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is off.
 
 - [Enabling the player](#enabling-the-player)
 - [How the takeover works](#how-the-takeover-works)
@@ -10,8 +10,10 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
     - [Skip forward and back](#skip-forward-and-back)
     - [Volume and mute](#volume-and-mute)
     - [Loop](#loop)
+    - [Repeat chapter](#repeat-chapter)
     - [Time display](#time-display)
     - [Copy timestamp link](#copy-timestamp-link)
+- [Resuming where you left off](#resuming-where-you-left-off)
 - [Playback controls in the status bar](#playback-controls-in-the-status-bar)
 - [Playback commands and hotkeys](#playback-commands-and-hotkeys)
 - [Markers and chapters](#markers-and-chapters)
@@ -92,7 +94,7 @@ _Figure: the playback-speed dropdown, opened from the speed button._
 
 ### Skip forward and back
 
-The **back** and **forward** buttons jump playback by **10 seconds** in each direction, clamped to the track bounds.
+The **back** and **forward** buttons jump playback by the configured **Skip step** in each direction, clamped to the track bounds. The step is 10 seconds unless you change it, and the button labels name the step in force, so they always say what they will do.
 
 ### Volume and mute
 
@@ -103,6 +105,14 @@ The **back** and **forward** buttons jump playback by **10 seconds** in each dir
 
 The **loop** button toggles whether the recording repeats when it reaches the end. Loop is **off** for a newly opened recording and stays on once you enable it for the shared audio element.
 
+### Repeat chapter
+
+The **repeat chapter** button repeats the chapter playback is currently inside. When playback reaches the start of the following chapter it returns to the start of the repeated one, which is what makes an unclear passage or a stretch of foreign speech replay without touching the seek bar. The last chapter is repeated too: nothing follows it, so the end of the recording is its boundary.
+
+Moving to another chapter moves what repeats. A chapter jump, a click on a marker, and a drag of the seek bar all take the repeat with them, so you are never pulled back to the chapter you were listening to a moment ago.
+
+The button appears only when **Markers and chapters** is enabled for the recording, because a recording without chapters defines no stretch to repeat. Repeat is per recording and starts **off**; it is not remembered between sessions.
+
 ### Time display
 
 The time readout shows **elapsed / total** time (for example `1:05 / 3:42`). Both sides are formatted against the total length so they line up. A file whose duration the browser does not report up front (common for MediaRecorder WebM, and some multitrack MP4 files) is probed automatically so the total fills in.
@@ -110,6 +120,18 @@ The time readout shows **elapsed / total** time (for example `1:05 / 3:42`). Bot
 ### Copy timestamp link
 
 The **link** button copies a [timecode link](#timecode-links) to the **current position** - for example `[[recording#t=1:30]]` - to the clipboard, following your vault's link-format preferences. A notice confirms the copied timestamp. You can also copy a link at any other position from the [right-click menu](#markers-and-chapters).
+
+---
+
+## Resuming where you left off
+
+A recording you leave part-heard **remembers where you stopped**, and the next time you open the note it starts from there rather than from the beginning. The position is written when playback pauses, and again when the note is closed, which covers both ways a listening session ends.
+
+Two boundaries keep the memory useful. A position in the **first 15 seconds** is not remembered, because resuming there saves nothing. A position in the **last 15 seconds** counts as heard out, and so does playing a recording to its end: either clears the stored position, so a recording you have finished starts from the beginning next time.
+
+The position lives in the recording's [sidecar file](transcription.md), next to its markers and chapters, so it travels with the recording through a rename and is removed with it. A recording that carries nothing else gets a sidecar of its own once it is left part-heard, and that file is deleted again as soon as the position is cleared.
+
+A [timecode link](#timecode-links) outranks the remembered position. An embed that names a position, such as `![[recording#t=1:30]]`, starts at the position the link asks for, because that is an explicit request and the memory is not.
 
 ---
 
@@ -126,6 +148,7 @@ The strip carries:
 - **Play or pause** and **stop**. The button reflects the live state, and stop resets the position to the start.
 - **Mute** and a **volume slider** from 0 to 1. Dragging the slider above 0 while muted unmutes it, matching the embed.
 - **Add marker** and **add chapter** at the current position. These two appear only when **Markers and chapters** is enabled for the playing recording.
+- **Repeat chapter**, which engages the same repeat the embed's button does and shows the same state. It appears whenever the playing recording has chapters, including in Reading view where the add buttons do not.
 - The **elapsed over total time** readout, formatted the same way as the embed.
 
 Playback speed is deliberately left out here to keep the strip compact; change the speed from the embed's speed button or with the [speed commands](#playback-commands-and-hotkeys) instead. Every button drives the **same playback** as the embedded control row, because both delegate to one shared audio element per recording, so an action in one surface is reflected in the other.
@@ -149,12 +172,13 @@ Every playback action is also a **command**, so a recording can be driven entire
 | Decrease playback speed                   | Steps down to the previous preset and stops at the slowest one.                         |
 | Go to previous chapter                    | Jumps to the chapter before the current position, or to the start when there is none.   |
 | Go to next chapter                        | Jumps to the chapter after the current position.                                        |
+| Repeat current chapter                    | Turns repeating of the chapter playback is inside on or off.                            |
 | Add bookmark at current playback position | Drops a bookmark where playback stands.                                                 |
 | Add chapter at current playback position  | Drops a chapter where playback stands.                                                  |
 
 The commands exist **only while something is playing**. Obsidian hides a command whose availability check fails, so with nothing active none of them appear in the command palette and a bound hotkey stays inert, which leaves the key free for whatever else it is used for. Stopping playback, or letting a recording reach its end, withdraws them again; pausing keeps them, so the same key resumes what it paused.
 
-Two of them carry a further condition. The chapter jumps are offered only when **Markers and chapters** is enabled for the recording that is playing, because a recording without them defines no chapters to move between. The two add commands need that setting **and** an editable view, exactly like the add buttons in the embed and in the status bar, so a player rendered in Reading view offers neither.
+Three of them carry a further condition. The chapter jumps and the chapter repeat are offered only when **Markers and chapters** is enabled for the recording that is playing, because a recording without them defines no chapters to move between or to repeat. The two add commands need that setting **and** an editable view, exactly like the add buttons in the embed and in the status bar, so a player rendered in Reading view offers neither.
 
 The speed commands move between the same presets the embed's speed button lists, so a hotkey can never land on a speed that button cannot show. Every command drives the **same shared audio element** as the embedded control row and the status-bar strip, which is why a speed change from a hotkey updates the embed's speed button and a chapter jump moves the time readout in both surfaces at once.
 

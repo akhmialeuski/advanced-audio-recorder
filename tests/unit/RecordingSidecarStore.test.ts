@@ -1014,4 +1014,116 @@ describe('RecordingSidecarStore', () => {
 			expect(section.history).toHaveLength(1);
 		});
 	});
+	describe('the remembered playback position', () => {
+		const AT = '2026-08-28T10:00:00.000Z';
+
+		it('reports no position for a recording that has no sidecar', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+
+			expect(await store.getPlayback('missing.wav')).toBeNull();
+		});
+
+		it('persists the position and reads it back from disk', async () => {
+			const { app, files } = makeApp();
+			await new RecordingSidecarStore(app).setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+			expect(files.has('rec.wav.markers.json')).toBe(true);
+
+			const reloaded = new RecordingSidecarStore(app);
+			expect(await reloaded.getPlayback('rec.wav')).toEqual({
+				position: 842,
+				updatedAt: AT,
+			});
+		});
+
+		it('hands out a copy, so a caller cannot edit the stored position', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+
+			const first = await store.getPlayback('rec.wav');
+			expect(first).not.toBeNull();
+			if (first) {
+				first.position = 1;
+			}
+
+			expect((await store.getPlayback('rec.wav'))?.position).toBe(842);
+		});
+
+		it('leaves the markers alone when the position changes', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 10)]);
+
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+
+			const raw = rawSidecar(files);
+			expect(raw.playback).toEqual({ position: 842, updatedAt: AT });
+			expect(raw.markers).toEqual([marker('a', 10)]);
+		});
+
+		it('rewrites nothing when the position has not moved', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+			files.delete('rec.wav.markers.json');
+
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: '2026-08-28T11:00:00.000Z',
+			});
+
+			// The write was skipped, so the file the test removed stays gone
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+
+		it('deletes the file when clearing the only thing in it', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+
+			await store.setPlayback('rec.wav', null);
+
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+			expect(await store.getPlayback('rec.wav')).toBeNull();
+		});
+
+		it('keeps the file when clearing a position beside markers', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 10)]);
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+
+			await store.setPlayback('rec.wav', null);
+
+			expect(files.has('rec.wav.markers.json')).toBe(true);
+			expect('playback' in rawSidecar(files)).toBe(false);
+		});
+
+		it('writes nothing when clearing a position that was never stored', async () => {
+			const { app, files } = makeApp();
+
+			await new RecordingSidecarStore(app).setPlayback('rec.wav', null);
+
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+	});
 });

@@ -48,7 +48,7 @@ import type {
 	SeekablePlayer,
 } from './AudioPlayerRegistry';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
-import type { MarkerKind } from '../markers/markerModel';
+import type { ChapterSpan, MarkerKind } from '../markers/markerModel';
 import { speedMenuItems } from './playbackRate';
 import { isEditableContext } from './playerMode';
 import {
@@ -60,6 +60,7 @@ import { DurationProbe } from './DurationProbe';
 import { SeekController } from './SeekController';
 import { WaveformController } from './WaveformController';
 import { PlayerMarkerController } from './PlayerMarkerController';
+import { PlaybackPositionMemory } from './PlaybackPositionMemory';
 import { PlayerControlsView } from './views/PlayerControlsView';
 import {
 	MarkerListView,
@@ -157,6 +158,24 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private renderCleanups: Array<() => void> = [];
 
 	/**
+	 * Whether playback repeats the chapter it is inside. Per player rather
+	 * than per shared element, the same way the skip step is: the status bar
+	 * asks whichever player owns the playback, so the two surfaces agree
+	 * without a second copy of the flag.
+	 */
+	private chapterLoop = false;
+
+	/**
+	 * The chapter the loop is repeating. Held rather than recomputed on every
+	 * tick, because once playback runs past the chapter's end the position
+	 * alone names the NEXT chapter, and the loop would never fire.
+	 */
+	private loopSpan: ChapterSpan | null = null;
+
+	/** Remembers where this recording was left off. */
+	private readonly positionMemory: PlaybackPositionMemory;
+
+	/**
 	 * @param containerEl - The embed element to take over
 	 * @param app - Obsidian App instance
 	 * @param file - Audio file to play
@@ -190,6 +209,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				onSeekToTime: (seconds) => {
 					// A user seek engages the shared timeline
 					this.engageTimeline();
+					// Before the move, not after: assigning the position
+					// fires timeupdate, and the loop would read the stretch
+					// the listener is leaving and pull them back into it.
+					this.anchorChapterLoop(seconds);
 					this.audio.currentTime = seconds;
 					this.updateProgress();
 				},
@@ -213,6 +236,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				},
 				isUnloaded: () => this.unloaded,
 			},
+		);
+		this.positionMemory = new PlaybackPositionMemory(
+			markerStore,
+			file.path,
 		);
 		this.markerCtl = new PlayerMarkerController(markerStore, file.path, {
 			isUnloaded: () => this.unloaded,
@@ -395,7 +422,19 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		if (isNew) {
 			this.audio.loop = PLAYER_LOOP;
 			setAudioPlaybackRate(this.audio, PLAYER_PLAYBACK_RATE);
+			// Only the player that created the shared element resumes it. A
+			// second embed of the same file must not drag playback that is
+			// already running back to a stored offset.
+			void this.restorePosition();
 		}
+		this.register(() => {
+			// Closing the note is the other way a listener leaves a recording
+			// part-heard, and it fires no pause.
+			this.positionMemory.remember(
+				this.audio.currentTime,
+				this.knownDuration(),
+			);
+		});
 		const unregisterPlaybackController =
 			this.registry.registerPlaybackController(this.audioKey, {
 				// Adding markers is edit-only, exactly as the embedded control
@@ -407,6 +446,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				// available in reading view exactly as the embedded chapter
 				// buttons do
 				canNavigateChapters: () => this.settings.enableMarkers,
+				chapterLoopEnabled: () => this.chapterLoop,
+				toggleChapterLoop: () => {
+					this.toggleChapterLoop();
+				},
 				skipSeconds: () => this.settings.skipSeconds,
 				togglePlay: () => {
 					this.togglePlay();
@@ -554,6 +597,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	seekTo(seconds: number, autoplay = true): void {
 		// A user seek (timecode link, marker jump) engages the shared timeline
 		this.engageTimeline();
+		// The loop follows the listener to where they are going, and is moved
+		// before the seek is applied because applying it fires timeupdate.
+		this.anchorChapterLoop(seconds);
 		seekAudio(this.audio, seconds, {
 			autoplay,
 			// Reflect the new position immediately, since a paused jump fires
@@ -716,6 +762,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				onNextChapter: () => {
 					this.jumpToNextChapter();
 				},
+				onToggleChapterLoop: () => {
+					this.toggleChapterLoop();
+				},
 				onCopyTimestampLink: () => {
 					void this.copyTimestampLink();
 				},
@@ -729,6 +778,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			loop: this.audio.loop,
 			markersEnabled: this.settings.enableMarkers,
 			skipSeconds: this.settings.skipSeconds,
+			chapterLoop: this.chapterLoop,
 		});
 	}
 
@@ -868,6 +918,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.updateProgress();
 		});
 		this.registerDomEvent(this.audio, 'timeupdate', () => {
+			this.enforceChapterLoop();
 			this.updateProgress();
 		});
 		this.registerDomEvent(this.audio, 'play', () => {
@@ -878,10 +929,110 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.controls?.setPlaying(true);
 		});
 		this.registerDomEvent(this.audio, 'pause', () => {
+			// Where a listener stops is where they want to come back to, so
+			// the pause is what commits the position rather than a timer
+			// rewriting the sidecar every few seconds while it plays.
+			this.positionMemory.remember(
+				this.audio.currentTime,
+				this.knownDuration(),
+			);
 			this.controls?.setPlaying(false);
 		});
 		this.registerDomEvent(this.audio, 'ended', () => {
+			// Heard to the end: the next open starts from the beginning, and
+			// a sidecar holding nothing else goes away with the position.
+			this.positionMemory.forget();
+			this.restartLoopedChapter();
 			this.controls?.setPlaying(false);
+		});
+	}
+
+	/**
+	 * Returns playback to the start of the repeated chapter once it runs past
+	 * the chapter's end, preserving whether the audio was playing.
+	 */
+	private enforceChapterLoop(): void {
+		if (!this.chapterLoop) {
+			return;
+		}
+		if (this.loopSpan === null) {
+			// The loop was engaged before the first chapter; playback has now
+			// reached one, so that chapter becomes the repeated stretch.
+			this.loopSpan = this.markerCtl.currentChapterSpan(
+				this.audio.currentTime,
+			);
+			return;
+		}
+		const { start, end } = this.loopSpan;
+		if (end !== null && this.audio.currentTime >= end) {
+			this.seekTo(start, !this.audio.paused);
+		}
+	}
+
+	/**
+	 * Repeats the last chapter, whose end is the end of the recording and so
+	 * is never crossed as a boundary. A no-op unless the loop is engaged on
+	 * exactly that chapter.
+	 */
+	private restartLoopedChapter(): void {
+		if (this.chapterLoop && this.loopSpan?.end === null) {
+			this.seekTo(this.loopSpan.start, true);
+		}
+	}
+
+	/**
+	 * Points the loop at the chapter covering a position, so moving to
+	 * another chapter moves what repeats instead of dragging the listener
+	 * back to where the loop was switched on. A no-op while the loop is off.
+	 * @param position - Playback offset the listener moved to, in seconds
+	 */
+	private anchorChapterLoop(position: number): void {
+		if (this.chapterLoop) {
+			this.loopSpan = this.markerCtl.currentChapterSpan(position);
+		}
+	}
+
+	/**
+	 * Turns repeating of the current chapter on or off, anchoring it to
+	 * wherever playback stands. Both the embedded button and the status-bar
+	 * control land here, so the two can never show different states.
+	 */
+	private toggleChapterLoop(): void {
+		this.chapterLoop = !this.chapterLoop;
+		this.loopSpan = this.chapterLoop
+			? this.markerCtl.currentChapterSpan(this.audio.currentTime)
+			: null;
+		this.controls?.setChapterLoop(this.chapterLoop);
+		// The status bar reports the loop but reads it from this player, and
+		// nothing on the audio element changed to make it look again.
+		this.registry.refreshPlaybackState();
+	}
+
+	/**
+	 * Resumes where this recording was left off. Skipped when the embed names
+	 * a position of its own: a link that points at a moment is an explicit
+	 * request, and it outranks the remembered offset. Skipped too once the
+	 * shared audio has been touched, so a stored position never overrides a
+	 * listener who has already started playing.
+	 */
+	private async restorePosition(): Promise<void> {
+		if (this.options.startSeconds !== null) {
+			return;
+		}
+		const position = await this.positionMemory.stored();
+		if (
+			position === null ||
+			this.unloaded ||
+			this.audio.currentTime > 0 ||
+			this.registry.isAudioEngaged(this.audioKey)
+		) {
+			return;
+		}
+		seekAudio(this.audio, position, {
+			autoplay: false,
+			onApplied: () => {
+				this.updateProgress();
+			},
 		});
 	}
 

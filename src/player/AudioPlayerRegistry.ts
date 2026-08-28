@@ -296,6 +296,12 @@ export class AudioPlayerRegistry {
 			playbackRate: snapshot.playbackRate,
 			markersEnabled: this.controllerFor(entry, withMarkers) !== null,
 			chaptersEnabled: this.controllerFor(entry, withChapters) !== null,
+			// Read from the player that owns this playback, the same way the
+			// skip step is, so the status bar shows the loop the embed is
+			// actually running rather than a second, disagreeing flag.
+			chapterLoopEnabled:
+				this.controllerFor(entry, withChapters)?.chapterLoopEnabled() ??
+				false,
 			// Read from whichever player owns this playback, so the status bar
 			// and the commands skip by the same step the embed does. Nothing
 			// owns it only while the element is being released, and the
@@ -348,6 +354,15 @@ export class AudioPlayerRegistry {
 					key,
 					(controller) => {
 						controller.nextChapter();
+					},
+					withChapters,
+				);
+			},
+			onToggleChapterLoop: () => {
+				this.runPlaybackCommand(
+					key,
+					(controller) => {
+						controller.toggleChapterLoop();
 					},
 					withChapters,
 				);
@@ -484,6 +499,16 @@ export class AudioPlayerRegistry {
 		if (entry) {
 			entry.engaged = true;
 		}
+	}
+
+	/**
+	 * Republishes the active playback snapshot. A player calls this after it
+	 * changes something the snapshot reports but the audio element does not
+	 * carry - the chapter loop - so the status bar and the commands do not
+	 * keep showing the old state until the next timeupdate happens to arrive.
+	 */
+	refreshPlaybackState(): void {
+		this.emitPlaybackState();
 	}
 
 	/**

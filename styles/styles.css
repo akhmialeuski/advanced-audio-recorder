@@ -107,7 +107,8 @@ If your plugin does not need CSS, delete this file.
 .aar-playback-controls,
 .aar-playback-buttons,
 .aar-playback-audio-controls,
-.aar-playback-marker-controls {
+.aar-playback-marker-controls,
+.aar-playback-chapter-controls {
     display: inline-flex;
     align-items: center;
 }
@@ -121,7 +122,8 @@ If your plugin does not need CSS, delete this file.
 
 .aar-playback-buttons,
 .aar-playback-audio-controls,
-.aar-playback-marker-controls {
+.aar-playback-marker-controls,
+.aar-playback-chapter-controls {
     gap: 2px;
 }
 

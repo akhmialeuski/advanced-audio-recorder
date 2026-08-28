@@ -840,26 +840,7 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		const { plugin, onPlayback } = await pluginWithPlayback();
 		const { renderPlaybackStatusBar, renderTranscriptionStatusBar } =
 			jest.requireMock('src/ui/StatusBar');
-		const playbackState: PlaybackControlsState = {
-			currentTime: 5,
-			duration: 60,
-			paused: false,
-			volume: 1,
-			muted: false,
-			playbackRate: 1,
-			markersEnabled: true,
-			skipSeconds: 10,
-			chaptersEnabled: true,
-			onTogglePlay: jest.fn(),
-			onStop: jest.fn(),
-			onSkip: jest.fn(),
-			onToggleMute: jest.fn(),
-			onVolumeInput: jest.fn(),
-			onSetPlaybackRate: jest.fn(),
-			onAddMarker: jest.fn(),
-			onPreviousChapter: jest.fn(),
-			onNextChapter: jest.fn(),
-		};
+		const playbackState = makePlaybackState();
 
 		onPlayback(playbackState);
 		expect(renderPlaybackStatusBar).toHaveBeenLastCalledWith(
@@ -916,26 +897,10 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		// status bar. It must be stored without repainting, so the recording
 		// controls (and their live stats) are never rebuilt out from under the
 		// 200 ms live-stat cadence.
-		const playbackState: PlaybackControlsState = {
-			currentTime: 5,
-			duration: 60,
-			paused: false,
-			volume: 1,
-			muted: false,
-			playbackRate: 1,
+		const playbackState = makePlaybackState({
 			markersEnabled: false,
-			skipSeconds: 10,
 			chaptersEnabled: false,
-			onTogglePlay: jest.fn(),
-			onStop: jest.fn(),
-			onSkip: jest.fn(),
-			onToggleMute: jest.fn(),
-			onVolumeInput: jest.fn(),
-			onSetPlaybackRate: jest.fn(),
-			onAddMarker: jest.fn(),
-			onPreviousChapter: jest.fn(),
-			onNextChapter: jest.fn(),
-		};
+		});
 		onPlayback(playbackState);
 
 		expect(jest.mocked(updateStatusBar)).not.toHaveBeenCalled();

@@ -517,6 +517,7 @@ describe('playback controls', () => {
 			PLAYBACK.mute,
 			PLAYBACK.volume,
 			PLAYBACK.markerControls,
+			PLAYBACK.chapterControls,
 			PLAYBACK.time,
 		]) {
 			el(controls, part).remove();
@@ -787,5 +788,55 @@ describe('live recording indicators', () => {
 		});
 
 		expect(statusBarItem.textContent).toBe('');
+	});
+});
+
+describe('the status-bar chapter repeat', () => {
+	const LABEL = 'Repeat current chapter';
+
+	it('hides the repeat for a recording that defines no chapters', () => {
+		const statusBarItem = createStatusBar();
+
+		renderPlaybackStatusBar(
+			statusBarItem,
+			makePlaybackState({ chaptersEnabled: false }),
+		);
+
+		expect(el(statusBarItem, PLAYBACK.chapterControls).hidden).toBe(true);
+	});
+
+	it('offers the repeat once the recording has chapters', () => {
+		const statusBarItem = createStatusBar();
+
+		renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+
+		expect(el(statusBarItem, PLAYBACK.chapterControls).hidden).toBe(false);
+		expect(statusBarItem).toHaveControl(LABEL);
+	});
+
+	it.each([
+		{ state: 'engaged', enabled: true, pressed: 'true' },
+		{ state: 'off', enabled: false, pressed: 'false' },
+	])('announces the repeat as $state', ({ enabled, pressed }) => {
+		const statusBarItem = createStatusBar();
+
+		renderPlaybackStatusBar(
+			statusBarItem,
+			makePlaybackState({ chapterLoopEnabled: enabled }),
+		);
+
+		const button = el(statusBarItem, PLAYBACK.chapterLoop);
+		expect(button.getAttribute('aria-pressed')).toBe(pressed);
+		expect(button.classList.contains('is-active')).toBe(enabled);
+	});
+
+	it('asks the live playback to toggle the repeat', () => {
+		const statusBarItem = createStatusBar();
+		const state = makePlaybackState();
+		renderPlaybackStatusBar(statusBarItem, state);
+
+		el(statusBarItem, PLAYBACK.chapterLoop).click();
+
+		expect(state.onToggleChapterLoop).toHaveBeenCalledTimes(1);
 	});
 });

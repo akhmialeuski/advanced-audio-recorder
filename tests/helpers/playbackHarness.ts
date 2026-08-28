@@ -10,6 +10,7 @@
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
+import { makePlaybackDouble } from './audioPlayerHarness';
 
 /** Controllable audio element whose setters emit the matching media events. */
 export interface ControllableAudio extends HTMLAudioElement {
@@ -86,9 +87,12 @@ export function installSharedAudio(): {
  * registrar's vault wiring and dispose run against it.
  * @returns A RecordingSidecarStore double backed by an in-memory map
  */
-export function makeMarkerStore(): RecordingSidecarStore {
+export function makeMarkerStore(): RecordingSidecarStore & {
+	positions: Map<string, number>;
+} {
 	const data = new Map<string, PlayerMarker[]>();
 	return {
+		...makePlaybackDouble(),
 		getMarkers: jest.fn((path: string) =>
 			Promise.resolve([...(data.get(path) ?? [])]),
 		),
@@ -108,7 +112,9 @@ export function makeMarkerStore(): RecordingSidecarStore {
 		handleOutputRename: jest.fn().mockResolvedValue(undefined),
 		handleDelete: jest.fn().mockResolvedValue(undefined),
 		clearCache: jest.fn(),
-	} as unknown as RecordingSidecarStore;
+	} as unknown as RecordingSidecarStore & {
+		positions: Map<string, number>;
+	};
 }
 
 /**
@@ -131,6 +137,7 @@ export function makePlaybackState(
 		markersEnabled: true,
 		skipSeconds: 10,
 		chaptersEnabled: true,
+		chapterLoopEnabled: false,
 		onTogglePlay: jest.fn(),
 		onStop: jest.fn(),
 		onSkip: jest.fn(),
@@ -140,6 +147,7 @@ export function makePlaybackState(
 		onAddMarker: jest.fn(),
 		onPreviousChapter: jest.fn(),
 		onNextChapter: jest.fn(),
+		onToggleChapterLoop: jest.fn(),
 		...overrides,
 	};
 }

@@ -449,3 +449,79 @@ describe('provenance and emptiness', () => {
 		);
 	});
 });
+
+describe('the remembered playback position', () => {
+	const AT = '2026-08-28T10:00:00.000Z';
+
+	it('parses a position written alongside the other sections', () => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			markers: [marker],
+			playback: { position: 842, updatedAt: AT },
+		});
+
+		expect(parsed.playback).toEqual({ position: 842, updatedAt: AT });
+		expect(parsed.markers).toEqual([marker]);
+	});
+
+	it.each([
+		{ case: 'no section at all', value: undefined },
+		{ case: 'a section that is not an object', value: 'somewhere' },
+		{ case: 'a position of zero', value: { position: 0, updatedAt: AT } },
+		{
+			case: 'a negative position',
+			value: { position: -30, updatedAt: AT },
+		},
+		{
+			case: 'a position that is not a number',
+			value: { position: '842', updatedAt: AT },
+		},
+		{
+			case: 'an infinite position',
+			value: { position: Infinity, updatedAt: AT },
+		},
+		{ case: 'no write timestamp', value: { position: 842 } },
+	])('remembers nothing from $case', ({ value }) => {
+		const parsed = parseRecordingSidecar({ version: 2, playback: value });
+
+		expect(parsed.playback).toBeUndefined();
+	});
+
+	it('survives a transcript section that cannot be parsed', () => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			transcript: 'corrupt',
+			playback: { position: 842, updatedAt: AT },
+		});
+
+		expect(parsed.playback?.position).toBe(842);
+	});
+
+	it('writes the section back, and omits it when there is none', () => {
+		const withPosition = serializeRecordingSidecar({
+			markers: [],
+			transcript: emptyTranscriptSection(),
+			playback: { position: 842, updatedAt: AT },
+		});
+		expect(withPosition.playback).toEqual({ position: 842, updatedAt: AT });
+
+		const without = serializeRecordingSidecar({
+			markers: [marker],
+			transcript: emptyTranscriptSection(),
+		});
+		expect('playback' in without).toBe(false);
+	});
+
+	it('keeps a sidecar that holds only a position', () => {
+		// The position has to count as content, or a recording with no
+		// markers could never be resumed: the file would be deleted the
+		// moment it was written.
+		expect(
+			isSidecarEmpty({
+				markers: [],
+				transcript: emptyTranscriptSection(),
+				playback: { position: 842, updatedAt: AT },
+			}),
+		).toBe(false);
+	});
+});

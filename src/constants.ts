@@ -222,6 +222,21 @@ export const MIN_PLAYER_SKIP_SECONDS = 1;
 export const MAX_PLAYER_SKIP_SECONDS = 120;
 
 /**
+ * Offset below which a recording counts as unstarted, so nothing is
+ * remembered. Resuming a few seconds in saves the listener nothing and would
+ * write a sidecar file for a recording that was merely opened.
+ */
+export const PLAYBACK_MEMORY_MIN_SECONDS = 15;
+
+/**
+ * Distance from the end within which a recording counts as heard. The last
+ * seconds of a recording are not a place to resume from, and treating them as
+ * finished is what clears the stored position (and, with nothing else in it,
+ * the sidecar file).
+ */
+export const PLAYBACK_MEMORY_TAIL_SECONDS = 15;
+
+/**
  * Step of the player volume sliders, shared by the embedded control row and
  * the status-bar playback controls so both offer the same granularity.
  */
@@ -245,6 +260,7 @@ export const PLAYER_ICONS = {
 	addChapter: 'list-plus',
 	previousChapter: 'chevron-first',
 	nextChapter: 'chevron-last',
+	chapterLoop: 'repeat-1',
 	speed: 'gauge',
 	copyLink: 'link',
 } as const;
@@ -1145,6 +1161,7 @@ export const COMMAND_IDS = {
 	decreasePlaybackSpeed: 'decrease-playback-speed',
 	previousChapter: 'go-to-previous-chapter',
 	nextChapter: 'go-to-next-chapter',
+	toggleChapterLoop: 'toggle-chapter-loop',
 	addPlaybackBookmark: 'add-playback-bookmark',
 	addPlaybackChapter: 'add-playback-chapter',
 } as const;

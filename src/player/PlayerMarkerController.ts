@@ -13,6 +13,7 @@ import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import {
 	addMarker,
 	chapters,
+	chapterSpan,
 	nextChapterTime,
 	previousChapterTime,
 	removeMarker,
@@ -20,6 +21,7 @@ import {
 	type MarkerKind,
 	type PlayerMarker,
 	type MarkerColor,
+	type ChapterSpan,
 } from '../markers/markerModel';
 import { defaultMarkerLabel, generateMarkerId } from '../markers/markerFactory';
 
@@ -192,6 +194,16 @@ export class PlayerMarkerController {
 	 */
 	previousChapter(currentTime: number): number | null {
 		return previousChapterTime(chapters(this.markers), currentTime);
+	}
+
+	/**
+	 * The stretch covered by the chapter the given position falls in, or null
+	 * when it falls before the first chapter (a recording with no chapters
+	 * included). This is what a chapter loop repeats.
+	 * @param currentTime - Current playback position in seconds
+	 */
+	currentChapterSpan(currentTime: number): ChapterSpan | null {
+		return chapterSpan(chapters(this.markers), currentTime);
 	}
 
 	/**

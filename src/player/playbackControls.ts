@@ -11,6 +11,10 @@ export interface PlaybackController {
 	canAddMarkers(): boolean;
 	/** Whether this player can jump between chapters. */
 	canNavigateChapters(): boolean;
+	/** Whether playback is currently repeating the chapter it is inside. */
+	chapterLoopEnabled(): boolean;
+	/** Turns repeating of the current chapter on or off. */
+	toggleChapterLoop(): void;
 	/** Seconds a skip moves by, as this player's settings resolved it. */
 	skipSeconds(): number;
 	/** Starts paused playback or pauses running playback. */
@@ -56,6 +60,8 @@ export interface PlaybackControlsState {
 	skipSeconds: number;
 	/** Whether chapter navigation is available. */
 	chaptersEnabled: boolean;
+	/** Whether playback is repeating the chapter it is inside. */
+	chapterLoopEnabled: boolean;
 	/** Starts paused playback or pauses running playback. */
 	onTogglePlay(): void;
 	/** Stops playback, resets it to the start, and dismisses the controls. */
@@ -74,6 +80,8 @@ export interface PlaybackControlsState {
 	onPreviousChapter(): void;
 	/** Jumps to the chapter after the current position. */
 	onNextChapter(): void;
+	/** Turns repeating of the current chapter on or off. */
+	onToggleChapterLoop(): void;
 }
 
 /** Receives the active playback snapshot, or null after playback stops. */

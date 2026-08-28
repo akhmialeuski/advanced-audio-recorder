@@ -478,6 +478,7 @@ describe('playback actions over the active snapshot', () => {
 			COMMAND_IDS.decreasePlaybackSpeed,
 			COMMAND_IDS.previousChapter,
 			COMMAND_IDS.nextChapter,
+			COMMAND_IDS.toggleChapterLoop,
 			COMMAND_IDS.addPlaybackBookmark,
 			COMMAND_IDS.addPlaybackChapter,
 		]);

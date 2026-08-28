@@ -1,7 +1,8 @@
 /**
  * Data model for the per-recording sidecar document (`<recording>.markers.json`).
- * Version 2 holds two independent sections: the player markers (unchanged from
- * version 1) and a `transcript` section that records the speaker roster of the
+ * Version 2 holds three independent sections: the player markers (unchanged
+ * from version 1), a `playback` section carrying the position the recording
+ * was left at, and a `transcript` section that records the speaker roster of the
  * last diarized transcription, the participant names the recording carries, the
  * outputs the plugin wrote (with the render templates in effect at write time),
  * and a short history of applied name mappings for undo. Every function here is
@@ -184,10 +185,25 @@ export interface ParticipantUpdate {
 	profileId: string;
 }
 
+/**
+ * Where playback of this recording was left off. Written when playback
+ * pauses, stops, or the player unloads, and cleared once the recording has
+ * been heard to the end, so a finished recording starts from the beginning
+ * again rather than from its last second.
+ */
+export interface PlaybackState {
+	/** Offset to resume from, in seconds. */
+	position: number;
+	/** ISO-8601 timestamp of the write. */
+	updatedAt: string;
+}
+
 /** The full parsed sidecar document for one recording. */
 export interface RecordingSidecar {
 	markers: PlayerMarker[];
 	transcript: TranscriptSection;
+	/** Last playback position; absent until the recording is left part-heard. */
+	playback?: PlaybackState;
 }
 
 /** Returns a fresh, empty transcript section. */
@@ -226,13 +242,23 @@ export function isTranscriptSectionEmpty(section: TranscriptSection): boolean {
 }
 
 /**
- * Whether a sidecar document holds nothing worth persisting: no markers and
- * an empty transcript section. Only then may the file be deleted.
+ * Whether a sidecar document holds nothing worth persisting: no markers, an
+ * empty transcript section, and no remembered playback position. Only then
+ * may the file be deleted.
+ *
+ * The playback position counts as content, so a recording left part-heard
+ * gets a sidecar of its own. That is the only way the position can survive
+ * for a recording that carries no markers, which is exactly the long
+ * recording the feature exists for. Clutter is bounded at the other end
+ * instead: the position is written only once playback is meaningfully into
+ * the recording and is cleared when the end is reached, which deletes the
+ * file again when nothing else is in it.
  * @param sidecar - Parsed sidecar document
  */
 export function isSidecarEmpty(sidecar: RecordingSidecar): boolean {
 	return (
 		sidecar.markers.length === 0 &&
+		sidecar.playback === undefined &&
 		isTranscriptSectionEmpty(sidecar.transcript)
 	);
 }
@@ -251,6 +277,26 @@ function offsetSeconds(value: unknown): number | null {
 	return typeof value === 'number' && Number.isFinite(value) && value >= 0
 		? value
 		: null;
+}
+
+/**
+ * Parses the remembered playback position. A position that is missing, not a
+ * positive finite number, or carries no write timestamp yields null: resuming
+ * from the very start is what happens anyway, so a half-written section is
+ * dropped rather than resumed from.
+ * @param value - Raw `playback` value from the parsed JSON
+ */
+function parsePlaybackState(value: unknown): PlaybackState | null {
+	if (typeof value !== 'object' || value === null) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	const position = offsetSeconds(record.position);
+	const updatedAt = trimmedString(record.updatedAt);
+	if (position === null || position <= 0 || !updatedAt) {
+		return null;
+	}
+	return { position, updatedAt };
 }
 
 /**
@@ -515,9 +561,11 @@ export function parseRecordingSidecar(value: unknown): RecordingSidecar {
 		return emptyRecordingSidecar();
 	}
 	const record = value as Record<string, unknown>;
+	const playback = parsePlaybackState(record.playback);
 	return {
 		markers: parseMarkers(record.markers),
 		transcript: parseTranscriptSection(record.transcript),
+		...(playback ? { playback } : {}),
 	};
 }
 
@@ -534,6 +582,12 @@ export function serializeRecordingSidecar(
 		version: SIDECAR_VERSION,
 		markers: serializeMarkers(sidecar.markers),
 	};
+	if (sidecar.playback) {
+		payload.playback = {
+			position: sidecar.playback.position,
+			updatedAt: sidecar.playback.updatedAt,
+		};
+	}
 	if (!isTranscriptSectionEmpty(sidecar.transcript)) {
 		payload.transcript = {
 			speakers: sidecar.transcript.speakers.map(cloneSpeakerEntry),

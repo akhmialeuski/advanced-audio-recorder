@@ -164,6 +164,11 @@ export class DetachedPlayback {
 				// would define
 				canAddMarkers: () => false,
 				canNavigateChapters: () => false,
+				// Note-independent playback has no marker list, so it has no chapters
+				// to repeat; the surfaces gate the control on canNavigateChapters and
+				// never reach these.
+				chapterLoopEnabled: () => false,
+				toggleChapterLoop: () => undefined,
 				skipSeconds: () => this.skipSeconds,
 				togglePlay: () => {
 					togglePlayback(this.audio, this.onPlayError);

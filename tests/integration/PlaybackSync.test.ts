@@ -14,7 +14,7 @@
 import { App, Modal } from 'obsidian';
 import { menuInstances } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
-import { allEls, el } from '../helpers/dom';
+import { allEls, control, el } from '../helpers/dom';
 import { MARKER, PLAYER } from '../helpers/selectors';
 import { PLAYBACK_ACTIONS } from 'src/actions/playbackActions';
 import { registerActionCommands } from 'src/actions/registerActionCommands';
@@ -77,8 +77,18 @@ function makeContainer(): HTMLElement {
 	return el;
 }
 
-/** Mounts a real AudioPlayer for the file into a fresh container. */
-function mountPlayer(registry: AudioPlayerRegistry): HTMLElement {
+/**
+ * Mounts a real AudioPlayer for the file into a fresh container.
+ * @param registry - The registry the player binds its shared element through
+ * @param store - Sidecar the player reads and writes; its own by default
+ * @param startSeconds - The embed's #t= offset, absent by default
+ * @returns The container the player rendered into
+ */
+function mountPlayer(
+	registry: AudioPlayerRegistry,
+	store: RecordingSidecarStore = makeMarkerStore(),
+	startSeconds: number | null = null,
+): HTMLElement {
 	const container = makeContainer();
 	new AudioPlayer(
 		container,
@@ -88,8 +98,8 @@ function mountPlayer(registry: AudioPlayerRegistry): HTMLElement {
 		registry,
 		new WaveformPeakCache(),
 		decoder,
-		makeMarkerStore(),
-		{ startSeconds: null, sourcePath: 'note.md', immediate: true },
+		store,
+		{ startSeconds, sourcePath: 'note.md', immediate: true },
 	).onload();
 	return container;
 }
@@ -319,6 +329,12 @@ describe('status-bar markers follow the player edit mode', () => {
 	});
 });
 
+/** Chapters that leave the opening of the recording uncovered. */
+const LATE_CHAPTERS: PlayerMarker[] = [
+	{ id: 'late-chapter-1', time: 120, label: 'Body', kind: 'chapter' },
+	{ id: 'late-chapter-2', time: 300, label: 'Close', kind: 'chapter' },
+];
+
 /** Two generated chapters, as written to a recording's marker sidecar. */
 const CHAPTERS: PlayerMarker[] = [
 	{ id: 'auto-chapter-1', time: 0, label: 'Intro', kind: 'chapter' },
@@ -402,7 +418,7 @@ describe('playback commands drive the same playback as the controls', () => {
 
 		// Every playback command is registered, and every one of them reports
 		// itself unavailable, so none reaches the palette or fires a hotkey
-		expect(ids).toHaveLength(11);
+		expect(ids).toHaveLength(12);
 		expect(ids.filter((id) => plugin.invokeCommand(id))).toEqual([]);
 	});
 
@@ -572,6 +588,300 @@ describe('playback commands drive the same playback as the controls', () => {
 				expect.any(Function),
 			);
 			expect(container).toHaveMarkerAt(42);
+		} finally {
+			shared.restore();
+		}
+	});
+});
+
+describe('resuming where a recording was left off', () => {
+	/**
+	 * A store already holding a position for the recording, as an earlier
+	 * listening session would have left it.
+	 * @param position - The remembered offset in seconds
+	 * @returns The store double, with the position in place
+	 */
+	function storeHolding(
+		position: number,
+	): ReturnType<typeof makeMarkerStore> {
+		const store = makeMarkerStore();
+		store.positions.set('rec.mp4', position);
+		return store;
+	}
+
+	/** A shared element that already knows how long the recording is. */
+	function loadedAudio(): ReturnType<typeof installSharedAudio> {
+		const shared = installSharedAudio();
+		shared.audio.setReady(1);
+		shared.audio.setDuration(600);
+		return shared;
+	}
+
+	it('starts the embed at the stored position, on the shared element', async () => {
+		const shared = loadedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const { snapshot } = withPlaybackCommands(registry);
+			const container = mountPlayer(registry, storeHolding(300));
+			await tick();
+
+			// The one shared element carries the resumed position, so the
+			// embed display and the status-bar snapshot show it alike
+			expect(timeText(container)).toBe('5:00 / 10:00');
+			expect(shared.audio.paused).toBe(true);
+			startPlaybackAt(registry, shared.audio, 300);
+			expect(snapshot()?.currentTime).toBe(300);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('lets an explicit position in the embed outrank the stored one', async () => {
+		const shared = loadedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const container = mountPlayer(registry, storeHolding(300), 42);
+			await tick();
+
+			// The #t= offset is what the link asked for, so the remembered
+			// position does not touch the element
+			expect(shared.audio.currentTime).toBe(0);
+			expect(timeText(container)).toBe('0:42 / 10:00');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('leaves playback that is already under way where it stands', async () => {
+		const shared = loadedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			// The element is already part-way through when the embed mounts,
+			// which is a listener the resume must not move
+			shared.audio.currentTime = 100;
+			const container = mountPlayer(registry, storeHolding(300));
+			await tick();
+
+			expect(timeText(container)).toBe('1:40 / 10:00');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('remembers the position when playback pauses', async () => {
+		const shared = loadedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const store = makeMarkerStore();
+			mountPlayer(registry, store);
+			await tick();
+			startPlaybackAt(registry, shared.audio, 300);
+
+			shared.audio.dispatchEvent(new Event('pause'));
+			await tick();
+
+			expect(store.positions.get('rec.mp4')).toBe(300);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('forgets the position once the recording has been heard out', async () => {
+		const shared = loadedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const store = storeHolding(300);
+			mountPlayer(registry, store);
+			await tick();
+
+			shared.audio.dispatchEvent(new Event('ended'));
+			await tick();
+
+			expect(store.positions.has('rec.mp4')).toBe(false);
+		} finally {
+			shared.restore();
+		}
+	});
+});
+
+describe('repeating one chapter', () => {
+	/**
+	 * A markers-enabled player over the two-chapter recording, with the real
+	 * commands registered against the same registry.
+	 * @param shared - The installed shared audio element
+	 * @returns The container, the command host, and the snapshot reader
+	 */
+	async function loopableEmbed(
+		shared: ReturnType<typeof installSharedAudio>,
+	): Promise<{
+		container: HTMLElement;
+		plugin: ReturnType<typeof asMockPlugin>;
+		snapshot: () => PlaybackControlsState | null;
+	}> {
+		const registry = new AudioPlayerRegistry();
+		const { plugin, snapshot } = withPlaybackCommands(registry);
+		const store = makeMarkerStore();
+		const container = makeEditableContainer();
+		mountMarkerPlayer(registry, store, container);
+		await tick();
+		await store.updateMarkers('rec.mp4', () => CHAPTERS);
+		registry.reloadMarkers('rec.mp4', null);
+		await tick();
+		startPlaybackAt(registry, shared.audio, 30);
+		return { container, plugin, snapshot };
+	}
+
+	/** Reads the pressed state the embed's repeat button reports. */
+	function loopPressed(container: HTMLElement): string | null {
+		return control(container, 'Repeat current chapter').getAttribute(
+			'aria-pressed',
+		);
+	}
+
+	it('shows the loop engaged on the embed and in the snapshot alike', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, plugin, snapshot } = await loopableEmbed(shared);
+
+			expect(plugin.invokeCommand('toggle-chapter-loop')).toBe(true);
+
+			expect(loopPressed(container)).toBe('true');
+			expect(snapshot()?.chapterLoopEnabled).toBe(true);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('returns to the chapter start when playback reaches its end', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, plugin, snapshot } = await loopableEmbed(shared);
+			plugin.invokeCommand('toggle-chapter-loop');
+
+			// Playback runs on past the boundary of the chapter at 0:00,
+			// which the next chapter at 2:00 closes
+			shared.audio.currentTime = 120;
+
+			expect(timeText(container)).toBe('0:00 / 10:00');
+			expect(snapshot()?.currentTime).toBe(0);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('moves the repeated stretch with a jump to another chapter', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, plugin } = await loopableEmbed(shared);
+			plugin.invokeCommand('toggle-chapter-loop');
+
+			// The listener moves on to the chapter at 2:00, so that is what
+			// repeats; the last chapter ends with the recording, and playing
+			// past 2:00 is inside it rather than out of it
+			plugin.invokeCommand('go-to-next-chapter');
+			shared.audio.currentTime = 300;
+
+			expect(timeText(container)).toBe('5:00 / 10:00');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('runs the recording out normally once the loop is switched off', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, plugin, snapshot } = await loopableEmbed(shared);
+			plugin.invokeCommand('toggle-chapter-loop');
+			plugin.invokeCommand('toggle-chapter-loop');
+
+			shared.audio.currentTime = 120;
+
+			expect(loopPressed(container)).toBe('false');
+			expect(snapshot()?.chapterLoopEnabled).toBe(false);
+			expect(timeText(container)).toBe('2:00 / 10:00');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('repeats the last chapter, which the recording itself ends', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, plugin } = await loopableEmbed(shared);
+			// Into the chapter at 2:00, the last one: nothing closes it but
+			// the end of the recording, so no boundary is ever crossed
+			shared.audio.currentTime = 300;
+			plugin.invokeCommand('toggle-chapter-loop');
+
+			shared.audio.dispatchEvent(new Event('ended'));
+
+			expect(timeText(container)).toBe('2:00 / 10:00');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('leaves the recording to end where the loop sits on no chapter', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, plugin } = await loopableEmbed(shared);
+			plugin.invokeCommand('toggle-chapter-loop');
+			plugin.invokeCommand('toggle-chapter-loop');
+
+			shared.audio.dispatchEvent(new Event('ended'));
+
+			expect(timeText(container)).toBe('0:30 / 10:00');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('engages the loop from the embed own button', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, snapshot } = await loopableEmbed(shared);
+
+			control(container, 'Repeat current chapter').click();
+
+			expect(loopPressed(container)).toBe('true');
+			expect(snapshot()?.chapterLoopEnabled).toBe(true);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('takes up the first chapter playback reaches after the loop is set', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const { plugin } = withPlaybackCommands(registry);
+			const store = makeMarkerStore();
+			const container = makeEditableContainer();
+			mountMarkerPlayer(registry, store, container);
+			await tick();
+			// A recording whose first chapter starts well in, so the loop can
+			// be engaged where no chapter covers the position yet
+			await store.updateMarkers('rec.mp4', () => LATE_CHAPTERS);
+			registry.reloadMarkers('rec.mp4', null);
+			await tick();
+			startPlaybackAt(registry, shared.audio, 30);
+			plugin.invokeCommand('toggle-chapter-loop');
+
+			shared.audio.currentTime = 150;
+			shared.audio.currentTime = 300;
+
+			expect(timeText(container)).toBe('2:00 / 10:00');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('offers no loop to a player that has no chapters', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { plugin } = await playingEmbed(shared);
+
+			expect(plugin.invokeCommand('toggle-chapter-loop')).toBe(false);
 		} finally {
 			shared.restore();
 		}

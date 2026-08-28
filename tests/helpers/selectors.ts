@@ -74,6 +74,8 @@ export const PLAYBACK = {
 	mute: '.aar-playback-mute',
 	volume: '.aar-playback-volume',
 	markerControls: '.aar-playback-marker-controls',
+	chapterControls: '.aar-playback-chapter-controls',
+	chapterLoop: '.aar-playback-chapter-loop',
 	time: '.aar-playback-time',
 } as const;
 

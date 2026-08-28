@@ -124,6 +124,15 @@ export const PLAYBACK_ACTIONS: readonly PlaybackAction[] = [
 		},
 	},
 	{
+		commandId: COMMAND_IDS.toggleChapterLoop,
+		title: 'Repeat current chapter',
+		icon: PLAYER_ICONS.chapterLoop,
+		isAvailable: (state): boolean => state.chaptersEnabled,
+		run: (state): void => {
+			state.onToggleChapterLoop();
+		},
+	},
+	{
 		commandId: COMMAND_IDS.addPlaybackBookmark,
 		title: 'Add bookmark at current playback position',
 		icon: PLAYER_ICONS.addBookmark,

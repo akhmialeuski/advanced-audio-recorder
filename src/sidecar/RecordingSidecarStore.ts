@@ -31,6 +31,7 @@ import {
 	type FileOutput,
 	type NoteOutput,
 	type ParticipantUpdate,
+	type PlaybackState,
 	type RecordingSidecar,
 	type SpeakerEntry,
 	type TranscriptProvenance,
@@ -129,6 +130,43 @@ export class RecordingSidecarStore {
 			sidecar.markers = result;
 		});
 		return serializeMarkers(result);
+	}
+
+	/**
+	 * Returns the remembered playback position for a recording, or null when
+	 * none is stored.
+	 * @param path - Vault-relative recording path
+	 */
+	async getPlayback(path: string): Promise<PlaybackState | null> {
+		const stored = (await this.load(path)).playback;
+		return stored ? { ...stored } : null;
+	}
+
+	/**
+	 * Stores or clears the remembered playback position. Writing the position
+	 * the document already holds is skipped, so the repeated saves a pause
+	 * produces do not each rewrite the file.
+	 * @param path - Vault-relative recording path
+	 * @param state - Position to remember, or null to forget it
+	 */
+	async setPlayback(
+		path: string,
+		state: PlaybackState | null,
+	): Promise<void> {
+		return this.mutate(path, (sidecar) => {
+			if (!state) {
+				if (!sidecar.playback) {
+					return false;
+				}
+				delete sidecar.playback;
+				return true;
+			}
+			if (sidecar.playback?.position === state.position) {
+				return false;
+			}
+			sidecar.playback = { ...state };
+			return true;
+		});
 	}
 
 	/**

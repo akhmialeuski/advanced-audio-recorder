@@ -31,6 +31,8 @@ const PLAYBACK_SKIP_FORWARD_CLASS = 'aar-playback-skip-forward';
 const PLAYBACK_MUTE_CLASS = 'aar-playback-mute';
 const PLAYBACK_VOLUME_CLASS = 'aar-playback-volume';
 const PLAYBACK_MARKER_CONTROLS_CLASS = 'aar-playback-marker-controls';
+const PLAYBACK_CHAPTER_CONTROLS_CLASS = 'aar-playback-chapter-controls';
+const PLAYBACK_CHAPTER_LOOP_CLASS = 'aar-playback-chapter-loop';
 const PLAYBACK_TIME_CLASS = 'aar-playback-time';
 
 /** Which live indicators to render in the recording state. */
@@ -395,6 +397,21 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 		},
 	);
 
+	// Its own span rather than a button inside the marker controls: chapter
+	// navigation stays available in reading view, where adding markers does
+	// not, so the two groups appear and disappear independently.
+	const chapterControls = container.createSpan({
+		cls: PLAYBACK_CHAPTER_CONTROLS_CLASS,
+	});
+	createControlButton(
+		chapterControls,
+		PLAYER_ICONS.chapterLoop,
+		'Repeat current chapter',
+		() => {
+			playbackStates.get(statusBarItem)?.onToggleChapterLoop();
+		},
+	).addClass(PLAYBACK_CHAPTER_LOOP_CLASS);
+
 	container.createSpan({
 		cls: PLAYBACK_TIME_CLASS,
 		text: `${formatTimecode(0, 0)} / ${formatTimecode(0, 0)}`,
@@ -455,6 +472,23 @@ function updatePlaybackControls(
 	);
 	if (markerControls) {
 		markerControls.hidden = !state.markersEnabled;
+	}
+
+	const chapterControls = container.querySelector<HTMLElement>(
+		`.${PLAYBACK_CHAPTER_CONTROLS_CLASS}`,
+	);
+	if (chapterControls) {
+		chapterControls.hidden = !state.chaptersEnabled;
+	}
+	const chapterLoop = container.querySelector<HTMLElement>(
+		`.${PLAYBACK_CHAPTER_LOOP_CLASS}`,
+	);
+	if (chapterLoop) {
+		chapterLoop.toggleClass('is-active', state.chapterLoopEnabled);
+		chapterLoop.setAttribute(
+			'aria-pressed',
+			String(state.chapterLoopEnabled),
+		);
 	}
 
 	const total = state.duration > 0 ? state.duration : 0;

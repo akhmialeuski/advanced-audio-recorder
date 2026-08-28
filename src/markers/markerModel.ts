@@ -414,3 +414,36 @@ export function activeMarkerIndex(
 	}
 	return index;
 }
+
+/** The stretch of a recording one chapter covers. */
+export interface ChapterSpan {
+	/** Start of the chapter, in seconds. */
+	start: number;
+	/**
+	 * Start of the following chapter, or null for the last one, whose end is
+	 * the end of the recording and is therefore not a marker time.
+	 */
+	end: number | null;
+}
+
+/**
+ * Returns the chapter containing the given time, as the stretch it covers.
+ * Null when the time falls before the first chapter, which is the answer for
+ * a recording with no chapters at all.
+ * @param sortedChapters - Chapters sorted by time ascending
+ * @param time - Playback offset in seconds
+ */
+export function chapterSpan(
+	sortedChapters: readonly PlayerMarker[],
+	time: number,
+): ChapterSpan | null {
+	const index = activeMarkerIndex(sortedChapters, time);
+	const current = index < 0 ? undefined : sortedChapters[index];
+	if (!current) {
+		return null;
+	}
+	return {
+		start: current.time,
+		end: sortedChapters[index + 1]?.time ?? null,
+	};
+}

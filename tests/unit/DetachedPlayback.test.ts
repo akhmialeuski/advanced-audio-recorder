@@ -72,9 +72,11 @@ describe('DetachedPlayback', () => {
 		controller.addMarker('bookmark');
 		controller.previousChapter();
 		controller.nextChapter();
+		controller.toggleChapterLoop();
 
 		expect(controller.canAddMarkers()).toBe(false);
 		expect(controller.canNavigateChapters()).toBe(false);
+		expect(controller.chapterLoopEnabled()).toBe(false);
 		expect(harness.audio.currentTime).toBe(30);
 	});
 
