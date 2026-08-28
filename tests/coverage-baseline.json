@@ -2,7 +2,7 @@
 	"coverage": {
 		"total": {
 			"statements": 98.47,
-			"branches": 93.45,
+			"branches": 93.47,
 			"functions": 98.45,
 			"lines": 98.49
 		},
@@ -434,16 +434,16 @@
 				"lines": 100
 			},
 			"src/recording/RecordingFinalizer.ts": {
-				"statements": 96.6,
-				"branches": 87.77,
+				"statements": 96.33,
+				"branches": 87.5,
 				"functions": 93.33,
-				"lines": 96.6
+				"lines": 96.33
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 98.87,
-				"branches": 93.33,
+				"statements": 98.9,
+				"branches": 93.7,
 				"functions": 100,
-				"lines": 98.86
+				"lines": 98.88
 			},
 			"src/recording/RecordingMarkerCoordinator.ts": {
 				"statements": 100,
@@ -470,10 +470,10 @@
 				"lines": 99.16
 			},
 			"src/recording/StreamingMixer.ts": {
-				"statements": 96.66,
-				"branches": 78.57,
+				"statements": 96.87,
+				"branches": 79.54,
 				"functions": 100,
-				"lines": 96.51
+				"lines": 96.73
 			},
 			"src/recording/TestRecorder.ts": {
 				"statements": 100,
@@ -512,10 +512,10 @@
 				"lines": 96.49
 			},
 			"src/settings/SettingsTab.ts": {
-				"statements": 94.34,
-				"branches": 89.65,
+				"statements": 94.39,
+				"branches": 89.79,
 				"functions": 88.88,
-				"lines": 94.29
+				"lines": 94.34
 			},
 			"src/settings/labels.ts": {
 				"statements": 100,
@@ -705,7 +705,7 @@
 			},
 			"src/transcription/httpClient.ts": {
 				"statements": 100,
-				"branches": 99,
+				"branches": 99.07,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1079,8 +1079,8 @@
 	},
 	"suite": {
 		"suites": 206,
-		"tests": 4554,
-		"passed": 4554,
+		"tests": 4599,
+		"passed": 4599,
 		"failed": 0,
 		"todo": 0
 	}
