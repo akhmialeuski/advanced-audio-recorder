@@ -7,8 +7,11 @@ import type { App } from 'obsidian';
 import {
 	getWavHeaderInfo,
 	createWavHeader,
+	createWavFileBuffer,
 	assembleWavFromPcmSegments,
 	assembleWavFromPcmSegmentFiles,
+	WAV_MAX_PCM_BYTES,
+	WAV_SIZE_LIMIT_MESSAGE,
 } from 'src/audio/WavEncoder';
 import { createMockApp } from '../helpers/createApp';
 
@@ -317,6 +320,26 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 		expect(view.getUint32(40, true)).toBe(6);
 	});
 
+	// The refusal has to come from the size check rather than from the
+	// allocation: 4 GB is past what the engine hands out, so an unguarded run
+	// fails here too, with an error naming neither the cause nor the way out.
+	it('refuses segments that together outgrow the container', async () => {
+		const files = new Map<string, ArrayBuffer>([
+			['pcm1.tmp', new Uint8Array([1, 2]).buffer],
+		]);
+
+		await expect(
+			assembleWavFromPcmSegmentFiles(
+				['pcm1.tmp'],
+				2,
+				48000,
+				buildApp(files, {
+					statSizes: new Map([['pcm1.tmp', WAV_MAX_PCM_BYTES + 1]]),
+				}),
+			),
+		).rejects.toThrow(/cannot exceed 4 GB/);
+	});
+
 	it('throws when a segment grew between stat and read', async () => {
 		const files = new Map<string, ArrayBuffer>([
 			['pcm1.tmp', new Uint8Array([1, 2, 3, 4]).buffer],
@@ -332,5 +355,55 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 				}),
 			),
 		).rejects.toThrow('PCM segment changed during WAV assembly');
+	});
+});
+
+// A WAV states its size twice in 32-bit fields, so the format has a ceiling
+// no header can describe past. Before the check, both ways of hitting it lost
+// the recording at its last step: setUint32 wrapped the number round and wrote
+// a file players read as truncated, or the allocation threw after the capture
+// had already stopped.
+describe('the WAV container ceiling', () => {
+	it('describes the largest payload the size fields can hold', () => {
+		const header = createWavHeader(2, 48000, WAV_MAX_PCM_BYTES);
+
+		const view = new DataView(header);
+		expect(view.getUint32(4, true)).toBe(0xffffffff);
+		expect(view.getUint32(40, true)).toBe(WAV_MAX_PCM_BYTES);
+	});
+
+	it('refuses a payload one byte past the size fields', () => {
+		expect(() => createWavHeader(2, 48000, WAV_MAX_PCM_BYTES + 1)).toThrow(
+			/cannot exceed 4 GB/,
+		);
+	});
+
+	it('names auto-split as the way to record past the ceiling', () => {
+		expect(() => createWavHeader(2, 48000, WAV_MAX_PCM_BYTES + 1)).toThrow(
+			/auto-split/,
+		);
+	});
+
+	// Recovery reads the very segments that survive, but it assembles through
+	// this module and meets this refusal again, so offering it as the way to
+	// the audio sends the user round a loop that ends where it started. What
+	// survives is worth saying; what cannot rescue it is not.
+	it('does not offer recovery as the way past the ceiling', () => {
+		expect(WAV_SIZE_LIMIT_MESSAGE).toMatch(/kept as raw segments/);
+		expect(WAV_SIZE_LIMIT_MESSAGE).not.toMatch(/recover/i);
+	});
+
+	it('refuses an over-size file buffer before allocating it', () => {
+		expect(() =>
+			createWavFileBuffer(2, 48000, WAV_MAX_PCM_BYTES + 1),
+		).toThrow(/cannot exceed 4 GB/);
+	});
+
+	it('refuses over-size segments read whole without stat support', () => {
+		const oversize = [{ byteLength: WAV_MAX_PCM_BYTES + 1 } as ArrayBuffer];
+
+		expect(() => assembleWavFromPcmSegments(oversize, 2, 48000)).toThrow(
+			/cannot exceed 4 GB/,
+		);
 	});
 });

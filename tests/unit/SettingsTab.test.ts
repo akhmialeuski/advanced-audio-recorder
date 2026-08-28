@@ -427,6 +427,59 @@ describe('AudioRecorderSettingTab', () => {
 
 			expect(updateSpy).not.toHaveBeenCalled();
 		});
+
+		// navigator.mediaDevices is absent outside a secure context and in
+		// some embedded WebViews. The device watch runs from the first row the
+		// tab renders, so reading it unguarded threw there and emptied the
+		// whole tab: every setting, including the ones that have nothing to do
+		// with audio devices.
+		describe('where the environment exposes no device API', () => {
+			beforeEach(() => {
+				Object.defineProperty(global, 'navigator', {
+					value: {},
+					writable: true,
+				});
+			});
+
+			it('renders the tab instead of failing on its first row', () => {
+				const frame = renderDeclaratively();
+
+				expect(
+					maybeEl(frame.containerEl, SETTING.docCalloutLink),
+				).not.toBeNull();
+			});
+
+			it('still declares every section', () => {
+				renderDeclaratively();
+				const defs = tab.getSettingDefinitions();
+
+				expect(groupOf(defs, 'Audio input').items).not.toHaveLength(0);
+				expect(groupOf(defs, 'Transcription').items).not.toHaveLength(
+					0,
+				);
+			});
+
+			it('says the device list could not be read rather than showing an empty one', async () => {
+				renderDeclaratively();
+				await tick();
+
+				expect(
+					rowOf(
+						tab.getSettingDefinitions(),
+						'Audio input',
+						'Input device',
+					).desc,
+				).toMatch(/could not be read/);
+			});
+
+			it('leaves the tab without throwing on the way out', () => {
+				renderDeclaratively();
+
+				expect(() => {
+					tab.hide();
+				}).not.toThrow();
+			});
+		});
 	});
 
 	describe('writes that mean more than storing a value', () => {
@@ -1593,6 +1646,64 @@ describe('AudioRecorderSettingTab', () => {
 			expect(names).toContain('File prefix');
 			expect(names).toContain('Enhanced audio player');
 			expect(names).toContain('Debug mode');
+		});
+	});
+
+	// The switch is live on the one engine that reads the request, and the
+	// three others decide per-word timing for themselves. Seeded from storage,
+	// the row then showed a position its own description contradicted: on
+	// Deepgram, a disabled switch turned off directly beneath a sentence
+	// saying the words come back on every run. What the row shows is what the
+	// run will produce, which is what the per-run dialog has always shown.
+	describe('the word-timestamp row against the engine that decides it', () => {
+		/** Whether the word-timestamp switch is rendered on. */
+		function wordTimestampsOn(): boolean {
+			return rowToggleOn(
+				settingRow(tab.containerEl, 'Word-level timestamps'),
+			);
+		}
+
+		beforeEach(() => {
+			mockSettings.transcriptionEnabled = true;
+		});
+
+		it('shows the switch on for an engine that always returns the words', () => {
+			mockSettings.transcriptionProvider = 'deepgram';
+			mockSettings.transcriptionWordTimestamps = false;
+
+			tab.display();
+
+			expect(wordTimestampsOn()).toBe(true);
+		});
+
+		it('shows the switch off for an engine that never returns them', () => {
+			mockSettings.transcriptionProvider = 'gemini';
+			mockSettings.transcriptionWordTimestamps = true;
+
+			tab.display();
+
+			expect(wordTimestampsOn()).toBe(false);
+		});
+
+		it('shows the stored choice on the engine that reads the request', () => {
+			mockSettings.transcriptionProvider = 'whisper-api';
+			mockSettings.transcriptionWordTimestamps = true;
+
+			tab.display();
+
+			expect(wordTimestampsOn()).toBe(true);
+		});
+
+		// What the engine does is not an answer to what the user asked for, so
+		// the choice waits where they left it rather than being rewritten by
+		// the engine that was selected in the meantime.
+		it('leaves the stored choice alone whatever the engine does with it', () => {
+			mockSettings.transcriptionProvider = 'deepgram';
+			mockSettings.transcriptionWordTimestamps = false;
+
+			tab.display();
+
+			expect(mockSettings.transcriptionWordTimestamps).toBe(false);
 		});
 	});
 

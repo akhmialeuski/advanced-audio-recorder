@@ -68,6 +68,7 @@ function provider(extraArgs: string[] = []): LocalWhisperProvider {
 		binaryPath: '/bin/whisper',
 		modelPath: '/models/ggml.bin',
 		extraArgs,
+		processTimeoutMs: 60_000,
 	});
 }
 

@@ -19,7 +19,7 @@
 Pick the local engine when privacy, cost, or connectivity matter more than raw speed:
 
 - **Free.** No API key and no per-minute charge. Once the binary and model are on disk, transcription costs nothing.
-- **Private.** The audio is handed to a local process and never uploaded. The provider declares **no network requirement**, so the request timeout that applies to cloud engines does not apply here.
+- **Private.** The audio is handed to a local process and never uploaded. The provider declares **no network requirement**, so the cloud **Request timeout** does not apply here, and **Local run timeout** takes its place by bounding the process itself.
 - **Offline.** Works on a plane, in an air-gapped vault, or anywhere without internet.
 - **Yours to tune.** You choose the model size and can pass any extra `whisper.cpp` flag the binary supports.
 
@@ -137,7 +137,9 @@ _Figure: the Transcription settings with the local engine selected._
 
 You can also set **Language** (an ISO code like `en`, `ru`, `es`, or `auto` to detect) here - it is shared with the other engines. The plugin passes a chosen language to the binary; with `auto` it lets `whisper.cpp` detect the language.
 
-> **Note:** the **Speaker diarization** toggle is greyed out for this engine because local `whisper.cpp` cannot produce speaker labels. The cloud-only **Request timeout** number field is also hidden - there is no network request to time out.
+> **Note:** the **Speaker diarization** toggle is greyed out for this engine because local `whisper.cpp` cannot produce speaker labels, and the **Word-level timestamps** toggle is greyed out with it because the `-oj` output carries segment times and no words. The cloud-only **Request timeout** number field is hidden because there is no network request to time out, and **Local run timeout** appears in its place.
+
+**Local run timeout** is the number of minutes the `whisper.cpp` process may run before the plugin stops it, so a binary that hangs cannot hold the Transcribe dialog open or keep a CPU core busy after the window is closed. It defaults to 120 minutes and accepts 1 to 720, which is far longer than the cloud **Request timeout** on purpose: that one is sized for a socket, while the model here runs on your own CPU, where a large one can take longer than the recording itself. Raise it if a long recording is stopped before it finishes, or point the engine at a smaller model. Pressing **Cancel** in the Transcribe dialog stops the process straight away without waiting for this limit, and the temporary WAV and JSON files are removed whichever way the run ends.
 
 Example paths to use as a template:
 

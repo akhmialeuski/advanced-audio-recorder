@@ -30,6 +30,7 @@ export const UNLIMITED_CAPABILITIES: ProviderCapabilities = {
 	acceptsOriginalContainer: true,
 	supportsDiarization: true,
 	supportsDictionary: true,
+	wordTimestamps: 'requested',
 	biasChannel: 'prompt',
 };
 
@@ -91,4 +92,5 @@ export function fakeProvider(options: FakeProviderOptions = {}): FakeProvider {
 export const NO_DIARIZATION: Partial<ProviderCapabilities> = {
 	supportsDiarization: false,
 	supportsDictionary: false,
+	wordTimestamps: 'none',
 };

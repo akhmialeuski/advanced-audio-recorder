@@ -67,6 +67,7 @@ export function fullyPopulatedSettings(): Omit<
 		transcriptionAutoChaptersOnTranscribe: true,
 		transcriptionChunkMb: 10,
 		transcriptionTimeoutMinutes: 15,
+		localWhisperTimeoutMinutes: 90,
 		whisperApiBaseUrl: 'https://api.groq.com/openai/v1',
 		whisperApiKey: 'sk-test',
 		whisperApiModel: 'whisper-large-v3',

@@ -9,6 +9,7 @@ import {
 	TRANSCRIPTION_ENGINE_IDS,
 	TRANSCRIPTION_ENGINES,
 	createTranscriptionProvider,
+	localWhisperTimeoutMs,
 	matchRate,
 	selectedTranscriptionEngine,
 	transcriptionEngine,
@@ -16,7 +17,11 @@ import {
 import { ProviderConfigError } from 'src/transcription/providerConfigError';
 import {
 	DEEPGRAM_MODEL_SUGGESTIONS,
+	DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	GEMINI_MODEL_SUGGESTIONS,
+	MAX_LOCAL_WHISPER_TIMEOUT_MINUTES,
+	MIN_LOCAL_WHISPER_TIMEOUT_MINUTES,
+	MS_PER_MINUTE,
 	TRANSCRIPTION_PROVIDER_IDS,
 	WHISPER_API_MODEL_SUGGESTIONS,
 } from 'src/constants';
@@ -341,6 +346,43 @@ describe('registry-derived consumers stay in step', () => {
 				node.restore();
 			}
 		});
+	});
+});
+
+// The row that declares the range is not the only way a value reaches the
+// field: a data.json edited by hand or synced from another install never
+// passes it, and the load path normalises no number it finds there. Node arms
+// no kill timer at all below one millisecond, so an out-of-range value would
+// hand back the unbounded run this setting exists to end, and hand it back
+// without a word - a process nobody kills reports nothing.
+describe('the limit one local whisper.cpp run is given', () => {
+	it('keeps a configured limit as the minutes it names', () => {
+		expect(localWhisperTimeoutMs(30)).toBe(30 * MS_PER_MINUTE);
+	});
+
+	it.each([
+		{ name: 'no limit at all', stored: 0 },
+		{ name: 'a negative limit', stored: -5 },
+		{ name: 'a fraction of a minute', stored: 0.5 },
+	])('bounds $name to something Node will act on', ({ stored }) => {
+		expect(localWhisperTimeoutMs(stored)).toBe(
+			MIN_LOCAL_WHISPER_TIMEOUT_MINUTES * MS_PER_MINUTE,
+		);
+	});
+
+	it('bounds a limit past the ceiling to the ceiling', () => {
+		expect(
+			localWhisperTimeoutMs(MAX_LOCAL_WHISPER_TIMEOUT_MINUTES + 1),
+		).toBe(MAX_LOCAL_WHISPER_TIMEOUT_MINUTES * MS_PER_MINUTE);
+	});
+
+	it.each([
+		{ name: 'a field holding nothing numeric', stored: Number.NaN },
+		{ name: 'a field holding no end', stored: Number.POSITIVE_INFINITY },
+	])('falls back to the default for $name', ({ stored }) => {
+		expect(localWhisperTimeoutMs(stored)).toBe(
+			DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES * MS_PER_MINUTE,
+		);
 	});
 });
 

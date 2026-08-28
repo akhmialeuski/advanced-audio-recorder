@@ -55,6 +55,7 @@ import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
 import {
+	audioDeviceApi,
 	channelSelectionAvailable,
 	getAudioInputDeviceSnapshot,
 	type AudioInputDeviceSnapshot,
@@ -97,6 +98,7 @@ import {
 import { ModelIdModal } from '../ui/ModelIdModal';
 import type { SettingsSectionContext } from './settingControls';
 import { isMultiTrackCaptureSupported } from '../platform/capabilities';
+import { effectiveWordTimestamps } from '../transcription/providers/capabilities';
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -279,6 +281,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				this.renderDocumentationLink(host);
 			},
 			devices: {
+				enumerated: this.deviceSnapshot.enumerationSucceeded,
 				inputs: Object.fromEntries(
 					this.deviceSnapshot.devices.map((device) => [
 						device.deviceId,
@@ -402,6 +405,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// to a device that can.
 		if (key === 'enableMultiTrack') {
 			return stored === true && isMultiTrackCaptureSupported();
+		}
+		// The same rule with an engine in the platform's place, and the row
+		// needs it for a reason the switch above never had: an engine that
+		// returns per-word timing whether it is asked or not. Left as stored,
+		// that row showed a disabled switch turned off directly beneath a
+		// sentence saying the words come back on every run. The stored value
+		// is untouched here too, so the choice is still there on an engine
+		// that reads it.
+		if (key === 'transcriptionWordTimestamps') {
+			return effectiveWordTimestamps(
+				this.plugin.settings.transcriptionProvider,
+				stored === true,
+			);
 		}
 		// A dropdown over a numeric setting reads it as the option value it
 		// offers, which is that number written out.
@@ -817,14 +833,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * open and again whenever the system reports a change.
 	 */
 	private ensureDeviceWatch(): void {
-		if (!this.deviceChangeHandler) {
+		// Absent outside a secure context and in some embedded WebViews. This
+		// runs from the first row the tab renders, so reading through it
+		// unguarded took the whole tab down - every setting, including the ones
+		// that have nothing to do with audio devices. Without a device list
+		// there is nothing to watch; the rows below still report that the
+		// enumeration failed.
+		const devices = audioDeviceApi();
+		if (devices && !this.deviceChangeHandler) {
 			this.deviceChangeHandler = (): void => {
 				void this.refreshDeviceList();
 			};
-			navigator.mediaDevices.addEventListener(
-				'devicechange',
-				this.deviceChangeHandler,
-			);
+			devices.addEventListener('devicechange', this.deviceChangeHandler);
 		}
 		void this.refreshDeviceList();
 	}
@@ -1137,12 +1157,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// framework runs them itself and this renderer holds nothing.
 		this.legacyRenderer.release();
 		this.cleanupTestRecording();
-		if (this.deviceChangeHandler) {
-			navigator.mediaDevices.removeEventListener(
+		const devices = audioDeviceApi();
+		if (devices && this.deviceChangeHandler) {
+			devices.removeEventListener(
 				'devicechange',
 				this.deviceChangeHandler,
 			);
-			this.deviceChangeHandler = null;
 		}
+		this.deviceChangeHandler = null;
 	}
 }

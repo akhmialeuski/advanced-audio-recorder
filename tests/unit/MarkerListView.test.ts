@@ -171,6 +171,82 @@ describe('MarkerListView interaction', () => {
 	});
 });
 
+// Reading view is where the whole row is the jump target, and it used to be a
+// block element carrying a data attribute: tab skipped it, Enter and Space did
+// nothing, and a screen reader read it as text, so the chapters of a recording
+// could only be reached with a pointer. Making the row the button it behaves
+// like is what fixes all three, and what these tests hold it to.
+describe('MarkerListView keyboard access in reading view', () => {
+	it('builds a read-only row as a button', () => {
+		const { listContainer } = setup(false);
+
+		expect(el(listContainer, MARKER.byId('a')).tagName).toBe('BUTTON');
+	});
+
+	it('keeps an editable row a plain block, which holds controls of its own', () => {
+		const { listContainer } = setup(true);
+
+		expect(el(listContainer, MARKER.row).tagName).toBe('DIV');
+	});
+
+	it('puts a read-only row in the tab order', () => {
+		const { listContainer } = setup(false);
+
+		// A button is focusable without a tabindex, which is the point of
+		// using one: the order is the document's rather than a number here.
+		expect(el(listContainer, MARKER.byId('a')).tabIndex).toBe(0);
+	});
+
+	it('does not submit a form when a row is pressed', () => {
+		const { listContainer } = setup(false);
+
+		expect(el(listContainer, MARKER.byId('a')).getAttribute('type')).toBe(
+			'button',
+		);
+	});
+
+	// A button turns Enter and Space into a click, which the delegated handler
+	// already answers; the row is focused first because that is how a user
+	// reaches it.
+	it('jumps when a focused row is activated from the keyboard', () => {
+		const { listContainer, callbacks } = setup(false);
+		const row = el(listContainer, MARKER.byId('b'));
+
+		row.focus();
+		row.click();
+
+		expect(callbacks.onJump).toHaveBeenCalledWith(30);
+	});
+
+	// The row being a button makes its aria-label the accessible name, which
+	// replaces the text inside it rather than adding to it. A constant one
+	// therefore hides the very thing the reader is tabbing through the list to
+	// find, and every chapter of a recording announces identically.
+	it('names a read-only row by the marker it jumps to', () => {
+		const { listContainer } = setup(false);
+
+		const name = el(listContainer, MARKER.byId('a')).getAttribute(
+			'aria-label',
+		);
+
+		expect(name).toContain('Intro');
+		expect(name).toContain('0:10');
+	});
+
+	// A marker keeps its timecode as the only thing that tells it apart when
+	// it was never given a name, so the label falls back to that rather than
+	// leaving an empty gap in the sentence.
+	it('names an unlabelled read-only row by its time alone', () => {
+		const { listContainer } = setup(false, {
+			markers: [{ id: 'a', time: 10, label: '', kind: 'chapter' }],
+		});
+
+		expect(
+			el(listContainer, MARKER.byId('a')).getAttribute('aria-label'),
+		).toBe('Jump to chapter at 0:10');
+	});
+});
+
 describe('MarkerListView active highlight and tick refresh', () => {
 	it('highlights the row whose segment contains the current time', () => {
 		const { view, listContainer } = setup(false);
@@ -179,6 +255,34 @@ describe('MarkerListView active highlight and tick refresh', () => {
 		// 15s falls in the first marker's segment (10s..30s)
 		expect(at(rows, 0).classList.contains('is-active')).toBe(true);
 		expect(at(rows, 1).classList.contains('is-active')).toBe(false);
+	});
+
+	// In reading view the row is a real button, so a reader announces its name
+	// and nothing else about it. The accent edge marking the segment being
+	// played was visible and unannounced, which left a listener working
+	// through the chapters with no way to tell where the track had reached.
+	it('marks the playing row as the current one for a reader', () => {
+		const { view, listContainer } = setup(false);
+
+		view.updateActive(15);
+
+		const rows = allEls(listContainer, MARKER.row);
+		expect(at(rows, 0).getAttribute('aria-current')).toBe('true');
+		expect(at(rows, 1).hasAttribute('aria-current')).toBe(false);
+	});
+
+	// aria-current spells "not the current one" by absence, so a row the
+	// position has left has to give the attribute up rather than carry it
+	// saying false, which some readers announce anyway.
+	it('takes the mark off a row the position has moved past', () => {
+		const { view, listContainer } = setup(false);
+
+		view.updateActive(15);
+		view.updateActive(45);
+
+		const rows = allEls(listContainer, MARKER.row);
+		expect(at(rows, 0).hasAttribute('aria-current')).toBe(false);
+		expect(at(rows, 1).getAttribute('aria-current')).toBe('true');
 	});
 
 	it('refreshes ticks without rebuilding the list', () => {

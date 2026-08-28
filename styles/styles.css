@@ -676,13 +676,34 @@ input.aar-input-invalid {
     white-space: nowrap;
 }
 
-/* The whole read-only row is a single jump target */
+/* The whole read-only row is a single jump target, and it is a real button,
+   so it needs the same chrome reset the other player buttons carry. Reading
+   view styles a bare button with a background, a border and centred text, none
+   of which belongs on a row of the list. */
+button.aar-player-marker-row {
+    width: 100%;
+    padding: 1px 4px;
+    border: none;
+    box-shadow: none;
+    background-color: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
 .aar-player-marker-row-clickable {
     cursor: pointer;
 }
 
 .aar-player-marker-row-clickable:hover {
     background-color: var(--background-modifier-hover);
+}
+
+/* Keyboard focus on a marker row, matching the seek area's ring so every
+   focusable part of the player is outlined the same way. */
+.aar-player-marker-row:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
 }
 
 /* Currently-playing segment: highlighted with an accent edge */

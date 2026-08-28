@@ -15,10 +15,7 @@ import {
 } from 'src/transcription/audioChunks';
 import { WAV_HEADER_SIZE } from 'src/audio/WavEncoder';
 import { floatToInt16 } from 'src/audio/pcm';
-import {
-	TRANSCRIBE_BYTES_PER_SEC,
-	TRANSCRIBE_SAMPLE_RATE,
-} from 'src/constants';
+import { TRANSCRIBE_SAMPLE_RATE } from 'src/constants';
 import { decodeAudioBlob } from 'src/audio/AudioFormatConverter';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 import { at, defined } from '../helpers/assertions';
@@ -132,7 +129,7 @@ describe('extractChunkWav', () => {
 	});
 
 	it('tiles adjacent chunks with no duplicated or dropped frame', async () => {
-		const plans = planChunks(3, WAV_HEADER_SIZE + TRANSCRIBE_BYTES_PER_SEC);
+		const plans = planChunks(3, 1);
 		expect(plans).toHaveLength(3);
 
 		const parts = await Promise.all(

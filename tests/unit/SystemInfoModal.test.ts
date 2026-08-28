@@ -11,9 +11,7 @@ import type {
 import { App } from 'obsidian';
 import { el } from '../helpers/dom';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 /** The resolved recording config the modal renders under "Active config". */
 function makeActiveRecordingConfig(): ActiveRecordingConfig {
@@ -54,9 +52,17 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 			arch: 'x64',
 			userAgent: 'test-agent',
 		},
-		audioDevices: [
-			{ deviceId: 'd1', label: 'Mic', groupId: 'g1', kind: 'audioinput' },
-		],
+		audioDevices: {
+			enumerated: true,
+			devices: [
+				{
+					deviceId: 'd1',
+					label: 'Mic',
+					groupId: 'g1',
+					kind: 'audioinput',
+				},
+			],
+		},
 		audioCapabilities: {
 			supportedFormats: ['webm'],
 			supportedSampleRates: [44100],
@@ -88,9 +94,7 @@ function makeModal(data: DiagnosticsData = makeData()) {
 	return modal;
 }
 
-// ---------------------------------------------------------------------------
 // onOpen
-// ---------------------------------------------------------------------------
 
 describe('SystemInfoModal.onOpen', () => {
 	it('renders a "Copy to clipboard" button', () => {
@@ -119,9 +123,7 @@ describe('SystemInfoModal.onOpen', () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
 // Copy button behaviour
-// ---------------------------------------------------------------------------
 
 describe('SystemInfoModal copy button', () => {
 	beforeEach(() => {

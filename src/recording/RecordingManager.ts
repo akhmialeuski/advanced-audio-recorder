@@ -64,9 +64,11 @@ import {
 import { describeRecordingError } from './recordingErrors';
 import { InputLevelMonitor } from './InputLevelMonitor';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
+import { WAV_PCM_WARNING_BYTES } from '../audio/WavEncoder';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { TrackWriteQueue } from './TrackWriteQueue';
 import { RecordingFinalizer } from './RecordingFinalizer';
+import { mixLayout } from './StreamingMixer';
 import { PartRotationController } from './PartRotationController';
 import { SessionJournal } from './SessionJournal';
 import {
@@ -676,6 +678,8 @@ export class RecordingManager {
 			partIndex: 0,
 			partPaths: [],
 			partPcmBytes: 0,
+			filePcmBytes: 0,
+			wavCeilingWarned: false,
 		}));
 	}
 
@@ -1137,6 +1141,8 @@ export class RecordingManager {
 		await this.writeQueue.enqueue(target, async () => {
 			target.pcmBuffers.push(data);
 			target.pcmBufferedBytes += data.byteLength;
+			target.filePcmBytes += data.byteLength;
+			this.warnOnApproachingWavCeiling(target);
 			if (this.sessionSplitEnabled) {
 				target.partPcmBytes += data.byteLength;
 				const partLimitBytes = computePcmPartLimitBytes(
@@ -1152,6 +1158,84 @@ export class RecordingManager {
 				await this.writeQueue.flushPcmBuffer(target);
 			}
 		});
+	}
+
+	/**
+	 * Tells the user once that the WAV being written is nearing the size a
+	 * RIFF container can describe.
+	 *
+	 * Said while the recording still runs, because the alternative is saying it
+	 * at the stop, where the only outcomes left are a refused save or a file
+	 * players read as truncated. Auto-split is named because it is the one
+	 * setting that takes the ceiling off the session entirely.
+	 * @param target - The track whose audio was just written to
+	 */
+	private warnOnApproachingWavCeiling(target: RecordingTarget): void {
+		if (
+			target.wavCeilingWarned ||
+			this.destinationWavPcmBytes(target) < WAV_PCM_WARNING_BYTES
+		) {
+			return;
+		}
+		// Marked on every track feeding the file, not only on the one the
+		// crossing was noticed on. The counter this was measured from belongs
+		// to the file, so the memory of having spoken about it has to as well:
+		// kept per track, a merged session repeated the same warning once for
+		// each track as its next chunk arrived.
+		for (const feeding of this.targetsSharingDestinationWav(target)) {
+			feeding.wavCeilingWarned = true;
+		}
+		new Notice(
+			'This recording is approaching the 4 GB limit of the WAV format. ' +
+				'Enable auto-split in the settings, or stop and start a new ' +
+				'recording, so the audio can be saved.',
+		);
+	}
+
+	/**
+	 * The tracks whose audio lands in the same WAV as this one's.
+	 *
+	 * The container ceiling applies to a file, and which tracks make up that
+	 * file is one question: a merged session writes one WAV for all of them, a
+	 * per-track session writes one for this track alone. Both the size that
+	 * faces the ceiling and the memory of having warned about it are properties
+	 * of that file, so both ask here instead of each deciding for itself.
+	 * @param target - The track whose audio was just written to
+	 * @returns The tracks sharing its destination file, itself included
+	 */
+	private targetsSharingDestinationWav(
+		target: RecordingTarget,
+	): readonly RecordingTarget[] {
+		const merged =
+			this.isWavPcmRecording &&
+			this.sessionOutputMode === 'single' &&
+			this.chunkTargets.length > 1;
+		return merged ? this.chunkTargets : [target];
+	}
+
+	/**
+	 * Size of the WAV this target's audio is actually destined for.
+	 *
+	 * A session merging its tracks into one file writes no per-track WAV at
+	 * all, so the target's own counter names a file that never exists, and the
+	 * one that does is larger than any track that feeds it: a mono track
+	 * beside a stereo one is mixed up to stereo, which doubles it. Measuring
+	 * the track instead of the mix let the merged file pass the ceiling with
+	 * no warning at any point.
+	 * @param target - The track whose audio was just written to
+	 * @returns PCM bytes of the WAV that faces the container ceiling
+	 */
+	private destinationWavPcmBytes(target: RecordingTarget): number {
+		const feeding = this.targetsSharingDestinationWav(target);
+		if (feeding.length < 2) {
+			return target.filePcmBytes;
+		}
+		return mixLayout(
+			feeding.map((chunkTarget) => ({
+				pcmBytes: chunkTarget.filePcmBytes,
+				channels: chunkTarget.pcmChannels,
+			})),
+		).pcmByteLength;
 	}
 
 	/**

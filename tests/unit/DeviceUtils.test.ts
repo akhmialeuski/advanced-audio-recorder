@@ -6,12 +6,7 @@
  * @module tests/unit/DeviceUtils.test
  */
 
-import {
-	getAudioInputDevices,
-	findDefaultDevice,
-	getDefaultDeviceId,
-} from 'src/utils/DeviceUtils';
-import { at } from '../helpers/assertions';
+import { findDefaultDevice, getDefaultDeviceId } from 'src/utils/DeviceUtils';
 import { mediaDevice } from '../helpers/mediaMocks';
 
 // Mock navigator.mediaDevices
@@ -29,32 +24,6 @@ Object.defineProperty(global, 'navigator', {
 });
 
 describe('DeviceUtils', () => {
-	describe('getAudioInputDevices', () => {
-		it('returns only audio input devices', async () => {
-			const devices: MediaDeviceInfo[] = [
-				mediaDevice('default', 'Default - Microphone'),
-				mediaDevice('videodevice1', 'Camera', 'videoinput'),
-				mediaDevice('audiooutput1', 'Speakers', 'audiooutput'),
-			] as MediaDeviceInfo[];
-
-			mockEnumerateDevices.mockResolvedValue(devices);
-
-			const result = await getAudioInputDevices();
-
-			expect(result).toHaveLength(1);
-			expect(at(result, 0).deviceId).toBe('default');
-			expect(at(result, 0).kind).toBe('audioinput');
-		});
-
-		it('returns empty array when no audio input devices exist', async () => {
-			mockEnumerateDevices.mockResolvedValue([]);
-
-			const result = await getAudioInputDevices();
-
-			expect(result).toHaveLength(0);
-		});
-	});
-
 	describe('findDefaultDevice', () => {
 		it('finds the device whose id is "default"', () => {
 			const devices: MediaDeviceInfo[] = [

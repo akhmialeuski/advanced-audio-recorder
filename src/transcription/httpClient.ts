@@ -314,6 +314,19 @@ export interface HttpResponse {
 }
 
 /**
+ * The failure a cancelled request carries out, worded the same wherever the
+ * cancel was noticed: mid-flight by the fetch transport, or between the CORS
+ * probe and the request it was asked for.
+ * @param safeUrl - Query-stripped URL for the message
+ */
+function cancelledError(safeUrl: string): HttpError {
+	return new HttpError(
+		NO_HTTP_STATUS,
+		`Request to ${safeUrl} was cancelled.`,
+	);
+}
+
+/**
  * Performs the request through `fetch`, which - unlike `requestUrl` -
  * honors an AbortSignal, so pressing Cancel releases the socket and the
  * in-flight request body immediately instead of after the timeout. The
@@ -368,12 +381,12 @@ async function fetchResponse(
 		return { status: response.status, headers: responseHeaders, text };
 	} catch (error) {
 		if (controller.signal.aborted) {
-			throw new HttpError(
-				NO_HTTP_STATUS,
-				timedOut
-					? `Request to ${safeUrl} timed out after ${String(timeoutMs)} ms.`
-					: `Request to ${safeUrl} was cancelled.`,
-			);
+			throw timedOut
+				? new HttpError(
+						NO_HTTP_STATUS,
+						`Request to ${safeUrl} timed out after ${String(timeoutMs)} ms.`,
+					)
+				: cancelledError(safeUrl);
 		}
 		throw error;
 	} finally {
@@ -383,25 +396,86 @@ async function fetchResponse(
 }
 
 /**
- * Origins that refused a `fetch` and then answered `requestUrl`, which for an
- * API endpoint is all but always CORS.
+ * Deadline for the CORS probe below. It is one bodyless request to a host that
+ * is about to be sent a real one, so it never needs the request's own limit:
+ * a host that cannot answer this in ten seconds is answered through
+ * `requestUrl`, which is where an unknown host was headed anyway.
+ */
+const CORS_PROBE_TIMEOUT_MS = 10 * MS_PER_SECOND;
+
+/**
+ * What asking an origin about browser requests came back as.
+ *
+ * `answered` is a response the browser could read, whatever its status.
+ * `unreadable` is a refusal, a dropped link, or the run's own cancel, which
+ * arrive indistinguishably. `silent` is the host accepting the connection and
+ * never answering. The two endings are told apart because they cost different
+ * amounts to reach, not because the caller acts on them differently: neither
+ * answers the question, and {@link PROBES_PER_ORIGIN} governs both.
+ */
+type CorsProbeOutcome = 'answered' | 'unreadable' | 'silent';
+
+/**
+ * Probes in a row an origin may leave unanswered before it stops being asked.
+ *
+ * Two rather than one, because a single failed probe describes a moment and
+ * not an endpoint. A refusal, a dropped link and a deadline that ran out all
+ * arrive here as the same unanswered question, and any of them can be a
+ * machine waking up or a link coming back a second later - which is why
+ * {@link originTakesFetch} refuses to read a refusal off one observation
+ * either. Two in a row is a different claim: a link that was genuinely down
+ * would have taken `requestUrl` with it and ended the run, so an origin that
+ * keeps failing the browser transport alone while the fallback answers is
+ * describing itself rather than the moment.
+ *
+ * Two rather than more, because the second attempt is the last one that can
+ * still learn something cheaply. Asking a silent host again spends
+ * {@link CORS_PROBE_TIMEOUT_MS} and asking an unreadable one spends a round
+ * trip; what neither is worth is the twelfth ask, which a recording split into
+ * a dozen parts used to pay once per part.
+ */
+const PROBES_PER_ORIGIN = 2;
+
+/**
+ * Probes each origin has left unanswered in a row, for origins still worth
+ * asking. An answer clears it, because the question this counter tracks is
+ * whether asking again could tell us anything, and an answer says it can.
+ *
+ * Held apart from {@link originTakesFetch} rather than written into it,
+ * because it answers a different question: not what this origin does with a
+ * browser request, which is still unknown, but whether asking again could tell
+ * us. The body goes by `requestUrl` either way.
+ */
+const unansweredProbes = new Map<string, number>();
+
+/**
+ * What each origin does with a browser request, learned once per session.
  *
  * Which transport an endpoint takes cannot be read off anything the plugin
  * holds: `requestUrl` is exempt from CORS and cannot abort, `fetch` is the
  * reverse, and only the endpoint's own answer says which one it will accept.
- * So it is asked - once. Asking per request meant a run against a
- * CORS-refusing server sent every body twice, once for the refusal and once
- * for the request that works, which on an LLM step is a whole transcript.
- *
- * Both halves of the condition are needed, because `fetch` reports a CORS
- * refusal and an unreachable network as the same opaque TypeError. Only the
- * fallback's own answer tells them apart, so it is what admits an origin here
- * (see {@link dispatchRequest}). The memory then lasts the session: a server
+ * So it is asked - once, and cheaply. The memory lasts the session: a server
  * whose CORS is fixed while Obsidian is open is picked up on the next reload,
  * and the cost of being wrong is a request that cannot be aborted, which is
  * where such an endpoint stood before it was ever tried.
+ *
+ * Only a confirmed answer is stored, and only the real request confirms one.
+ * `true` is written by an answer the browser could read, from the probe or
+ * from the request itself. `false` is written only where `fetch` was refused
+ * carrying this request's own method and headers and `requestUrl` then
+ * answered, which is what separates a refusal from an unreachable host.
+ *
+ * A probe that could not be read writes nothing at all. It reports a CORS
+ * refusal and a dropped link as the same opaque TypeError, and it asks about a
+ * bodyless HEAD rather than about the request behind it - an endpoint may
+ * serve one and turn away the other, which is what a reverse proxy adding its
+ * CORS headers on 2xx alone does. Such an origin stays unanswered and is asked
+ * again by the next request, at the cost of one bodyless round trip; the body
+ * meanwhile goes by the transport that cannot be made to send it twice. The
+ * asking is bounded rather than endless - see {@link PROBES_PER_ORIGIN} - so
+ * an origin that never answers costs a fixed price instead of one per request.
  */
-const corsRefusingOrigins = new Set<string>();
+const originTakesFetch = new Map<string, boolean>();
 
 /**
  * The origin a request belongs to, or null for a URL that does not parse -
@@ -417,15 +491,125 @@ function originOf(url: string): string | null {
 }
 
 /**
- * Chooses the transport for one request: abortable `fetch` when a signal
- * was provided, otherwise Obsidian's CORS-exempt `requestUrl`. A fetch
- * that fails at the network layer (typically a CORS rejection from an
- * OpenAI-compatible endpoint that only expects server-side clients) is
- * retried once through `requestUrl` - re-sending the body, but that
- * matches the pre-abort behavior where every request went that way. An
- * origin that answers there is not asked through `fetch` again for the rest
- * of the session; one that answers neither transport is asked again next
- * time, because nothing about it was learned.
+ * Asks an origin whether it answers browser requests, without paying the real
+ * request's body for the answer.
+ *
+ * A HEAD carrying no headers of its own is a simple request: the browser sends
+ * no preflight, and there is no body to lose if it is refused. A response that
+ * comes back at all had to carry the headers that make it readable, so its
+ * status is beside the point - a 404 or a 405 proves as much as a 200.
+ * It answers for a HEAD and not for the request behind it, so a refusal here
+ * is not one there: see {@link originTakesFetch} for what is remembered.
+ * @param url - The URL the real request is about to go to
+ * @param outer - The run's own cancel, so pressing Cancel during the probe
+ *   does not leave the dialog waiting out the probe's deadline
+ * @returns Which of the three answers came back
+ */
+async function probeCors(
+	url: string,
+	outer: AbortSignal | undefined,
+): Promise<CorsProbeOutcome> {
+	const controller = new AbortController();
+	let silent = false;
+	const timer = window.setTimeout(() => {
+		silent = true;
+		controller.abort();
+	}, CORS_PROBE_TIMEOUT_MS);
+	const onOuterAbort = (): void => {
+		controller.abort();
+	};
+	if (outer?.aborted) {
+		controller.abort();
+	} else {
+		outer?.addEventListener('abort', onOuterAbort);
+	}
+	try {
+		// Reached through window for the same reason as fetchResponse: it
+		// keeps the call off the no-restricted-globals ban without an inline
+		// eslint-disable.
+		await window.fetch(url, {
+			method: 'HEAD',
+			signal: controller.signal,
+		});
+		return 'answered';
+	} catch {
+		// Two of the three answers arrive as one exception, and only the flag
+		// above tells them apart: a refusal, a dropped link and the run's own
+		// cancel are all a rejection here, while the deadline is the single
+		// ending that says the host will not answer at all. Reported rather
+		// than thrown, because which ending it was is the question asked.
+		return silent ? 'silent' : 'unreadable';
+	} finally {
+		window.clearTimeout(timer);
+		outer?.removeEventListener('abort', onOuterAbort);
+	}
+}
+
+/**
+ * Whether the abortable transport is usable for this URL: true when the origin
+ * answers browser requests, false when it is known not to, and null when the
+ * question went unanswered, which leaves the origin exactly as unknown as it
+ * was. An unknown origin is asked again by the next request until
+ * {@link PROBES_PER_ORIGIN} asks have gone unanswered, after which it is left
+ * to the fallback rather than probed on every request for the rest of the
+ * session.
+ * @param url - Full request URL
+ * @param origin - The URL's origin, or null when it has none to remember
+ * @param outer - The run's own cancel, handed to the probe so a Cancel during
+ *   it ends the run rather than waiting out the probe's deadline
+ * @returns True to use `fetch`, false to use `requestUrl`, null when the
+ *   question could not be answered
+ */
+async function fetchIsUsable(
+	url: string,
+	origin: string | null,
+	outer: AbortSignal | undefined,
+): Promise<boolean | null> {
+	if (origin === null) {
+		// A URL with no origin to key a memory on is same-origin by
+		// construction, so CORS has nothing to say about it.
+		return true;
+	}
+	const known = originTakesFetch.get(origin);
+	if (known !== undefined) {
+		return known;
+	}
+	const unanswered = unansweredProbes.get(origin) ?? 0;
+	if (unanswered >= PROBES_PER_ORIGIN) {
+		return null;
+	}
+	const outcome = await probeCors(url, outer);
+	if (outcome === 'answered') {
+		unansweredProbes.delete(origin);
+		originTakesFetch.set(origin, true);
+		return true;
+	}
+	// Both remaining endings are counted, because both leave the question
+	// where it was and neither is worth asking indefinitely. Which of the two
+	// it was decides only what the ask cost, not what it taught.
+	unansweredProbes.set(origin, unanswered + 1);
+	// Nothing goes into originTakesFetch either way: a HEAD the browser could
+	// not read rules out neither a reachable host nor an endpoint that takes
+	// the real request. The caller sends this one through the transport that
+	// cannot double-send.
+	return null;
+}
+
+/**
+ * Chooses the transport for one request: abortable `fetch` where the origin
+ * takes browser requests, otherwise Obsidian's CORS-exempt `requestUrl`.
+ *
+ * Which one an unknown origin takes is settled by a bodyless probe rather than
+ * by the request itself. Gambling the request meant that against a
+ * CORS-refusing server the first body went out twice: once for the refusal,
+ * once for the transport that works. A refusal reaches the browser only after
+ * the server has already taken the upload, decoded it and billed it, so on a
+ * transcription that is the audio paid for twice.
+ *
+ * The fallback path below still stands, because a probe that passed does not
+ * promise the real request will: this one carries an Authorization header and
+ * therefore a preflight of its own, which the endpoint may refuse. That
+ * refusal happens before the body is sent, so it costs nothing but the retry.
  * @param options - Request options
  * @param timeoutMs - Deadline in milliseconds
  * @param safeUrl - Query-stripped URL for error messages
@@ -436,22 +620,36 @@ async function dispatchRequest(
 	safeUrl: string,
 ): Promise<HttpResponse> {
 	const origin = originOf(options.url);
-	const abortable =
-		options.signal !== undefined &&
-		!(origin !== null && corsRefusingOrigins.has(origin));
-	let fetchRefused = false;
-	if (abortable) {
-		try {
-			return await fetchResponse(options, timeoutMs, safeUrl);
-		} catch (error) {
-			// An HttpError here is a timeout or cancel - final either way. A
-			// TypeError is fetch's network-layer failure (CORS/DNS/refused);
-			// only then is requestUrl worth a try.
-			if (error instanceof HttpError || !(error instanceof TypeError)) {
-				throw error;
+	// Unconfirmed until `requestUrl` answers: see originTakesFetch. Set only
+	// where the real request was the one refused, never from a probe: what a
+	// probe could not read says nothing about the request it went ahead of.
+	let refusalToConfirm = false;
+	if (options.signal !== undefined) {
+		const usable = await fetchIsUsable(options.url, origin, options.signal);
+		if (usable === true) {
+			try {
+				return await fetchResponse(options, timeoutMs, safeUrl);
+			} catch (error) {
+				// An HttpError here is a timeout or cancel - final either
+				// way. A TypeError is fetch's network-layer failure
+				// (a refused preflight, DNS, a dropped link); only then is
+				// requestUrl worth a try.
+				if (
+					error instanceof HttpError ||
+					!(error instanceof TypeError)
+				) {
+					throw error;
+				}
+				refusalToConfirm = true;
 			}
-			fetchRefused = true;
 		}
+	}
+	// The fallback cannot be aborted, so a Cancel that landed while the probe
+	// was in flight has to stop the run here rather than send a body nobody is
+	// waiting for. The abortable path above answers its own cancel, which is
+	// why the question is asked on this side of the branch and not before it.
+	if (options.signal?.aborted) {
+		throw cancelledError(safeUrl);
 	}
 	const response = await withTimeout(
 		requestUrl({
@@ -470,15 +668,14 @@ async function dispatchRequest(
 		safeUrl,
 	);
 	// The fallback answered where fetch could not, and that difference is the
-	// evidence: `fetch` reports a CORS refusal and a dead network with the
-	// same opaque TypeError, so the refusal alone says nothing about which it
-	// was. A host that answers requestUrl is reachable, which leaves CORS. A
-	// host that answers neither was simply unreachable for a moment - a
-	// dropped link, a machine waking up - and remembering that as a refusal
-	// used to cost the origin its abortable transport for the rest of the
-	// session, so a Cancel there stopped releasing anything.
-	if (fetchRefused && origin !== null) {
-		corsRefusingOrigins.add(origin);
+	// evidence: a host that answers requestUrl is reachable, which leaves
+	// CORS. Both halves are about this request rather than about the probe -
+	// fetch was refused carrying its own method and headers - which is what
+	// makes the pair worth remembering. A host that answers neither was simply
+	// unreachable for a moment, a dropped link or a machine waking up, and
+	// nothing is written for it.
+	if (refusalToConfirm && origin !== null) {
+		originTakesFetch.set(origin, false);
 	}
 	return response;
 }

@@ -15,8 +15,12 @@ import {
 	GEMINI_CAPABILITIES,
 	isProviderAvailableOnPlatform,
 	LOCAL_WHISPER_CAPABILITIES,
+	effectiveWordTimestamps,
 	providerSupportsDiarization,
 	providerSupportsDictionary,
+	providerWordTimestamps,
+	wordTimestampsNote,
+	wordTimestampsSelectable,
 	TRANSCRIPTION_PROVIDER_CAPABILITIES,
 	WHISPER_API_CAPABILITIES,
 } from 'src/transcription/providers/capabilities';
@@ -34,6 +38,17 @@ describe('transcription provider capabilities', () => {
 		expect(LOCAL_WHISPER_CAPABILITIES.supportsDiarization).toBe(false);
 		expect(DEEPGRAM_CAPABILITIES.supportsDiarization).toBe(true);
 		expect(GEMINI_CAPABILITIES.supportsDiarization).toBe(true);
+	});
+
+	// Three answers, one per behaviour actually observed: Whisper API adds the
+	// `word` granularity when asked, Deepgram's mapping keeps the words of
+	// every response whether asked or not, and the other two return segment
+	// offsets and nothing finer.
+	it('records what each engine does with a request for per-word timing', () => {
+		expect(WHISPER_API_CAPABILITIES.wordTimestamps).toBe('requested');
+		expect(DEEPGRAM_CAPABILITIES.wordTimestamps).toBe('always');
+		expect(GEMINI_CAPABILITIES.wordTimestamps).toBe('none');
+		expect(LOCAL_WHISPER_CAPABILITIES.wordTimestamps).toBe('none');
 	});
 
 	it('caps only Gemini by per-request duration; others are unbounded', () => {
@@ -115,6 +130,54 @@ describe('effectiveDiarize', () => {
 	});
 });
 
+describe('per-word timing gates', () => {
+	it('lets the user choose only on the engine that reads the request', () => {
+		expect(wordTimestampsSelectable('whisper-api')).toBe(true);
+		expect(wordTimestampsSelectable('deepgram')).toBe(false);
+		expect(wordTimestampsSelectable('gemini')).toBe(false);
+		expect(wordTimestampsSelectable('local-whisper')).toBe(false);
+	});
+
+	it('honours the request on the engine that reads it', () => {
+		expect(effectiveWordTimestamps('whisper-api', true)).toBe(true);
+		expect(effectiveWordTimestamps('whisper-api', false)).toBe(false);
+	});
+
+	// The stored value is left alone on the way past, so switching back to an
+	// engine that reads it finds the user's own choice still there.
+	it('drops a stored "on" for an engine that never returns words', () => {
+		expect(effectiveWordTimestamps('gemini', true)).toBe(false);
+		expect(effectiveWordTimestamps('local-whisper', true)).toBe(false);
+	});
+
+	it('reports words for an engine that returns them regardless', () => {
+		expect(effectiveWordTimestamps('deepgram', false)).toBe(true);
+	});
+
+	it('explains each engine in its own terms', () => {
+		expect(wordTimestampsNote('whisper-api')).toMatch(/Request per-word/);
+		expect(wordTimestampsNote('deepgram')).toMatch(/on every run/);
+		expect(wordTimestampsNote('gemini')).toMatch(/segment-level/);
+	});
+
+	// Where the timing lands is what makes the option intelligible at all, and
+	// a user who has only ever seen the row disabled has never been told it.
+	// The note that dropped the JSON clause was the note on the two engines
+	// where the row is always disabled.
+	it.each(Object.values(TRANSCRIPTION_PROVIDER_IDS))(
+		'says where the timing is recorded on %s',
+		(id) => {
+			expect(wordTimestampsNote(id)).toMatch(/JSON/);
+		},
+	);
+
+	it('answers the same question through the table and the accessor', () => {
+		expect(providerWordTimestamps('deepgram')).toBe(
+			DEEPGRAM_CAPABILITIES.wordTimestamps,
+		);
+	});
+});
+
 describe('transcription engine id constants', () => {
 	it('are the source for each provider id', () => {
 		expect(
@@ -131,6 +194,7 @@ describe('transcription engine id constants', () => {
 				binaryPath: '',
 				modelPath: '',
 				extraArgs: [],
+				processTimeoutMs: 60_000,
 			}).id,
 		).toBe(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER);
 	});

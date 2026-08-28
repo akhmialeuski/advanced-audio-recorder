@@ -59,6 +59,22 @@ export interface PlayerControlsHost {
 }
 
 /**
+ * Shows a toggle button's state, to the eye and to a screen reader.
+ *
+ * The styling class alone left the state visible and unannounced: nothing said
+ * whether looping was on or the sound was off, so a listener using a reader
+ * had to play the track to find out. `aria-pressed` is what a button that
+ * stays pressed reports itself with, and it is set here rather than at each
+ * call site so the class and the attribute cannot drift apart.
+ * @param button - The toggle button
+ * @param active - Whether it is currently engaged
+ */
+function setToggleState(button: HTMLElement, active: boolean): void {
+	button.toggleClass('is-active', active);
+	button.setAttribute('aria-pressed', String(active));
+}
+
+/**
  * Builds and updates the control row. One instance per render pass; the
  * DOM it owns is recreated by the player's containerEl.empty().
  */
@@ -86,15 +102,18 @@ export class PlayerControlsView {
 
 		this.playButton = this.createIconButton(
 			controls,
-			// Reflect the shared audio's current state, so a player rendered
-			// while playback is already running (e.g. after a mode switch)
-			// shows the pause icon rather than a stale play icon
-			state.paused ? PLAYER_ICONS.play : PLAYER_ICONS.pause,
+			PLAYER_ICONS.play,
 			'Play / pause',
 			() => {
 				this.callbacks.onTogglePlay();
 			},
 		);
+		// Reflect the shared audio's current state, so a player rendered while
+		// playback is already running (e.g. after a mode switch) shows the
+		// pause icon and reports it, rather than a stale play icon. Through
+		// setPlaying rather than as arguments here, the way setMuted below
+		// already does it, so the icon and the state have one place to be set.
+		this.setPlaying(!state.paused);
 
 		this.createIconButton(
 			controls,
@@ -155,13 +174,10 @@ export class PlayerControlsView {
 			PLAYER_ICONS.loop,
 			'Loop',
 			() => {
-				loopButton.toggleClass(
-					'is-active',
-					this.callbacks.onToggleLoop(),
-				);
+				setToggleState(loopButton, this.callbacks.onToggleLoop());
 			},
 		);
-		loopButton.toggleClass('is-active', state.loop);
+		setToggleState(loopButton, state.loop);
 
 		if (state.markersEnabled) {
 			// Adding markers/chapters is edit-only; hidden in reading view
@@ -216,6 +232,14 @@ export class PlayerControlsView {
 
 	/**
 	 * Reflects the playing state on the play/pause button.
+	 *
+	 * The same gap loop and mute had, and the same answer: the icon said which
+	 * of the two states the audio was in and said it to nobody else, so a
+	 * listener using a screen reader heard one name whether the track was
+	 * running or stopped. Not through {@link setToggleState}, though, because
+	 * that also raises the accent class those two wear to show they are
+	 * engaged, and a play button is not engaged - it is the one control of the
+	 * row whose icon already carries its state to the eye.
 	 * @param playing - True while the shared audio is playing
 	 */
 	setPlaying(playing: boolean): void {
@@ -224,6 +248,7 @@ export class PlayerControlsView {
 				this.playButton,
 				playing ? PLAYER_ICONS.pause : PLAYER_ICONS.play,
 			);
+			this.playButton.setAttribute('aria-pressed', String(playing));
 		}
 	}
 
@@ -245,7 +270,7 @@ export class PlayerControlsView {
 				this.muteButton,
 				muted ? PLAYER_ICONS.muted : PLAYER_ICONS.volume,
 			);
-			this.muteButton.toggleClass('is-active', muted);
+			setToggleState(this.muteButton, muted);
 		}
 	}
 

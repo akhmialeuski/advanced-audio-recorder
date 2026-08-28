@@ -22,6 +22,7 @@ import { MARKER, PLAYER } from '../helpers/selectors';
 import {
 	app,
 	decoder,
+	makeContainer,
 	makeEditableContainer,
 	makeFakeAudio,
 	makeFile,
@@ -40,18 +41,37 @@ const MARKERS: PlayerMarker[] = [
 	{ id: 'b', time: 30, label: 'Question', kind: 'bookmark' },
 ];
 
-/** A rendered player in edit mode, with the given markers already stored. */
-async function openWithMarkers(markers: PlayerMarker[] = MARKERS): Promise<{
+/** What a rendered player hands a test to drive and observe it. */
+interface OpenPlayer {
 	player: AudioPlayer;
 	container: HTMLElement;
 	audio: FakeAudio;
 	store: ReturnType<typeof makeMarkerStore>;
-}> {
+}
+
+/** A rendered player in reading view, where the whole row is the jump target. */
+async function openReadingWithMarkers(
+	markers: PlayerMarker[] = MARKERS,
+): Promise<OpenPlayer> {
+	return openWithMarkers(markers, makeContainer());
+}
+
+/**
+ * A rendered player with the given markers already stored, in edit mode
+ * unless the caller supplies a container of its own.
+ * @param markers - What the store holds for this recording
+ * @param host - The element the player renders into
+ * @returns The player and what a test drives it through
+ */
+async function openWithMarkers(
+	markers: PlayerMarker[] = MARKERS,
+	host: HTMLElement = makeEditableContainer(),
+): Promise<OpenPlayer> {
 	const audio = makeFakeAudio();
 	audio.duration = 60;
 	const store = makeMarkerStore();
 	store.data.set('rec.wav', [...markers]);
-	const container = makeEditableContainer();
+	const container = host;
 	const player = new AudioPlayer(
 		container,
 		app,
@@ -176,6 +196,70 @@ describe('the marker list', () => {
 		await tick();
 
 		expect(store.getMarkers).not.toHaveBeenCalled();
+	});
+});
+
+// Reading view is where a recording is listened to rather than edited, and
+// where the whole row is the jump target. It used to be a block element with a
+// data attribute on it: tab skipped it and Enter did nothing, so the chapters
+// of a recording could only be reached with a pointer. Driven here against the
+// real audio element, because what has to move is the playback position and
+// not a callback.
+describe('reaching a chapter from the keyboard in reading view', () => {
+	it('offers the marker row as a focusable control', async () => {
+		const { container } = await openReadingWithMarkers();
+
+		const row = el(container, MARKER.byId('b'));
+		row.focus();
+
+		expect(document.activeElement).toBe(row);
+	});
+
+	it('moves the playback position when a focused row is activated', async () => {
+		const { container, audio } = await openReadingWithMarkers();
+		const row = el(container, MARKER.byId('b'));
+
+		row.focus();
+		// What Enter and Space do to a focused button, which is the whole
+		// reason the row is one.
+		row.click();
+
+		expect(audio.currentTime).toBe(30);
+		expect(audio.play).not.toHaveBeenCalled();
+	});
+
+	// Driven through the real audio element rather than through updateActive,
+	// because the mark has to follow the position the element reports as it
+	// plays. A row announced by name alone told a listener which chapters
+	// exist and never which one they were in.
+	it('marks the chapter the position is inside as the audio plays', async () => {
+		const { container, audio } = await openReadingWithMarkers();
+
+		audio.currentTime = 15;
+		audio.emit('timeupdate');
+
+		expect(
+			el(container, MARKER.byId('a')).getAttribute('aria-current'),
+		).toBe('true');
+		expect(
+			el(container, MARKER.byId('b')).hasAttribute('aria-current'),
+		).toBe(false);
+	});
+
+	it('moves the mark on as the position reaches the next chapter', async () => {
+		const { container, audio } = await openReadingWithMarkers();
+
+		audio.currentTime = 15;
+		audio.emit('timeupdate');
+		audio.currentTime = 45;
+		audio.emit('timeupdate');
+
+		expect(
+			el(container, MARKER.byId('a')).hasAttribute('aria-current'),
+		).toBe(false);
+		expect(
+			el(container, MARKER.byId('b')).getAttribute('aria-current'),
+		).toBe('true');
 	});
 });
 

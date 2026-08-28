@@ -3,6 +3,16 @@
  * segments captured by the streaming recording path. AudioBuffer
  * encoding goes through mediabunny (see AudioEncoder), which handles
  * WAVE output natively.
+ *
+ * The container has a hard ceiling and this module is where it is enforced:
+ * a RIFF header states both its own size and its payload's in 32-bit fields,
+ * so a WAV file cannot describe more than four gigabytes. RF64 is the
+ * standard extension that lifts it into 64-bit fields, and it is deliberately
+ * not implemented: auto-split already answers the long recording, all the way
+ * through to the player and the splitter, while none of the transcription
+ * engines these files are handed to afterwards read RF64. A recording that
+ * would overflow is refused before the allocation instead, with the captured
+ * PCM segments left on disk.
  * @module audio/WavEncoder
  */
 
@@ -45,6 +55,76 @@ export function getWavHeaderInfo(
 export const WAV_HEADER_SIZE = 44;
 
 /**
+ * Largest PCM payload a RIFF header can describe.
+ *
+ * Both size fields are unsigned 32-bit. The data field holds the payload
+ * alone, while the RIFF field holds the payload plus the rest of the header
+ * (everything after its own 8 bytes), so the RIFF field is the one that
+ * overflows first and it is what this bound is taken from.
+ */
+export const WAV_MAX_PCM_BYTES = 0xffffffff - (WAV_HEADER_SIZE - 8);
+
+/**
+ * Share of {@link WAV_MAX_PCM_BYTES} a recording may reach before the user is
+ * told. Far enough below the ceiling that a warning still leaves time to act:
+ * at 48 kHz stereo the remaining tenth is around half an hour of capture.
+ */
+const WAV_PCM_WARNING_RATIO = 0.9;
+
+/** PCM size at which a recording is warned that the container is filling up. */
+export const WAV_PCM_WARNING_BYTES = Math.floor(
+	WAV_MAX_PCM_BYTES * WAV_PCM_WARNING_RATIO,
+);
+
+/**
+ * What a caller is told when the audio outgrew the container.
+ *
+ * Recovery is deliberately not offered as the way out, though the segments it
+ * reads are exactly what survives: it assembles through this same module, so
+ * it meets this same refusal and reports the track as one it could not
+ * recover. Naming it would send the user round a loop that cannot end, and the
+ * only thing that does end it is a session that was split as it was recorded.
+ */
+export const WAV_SIZE_LIMIT_MESSAGE =
+	'This recording is too long for a WAV file, which cannot exceed 4 GB. ' +
+	'The captured audio is kept as raw segments, but it cannot be assembled ' +
+	'into one WAV. Enable auto-split in the recording settings so a long ' +
+	'recording is saved as parts.';
+
+/**
+ * The refusal of audio that outgrew the container.
+ *
+ * A type of its own because a caller has to be able to tell it from a failure
+ * of the way it happened to be building the file. A mix that can be attempted
+ * another way answers a failure by trying that way, and this is the one
+ * failure where the other way is no better: the ceiling belongs to the audio,
+ * not to the route taken to encode it, so every route reaches it.
+ */
+export class WavSizeLimitError extends Error {
+	constructor() {
+		super(WAV_SIZE_LIMIT_MESSAGE);
+		this.name = 'WavSizeLimitError';
+	}
+}
+
+/**
+ * Refuses a PCM payload the container cannot describe.
+ *
+ * Asked before the allocation on every path that builds a WAV, because both
+ * outcomes of asking later are a loss: `setUint32` drops the high bits without
+ * a word and writes a file players read as truncated, and an allocation past
+ * the engine's own ceiling throws only after the recording has stopped. Asked
+ * here, the refusal costs nothing and the PCM segments are still on disk.
+ * @param pcmByteLength - Total PCM payload in bytes
+ * @throws WavSizeLimitError when the payload does not fit a WAV container
+ */
+function assertPcmFitsWav(pcmByteLength: number): void {
+	if (pcmByteLength > WAV_MAX_PCM_BYTES) {
+		throw new WavSizeLimitError();
+	}
+}
+
+/**
  * Bits per sample for 16-bit PCM.
  */
 const BITS_PER_SAMPLE = 16;
@@ -61,12 +141,14 @@ const WAV_FORMAT_PCM = 1;
  * @param sampleRate - Sample rate in Hz
  * @param pcmDataLength - Total length of PCM data in bytes
  * @returns ArrayBuffer containing the WAV header
+ * @throws WavSizeLimitError when the PCM data is too large for the container
  */
 export function createWavHeader(
 	numChannels: number,
 	sampleRate: number,
 	pcmDataLength: number,
 ): ArrayBuffer {
+	assertPcmFitsWav(pcmDataLength);
 	const header = new ArrayBuffer(WAV_HEADER_SIZE);
 	const view = new DataView(header);
 	const byteRate = sampleRate * numChannels * (BITS_PER_SAMPLE / 8);
@@ -114,12 +196,14 @@ export function createWavHeader(
  * @param sampleRate - Sample rate in Hz
  * @param pcmByteLength - Total length of PCM data in bytes
  * @returns ArrayBuffer sized for header plus PCM, header written
+ * @throws WavSizeLimitError when the PCM data is too large for the container
  */
 export function createWavFileBuffer(
 	numChannels: number,
 	sampleRate: number,
 	pcmByteLength: number,
 ): ArrayBuffer {
+	assertPcmFitsWav(pcmByteLength);
 	const wavBuffer = new ArrayBuffer(WAV_HEADER_SIZE + pcmByteLength);
 	new Uint8Array(wavBuffer).set(
 		new Uint8Array(createWavHeader(numChannels, sampleRate, pcmByteLength)),
@@ -135,6 +219,8 @@ export function createWavFileBuffer(
  * @param numChannels - Number of audio channels
  * @param sampleRate - Sample rate in Hz
  * @returns ArrayBuffer containing the complete WAV file
+ * @throws WavSizeLimitError when the segments together are too large for a
+ *   WAV container
  */
 export function assembleWavFromPcmSegments(
 	segments: ArrayBuffer[],
@@ -173,6 +259,8 @@ export function assembleWavFromPcmSegments(
  * @param app - Obsidian App instance
  * @returns ArrayBuffer containing the complete WAV file
  * @throws Error when a segment grew between stat and read
+ * @throws WavSizeLimitError when the segments together are too large for a
+ *   WAV container
  */
 export async function assembleWavFromPcmSegmentFiles(
 	segmentPaths: string[],
@@ -190,6 +278,7 @@ export async function assembleWavFromPcmSegmentFiles(
 				(sum, stat) => sum + (stat?.size ?? 0),
 				0,
 			);
+			assertPcmFitsWav(totalPcmSize);
 			const wavBuffer = new ArrayBuffer(WAV_HEADER_SIZE + totalPcmSize);
 			const wavView = new Uint8Array(wavBuffer);
 			let offset = WAV_HEADER_SIZE;

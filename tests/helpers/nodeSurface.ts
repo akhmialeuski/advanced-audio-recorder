@@ -17,6 +17,13 @@
 export interface NodeSurfaceBehaviour {
 	/** Error handed to the execFile callback, for a binary that fails. */
 	execError?: Error;
+	/**
+	 * What the binary writes to stderr. whisper.cpp names its own failure
+	 * there - a model it could not load, a flag it does not know - while the
+	 * error handed back beside it says no more than that the exit was
+	 * non-zero.
+	 */
+	stderr?: string;
 	/** What the binary writes to its output file. */
 	output?: string;
 	/**
@@ -29,6 +36,30 @@ export interface NodeSurfaceBehaviour {
 	 * modules are not reachable.
 	 */
 	noRequire?: boolean;
+	/**
+	 * Makes the binary run until Node stops it, the way a hung one does.
+	 *
+	 * The callback then fires only on what execFile was given to stop it with:
+	 * the abort signal, or the timeout. Node marks a process it killed with
+	 * `killed`, and that is what the caller reads to tell a run that ran out of
+	 * time from a binary that simply failed.
+	 */
+	neverSettles?: boolean;
+	/**
+	 * Error thrown by `rmSync`, for a temp file the platform will not unlink.
+	 *
+	 * `force` answers a file that is not there and nothing else, so Windows
+	 * refusing to remove one the killed binary still holds open reaches the
+	 * caller as a throw from its cleanup.
+	 */
+	removalFails?: Error;
+}
+
+/** How a child process was bounded and cancelled, as the caller asked. */
+export interface NodeInvocationOptions {
+	maxBuffer: number;
+	timeout?: number;
+	signal?: AbortSignal;
 }
 
 /** One `execFile` call the code under test made. */
@@ -37,6 +68,11 @@ export interface NodeInvocation {
 	file: string;
 	/** The arguments it passed, in order. */
 	args: string[];
+	/**
+	 * What it asked Node to bound the run with. The kill itself is Node's, so
+	 * these options are what a test can hold it to.
+	 */
+	options: NodeInvocationOptions;
 }
 
 /** An installed Node surface, and what the code under test did with it. */
@@ -51,6 +87,8 @@ export interface NodeSurface {
 	invocations: NodeInvocation[];
 	/** The arguments of the most recent invocation, empty when there was none. */
 	lastArgs: () => string[];
+	/** The options of the most recent invocation, or undefined when there was none. */
+	lastOptions: () => NodeInvocationOptions | undefined;
 	/** Puts `window.require` back the way it was found. */
 	restore: () => void;
 }
@@ -58,6 +96,19 @@ export interface NodeSurface {
 /** The window as the desktop app hands it over. */
 interface RequireWindow {
 	require?: (id: string) => unknown;
+}
+
+/**
+ * The error Node hands back for a child it killed itself, which is how both a
+ * timeout and an abort arrive: the `killed` marker is the only thing that
+ * separates them from a binary that exited with a status of its own.
+ * @param name - Error name Node uses for this ending
+ * @returns The error to hand the callback
+ */
+function killedError(name: string): Error {
+	const error = new Error('Command failed');
+	error.name = name;
+	return Object.assign(error, { killed: true });
 }
 
 /** The default whisper.cpp JSON, for a run that does not script its own. */
@@ -82,6 +133,7 @@ export function installNodeSurface(
 		removed: [],
 		invocations: [],
 		lastArgs: () => surface.invocations.at(-1)?.args ?? [],
+		lastOptions: () => surface.invocations.at(-1)?.options,
 		restore: () => {
 			if (original) {
 				Object.defineProperty(window, 'require', original);
@@ -103,14 +155,28 @@ export function installNodeSurface(
 			execFile: (
 				file: string,
 				args: string[],
-				_options: unknown,
+				options: NodeInvocationOptions,
 				callback: (
 					error: Error | null,
 					stdout: string,
 					stderr: string,
 				) => void,
 			): void => {
-				surface.invocations.push({ file, args });
+				surface.invocations.push({ file, args, options });
+				if (behaviour.neverSettles) {
+					// Nothing is written and nothing answers until whatever
+					// execFile was given to stop the run with does, which is
+					// exactly the shape of a binary that hangs.
+					options.signal?.addEventListener('abort', () => {
+						callback(killedError('AbortError'), '', '');
+					});
+					if (options.timeout !== undefined) {
+						setTimeout(() => {
+							callback(killedError('Error'), '', '');
+						}, options.timeout);
+					}
+					return;
+				}
 				// whisper.cpp writes its JSON next to the base name given by
 				// -of. Honouring that is what makes the caller's -of / read
 				// pairing falsifiable: a run that reads any other path finds
@@ -126,7 +192,11 @@ export function installNodeSurface(
 						behaviour.output ?? DEFAULT_OUTPUT,
 					);
 				}
-				callback(behaviour.execError ?? null, '', '');
+				callback(
+					behaviour.execError ?? null,
+					'',
+					behaviour.stderr ?? '',
+				);
 			},
 		},
 		fs: {
@@ -151,6 +221,9 @@ export function installNodeSurface(
 			},
 			rmSync: (path: string): void => {
 				surface.removed.push(path);
+				if (behaviour.removalFails) {
+					throw behaviour.removalFails;
+				}
 				files.delete(path);
 			},
 		},

@@ -6,7 +6,7 @@
  */
 
 import { RecordingManager } from 'src/recording/RecordingManager';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 import { RecordingStatus } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
@@ -35,6 +35,7 @@ import { flushMicrotasks } from '../helpers/async';
 import { Notice } from 'obsidian';
 import { internalsOf } from '../helpers/doubles';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
+import { WAV_PCM_WARNING_BYTES } from 'src/audio/WavEncoder';
 import { tickTimes } from '../helpers/async';
 
 // Mock AudioStreamHandler
@@ -54,9 +55,13 @@ jest.mock('src/recording/PcmStreamRecorder', () =>
 	require('../mocks/modules/pcmStreamRecorder'),
 );
 
-/** The chunk callback the manager gave the PCM recorder it built. */
-function pcmChunkCallback(): (data: ArrayBuffer) => void {
-	return at(jest.mocked(PcmStreamRecorder).mock.calls, 0)[2];
+/**
+ * The chunk callback the manager gave one of the PCM recorders it built.
+ * @param track - Index of the recorder, in the order the manager built them
+ * @returns The callback that recorder reports captured audio through
+ */
+function pcmChunkCallback(track = 0): (data: ArrayBuffer) => void {
+	return at(jest.mocked(PcmStreamRecorder).mock.calls, track)[2];
 }
 
 installRecordingMediaStubs();
@@ -397,6 +402,8 @@ describe('RecordingManager', () => {
 			pcmBuffers: ArrayBuffer[];
 			pcmBufferedBytes: number;
 			partPcmBytes: number;
+			filePcmBytes: number;
+			pcmChannels: number;
 		}
 
 		interface ManagerInternals {
@@ -494,6 +501,126 @@ describe('RecordingManager', () => {
 				expect.stringMatching(/-part2\.wav$/),
 				expect.anything(),
 			);
+		});
+
+		/** Notices about the recording running out of WAV container. */
+		const getCeilingNotices = (): unknown[][] =>
+			(Notice as jest.Mock).mock.calls.filter((call) =>
+				String(call[0]).includes('approaching the 4 GB limit'),
+			);
+
+		/**
+		 * Starts a WAV session with auto-split off and puts its file counter
+		 * a couple of bytes below the warning threshold, so the next chunk
+		 * crosses it without anyone allocating four gigabytes.
+		 * @returns The track's internals, ready to be fed chunks
+		 */
+		async function startNearTheCeiling(): Promise<TargetInternals> {
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: false,
+			});
+			await manager.startRecording();
+			const target = at(getInternals(manager).chunkTargets, 0);
+			target.filePcmBytes = WAV_PCM_WARNING_BYTES - 2;
+			return target;
+		}
+
+		// Auto-split off is the case that can reach the ceiling at all, and
+		// the warning has to arrive while the session can still act on it: at
+		// the stop the only outcomes left are a refused save and a file
+		// players read as truncated.
+		it('warns when a WAV recording approaches the container ceiling', async () => {
+			const target = await startNearTheCeiling();
+
+			pcmChunkCallback()(new ArrayBuffer(2));
+			await target.pendingWrite;
+
+			expect(getCeilingNotices()).toHaveLength(1);
+		});
+
+		it('warns once rather than on every chunk past the threshold', async () => {
+			const target = await startNearTheCeiling();
+
+			pcmChunkCallback()(new ArrayBuffer(2));
+			await target.pendingWrite;
+			pcmChunkCallback()(new ArrayBuffer(2));
+			await target.pendingWrite;
+
+			expect(getCeilingNotices()).toHaveLength(1);
+		});
+
+		it('stays quiet while the file is still well inside the container', async () => {
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: false,
+			});
+			await manager.startRecording();
+
+			pcmChunkCallback()(new ArrayBuffer(6_000_000));
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
+
+			expect(getCeilingNotices()).toHaveLength(0);
+		});
+
+		// A session merging its tracks writes no per-track WAV at all, and the
+		// file it does write is larger than any track feeding it: a long mono
+		// track beside a stereo one is mixed up to stereo, which doubles it.
+		// Warning on the track let the merged file pass the ceiling in
+		// silence, and the refusal then arrived at the stop with the whole
+		// session already recorded.
+		/**
+		 * Starts a merged two-track WAV session, a mono track beside a stereo
+		 * one, with the mono track's counter just below where the up-mix puts
+		 * the merged file over the warning threshold.
+		 * @returns Both tracks' internals, mono first
+		 */
+		async function startMergedNearTheCeiling(): Promise<
+			[TargetInternals, TargetInternals]
+		> {
+			useDesktopPlatform();
+			stubAudioStreams({ count: 2 });
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: false,
+				enableMultiTrack: true,
+				outputMode: 'single',
+			});
+			await manager.startRecording();
+			const [mono, stereo] = getInternals(manager).chunkTargets;
+			defined(mono).pcmChannels = 1;
+			defined(stereo).pcmChannels = 2;
+			// A quarter of the ceiling in frames, which the up-mix to stereo
+			// turns into the whole of it, while the track itself stays at
+			// half and would never have warned on its own.
+			defined(mono).filePcmBytes =
+				Math.ceil(WAV_PCM_WARNING_BYTES / 4) * 2 - 2;
+			return [defined(mono), defined(stereo)];
+		}
+
+		it('warns on the merged file rather than on the track feeding it', async () => {
+			const [mono] = await startMergedNearTheCeiling();
+
+			pcmChunkCallback()(new ArrayBuffer(2));
+			await mono.pendingWrite;
+
+			expect(mono.filePcmBytes).toBeLessThan(WAV_PCM_WARNING_BYTES);
+			expect(getCeilingNotices()).toHaveLength(1);
+		});
+
+		// The merged session writes one file, so it gets one warning. Held per
+		// track, the memory of having warned said nothing about the other
+		// tracks feeding the same file, and each of them repeated the notice
+		// as its own next chunk arrived - four tracks, four notices, one file.
+		it('warns once about the merged file however many tracks feed it', async () => {
+			const [mono, stereo] = await startMergedNearTheCeiling();
+
+			pcmChunkCallback(0)(new ArrayBuffer(2));
+			await mono.pendingWrite;
+			pcmChunkCallback(1)(new ArrayBuffer(2));
+			await stereo.pendingWrite;
+
+			expect(getCeilingNotices()).toHaveLength(1);
 		});
 
 		it('does not split PCM recordings when auto-split is disabled', async () => {

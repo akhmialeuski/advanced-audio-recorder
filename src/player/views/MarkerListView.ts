@@ -7,6 +7,13 @@
  * marker data - this view only renders what it is given and reports user
  * intent back. Handlers are delegated once per container so rebuilding rows or
  * ticks never accumulates per-element listeners.
+ *
+ * A read-only row is a button, and an editable one is not. The whole row is
+ * the jump target in reading view, and a block element carrying a data
+ * attribute is reachable by pointer alone: tab skips it, Enter and Space do
+ * nothing, and a screen reader announces plain text. The editable row never
+ * had the problem, because there the jump is a real button beside the rename
+ * field. Reading view gets one too, and it is the row itself.
  * @module player/views/MarkerListView
  */
 
@@ -29,6 +36,17 @@ import {
  * edit/preview by hotkey), without writing on every keystroke.
  */
 const RENAME_DEBOUNCE_MS = 400;
+
+/**
+ * What activating a jump target does, worded by the kind of marker it leads
+ * to. Both rows say it: the editable row's timecode button and the read-only
+ * row itself, which is a button of its own.
+ * @param kind - Whether the row holds a chapter or a bookmark
+ * @returns The action, as the opening of an accessible name
+ */
+function jumpAction(kind: MarkerKind): string {
+	return kind === MARKER_KIND.chapter ? 'Jump to chapter' : 'Jump to marker';
+}
 
 /** Lifecycle hooks the view borrows from the owning render child. */
 export interface MarkerListHost {
@@ -216,7 +234,19 @@ export class MarkerListView {
 		}
 		const index = activeMarkerIndex(this.sortedMarkers, currentTime);
 		this.rowEls.forEach((rowEl, i) => {
-			rowEl.toggleClass('is-active', i === index);
+			const playing = i === index;
+			rowEl.toggleClass('is-active', playing);
+			// Beside the class rather than instead of it. The accent edge says
+			// which segment is playing to the eye and said it to nobody else,
+			// which in reading view leaves a real button whose announced name
+			// is the same whether the track is inside it or nowhere near it.
+			// Removed rather than set false, which is how aria-current spells
+			// "not this one".
+			if (playing) {
+				rowEl.setAttribute('aria-current', 'true');
+			} else {
+				rowEl.removeAttribute('aria-current');
+			}
 		});
 	}
 
@@ -283,9 +313,15 @@ export class MarkerListView {
 			durationSeconds ??
 			rows.reduce((max, row) => Math.max(max, row.time), 0);
 		for (const row of rows) {
-			const rowEl = this.listEl.createDiv({
-				cls: 'aar-player-marker-row',
-			});
+			// A button in reading view, where the row is the jump target, and a
+			// plain block in edit mode, where it holds a text field and two
+			// buttons of its own and nesting them in a button is invalid.
+			const rowEl = this.editable
+				? this.listEl.createDiv({ cls: 'aar-player-marker-row' })
+				: this.listEl.createEl('button', {
+						cls: 'aar-player-marker-row',
+						attr: { type: 'button' },
+					});
 			this.rowEls.push(rowEl);
 			if (this.editable) {
 				this.buildEditableRow(rowEl, row, reference);
@@ -312,12 +348,9 @@ export class MarkerListView {
 		});
 		jump.dataset.action = MARKER_ROW_ACTION.jump;
 		jump.dataset.markerId = row.id;
-		jump.setAttribute(
-			'aria-label',
-			row.kind === MARKER_KIND.chapter
-				? 'Jump to chapter'
-				: 'Jump to marker',
-		);
+		// The action alone here: this button sits inside the row rather than
+		// being it, so the rename field beside it still carries the identity.
+		jump.setAttribute('aria-label', jumpAction(row.kind));
 		setIcon(
 			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
 			row.kind === MARKER_KIND.chapter ? 'list' : 'bookmark',
@@ -349,18 +382,25 @@ export class MarkerListView {
 		row: MarkerRow,
 		referenceSeconds: number,
 	): void {
+		// The element is a button (see renderList), so focus order, Enter and
+		// Space come from the platform rather than from a key handler here.
 		rowEl.addClass('aar-player-marker-row-clickable');
 		rowEl.dataset.action = MARKER_ROW_ACTION.jump;
 		rowEl.dataset.markerId = row.id;
+		const timecode = formatTimecode(row.time, referenceSeconds);
+		// The row is the button, so this name replaces the text inside it
+		// rather than introducing it: what the spans below show has to be said
+		// here too, or every chapter in the list announces identically. A
+		// marker with no name of its own is told apart by its time alone.
 		rowEl.setAttribute(
 			'aria-label',
-			row.kind === MARKER_KIND.chapter
-				? 'Jump to chapter'
-				: 'Jump to marker',
+			row.label
+				? `${jumpAction(row.kind)}: ${row.label} at ${timecode}`
+				: `${jumpAction(row.kind)} at ${timecode}`,
 		);
 		rowEl.createSpan({
 			cls: 'aar-player-marker-time',
-			text: formatTimecode(row.time, referenceSeconds),
+			text: timecode,
 		});
 		setIcon(
 			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),

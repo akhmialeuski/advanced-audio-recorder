@@ -26,6 +26,7 @@
 
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import {
+	audioDeviceApi,
 	missingCaptureIndexes,
 	watchStreamEndings,
 } from './AudioStreamHandler';
@@ -78,7 +79,7 @@ export class CaptureLossWatcher {
 		this.reportStreamsAlreadyEnded(streams);
 		// Absent where the platform exposes no device list at all; the track
 		// subscription above is then the only signal, which is enough.
-		const devices = navigator.mediaDevices as MediaDevices | undefined;
+		const devices = audioDeviceApi();
 		if (!devices) {
 			return;
 		}
@@ -96,7 +97,7 @@ export class CaptureLossWatcher {
 	release(): void {
 		this.detachTracks?.();
 		this.detachTracks = null;
-		const devices = navigator.mediaDevices as MediaDevices | undefined;
+		const devices = audioDeviceApi();
 		if (devices && this.deviceChangeHandler) {
 			devices.removeEventListener(
 				'devicechange',

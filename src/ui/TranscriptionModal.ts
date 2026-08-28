@@ -37,11 +37,14 @@ import {
 	buildCostEstimate,
 	costEstimateNeedsDuration,
 	effectiveDiarize,
+	effectiveWordTimestamps,
 	effectiveTranscriptDestination,
 	estimateStepCost,
 	formatUsd,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
+	wordTimestampsNote,
+	wordTimestampsSelectable,
 	providerSupportsDictionary,
 	transcribeFile,
 	TranscriptionCancelledError,
@@ -406,9 +409,17 @@ export class TranscriptionModal extends PluginModal {
 		}
 		addToggle(ctx, {
 			name: 'Word-level timestamps',
-			desc: 'Request per-word timing (recorded in JSON file output only).',
-			get: () => s.transcriptionWordTimestamps,
+			desc: wordTimestampsNote(s.transcriptionProvider),
+			// Reflect what this run will produce: a stored "off" reads as on
+			// for an engine that returns the words anyway, and a stored "on"
+			// as off for one that never does.
+			get: () =>
+				effectiveWordTimestamps(
+					s.transcriptionProvider,
+					s.transcriptionWordTimestamps,
+				),
 			set: (v) => (s.transcriptionWordTimestamps = v),
+			disabled: !wordTimestampsSelectable(s.transcriptionProvider),
 		});
 
 		// Advanced settings: a per-run master switch mirroring the settings tab.

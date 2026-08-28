@@ -120,6 +120,7 @@ describe('settings definitions', () => {
 		},
 		renderDocumentationLink: renderDocs as (host: HTMLElement) => void,
 		devices: {
+			enumerated: true,
 			inputs: {
 				'mic-1': 'Built-in microphone',
 				'iface-1': 'Audio interface',
@@ -559,6 +560,21 @@ describe('settings definitions', () => {
 			expect(isVisible('Request timeout')).toBe(false);
 		});
 
+		// Its mirror: the local engine still runs something of unpredictable
+		// length, and that something is a process rather than a request. One of
+		// the two rows is always on screen, and never both.
+		it('offers the local run timeout only to the engine that runs a process', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			expect(isVisible('Local run timeout')).toBe(false);
+
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
+
+			expect(isVisible('Local run timeout')).toBe(true);
+		});
+
 		it('lists every engine and refuses the ones this device cannot run', () => {
 			// The list reads the same on every device; picking an engine this
 			// one cannot run is refused with the reason, rather than silently
@@ -618,6 +634,42 @@ describe('settings definitions', () => {
 				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
 
 			expect(typeof disabled === 'function' && disabled()).toBe(false);
+		});
+
+		// Same shape as the diarization row above, for the same reason: an
+		// engine decides this for itself, so the switch is shown and locked
+		// with its description saying what the engine does instead.
+		it('leaves word timestamps selectable on the engine that reads them', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			const row = rowOf(build(), TRANSCRIPTION, 'Word-level timestamps');
+			const disabled = row.control?.disabled;
+
+			expect(isVisible('Word-level timestamps')).toBe(true);
+			expect(typeof disabled === 'function' && disabled()).toBe(false);
+			expect(row.desc).toMatch(/Request per-word/);
+		});
+
+		it('locks word timestamps on an engine that returns none', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider = TRANSCRIPTION_PROVIDER_IDS.GEMINI;
+			const row = rowOf(build(), TRANSCRIPTION, 'Word-level timestamps');
+			const disabled = row.control?.disabled;
+
+			expect(typeof disabled === 'function' && disabled()).toBe(true);
+			expect(row.desc).toMatch(/segment-level/);
+		});
+
+		it('locks word timestamps on an engine that returns them anyway', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
+			const row = rowOf(build(), TRANSCRIPTION, 'Word-level timestamps');
+			const disabled = row.control?.disabled;
+
+			expect(typeof disabled === 'function' && disabled()).toBe(true);
+			expect(row.desc).toMatch(/on every run/);
 		});
 
 		it('hosts a provider key on that provider\u2019s page', () => {

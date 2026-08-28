@@ -166,6 +166,21 @@ export type RecordingTarget = {
 	partPaths: string[];
 	/** Bytes of PCM data accumulated toward the current auto-split part. */
 	partPcmBytes: number;
+	/**
+	 * Bytes of PCM data destined for the WAV file being written now.
+	 *
+	 * Separate from {@link partPcmBytes}, which only exists while auto-split
+	 * runs: this counter is what the container ceiling applies to, and the
+	 * ceiling applies to every WAV whether or not the session splits. With
+	 * auto-split on it tracks the current part, with it off the whole session.
+	 */
+	filePcmBytes: number;
+	/**
+	 * Whether the user has already been warned that this file is approaching
+	 * the WAV size ceiling. Held per target so the warning is shown once per
+	 * file rather than once per chunk over the threshold.
+	 */
+	wavCeilingWarned: boolean;
 };
 
 /**

@@ -797,7 +797,6 @@ describe('TranscriptionModal per-run options', () => {
 
 	it.each([
 		{ name: 'Speaker diarization', key: 'transcriptionDiarize' },
-		{ name: 'Word-level timestamps', key: 'transcriptionWordTimestamps' },
 		{ name: 'Include timestamps', key: 'transcriptIncludeTimestamps' },
 		{ name: 'Include speakers', key: 'transcriptIncludeSpeakers' },
 		{ name: 'LLM post-processing', key: 'llmPostProcessEnabled' },
@@ -814,6 +813,20 @@ describe('TranscriptionModal per-run options', () => {
 		expect((runSettings as unknown as Record<string, unknown>)[key]).toBe(
 			!before,
 		);
+	});
+
+	// Out of the table above, which opens on Deepgram: that engine returns
+	// per-word timing whatever the switch says, so its switch is locked and
+	// there is nothing to flip. Whisper API is where the choice is the user's.
+	it('Word-level timestamps flips transcriptionWordTimestamps on the run snapshot', () => {
+		const { modal, runSettings } = openWithEverything({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			transcriptionWordTimestamps: false,
+		});
+
+		rowToggle(settingRow(modal.contentEl, 'Word-level timestamps')).click();
+
+		expect(runSettings.transcriptionWordTimestamps).toBe(true);
 	});
 
 	it('picks another engine for this run alone', () => {
@@ -888,6 +901,46 @@ describe('TranscriptionModal per-run options', () => {
 
 		const row = settingRow(modal.contentEl, 'Speaker diarization');
 
+		expect(rowToggleOn(row)).toBe(true);
+	});
+
+	it('leaves the word-timestamp toggle live on the engine that reads it', () => {
+		const { modal } = openWithEverything({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			transcriptionWordTimestamps: true,
+		});
+
+		const row = settingRow(modal.contentEl, 'Word-level timestamps');
+
+		expect(rowToggle(row)).not.toBeDisabledControl();
+		expect(rowToggleOn(row)).toBe(true);
+	});
+
+	// Off and unclickable: the transcript will carry no words, so a switch
+	// left on would promise a JSON field that never arrives.
+	it('leaves the word-timestamp toggle inert for an engine that returns none', () => {
+		const { modal } = openWithEverything({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			transcriptionWordTimestamps: true,
+		});
+
+		const row = settingRow(modal.contentEl, 'Word-level timestamps');
+
+		expect(rowToggle(row)).toBeDisabledControl();
+		expect(rowToggleOn(row)).toBe(false);
+	});
+
+	// On and unclickable: Deepgram returns the words whatever the stored
+	// value says, so showing it off would be the same lie the other way.
+	it('shows the word-timestamp toggle on for an engine that always returns words', () => {
+		const { modal } = openWithEverything({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			transcriptionWordTimestamps: false,
+		});
+
+		const row = settingRow(modal.contentEl, 'Word-level timestamps');
+
+		expect(rowToggle(row)).toBeDisabledControl();
 		expect(rowToggleOn(row)).toBe(true);
 	});
 });

@@ -8,7 +8,7 @@
 import { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
 import { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
 import { DebugLogger } from 'src/utils/DebugLogger';
-import type { RecordingSessionConfig } from 'src/types';
+import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
@@ -23,7 +23,10 @@ import {
 	convertBlobToWavBuffer,
 	mergeAudioTracks,
 } from 'src/audio/AudioFormatConverter';
-import { assembleWavFromPcmSegmentFiles } from 'src/audio/WavEncoder';
+import {
+	assembleWavFromPcmSegmentFiles,
+	WavSizeLimitError,
+} from 'src/audio/WavEncoder';
 import { insertFileLinks } from 'src/recording/NoteInserter';
 import { canStreamMix, mixPcmTracksToWav } from 'src/recording/StreamingMixer';
 import { createSession, createTarget } from '../helpers/recordingFixtures';
@@ -254,6 +257,23 @@ describe('RecordingFinalizer', () => {
 				expect.any(ArrayBuffer),
 			);
 			expect(mockApp.vault.adapter.remove).toHaveBeenCalledTimes(2);
+		});
+
+		// Until the file is written the audio exists only in those segments, so
+		// a refused assembly - a recording past the container ceiling - has to
+		// leave them where the recovery journal can still find them.
+		it('keeps the segments when the assembly refuses the recording', async () => {
+			jest.mocked(assembleWavFromPcmSegmentFiles).mockRejectedValueOnce(
+				new Error('This recording is too long for a WAV file'),
+			);
+			const target = createTarget({ segmentPaths: ['pcm1.tmp'] });
+
+			await expect(
+				finalizer.assembleWavFile(target, '/final.wav'),
+			).rejects.toThrow(/too long for a WAV file/);
+
+			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
 		});
 
 		it('keeps the file and notify when segment removal fails', async () => {
@@ -567,6 +587,37 @@ describe('RecordingFinalizer', () => {
 			);
 		});
 
+		// Every other streaming-mix failure is a reason to mix another way, so
+		// the fallback answers them all. The container ceiling is the one that
+		// belongs to the audio rather than to the route: the Web Audio mix
+		// builds the same oversized WAV through mediabunny, where nothing
+		// checks the ceiling at all, and the message naming auto-split - the
+		// one thing that makes a session this long saveable - is lost on the
+		// way to a mix that cannot succeed either.
+		it('refuses a mix past the container ceiling instead of falling back', async () => {
+			jest.mocked(mixPcmTracksToWav).mockRejectedValueOnce(
+				new WavSizeLimitError(),
+			);
+			buildFinalizer(
+				createSession({
+					isWavPcm: true,
+					outputMode: 'single',
+					outputFormat: 'wav',
+				}),
+			);
+			const targets = [
+				createTarget({ segmentPaths: ['a-pcm.tmp'] }),
+				createTarget({ segmentPaths: ['b-pcm.tmp'] }),
+			];
+
+			await expect(
+				finalizer.saveRecording(targets, 'stamp', null),
+			).rejects.toThrow(/cannot exceed 4 GB/);
+
+			expect(jest.mocked(mergeAudioTracks)).not.toHaveBeenCalled();
+			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
+		});
+
 		it('keeps compressed merged outputs on the Web Audio mix', async () => {
 			buildFinalizer(
 				createSession({
@@ -618,6 +669,80 @@ describe('RecordingFinalizer', () => {
 					'Temporary segment files could not be removed',
 				),
 				['a.tmp', 'b.tmp'],
+			);
+		});
+
+		/**
+		 * A per-track PCM session of two tracks, the first of which the
+		 * container refuses. Both cases below need this same arrangement and
+		 * differ only in what they go on to ask about it.
+		 * @returns The targets, in the order the finalizer walks them
+		 */
+		const twoTracksFirstPastTheCeiling = (): RecordingTarget[] => {
+			jest.mocked(assembleWavFromPcmSegmentFiles).mockRejectedValueOnce(
+				new WavSizeLimitError(),
+			);
+			buildFinalizer(
+				createSession({
+					isWavPcm: true,
+					outputMode: 'multiple',
+					outputFormat: 'wav',
+				}),
+			);
+			return [
+				createTarget({
+					fileBaseName: 'recording-Stereo-stamp',
+					segmentPaths: ['stereo-pcm.tmp'],
+				}),
+				createTarget({
+					fileBaseName: 'recording-Mono-stamp',
+					segmentPaths: ['mono-pcm.tmp'],
+				}),
+			];
+		};
+
+		// The ceiling belongs to one file, and in this mode every track is its
+		// own file: a stereo track meets it around the sixth hour while the
+		// mono one recorded beside it still has hours to go. Letting the first
+		// refusal end the loop meant the tracks that were still well inside
+		// the limit were never written at all, and a session of four came back
+		// as a single error naming 4 GB.
+		it('saves the tracks under the ceiling when one track is past it', async () => {
+			const targets = twoTracksFirstPastTheCeiling();
+
+			const result = await finalizer.saveRecording(
+				targets,
+				'stamp',
+				null,
+			);
+
+			expect(result.audioPaths).toEqual([
+				expect.stringMatching(/recording-Mono-stamp\.wav$/),
+			]);
+		});
+
+		// The refused track's PCM segments are the only copy of its audio, and
+		// the refusal happens before the assembly removes any of them. Saying
+		// which track it was and why is what makes them findable, and naming
+		// the limit is what tells the user to record the next session in
+		// parts.
+		it('names the refused track and leaves its segments on disk', async () => {
+			const targets = twoTracksFirstPastTheCeiling();
+
+			await finalizer.saveRecording(targets, 'stamp', null);
+
+			expect(
+				getNotices().some(
+					(notice) =>
+						notice.includes('recording-Stereo-stamp') &&
+						notice.includes('cannot exceed 4 GB'),
+				),
+			).toBe(true);
+			expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
+				'mono-pcm.tmp',
+			);
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalledWith(
+				'stereo-pcm.tmp',
 			);
 		});
 	});

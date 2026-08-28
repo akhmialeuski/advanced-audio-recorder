@@ -9,7 +9,6 @@ import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
-import type { RecordingTarget } from 'src/types';
 import {
 	getActiveFileDirectory,
 	getBaseSaveDirectory,
@@ -23,6 +22,7 @@ import {
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { at } from '../helpers/assertions';
+import { createTarget } from '../helpers/recordingFixtures';
 
 // Polyfill Blob.arrayBuffer for jsdom if missing
 
@@ -580,37 +580,16 @@ describe('RecordingFileManager', () => {
 		});
 	});
 
-	// -----------------------------------------------------------------------
 	// cleanupIntermediateFiles
-	// -----------------------------------------------------------------------
 	describe('cleanupIntermediateFiles', () => {
-		function createMockTarget(segmentPaths: string[]): RecordingTarget {
-			return {
-				fileBaseName: 'recording',
-				sourceName: 'TestDevice',
-				bufferedChunks: [],
-				bufferedBytes: 0,
-				segmentIndex: 0,
-				segmentPaths,
-				pendingWrite: Promise.resolve(),
-				pcmBuffers: [],
-				pcmBufferedBytes: 0,
-				pcmChannels: 1,
-				pcmSampleRate: 44100,
-				partIndex: 0,
-				partPaths: [],
-				partPcmBytes: 0,
-			};
-		}
-
 		it('collects segment paths from all targets and remove them', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock).mockResolvedValue(
 				undefined,
 			);
 
 			const targets = [
-				createMockTarget(['seg1.webm', 'seg2.webm']),
-				createMockTarget(['seg3.webm']),
+				createTarget({ segmentPaths: ['seg1.webm', 'seg2.webm'] }),
+				createTarget({ segmentPaths: ['seg3.webm'] }),
 			];
 
 			const result = await cleanupIntermediateFiles(targets, mockApp);
@@ -635,8 +614,8 @@ describe('RecordingFileManager', () => {
 				.mockResolvedValueOnce(undefined); // seg3 ok
 
 			const targets = [
-				createMockTarget(['seg1.webm', 'seg2.webm']),
-				createMockTarget(['seg3.webm']),
+				createTarget({ segmentPaths: ['seg1.webm', 'seg2.webm'] }),
+				createTarget({ segmentPaths: ['seg3.webm'] }),
 			];
 
 			const result = await cleanupIntermediateFiles(targets, mockApp);
@@ -652,7 +631,7 @@ describe('RecordingFileManager', () => {
 		});
 
 		it('handles targets with empty segmentPaths', async () => {
-			const targets = [createMockTarget([]), createMockTarget([])];
+			const targets = [createTarget(), createTarget()];
 
 			const result = await cleanupIntermediateFiles(targets, mockApp);
 
@@ -665,7 +644,7 @@ describe('RecordingFileManager', () => {
 				new Error('fail'),
 			);
 
-			const targets = [createMockTarget(['seg.webm'])];
+			const targets = [createTarget({ segmentPaths: ['seg.webm'] })];
 
 			await cleanupIntermediateFiles(targets, mockApp);
 

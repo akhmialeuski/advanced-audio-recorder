@@ -31,7 +31,9 @@ import {
 	ADVANCED_SECOND_PASS_RATIO_STEP,
 	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
 	MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
+	MAX_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
+	MIN_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 	CLEANUP_GATE_STEP_DB,
@@ -90,6 +92,8 @@ import {
 	effectiveDiarize,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
+	wordTimestampsNote,
+	wordTimestampsSelectable,
 } from '../transcription/providers/capabilities';
 import type { TranscriptionProviderId } from './settingsSchema';
 
@@ -316,6 +320,13 @@ function enabledStages(settings: AudioRecorderSettings): string {
 export interface DeviceOptions {
 	/** Device id to label, for the input dropdowns. */
 	readonly inputs: Record<string, string>;
+	/**
+	 * Whether the device list could be read at all. False where the
+	 * environment exposes no device API, or where enumeration was refused: an
+	 * empty dropdown then means "nothing could be asked" rather than "no
+	 * microphone", and the rows say which.
+	 */
+	readonly enumerated: boolean;
 	/**
 	 * Whether a device offers a channel layout worth choosing. False for a
 	 * device that positively reports a single capture channel, and for no
@@ -550,6 +561,33 @@ function outputFormatGroup(rows: OutputFormatRows): SettingDefinitionItem {
 }
 
 /**
+ * What a device-picking row says under its dropdown.
+ *
+ * An empty dropdown reads as "this machine has no microphone", which is the
+ * one thing it does not mean when the list could not be read: an environment
+ * with no device API - a vault served over plain HTTP, some embedded WebViews
+ * - or an enumeration the platform refused. The row says so rather than
+ * leaving the user to guess at an empty list.
+ * @param devices - The audio-input picture the rows are built from
+ * @param whenListed - What the row says when the list was read
+ * @param selectable - Whether this platform offers the choice at all
+ * @returns The row's description
+ */
+function deviceRowDesc(
+	devices: DeviceOptions,
+	whenListed: string,
+	selectable: boolean,
+): string {
+	if (!selectable) {
+		return 'Not selectable on this device; recording uses the system default microphone.';
+	}
+	if (!devices.enumerated) {
+		return 'The list of audio devices could not be read here, so recording uses the system default microphone.';
+	}
+	return whenListed;
+}
+
+/**
  * The capture hardware: which input, at what rate, in what channel layout.
  * @param settings - Live settings, read by the predicates
  * @param devices - Input devices as last enumerated
@@ -570,9 +608,11 @@ function audioInputGroup(
 			{
 				name: 'Input device',
 				aliases: ['microphone', 'mic', 'source'],
-				desc: deviceSelectable
-					? 'Default input device for single-track recordings. Also changeable from the command palette.'
-					: 'Not selectable on this device; recording uses the system default microphone.',
+				desc: deviceRowDesc(
+					devices,
+					'Default input device for single-track recordings. Also changeable from the command palette.',
+					deviceSelectable,
+				),
 				control: {
 					type: 'dropdown',
 					key: 'audioDeviceId',
@@ -698,7 +738,11 @@ function multiTrackPage(
 				{
 					name: `Track ${String(track)} input`,
 					aliases: ['audio source', 'device'],
-					desc: `Input device recorded into track ${String(track)}.`,
+					desc: deviceRowDesc(
+						devices,
+						`Input device recorded into track ${String(track)}.`,
+						true,
+					),
 					visible: offered,
 					control: {
 						type: 'dropdown',
@@ -1591,18 +1635,28 @@ function transcriptionGroup(
 			...profileCatalogues(ctx, 'transcription'),
 			{
 				name: 'Word-level timestamps',
-				desc: 'Request per-word timing when the provider supports it. Recorded in JSON file output only.',
+				// Read at build time rather than per render, which is enough:
+				// picking another engine reshapes the tree (see
+				// CONTROL_WRITE_EFFECTS), so this row is built again with it.
+				desc: wordTimestampsNote(settings.transcriptionProvider),
 				visible: enabled,
 				control: {
 					type: 'toggle',
 					key: 'transcriptionWordTimestamps',
+					// Kept visible on an engine that decides this for itself:
+					// the option exists, this engine just does not take it.
+					disabled: (): boolean =>
+						!wordTimestampsSelectable(
+							settings.transcriptionProvider,
+						),
 				},
 			},
 			{
 				name: 'Request timeout',
 				desc: 'Minutes before one transcription request is aborted, so a stalled request cannot hang the run.',
 				// Local whisper.cpp runs no HTTP request, so the timeout has
-				// nothing to bound there.
+				// nothing to bound there. The run it does make is bounded by
+				// the row below, which takes this one's place on that engine.
 				visible: (): boolean =>
 					enabled() &&
 					settings.transcriptionProvider !==
@@ -1612,6 +1666,24 @@ function transcriptionGroup(
 					key: 'transcriptionTimeoutMinutes',
 					min: MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
 					max: MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
+					step: 1,
+				},
+			},
+			{
+				name: 'Local run timeout',
+				aliases: ['whisper.cpp', 'process', 'offline'],
+				desc: 'Minutes before the local whisper.cpp process is stopped, so a run that hangs cannot hold the dialog or the CPU. Longer than a network timeout on purpose: the model runs on this machine, and a large one can take longer than the recording itself.',
+				// The mirror of the row above: exactly one of the two is shown,
+				// because exactly one of them bounds the work this engine does.
+				visible: (): boolean =>
+					enabled() &&
+					settings.transcriptionProvider ===
+						TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				control: {
+					type: 'number',
+					key: 'localWhisperTimeoutMinutes',
+					min: MIN_LOCAL_WHISPER_TIMEOUT_MINUTES,
+					max: MAX_LOCAL_WHISPER_TIMEOUT_MINUTES,
 					step: 1,
 				},
 			},

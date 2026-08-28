@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.46,
-			"branches": 93.39,
-			"functions": 98.44,
-			"lines": 98.47
+			"statements": 98.47,
+			"branches": 93.47,
+			"functions": 98.45,
+			"lines": 98.49
 		},
 		"files": {
 			"src/constants.ts": {
@@ -93,7 +93,7 @@
 			},
 			"src/audio/WavEncoder.ts": {
 				"statements": 100,
-				"branches": 90,
+				"branches": 91.66,
 				"functions": 100,
 				"lines": 100
 			},
@@ -380,10 +380,10 @@
 				"lines": 98.9
 			},
 			"src/recording/AudioStreamHandler.ts": {
-				"statements": 99.24,
-				"branches": 94.11,
+				"statements": 99.27,
+				"branches": 94.44,
 				"functions": 100,
-				"lines": 99.21
+				"lines": 99.24
 			},
 			"src/recording/CaptureLossWatcher.ts": {
 				"statements": 100,
@@ -416,10 +416,10 @@
 				"lines": 98.21
 			},
 			"src/recording/PartRotationController.ts": {
-				"statements": 97.03,
+				"statements": 97.1,
 				"branches": 87.75,
 				"functions": 94.44,
-				"lines": 97.03
+				"lines": 97.1
 			},
 			"src/recording/PcmStreamRecorder.ts": {
 				"statements": 97.53,
@@ -434,16 +434,16 @@
 				"lines": 100
 			},
 			"src/recording/RecordingFinalizer.ts": {
-				"statements": 96.6,
-				"branches": 87.77,
+				"statements": 96.33,
+				"branches": 87.5,
 				"functions": 93.33,
-				"lines": 96.6
+				"lines": 96.33
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 98.85,
-				"branches": 93.1,
+				"statements": 98.9,
+				"branches": 93.7,
 				"functions": 100,
-				"lines": 98.83
+				"lines": 98.88
 			},
 			"src/recording/RecordingMarkerCoordinator.ts": {
 				"statements": 100,
@@ -452,10 +452,10 @@
 				"lines": 100
 			},
 			"src/recording/RecoveryService.ts": {
-				"statements": 98.9,
-				"branches": 95.45,
+				"statements": 98.91,
+				"branches": 95.65,
 				"functions": 100,
-				"lines": 98.88
+				"lines": 98.9
 			},
 			"src/recording/SessionJournal.ts": {
 				"statements": 98.38,
@@ -470,10 +470,10 @@
 				"lines": 99.16
 			},
 			"src/recording/StreamingMixer.ts": {
-				"statements": 96.66,
-				"branches": 78.57,
+				"statements": 96.87,
+				"branches": 79.54,
 				"functions": 100,
-				"lines": 96.51
+				"lines": 96.73
 			},
 			"src/recording/TestRecorder.ts": {
 				"statements": 100,
@@ -512,10 +512,10 @@
 				"lines": 96.49
 			},
 			"src/settings/SettingsTab.ts": {
-				"statements": 94.31,
-				"branches": 89.36,
+				"statements": 94.39,
+				"branches": 89.79,
 				"functions": 88.88,
-				"lines": 94.25
+				"lines": 94.34
 			},
 			"src/settings/labels.ts": {
 				"statements": 100,
@@ -566,10 +566,10 @@
 				"lines": 100
 			},
 			"src/settings/settingsDefinitions.ts": {
-				"statements": 99.26,
-				"branches": 94.23,
+				"statements": 99.28,
+				"branches": 94.37,
 				"functions": 100,
-				"lines": 99.24
+				"lines": 99.26
 			},
 			"src/settings/settingsRenderMode.ts": {
 				"statements": 100,
@@ -669,7 +669,7 @@
 			},
 			"src/transcription/audioChunks.ts": {
 				"statements": 100,
-				"branches": 92.85,
+				"branches": 93.75,
 				"functions": 100,
 				"lines": 100
 			},
@@ -705,7 +705,7 @@
 			},
 			"src/transcription/httpClient.ts": {
 				"statements": 100,
-				"branches": 98.93,
+				"branches": 99.07,
 				"functions": 100,
 				"lines": 100
 			},
@@ -813,7 +813,7 @@
 			},
 			"src/transcription/providers/capabilities.ts": {
 				"statements": 100,
-				"branches": 83.33,
+				"branches": 91.66,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1079,8 +1079,8 @@
 	},
 	"suite": {
 		"suites": 206,
-		"tests": 4485,
-		"passed": 4485,
+		"tests": 4599,
+		"passed": 4599,
 		"failed": 0,
 		"todo": 0
 	}
