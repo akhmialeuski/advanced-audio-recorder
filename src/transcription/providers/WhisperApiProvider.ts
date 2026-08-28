@@ -10,10 +10,7 @@
  */
 
 import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
-import {
-	DICTIONARY_JOIN_SEPARATOR,
-	termsWithinWhisperPrompt,
-} from '../dictionaryBias';
+import { whisperPromptValue } from '../dictionaryBias';
 import {
 	authHeader,
 	buildMultipart,
@@ -87,31 +84,17 @@ export class WhisperApiProvider implements TranscriptionProvider {
 				value: options.language,
 			});
 		}
-		// The advanced second pass supplies a full bias sentence that already
-		// folds the relevant terms in; it takes the `prompt` slot over the plain
-		// dictionary join (only one prompt field can be sent). Whisper reads the
-		// last ~224 tokens of the prompt and the sentence puts its most valuable
-		// tokens last, so an over-long sentence degrades from the front.
-		const biasPrompt = options.biasPrompt?.trim();
-		if (biasPrompt) {
+		// OpenAI's `prompt` seeds recognition with preferred spellings, and it
+		// is also where the advanced second pass puts its bias sentence. Which
+		// of the two wins, and how a dictionary is bounded to fit, is one policy
+		// shared with the local engine.
+		const promptValue = whisperPromptValue(options);
+		if (promptValue) {
 			fields.push({
 				type: 'text' as const,
 				name: 'prompt',
-				value: biasPrompt,
+				value: promptValue,
 			});
-		} else if (options.dictionary?.length) {
-			// OpenAI's `prompt` seeds recognition with preferred spellings, but
-			// Whisper only reads the last ~224 tokens, so terms beyond the window
-			// are bounded out here. The service applies the same bound and warns
-			// about the dropped terms; this keeps a directly used provider safe.
-			const terms = termsWithinWhisperPrompt(options.dictionary);
-			if (terms.length) {
-				fields.push({
-					type: 'text' as const,
-					name: 'prompt',
-					value: terms.join(DICTIONARY_JOIN_SEPARATOR),
-				});
-			}
 		}
 
 		const { body, contentType } = buildMultipart(fields);

@@ -18,10 +18,7 @@ import {
 	PLUGIN_LOG_PREFIX,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
-import {
-	DICTIONARY_JOIN_SEPARATOR,
-	termsWithinWhisperPrompt,
-} from '../dictionaryBias';
+import { whisperPromptValue } from '../dictionaryBias';
 import type { TranscriptSegment } from '../TranscriptTypes';
 import { LOCAL_WHISPER_CAPABILITIES } from './capabilities';
 import type { WhisperResult } from './whisperResponse';
@@ -225,21 +222,9 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 		const jsonPath = `${base}.json`;
 		node.fs.writeFileSync(wavPath, new Uint8Array(payload.data));
 
-		// The advanced second pass supplies a full bias sentence that already
-		// folds the relevant terms in; it takes the --prompt slot over the plain
-		// dictionary join. Otherwise, whisper.cpp shares Whisper's ~224-token
-		// prompt window, so bound the dictionary the same way the service does
-		// before building the flag.
-		const biasPrompt = options.biasPrompt?.trim();
-		const promptTerms =
-			!biasPrompt && options.dictionary?.length
-				? termsWithinWhisperPrompt(options.dictionary)
-				: [];
-		const promptValue =
-			biasPrompt ??
-			(promptTerms.length
-				? promptTerms.join(DICTIONARY_JOIN_SEPARATOR)
-				: undefined);
+		// whisper.cpp shares Whisper's single prompt slot and its ~224-token
+		// window, so it shares the policy that fills the slot.
+		const promptValue = whisperPromptValue(options);
 		const args = [
 			'-m',
 			this.config.modelPath,

@@ -227,32 +227,10 @@ export class RecordingFinalizer {
 				);
 				if (filePath) {
 					this.reportProgress(80, 'Cleaning up...');
-					const intermediatePaths = targets.flatMap(
-						(target) => target.segmentPaths,
+					await this.cleanupTemporarySegments(
+						targets.flatMap((target) => target.segmentPaths),
+						() => cleanupIntermediateFiles(targets, this.app),
 					);
-					const failedCleanupPaths = await cleanupIntermediateFiles(
-						targets,
-						this.app,
-					);
-					this.journal.removeSegments(
-						intermediatePaths.filter(
-							(path) => !failedCleanupPaths.includes(path),
-						),
-					);
-					if (failedCleanupPaths.length > 0) {
-						// Keep the merged file: it already contains all
-						// captured audio, while segments removed by the
-						// partial cleanup exist nowhere else. Rolling it back
-						// would lose their audio permanently. Failed segments
-						// stay journaled for the next launch.
-						console.error(
-							`${PLUGIN_LOG_PREFIX} Temporary segment files could not be removed:`,
-							failedCleanupPaths,
-						);
-						new Notice(
-							`Recording saved, but temporary files could not be removed: ${failedCleanupPaths.join(', ')}`,
-						);
-					}
 					fileLinks.push(filePath);
 					// One merged file carries every track's timeline, so all
 					// markers resolve against this single file (part ordinal 0).
@@ -516,27 +494,13 @@ export class RecordingFinalizer {
 		if (reportProgress) {
 			this.reportProgress(80, 'Cleaning up...');
 		}
-		const failedCleanupPaths = await removeTemporaryArtifacts(
-			segmentPaths,
-			'Failed to remove segment file after finalization',
-			this.app,
+		await this.cleanupTemporarySegments(segmentPaths, () =>
+			removeTemporaryArtifacts(
+				segmentPaths,
+				'Failed to remove segment file after finalization',
+				this.app,
+			),
 		);
-		this.journal.removeSegments(
-			segmentPaths.filter((path) => !failedCleanupPaths.includes(path)),
-		);
-		if (failedCleanupPaths.length > 0) {
-			// Keep the final file: it already contains all captured audio,
-			// while segments that were removed exist nowhere else. Rolling
-			// it back would lose their audio permanently and leave part
-			// bookkeeping pointing at missing segment files.
-			console.error(
-				`${PLUGIN_LOG_PREFIX} Temporary segment files could not be removed:`,
-				failedCleanupPaths,
-			);
-			new Notice(
-				`Recording saved, but temporary files could not be removed: ${failedCleanupPaths.join(', ')}`,
-			);
-		}
 
 		return filePath;
 	}
@@ -560,19 +524,37 @@ export class RecordingFinalizer {
 
 		await this.app.vault.createBinary(filePath, wavBuffer);
 
-		const failedPaths = await removeTemporaryArtifacts(
-			target.segmentPaths,
-			'Failed to remove PCM segment file after WAV assembly',
-			this.app,
+		await this.cleanupTemporarySegments(target.segmentPaths, () =>
+			removeTemporaryArtifacts(
+				target.segmentPaths,
+				'Failed to remove PCM segment file after WAV assembly',
+				this.app,
+			),
 		);
+	}
+
+	/**
+	 * Removes a finished session's temporary segments, strikes the ones that
+	 * went from the recovery journal, and reports the ones that stayed.
+	 *
+	 * The saved file is kept whatever happens here. It already contains all
+	 * captured audio, while a segment that was removed exists nowhere else, so
+	 * rolling the file back would lose that audio permanently and leave part
+	 * bookkeeping pointing at files that are gone. A segment that refused to go
+	 * stays journaled instead, and the next launch offers it for recovery.
+	 * @param paths - Segment paths the removal was asked to take
+	 * @param remove - Removal to run, which answers with the paths it could not
+	 * take
+	 */
+	private async cleanupTemporarySegments(
+		paths: readonly string[],
+		remove: () => Promise<string[]>,
+	): Promise<void> {
+		const failedPaths = await remove();
 		this.journal.removeSegments(
-			target.segmentPaths.filter((path) => !failedPaths.includes(path)),
+			paths.filter((path) => !failedPaths.includes(path)),
 		);
 		if (failedPaths.length > 0) {
-			// Keep the assembled file: it already contains all captured
-			// audio, while segments that were removed exist nowhere else.
-			// Rolling it back would lose their audio permanently and leave
-			// part bookkeeping pointing at missing segment files.
 			console.error(
 				`${PLUGIN_LOG_PREFIX} Temporary segment files could not be removed:`,
 				failedPaths,

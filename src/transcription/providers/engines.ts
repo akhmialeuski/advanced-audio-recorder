@@ -49,6 +49,7 @@ import { DeepgramProvider } from './DeepgramProvider';
 import { GeminiProvider } from './GeminiProvider';
 import { LocalWhisperProvider } from './LocalWhisperProvider';
 import { WhisperApiProvider } from './WhisperApiProvider';
+import { GEMINI_TOKEN_RATES, type TokenRate } from './geminiRates';
 import type { TranscriptionProvider } from './TranscriptionProvider';
 import {
 	effectiveDictionary,
@@ -69,13 +70,6 @@ export type EnginePricing =
 			usdPerMillionTextInput: number;
 			usdPerMillionOutput: number;
 	  };
-
-/** A token-billed rate: USD per million audio-input, text-input, and output tokens. */
-interface TokenRate {
-	audioInput: number;
-	textInput: number;
-	output: number;
-}
 
 /** What a cloud engine's client is built from, once its settings check out. */
 interface CloudEngineConfig {
@@ -182,21 +176,6 @@ const DEEPGRAM_RATES: readonly [string, number][] = [
 	['nova-2', 0.0043],
 	['nova', 0.0043],
 	['base', 0.0125],
-];
-
-/**
- * Approximate Gemini transcription rates. On the 2.5 Flash tier audio input is
- * billed higher than text input, so the two are kept apart; the 2.5 Pro tier
- * and the whole 3.x generation bill every input modality at one rate.
- */
-const GEMINI_RATES: readonly [string, TokenRate][] = [
-	['gemini-3.6-flash', { audioInput: 1.5, textInput: 1.5, output: 7.5 }],
-	['gemini-3.5-flash', { audioInput: 1.5, textInput: 1.5, output: 9 }],
-	['gemini-3.5-flash-lite', { audioInput: 0.3, textInput: 0.3, output: 2.5 }],
-	['gemini-2.5-flash-lite', { audioInput: 0.3, textInput: 0.1, output: 0.4 }],
-	['gemini-2.5-flash', { audioInput: 1.0, textInput: 0.3, output: 2.5 }],
-	['gemini-2.5-pro', { audioInput: 1.25, textInput: 1.25, output: 10 }],
-	['gemini-2.0-flash', { audioInput: 0.7, textInput: 0.1, output: 0.4 }],
 ];
 
 /**
@@ -343,7 +322,8 @@ export const TRANSCRIPTION_ENGINES: Record<
 		label: 'Google Gemini',
 		pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
 		model: (s) => s.geminiModel,
-		pricing: (model) => perTokenPricing(matchRate(GEMINI_RATES, model)),
+		pricing: (model) =>
+			perTokenPricing(matchRate(GEMINI_TOKEN_RATES, model)),
 		// Gemini folds terms into a large instruction context with no hard cap.
 		planDictionary: (_model, terms) => ({ applied: terms, omitted: [] }),
 		biasUnsupportedReason: () => null,

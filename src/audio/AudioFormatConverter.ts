@@ -190,75 +190,83 @@ export interface BlobConversionOptions {
 }
 
 /**
- * Converts a compressed audio blob to the target format on the main
- * thread through the shared streaming conversion core (see
- * streamingConversion.ts, also used by the encoding worker).
- * @param recordedBlob - Intermediate compressed blob
- * @param targetFormat - Desired output format
- * @param bitrate - Bitrate in bits per second
- * @param allowRemux - Allow packet copy when the codecs match
- * @param onProgress - Optional encoding progress callback (0-100)
- * @returns Re-encoded blob in the target format
- * @throws Error when the target format has no codec mapping, the
- * input has no audio track, or the conversion cannot process the
- * audio track (the caller falls back to decode and re-encode)
+ * How a ladder step's result reaches the caller.
+ *
+ * The three steps do not agree on a shape: the worker and the decode fallback
+ * hand back a Blob, while the streaming step hands back the bytes it muxed.
+ * Whichever shape a caller wants, one of the two has to be converted, and
+ * naming both conversions here is what lets the ladder be written once. It also
+ * keeps each conversion off the path that never needed it, so the caller that
+ * wants bytes still does not wrap a Blob it would immediately read back.
  */
-async function convertBlobWithConversion(
-	recordedBlob: Blob,
-	targetFormat: string,
-	bitrate: number,
-	allowRemux: boolean,
-	onProgress?: FormatProgressCallback,
-	channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
-): Promise<Blob> {
-	const resultBuffer = await runStreamingConversion(
-		recordedBlob,
-		targetFormat,
-		bitrate,
-		allowRemux,
-		onProgress,
-		channelMode,
-	);
-	return new Blob([resultBuffer], {
-		type: `${MIME_TYPE_AUDIO_PREFIX}${targetFormat}`,
-	});
+interface LadderResult<T> {
+	/** Delivers a step that produced a Blob. */
+	fromBlob(blob: Blob): Promise<T>;
+	/** Delivers a step that produced raw bytes. */
+	fromBuffer(buffer: ArrayBuffer, targetFormat: string): Promise<T>;
 }
 
+/** Delivers the conversion as a Blob, for callers that play or upload it. */
+const AS_BLOB: LadderResult<Blob> = {
+	fromBlob: (blob) => Promise.resolve(blob),
+	fromBuffer: (buffer, targetFormat) =>
+		Promise.resolve(
+			new Blob([buffer], {
+				type: `${MIME_TYPE_AUDIO_PREFIX}${targetFormat}`,
+			}),
+		),
+};
+
+/** Delivers the conversion as bytes, for callers that write it to the vault. */
+const AS_BUFFER: LadderResult<ArrayBuffer> = {
+	fromBlob: (blob) => blob.arrayBuffer(),
+	fromBuffer: (buffer) => Promise.resolve(buffer),
+};
+
 /**
- * Decodes an intermediate blob and re-encodes it to the target format.
- * Tries the streaming Conversion pipeline first and falls back to the
- * full decode-then-encode path on any failure, so every format keeps
- * working even when the input container is not readable by mediabunny.
+ * Runs the three ways of producing the target format in order of cost,
+ * stopping at the first that succeeds: the encoding worker, the streaming
+ * Conversion pipeline on the main thread, and a full decode followed by a
+ * re-encode.
+ *
+ * Each step down is a real loss - the worker keeps the demux and transcode
+ * loop off the UI thread, and streaming keeps memory bounded - so a step is
+ * only abandoned when it throws, and it says in the log why. The last step
+ * throws to the caller: by then there is nothing left to fall back to.
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
  * @param onProgress - Optional encoding progress callback (0-100)
  * @param options - Conversion behavior options
- * @returns Re-encoded blob in the target format
+ * @param deliver - How each step's result reaches the caller
+ * @returns The converted audio in the shape `deliver` produces
  */
-export async function convertBlobToFormat(
+async function runConversionLadder<T>(
 	recordedBlob: Blob,
 	targetFormat: string,
 	bitrate: number,
-	onProgress?: FormatProgressCallback,
-	options: BlobConversionOptions = {},
-): Promise<Blob> {
-	// Worker first: the demux/transcode/mux loop is pure computation
-	// and runs off the UI thread when the worker is available
+	onProgress: FormatProgressCallback | undefined,
+	options: BlobConversionOptions,
+	deliver: LadderResult<T>,
+): Promise<T> {
 	const channelMode = options.channelMode ?? CHANNEL_MODE_SOURCE;
+	const allowRemux = options.allowRemux ?? false;
 	const workerClient =
 		options.workerClient && options.workerClient.isAvailable()
 			? options.workerClient
 			: null;
+
 	if (workerClient) {
 		try {
-			return await workerClient.convertBlob(
-				recordedBlob,
-				targetFormat,
-				bitrate,
-				options.allowRemux ?? false,
-				channelMode,
-				onProgress,
+			return await deliver.fromBlob(
+				await workerClient.convertBlob(
+					recordedBlob,
+					targetFormat,
+					bitrate,
+					allowRemux,
+					channelMode,
+					onProgress,
+				),
 			);
 		} catch (error) {
 			console.warn(
@@ -269,13 +277,16 @@ export async function convertBlobToFormat(
 	}
 
 	try {
-		return await convertBlobWithConversion(
-			recordedBlob,
+		return await deliver.fromBuffer(
+			await runStreamingConversion(
+				recordedBlob,
+				targetFormat,
+				bitrate,
+				allowRemux,
+				onProgress,
+				channelMode,
+			),
 			targetFormat,
-			bitrate,
-			options.allowRemux ?? false,
-			onProgress,
-			channelMode,
 		);
 	} catch (error) {
 		console.warn(
@@ -286,22 +297,46 @@ export async function convertBlobToFormat(
 
 	const arrayBuffer = await recordedBlob.arrayBuffer();
 	const decodedBuffer = await decodeAudioBlob(arrayBuffer, 'convert');
-
-	return encodeAudioBuffer(
-		downmixAudioBuffer(decodedBuffer, channelMode),
-		{ format: targetFormat, bitrate },
-		onProgress,
+	return deliver.fromBlob(
+		await encodeAudioBuffer(
+			downmixAudioBuffer(decodedBuffer, channelMode),
+			{ format: targetFormat, bitrate },
+			onProgress,
+		),
 	);
 }
 
 /**
- * Like {@link convertBlobToFormat} but returns the raw bytes, for callers
- * that hand the result straight to vault.createBinary. The streaming path
- * returns its buffer directly instead of wrapping it in a Blob that the
- * caller would immediately read back out - two avoided copies of the
- * whole converted file. The worker and decode fallbacks still produce a
- * Blob internally and read it once, exactly as the Blob-returning path's
- * callers did before.
+ * Converts an intermediate blob to the target format, returning a Blob.
+ * @param recordedBlob - Intermediate compressed blob
+ * @param targetFormat - Desired output format
+ * @param bitrate - Bitrate in bits per second
+ * @param onProgress - Optional encoding progress callback (0-100)
+ * @param options - Conversion behavior options
+ * @returns Re-encoded blob in the target format
+ */
+export function convertBlobToFormat(
+	recordedBlob: Blob,
+	targetFormat: string,
+	bitrate: number,
+	onProgress?: FormatProgressCallback,
+	options: BlobConversionOptions = {},
+): Promise<Blob> {
+	return runConversionLadder(
+		recordedBlob,
+		targetFormat,
+		bitrate,
+		onProgress,
+		options,
+		AS_BLOB,
+	);
+}
+
+/**
+ * Like {@link convertBlobToFormat} but returns the raw bytes, for callers that
+ * hand the result straight to vault.createBinary. The streaming step returns
+ * its buffer directly instead of wrapping it in a Blob the caller would
+ * immediately read back out - two avoided copies of the whole converted file.
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
@@ -309,61 +344,21 @@ export async function convertBlobToFormat(
  * @param options - Conversion behavior options
  * @returns Re-encoded bytes in the target format
  */
-export async function convertBlobToFormatBuffer(
+export function convertBlobToFormatBuffer(
 	recordedBlob: Blob,
 	targetFormat: string,
 	bitrate: number,
 	onProgress?: FormatProgressCallback,
 	options: BlobConversionOptions = {},
 ): Promise<ArrayBuffer> {
-	const channelMode = options.channelMode ?? CHANNEL_MODE_SOURCE;
-	const workerClient =
-		options.workerClient && options.workerClient.isAvailable()
-			? options.workerClient
-			: null;
-	if (workerClient) {
-		try {
-			const converted = await workerClient.convertBlob(
-				recordedBlob,
-				targetFormat,
-				bitrate,
-				options.allowRemux ?? false,
-				channelMode,
-				onProgress,
-			);
-			return await converted.arrayBuffer();
-		} catch (error) {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Worker conversion failed, falling back to the main thread:`,
-				error,
-			);
-		}
-	}
-
-	try {
-		return await runStreamingConversion(
-			recordedBlob,
-			targetFormat,
-			bitrate,
-			options.allowRemux ?? false,
-			onProgress,
-			channelMode,
-		);
-	} catch (error) {
-		console.warn(
-			`${PLUGIN_LOG_PREFIX} Streaming conversion failed, falling back to decode and re-encode:`,
-			error,
-		);
-	}
-
-	const arrayBuffer = await recordedBlob.arrayBuffer();
-	const decodedBuffer = await decodeAudioBlob(arrayBuffer, 'convert');
-	const encoded = await encodeAudioBuffer(
-		downmixAudioBuffer(decodedBuffer, channelMode),
-		{ format: targetFormat, bitrate },
+	return runConversionLadder(
+		recordedBlob,
+		targetFormat,
+		bitrate,
 		onProgress,
+		options,
+		AS_BUFFER,
 	);
-	return encoded.arrayBuffer();
 }
 
 /**

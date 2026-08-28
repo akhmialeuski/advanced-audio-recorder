@@ -37,6 +37,7 @@ import {
 	type LlmConfig,
 	type LlmProvider,
 } from './LlmProvider';
+import { GEMINI_TEXT_TOKEN_RATES } from '../providers/geminiRates';
 
 /**
  * A text-billed LLM rate: USD per million input and output tokens. Lives here
@@ -132,21 +133,6 @@ const ANTHROPIC_RATES: readonly [string, LlmRate][] = [
 ];
 
 /**
- * Approximate Gemini text rates, USD per million tokens. Post-processing input
- * is text (the transcript), so unlike the Gemini transcription rates the
- * text-input rate applies to every input token.
- */
-const GEMINI_RATES: readonly [string, LlmRate][] = [
-	['gemini-3.6-flash', { input: 1.5, output: 7.5 }],
-	['gemini-3.5-flash', { input: 1.5, output: 9 }],
-	['gemini-3.5-flash-lite', { input: 0.3, output: 2.5 }],
-	['gemini-2.5-flash-lite', { input: 0.1, output: 0.4 }],
-	['gemini-2.5-flash', { input: 0.3, output: 2.5 }],
-	['gemini-2.5-pro', { input: 1.25, output: 10 }],
-	['gemini-2.0-flash', { input: 0.1, output: 0.4 }],
-];
-
-/**
  * The half of a vendor that belongs to the service rather than to this job: how
  * it is named, how it is reached, and the catalogue its models come from. Read
  * from the provider registry, so a service that also transcribes declares them
@@ -195,7 +181,7 @@ export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 	},
 	[LLM_PROVIDER_IDS.GEMINI]: {
 		...fromRegistry(ENGINE_IDS.GEMINI),
-		rates: GEMINI_RATES,
+		rates: GEMINI_TEXT_TOKEN_RATES,
 		create: (config) => new GeminiLlmProvider(config),
 	},
 };
