@@ -56,6 +56,7 @@ jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
 		subscribePlayback: jest.fn(),
 		currentPlaybackState: jest.fn(() => null),
 		primeSavedRecordingsForEnhancement: jest.fn(),
+		openMarkerSearch: jest.fn().mockResolvedValue(undefined),
 	})),
 }));
 
@@ -720,6 +721,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 interface PlayerRegistrarDouble {
 	subscribePlayback: jest.Mock;
 	currentPlaybackState: jest.Mock;
+	openMarkerSearch: jest.Mock;
 }
 
 /**
@@ -1250,5 +1252,18 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 		expect(openSpy).toHaveBeenCalledWith(second, 'mono-right');
 		// Keep the aggregate notice available so the other file can be fixed.
 		expect(notice.hide).not.toHaveBeenCalled();
+	});
+});
+
+describe('AudioRecorderPlugin searching the vault for a marker', () => {
+	it('offers the search from any note, and opens it on the registrar', async () => {
+		const { plugin, registrar } = await pluginWithPlayback();
+
+		// Bound to no file and no playback, so unlike the file and playback
+		// commands it is available with nothing open at all
+		expect(
+			asMockPlugin(plugin).invokeCommand(COMMAND_IDS.searchMarkers),
+		).toBe(true);
+		expect(registrar.openMarkerSearch).toHaveBeenCalledTimes(1);
 	});
 });

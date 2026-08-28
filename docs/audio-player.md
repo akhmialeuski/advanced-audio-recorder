@@ -16,6 +16,7 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
 - [Resuming where you left off](#resuming-where-you-left-off)
 - [Playback controls in the status bar](#playback-controls-in-the-status-bar)
 - [System media controls](#system-media-controls)
+- [Searching markers across the vault](#searching-markers-across-the-vault)
 - [Playback commands and hotkeys](#playback-commands-and-hotkeys)
 - [Markers and chapters](#markers-and-chapters)
 - [Timecode links](#timecode-links)
@@ -188,10 +189,11 @@ Every playback action is also a **command**, so a recording can be driven entire
 | Go to previous chapter                    | Jumps to the chapter before the current position, or to the start when there is none.   |
 | Go to next chapter                        | Jumps to the chapter after the current position.                                        |
 | Repeat current chapter                    | Turns repeating of the chapter playback is inside on or off.                            |
+| Search markers and chapters               | Opens the vault-wide marker search; offered with nothing playing.                       |
 | Add bookmark at current playback position | Drops a bookmark where playback stands.                                                 |
 | Add chapter at current playback position  | Drops a chapter where playback stands.                                                  |
 
-The commands exist **only while something is playing**. Obsidian hides a command whose availability check fails, so with nothing active none of them appear in the command palette and a bound hotkey stays inert, which leaves the key free for whatever else it is used for. Stopping playback, or letting a recording reach its end, withdraws them again; pausing keeps them, so the same key resumes what it paused.
+The marker search is the exception to everything that follows: it is bound to no recording, so it is always offered. The commands below exist **only while something is playing**. Obsidian hides a command whose availability check fails, so with nothing active none of them appear in the command palette and a bound hotkey stays inert, which leaves the key free for whatever else it is used for. Stopping playback, or letting a recording reach its end, withdraws them again; pausing keeps them, so the same key resumes what it paused.
 
 Three of them carry a further condition. The chapter jumps and the chapter repeat are offered only when **Markers and chapters** is enabled for the recording that is playing, because a recording without them defines no chapters to move between or to repeat. The two add commands need that setting **and** an editable view, exactly like the add buttons in the embed and in the status bar, so a player rendered in Reading view offers neither.
 
@@ -264,6 +266,18 @@ Markers are stored in a **sidecar file** next to each recording, named `<recordi
 - A sidecar file that exists but **cannot be read** (damaged JSON, a sync conflict) is treated as unreachable rather than empty: the plugin pauses writes to it so the possibly intact data is never overwritten, and re-reads the file on every access, so fixing or removing it recovers without a restart. A marker edit refused this way is **said out loud**: the player shows why the save failed and rolls the view back instead of pretending the marker was added.
 
 Markers can also be added **while recording**, before the file even exists as a player - see [Marking moments while recording](recording.md#marking-moments-while-recording). Those markers attach to the recording's sidecar at save and show up in the player once the recording stops.
+
+---
+
+## Searching markers across the vault
+
+The command **Search markers and chapters** opens a fuzzy search over **every marker and chapter in the vault**, so a passage can be found without remembering which recording holds it. Unlike the playback commands, it is available with nothing playing and no audio file open, because it is bound to no recording.
+
+A query is matched against three things: the marker's **own name**, the **recording** it is in, and any **note** written on it. Each result shows the marker's name on the first line, and on the second the kind, the recording, the position, and the note. Choosing one plays that recording from the marker, through the same mechanism a [timecode link](#timecode-links) uses.
+
+The vault is scanned **once per session**, on the first search. Every sidecar is read at most once, and typing into the search reads nothing further, so the search stays usable on a phone. Recordings with no markers are not in the index and cannot be found through it.
+
+The index keeps itself current: a recording renamed or deleted is carried over or dropped, and a sidecar written outside a player, by a finished recording or by generated chapters, is re-read for that recording alone.
 
 ---
 

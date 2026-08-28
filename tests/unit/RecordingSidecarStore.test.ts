@@ -1126,4 +1126,77 @@ describe('RecordingSidecarStore', () => {
 			expect(files.has('rec.wav.markers.json')).toBe(false);
 		});
 	});
+	describe('scanning the vault', () => {
+		it('returns every recording that has a sidecar, with its document', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('a.wav', [marker('m1', 10)]);
+			await store.setMarkers('folder/b.wav', [marker('m2', 20)]);
+
+			const scanned = await new RecordingSidecarStore(
+				app,
+			).allRecordings();
+
+			expect(
+				scanned
+					.map((entry) => entry.path)
+					.sort((x, y) => x.localeCompare(y)),
+			).toEqual(['a.wav', 'folder/b.wav']);
+			expect(
+				scanned.flatMap((entry) =>
+					entry.sidecar.markers.map((m) => m.id),
+				),
+			).toEqual(expect.arrayContaining(['m1', 'm2']));
+		});
+
+		it('reads each sidecar once, so a second scan touches no disk', async () => {
+			const { app } = makeApp();
+			await new RecordingSidecarStore(app).setMarkers('a.wav', [
+				marker('m1', 10),
+			]);
+			const store = new RecordingSidecarStore(app);
+			const reads = jest.spyOn(app.vault.adapter, 'read');
+
+			await store.allRecordings();
+			const afterFirst = reads.mock.calls.length;
+			await store.allRecordings();
+
+			expect(afterFirst).toBe(1);
+			expect(reads).toHaveBeenCalledTimes(1);
+			reads.mockRestore();
+		});
+
+		it('finds nothing in a vault with no sidecars', async () => {
+			const { app } = makeApp();
+
+			expect(
+				await new RecordingSidecarStore(app).allRecordings(),
+			).toEqual([]);
+		});
+
+		it('survives one sidecar that cannot be read', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('good.wav', [marker('m1', 10)]);
+			files.set('broken.wav.markers.json', '{ not json');
+			const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+				// The surviving entry is the assertion.
+			});
+
+			const scanned = await new RecordingSidecarStore(
+				app,
+			).allRecordings();
+
+			expect(scanned).toHaveLength(2);
+			expect(
+				scanned.find((entry) => entry.path === 'good.wav')?.sidecar
+					.markers,
+			).toHaveLength(1);
+			expect(
+				scanned.find((entry) => entry.path === 'broken.wav')?.sidecar
+					.markers,
+			).toEqual([]);
+			warn.mockRestore();
+		});
+	});
 });

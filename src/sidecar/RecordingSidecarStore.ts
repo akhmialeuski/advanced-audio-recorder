@@ -39,7 +39,7 @@ import {
 } from './recordingSidecarModel';
 
 /** Suffix appended to a recording's path to form its sidecar path. */
-const SIDECAR_SUFFIX = '.markers.json';
+export const SIDECAR_SUFFIX = '.markers.json';
 
 /**
  * File extensions a recorded output can have: notes plus the transcript file
@@ -438,10 +438,36 @@ export class RecordingSidecarStore {
 	}
 
 	/**
+	 * Every recording in the vault that has a sidecar, with the document it
+	 * holds. One pass over the vault's files, and each sidecar is parsed and
+	 * cached at most once through {@link load} - a later call finds them all
+	 * cached and touches the disk not at all. The reads run concurrently
+	 * rather than one await at a time, which is what keeps a vault with
+	 * hundreds of recordings from paying hundreds of serialized round-trips.
+	 *
+	 * A sidecar that cannot be read yields an empty document and is flagged
+	 * corrupt, exactly as a single read would, so one broken file never takes
+	 * the scan down with it.
+	 * @returns One entry per recording with a sidecar, in no particular order
+	 */
+	async allRecordings(): Promise<
+		{ path: string; sidecar: RecordingSidecar }[]
+	> {
+		const recordings = this.app.vault
+			.getFiles()
+			.filter((file) => file.path.endsWith(SIDECAR_SUFFIX))
+			.map((file) => file.path.slice(0, -SIDECAR_SUFFIX.length));
+		return Promise.all(
+			recordings.map(async (path) => ({
+				path,
+				sidecar: await this.load(path),
+			})),
+		);
+	}
+
+	/**
 	 * Finds the recordings whose sidecar (cached or on disk) records the
-	 * given output path. On-disk candidates are read through {@link load}, so
-	 * each sidecar is parsed and cached at most once - later scans check the
-	 * cache only and never touch the disk again.
+	 * given output path.
 	 * @param outputPath - Output path to search for
 	 */
 	private async recordingsReferencing(outputPath: string): Promise<string[]> {
@@ -449,31 +475,17 @@ export class RecordingSidecarStore {
 		const references = (doc: RecordingSidecar): boolean =>
 			doc.transcript.noteOutputs.some((o) => o.path === outputPath) ||
 			doc.transcript.fileOutputs.some((o) => o.path === outputPath);
+		// The cache is checked as well as the scan: a recording whose sidecar
+		// has not been written yet lives only there, and has no file for
+		// allRecordings to find.
 		for (const [recording, doc] of this.cache) {
 			if (references(doc)) {
 				hits.add(recording);
 			}
 		}
-		// Whether a sidecar records this output cannot be known without reading
-		// it, so every not-yet-cached one is read - but concurrently rather than
-		// one await at a time, which turned a rename in a vault with hundreds of
-		// recordings into hundreds of serialized disk round-trips. load() caches
-		// and is race-safe, so this costs one read per sidecar per session; a
-		// later rename finds them all cached and touches the disk not at all.
-		const uncached = this.app.vault
-			.getFiles()
-			.filter((file) => file.path.endsWith(SIDECAR_SUFFIX))
-			.map((file) => file.path.slice(0, -SIDECAR_SUFFIX.length))
-			.filter((recording) => !this.cache.has(recording));
-		const loaded = await Promise.all(
-			uncached.map(async (recording) => ({
-				recording,
-				doc: await this.load(recording),
-			})),
-		);
-		for (const { recording, doc } of loaded) {
-			if (references(doc)) {
-				hits.add(recording);
+		for (const { path, sidecar } of await this.allRecordings()) {
+			if (references(sidecar)) {
+				hits.add(path);
 			}
 		}
 		return [...hits];

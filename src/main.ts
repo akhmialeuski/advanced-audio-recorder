@@ -46,6 +46,7 @@ import type { ActionServices, SessionServices } from './actions/PluginAction';
 import { activeAudioFile, FILE_ACTIONS } from './actions/fileActions';
 import { SESSION_ACTIONS } from './actions/sessionActions';
 import { PLAYBACK_ACTIONS } from './actions/playbackActions';
+import { SEARCH_ACTIONS } from './actions/searchActions';
 import { registerActionCommands } from './actions/registerActionCommands';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
@@ -774,6 +775,12 @@ export default class AudioRecorderPlugin extends Plugin {
 		registerActionCommands(this, PLAYBACK_ACTIONS, () =>
 			this.playerRegistrar.currentPlaybackState(),
 		);
+
+		// A vault-wide search is bound to no file and no playback, so its
+		// context always resolves and the command is always offered.
+		registerActionCommands(this, SEARCH_ACTIONS, () => ({
+			openMarkerSearch: () => this.playerRegistrar.openMarkerSearch(),
+		}));
 	}
 
 	/**

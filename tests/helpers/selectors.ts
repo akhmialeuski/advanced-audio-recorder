@@ -52,6 +52,8 @@ export const MARKER = {
 	color: 'select.aar-player-marker-color',
 	note: 'textarea.aar-player-marker-note',
 	staticNote: '.aar-player-marker-note-static',
+	searchTitle: '.aar-marker-search-title',
+	searchMeta: '.aar-marker-search-meta',
 	coloredRow: '.aar-player-marker-row-colored',
 	/** The note field by its class alone, for reading its CSS rule. */
 	noteRule: '.aar-player-marker-note',

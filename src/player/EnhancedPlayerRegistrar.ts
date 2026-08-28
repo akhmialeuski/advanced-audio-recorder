@@ -29,12 +29,13 @@
  * @module player/EnhancedPlayerRegistrar
  */
 
-import { TFile, MarkdownView, debounce } from 'obsidian';
+import { TFile, MarkdownView, Notice, debounce } from 'obsidian';
 import type {
 	App,
 	Editor,
 	MarkdownPostProcessorContext,
 	Plugin,
+	TAbstractFile,
 	WorkspaceLeaf,
 } from 'obsidian';
 import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
@@ -47,6 +48,9 @@ import {
 import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 import { DetachedPlayback } from './DetachedPlayback';
 import { MediaSessionBridge } from './MediaSessionBridge';
+import { MarkerSearchIndex } from '../markers/MarkerSearchIndex';
+import { MarkerSearchModal } from '../ui/MarkerSearchModal';
+import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
 import type {
 	PlaybackControlsListener,
 	PlaybackControlsState,
@@ -115,6 +119,10 @@ export class EnhancedPlayerRegistrar {
 	 * platform offers no media session.
 	 */
 	private mediaSession: MediaSessionBridge | null = null;
+
+	/** Vault-wide marker index, built on the first search. */
+	private readonly markerSearch: MarkerSearchIndex;
+
 	/** Debounced flush that coalesces a burst of re-render requests. */
 	private readonly scheduleRerender = debounce(
 		() => this.flushRerender(),
@@ -135,7 +143,9 @@ export class EnhancedPlayerRegistrar {
 		private readonly getSettings: () => AudioRecorderSettings,
 		private readonly markerStore: RecordingSidecarStore,
 		private readonly mediaKindStore: MediaKindStore | null = null,
-	) {}
+	) {
+		this.markerSearch = new MarkerSearchIndex(markerStore);
+	}
 
 	/**
 	 * Registers the embed creator, the markdown post-processor fallback, the
@@ -199,6 +209,7 @@ export class EnhancedPlayerRegistrar {
 				}
 				if (isAudioFile(file)) {
 					void this.markerStore.handleRename(oldPath, file.path);
+					this.markerSearch.rename(oldPath, file.path);
 					const kind = this.mediaKindCache.get(oldPath);
 					if (kind) {
 						this.mediaKindCache.delete(oldPath);
@@ -214,11 +225,59 @@ export class EnhancedPlayerRegistrar {
 			this.app.vault.on('delete', (file) => {
 				if (file instanceof TFile && isAudioFile(file)) {
 					void this.markerStore.handleDelete(file.path);
+					this.markerSearch.remove(file.path);
 					this.mediaKindCache.delete(file.path);
 					this.mediaKindStore?.handleDelete(file.path);
 				}
 			}),
 		);
+		// A sidecar written outside a player - by a finished recording, by
+		// generated chapters, by a sync - is how markers appear for a
+		// recording the index already scanned, so it re-reads that one rather
+		// than going stale until the next session.
+		this.plugin.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				this.reindexSidecar(file);
+			}),
+		);
+		this.plugin.registerEvent(
+			this.app.vault.on('create', (file) => {
+				this.reindexSidecar(file);
+			}),
+		);
+	}
+
+	/**
+	 * Re-reads a recording's markers when its sidecar changed on disk.
+	 * @param file - The vault file that was written
+	 */
+	private reindexSidecar(file: TAbstractFile): void {
+		if (file instanceof TFile && file.path.endsWith(SIDECAR_SUFFIX)) {
+			void this.markerSearch.refresh(
+				file.path.slice(0, -SIDECAR_SUFFIX.length),
+			);
+		}
+	}
+
+	/**
+	 * Indexes the vault's markers, if this is the first search of the
+	 * session, and opens the search over them. Choosing a result plays that
+	 * recording from the marker, through the same path a timecode link takes.
+	 */
+	async openMarkerSearch(): Promise<void> {
+		const hits = await this.markerSearch.all();
+		new MarkerSearchModal(this.app, hits, (hit) => {
+			const file = this.app.vault.getAbstractFileByPath(
+				hit.recordingPath,
+			);
+			if (file instanceof TFile) {
+				this.playAt(file, hit.time);
+				return;
+			}
+			new Notice(
+				`The recording ${hit.recordingPath} is no longer in the vault.`,
+			);
+		}).open();
 	}
 
 	/**
@@ -273,6 +332,7 @@ export class EnhancedPlayerRegistrar {
 		this.mediaSession?.dispose();
 		this.mediaSession = null;
 		this.registry.clear();
+		this.markerSearch.clear();
 		this.peakCache.clear();
 		this.mediaKindCache.clear();
 		this.probes.clear();
@@ -685,21 +745,22 @@ export class EnhancedPlayerRegistrar {
 				this.detachedPlayback.dispose();
 			}
 		} else {
-			this.playFromTimecode(file, startSeconds);
+			this.playAt(file, startSeconds);
 		}
 		event.preventDefault();
 		event.stopPropagation();
 	}
 
 	/**
-	 * Plays a file's shared audio from a timecode without an on-screen embed,
-	 * surfaced through the status-bar controls. Reuses the current detached
+	 * Plays a file's shared audio from an offset without an on-screen embed,
+	 * surfaced through the status-bar controls. Used by a timecode link and by
+	 * the vault-wide marker search, so both reach playback the same way. Reuses the current detached
 	 * playback when it already targets this file (a second click just seeks),
 	 * and replaces one that targets a different file.
 	 * @param file - Audio file to play
 	 * @param seconds - Offset in seconds to start playback from
 	 */
-	private playFromTimecode(file: TFile, seconds: number): void {
+	playAt(file: TFile, seconds: number): void {
 		// Reuse this timecode playback if it already targets the file
 		if (this.detachedPlayback?.path === file.path) {
 			this.detachedPlayback.seek(seconds);

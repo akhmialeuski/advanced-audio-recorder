@@ -17,13 +17,25 @@
  *    which upgraded probed files by rebuilding the embedding leaves.
  */
 
-import { App as MockApp, Component, MarkdownView, TFile } from 'obsidian';
+import {
+	App as MockApp,
+	Component,
+	MarkdownView,
+	Notice,
+	TFile,
+} from 'obsidian';
+import { modalInstances } from '../mocks/obsidian';
 import { at, defined } from '../helpers/assertions';
 import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { MediaEmbedShell } from 'src/player/MediaEmbedShell';
 import { AudioPlayer } from 'src/player/AudioPlayer';
-import { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
+import {
+	AudioPlayerRegistry,
+	playbackKey,
+} from 'src/player/AudioPlayerRegistry';
+import { MarkerSearchModal } from 'src/ui/MarkerSearchModal';
+import { emptyTranscriptSection } from 'src/sidecar/recordingSidecarModel';
 import { DetachedPlayback } from 'src/player/DetachedPlayback';
 import { probeMediaKind, MEDIA_KIND } from 'src/player/mediaProbe';
 import type { MediaKind, MediaProbeResult } from 'src/player/mediaProbe';
@@ -33,6 +45,7 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
+import type { RecordingSidecar } from 'src/sidecar/recordingSidecarModel';
 import { asMockApp, partialPlugin } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
 import { pastDebounce } from '../helpers/async';
@@ -164,12 +177,18 @@ function markerStoreStub(): {
 	handleDelete: jest.Mock;
 	handleOutputRename: jest.Mock;
 	clearCache: jest.Mock;
+	allRecordings: jest.Mock;
+	getMarkers: jest.Mock;
 } {
 	return {
 		handleRename: jest.fn().mockResolvedValue(undefined),
 		handleDelete: jest.fn().mockResolvedValue(undefined),
 		handleOutputRename: jest.fn().mockResolvedValue(undefined),
 		clearCache: jest.fn(),
+		// The vault-wide marker search scans through these; an empty vault is
+		// what every case that does not open the search wants.
+		allRecordings: jest.fn().mockResolvedValue([]),
+		getMarkers: jest.fn().mockResolvedValue([]),
 	};
 }
 
@@ -186,12 +205,7 @@ function setup(
 	getLeaves: jest.Mock;
 	plugin: Plugin;
 	app: App;
-	markerStore: {
-		handleRename: jest.Mock;
-		handleDelete: jest.Mock;
-		handleOutputRename: jest.Mock;
-		clearCache: jest.Mock;
-	};
+	markerStore: ReturnType<typeof markerStoreStub>;
 } {
 	const settings: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
@@ -226,6 +240,7 @@ function setup(
 		vault: {
 			getResourcePath: () => 'app://media',
 			getFileByPath: (path: string) => fileFromPath(path),
+			getAbstractFileByPath: (path: string) => fileFromPath(path),
 			on: jest.fn(() => ({})),
 		},
 		metadataCache: {
@@ -651,21 +666,26 @@ describe('EnhancedPlayerRegistrar persistent media kinds', () => {
 	});
 });
 
-describe('EnhancedPlayerRegistrar vault rename/delete wiring', () => {
-	/** Returns a vault event handler the registrar installed on register. */
-	function vaultHandler(
-		app: App,
-		event: 'rename' | 'delete',
-	): (...args: unknown[]) => void {
-		const call = jest
-			.mocked(app.vault.on)
-			.mock.calls.find((args: unknown[]) => args[0] === event);
-		if (!call) {
-			throw new Error(`Expected a vault ${event} handler registration`);
-		}
-		return call[1] as (...args: unknown[]) => void;
+/**
+ * Returns a vault event handler the registrar installed on register.
+ * @param app - The app the registrar registered against
+ * @param event - The vault event to look up
+ * @returns The handler, ready to be fired as the vault would fire it
+ */
+function vaultHandler(
+	app: App,
+	event: 'rename' | 'delete' | 'modify' | 'create',
+): (...args: unknown[]) => void {
+	const call = jest
+		.mocked(app.vault.on)
+		.mock.calls.find((args: unknown[]) => args[0] === event);
+	if (!call) {
+		throw new Error(`Expected a vault ${event} handler registration`);
 	}
+	return call[1] as (...args: unknown[]) => void;
+}
 
+describe('EnhancedPlayerRegistrar vault rename/delete wiring', () => {
 	it('routes an audio rename to the sidecar move, never the output scan', () => {
 		const kindStore = kindStoreStub();
 		const { app, markerStore } = setup(true, kindStore);
@@ -1502,12 +1522,7 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 	it('reuses an audio element that exists but has no player on screen', () => {
 		// A pop-out window that was closed leaves the element registered; a
 		// second element for the same file would play the audio twice.
-		jest.spyOn(AudioPlayerRegistry.prototype, 'seek').mockReturnValue(
-			false,
-		);
-		const seekShared = jest
-			.spyOn(AudioPlayerRegistry.prototype, 'seekSharedAudio')
-			.mockReturnValue(true);
+		const seekShared = reuseExistingElement();
 		setup(true);
 
 		clicks()(linkClick('rec.mp4#t=30'));
@@ -1683,5 +1698,204 @@ describe('EnhancedPlayerRegistrar forgetting a finished playback', () => {
 
 		expect(first.dispose).not.toHaveBeenCalled();
 		expect(detachedStartMock).toHaveBeenCalledTimes(2);
+	});
+});
+
+/**
+ * Puts playback on an element that already exists rather than a fresh one,
+ * which is what both the timecode-link and the marker-search jumps rely on.
+ * @returns The seek spy, so a case can assert where playback landed
+ */
+function reuseExistingElement(): jest.SpyInstance {
+	jest.spyOn(AudioPlayerRegistry.prototype, 'seek').mockReturnValue(false);
+	return jest
+		.spyOn(AudioPlayerRegistry.prototype, 'seekSharedAudio')
+		.mockReturnValue(true);
+}
+
+/**
+ * The marker search the registrar opened, ready to be typed into.
+ * @returns The open search dialog
+ */
+function openedSearch(): MarkerSearchModal {
+	const modal = modalInstances.at(-1);
+	if (!(modal instanceof MarkerSearchModal)) {
+		throw new Error('The registrar opened no marker search');
+	}
+	return modal;
+}
+
+/**
+ * A one-marker vault, as the sidecar store would report it.
+ * @param path - The recording that carries the marker
+ * @returns One scan result for that recording
+ */
+function vaultOfOneMarker(
+	path: string,
+): { path: string; sidecar: RecordingSidecar }[] {
+	return [
+		{
+			path,
+			sidecar: {
+				markers: [
+					{ id: 'a', time: 90, label: 'Middle', kind: 'chapter' },
+				],
+				transcript: emptyTranscriptSection(),
+			},
+		},
+	];
+}
+
+describe('EnhancedPlayerRegistrar searching the vault for a marker', () => {
+	/** Picks the first result, as pressing enter on it would. */
+	function chooseFirst(modal: MarkerSearchModal): void {
+		const [match] = modal.getSuggestions('');
+		modal.onChooseSuggestion(defined(match), new KeyboardEvent('keydown'));
+	}
+
+	it('offers every marker in the vault, from one scan of it', async () => {
+		const { registrar, markerStore } = setup(true);
+		markerStore.allRecordings.mockResolvedValue([
+			{
+				path: 'Recordings/lecture.mp4',
+				sidecar: {
+					markers: [
+						{
+							id: 'a',
+							time: 90,
+							label: 'Second half',
+							kind: 'chapter',
+						},
+					],
+					transcript: emptyTranscriptSection(),
+				},
+			},
+		]);
+
+		await registrar.openMarkerSearch();
+
+		expect(
+			openedSearch()
+				.getSuggestions('second')
+				.map((match) => match.item),
+		).toEqual([
+			expect.objectContaining({
+				recordingName: 'lecture',
+				label: 'Second half',
+			}),
+		]);
+		expect(markerStore.allRecordings).toHaveBeenCalledTimes(1);
+	});
+
+	it('plays the chosen marker on the recording that carries it', async () => {
+		const seekShared = reuseExistingElement();
+		const { registrar, markerStore } = setup(true);
+		markerStore.allRecordings.mockResolvedValue(
+			vaultOfOneMarker('rec.mp4'),
+		);
+		await registrar.openMarkerSearch();
+
+		chooseFirst(openedSearch());
+
+		// The same path a timecode link takes, so the search needs no
+		// playback logic of its own
+		expect(seekShared).toHaveBeenCalledWith(
+			playbackKey('rec.mp4', null),
+			90,
+		);
+	});
+
+	it('says so when the chosen recording is no longer in the vault', async () => {
+		const { registrar, markerStore, app } = setup(true);
+		jest.spyOn(app.vault, 'getAbstractFileByPath').mockReturnValue(null);
+		markerStore.allRecordings.mockResolvedValue(
+			vaultOfOneMarker('gone.mp4'),
+		);
+		await registrar.openMarkerSearch();
+
+		chooseFirst(openedSearch());
+
+		expect(Notice).toHaveBeenCalledWith(
+			expect.stringContaining('gone.mp4'),
+		);
+	});
+
+	it('scans the vault again after the plugin unloads and reloads', async () => {
+		const { registrar, markerStore } = setup(true);
+		await registrar.openMarkerSearch();
+
+		registrar.dispose();
+		await registrar.openMarkerSearch();
+
+		expect(markerStore.allRecordings).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('EnhancedPlayerRegistrar keeping the marker index current', () => {
+	/** Opens the search once, so the index has something to keep current. */
+	async function indexed(): Promise<ReturnType<typeof setup>> {
+		const harness = setup(true);
+		harness.markerStore.allRecordings.mockResolvedValue([
+			{
+				path: 'rec.mp4',
+				sidecar: {
+					markers: [
+						{ id: 'a', time: 5, label: 'Old', kind: 'bookmark' },
+					],
+					transcript: emptyTranscriptSection(),
+				},
+			},
+		]);
+		await harness.registrar.openMarkerSearch();
+		return harness;
+	}
+
+	it.each([
+		{ event: 'modify' as const, cause: 'a finished recording' },
+		{ event: 'create' as const, cause: 'a first save' },
+	])('re-reads a sidecar written by $cause', async ({ event }) => {
+		const { app, markerStore } = await indexed();
+		markerStore.getMarkers.mockResolvedValue([
+			{ id: 'b', time: 9, label: 'New', kind: 'chapter' },
+		]);
+
+		vaultHandler(app, event)(fileFromPath('rec.mp4.markers.json'));
+		await Promise.resolve();
+
+		expect(markerStore.getMarkers).toHaveBeenCalledWith('rec.mp4');
+	});
+
+	it('ignores a write to anything that is not a sidecar', async () => {
+		const { app, markerStore } = await indexed();
+
+		vaultHandler(app, 'modify')(fileFromPath('note.md'));
+		await Promise.resolve();
+
+		expect(markerStore.getMarkers).not.toHaveBeenCalled();
+	});
+
+	/** The recordings the reopened search offers, in the order it lists. */
+	function searchedRecordings(): string[] {
+		return openedSearch()
+			.getSuggestions('')
+			.map((match) => match.item.recordingPath);
+	}
+
+	it('carries a renamed recording over to its new path', async () => {
+		const { app, registrar } = await indexed();
+
+		vaultHandler(app, 'rename')(fileFromPath('moved.mp4'), 'rec.mp4');
+		await registrar.openMarkerSearch();
+
+		expect(searchedRecordings()).toEqual(['moved.mp4']);
+	});
+
+	it('drops a deleted recording from the search', async () => {
+		const { app, registrar } = await indexed();
+
+		vaultHandler(app, 'delete')(fileFromPath('rec.mp4'));
+		await registrar.openMarkerSearch();
+
+		expect(searchedRecordings()).toEqual([]);
 	});
 });

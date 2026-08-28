@@ -1215,3 +1215,15 @@ button.aar-player-marker-row {
     width: 6em;
     text-align: right;
 }
+
+/* One row of the vault-wide marker search: the marker's own name above,
+   where it is and what it says below, in the muted colour Obsidian uses for
+   secondary text in its own suggestion lists. */
+.aar-marker-search-title {
+    font-weight: var(--font-medium);
+}
+
+.aar-marker-search-meta {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+}

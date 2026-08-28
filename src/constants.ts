@@ -261,6 +261,7 @@ export const PLAYER_ICONS = {
 	previousChapter: 'chevron-first',
 	nextChapter: 'chevron-last',
 	chapterLoop: 'repeat-1',
+	searchMarkers: 'search',
 	speed: 'gauge',
 	copyLink: 'link',
 } as const;
@@ -1162,6 +1163,7 @@ export const COMMAND_IDS = {
 	previousChapter: 'go-to-previous-chapter',
 	nextChapter: 'go-to-next-chapter',
 	toggleChapterLoop: 'toggle-chapter-loop',
+	searchMarkers: 'search-markers',
 	addPlaybackBookmark: 'add-playback-bookmark',
 	addPlaybackChapter: 'add-playback-chapter',
 } as const;

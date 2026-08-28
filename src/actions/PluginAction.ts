@@ -129,3 +129,19 @@ export type SessionAction = PluginCommand<SessionServices>;
  * from the palette (and inert as a hotkey) while nothing plays.
  */
 export type PlaybackAction = PluginCommand<PlaybackControlsState>;
+
+/** What a vault-wide search action needs. */
+export interface SearchServices {
+	/**
+	 * Indexes the vault's markers if it has not been indexed yet and opens
+	 * the search over them.
+	 */
+	readonly openMarkerSearch: () => Promise<void>;
+}
+
+/**
+ * An action that searches the vault. Its context always resolves, because it
+ * is bound to no file and no playback: a marker can be looked for from any
+ * note, which is exactly why it is not a file action.
+ */
+export type SearchAction = PluginCommand<SearchServices>;
