@@ -40,6 +40,7 @@ import {
 export type { EnginePricing } from './providers/engines';
 import type { LlmTask } from './llmPostProcess';
 import type { TranscriptionUsage } from './TranscriptTypes';
+import type { LlmUsage } from './llm/llmResponse';
 
 /**
  * Audio tokens per second for Gemini models (Google's documented rate for
@@ -133,6 +134,41 @@ export function resolveLlmPricing(
 		usdPerMillionTextInput: rate.input,
 		usdPerMillionOutput: rate.output,
 	};
+}
+
+/**
+ * Prices one LLM call from the token counts the vendor reported, so a step
+ * that was actually billed is recorded at what it cost rather than at what it
+ * was expected to cost. Reasoning tokens are billed at the output rate, which
+ * is how the vendors that report them separately bill them.
+ *
+ * Null when the model has no built-in rate, or when the vendor reported no
+ * counts at all, both of which send the caller back to the estimate.
+ * @param providerId - LLM vendor billed for the call
+ * @param settings - The run's settings, which select the model
+ * @param usage - Token counts the vendor reported
+ */
+export function llmCallCostFromUsage(
+	providerId: LlmProviderId,
+	settings: AudioRecorderSettings,
+	usage: LlmUsage,
+): number | null {
+	const pricing = resolveLlmPricing(
+		providerId,
+		llmVendor(providerId).settings.model(settings),
+	);
+	if (pricing === null) {
+		return null;
+	}
+	if (usage.inputTokens === undefined && usage.outputTokens === undefined) {
+		return null;
+	}
+	return costFromUsage(pricing, {
+		...(usage.inputTokens === undefined
+			? {}
+			: { inputTokens: usage.inputTokens }),
+		outputTokens: (usage.outputTokens ?? 0) + (usage.reasoningTokens ?? 0),
+	});
 }
 
 /**

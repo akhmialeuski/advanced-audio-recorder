@@ -27,9 +27,6 @@ import { outcomeOf } from '../helpers/async';
 
 const PROMPT: LlmPrompt = { system: 'You extract terms.', user: 'hello' };
 
-/** The one method these cases drive, whichever vendor implements it. */
-type LlmProviderComplete = LlmProvider['complete'];
-
 /** Captures the single request and answers with the provider-shaped text. */
 function capture(responseText: string): {
 	body: () => Record<string, unknown>;
@@ -56,6 +53,64 @@ const GEMINI_RESPONSE = JSON.stringify({
 		{ finishReason: 'STOP', content: { parts: [{ text: 'ok' }] } },
 	],
 });
+
+/**
+ * The three vendors, each with a response that reports no usage and one that
+ * reports 1200 prompt and 340 completion tokens. Named once so a case that
+ * walks the vendors says only what it is checking.
+ */
+const VENDORS = [
+	{
+		name: 'OpenAI',
+		build: (): LlmProvider =>
+			new OpenAiCompatibleLlmProvider({
+				baseUrl: 'https://openai.example',
+				apiKey: 'k',
+				model: 'gpt-4o-mini',
+			}),
+		response: OPENAI_RESPONSE,
+		withUsage: JSON.stringify({
+			choices: [{ message: { content: 'ok' } }],
+			usage: { prompt_tokens: 1200, completion_tokens: 340 },
+		}),
+	},
+	{
+		name: 'Anthropic',
+		build: (): LlmProvider =>
+			new AnthropicLlmProvider({
+				baseUrl: 'https://anthropic.example',
+				apiKey: 'k',
+				model: 'claude-sonnet-5',
+			}),
+		response: ANTHROPIC_RESPONSE,
+		withUsage: JSON.stringify({
+			content: [{ type: 'text', text: 'ok' }],
+			usage: { input_tokens: 1200, output_tokens: 340 },
+		}),
+	},
+	{
+		name: 'Gemini',
+		build: (): LlmProvider =>
+			new GeminiLlmProvider({
+				baseUrl: 'https://gemini.example',
+				apiKey: 'k',
+				model: 'gemini-2.5-flash',
+			}),
+		response: GEMINI_RESPONSE,
+		withUsage: JSON.stringify({
+			candidates: [
+				{
+					finishReason: 'STOP',
+					content: { parts: [{ text: 'ok' }] },
+				},
+			],
+			usageMetadata: {
+				promptTokenCount: 1200,
+				candidatesTokenCount: 340,
+			},
+		}),
+	},
+] as const;
 
 describe('LlmProvider.complete temperature option', () => {
 	it('sends and omits temperature on the OpenAI provider', async () => {
@@ -143,38 +198,7 @@ describe('LlmProvider.complete cancellation', () => {
 		delete (globalThis as { fetch?: unknown }).fetch;
 	});
 
-	it.each([
-		{
-			name: 'OpenAI',
-			build: (): { complete: LlmProviderComplete } =>
-				new OpenAiCompatibleLlmProvider({
-					baseUrl: 'https://openai.example',
-					apiKey: 'k',
-					model: 'gpt-4o-mini',
-				}),
-			response: OPENAI_RESPONSE,
-		},
-		{
-			name: 'Anthropic',
-			build: (): { complete: LlmProviderComplete } =>
-				new AnthropicLlmProvider({
-					baseUrl: 'https://anthropic.example',
-					apiKey: 'k',
-					model: 'claude-sonnet-5',
-				}),
-			response: ANTHROPIC_RESPONSE,
-		},
-		{
-			name: 'Gemini',
-			build: (): { complete: LlmProviderComplete } =>
-				new GeminiLlmProvider({
-					baseUrl: 'https://gemini.example',
-					apiKey: 'k',
-					model: 'gemini-2.5-flash',
-				}),
-			response: GEMINI_RESPONSE,
-		},
-	])(
+	it.each(VENDORS)(
 		'sends the $name request on an abortable transport',
 		async ({ build, response }) => {
 			const init = captureFetch(response);
@@ -244,4 +268,32 @@ describe('LlmProvider.complete cancellation', () => {
 
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
+});
+
+// A completed step is billed at what the vendor says it cost, so what each
+// provider hands back has to carry the counts the response reported and to
+// carry nothing when it reported none.
+describe('the usage each provider hands back', () => {
+	it.each(VENDORS)(
+		'carries the counts a $name response reported',
+		async ({ build, withUsage }) => {
+			capture(withUsage);
+
+			expect(await build().complete(PROMPT, 512)).toEqual({
+				text: 'ok',
+				usage: { inputTokens: 1200, outputTokens: 340 },
+			});
+		},
+	);
+
+	it.each(VENDORS)(
+		'carries no usage where a $name response reported none',
+		async ({ build, response }) => {
+			capture(response);
+
+			// Absent, not empty: "billed nothing" is a different claim from
+			// "said nothing", and only the second may fall back to an estimate
+			expect(await build().complete(PROMPT, 512)).toEqual({ text: 'ok' });
+		},
+	);
 });

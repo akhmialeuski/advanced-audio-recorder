@@ -14,7 +14,10 @@ import type { TFile } from 'obsidian';
 import { AutoChapterService } from 'src/chapters/AutoChapterService';
 import { createLlmProvider } from 'src/transcription/factories';
 import { LLM_JOBS, estimateStepCost, jobVendorId } from 'src/transcription/api';
-import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
+import type {
+	LlmProvider,
+	LlmCompletion,
+} from 'src/transcription/llm/LlmProvider';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import type {
@@ -26,6 +29,7 @@ import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { at } from '../helpers/assertions';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { completed } from '../helpers/llmDoubles';
 
 /** A configuration where every job names a different engine. */
 const settingsWithDistinctEngines = (): AudioRecorderSettings =>
@@ -126,9 +130,9 @@ describe('AutoChapterService engine choice', () => {
 		const llm: LlmProvider = {
 			id: LLM_PROVIDER_IDS.GEMINI,
 			label: 'Fake',
-			complete: (_prompt, limit): Promise<string> => {
+			complete: (_prompt, limit): Promise<LlmCompletion> => {
 				maxTokens.push(limit);
-				return Promise.resolve('0:00 Intro\n1:00 Topic');
+				return Promise.resolve(completed('0:00 Intro\n1:00 Topic'));
 			},
 		};
 		const store = partial<RecordingSidecarStore>({

@@ -21,8 +21,12 @@ import type { LlmProviderId } from '../../settings/settingsSchema';
 import type { LlmPrompt } from '../llmPostProcess';
 import {
 	extractAnthropicText,
+	extractAnthropicUsage,
 	extractGeminiText,
+	extractGeminiUsage,
 	extractOpenAiText,
+	extractOpenAiUsage,
+	type LlmUsage,
 } from './llmResponse';
 import {
 	assertGeminiNotBlocked,
@@ -51,6 +55,18 @@ export interface LlmCompleteOptions {
 	signal?: AbortSignal | undefined;
 }
 
+/**
+ * One completed call: the assistant's text and, when the vendor reported
+ * them, the token counts it billed. An absent `usage` is what tells the
+ * accounting to fall back to an estimate rather than record a false zero.
+ */
+export interface LlmCompletion {
+	/** The assistant's text. */
+	text: string;
+	/** Token counts the vendor reported, absent when it reported none. */
+	usage?: LlmUsage;
+}
+
 /** A provider that completes a single prompt and returns text. */
 export interface LlmProvider {
 	/**
@@ -61,7 +77,8 @@ export interface LlmProvider {
 	readonly id: LlmProviderId;
 	readonly label: string;
 	/**
-	 * Completes a prompt and returns the assistant's text.
+	 * Completes a prompt and returns the assistant's text with whatever
+	 * usage the vendor reported alongside it.
 	 * @param prompt - System + user prompt
 	 * @param maxTokens - Maximum output tokens
 	 * @param options - Optional generation options (temperature)
@@ -70,7 +87,19 @@ export interface LlmProvider {
 		prompt: LlmPrompt,
 		maxTokens: number,
 		options?: LlmCompleteOptions,
-	): Promise<string>;
+	): Promise<LlmCompletion>;
+}
+
+/**
+ * Builds the completion, carrying usage only when the vendor reported any.
+ * An empty object would read as "billed nothing", which is a different claim
+ * from "said nothing", and only the second may fall back to an estimate.
+ * @param text - The assistant's text
+ * @param usage - Counts read from the same response
+ * @returns The completion to hand back
+ */
+function withUsage(text: string, usage: LlmUsage): LlmCompletion {
+	return Object.keys(usage).length > 0 ? { text, usage } : { text };
 }
 
 /** Configuration shared by HTTP LLM providers. */
@@ -152,7 +181,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 		prompt: LlmPrompt,
 		maxTokens: number,
 		options?: LlmCompleteOptions,
-	): Promise<string> {
+	): Promise<LlmCompletion> {
 		const headers = authHeader(
 			'Authorization',
 			this.config.apiKey,
@@ -186,7 +215,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 			// Recorded after the call rather than after the parse: an answer this
 			// client cannot read is still an answer the parameter was accepted for.
 			this.acceptedParam = param;
-			return extractOpenAiText(json);
+			return withUsage(extractOpenAiText(json), extractOpenAiUsage(json));
 		}
 		// Unreachable: the loop either returns or throws on its last attempt.
 		throw lastError;
@@ -256,7 +285,7 @@ export class AnthropicLlmProvider implements LlmProvider {
 		prompt: LlmPrompt,
 		maxTokens: number,
 		options?: LlmCompleteOptions,
-	): Promise<string> {
+	): Promise<LlmCompletion> {
 		const json = await requestJson({
 			url: `${trimTrailingSlash(this.config.baseUrl)}/messages`,
 			method: 'POST',
@@ -278,7 +307,10 @@ export class AnthropicLlmProvider implements LlmProvider {
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 			signal: options?.signal,
 		});
-		return extractAnthropicText(json);
+		return withUsage(
+			extractAnthropicText(json),
+			extractAnthropicUsage(json),
+		);
 	}
 }
 
@@ -297,7 +329,7 @@ export class GeminiLlmProvider implements LlmProvider {
 		prompt: LlmPrompt,
 		maxTokens: number,
 		options?: LlmCompleteOptions,
-	): Promise<string> {
+	): Promise<LlmCompletion> {
 		const url = geminiGenerateContentUrl(
 			this.config.baseUrl,
 			this.config.model,
@@ -336,6 +368,6 @@ export class GeminiLlmProvider implements LlmProvider {
 				'choose a model with a larger output limit.',
 		);
 		assertGeminiNotBlocked(json);
-		return extractGeminiText(json);
+		return withUsage(extractGeminiText(json), extractGeminiUsage(json));
 	}
 }

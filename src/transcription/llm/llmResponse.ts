@@ -1,12 +1,13 @@
 /**
- * Pure extractors that pull the assistant text out of an OpenAI-style
- * chat completion or an Anthropic Messages response. Kept separate from
+ * Pure extractors that pull the assistant text, and the token counts the
+ * vendor billed, out of an OpenAI-style chat completion, an Anthropic
+ * Messages response, or a Gemini generateContent response. Kept separate from
  * the network code so the response handling is unit tested.
  * @module transcription/llm/llmResponse
  */
 
 import { isRecord } from '../providers/responseUtils';
-import { geminiCandidateText } from '../providers/geminiShared';
+import { geminiCandidateText, geminiUsage } from '../providers/geminiShared';
 
 /**
  * Extracts the assistant message text from an OpenAI Chat Completions
@@ -66,4 +67,102 @@ export function extractAnthropicText(body: unknown): string {
  */
 export function extractGeminiText(body: unknown): string {
 	return geminiCandidateText(body).trim();
+}
+
+/**
+ * Token counts a vendor reported for one completion. Every field is optional:
+ * a vendor that reports nothing yields an empty object, which is what tells a
+ * caller to fall back to an estimate rather than bill a false zero.
+ */
+export interface LlmUsage {
+	/** Prompt tokens the vendor billed. */
+	inputTokens?: number;
+	/** Completion tokens the vendor billed. */
+	outputTokens?: number;
+	/** Reasoning tokens, billed at the output rate where a vendor reports them. */
+	reasoningTokens?: number;
+}
+
+/** Reads a finite non-negative token count, or undefined. */
+function tokenCount(value: unknown): number | undefined {
+	return typeof value === 'number' && Number.isFinite(value) && value >= 0
+		? value
+		: undefined;
+}
+
+/**
+ * Extracts the token counts from an OpenAI Chat Completions response. The
+ * body was parsed for the text anyway; nothing extra is requested for this.
+ * @param body - Parsed JSON response
+ * @returns What the vendor reported, empty when it reported nothing
+ */
+export function extractOpenAiUsage(body: unknown): LlmUsage {
+	if (!isRecord(body) || !isRecord(body.usage)) {
+		return {};
+	}
+	const usage = body.usage;
+	const details = isRecord(usage.completion_tokens_details)
+		? usage.completion_tokens_details
+		: {};
+	return dropUndefined({
+		inputTokens: tokenCount(usage.prompt_tokens),
+		outputTokens: tokenCount(usage.completion_tokens),
+		reasoningTokens: tokenCount(details.reasoning_tokens),
+	});
+}
+
+/**
+ * Extracts the token counts from an Anthropic Messages response.
+ * @param body - Parsed JSON response
+ * @returns What the vendor reported, empty when it reported nothing
+ */
+export function extractAnthropicUsage(body: unknown): LlmUsage {
+	if (!isRecord(body) || !isRecord(body.usage)) {
+		return {};
+	}
+	return dropUndefined({
+		inputTokens: tokenCount(body.usage.input_tokens),
+		outputTokens: tokenCount(body.usage.output_tokens),
+	});
+}
+
+/**
+ * Drops the fields the vendor did not report, so an absent count stays
+ * absent rather than becoming an explicit undefined the pricing would have
+ * to tell apart from a real zero.
+ * @param counts - Counts read from a response, with the gaps still in them
+ * @returns The same counts with the missing ones removed
+ */
+function dropUndefined(counts: {
+	inputTokens: number | undefined;
+	outputTokens: number | undefined;
+	reasoningTokens?: number | undefined;
+}): LlmUsage {
+	return {
+		...(counts.inputTokens === undefined
+			? {}
+			: { inputTokens: counts.inputTokens }),
+		...(counts.outputTokens === undefined
+			? {}
+			: { outputTokens: counts.outputTokens }),
+		...(counts.reasoningTokens === undefined
+			? {}
+			: { reasoningTokens: counts.reasoningTokens }),
+	};
+}
+
+/**
+ * Maps Gemini's `usageMetadata` onto the billing counts. Thinking tokens are
+ * reported separately by Gemini and billed at the output rate, so they are
+ * carried through rather than folded in here.
+ * @param body - Parsed JSON response
+ * @returns What the vendor reported, empty when it reported nothing
+ */
+export function extractGeminiUsage(body: unknown): LlmUsage {
+	const counts = geminiUsage(body);
+	return dropUndefined({
+		inputTokens: counts.promptTokenCount,
+		outputTokens: counts.candidatesTokenCount,
+		reasoningTokens: counts.thoughtsTokenCount,
+	});
 }

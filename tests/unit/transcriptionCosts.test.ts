@@ -11,6 +11,7 @@ import {
 	estimateStepCost,
 	formatUsd,
 	GEMINI_AUDIO_TOKENS_PER_SECOND,
+	llmCallCostFromUsage,
 	resolveEnginePricing,
 	resolveLlmPricing,
 	selectedEngineModel,
@@ -808,5 +809,65 @@ describe('costEstimateNeedsDuration', () => {
 				}),
 			),
 		).toBe(true);
+	});
+});
+
+describe('pricing one LLM call from what the vendor reported', () => {
+	const settings = mergeSettings({
+		llmAnthropicModel: 'claude-sonnet-5',
+		llmOpenAiModel: 'gpt-4o-mini',
+	});
+
+	it('bills the input and output tokens at the model rate', () => {
+		// claude-sonnet-5 is $3 per million in, $15 per million out
+		expect(
+			llmCallCostFromUsage(LLM_PROVIDER_IDS.ANTHROPIC, settings, {
+				inputTokens: 1_000_000,
+				outputTokens: 1_000_000,
+			}),
+		).toBeCloseTo(18, 10);
+	});
+
+	it('bills reasoning tokens at the output rate, as the vendors do', () => {
+		expect(
+			llmCallCostFromUsage(LLM_PROVIDER_IDS.ANTHROPIC, settings, {
+				inputTokens: 0,
+				outputTokens: 500_000,
+				reasoningTokens: 500_000,
+			}),
+		).toBeCloseTo(15, 10);
+	});
+
+	it('bills the half a response reported and nothing for the other', () => {
+		expect(
+			llmCallCostFromUsage(LLM_PROVIDER_IDS.OPENAI_COMPATIBLE, settings, {
+				inputTokens: 1_000_000,
+			}),
+		).toBeCloseTo(0.15, 10);
+	});
+
+	it('bills the output alone when only that was reported', () => {
+		// A truncated response can report the completion and not the prompt
+		expect(
+			llmCallCostFromUsage(LLM_PROVIDER_IDS.ANTHROPIC, settings, {
+				outputTokens: 1_000_000,
+			}),
+		).toBeCloseTo(15, 10);
+	});
+
+	it('reports no price when the vendor reported no counts at all', () => {
+		expect(
+			llmCallCostFromUsage(LLM_PROVIDER_IDS.ANTHROPIC, settings, {}),
+		).toBeNull();
+	});
+
+	it('reports no price for a model with no built-in rate', () => {
+		expect(
+			llmCallCostFromUsage(
+				LLM_PROVIDER_IDS.ANTHROPIC,
+				mergeSettings({ llmAnthropicModel: 'claude-from-the-future' }),
+				{ inputTokens: 1000, outputTokens: 100 },
+			),
+		).toBeNull();
 	});
 });

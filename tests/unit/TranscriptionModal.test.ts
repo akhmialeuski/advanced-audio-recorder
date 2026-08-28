@@ -1026,7 +1026,7 @@ describe('TranscriptionModal running the job', () => {
 
 		await internals.startRun();
 
-		expect(addCost).toHaveBeenCalledWith('deepgram', 0.12);
+		expect(addCost).toHaveBeenCalledWith('deepgram', 0.12, false);
 	});
 
 	it('counts nothing for a local run, which is billed to nobody', async () => {
@@ -1128,7 +1128,7 @@ describe('TranscriptionModal running the job', () => {
 
 		await internals.startRun();
 
-		expect(addCost).toHaveBeenCalledWith('deepgram', 0.5);
+		expect(addCost).toHaveBeenCalledWith('deepgram', 0.5, false);
 	});
 
 	it('runs once however often the button is pressed', async () => {

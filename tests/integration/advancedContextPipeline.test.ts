@@ -26,6 +26,7 @@ import {
 import type {
 	LlmCompleteOptions,
 	LlmProvider,
+	LlmCompletion,
 } from 'src/transcription/llm/LlmProvider';
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import { buildTranscript } from 'src/transcription/transcriptModel';
@@ -36,6 +37,7 @@ import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
 import { estimateLlmCallCost, estimateStepCost } from 'src/transcription/costs';
 import { CancellationSource } from 'src/utils/cancellation';
 import { at, defined } from '../helpers/assertions';
+import { completed } from '../helpers/llmDoubles';
 
 /**
  * Settings the agents are priced against. Required by the pipeline: there is
@@ -71,13 +73,13 @@ function scriptedLlm(replies: Partial<Record<AgentKey, string | Error>>): {
 			prompt: LlmPrompt,
 			maxTokens: number,
 			options?: LlmCompleteOptions,
-		): Promise<string> => {
+		): Promise<LlmCompletion> => {
 			calls.push({ ...prompt, maxTokens, options });
 			const reply = replies[agentKeyOf(prompt.system)];
 			if (reply instanceof Error) {
 				return Promise.reject(reply);
 			}
-			return Promise.resolve(reply ?? '');
+			return Promise.resolve(completed(reply ?? ''));
 		},
 	};
 	return { llm, calls };
@@ -575,7 +577,7 @@ describe('generateContext', () => {
 		const llm: LlmProvider = {
 			id: LLM_PROVIDER_IDS.GEMINI,
 			label: 'Fake',
-			complete: (): Promise<string> => {
+			complete: (): Promise<LlmCompletion> => {
 				source.cancel();
 				return Promise.reject(new Error('The user aborted a request.'));
 			},
@@ -599,7 +601,7 @@ describe('generateContext', () => {
 		const { llm } = scriptedLlm(replies);
 		const watched: LlmProvider = {
 			...llm,
-			complete: (prompt, maxTokens, options): Promise<string> => {
+			complete: (prompt, maxTokens, options): Promise<LlmCompletion> => {
 				seen.push(options?.signal);
 				return llm.complete(prompt, maxTokens, options);
 			},

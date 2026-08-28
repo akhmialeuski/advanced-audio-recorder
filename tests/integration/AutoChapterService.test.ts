@@ -13,11 +13,15 @@ import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import { MARKER_KIND, type PlayerMarker } from 'src/markers/markerModel';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
-import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
+import type {
+	LlmProvider,
+	LlmCompletion,
+} from 'src/transcription/llm/LlmProvider';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { waitFor } from '../helpers/async';
+import { completed } from '../helpers/llmDoubles';
 
 const tf = (path: string): TFile => {
 	const name = path.split('/').pop() ?? path;
@@ -69,7 +73,7 @@ function makeLlm(output: string | Error): LlmProvider {
 			if (output instanceof Error) {
 				throw output;
 			}
-			return output;
+			return completed(output);
 		}),
 	};
 }
@@ -386,7 +390,7 @@ describe('a chapter run the user cancels', () => {
 			started: () => started,
 			complete: jest.fn(
 				(_prompt, _maxTokens, options) =>
-					new Promise<string>((_resolve, reject) => {
+					new Promise<LlmCompletion>((_resolve, reject) => {
 						started = true;
 						options?.signal?.addEventListener('abort', () => {
 							reject(new Error('The user aborted a request.'));

@@ -754,11 +754,23 @@ export class TranscriptionModal extends PluginModal {
 		if (!tracker?.hasEntries()) {
 			return;
 		}
+		const notes: string[] = [];
 		const unpriced = tracker.unpricedRuns();
-		const suffix =
-			unpriced > 0
-				? ` (${String(unpriced)} run${unpriced > 1 ? 's' : ''} not priced)`
-				: '';
+		if (unpriced > 0) {
+			notes.push(
+				`${String(unpriced)} run${unpriced > 1 ? 's' : ''} not priced`,
+			);
+		}
+		// Most of the total is now what the vendors themselves reported, so
+		// the line says how much of it is not: an estimate presented as a
+		// measurement is the thing this counter exists to avoid.
+		const estimated = tracker.estimatedRuns();
+		if (estimated > 0) {
+			notes.push(
+				`${String(estimated)} step${estimated > 1 ? 's' : ''} estimated`,
+			);
+		}
+		const suffix = notes.length > 0 ? ` (${notes.join(', ')})` : '';
 		el.createDiv({
 			cls: 'aar-transcribe-cost-session',
 			text: `Spent this session: ~${formatUsd(tracker.totalUsd())}${suffix}`,
@@ -801,7 +813,7 @@ export class TranscriptionModal extends PluginModal {
 			cost.usd ??
 			estimateStepCost('transcription', settings, this.durationSeconds)
 				.usd;
-		this.options.costTracker?.add(cost.engineId, usd);
+		this.options.costTracker?.add(cost.engineId, usd, cost.usd === null);
 		// Refresh the session line so a follow-up run sees the new total.
 		this.updateCostEstimate();
 		return usd;

@@ -31,6 +31,7 @@ import {
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
+import { completed } from '../helpers/llmDoubles';
 
 jest.mock('src/transcription/transcriptOutput', () => ({
 	writeTranscriptFile: jest.fn(),
@@ -480,7 +481,7 @@ describe('transcribeFile output registration', () => {
 				createLlm: () => ({
 					id: LLM_PROVIDER_IDS.GEMINI,
 					label: 'Fake LLM',
-					complete: jest.fn(async () => 'cleaned body'),
+					complete: jest.fn(async () => completed('cleaned body')),
 				}),
 			},
 		);

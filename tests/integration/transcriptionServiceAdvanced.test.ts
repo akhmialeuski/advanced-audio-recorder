@@ -22,7 +22,10 @@ import type {
 } from 'src/transcription/providers/TranscriptionProvider';
 import { WHISPER_API_CAPABILITIES } from 'src/transcription/providers/capabilities';
 import { prepareAudio } from 'src/transcription/audioPrep';
-import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
+import type {
+	LlmProvider,
+	LlmCompletion,
+} from 'src/transcription/llm/LlmProvider';
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { mergeSettings } from 'src/settings/settingsSerialization';
@@ -35,6 +38,7 @@ import {
 import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { completed } from '../helpers/llmDoubles';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -156,12 +160,12 @@ function makeLlm(): { llm: LlmProvider; calls: LlmPrompt[] } {
 	const llm: LlmProvider = {
 		id: LLM_PROVIDER_IDS.GEMINI,
 		label: 'Fake LLM',
-		complete: (prompt: LlmPrompt): Promise<string> => {
+		complete: (prompt: LlmPrompt): Promise<LlmCompletion> => {
 			calls.push(prompt);
 			const match = AGENT_REPLIES.find(([fragment]) =>
 				prompt.system.includes(fragment),
 			);
-			return Promise.resolve(match?.[1] ?? '');
+			return Promise.resolve(completed(match?.[1] ?? ''));
 		},
 	};
 	return { llm, calls };
