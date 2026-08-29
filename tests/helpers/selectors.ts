@@ -55,6 +55,8 @@ export const MARKER = {
 	searchTitle: '.aar-marker-search-title',
 	searchMeta: '.aar-marker-search-meta',
 	coloredRow: '.aar-player-marker-row-colored',
+	buttonRow: 'button.aar-player-marker-row',
+	coloredButtonRow: '.aar-player-marker-row.aar-player-marker-row-colored',
 	/** The note field by its class alone, for reading its CSS rule. */
 	noteRule: '.aar-player-marker-note',
 	/** A bookmark tick on the timeline. */

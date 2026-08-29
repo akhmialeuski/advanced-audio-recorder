@@ -650,10 +650,6 @@ input.aar-input-invalid {
     background-color: var(--background-primary);
 }
 
-.aar-player-marker-row-colored {
-    box-shadow: inset 3px 0 0 var(--aar-marker-color);
-}
-
 .aar-player-marker-time-edit {
     width: 7ch;
     flex: none;
@@ -789,6 +785,12 @@ button.aar-player-marker-row {
     color: inherit;
     font: inherit;
     text-align: left;
+    /* A marker with a note wraps onto a second line, and a themed button
+       carries a fixed height and nowrap text: without these the note spilled
+       out of its own row and over the one below it. */
+    height: auto;
+    min-height: 0;
+    white-space: normal;
 }
 
 .aar-player-marker-row-clickable {
@@ -810,6 +812,27 @@ button.aar-player-marker-row {
 .aar-player-marker-row.is-active {
     background-color: var(--background-modifier-hover);
     box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+/*
+ * The colour a marker carries, drawn as a left edge. Stated with the row
+ * class as well, so it outranks the reading-view button reset above: that
+ * rule clears every box-shadow, and a plain .aar-player-marker-row-colored
+ * lost to it, which is why a colour showed while editing and vanished the
+ * moment the note was read.
+ */
+.aar-player-marker-row.aar-player-marker-row-colored {
+    box-shadow: inset 3px 0 0 var(--aar-marker-color);
+}
+
+/*
+ * Playing and coloured at once: the accent sits behind the colour rather
+ * than replacing it, so the edge says both things.
+ */
+.aar-player-marker-row.aar-player-marker-row-colored.is-active {
+    box-shadow:
+        inset 3px 0 0 var(--aar-marker-color),
+        inset 6px 0 0 var(--color-accent);
 }
 
 /* Modal text shared by the transcription and audio-cleanup dialogs */

@@ -75,6 +75,36 @@ describe('read-only player styles', () => {
 		expect(row).toMatch(/var\(--aar-marker-color\)/);
 	});
 
+	// Reading view renders the row as a button, and the button reset clears
+	// every box-shadow. A colour stated on the bare class lost to it, so a
+	// coloured marker showed its edge while editing and nothing at all when
+	// read - which is the mode a marker list is mostly looked at in.
+	it('keeps the colour edge where the row is a reading-view button', () => {
+		const reset = ruleBody(MARKER.buttonRow);
+		expect(reset).not.toBeNull();
+		expect(reset).toMatch(/box-shadow:\s*none/);
+
+		const colored = ruleBody(MARKER.coloredButtonRow);
+		expect(colored).not.toBeNull();
+		expect(colored).toMatch(
+			/box-shadow:\s*inset[^;]*var\(--aar-marker-color\)/,
+		);
+		// Specificity settles it only if the colour also comes last.
+		expect(css.indexOf(MARKER.coloredButtonRow)).toBeGreaterThan(
+			css.indexOf(MARKER.buttonRow),
+		);
+	});
+
+	// The same button carries a themed height and nowrap text, so the note
+	// that wraps onto a second line spilled over the row below it.
+	it('lets a reading-view row grow to fit the note that wrapped', () => {
+		const reset = ruleBody(MARKER.buttonRow);
+		expect(reset).not.toBeNull();
+		expect(reset).toMatch(/height:\s*auto/);
+		expect(reset).toMatch(/min-height:\s*0/);
+		expect(reset).toMatch(/white-space:\s*normal/);
+	});
+
 	it('gives the note a line of its own under the row it belongs to', () => {
 		const note = ruleBody(MARKER.noteRule);
 		expect(note).not.toBeNull();
