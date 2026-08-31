@@ -94,6 +94,10 @@ function createServices(
 			getWorkerClient: jest.fn(() => null),
 			autoChapters: {} as ActionServices['autoChapters'],
 			recordingSidecar: sidecar,
+			transcriptionQueue: {
+				queueFolder: jest.fn().mockResolvedValue(undefined),
+				open: jest.fn(),
+			},
 		},
 	};
 }

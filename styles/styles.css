@@ -1250,3 +1250,42 @@ button.aar-player-marker-row {
     color: var(--text-muted);
     font-size: var(--font-ui-smaller);
 }
+
+/* The transcription queue: one row per recording, its state to the right and
+   a way to drop it at the end. Scrolls rather than growing, so a folder of a
+   hundred recordings still fits a dialog. */
+.aar-queue-cost {
+    margin-bottom: 8px;
+    color: var(--text-muted);
+}
+
+.aar-queue-list {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.aar-queue-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.aar-queue-state {
+    flex: 1;
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    text-align: right;
+}
+
+.aar-queue-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-muted);
+    cursor: pointer;
+}

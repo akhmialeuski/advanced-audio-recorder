@@ -9,7 +9,7 @@
  * @module actions/PluginAction
  */
 
-import type { App, TFile } from 'obsidian';
+import type { App, TFile, TFolder } from 'obsidian';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
@@ -62,6 +62,16 @@ export interface ActionServices {
 	readonly autoChapters: AutoChapterService;
 	/** Shared per-recording sidecar store (markers + transcript data). */
 	readonly recordingSidecar: RecordingSidecarStore;
+	/**
+	 * The transcription queue, so a folder can be queued from the menu it is
+	 * right-clicked in. Declared as the two things that surface needs rather
+	 * than the coordinator itself, so the action definitions stay independent
+	 * of the queue's internals.
+	 */
+	readonly transcriptionQueue: {
+		queueFolder(folder: TFolder): Promise<void>;
+		open(): void;
+	};
 }
 
 /** The audio file an action targets, with the services it runs against. */
@@ -137,6 +147,8 @@ export interface SearchServices {
 	 * the search over them.
 	 */
 	readonly openMarkerSearch: () => Promise<void>;
+	/** Shows the transcription queue, whatever state it is in. */
+	readonly openTranscriptionQueue: () => void;
 }
 
 /**

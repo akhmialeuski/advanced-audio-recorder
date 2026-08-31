@@ -142,6 +142,12 @@ _Figure: The transcription dialog before a job starts._
 
 Learn more: [Transcription](transcription.md)
 
+## Transcription queue
+
+Right-click a folder and choose **Transcribe every recording in this folder** to queue all of them at once, with a preview of what will run and roughly what it will cost. The queue runs one recording at a time, shows what each is doing, and can be paused, resumed, or trimmed an entry at a time. It is kept on disk, so closing Obsidian does not lose it: a queue with work left is offered back on the next start rather than resumed without asking, since carrying on spends money.
+
+Learn more: [Transcription](transcription.md)
+
 ## Transcribing the parts that failed
 
 A long recording is transcribed in parts, and a part can fail on its own. The run keeps what came back and records what it lost, with the time bounds of each missing part. **Transcribe the parts that failed** sends exactly those again and splices the result into the transcript already written, rewriting the files it finds rather than adding a second set beside them, so you are billed for the missing minutes instead of the whole recording.

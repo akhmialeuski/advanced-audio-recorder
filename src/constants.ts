@@ -226,6 +226,15 @@ export const MAX_PLAYER_SKIP_SECONDS = 120;
  * remembered. Resuming a few seconds in saves the listener nothing and would
  * write a sidecar file for a recording that was merely opened.
  */
+/**
+ * How long one queued recording is assumed to be when the queue prices a
+ * folder, in seconds. The dialog shows an order of magnitude, not an invoice:
+ * reading every recording in a folder to measure it would cost more than the
+ * estimate is worth, and the session counter reports what each run actually
+ * cost as it finishes.
+ */
+export const QUEUE_ASSUMED_RECORDING_SECONDS = 600;
+
 export const PLAYBACK_MEMORY_MIN_SECONDS = 15;
 
 /**
@@ -1196,6 +1205,7 @@ export const COMMAND_IDS = {
 	toggleChapterLoop: 'toggle-chapter-loop',
 	searchMarkers: 'search-markers',
 	retryFailedParts: 'retry-failed-transcription-parts',
+	openTranscriptionQueue: 'open-transcription-queue',
 	addPlaybackBookmark: 'add-playback-bookmark',
 	addPlaybackChapter: 'add-playback-chapter',
 } as const;

@@ -96,9 +96,17 @@ function makeServices(activeFile: TFile | null): ActionServices {
 			generate: jest.fn(),
 		})['autoChapters'],
 		recordingSidecar: partial<ActionServices>({
+			transcriptionQueue: {
+				queueFolder: jest.fn().mockResolvedValue(undefined),
+				open: jest.fn(),
+			},
 			getTranscript: jest.fn().mockResolvedValue(null),
 			updateTranscript: jest.fn().mockResolvedValue(undefined),
 		})['recordingSidecar'],
+		transcriptionQueue: {
+			queueFolder: jest.fn().mockResolvedValue(undefined),
+			open: jest.fn(),
+		},
 	};
 }
 

@@ -66,6 +66,14 @@ import {
 import type { MarkerKind } from './markers/markerModel';
 import type { PlaybackControlsState } from './player/playbackControls';
 import { delay } from './utils/TimeUtils';
+import { QueueCoordinator } from './transcription/QueueCoordinator';
+import { QueueRunner } from './transcription/QueueRunner';
+import {
+	TranscriptionQueue,
+	TRANSCRIPTION_QUEUE_FILE,
+} from './transcription/TranscriptionQueue';
+import { QUEUE_ASSUMED_RECORDING_SECONDS } from './constants';
+import { transcribeFile } from './transcription/runTranscription';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
 const SETTINGS_READ_RETRY_DELAY_MS = 250;
@@ -160,6 +168,16 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * across dialogs until Obsidian restarts.
 	 */
 	private readonly transcriptionCostTracker = new SessionCostTracker();
+
+	/**
+	 * The queue of recordings to transcribe. Built on load so a queue a
+	 * previous session left can be offered back, and so the folder menu has
+	 * something to queue into.
+	 */
+	private transcriptionQueue!: QueueCoordinator;
+
+	/** The queue itself, kept so its pending writes are flushed on unload. */
+	private queuedTranscriptions: TranscriptionQueue | null = null;
 	/** Current actionable silent-channel notice, replaced per save. */
 	private silentChannelNotice: Notice | null = null;
 	/** Invalidates an older asynchronous analysis when a newer save starts. */
@@ -257,6 +275,41 @@ export default class AudioRecorderPlugin extends Plugin {
 			FILE_ACTIONS,
 		);
 		this.contextMenu.register();
+
+		// The queue outlives a session, so it is built before anything can
+		// queue into it and offered back once the workspace is up.
+		const queue = new TranscriptionQueue(
+			this.getPluginFilePath(TRANSCRIPTION_QUEUE_FILE),
+			this.app,
+		);
+		this.transcriptionQueue = new QueueCoordinator({
+			app: this.app,
+			queue,
+			runner: new QueueRunner({
+				app: this.app,
+				queue,
+				getSettings: () => this.settings,
+				transcribe: (file, options) =>
+					transcribeFile(
+						this.app,
+						() => this.settings,
+						file,
+						options,
+						{
+							costSink: this.transcriptionCostTracker,
+						},
+					),
+				costSink: this.transcriptionCostTracker,
+			}),
+			getSettings: () => this.settings,
+			assumedSecondsPerRecording: QUEUE_ASSUMED_RECORDING_SECONDS,
+		});
+		this.queuedTranscriptions = queue;
+		// Offered once the workspace is up, so the prompt lands on a window
+		// the user can see rather than during load.
+		this.app.workspace.onLayoutReady(() => {
+			void this.transcriptionQueue.resumeIfPending();
+		});
 
 		// Media kinds persist across sessions so the first open of a note
 		// never repeats a file's probe (and the embed upgrade behind it)
@@ -435,6 +488,9 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * Called when the plugin is unloaded.
 	 */
 	override onunload(): void {
+		// The queue is losable but not worth losing a change to: whatever the
+		// last state change was, it goes to disk before the plugin does.
+		void this.queuedTranscriptions?.flush();
 		// Set before anything is torn down: the recorder's stop sequence is
 		// asynchronous, so disabling the plugin mid-save leaves its status and
 		// saved-recording callbacks in flight, and both of them reach back
@@ -743,6 +799,13 @@ export default class AudioRecorderPlugin extends Plugin {
 			primeForEnhancement: (paths) =>
 				this.playerRegistrar.primeSavedRecordingsForEnhancement(paths),
 			getWorkerClient: () => this.encodingWorker,
+			transcriptionQueue: {
+				queueFolder: (folder) =>
+					this.transcriptionQueue.queueFolder(folder),
+				open: () => {
+					this.transcriptionQueue.open();
+				},
+			},
 			autoChapters: this.autoChapterService,
 			recordingSidecar: this.sidecarStore,
 		};
@@ -780,6 +843,9 @@ export default class AudioRecorderPlugin extends Plugin {
 		// context always resolves and the command is always offered.
 		registerActionCommands(this, SEARCH_ACTIONS, () => ({
 			openMarkerSearch: () => this.playerRegistrar.openMarkerSearch(),
+			openTranscriptionQueue: () => {
+				this.transcriptionQueue.open();
+			},
 		}));
 	}
 

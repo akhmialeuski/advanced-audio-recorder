@@ -17,6 +17,7 @@
 - [In-note formatting](#in-note-formatting)
 - [The Transcribe dialog (per-run overrides)](#the-transcribe-dialog-per-run-overrides)
 - [Progress and minimizing](#progress-and-minimizing)
+- [Transcribing a folder](#transcribing-a-folder)
 - [Transcribing the parts that failed](#transcribing-the-parts-that-failed)
 - [Cost estimates](#cost-estimates)
 - [LLM post-processing](#llm-post-processing)
@@ -385,6 +386,20 @@ Each network request - one part of a long recording, or a whole-file upload - is
 When a long recording is split into several parts, parts that fail are reported and the parts that succeeded are still kept - a `> [!warning]` callout names the missing stretch in the inserted Markdown, and a notice explains what was lost. Only if **every** part fails does the whole run fail with the first error.
 
 A part whose transcript overruns the model's **output-token limit** (which Gemini can hit on dense speech) is not discarded: it is automatically split into smaller halves and retried, down to a minimum segment length of one minute. Each retry is a separate, normally billed API request; only a segment that is truncated even at the minimum length is reported as missing.
+
+---
+
+## Transcribing a folder
+
+Right-click a folder and choose **Transcribe every recording in this folder** to queue all the recordings in it, including those in the folders under it. The dialog that opens lists what will run and roughly what it will cost, so a month of recordings is approved once instead of opened one at a time.
+
+The queue runs **one recording at a time**. The engines it calls are paid, rate limited, and slow on a long recording, and firing a folder's worth of requests at once is the way to be refused by all of them at once. Each recording's state is shown as it goes: waiting, transcribing, done, or failed with the reason the engine gave. A recording that fails does not stop the rest.
+
+While it runs you can **pause** it, which lets the recording in flight finish and starts nothing after it, **resume** it, or **drop** a single entry. The dialog can be closed at any point: the queue keeps running, and **Show the transcription queue** in the command palette brings it back.
+
+The queue is kept **in the plugin folder**, not in your settings, so it survives closing Obsidian. On the next start, a queue with work left in it is **offered back** rather than simply resumed, because carrying on spends money and reopening Obsidian is not a decision to spend it. Declining leaves the queue where it is; the offer comes back next time. A recording that was mid-transcription when the window closed goes back to waiting, since nothing will finish it.
+
+Every queued run counts into the **"Spent this session"** total by the same rules a single run follows: what the provider reported, or the estimate when it reported nothing, marked as an estimate either way. The estimate the dialog shows beforehand is coarser: it prices a typical recording rather than measuring each one, since reading a folder of recordings to price them would cost more than the number is worth.
 
 ---
 

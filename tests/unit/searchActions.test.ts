@@ -16,14 +16,16 @@ function createSut(): {
 } {
 	const services = {
 		openMarkerSearch: jest.fn().mockResolvedValue(undefined),
+		openTranscriptionQueue: jest.fn(),
 	};
 	return { action: at(SEARCH_ACTIONS, 0), services };
 }
 
-describe('the vault-wide search actions', () => {
-	it('defines the marker search under its own command id', () => {
+describe('the vault-wide actions', () => {
+	it('defines each one under its own command id, in palette order', () => {
 		expect(SEARCH_ACTIONS.map((action) => action.commandId)).toEqual([
 			COMMAND_IDS.searchMarkers,
+			COMMAND_IDS.openTranscriptionQueue,
 		]);
 	});
 
@@ -39,5 +41,21 @@ describe('the vault-wide search actions', () => {
 		await action.run(services);
 
 		expect(services.openMarkerSearch).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('showing the transcription queue', () => {
+	it('is offered with nothing open, like the search beside it', () => {
+		const { services } = createSut();
+
+		expect(at(SEARCH_ACTIONS, 1).isAvailable(services)).toBe(true);
+	});
+
+	it('opens the queue rather than knowing what is in it', async () => {
+		const { services } = createSut();
+
+		await at(SEARCH_ACTIONS, 1).run(services);
+
+		expect(services.openTranscriptionQueue).toHaveBeenCalledTimes(1);
 	});
 });

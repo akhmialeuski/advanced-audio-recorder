@@ -12,7 +12,7 @@ import type { SearchAction } from './PluginAction';
 /** Needs nothing beyond the plugin being loaded. */
 const always = (): boolean => true;
 
-/** Every vault-wide search action, in palette order. */
+/** Every vault-wide action that is bound to no file, in palette order. */
 export const SEARCH_ACTIONS: readonly SearchAction[] = [
 	{
 		commandId: COMMAND_IDS.searchMarkers,
@@ -20,5 +20,14 @@ export const SEARCH_ACTIONS: readonly SearchAction[] = [
 		icon: PLAYER_ICONS.searchMarkers,
 		isAvailable: always,
 		run: (services): Promise<void> => services.openMarkerSearch(),
+	},
+	{
+		commandId: COMMAND_IDS.openTranscriptionQueue,
+		title: 'Show the transcription queue',
+		icon: 'list-ordered',
+		isAvailable: always,
+		run: (services): void => {
+			services.openTranscriptionQueue();
+		},
 	},
 ];

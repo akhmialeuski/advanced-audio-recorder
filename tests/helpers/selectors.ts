@@ -136,3 +136,12 @@ export const MODAL = {
 	recoverySession: '.aar-recovery-session',
 	silentChannelConvert: '.aar-silent-channel-convert',
 } as const;
+
+/** The transcription queue dialog. */
+export const QUEUE = {
+	cost: '.aar-queue-cost',
+	list: '.aar-queue-list',
+	row: '.aar-queue-row',
+	state: '.aar-queue-state',
+	remove: '.aar-queue-remove',
+} as const;
