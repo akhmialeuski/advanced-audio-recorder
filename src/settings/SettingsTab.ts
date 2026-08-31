@@ -40,6 +40,7 @@ import {
 	controlValue,
 	parseProfileControlKey,
 	parseTrackControlKey,
+	type TrackControlField,
 	type ProfileCatalogue,
 } from './settingsDefinitions';
 import { LegacySettingsRenderer } from './legacySettingsRenderer';
@@ -392,9 +393,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			const source = this.plugin.settings.trackAudioSources.get(
 				track.track,
 			);
-			return track.field === 'deviceId'
-				? (source?.deviceId ?? '')
-				: (source?.channelMode ?? CHANNEL_MODE_SOURCE);
+			if (track.field === 'deviceId') {
+				return source?.deviceId ?? '';
+			}
+			if (track.field === 'channelMode') {
+				return source?.channelMode ?? CHANNEL_MODE_SOURCE;
+			}
+			// A track placed nowhere in particular sits at the centre, at the
+			// level it was captured at.
+			return source?.[track.field] ?? 0;
 		}
 		const stored = (
 			this.plugin.settings as unknown as Record<string, unknown>
@@ -477,7 +484,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 		const track = parseTrackControlKey(key);
 		if (track) {
-			this.writeTrackSource(track.track, track.field, String(value));
+			this.writeTrackSource(track.track, track.field, value);
 			return this.plugin.saveSettings();
 		}
 		const effect = CONTROL_WRITE_EFFECTS[key];
@@ -594,29 +601,35 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	private writeTrackSource(
 		track: number,
-		field: 'deviceId' | 'channelMode',
-		value: string,
+		field: TrackControlField,
+		value: unknown,
 	): void {
 		const sources = this.plugin.settings.trackAudioSources;
 		const current = sources.get(track);
-		if (field === 'channelMode') {
+		if (field !== 'deviceId') {
 			if (!current) {
-				// No device on this track: there is nothing to bind a layout to.
+				// No device on this track: there is nothing to bind a layout
+				// or a place in the mix to.
 				return;
 			}
 			sources.set(track, {
 				...current,
-				channelMode: normalizeChannelMode(value),
+				...(field === 'channelMode'
+					? { channelMode: normalizeChannelMode(value) }
+					: { [field]: Number(value) }),
 			});
 			return;
 		}
-		if (!value) {
+		const deviceId = String(value);
+		if (!deviceId) {
 			sources.delete(track);
 			return;
 		}
-		// Keep the track's channel layout across a device swap.
+		// Keep the track's channel layout and its place in the mix across a
+		// device swap.
 		sources.set(track, {
-			deviceId: value,
+			...current,
+			deviceId,
 			channelMode: current?.channelMode ?? CHANNEL_MODE_SOURCE,
 		});
 	}

@@ -8,6 +8,7 @@ import {
 	isChannelModeSelectionSupported,
 	isMultiTrackCaptureSupported,
 } from '../../platform/capabilities';
+import { MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB } from '../../constants';
 import { CHANNEL_MODE_LABELS } from '../labels';
 import { multiTrackStatus, type PageStatus } from '../settingsAttention';
 import type { AudioRecorderSettings } from '../settingsSchema';
@@ -37,6 +38,10 @@ export function multiTrackPage(
 		for (let track = 1; track <= MAX_TRACK_COUNT; track++) {
 			const offered = (): boolean =>
 				active() && track <= settings.maxTracks;
+			// Where a track sits in the mix is only a question when there is a
+			// mix: one file per track keeps every track exactly as captured.
+			const mixed = (): boolean =>
+				offered() && settings.outputMode === 'single';
 			rows.push(
 				{
 					name: `Track ${String(track)} input`,
@@ -70,6 +75,32 @@ export function multiTrackPage(
 								settings.trackAudioSources.get(track)
 									?.deviceId ?? '',
 							),
+					},
+				},
+				{
+					name: `Track ${String(track)} level`,
+					aliases: ['gain', 'volume', 'decibels'],
+					desc: `Level applied to track ${String(track)} in the combined file, in decibels. A laptop microphone beside an interface is many decibels quieter, and the correction belongs to the track.`,
+					visible: mixed,
+					control: {
+						type: 'number',
+						key: trackControlKey(track, 'gainDb'),
+						min: MIN_TRACK_GAIN_DB,
+						max: MAX_TRACK_GAIN_DB,
+						step: 1,
+					},
+				},
+				{
+					name: `Track ${String(track)} position`,
+					aliases: ['pan', 'stereo', 'left', 'right'],
+					desc: `Where track ${String(track)} sits in the combined file: -1 fully left, 0 centre, 1 fully right. A track placed off centre makes the combined file stereo.`,
+					visible: mixed,
+					control: {
+						type: 'number',
+						key: trackControlKey(track, 'pan'),
+						min: -1,
+						max: 1,
+						step: 0.25,
 					},
 				},
 			);
@@ -123,6 +154,14 @@ export function multiTrackPage(
 							multiple: 'Multiple files',
 						},
 					},
+				},
+				{
+					name: 'Match track levels',
+					aliases: ['normalize', 'balance', 'levelling'],
+					desc: 'Bring the tracks to a common level before combining them, so a quiet participant is not lost behind a loud one. Off by default: it is a judgement about the recording, and a session combined twice has to come out the same both times.',
+					visible: (): boolean =>
+						active() && settings.outputMode === 'single',
+					control: { type: 'toggle', key: 'mixAlignTrackLevels' },
 				},
 				...trackRows(),
 			],

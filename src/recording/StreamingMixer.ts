@@ -7,19 +7,32 @@
  * them through an OfflineAudioContext (which costs multiple gigabytes
  * for hour-long multi-track sessions).
  *
- * Scope: equal sample rates only (the PCM recorders are created with
- * an explicit shared rate, so this is the normal case). Rate
- * mismatches and compressed merged outputs keep using the Web Audio
- * path - OfflineAudioContext is the platform's resampler, and
- * reimplementing resampling here would be reinventing it badly.
+ * Tracks at different sample rates are mixed here too, by resampling each
+ * one into the highest rate present as it is read. That used to be the
+ * Web Audio path's only remaining job on this route, and sending an hour of
+ * two-track audio through a full decode because one interface ran at 44100
+ * and the other at 48000 cost gigabytes for a difference of ten percent.
+ * The Web Audio mix remains the fallback for everything this route still
+ * refuses, and which route was taken is logged.
  * @module recording/StreamingMixer
  */
 
 import type { App } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
-import { INT16_MAX, INT16_MIN, PCM_BYTES_PER_SAMPLE } from '../audio/pcm';
-
-/** Bytes per int16 sample. */
+import { PCM_BYTES_PER_SAMPLE } from '../audio/pcm';
+import {
+	gainFactor,
+	newResampleState,
+	normalizeFactor,
+	outputScale,
+	panGains,
+	resampleWindow,
+	sourceFramesNeeded,
+	windowRms,
+	writeScaled,
+	type ResampleState,
+} from './mixMath';
 
 /** Default mix window in sample frames (~1 MiB stereo int16). */
 const DEFAULT_WINDOW_FRAMES = 262144;
@@ -34,6 +47,10 @@ export interface PcmMixTrack {
 	channels: number;
 	/** Sample rate in Hz. */
 	sampleRate: number;
+	/** Level adjustment in decibels; absent means the track as captured. */
+	gainDb?: number;
+	/** Stereo position from -1 (left) to 1 (right); absent means centre. */
+	pan?: number;
 }
 
 /** One track's captured PCM, as the mix sizing rule reads it. */
@@ -42,6 +59,10 @@ export interface PcmMixSize {
 	pcmBytes: number;
 	/** Interleaved channel count. */
 	channels: number;
+	/** Sample rate in Hz. */
+	sampleRate: number;
+	/** Stereo position of the track; absent means centre. */
+	pan?: number;
 }
 
 /** The shape of the WAV a mix of a set of tracks produces. */
@@ -50,8 +71,24 @@ export interface MixLayout {
 	totalFrames: number;
 	/** Interleaved channels of the mixed file. */
 	outChannels: number;
+	/** Sample rate the mixed file is written at. */
+	sampleRate: number;
 	/** PCM payload of the mixed WAV, in bytes. */
 	pcmByteLength: number;
+}
+
+/** What the caller may ask of one mix. */
+export interface MixOptions {
+	/** Told the percentage done, counting both passes. */
+	onProgress?: ((percent: number) => void) | undefined;
+	/** Mix window size in frames; a test hook. */
+	windowFrames?: number | undefined;
+	/**
+	 * Whether to bring the tracks to a common level before summing. Off by
+	 * default: it is a judgement about the recording rather than a property
+	 * of it, and a session mixed twice must come out the same both times.
+	 */
+	alignLevels?: boolean | undefined;
 }
 
 /**
@@ -64,27 +101,45 @@ export interface MixLayout {
  * differ from a plain sum, and the case it decides is a long mono track
  * beside a short stereo one, where the mixed file is twice the mono track it
  * is mostly made of.
- * @param tracks - What each track captured, in bytes and channels
- * @returns The mixed file's frames, channels, and PCM size
+ *
+ * The rate is the highest any track runs at, so resampling only ever
+ * interpolates and no track is decimated to suit another. A track placed
+ * anywhere but the centre takes the mix to stereo whatever its own channel
+ * count: two mono microphones one to each side is the reason panning exists,
+ * and a mono file has nowhere to put them.
+ * @param tracks - What each track captured, in bytes, channels, and rate
+ * @returns The mixed file's frames, channels, rate, and PCM size
  */
 export function mixLayout(tracks: readonly PcmMixSize[]): MixLayout {
 	if (tracks.length === 0) {
-		return { totalFrames: 0, outChannels: 0, pcmByteLength: 0 };
+		return {
+			totalFrames: 0,
+			outChannels: 0,
+			sampleRate: 0,
+			pcmByteLength: 0,
+		};
 	}
+	const sampleRate = Math.max(...tracks.map((track) => track.sampleRate));
 	const totalFrames = Math.max(
-		...tracks.map((track) =>
-			Math.floor(
+		...tracks.map((track) => {
+			const frames = Math.floor(
 				track.pcmBytes / (PCM_BYTES_PER_SAMPLE * track.channels),
-			),
-		),
+			);
+			// A track slower than the output covers the same seconds in fewer
+			// frames, and rounding down would drop its last fraction of a
+			// window rather than the silence after it.
+			return track.sampleRate === sampleRate
+				? frames
+				: Math.ceil((frames * sampleRate) / track.sampleRate);
+		}),
 	);
-	const outChannels = Math.min(
-		2,
-		Math.max(...tracks.map((track) => track.channels)),
-	);
+	const outChannels = tracks.some((track) => (track.pan ?? 0) !== 0)
+		? 2
+		: Math.min(2, Math.max(...tracks.map((track) => track.channels)));
 	return {
 		totalFrames,
 		outChannels,
+		sampleRate,
 		pcmByteLength: totalFrames * outChannels * PCM_BYTES_PER_SAMPLE,
 	};
 }
@@ -92,18 +147,16 @@ export function mixLayout(tracks: readonly PcmMixSize[]): MixLayout {
 /**
  * Checks whether the tracks can be mixed by this streaming mixer.
  * @param tracks - Candidate tracks
- * @returns True when all tracks share a sample rate and have data
+ * @returns True when every track has data and a channel count that fits
  */
 export function canStreamMix(tracks: PcmMixTrack[]): boolean {
-	const first = tracks[0];
-	if (!first) {
+	if (tracks.length === 0) {
 		return false;
 	}
-	const rate = first.sampleRate;
 	return tracks.every(
 		(track) =>
 			track.segmentPaths.length > 0 &&
-			track.sampleRate === rate &&
+			track.sampleRate > 0 &&
 			track.channels >= 1 &&
 			track.channels <= 2,
 	);
@@ -175,15 +228,204 @@ class PcmSegmentReader {
 }
 
 /**
+ * One track, read at the rate the mix is written at.
+ *
+ * A track already at the output rate is handed through untouched, so the
+ * common session pays nothing for the capability: the resampler is only
+ * built for a track whose rate differs, and the phase it carries between
+ * windows is what keeps a window boundary from becoming a click.
+ */
+class TrackWindowReader {
+	/** The segments underneath, read at the track's own rate. */
+	private readonly reader: PcmSegmentReader;
+
+	/** Where the resampler stands; null for a track needing none. */
+	private readonly state: ResampleState | null;
+
+	/** Source frames, for a track being resampled. */
+	private readonly source: Int16Array | null;
+
+	/** The window handed to the caller, at the output rate. */
+	readonly window: Int16Array;
+
+	/**
+	 * @param track - The track to read
+	 * @param outputRate - Rate the mix is written at
+	 * @param windowFrames - Output frames per window
+	 * @param app - Obsidian App instance
+	 */
+	constructor(
+		private readonly track: PcmMixTrack,
+		private readonly outputRate: number,
+		windowFrames: number,
+		app: App,
+	) {
+		this.reader = new PcmSegmentReader(
+			track.segmentPaths,
+			track.channels,
+			app,
+		);
+		this.window = new Int16Array(windowFrames * track.channels);
+		if (track.sampleRate === outputRate) {
+			this.state = null;
+			this.source = null;
+			return;
+		}
+		this.state = newResampleState(track.channels);
+		// A source slower than the output needs at most one frame per output
+		// frame, plus the one the last interpolation reaches into.
+		this.source = new Int16Array((windowFrames + 2) * track.channels);
+	}
+
+	/** The ratio of the track's rate to the output's. */
+	private get ratio(): number {
+		return this.track.sampleRate / this.outputRate;
+	}
+
+	/**
+	 * Fills {@link window} with the next frames at the output rate.
+	 * @param frames - Output frames wanted
+	 */
+	async read(frames: number): Promise<void> {
+		const { state, source } = this;
+		if (!state || !source) {
+			await this.reader.read(frames, this.window);
+			return;
+		}
+		const needed = sourceFramesNeeded(frames, this.ratio, state);
+		await this.reader.read(needed, source);
+		resampleWindow(
+			source,
+			needed,
+			this.window,
+			frames,
+			this.track.channels,
+			this.ratio,
+			state,
+		);
+	}
+}
+
+/**
+ * One track as the mix reads it: where its samples come from, how loud they
+ * turned out to be, and what it is multiplied by on the way into the sum.
+ *
+ * One object per track rather than a set of arrays indexed in lockstep. The
+ * arrays were the same thing spread over five places, each needing a guard
+ * saying the index exists in all of them, which is a guarantee the shape
+ * itself can give instead.
+ */
+interface MixLane {
+	/** The track this lane carries. */
+	readonly track: PcmMixTrack;
+	/** Reader at the output rate; replaced between the two passes. */
+	reader: TrackWindowReader;
+	/** Sum of the squared samples seen, which becomes the track's level. */
+	squares: number;
+	/** How many samples that sum covers. */
+	count: number;
+	/** Largest absolute sample seen. */
+	peak: number;
+	/** Multiplier into the left, or only, output channel. */
+	left: number;
+	/** Multiplier into the right output channel. */
+	right: number;
+}
+
+/**
+ * Reads every track once and records how loud each one is.
+ *
+ * The pass exists so the second one can write at a multiplier that is known
+ * before the first sample is written, which is the whole difference between
+ * scaling a loud mix and clipping it. It costs a second sequential read of
+ * the segments and no memory beyond the windows the mix already holds.
+ * @param lanes - The tracks, whose measurements are filled in
+ * @param totalFrames - Frames the mix holds
+ * @param windowFrames - Frames per window
+ * @param onWindow - Told the frames measured so far
+ */
+async function measureTracks(
+	lanes: readonly MixLane[],
+	totalFrames: number,
+	windowFrames: number,
+	onWindow: (framesDone: number) => void,
+): Promise<void> {
+	let frameOffset = 0;
+	while (frameOffset < totalFrames) {
+		const frames = Math.min(windowFrames, totalFrames - frameOffset);
+		for (const lane of lanes) {
+			await lane.reader.read(frames);
+			const samples = frames * lane.track.channels;
+			const rms = windowRms(lane.reader.window, samples);
+			lane.squares += rms * rms * samples;
+			lane.count += samples;
+			for (let i = 0; i < samples; i++) {
+				lane.peak = Math.max(
+					lane.peak,
+					Math.abs(lane.reader.window[i] ?? 0),
+				);
+			}
+		}
+		frameOffset += frames;
+		onWindow(frameOffset);
+	}
+}
+
+/**
+ * Gives each track its multipliers and answers with the one the sum is
+ * written at.
+ *
+ * Measured rather than assumed, which is what the first pass over the
+ * segments buys. The peak of the sum is bounded by the peaks of the tracks
+ * that make it, so a mix that would have clipped is scaled down whole
+ * instead of having its loudest moments flattened, and a mix that never
+ * approached full scale is written at the level it was captured at.
+ * @param lanes - The measured tracks, whose multipliers are filled in
+ * @param outChannels - Interleaved channels of the mix
+ * @param alignLevels - Whether to bring the tracks to a common level
+ * @returns The multiplier the sum is written at
+ */
+function planMix(
+	lanes: readonly MixLane[],
+	outChannels: number,
+	alignLevels: boolean,
+): number {
+	let leftPeak = 0;
+	let rightPeak = 0;
+	for (const lane of lanes) {
+		const level =
+			gainFactor(lane.track.gainDb ?? 0) *
+			(alignLevels
+				? normalizeFactor(
+						Math.sqrt(lane.squares / Math.max(1, lane.count)),
+					)
+				: 1);
+		// A mono mix has one channel to place a track in, so panning it would
+		// only make it quieter.
+		const pan =
+			outChannels === 2
+				? panGains(lane.track.pan ?? 0)
+				: { left: 1, right: 1 };
+		lane.left = level * pan.left;
+		lane.right = level * pan.right;
+		leftPeak += lane.peak * lane.left;
+		rightPeak += lane.peak * lane.right;
+	}
+	return outputScale(Math.max(leftPeak, rightPeak));
+}
+
+/**
  * Mixes the given PCM tracks into one complete WAV file buffer.
- * Output is mono when every input is mono, stereo otherwise (mono
- * inputs are duplicated into both channels); the length is the
- * longest track, with shorter tracks padded by silence; sample sums
- * are clamped to the int16 range.
+ *
+ * Output is mono when every input is mono, stereo otherwise (mono inputs are
+ * duplicated into both channels); the rate is the highest any track runs at,
+ * and slower tracks are resampled into it; the length is the longest track,
+ * with shorter tracks padded by silence. Each track is placed by its own gain
+ * and pan, and the sum is scaled onto the output range rather than clipped
+ * against it.
  * @param tracks - Tracks to mix (validate with canStreamMix first)
  * @param app - Obsidian App instance
- * @param onProgress - Optional progress callback (0-100)
- * @param windowFrames - Mix window size in frames (test hook)
+ * @param options - Progress, window size, and whether to align levels
  * @returns Complete WAV file bytes
  * @throws Error when the adapter cannot report segment sizes (the
  * caller falls back to the Web Audio mixing path)
@@ -191,8 +433,7 @@ class PcmSegmentReader {
 export async function mixPcmTracksToWav(
 	tracks: PcmMixTrack[],
 	app: App,
-	onProgress?: (percent: number) => void,
-	windowFrames: number = DEFAULT_WINDOW_FRAMES,
+	options: MixOptions = {},
 ): Promise<ArrayBuffer> {
 	const adapter = app.vault.adapter;
 	if (typeof adapter.stat !== 'function') {
@@ -200,6 +441,7 @@ export async function mixPcmTracksToWav(
 			'Vault adapter cannot report file sizes for streaming mix',
 		);
 	}
+	const windowFrames = options.windowFrames ?? DEFAULT_WINDOW_FRAMES;
 
 	// Captured bytes per track from the segment sizes on disk
 	const sizes: PcmMixSize[] = [];
@@ -212,14 +454,18 @@ export async function mixPcmTracksToWav(
 			}
 			bytes += stat.size;
 		}
-		sizes.push({ pcmBytes: bytes, channels: track.channels });
+		sizes.push({
+			pcmBytes: bytes,
+			channels: track.channels,
+			sampleRate: track.sampleRate,
+			...(track.pan === undefined ? {} : { pan: track.pan }),
+		});
 	}
-	const firstTrack = tracks[0];
-	if (!firstTrack) {
+	if (tracks.length === 0) {
 		throw new Error('No tracks to mix');
 	}
-	const { totalFrames, outChannels, pcmByteLength } = mixLayout(sizes);
-	const sampleRate = firstTrack.sampleRate;
+	const { totalFrames, outChannels, sampleRate, pcmByteLength } =
+		mixLayout(sizes);
 
 	const wavBuffer = createWavFileBuffer(
 		outChannels,
@@ -228,61 +474,90 @@ export async function mixPcmTracksToWav(
 	);
 	const output = new Int16Array(wavBuffer, WAV_HEADER_SIZE);
 
-	const readers = tracks.map(
-		(track) =>
-			new PcmSegmentReader(track.segmentPaths, track.channels, app),
-	);
-	const windows = tracks.map(
-		(track) => new Int16Array(windowFrames * track.channels),
-	);
+	// Both passes read the same windows, so each reports half the progress.
+	const reportPass = (pass: number) => (framesDone: number) => {
+		options.onProgress?.(
+			Math.round(((pass + framesDone / totalFrames) / 2) * 100),
+		);
+	};
+	const newReader = (track: PcmMixTrack): TrackWindowReader =>
+		new TrackWindowReader(track, sampleRate, windowFrames, app);
+	const lanes: MixLane[] = tracks.map((track) => ({
+		track,
+		reader: newReader(track),
+		squares: 0,
+		count: 0,
+		peak: 0,
+		left: 1,
+		right: 1,
+	}));
+
+	await measureTracks(lanes, totalFrames, windowFrames, reportPass(0));
+	const scale = planMix(lanes, outChannels, options.alignLevels === true);
+
+	// The readers are sequential and have reached the end of their tracks.
+	for (const lane of lanes) {
+		lane.reader = newReader(lane.track);
+	}
 	const accumulator = new Int32Array(windowFrames * outChannels);
+	const report = reportPass(1);
 
 	let frameOffset = 0;
 	while (frameOffset < totalFrames) {
 		const frames = Math.min(windowFrames, totalFrames - frameOffset);
 		accumulator.fill(0, 0, frames * outChannels);
 
-		for (let trackIndex = 0; trackIndex < tracks.length; trackIndex++) {
-			const track = tracks[trackIndex];
-			const window = windows[trackIndex];
-			const reader = readers[trackIndex];
-			if (!track || !window || !reader) {
-				// The three arrays are built in lockstep from tracks;
-				// an index cannot miss one without missing all
-				continue;
-			}
-			await reader.read(frames, window);
+		for (const lane of lanes) {
+			await lane.reader.read(frames);
+			const window = lane.reader.window;
 
 			// The `?? 0` narrows the checked index reads with the mix's
 			// neutral element; every access below is in bounds by
 			// construction (the buffers are sized from windowFrames)
-			if (track.channels === outChannels) {
-				for (let i = 0; i < frames * outChannels; i++) {
-					accumulator[i] = (accumulator[i] ?? 0) + (window[i] ?? 0);
+			if (outChannels === 1) {
+				for (let i = 0; i < frames; i++) {
+					accumulator[i] =
+						(accumulator[i] ?? 0) +
+						Math.round((window[i] ?? 0) * lane.left);
+				}
+			} else if (lane.track.channels === 2) {
+				for (let frame = 0; frame < frames; frame++) {
+					accumulator[frame * 2] =
+						(accumulator[frame * 2] ?? 0) +
+						Math.round((window[frame * 2] ?? 0) * lane.left);
+					accumulator[frame * 2 + 1] =
+						(accumulator[frame * 2 + 1] ?? 0) +
+						Math.round((window[frame * 2 + 1] ?? 0) * lane.right);
 				}
 			} else {
-				// Mono into stereo: duplicate the sample into both
-				// channels, matching the Web Audio up-mix behavior
+				// Mono into stereo: the sample reaches both channels, in the
+				// proportion the pan asks for
 				for (let frame = 0; frame < frames; frame++) {
 					const sample = window[frame] ?? 0;
 					accumulator[frame * 2] =
-						(accumulator[frame * 2] ?? 0) + sample;
+						(accumulator[frame * 2] ?? 0) +
+						Math.round(sample * lane.left);
 					accumulator[frame * 2 + 1] =
-						(accumulator[frame * 2 + 1] ?? 0) + sample;
+						(accumulator[frame * 2 + 1] ?? 0) +
+						Math.round(sample * lane.right);
 				}
 			}
 		}
 
-		const outBase = frameOffset * outChannels;
-		for (let i = 0; i < frames * outChannels; i++) {
-			const sum = accumulator[i] ?? 0;
-			output[outBase + i] =
-				sum > INT16_MAX ? INT16_MAX : sum < INT16_MIN ? INT16_MIN : sum;
-		}
+		writeScaled(
+			accumulator,
+			output,
+			frameOffset * outChannels,
+			frames * outChannels,
+			scale,
+		);
 
 		frameOffset += frames;
-		onProgress?.(Math.round((frameOffset / totalFrames) * 100));
+		report(frameOffset);
 	}
+	console.debug(
+		`${PLUGIN_LOG_PREFIX} Mixed ${String(tracks.length)} tracks at ${String(sampleRate)} Hz, output scaled by ${scale.toFixed(3)}.`,
+	);
 
 	return wavBuffer;
 }

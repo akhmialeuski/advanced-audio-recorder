@@ -35,11 +35,28 @@ export function fullyPopulatedSettings(): Omit<
 		bitrate: 64000,
 		enableMultiTrack: true,
 		maxTracks: 4,
+		mixAlignTrackLevels: false,
 		outputMode: 'multiple',
 		useSourceNamesForTracks: false,
 		trackAudioSources: new Map([
-			[1, { deviceId: 'dev1', channelMode: 'source' as const }],
-			[2, { deviceId: 'dev2', channelMode: 'mono-left' as const }],
+			[
+				1,
+				{
+					deviceId: 'dev1',
+					channelMode: 'source' as const,
+					gainDb: 0,
+					pan: 0,
+				},
+			],
+			[
+				2,
+				{
+					deviceId: 'dev2',
+					channelMode: 'mono-left' as const,
+					gainDb: 0,
+					pan: 0,
+				},
+			],
 		]),
 		debug: true,
 		insertAtOriginalPosition: true,

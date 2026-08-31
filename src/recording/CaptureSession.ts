@@ -20,7 +20,7 @@ import {
 	DEFAULT_SPLIT_PART_SUFFIX,
 	FORMAT_WEBM,
 } from '../constants';
-import type { RecordingSessionConfig } from '../types';
+import type { RecordingSessionConfig, TrackMix } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TrackAudioSource } from './AudioStreamHandler';
 import { normalizeChannelMode, type ChannelMode } from '../audio/downmix';
@@ -93,6 +93,19 @@ export function createCaptureSession(
 			: Array.from({ length: streamCount }, () =>
 					normalizeChannelMode(settings.recordingChannels),
 				);
+	// A session writing one file per track never mixes, so it carries no
+	// placement at all rather than a set of neutral ones nothing reads.
+	const merging = settings.outputMode === 'single' && trackOrder.length > 1;
+	const trackMix: readonly TrackMix[] = merging
+		? Object.freeze(
+				trackOrder.map(
+					(source): TrackMix => ({
+						gainDb: source.gainDb ?? 0,
+						pan: source.pan ?? 0,
+					}),
+				),
+			)
+		: Object.freeze([]);
 	const requestedSplit = settings.autoSplitEnabled;
 	const autoSplitSkipped =
 		requestedSplit && settings.outputMode === 'single' && streamCount > 1;
@@ -111,6 +124,8 @@ export function createCaptureSession(
 		partMinutes: clampSplitMinutes(settings.splitChunkMinutes),
 		partSuffix: sanitizePartSuffix(settings.splitPartSuffix),
 		channelModes: Object.freeze(channelModes),
+		trackMix,
+		alignTrackLevels: merging && settings.mixAlignTrackLevels,
 	});
 	return { session, autoSplitSkipped };
 }
@@ -127,4 +142,6 @@ export const IDLE_CAPTURE_SESSION: CaptureSession = Object.freeze({
 	partMinutes: DEFAULT_SPLIT_CHUNK_MINUTES,
 	partSuffix: DEFAULT_SPLIT_PART_SUFFIX,
 	channelModes: Object.freeze([]),
+	trackMix: Object.freeze([]),
+	alignTrackLevels: false,
 });

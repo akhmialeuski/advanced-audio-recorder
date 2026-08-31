@@ -114,6 +114,19 @@ export interface TrackFileGroup {
  * decides whether a multi-track session merges, and the auto-split
  * decision already depended on it at start).
  */
+/**
+ * Where one track is placed when a session's tracks are combined into one
+ * file. Fixed at the session's start, alongside the devices and the channel
+ * modes: a settings edit half way through a two-hour recording must not
+ * split the session's own mix between two answers.
+ */
+export interface TrackMix {
+	/** Level applied to the track at the mix, in decibels. */
+	gainDb: number;
+	/** Where the track sits, from -1 (left) to 1 (right). */
+	pan: number;
+}
+
 export interface RecordingSessionConfig {
 	/**
 	 * Chunk-buffer size that forces a part rotation, or null where a
@@ -143,6 +156,14 @@ export interface RecordingSessionConfig {
 	partMinutes: number;
 	/** Auto-split part name suffix. */
 	partSuffix: string;
+	/**
+	 * Where each track sits in a merged file, aligned with the acquired
+	 * streams. Empty on a session that writes one file per track, which
+	 * keeps every track exactly as it was captured.
+	 */
+	trackMix: readonly TrackMix[];
+	/** Whether the merge brings the tracks to a common level first. */
+	alignTrackLevels: boolean;
 }
 
 /**

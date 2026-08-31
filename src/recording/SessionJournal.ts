@@ -30,6 +30,21 @@ export interface JournalTrack {
 	pcmChannels: number;
 	/** Sample rate of the PCM data in Hz (PCM tracks). */
 	pcmSampleRate: number;
+	/**
+	 * Level and stereo position this track was to be given in a merged
+	 * file, so a mix rebuilt from recovered parts reproduces the one the
+	 * interrupted session was going to write. Absent on a session that
+	 * writes one file per track, and on every journal written before the
+	 * mixer could place a track.
+	 *
+	 * Adding them deliberately did not bump JOURNAL_VERSION, by the
+	 * precedent captureMode set: an older plugin ignores the fields and
+	 * mixes the recovered tracks flat, while a bump would make it skip the
+	 * whole journal and lose the recovery itself.
+	 */
+	gainDb?: number;
+	/** Stereo position for the merged file; see {@link JournalTrack.gainDb}. */
+	pan?: number;
 	/** Live .tmp segment files (vault-relative), in capture order. */
 	segmentPaths: string[];
 	/**

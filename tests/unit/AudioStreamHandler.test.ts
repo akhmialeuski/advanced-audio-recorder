@@ -85,7 +85,7 @@ describe('AudioStreamHandler', () => {
 			expect(second.stop).not.toHaveBeenCalled();
 		});
 
-		it('snapshots each device and channel mode before acquisition awaits', async () => {
+		it('snapshots each device, channel mode and mix placement before acquisition awaits', async () => {
 			let resolveStream: ((stream: MediaStream) => void) | undefined;
 			const pendingStream = new Promise<MediaStream>((resolve) => {
 				resolveStream = resolve;
@@ -100,6 +100,8 @@ describe('AudioStreamHandler', () => {
 						{
 							deviceId: 'device-before',
 							channelMode: 'mono-left',
+							gainDb: -6,
+							pan: -1,
 						},
 					],
 				]),
@@ -109,6 +111,8 @@ describe('AudioStreamHandler', () => {
 			settings.trackAudioSources.set(1, {
 				deviceId: 'device-after',
 				channelMode: 'mono-right',
+				gainDb: 12,
+				pan: 1,
 			});
 			const stream = fakeStream().stream;
 			resolveStream?.(stream);
@@ -119,6 +123,8 @@ describe('AudioStreamHandler', () => {
 					trackNumber: 1,
 					deviceId: 'device-before',
 					channelMode: 'mono-left',
+					gainDb: -6,
+					pan: -1,
 				},
 			]);
 			expect(getUserMedia).toHaveBeenCalledWith(

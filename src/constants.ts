@@ -178,6 +178,12 @@ export const MS_PER_SECOND = 1000;
 /** Default duration of one split part in minutes. */
 export const DEFAULT_SPLIT_CHUNK_MINUTES = 15;
 
+/** Quietest a track may be turned down at the mix, in decibels. */
+export const MIN_TRACK_GAIN_DB = -24;
+
+/** Loudest a track may be turned up at the mix, in decibels. */
+export const MAX_TRACK_GAIN_DB = 24;
+
 /** Minimum allowed split part duration in minutes. */
 export const MIN_SPLIT_CHUNK_MINUTES = 1;
 

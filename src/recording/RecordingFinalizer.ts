@@ -576,27 +576,39 @@ export class RecordingFinalizer {
 	private async tryStreamMixToWav(
 		targets: RecordingTarget[],
 	): Promise<Blob | null> {
+		const session = this.requireSession();
 		const tracks = targets
-			.filter((target) => target.segmentPaths.length > 0)
-			.map((target) => ({
+			// The placement is read before the filter, because it is aligned
+			// with the session's tracks and a track that flushed nothing must
+			// not shift the one after it into its place.
+			.map((target, index) => ({
 				segmentPaths: target.segmentPaths,
 				channels: target.pcmChannels,
 				sampleRate: target.pcmSampleRate,
-			}));
+				...(session.trackMix[index] ?? {}),
+			}))
+			.filter((track) => track.segmentPaths.length > 0);
 		if (!canStreamMix(tracks)) {
+			this.debugLogger.log('Mixing through the Web Audio route', {
+				reason: 'the streaming mixer does not take these tracks',
+				tracks: tracks.length,
+			});
 			return null;
 		}
 		try {
-			const wavBuffer = await mixPcmTracksToWav(
-				tracks,
-				this.app,
-				(percent) => {
+			const wavBuffer = await mixPcmTracksToWav(tracks, this.app, {
+				onProgress: (percent) => {
 					this.reportProgress(
 						40 + Math.round(percent * 0.2),
 						'Mixing tracks...',
 					);
 				},
-			);
+				alignLevels: session.alignTrackLevels,
+			});
+			this.debugLogger.log('Mixed through the streaming route', {
+				tracks: tracks.length,
+				alignLevels: session.alignTrackLevels,
+			});
 			return new Blob([wavBuffer], {
 				type: audioMimeForExtension(FORMAT_WAV),
 			});

@@ -80,6 +80,22 @@ export interface AudioSource {
 	 * the settings UI disables the selection for known-mono devices.
 	 */
 	channelMode: ChannelMode;
+	/**
+	 * Level adjustment applied to this track when the session's tracks are
+	 * mixed into one file, in decibels. A laptop microphone beside an
+	 * interface is many decibels quieter, and the correction belongs to the
+	 * track rather than to the recording it ends up in. Absent in every
+	 * settings file written before the mixer could place a track.
+	 */
+	gainDb?: number;
+	/**
+	 * Where this track sits in the mixed file, from -1 (left) to 1 (right).
+	 * A non-zero position takes the mix to stereo whatever the tracks
+	 * themselves are: two mono microphones one to each side is what it is for.
+	 * Absent in every settings file written before the mixer could place a
+	 * track.
+	 */
+	pan?: number;
 }
 
 /**
@@ -90,12 +106,18 @@ export type TrackAudioSources = Map<number, AudioSource>;
 /**
  * Track audio sources as accepted from storage: the current object
  * form, or the bare device-id string older versions persisted. The
- * channel mode may be missing or invalid in hand-edited data; the
- * deserializer normalizes it.
+ * channel mode and the mix placement may be missing or invalid in
+ * hand-edited data; the deserializer normalizes them.
  */
 export type TrackAudioSourcesRecord = Record<
 	number,
-	string | { deviceId?: unknown; channelMode?: unknown }
+	| string
+	| {
+			deviceId?: unknown;
+			channelMode?: unknown;
+			gainDb?: unknown;
+			pan?: unknown;
+	  }
 >;
 
 /**
@@ -207,6 +229,13 @@ export interface AudioRecorderSettings {
 	enableMultiTrack: boolean;
 	/** Maximum number of tracks */
 	maxTracks: number;
+	/**
+	 * Whether the mixer brings the tracks to a common level before summing
+	 * them. Off by default: it is a judgement about the recording rather
+	 * than a property of it, and a session mixed twice has to come out the
+	 * same both times.
+	 */
+	mixAlignTrackLevels: boolean;
 	/** Output mode for multi-track recordings */
 	outputMode: OutputMode;
 	/** Use source names for track file names */
@@ -599,6 +628,8 @@ export interface AudioRecorderSettingsInput
 export interface SerializedAudioSource {
 	deviceId: string;
 	channelMode: ChannelMode;
+	gainDb: number;
+	pan: number;
 }
 
 /**
@@ -668,6 +699,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	bitrate: DEFAULT_BITRATE,
 	enableMultiTrack: false,
 	maxTracks: 2,
+	mixAlignTrackLevels: false,
 	outputMode: 'single',
 	useSourceNamesForTracks: true,
 	trackAudioSources: new Map(),

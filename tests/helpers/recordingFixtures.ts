@@ -62,6 +62,8 @@ export function createSession(
 		splitEnabled: false,
 		partMinutes: 15,
 		partSuffix: 'part',
+		trackMix: [],
+		alignTrackLevels: false,
 		...overrides,
 	};
 }

@@ -13,10 +13,13 @@
 /** Highest track count the multi-track section offers. */
 export const MAX_TRACK_COUNT = 8;
 
+/** One field of a track's audio source that a settings row addresses. */
+export type TrackControlField = 'deviceId' | 'channelMode' | 'gainDb' | 'pan';
+
 /** Control key for one field of one track's audio source. */
 export const trackControlKey = (
 	track: number,
-	field: 'deviceId' | 'channelMode',
+	field: TrackControlField,
 ): string => `track.${String(track)}.${field}`;
 
 /**
@@ -26,14 +29,14 @@ export const trackControlKey = (
  */
 export function parseTrackControlKey(
 	key: string,
-): { track: number; field: 'deviceId' | 'channelMode' } | undefined {
-	const match = /^track\.(\d+)\.(deviceId|channelMode)$/.exec(key);
+): { track: number; field: TrackControlField } | undefined {
+	const match = /^track\.(\d+)\.(deviceId|channelMode|gainDb|pan)$/.exec(key);
 	if (!match) {
 		return undefined;
 	}
 	return {
 		track: Number(match[1]),
-		field: match[2] as 'deviceId' | 'channelMode',
+		field: match[2] as TrackControlField,
 	};
 }
 

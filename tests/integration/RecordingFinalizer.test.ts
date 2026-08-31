@@ -548,7 +548,7 @@ describe('RecordingFinalizer', () => {
 					}),
 				],
 				mockApp,
-				expect.any(Function),
+				expect.objectContaining({ onProgress: expect.any(Function) }),
 			);
 			expect(jest.mocked(mergeAudioTracks)).not.toHaveBeenCalled();
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(

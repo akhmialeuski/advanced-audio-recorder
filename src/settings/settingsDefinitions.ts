@@ -56,6 +56,7 @@ import type { Setting, SettingDefinitionItem } from 'obsidian';
 export {
 	parseProfileControlKey,
 	parseTrackControlKey,
+	type TrackControlField,
 } from './sections/controlKeys';
 
 export {

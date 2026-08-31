@@ -409,13 +409,14 @@ export class RecordingManager {
 				outputFormat: this.session.outputFormat,
 				recorderFormat: this.session.recorderFormat,
 				bitrate: this.session.bitrate,
-				tracks: this.chunkTargets.map((target) => ({
+				tracks: this.chunkTargets.map((target, index) => ({
 					fileBaseName: target.fileBaseName,
 					isPcm: this.session.isWavPcm,
 					pcmChannels: target.pcmChannels,
 					pcmSampleRate: target.pcmSampleRate,
 					segmentPaths: [],
 					partPaths: [],
+					...(this.session.trackMix[index] ?? {}),
 				})),
 			});
 
@@ -1014,6 +1015,14 @@ export class RecordingManager {
 			feeding.map((chunkTarget) => ({
 				pcmBytes: chunkTarget.filePcmBytes,
 				channels: chunkTarget.pcmChannels,
+				sampleRate: chunkTarget.pcmSampleRate,
+				// A track placed off centre takes the merged file to stereo,
+				// which doubles it. The warning has to see the same file the
+				// mixer will write, or it lets the ceiling past unannounced.
+				pan:
+					this.session.trackMix[
+						this.chunkTargets.indexOf(chunkTarget)
+					]?.pan ?? 0,
 			})),
 		).pcmByteLength;
 	}
