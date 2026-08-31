@@ -19,6 +19,7 @@ import {
 	type PlayerMarker,
 } from '../markers/markerModel';
 import { normalizeParticipantNames } from '../speakers/participantRoster';
+import type { PartFailure } from '../transcription/partFailure';
 import {
 	TRANSCRIPT_FILE_FORMATS,
 	type TranscriptFileFormat,
@@ -204,12 +205,27 @@ export interface PlaybackState {
 	updatedAt: string;
 }
 
+/**
+ * The parts the last transcription run could not transcribe, kept so exactly
+ * those can be asked for again instead of paying for the whole recording a
+ * second time. Written by every run, so an empty list is a run that came back
+ * whole rather than a run nothing is known about.
+ */
+export interface FailedPartsSection {
+	/** The parts that failed, in the order the run attempted them. */
+	parts: PartFailure[];
+	/** ISO-8601 timestamp of the run that recorded them. */
+	recordedAt: string;
+}
+
 /** The full parsed sidecar document for one recording. */
 export interface RecordingSidecar {
 	markers: PlayerMarker[];
 	transcript: TranscriptSection;
 	/** Last playback position; absent until the recording is left part-heard. */
 	playback?: PlaybackState;
+	/** Parts the last run could not transcribe; absent when it came back whole. */
+	failedParts?: FailedPartsSection;
 }
 
 /** Returns a fresh, empty transcript section. */
@@ -265,6 +281,7 @@ export function isSidecarEmpty(sidecar: RecordingSidecar): boolean {
 	return (
 		sidecar.markers.length === 0 &&
 		sidecar.playback === undefined &&
+		sidecar.failedParts === undefined &&
 		isTranscriptSectionEmpty(sidecar.transcript)
 	);
 }
@@ -283,6 +300,45 @@ function offsetSeconds(value: unknown): number | null {
 	return typeof value === 'number' && Number.isFinite(value) && value >= 0
 		? value
 		: null;
+}
+
+/**
+ * Parses the recorded failed parts. A part with no usable start locates
+ * nothing and is dropped; a section with no parts left, or with no write
+ * timestamp, reads as no record at all, which is the same answer as a run
+ * that came back whole.
+ * @param value - Raw `failedParts` value from the parsed JSON
+ */
+function parseFailedParts(value: unknown): FailedPartsSection | null {
+	if (typeof value !== 'object' || value === null) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	const recordedAt = trimmedString(record.recordedAt);
+	if (!recordedAt || !Array.isArray(record.parts)) {
+		return null;
+	}
+	const parts: PartFailure[] = [];
+	for (const entry of record.parts) {
+		if (typeof entry !== 'object' || entry === null) {
+			continue;
+		}
+		const part = entry as Record<string, unknown>;
+		const startSeconds = offsetSeconds(part.startSeconds);
+		if (startSeconds === null) {
+			continue;
+		}
+		const endSeconds = offsetSeconds(part.endSeconds);
+		parts.push({
+			label: trimmedString(part.label) ?? '',
+			message: trimmedString(part.message) ?? '',
+			startSeconds,
+			...(endSeconds === null || endSeconds <= startSeconds
+				? {}
+				: { endSeconds }),
+		});
+	}
+	return parts.length > 0 ? { parts, recordedAt } : null;
 }
 
 /**
@@ -570,10 +626,12 @@ export function parseRecordingSidecar(value: unknown): RecordingSidecar {
 	}
 	const record = value as Record<string, unknown>;
 	const playback = parsePlaybackState(record.playback);
+	const failedParts = parseFailedParts(record.failedParts);
 	return {
 		markers: parseMarkers(record.markers),
 		transcript: parseTranscriptSection(record.transcript),
 		...(playback ? { playback } : {}),
+		...(failedParts ? { failedParts } : {}),
 	};
 }
 
@@ -594,6 +652,19 @@ export function serializeRecordingSidecar(
 		payload.playback = {
 			position: sidecar.playback.position,
 			updatedAt: sidecar.playback.updatedAt,
+		};
+	}
+	if (sidecar.failedParts) {
+		payload.failedParts = {
+			recordedAt: sidecar.failedParts.recordedAt,
+			parts: sidecar.failedParts.parts.map((part) => ({
+				label: part.label,
+				message: part.message,
+				startSeconds: part.startSeconds,
+				...(part.endSeconds === undefined
+					? {}
+					: { endSeconds: part.endSeconds }),
+			})),
 		};
 	}
 	if (!isTranscriptSectionEmpty(sidecar.transcript)) {

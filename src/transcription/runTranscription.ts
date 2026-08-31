@@ -28,6 +28,7 @@ import {
 	notifyTranscriptWritten,
 	writeTranscriptFile,
 } from './transcriptOutput';
+import type { PartFailure } from './partFailure';
 
 /**
  * The sidecar surface a transcribe-and-write run needs: the service's name
@@ -45,6 +46,11 @@ export interface TranscriptOutputSidecar extends TranscriptionSidecarAccess {
 		path: string,
 		provenance: TranscriptProvenance,
 	): Promise<void>;
+	/**
+	 * Records what this run could not transcribe, so exactly those parts can
+	 * be asked for again. An empty list clears the previous record.
+	 */
+	setFailedParts(path: string, parts: readonly PartFailure[]): Promise<void>;
 }
 
 /** Options for a full transcribe-and-write run. */
@@ -172,6 +178,22 @@ export async function transcribeFile(
 	// run registers, diarized or not: absence of records must always mean "no
 	// transcript", never "a transcript this feature ignored". Best-effort: a
 	// sidecar failure never fails a completed (and possibly billed) run.
+	if (options.sidecar) {
+		// Written whatever the run produced, and before the output records:
+		// an absent record has to mean "nothing is missing", so a run that
+		// came back whole must clear what an earlier one left behind.
+		try {
+			await options.sidecar.setFailedParts(
+				file.path,
+				result.missingParts,
+			);
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to record the missing parts of ${file.path}:`,
+				error,
+			);
+		}
+	}
 	if (options.sidecar && (transcriptFile || inserted)) {
 		try {
 			const writtenAt = new Date().toISOString();

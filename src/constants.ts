@@ -1195,6 +1195,7 @@ export const COMMAND_IDS = {
 	nextChapter: 'go-to-next-chapter',
 	toggleChapterLoop: 'toggle-chapter-loop',
 	searchMarkers: 'search-markers',
+	retryFailedParts: 'retry-failed-transcription-parts',
 	addPlaybackBookmark: 'add-playback-bookmark',
 	addPlaybackChapter: 'add-playback-chapter',
 } as const;

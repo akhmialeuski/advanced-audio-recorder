@@ -118,6 +118,8 @@ describe('a second pass that is declined', () => {
 				passFailed.push({
 					label: '0:00-0:10',
 					message: 'rate limited',
+					startSeconds: 0,
+					endSeconds: 10,
 				});
 				passResults.push({
 					offsetSeconds: 0,

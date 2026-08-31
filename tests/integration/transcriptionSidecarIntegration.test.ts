@@ -81,6 +81,7 @@ function makeSidecar(section: TranscriptSection): {
 	recordNoteOutput: jest.Mock;
 	recordFileOutput: jest.Mock;
 	recordProvenance: jest.Mock;
+	setFailedParts: jest.Mock;
 } {
 	return {
 		getTranscript: jest.fn().mockResolvedValue(section),
@@ -88,6 +89,7 @@ function makeSidecar(section: TranscriptSection): {
 		recordNoteOutput: jest.fn().mockResolvedValue(undefined),
 		recordFileOutput: jest.fn().mockResolvedValue(undefined),
 		recordProvenance: jest.fn().mockResolvedValue(undefined),
+		setFailedParts: jest.fn().mockResolvedValue(undefined),
 	};
 }
 
@@ -717,5 +719,56 @@ describe('a run that translates the transcript', () => {
 		await runTranslating({ llmPostProcessEnabled: false });
 
 		expect(writeFileMock).toHaveBeenCalledTimes(1);
+	});
+});
+
+// An absent record has to mean "nothing is missing", never "nobody looked",
+// so every run writes what it lost - including a run that lost nothing.
+describe('recording what a run could not transcribe', () => {
+	it('records the parts that failed, with the bounds to ask for again', async () => {
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		writeFileMock.mockResolvedValue({ path: 'rec.json' });
+		const failing = fakeProvider({
+			id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			transcribe: { segments: [{ start: 0, end: 1, text: 'hi' }] },
+		});
+
+		await transcribeFile(
+			makeApp(),
+			() => diarizedSettings({ transcriptDestination: 'file' }),
+			audioFile,
+			{ notePathForLinks: 'note.md', sidecar },
+			{ createProvider: () => failing },
+		);
+
+		// This run came back whole, so the record is cleared rather than left
+		expect(sidecar.setFailedParts).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			[],
+		);
+	});
+
+	it('warns instead of failing a paid run when the record cannot be written', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+			// The completed run is the assertion.
+		});
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		sidecar.setFailedParts.mockRejectedValue(new Error('sidecar locked'));
+		writeFileMock.mockResolvedValue({ path: 'rec.json' });
+
+		const result = await transcribeFile(
+			makeApp(),
+			() => diarizedSettings({ transcriptDestination: 'file' }),
+			audioFile,
+			{ notePathForLinks: 'note.md', sidecar },
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
+		);
+
+		expect(result.transcript.segments).toHaveLength(2);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('missing parts'),
+			expect.any(Error),
+		);
+		warn.mockRestore();
 	});
 });

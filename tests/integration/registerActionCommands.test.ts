@@ -125,6 +125,7 @@ describe('file actions over the active audio file', () => {
 			COMMAND_IDS.splitAudio,
 			COMMAND_IDS.cleanupAudio,
 			COMMAND_IDS.transcribeAudio,
+			COMMAND_IDS.retryFailedParts,
 			COMMAND_IDS.renameSpeakers,
 			COMMAND_IDS.generateChapters,
 			COMMAND_IDS.deleteRecording,

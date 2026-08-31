@@ -7,7 +7,7 @@
  */
 
 import { Notice, TFile } from 'obsidian';
-import { COMMAND_IDS } from '../constants';
+import { COMMAND_IDS, PLUGIN_LOG_PREFIX } from '../constants';
 import { isAudioFile } from '../utils/audioFile';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from '../ui/AudioFileInfoModal';
@@ -19,6 +19,12 @@ import { ChapterGenerationModal } from '../ui/ChapterGenerationModal';
 import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
 import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
 import type { ActionServices, FileAction, FileContext } from './PluginAction';
+import { TranscriptionService } from '../transcription/TranscriptionService';
+import {
+	FailedPartRetry,
+	serviceRunner,
+	type RetryOutcome,
+} from '../transcription/retryFailedParts';
 
 /** Availability gate for actions with no extra conditions. */
 const always = (): boolean => true;
@@ -133,6 +139,16 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		},
 	},
 	{
+		commandId: COMMAND_IDS.retryFailedParts,
+		title: 'Transcribe the parts that failed',
+		icon: 'refresh-cw',
+		showInEditorMenu: true,
+		isAvailable: ({ services }: FileContext): boolean =>
+			services.getSettings().transcriptionEnabled,
+		run: ({ file, services }: FileContext): Promise<void> =>
+			runFailedPartRetry(file, services),
+	},
+	{
 		commandId: COMMAND_IDS.renameSpeakers,
 		title: 'Rename speakers',
 		icon: 'users',
@@ -182,3 +198,64 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		},
 	},
 ];
+
+/**
+ * Tops up a recording's transcript with the parts that failed, and reports
+ * what happened in one notice.
+ *
+ * Whether anything is missing cannot be known without reading the sidecar,
+ * and an action's availability is decided synchronously, so the action is
+ * always offered and a recording with nothing missing is told so. Offering it
+ * only after something warmed a cache would hide it exactly when it is
+ * wanted.
+ * @param file - The recording to top up
+ * @param services - Injected services
+ */
+async function runFailedPartRetry(
+	file: TFile,
+	services: ActionServices,
+): Promise<void> {
+	const retry = new FailedPartRetry(
+		services.app,
+		file,
+		services.recordingSidecar,
+		serviceRunner(
+			new TranscriptionService(services.app, services.getSettings),
+		),
+	);
+	try {
+		const outcome = await retry.retry();
+		new Notice(describeRetryOutcome(outcome));
+	} catch (error) {
+		console.error(
+			`${PLUGIN_LOG_PREFIX} Failed to transcribe the missing parts of ${file.path}:`,
+			error,
+		);
+		new Notice(
+			`Could not transcribe the missing parts: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+	}
+}
+
+/**
+ * One sentence saying what the top-up did.
+ * @param outcome - What the retry reports
+ * @returns The notice text
+ */
+export function describeRetryOutcome(outcome: RetryOutcome): string {
+	if (outcome.blocked) {
+		return outcome.blocked;
+	}
+	const recovered = `Recovered ${String(outcome.recovered)} segment${
+		outcome.recovered === 1 ? '' : 's'
+	} and rewrote ${String(outcome.rewritten)} transcript file${
+		outcome.rewritten === 1 ? '' : 's'
+	}.`;
+	return outcome.stillMissing.length === 0
+		? recovered
+		: `${recovered} ${String(outcome.stillMissing.length)} part${
+				outcome.stillMissing.length === 1 ? '' : 's'
+			} failed again.`;
+}

@@ -132,6 +132,49 @@ export interface TranscribeRunOptions {
 	 * Absent, the run is stateless and its speakers keep the engine labels.
 	 */
 	sidecar?: TranscriptionSidecarAccess | undefined;
+	/**
+	 * Stretches of the recording to transcribe, when the run is asked for
+	 * some of it rather than all of it. Every prepared part outside them is
+	 * dropped, so a retry of the parts that failed sends exactly those and is
+	 * billed for exactly those.
+	 *
+	 * Omitted for an ordinary run, which transcribes the whole recording.
+	 */
+	onlyRanges?: readonly { startSeconds: number; endSeconds: number }[];
+}
+
+/**
+ * Keeps the prepared parts a restricted run asked for, or all of them when it
+ * asked for the whole recording.
+ *
+ * A part is kept when it overlaps any requested stretch, which is what makes
+ * the retry of a failed part send that part again: the plan is deterministic,
+ * so the same recording prepares to the same boundaries and the part that
+ * failed is the part that overlaps its own recorded bounds. A part with no
+ * measured end is the whole-file path, which has nothing smaller to send and
+ * is therefore kept for any request at all.
+ * @param payloads - Everything the recording prepared to
+ * @param ranges - The stretches asked for, or undefined for all of it
+ * @returns The parts to transcribe, in order
+ */
+export function selectRanges(
+	payloads: PreparedPayload[],
+	ranges: readonly { startSeconds: number; endSeconds: number }[] | undefined,
+): PreparedPayload[] {
+	if (!ranges || ranges.length === 0) {
+		return payloads;
+	}
+	return payloads.filter((payload) => {
+		const end = payload.endSeconds;
+		if (end === undefined) {
+			return true;
+		}
+		return ranges.some(
+			(range) =>
+				payload.offsetSeconds < range.endSeconds &&
+				end > range.startSeconds,
+		);
+	});
 }
 
 /**
@@ -157,6 +200,11 @@ export interface TranscribeRunResult {
 	markdown: string;
 	/** Cost of the run, from provider-reported usage. */
 	cost: TranscribeRunCost;
+	/**
+	 * The parts this run could not transcribe, with the bounds that let them
+	 * be asked for again. Empty when the run came back whole.
+	 */
+	missingParts: PartFailure[];
 	/**
 	 * The translation, when the run was asked for one. Carried beside the
 	 * transcript rather than in place of it: a translation is a second
@@ -418,7 +466,7 @@ export class TranscriptionService {
 		);
 		this.throwIfCancelled(token);
 
-		const payloads = prepared.payloads;
+		const payloads = selectRanges(prepared.payloads, options.onlyRanges);
 		const partCount = payloads.length;
 		const results: {
 			offsetSeconds: number;
@@ -660,6 +708,7 @@ export class TranscriptionService {
 			transcript,
 			markdown,
 			cost: runCost(),
+			missingParts,
 			...(translation ? { translation } : {}),
 		};
 	}
@@ -999,7 +1048,17 @@ export class TranscriptionService {
 			if (!label) {
 				throw error;
 			}
-			failedParts.push({ label, message: detail });
+			// The bounds come from the payload rather than the label: a
+			// label is prose for the user, and asking for exactly this part
+			// again needs the numbers the plan produced.
+			failedParts.push({
+				label,
+				message: detail,
+				startSeconds: prepared.offsetSeconds,
+				...(prepared.endSeconds === undefined
+					? {}
+					: { endSeconds: prepared.endSeconds }),
+			});
 		}
 	}
 

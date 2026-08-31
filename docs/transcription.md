@@ -17,6 +17,7 @@
 - [In-note formatting](#in-note-formatting)
 - [The Transcribe dialog (per-run overrides)](#the-transcribe-dialog-per-run-overrides)
 - [Progress and minimizing](#progress-and-minimizing)
+- [Transcribing the parts that failed](#transcribing-the-parts-that-failed)
 - [Cost estimates](#cost-estimates)
 - [LLM post-processing](#llm-post-processing)
 - [Auto chapters](#auto-chapters)
@@ -384,6 +385,25 @@ Each network request - one part of a long recording, or a whole-file upload - is
 When a long recording is split into several parts, parts that fail are reported and the parts that succeeded are still kept - a `> [!warning]` callout names the missing stretch in the inserted Markdown, and a notice explains what was lost. Only if **every** part fails does the whole run fail with the first error.
 
 A part whose transcript overruns the model's **output-token limit** (which Gemini can hit on dense speech) is not discarded: it is automatically split into smaller halves and retried, down to a minimum segment length of one minute. Each retry is a separate, normally billed API request; only a segment that is truncated even at the minimum length is reported as missing.
+
+---
+
+## Transcribing the parts that failed
+
+A recording longer than the engine takes in one request is sent in parts, and a part can fail on its own: a rate limit, a provider fault, a request the engine refused. The run keeps every part that came back rather than throwing the transcript away, warns about the gap in a callout, and **records what it lost** in the recording's sidecar, with the time bounds of each missing part and the reason the engine gave.
+
+**Transcribe the parts that failed**, in the recording's context menu, the editor menu of its embed, and the command palette, sends **exactly those parts again** and splices what comes back into the transcript already written. The part boundaries are a pure function of the recording's length and the engine's limit, so the same recording is cut the same way every time and the part that failed is the part that is asked for. That is what makes this a top-up rather than a second run: you are billed for the missing minutes, not for the whole recording.
+
+What it does with the result:
+
+- The recovered segments are placed on the timeline **among the ones already there**, and a segment that starts where one already starts is left alone, so a part that partly succeeded is never doubled.
+- Every transcript file the run wrote is **rewritten** with the completed transcript, each in the format it was written in. No second set of files appears beside the first.
+- What still fails is recorded again, so the action can be run once more later; a run that comes back whole clears the record.
+- A translation is left alone: it is a second document, and completing it is the [translation task's](llm-post-processing.md) job rather than the engine's.
+
+Two limits are worth knowing. The top-up reads the transcript back from the run's **JSON output**, which is the only format that keeps the segment timings, so it needs the transcript file format to be JSON (the default); with only subtitles or plain text on disk it says so rather than guessing at the timings those formats drop. And a recording small enough to go in **one request** has no smaller unit to re-send, so a failure there is reported as one to transcribe again in full.
+
+The action is offered on every recording, because whether anything is missing cannot be known without reading the sidecar: a recording with nothing missing is simply told so.
 
 ---
 

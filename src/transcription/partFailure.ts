@@ -4,9 +4,10 @@
  * A multi-part run salvages what it got: parts that failed are recorded rather
  * than throwing away a transcript the user already paid for. That makes the
  * failure list a result of the run, carried alongside the transcript, and it is
- * read in three places - the warning prepended to the note, the notice raised
- * once, and the check that decides whether an advanced second pass came back
- * whole. It is declared here so all three read the same shape.
+ * read in four places - the warning prepended to the note, the notice raised
+ * once, the check that decides whether an advanced second pass came back
+ * whole, and the record the recording's sidecar keeps so those parts can be
+ * asked for again later. It is declared here so all four read the same shape.
  * @module transcription/partFailure
  */
 
@@ -19,6 +20,14 @@ export interface PartFailure {
 	label: string;
 	/** What the engine said went wrong. */
 	message: string;
+	/** Where the part starts on the recording timeline, in seconds. */
+	startSeconds: number;
+	/**
+	 * Where it ends on that timeline. Absent on the whole-file path, whose
+	 * true duration is never measured, and a part with no end is one that
+	 * cannot be asked for again on its own.
+	 */
+	endSeconds?: number;
 }
 
 /** The two sentences a run with missing parts owes the user. */

@@ -1199,4 +1199,81 @@ describe('RecordingSidecarStore', () => {
 			warn.mockRestore();
 		});
 	});
+	describe('the parts a run could not transcribe', () => {
+		const PART = {
+			label: '0:30-2:00',
+			message: 'rate limited',
+			startSeconds: 30,
+			endSeconds: 120,
+		};
+
+		it('reports nothing for a recording that was never transcribed', async () => {
+			const { app } = makeApp();
+
+			expect(
+				await new RecordingSidecarStore(app).getFailedParts('rec.wav'),
+			).toBeNull();
+		});
+
+		it('persists the parts and reads them back from disk', async () => {
+			const { app } = makeApp();
+			await new RecordingSidecarStore(app).setFailedParts('rec.wav', [
+				PART,
+			]);
+
+			const reloaded = await new RecordingSidecarStore(
+				app,
+			).getFailedParts('rec.wav');
+
+			expect(reloaded?.parts).toEqual([PART]);
+			expect(reloaded?.recordedAt).toEqual(expect.any(String));
+		});
+
+		it('hands out a copy, so a caller cannot edit what is stored', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setFailedParts('rec.wav', [PART]);
+
+			const first = await store.getFailedParts('rec.wav');
+			const part = first?.parts[0];
+			if (part) {
+				part.startSeconds = 1;
+			}
+
+			expect(
+				(await store.getFailedParts('rec.wav'))?.parts[0]?.startSeconds,
+			).toBe(30);
+		});
+
+		it('clears the record when a later run comes back whole', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setFailedParts('rec.wav', [PART]);
+
+			await store.setFailedParts('rec.wav', []);
+
+			expect(await store.getFailedParts('rec.wav')).toBeNull();
+			// Nothing else was in the file, so it goes away with the record
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+
+		it('leaves the markers alone when the record changes', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 10)]);
+
+			await store.setFailedParts('rec.wav', [PART]);
+
+			expect(rawSidecar(files).markers).toEqual([marker('a', 10)]);
+			expect(await store.getMarkers('rec.wav')).toHaveLength(1);
+		});
+
+		it('writes nothing when clearing a record that was never written', async () => {
+			const { app, files } = makeApp();
+
+			await new RecordingSidecarStore(app).setFailedParts('rec.wav', []);
+
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+	});
 });

@@ -17,6 +17,7 @@
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { PlayerMarker } from '../markers/markerModel';
+import type { PartFailure } from '../transcription/partFailure';
 import { serializeMarkers } from '../markers/markerModel';
 import { mergeParticipantNames } from '../speakers/participantRoster';
 import { TRANSCRIPT_FILE_FORMATS } from '../transcription/TranscriptTypes';
@@ -31,6 +32,7 @@ import {
 	type FileOutput,
 	type NoteOutput,
 	type ParticipantUpdate,
+	type FailedPartsSection,
 	type PlaybackState,
 	type RecordingSidecar,
 	type SpeakerEntry,
@@ -130,6 +132,48 @@ export class RecordingSidecarStore {
 			sidecar.markers = result;
 		});
 		return serializeMarkers(result);
+	}
+
+	/**
+	 * Returns the parts the last run could not transcribe, or null when it
+	 * came back whole (or nothing has been transcribed yet).
+	 * @param path - Vault-relative recording path
+	 */
+	async getFailedParts(path: string): Promise<FailedPartsSection | null> {
+		const stored = (await this.load(path)).failedParts;
+		return stored
+			? {
+					recordedAt: stored.recordedAt,
+					parts: stored.parts.map((part) => ({ ...part })),
+				}
+			: null;
+	}
+
+	/**
+	 * Records what a run could not transcribe, or clears the record when it
+	 * came back whole. Every run writes this, so an absent record always
+	 * means "nothing is missing" and never "nobody looked".
+	 * @param path - Vault-relative recording path
+	 * @param parts - The parts that failed; an empty list clears the record
+	 */
+	async setFailedParts(
+		path: string,
+		parts: readonly PartFailure[],
+	): Promise<void> {
+		return this.mutate(path, (sidecar) => {
+			if (parts.length === 0) {
+				if (!sidecar.failedParts) {
+					return false;
+				}
+				delete sidecar.failedParts;
+				return true;
+			}
+			sidecar.failedParts = {
+				parts: parts.map((part) => ({ ...part })),
+				recordedAt: new Date().toISOString(),
+			};
+			return true;
+		});
 	}
 
 	/**

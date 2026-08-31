@@ -10,7 +10,7 @@
  */
 
 import { Notice } from 'obsidian';
-import { FILE_ACTIONS } from 'src/actions/fileActions';
+import { describeRetryOutcome, FILE_ACTIONS } from 'src/actions/fileActions';
 import type { ActionServices } from 'src/actions/PluginAction';
 import { COMMAND_IDS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
@@ -74,7 +74,10 @@ function action(commandId: string): (typeof FILE_ACTIONS)[number] {
 }
 
 /** The services an action is handed, all of them spies. */
-function createServices(settings: Partial<AudioRecorderSettings> = {}): {
+function createServices(
+	settings: Partial<AudioRecorderSettings> = {},
+	sidecar: ActionServices['recordingSidecar'] = {} as ActionServices['recordingSidecar'],
+): {
 	services: ActionServices;
 	primeForEnhancement: jest.Mock;
 } {
@@ -90,7 +93,7 @@ function createServices(settings: Partial<AudioRecorderSettings> = {}): {
 			primeForEnhancement,
 			getWorkerClient: jest.fn(() => null),
 			autoChapters: {} as ActionServices['autoChapters'],
-			recordingSidecar: {} as ActionServices['recordingSidecar'],
+			recordingSidecar: sidecar,
 		},
 	};
 }
@@ -111,6 +114,7 @@ describe('FILE_ACTIONS registry', () => {
 			COMMAND_IDS.splitAudio,
 			COMMAND_IDS.cleanupAudio,
 			COMMAND_IDS.transcribeAudio,
+			COMMAND_IDS.retryFailedParts,
 			COMMAND_IDS.renameSpeakers,
 			COMMAND_IDS.generateChapters,
 			COMMAND_IDS.deleteRecording,
@@ -344,5 +348,141 @@ describe('the transcribe action', () => {
 		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toBe(
 			options,
 		);
+	});
+});
+
+// The top-up is offered on every recording, because whether anything is
+// missing cannot be known without reading the sidecar and availability is
+// decided synchronously. So a recording with nothing missing has to be told
+// so, and every other outcome has to reach the user as one sentence.
+describe('transcribing the parts that failed', () => {
+	/**
+	 * A sidecar double for the top-up, typed once as the services expect it
+	 * so each case names only the methods it drives.
+	 * @param methods - The sidecar methods this case needs
+	 * @returns The double
+	 */
+	function retrySidecar(
+		methods: Record<string, jest.Mock>,
+	): ActionServices['recordingSidecar'] {
+		return methods as unknown as ActionServices['recordingSidecar'];
+	}
+
+	it('says so when the recording has nothing missing', async () => {
+		const { services } = createServices(
+			{ transcriptionEnabled: true },
+			retrySidecar({
+				getFailedParts: jest.fn().mockResolvedValue(null),
+				setFailedParts: jest.fn().mockResolvedValue(undefined),
+				getTranscript: jest.fn().mockResolvedValue({ fileOutputs: [] }),
+			}),
+		);
+
+		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('Nothing is missing');
+	});
+
+	it('reports what went wrong instead of failing silently', async () => {
+		const error = jest.spyOn(console, 'error').mockImplementation(() => {
+			// The notice is the assertion.
+		});
+		const { services } = createServices(
+			{ transcriptionEnabled: true },
+			retrySidecar({
+				getFailedParts: jest
+					.fn()
+					.mockRejectedValue(new Error('sidecar unreadable')),
+			}),
+		);
+
+		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('sidecar unreadable');
+		error.mockRestore();
+	});
+
+	it('reports a rejection that is not an error at all', async () => {
+		const error = jest.spyOn(console, 'error').mockImplementation(() => {
+			// The notice is the assertion.
+		});
+		const { services } = createServices(
+			{ transcriptionEnabled: true },
+			retrySidecar({
+				getFailedParts: jest
+					.fn()
+					.mockRejectedValue('the disk went away'),
+			}),
+		);
+
+		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('the disk went away');
+		error.mockRestore();
+	});
+
+	it('is offered only while transcription is on', () => {
+		const on = createServices({ transcriptionEnabled: true });
+		const off = createServices({ transcriptionEnabled: false });
+		const entry = action(COMMAND_IDS.retryFailedParts);
+
+		expect(entry.isAvailable({ file, services: on.services })).toBe(true);
+		expect(entry.isAvailable({ file, services: off.services })).toBe(false);
+	});
+});
+
+describe('what the user is told a top-up did', () => {
+	it('names what came back and what was rewritten', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 3,
+				stillMissing: [],
+				rewritten: 2,
+			}),
+		).toBe('Recovered 3 segments and rewrote 2 transcript files.');
+	});
+
+	it('counts one of each in the singular', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 1,
+				stillMissing: [],
+				rewritten: 1,
+			}),
+		).toBe('Recovered 1 segment and rewrote 1 transcript file.');
+	});
+
+	it('says how many parts failed again', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 1,
+				stillMissing: [{ label: 'x', message: 'y', startSeconds: 0 }],
+				rewritten: 1,
+			}),
+		).toContain('1 part failed again');
+	});
+
+	it('counts more than one part that failed again in the plural', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 2,
+				stillMissing: [
+					{ label: 'a', message: 'x', startSeconds: 0 },
+					{ label: 'b', message: 'y', startSeconds: 60 },
+				],
+				rewritten: 1,
+			}),
+		).toContain('2 parts failed again');
+	});
+
+	it('gives the reason nothing was attempted, when nothing was', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 0,
+				stillMissing: [],
+				rewritten: 0,
+				blocked: 'Nothing is missing from this transcript.',
+			}),
+		).toBe('Nothing is missing from this transcript.');
 	});
 });
