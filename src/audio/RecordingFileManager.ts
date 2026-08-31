@@ -9,6 +9,7 @@ import type { App } from 'obsidian';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { RecordingTarget } from '../types';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { sanitizeFileNameSegment } from '../utils/fileNames';
 
 /**
  * Returns the directory of the currently active Markdown file.
@@ -80,7 +81,7 @@ export async function resolveUniquePathInDirectory(
 	fileName: string,
 	app: App,
 ): Promise<string> {
-	let sanitizedFileName = fileName.replace(/[\\/:*?"<>|]/g, '-');
+	let sanitizedFileName = sanitizeFileNameSegment(fileName);
 	let filePath = normalizePath(`${directory}/${sanitizedFileName}`);
 
 	let counter = 1;

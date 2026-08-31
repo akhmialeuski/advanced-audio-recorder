@@ -148,6 +148,8 @@ Write a recording's markup out where the rest of the world can read it: a **time
 
 Learn more: [Audio player](audio-player.md)
 
+Chapters also divide the audio itself: the split dialog offers **Cut at chapters** for a recording that has them, naming each part after the chapter it holds.
+
 ## Transcription queue
 
 Right-click a folder and choose **Transcribe every recording in this folder** to queue all of them at once, with a preview of what will run and roughly what it will cost. The queue runs one recording at a time, shows what each is doing, and can be paused, resumed, or trimmed an entry at a time. It is kept on disk, so closing Obsidian does not lose it: a queue with work left is offered back on the next start rather than resumed without asking, since carrying on spends money.

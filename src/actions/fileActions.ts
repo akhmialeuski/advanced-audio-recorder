@@ -95,7 +95,12 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		showInEditorMenu: true,
 		isAvailable: always,
 		run: ({ file, services }: FileContext): void => {
-			new SplitModal(services.app, file, services.getSettings).open();
+			new SplitModal(
+				services.app,
+				file,
+				services.getSettings,
+				services.recordingSidecar,
+			).open();
 		},
 	},
 	{

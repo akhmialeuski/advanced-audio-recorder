@@ -148,7 +148,32 @@ export function buildWavPart(
 	partIndex: number,
 ): ArrayBuffer {
 	const start = partIndex * partBytes;
-	const length = Math.max(0, Math.min(partBytes, layout.dataLength - start));
+	return buildWavPartRange(buffer, layout, start, start + partBytes);
+}
+
+/**
+ * Builds one standalone WAV part covering an arbitrary byte range of the
+ * sample data, which is what an uneven split needs: chapter boundaries divide
+ * a recording into parts of different lengths, and the even split above is
+ * the special case where every range is the same size.
+ *
+ * Both ends are clamped to the data the file actually holds, so a range that
+ * runs past the end yields the tail rather than a part padded with whatever
+ * followed the data chunk.
+ * @param buffer - Raw WAV file bytes
+ * @param layout - Parsed WAV layout from parseWavLayout
+ * @param startByte - First byte of the range, relative to the sample data
+ * @param endByte - Byte after the last, relative to the sample data
+ * @returns Complete WAV file for the requested range
+ */
+export function buildWavPartRange(
+	buffer: ArrayBuffer,
+	layout: WavLayout,
+	startByte: number,
+	endByte: number,
+): ArrayBuffer {
+	const start = Math.max(0, Math.min(startByte, layout.dataLength));
+	const length = Math.max(0, Math.min(endByte, layout.dataLength) - start);
 	const headerLength = layout.dataOffset;
 
 	const part = new ArrayBuffer(headerLength + length);
@@ -166,6 +191,62 @@ export function buildWavPart(
 	view.setUint32(headerLength - 4, length, true);
 
 	return part;
+}
+
+/**
+ * Where one second lands in the sample data of a WAV, aligned DOWN to a whole
+ * frame.
+ *
+ * A part that starts mid-frame plays as noise, with the channels swapped for
+ * its whole length. Aligning down rather than to the nearest also keeps every
+ * part starting at or before its chapter, so no audio falls between two parts.
+ * @param layout - Parsed WAV layout from parseWavLayout
+ * @returns A function from seconds to a frame-aligned byte offset
+ */
+export function wavFrameOffset(layout: WavLayout): (seconds: number) => number {
+	return (seconds: number) => {
+		const raw = Math.floor(layout.byteRate * Math.max(0, seconds));
+		return Math.floor(raw / layout.blockAlign) * layout.blockAlign;
+	};
+}
+
+/**
+ * Divides a recording at a list of cut points, carrying each cut through to
+ * the range it opens.
+ *
+ * The cut is carried rather than the index, because the division is not
+ * one-to-one with the list it came from: two cuts can land on the same frame,
+ * one can sit past the end of the recording, and a recording whose first cut
+ * is not at the start has a part before it. Naming the parts by position in
+ * the list would then label them with somebody else's chapter.
+ *
+ * One division serves both split paths, the byte one and the decoded one,
+ * which differ only in what a second is worth.
+ * @param cuts - Where the parts begin, and what each carries, in any order
+ * @param toOffset - Turns seconds into an offset in the unit being divided
+ * @param total - Length of the recording in that same unit
+ * @returns One range per part, in order, each with the cut that opened it
+ */
+export function computeCutRanges<T extends { startSeconds: number }>(
+	cuts: readonly T[],
+	toOffset: (seconds: number) => number,
+	total: number,
+): { start: number; end: number; cut: T | null }[] {
+	const byStart = new Map<number, T | null>([[0, null]]);
+	for (const cut of cuts) {
+		const start = toOffset(cut.startSeconds);
+		// A cut past the end divides nothing, and the first cut on a given
+		// offset is the one that names the part it opens.
+		if (start >= 0 && start < total && !byStart.get(start)) {
+			byStart.set(start, cut);
+		}
+	}
+	const entries = [...byStart.entries()].sort(([a], [b]) => a - b);
+	return entries.map(([start, cut], index) => ({
+		start,
+		end: entries[index + 1]?.[0] ?? total,
+		cut,
+	}));
 }
 
 /**

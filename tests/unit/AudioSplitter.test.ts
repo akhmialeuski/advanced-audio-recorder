@@ -7,6 +7,9 @@ import {
 	parseWavLayout,
 	computeWavPartBytes,
 	buildWavPart,
+	buildWavPartRange,
+	computeCutRanges,
+	wavFrameOffset,
 	sliceAudioBuffer,
 	computePartCount,
 	computePcmPartLimitBytes,
@@ -700,5 +703,181 @@ describe('detachTrailingBytes', () => {
 
 		expect(concatBytes(carry)).toHaveLength(11);
 		expect(concatBytes([...buffers, ...carry])).toEqual(original);
+	});
+});
+
+// Chapter boundaries divide a recording into parts of different lengths, so
+// the even split is the special case and the range split is the general one.
+describe('cutting a WAV at arbitrary points', () => {
+	/** A one-second-per-1000-bytes WAV, so a cut in seconds is easy to read. */
+	function wav(): { bytes: ArrayBuffer; layout: WavLayout } {
+		const bytes = buildTestWav(1, 500, 4000);
+		return { bytes, layout: defined(parseWavLayout(bytes)) };
+	}
+
+	describe('the ranges a list of cut points makes', () => {
+		/** Divides the test WAV at the given cuts, in seconds. */
+		function ranges(
+			layout: WavLayout,
+			cuts: { startSeconds: number; title: string }[],
+		): { start: number; end: number; title: string | null }[] {
+			return computeCutRanges(
+				cuts,
+				wavFrameOffset(layout),
+				layout.dataLength,
+			).map((range) => ({
+				start: range.start,
+				end: range.end,
+				title: range.cut?.title ?? null,
+			}));
+		}
+
+		it('always starts at the beginning, whatever it was given', () => {
+			const { layout } = wav();
+
+			expect(ranges(layout, [])).toEqual([
+				{ start: 0, end: 4000, title: null },
+			]);
+		});
+
+		it('divides the data at each cut, carrying its title along', () => {
+			const { layout } = wav();
+
+			// 1000 bytes per second at 500 Hz, 16-bit mono
+			expect(
+				ranges(layout, [
+					{ startSeconds: 0, title: 'Intro' },
+					{ startSeconds: 1, title: 'Middle' },
+					{ startSeconds: 2, title: 'End' },
+				]),
+			).toEqual([
+				{ start: 0, end: 1000, title: 'Intro' },
+				{ start: 1000, end: 2000, title: 'Middle' },
+				{ start: 2000, end: 4000, title: 'End' },
+			]);
+		});
+
+		it('names no chapter for the audio before the first one', () => {
+			// Naming that part after the first chapter would label it with
+			// somebody else's title
+			const { layout } = wav();
+
+			expect(
+				ranges(layout, [{ startSeconds: 2, title: 'Late' }]),
+			).toEqual([
+				{ start: 0, end: 2000, title: null },
+				{ start: 2000, end: 4000, title: 'Late' },
+			]);
+		});
+
+		it('sorts the cuts, so the parts come out in order', () => {
+			const { layout } = wav();
+
+			expect(
+				ranges(layout, [
+					{ startSeconds: 2, title: 'Second' },
+					{ startSeconds: 1, title: 'First' },
+				]).map((r) => r.title),
+			).toEqual([null, 'First', 'Second']);
+		});
+
+		it('aligns a cut down to a whole frame', () => {
+			// A part starting mid-frame plays as noise, with the channels
+			// swapped for its whole length
+			const bytes = buildTestWav(2, 500, 4000);
+			const layout = defined(parseWavLayout(bytes));
+
+			// blockAlign is 4 here, so 1001 bytes rounds down to 1000
+			expect(
+				ranges(layout, [{ startSeconds: 0.5005, title: 'Half' }]).map(
+					(r) => r.start,
+				),
+			).toEqual([0, 1000]);
+		});
+
+		it.each([
+			{ case: 'a cut at the end', seconds: 4 },
+			{ case: 'a cut past the end', seconds: 99 },
+		])('ignores $case, which divides nothing', ({ seconds }) => {
+			const { layout } = wav();
+
+			expect(
+				ranges(layout, [{ startSeconds: seconds, title: 'Nowhere' }]),
+			).toEqual([{ start: 0, end: 4000, title: null }]);
+		});
+
+		it('treats a cut before the start as one at the start', () => {
+			// Clamped rather than dropped, so a chapter at a negative offset
+			// still names the part it plainly opens
+			const { layout } = wav();
+
+			expect(
+				ranges(layout, [{ startSeconds: -5, title: 'Intro' }]),
+			).toEqual([{ start: 0, end: 4000, title: 'Intro' }]);
+		});
+
+		it('keeps the first of two cuts that land on the same frame', () => {
+			const { layout } = wav();
+
+			expect(
+				ranges(layout, [
+					{ startSeconds: 1, title: 'First' },
+					{ startSeconds: 1, title: 'Second' },
+				]),
+			).toEqual([
+				{ start: 0, end: 1000, title: null },
+				{ start: 1000, end: 4000, title: 'First' },
+			]);
+		});
+	});
+
+	describe('the part a byte range builds', () => {
+		it('carries the samples of its own range', () => {
+			const { bytes, layout } = wav();
+
+			const part = buildWavPartRange(bytes, layout, 1000, 2000);
+
+			expect(part.byteLength).toBe(layout.dataOffset + 1000);
+			expect(new Uint8Array(part, layout.dataOffset, 4)).toEqual(
+				new Uint8Array(bytes, layout.dataOffset + 1000, 4),
+			);
+		});
+
+		it('stamps its own length into the header, not the original one', () => {
+			const { bytes, layout } = wav();
+
+			const view = new DataView(
+				buildWavPartRange(bytes, layout, 0, 1000),
+			);
+
+			expect(view.getUint32(layout.dataOffset - 4, true)).toBe(1000);
+			expect(view.getUint32(4, true)).toBe(layout.dataOffset + 1000 - 8);
+		});
+
+		it('yields the tail for a range that runs past the end', () => {
+			const { bytes, layout } = wav();
+
+			expect(
+				buildWavPartRange(bytes, layout, 3000, 99999).byteLength,
+			).toBe(layout.dataOffset + 1000);
+		});
+
+		it('yields a header alone for a range that is not a range', () => {
+			const { bytes, layout } = wav();
+
+			expect(
+				buildWavPartRange(bytes, layout, 2000, 1000).byteLength,
+			).toBe(layout.dataOffset);
+		});
+
+		it('builds the same part the even split builds, which is one range', () => {
+			const { bytes, layout } = wav();
+
+			expect(
+				new Uint8Array(buildWavPart(bytes, layout, 1000, 2)),
+			).toEqual(
+				new Uint8Array(buildWavPartRange(bytes, layout, 2000, 3000)),
+			);
+		});
 	});
 });

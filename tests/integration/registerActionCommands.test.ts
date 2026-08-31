@@ -30,7 +30,7 @@ import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { partialPlugin } from '../helpers/obsidianMock';
-import { partial } from '../helpers/doubles';
+import { partial, commonActionServices } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/ui/AudioFileInfoModal', () => ({
@@ -88,25 +88,7 @@ function makeServices(activeFile: TFile | null): ActionServices {
 				transcriptionSpeakerRenameEnabled: true,
 				transcriptionAutoChaptersEnabled: true,
 			}),
-		saveSettings: () => Promise.resolve(),
-		createTranscriptionModalOptions: () => ({}),
-		primeForEnhancement: () => {},
-		getWorkerClient: () => null,
-		autoChapters: partial<ActionServices>({
-			generate: jest.fn(),
-		})['autoChapters'],
-		recordingSidecar: partial<ActionServices>({
-			transcriptionQueue: {
-				queueFolder: jest.fn().mockResolvedValue(undefined),
-				open: jest.fn(),
-			},
-			getTranscript: jest.fn().mockResolvedValue(null),
-			updateTranscript: jest.fn().mockResolvedValue(undefined),
-		})['recordingSidecar'],
-		transcriptionQueue: {
-			queueFolder: jest.fn().mockResolvedValue(undefined),
-			open: jest.fn(),
-		},
+		...commonActionServices(),
 	};
 }
 

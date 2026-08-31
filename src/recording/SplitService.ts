@@ -22,11 +22,16 @@ import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 import {
 	parseWavLayout,
 	buildWavPart,
+	buildWavPartRange,
+	computeCutRanges,
 	computeWavPartBytes,
 	sliceAudioBuffer,
+	wavFrameOffset,
 	computePartCount,
 	buildPartFileName,
+	type WavLayout,
 } from './AudioSplitter';
+import { toFileNameSegment, uniqueName } from '../utils/fileNames';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { delay } from '../utils/TimeUtils';
@@ -47,11 +52,25 @@ const SPLIT_DESKTOP_ADVICE =
 /**
  * Parameters of one split operation.
  */
+/** One part of a split made at chapter boundaries. */
+export interface ChapterCut {
+	/** Where the part begins, in seconds. */
+	startSeconds: number;
+	/** The chapter's title, which names the part's file. */
+	title: string;
+}
+
 export interface SplitRequest {
 	/** File to split. */
 	sourceFile: TFile;
-	/** Part duration in seconds. */
+	/** Part duration in seconds; ignored when {@link cuts} is given. */
 	partSeconds: number;
+	/**
+	 * Where to cut, when the split follows the recording's chapters rather
+	 * than a fixed length. The parts are then of different lengths and each
+	 * is named after its chapter.
+	 */
+	cuts?: readonly ChapterCut[];
 	/** Validated part name suffix. */
 	suffix: string;
 	/** Bitrate for re-encoding compressed parts. */
@@ -268,6 +287,14 @@ export class SplitService {
 
 		if (sourceExtension === FORMAT_WAV) {
 			const layout = parseWavLayout(sourceBytes);
+			if (layout && request.cuts) {
+				return chapterWavParts(
+					request.cuts,
+					baseName,
+					sourceBytes,
+					layout,
+				);
+			}
 			if (layout) {
 				const partBytes = computeWavPartBytes(
 					layout,
@@ -315,7 +342,9 @@ export class SplitService {
 		onProgress('Decoding audio...');
 		const audioBuffer = await decodeAudioBlob(sourceBytes, 'split');
 		const partSamples = request.partSeconds * audioBuffer.sampleRate;
-		if (audioBuffer.length <= partSamples) {
+		// A chapter split has no fixed part length to be shorter than: its
+		// parts are as long as the chapters make them.
+		if (!request.cuts && audioBuffer.length <= partSamples) {
 			new Notice('File is shorter than one part.');
 			return null;
 		}
@@ -324,6 +353,16 @@ export class SplitService {
 		if (targetFormat !== sourceExtension) {
 			new Notice(
 				`Encoding to "${sourceExtension}" is unavailable; parts are saved as WAV.`,
+			);
+		}
+
+		if (request.cuts) {
+			return chapterDecodedParts(
+				request,
+				request.cuts,
+				baseName,
+				targetFormat,
+				audioBuffer,
 			);
 		}
 
@@ -434,4 +473,104 @@ export class SplitService {
 		}
 		return written.flatMap((part) => (part.file ? [part.file] : []));
 	}
+}
+
+/**
+ * The parts a chapter split cuts an uncompressed WAV into, without decoding.
+ * @param cuts - Where the parts begin, and what each is called
+ * @param baseName - Name of the recording, used when a title yields nothing
+ * @param sourceBytes - Raw WAV file bytes
+ * @param layout - Parsed WAV layout
+ * @returns The parts, each built lazily so one buffer is alive at a time
+ */
+function chapterWavParts(
+	cuts: readonly ChapterCut[],
+	baseName: string,
+	sourceBytes: ArrayBuffer,
+	layout: WavLayout,
+): PreparedPart[] {
+	const taken = new Set<string>();
+	return computeCutRanges(
+		cuts,
+		wavFrameOffset(layout),
+		layout.dataLength,
+	).map((range, index) => ({
+		fileName: chapterPartName(
+			range.cut,
+			index,
+			baseName,
+			FORMAT_WAV,
+			taken,
+		),
+		data: () =>
+			Promise.resolve(
+				buildWavPartRange(sourceBytes, layout, range.start, range.end),
+			),
+	}));
+}
+
+/**
+ * The parts a chapter split cuts a decoded recording into.
+ * @param request - The split being performed
+ * @param cuts - Where the parts begin, and what each is called
+ * @param baseName - Name of the recording, used when a title yields nothing
+ * @param targetFormat - Extension the parts are encoded to
+ * @param audioBuffer - The decoded recording
+ * @returns The parts, each encoded lazily
+ */
+function chapterDecodedParts(
+	request: SplitRequest,
+	cuts: readonly ChapterCut[],
+	baseName: string,
+	targetFormat: string,
+	audioBuffer: AudioBuffer,
+): PreparedPart[] {
+	const taken = new Set<string>();
+	return computeCutRanges(
+		cuts,
+		(seconds) => Math.floor(Math.max(0, seconds) * audioBuffer.sampleRate),
+		audioBuffer.length,
+	).map((range, index) => ({
+		fileName: chapterPartName(
+			range.cut,
+			index,
+			baseName,
+			targetFormat,
+			taken,
+		),
+		data: async () => {
+			const slice = sliceAudioBuffer(audioBuffer, range.start, range.end);
+			const blob = await encodeAudioBuffer(slice, {
+				format: targetFormat,
+				bitrate: request.bitrate,
+			});
+			return blob.arrayBuffer();
+		},
+	}));
+}
+
+/**
+ * The file name of one part: the chapter's title made safe, numbered when two
+ * chapters share one, and the recording's own name when the part opens no
+ * chapter (the audio before the first) or when a title survives sanitising as
+ * nothing at all.
+ * @param cut - The chapter the part opens, or null when it opens none
+ * @param index - Which part is being named
+ * @param baseName - Name of the recording
+ * @param extension - Extension of the part
+ * @param taken - Names already used by this split
+ * @returns The part's file name
+ */
+function chapterPartName(
+	cut: ChapterCut | null,
+	index: number,
+	baseName: string,
+	extension: string,
+	taken: Set<string>,
+): string {
+	const segment = toFileNameSegment(
+		cut?.title ?? '',
+		`${baseName}-${String(index + 1)}`,
+	);
+	return `${uniqueName(segment, taken)}.${extension}`;
 }

@@ -11,6 +11,7 @@ import { createMockApp } from '../helpers/createApp';
 import { noticeMessages } from '../mocks/obsidian';
 import { tick } from '../helpers/async';
 import { at } from '../helpers/assertions';
+import { internalsOf, silenceConsole } from '../helpers/doubles';
 
 jest.mock('src/transcription/transcriptOutput', () => ({
 	insertTranscriptIntoNote: jest.fn(() => true),
@@ -143,11 +144,9 @@ describe('writing a file beside the recording', () => {
 	});
 
 	it('reports a write that failed instead of claiming it worked', async () => {
-		const error = jest.spyOn(console, 'error').mockImplementation(() => {
-			// The notice is the assertion.
-		});
+		const error = silenceConsole('error');
 		const { modal } = createSut();
-		const app = (modal as unknown as { app: App }).app;
+		const app = internalsOf<{ app: App }>(modal).app;
 		jest.spyOn(app.vault, 'create').mockRejectedValue(
 			new Error('the folder is read-only'),
 		);
@@ -190,9 +189,7 @@ describe('writing the outline', () => {
 	});
 
 	it('says what to do instead when no note is open', async () => {
-		const error = jest.spyOn(console, 'error').mockImplementation(() => {
-			// The notice is the assertion.
-		});
+		const error = silenceConsole('error');
 		const { modal } = createSut(MARKERS, '');
 		choose(modal, 0, 'outline');
 
@@ -204,9 +201,7 @@ describe('writing the outline', () => {
 	});
 
 	it('says what to do instead when the note refused the insert', async () => {
-		const error = jest.spyOn(console, 'error').mockImplementation(() => {
-			// The notice is the assertion.
-		});
+		const error = silenceConsole('error');
 		insertTranscriptIntoNote.mockReturnValueOnce(false);
 		const { modal } = createSut();
 		choose(modal, 0, 'outline');

@@ -58,6 +58,7 @@ import { waitFor } from '../helpers/async';
 import {
 	allButtons,
 	capturedSettings,
+	type CapturedSetting,
 	dropdownChanges,
 	settingRow,
 	textChanges,
@@ -70,6 +71,10 @@ import { MODAL } from '../helpers/selectors';
 import { internalsOf } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
+import type { PlayerMarker } from 'src/markers/markerModel';
+import { defined } from '../helpers/assertions';
+import { tick } from '../helpers/async';
+import { SplitService } from 'src/recording/SplitService';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -917,6 +922,161 @@ describe('SplitModal', () => {
 				expect.stringContaining('Split failed: decode failed'),
 			);
 			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
+		});
+	});
+
+	// Cutting at the recording's own chapters is offered only once the
+	// chapters are known to exist: a toggle that cuts at nothing is worse
+	// than no toggle at all.
+	describe('cutting at chapters', () => {
+		/** A markers double answering with the given chapters. */
+		function markers(
+			answer: Promise<PlayerMarker[]> = Promise.resolve([]),
+		): { getMarkers: jest.Mock } {
+			return { getMarkers: jest.fn(() => answer) };
+		}
+
+		/**
+		 * Opens the dialog over a recording whose markers answer as given,
+		 * and waits for the sidecar read the chapter row waits on.
+		 * @param answer - What the sidecar answers with, or how it fails
+		 * @returns The open dialog
+		 */
+		async function openOver(
+			answer: Promise<PlayerMarker[]>,
+		): Promise<SplitModal> {
+			const modal = new SplitModal(
+				mockApp,
+				mockFile,
+				() => mockSettings,
+				markers(answer),
+			);
+			modal.onOpen();
+			await tick();
+			return modal;
+		}
+
+		/**
+		 * Opens the dialog over a recording carrying the given chapters.
+		 * @param chapters - The recording's chapters
+		 * @returns The open dialog
+		 */
+		function openWithChapters(
+			chapters: PlayerMarker[],
+		): Promise<SplitModal> {
+			return openOver(Promise.resolve(chapters));
+		}
+
+		/** The captured row named "Cut at chapters". */
+		function chapterRow(): CapturedSetting {
+			return defined(
+				capturedSettings.find((row) => row.name === 'Cut at chapters'),
+			);
+		}
+
+		it('hides the option for a recording with no chapters', async () => {
+			await openWithChapters([]);
+
+			expect(chapterRow().el.style.display).toBe('none');
+			expect(chapterRow().toggle).toBeNull();
+		});
+
+		it('offers it once the recording is known to have chapters', async () => {
+			await openWithChapters([
+				{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+				{ id: 'b', time: 60, label: 'Middle', kind: 'chapter' },
+			]);
+
+			expect(chapterRow().el.style.display).not.toBe('none');
+			expect(chapterRow().desc).toContain('2 chapters');
+		});
+
+		it('leaves the bookmarks out, which mark a point and not a division', async () => {
+			await openWithChapters([
+				{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+				{ id: 'b', time: 60, label: 'Note', kind: 'bookmark' },
+			]);
+
+			expect(chapterRow().desc).toContain('1 chapters');
+		});
+
+		it('hides the length and suffix rows once it is on', async () => {
+			// Neither applies: the parts are as long as the chapters and are
+			// named after them
+			const modal = await openWithChapters([
+				{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+			]);
+			const duration = defined(
+				capturedSettings.find((row) => row.name === 'Part duration'),
+			);
+
+			chapterRow().changes.toggle?.(true);
+
+			expect(duration.el.style.display).toBe('none');
+			expect(internalsOf<{ byChapters: boolean }>(modal).byChapters).toBe(
+				true,
+			);
+		});
+
+		it('sends the chapters to the split when the option is on', async () => {
+			const modal = await openWithChapters([
+				{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+				{ id: 'b', time: 60, label: 'Middle', kind: 'chapter' },
+			]);
+			chapterRow().changes.toggle?.(true);
+
+			const split = jest
+				.spyOn(SplitService.prototype, 'split')
+				.mockResolvedValue({ status: 'aborted' });
+
+			await internals(modal).runSplit(progressEl);
+
+			expect(split).toHaveBeenCalledWith(
+				expect.objectContaining({
+					cuts: [
+						{ startSeconds: 0, title: 'Intro' },
+						{ startSeconds: 60, title: 'Middle' },
+					],
+				}),
+				expect.any(Function),
+			);
+			split.mockRestore();
+		});
+
+		it('sends no chapters while the option is off', async () => {
+			const modal = await openWithChapters([
+				{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+			]);
+
+			const split = jest
+				.spyOn(SplitService.prototype, 'split')
+				.mockResolvedValue({ status: 'aborted' });
+
+			await internals(modal).runSplit(progressEl);
+
+			expect(split).toHaveBeenCalledWith(
+				expect.not.objectContaining({ cuts: expect.anything() }),
+				expect.any(Function),
+			);
+			split.mockRestore();
+		});
+
+		it('offers no chapter split when the sidecar cannot be read', async () => {
+			const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+				// The hidden row is the assertion.
+			});
+			await openOver(Promise.reject(new Error('unreadable')));
+
+			expect(chapterRow().el.style.display).toBe('none');
+			warn.mockRestore();
+		});
+
+		it('offers none at all where no markers are reachable', async () => {
+			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
+			modal.onOpen();
+			await tick();
+
+			expect(chapterRow().el.style.display).toBe('none');
 		});
 	});
 });

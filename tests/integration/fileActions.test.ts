@@ -29,6 +29,7 @@ import { ChapterExportModal } from 'src/ui/ChapterExportModal';
 import { AudioProcessingModal } from 'src/cleanup/AudioProcessingModal';
 import { getAudioFileInfo } from 'src/utils/AudioFileAnalyzer';
 import { insertProcessedAudioEmbed } from 'src/recording/NoteInserter';
+import { silenceConsole, queueServicesDouble } from '../helpers/doubles';
 
 // Each dialog is a spy that records the arguments and exposes open(): what an
 // action owes its surface is that picking it opens the right dialog over the
@@ -98,12 +99,21 @@ function createServices(
 			getWorkerClient: jest.fn(() => null),
 			autoChapters: {} as ActionServices['autoChapters'],
 			recordingSidecar: sidecar,
-			transcriptionQueue: {
-				queueFolder: jest.fn().mockResolvedValue(undefined),
-				open: jest.fn(),
-			},
+			transcriptionQueue: queueServicesDouble(),
 		},
 	};
+}
+
+/**
+ * A sidecar double typed once as the services expect it, so each case names
+ * only the methods it drives.
+ * @param methods - The sidecar methods this case needs
+ * @returns The double
+ */
+function sidecarDouble(
+	methods: Record<string, jest.Mock>,
+): ActionServices['recordingSidecar'] {
+	return methods as unknown as ActionServices['recordingSidecar'];
 }
 
 const file = createFile('Recordings/take.webm');
@@ -365,22 +375,10 @@ describe('the transcribe action', () => {
 // decided synchronously. So a recording with nothing missing has to be told
 // so, and every other outcome has to reach the user as one sentence.
 describe('transcribing the parts that failed', () => {
-	/**
-	 * A sidecar double for the top-up, typed once as the services expect it
-	 * so each case names only the methods it drives.
-	 * @param methods - The sidecar methods this case needs
-	 * @returns The double
-	 */
-	function retrySidecar(
-		methods: Record<string, jest.Mock>,
-	): ActionServices['recordingSidecar'] {
-		return methods as unknown as ActionServices['recordingSidecar'];
-	}
-
 	it('says so when the recording has nothing missing', async () => {
 		const { services } = createServices(
 			{ transcriptionEnabled: true },
-			retrySidecar({
+			sidecarDouble({
 				getFailedParts: jest.fn().mockResolvedValue(null),
 				setFailedParts: jest.fn().mockResolvedValue(undefined),
 				getTranscript: jest.fn().mockResolvedValue({ fileOutputs: [] }),
@@ -393,12 +391,10 @@ describe('transcribing the parts that failed', () => {
 	});
 
 	it('reports what went wrong instead of failing silently', async () => {
-		const error = jest.spyOn(console, 'error').mockImplementation(() => {
-			// The notice is the assertion.
-		});
+		const error = silenceConsole('error');
 		const { services } = createServices(
 			{ transcriptionEnabled: true },
-			retrySidecar({
+			sidecarDouble({
 				getFailedParts: jest
 					.fn()
 					.mockRejectedValue(new Error('sidecar unreadable')),
@@ -412,12 +408,10 @@ describe('transcribing the parts that failed', () => {
 	});
 
 	it('reports a rejection that is not an error at all', async () => {
-		const error = jest.spyOn(console, 'error').mockImplementation(() => {
-			// The notice is the assertion.
-		});
+		const error = silenceConsole('error');
 		const { services } = createServices(
 			{ transcriptionEnabled: true },
-			retrySidecar({
+			sidecarDouble({
 				getFailedParts: jest
 					.fn()
 					.mockRejectedValue('the disk went away'),
@@ -501,9 +495,12 @@ describe('what the user is told a top-up did', () => {
 // with none is told so rather than the entry quietly not being there.
 describe('exporting chapters and markers', () => {
 	it('says so when the recording has no markers', async () => {
-		const { services } = createServices({}, {
-			getMarkers: jest.fn().mockResolvedValue([]),
-		} as unknown as ActionServices['recordingSidecar']);
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest.fn().mockResolvedValue([]),
+			}),
+		);
 
 		await action(COMMAND_IDS.exportChapters).run({ file, services });
 
@@ -511,13 +508,16 @@ describe('exporting chapters and markers', () => {
 	});
 
 	it('opens the export dialog over the markers it read', async () => {
-		const { services } = createServices({}, {
-			getMarkers: jest
-				.fn()
-				.mockResolvedValue([
-					{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
-				]),
-		} as unknown as ActionServices['recordingSidecar']);
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest
+					.fn()
+					.mockResolvedValue([
+						{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+					]),
+			}),
+		);
 
 		await action(COMMAND_IDS.exportChapters).run({ file, services });
 
@@ -533,13 +533,16 @@ describe('exporting chapters and markers', () => {
 	});
 
 	it('links into the recording, so an outline timecode really jumps', async () => {
-		const { services } = createServices({}, {
-			getMarkers: jest
-				.fn()
-				.mockResolvedValue([
-					{ id: 'a', time: 9.7, label: 'Intro', kind: 'chapter' },
-				]),
-		} as unknown as ActionServices['recordingSidecar']);
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest
+					.fn()
+					.mockResolvedValue([
+						{ id: 'a', time: 9.7, label: 'Intro', kind: 'chapter' },
+					]),
+			}),
+		);
 		const generate = jest
 			.spyOn(services.app.fileManager, 'generateMarkdownLink')
 			.mockReturnValue('[[take#t=9|0:09]]');
@@ -564,13 +567,16 @@ describe('exporting chapters and markers', () => {
 
 	it('inserts into no note when the recording itself is what is open', async () => {
 		// Its own path is not a note to write an outline into
-		const { services } = createServices({}, {
-			getMarkers: jest
-				.fn()
-				.mockResolvedValue([
-					{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
-				]),
-		} as unknown as ActionServices['recordingSidecar']);
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest
+					.fn()
+					.mockResolvedValue([
+						{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+					]),
+			}),
+		);
 		jest.spyOn(services.app.workspace, 'getActiveFile').mockReturnValue(
 			file,
 		);
@@ -584,12 +590,15 @@ describe('exporting chapters and markers', () => {
 	});
 
 	it('reports a sidecar it could not read', async () => {
-		const error = jest.spyOn(console, 'error').mockImplementation(() => {
-			// The notice is the assertion.
-		});
-		const { services } = createServices({}, {
-			getMarkers: jest.fn().mockRejectedValue(new Error('unreadable')),
-		} as unknown as ActionServices['recordingSidecar']);
+		const error = silenceConsole('error');
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest
+					.fn()
+					.mockRejectedValue(new Error('unreadable')),
+			}),
+		);
 
 		await action(COMMAND_IDS.exportChapters).run({ file, services });
 

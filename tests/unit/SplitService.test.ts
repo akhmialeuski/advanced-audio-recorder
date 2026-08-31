@@ -12,6 +12,7 @@ import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
 import { defined } from '../helpers/assertions';
 import { useDesktopPlatform } from '../helpers/platform';
+import { createWavHeader } from 'src/audio/WavEncoder';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -262,6 +263,134 @@ describe('SplitService', () => {
 
 			expect(outcome).toEqual({ status: 'aborted' });
 			expect(onProgress).toHaveBeenCalledWith('Error: missing');
+		});
+	});
+
+	// Chapter boundaries make parts of different lengths, each named after
+	// its chapter, which is the whole point of cutting there rather than
+	// every N minutes.
+	describe('cutting at chapters', () => {
+		const CUTS = [
+			{ startSeconds: 0, title: 'Intro' },
+			{ startSeconds: 5, title: 'The middle' },
+		];
+
+		it('names each part after its chapter, on the decode path', async () => {
+			const outcome = await service.split(
+				createRequest({ cuts: CUTS }),
+				jest.fn(),
+			);
+
+			expect(outcome.status).toBe('completed');
+			expect(createdFiles).toEqual([
+				'Audio/Intro.mp3',
+				'Audio/The middle.mp3',
+			]);
+		});
+
+		it('numbers the second of two chapters sharing a title', async () => {
+			await service.split(
+				createRequest({
+					cuts: [
+						{ startSeconds: 0, title: 'Part' },
+						{ startSeconds: 5, title: 'Part' },
+					],
+				}),
+				jest.fn(),
+			);
+
+			expect(createdFiles).toEqual([
+				'Audio/Part.mp3',
+				'Audio/Part-2.mp3',
+			]);
+		});
+
+		it('falls back to the recording name for a title of punctuation', async () => {
+			await service.split(
+				createRequest({
+					cuts: [{ startSeconds: 0, title: '///' }],
+				}),
+				jest.fn(),
+			);
+
+			expect(createdFiles).toEqual(['Audio/recording-1.mp3']);
+		});
+
+		it('names the audio before the first chapter after the recording', async () => {
+			// Naming it after that chapter would label it with a title that
+			// belongs to the part after it
+			await service.split(
+				createRequest({
+					cuts: [{ startSeconds: 5, title: 'Late' }],
+				}),
+				jest.fn(),
+			);
+
+			expect(createdFiles).toEqual([
+				'Audio/recording-1.mp3',
+				'Audio/Late.mp3',
+			]);
+		});
+
+		it('cuts nowhere for a chapter past the end of the recording', async () => {
+			// 882000 samples at 44100 Hz is twenty seconds
+			await service.split(
+				createRequest({
+					cuts: [
+						{ startSeconds: 0, title: 'Intro' },
+						{ startSeconds: 99, title: 'Never' },
+					],
+				}),
+				jest.fn(),
+			);
+
+			expect(createdFiles).toEqual(['Audio/Intro.mp3']);
+		});
+
+		it('cuts an uncompressed WAV at chapters without decoding it', async () => {
+			// One second per 1000 bytes at 500 Hz, 16-bit mono
+			const header = createWavHeader(1, 500, 4000);
+			const wav = new Uint8Array(44 + 4000);
+			wav.set(new Uint8Array(header), 0);
+			jest.mocked(mockApp.vault.adapter.readBinary).mockResolvedValue(
+				wav.buffer,
+			);
+			const decode = jest.mocked(
+				jest.requireMock<{ decodeAudioBlob: jest.Mock }>(
+					'src/audio/AudioFormatConverter',
+				).decodeAudioBlob,
+			);
+			decode.mockClear();
+
+			await service.split(
+				createRequest({
+					sourceFile: createSourceFile('wav'),
+					cuts: [
+						{ startSeconds: 0, title: 'Intro' },
+						{ startSeconds: 2, title: 'The middle' },
+					],
+				}),
+				jest.fn(),
+			);
+
+			expect(createdFiles).toEqual([
+				'Audio/Intro.wav',
+				'Audio/The middle.wav',
+			]);
+			// The lossless path never decodes, which is what makes it usable
+			// on a file too big to hold in memory
+			expect(decode).not.toHaveBeenCalled();
+		});
+
+		it('does not measure a chapter split against a fixed part length', async () => {
+			// The even split refuses a file shorter than one part; a chapter
+			// split has no such length to be shorter than
+			const outcome = await service.split(
+				createRequest({ partSeconds: 99999, cuts: CUTS }),
+				jest.fn(),
+			);
+
+			expect(outcome.status).toBe('completed');
 		});
 	});
 });

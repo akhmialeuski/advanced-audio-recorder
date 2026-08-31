@@ -245,9 +245,10 @@ export class CapturingSetting {
 	private cap: CapturedSetting;
 
 	constructor() {
-		const el = document.createElement('div');
-		(el as unknown as { addClass: (c: string) => void }).addClass = (c) =>
-			el.classList.add(c);
+		// Through the shared extensions, so the row carries everything an
+		// Obsidian element does. Hand-adding addClass alone left toggle()
+		// missing, which is what a row that hides itself calls.
+		const el = addObsidianDomExtensions(document.createElement('div'));
 		this.settingEl = el;
 		this.descEl = { createEl: () => ({}) };
 		this.cap = {

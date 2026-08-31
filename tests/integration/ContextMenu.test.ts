@@ -33,7 +33,7 @@ import {
 	MarkdownView,
 	TFolder,
 } from 'obsidian';
-import { partial } from '../helpers/doubles';
+import { partial, commonActionServices } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
 import { AudioFileInfoModal } from 'src/ui/AudioFileInfoModal';
@@ -155,21 +155,7 @@ describe('ContextMenu', () => {
 						deleteSourceAfterConversion: true,
 						conversionLinkAction: 'replace',
 					}),
-				saveSettings: () => Promise.resolve(),
-				createTranscriptionModalOptions: () => ({}),
-				primeForEnhancement: () => {},
-				getWorkerClient: () => null,
-				autoChapters: partial<ActionServices>({
-					generate: jest.fn(),
-				})['autoChapters'],
-				recordingSidecar: partial<ActionServices>({
-					getTranscript: jest.fn().mockResolvedValue(null),
-					updateTranscript: jest.fn().mockResolvedValue(undefined),
-				})['recordingSidecar'],
-				transcriptionQueue: {
-					queueFolder: jest.fn().mockResolvedValue(undefined),
-					open: jest.fn(),
-				},
+				...commonActionServices(),
 			},
 			FILE_ACTIONS,
 		);
@@ -385,6 +371,9 @@ describe('ContextMenu', () => {
 				mockApp,
 				file,
 				expect.any(Function),
+				// The sidecar, so the dialog can offer to cut at the
+				// recording's own chapters
+				expect.anything(),
 			);
 			// Every dialog takes an accessor rather than a snapshot, so it reads
 			// the settings that are current when it opens.
