@@ -46,12 +46,20 @@ export const MARKER = {
 	staticLabel: '.aar-player-marker-label-static',
 	label: '.aar-player-marker-label',
 	segment: '.aar-player-marker-segment',
+	/** The marker's timecode as shown in reading view. */
+	time: '.aar-player-marker-time',
 	delete: '.aar-player-marker-delete',
 	timeEdit: 'input.aar-player-marker-time-edit',
 	here: '.aar-player-marker-here',
 	color: 'select.aar-player-marker-color',
 	note: 'textarea.aar-player-marker-note',
 	staticNote: '.aar-player-marker-note-static',
+	/** The line the reading-view note sits on, with its alignment indent. */
+	noteLine: '.aar-player-marker-note-line',
+	/** The hidden copy of the timecode that holds the note's column open. */
+	noteIndent: '.aar-player-marker-note-indent',
+	/** One colour of the palette, on an option or on the closed control. */
+	colorSwatch: (name: string): string => `.aar-player-marker-color-${name}`,
 	searchTitle: '.aar-marker-search-title',
 	searchMeta: '.aar-marker-search-meta',
 	coloredRow: '.aar-player-marker-row-colored',

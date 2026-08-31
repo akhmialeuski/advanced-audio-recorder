@@ -709,6 +709,47 @@ describe('a marker note and colour in the list', () => {
 		expect(callbacks.onSetColor).toHaveBeenCalledWith('a', null);
 	});
 
+	// A list of six colour names tells the user nothing about what the theme's
+	// red actually looks like on the seek bar.
+	it('draws every colour of the palette in the menu that offers it', () => {
+		const { listContainer } = setup(true);
+		const picker = at(
+			allEls<HTMLSelectElement>(listContainer, MARKER.color),
+			0,
+		);
+
+		const offered = Array.from(picker.options).filter(
+			(option) => option.value !== '',
+		);
+		expect(offered).toHaveLength(6);
+		for (const option of offered) {
+			expect(option.className).toBe(
+				MARKER.colorSwatch(option.value).slice(1),
+			);
+			// The circle is a character because an option takes no markup
+			expect(option.textContent?.startsWith('\u25cf ')).toBe(true);
+		}
+	});
+
+	it('shows the chosen colour on the closed control as well', () => {
+		const { listContainer } = setup(true, {
+			markers: [
+				{
+					id: 'a',
+					time: 10,
+					label: 'Intro',
+					kind: 'chapter',
+					color: 'purple',
+				},
+			],
+		});
+
+		expect(
+			allEls(listContainer, MARKER.colorSwatch('purple')),
+			// The control itself, plus the one option that names the colour
+		).toHaveLength(2);
+	});
+
 	it('marks a coloured row so the stylesheet can draw its edge', () => {
 		const { listContainer } = setup(true, {
 			markers: [
@@ -746,6 +787,30 @@ describe('a marker note and colour in the list', () => {
 
 		expect(allEls(listContainer, MARKER.note)).toHaveLength(0);
 		expect(el(listContainer, MARKER.staticNote).textContent).toBe('why');
+	});
+
+	// Under the timecode the note read as a caption on the time rather than on
+	// the marker. It starts at the icon instead, held there by a hidden copy of
+	// the timecode so the column is exactly as wide as the one above it.
+	it('aligns the reading-view note with the marker icon above it', () => {
+		const { listContainer } = setup(false, {
+			markers: [
+				{
+					id: 'a',
+					time: 3725,
+					label: 'Intro',
+					kind: 'chapter',
+					note: 'why',
+				},
+			],
+		});
+
+		const indent = el(listContainer, MARKER.noteIndent);
+		expect(indent.textContent).toBe(
+			el(listContainer, MARKER.time).textContent,
+		);
+		expect(indent.getAttribute('aria-hidden')).toBe('true');
+		expect(el(listContainer, MARKER.noteLine).contains(indent)).toBe(true);
 	});
 
 	it('says the note in the row name, which is the whole button', () => {

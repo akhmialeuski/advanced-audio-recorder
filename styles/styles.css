@@ -694,6 +694,34 @@ input.aar-input-invalid {
 }
 
 /*
+ * Every colour names itself in the menu and draws itself as well: the option
+ * text is a filled circle plus the name, both in the colour the marker gets.
+ */
+.aar-player-marker-color-red {
+    color: var(--aar-marker-red);
+}
+
+.aar-player-marker-color-orange {
+    color: var(--aar-marker-orange);
+}
+
+.aar-player-marker-color-yellow {
+    color: var(--aar-marker-yellow);
+}
+
+.aar-player-marker-color-green {
+    color: var(--aar-marker-green);
+}
+
+.aar-player-marker-color-blue {
+    color: var(--aar-marker-blue);
+}
+
+.aar-player-marker-color-purple {
+    color: var(--aar-marker-purple);
+}
+
+/*
  * The note is prose, so it takes the whole width under the row's own line
  * rather than a share of the control column, which would show four characters
  * of it.
@@ -715,8 +743,28 @@ input.aar-input-invalid {
     background-color: var(--background-primary);
 }
 
-.aar-player-marker-note-static {
+/*
+ * The note starts where the marker's icon does, not under its timecode. The
+ * indent is a hidden copy of the timecode rather than a fixed measurement, so
+ * a list whose stamps run to an hour lines up as well as one that does not,
+ * and a note long enough to wrap keeps its whole block in the same column.
+ */
+.aar-player-marker-note-line {
+    display: flex;
     flex-basis: 100%;
+    gap: 6px;
+}
+
+.aar-player-marker-note-indent {
+    flex: none;
+    visibility: hidden;
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+    padding: 0 4px;
+}
+
+.aar-player-marker-note-static {
+    flex: 1;
     font-size: 0.8em;
     color: var(--text-muted);
     text-align: left;

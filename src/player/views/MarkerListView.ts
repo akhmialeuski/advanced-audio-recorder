@@ -463,13 +463,25 @@ export class MarkerListView {
 		color.dataset.markerId = row.id;
 		color.createEl('option', { value: '', text: 'No colour' });
 		for (const name of MARKER_COLORS) {
-			color.createEl('option', {
-				value: name,
-				// Capitalised for the menu; the value stays the stored name.
-				text: `${name.charAt(0).toUpperCase()}${name.slice(1)}`,
-			});
+			// A name alone does not tell the user what the theme's red looks
+			// like on the seek bar, so every option carries the colour itself:
+			// a filled circle drawn in it, and the option text in the same
+			// colour. An option element takes no markup, so the circle is a
+			// character and the colour comes from the class.
+			color
+				.createEl('option', {
+					value: name,
+					// Capitalised for the menu; the value stays the stored name.
+					text: `\u25cf ${name.charAt(0).toUpperCase()}${name.slice(1)}`,
+				})
+				.addClass(`aar-player-marker-color-${name}`);
 		}
 		color.value = row.color ?? '';
+		// The closed control shows the chosen colour too, so the row states it
+		// without being opened.
+		if (row.color) {
+			color.addClass(`aar-player-marker-color-${row.color}`);
+		}
 		const remove = rowEl.createEl('button', {
 			cls: 'aar-player-marker-delete',
 			attr: { 'aria-label': 'Delete' },
@@ -543,7 +555,19 @@ export class MarkerListView {
 					: '',
 		});
 		if (row.note) {
-			rowEl.createSpan({
+			// The note takes a line of its own under the row, starting where
+			// the marker's icon does rather than under its timecode. The
+			// alignment is drawn rather than measured: a copy of the timecode,
+			// hidden, holds the column open however wide the timecode is.
+			const noteLine = rowEl.createSpan({
+				cls: 'aar-player-marker-note-line',
+			});
+			noteLine.createSpan({
+				cls: 'aar-player-marker-note-indent',
+				text: timecode,
+				attr: { 'aria-hidden': 'true' },
+			});
+			noteLine.createSpan({
 				cls: 'aar-player-marker-note-static',
 				text: row.note,
 			});

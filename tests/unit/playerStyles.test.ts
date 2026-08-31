@@ -114,6 +114,33 @@ describe('read-only player styles', () => {
 		expect(row).toMatch(/flex-wrap:\s*wrap/);
 	});
 
+	// A note under its own timecode read as a caption on the time rather than
+	// on the marker, and the eye had nothing to run down.
+	it('starts the reading-view note where the marker icon starts', () => {
+		const line = ruleBody(MARKER.noteLine);
+		expect(line).not.toBeNull();
+		expect(line).toMatch(/flex-basis:\s*100%/);
+		expect(line).toMatch(/display:\s*flex/);
+
+		// The indent is a hidden copy of the timecode, so it is exactly as
+		// wide as the column it aligns to whatever the stamps run to
+		const indent = ruleBody(MARKER.noteIndent);
+		expect(indent).not.toBeNull();
+		expect(indent).toMatch(/visibility:\s*hidden/);
+		expect(indent).toMatch(/font-variant-numeric:\s*tabular-nums/);
+	});
+
+	it.each(['red', 'orange', 'yellow', 'green', 'blue', 'purple'])(
+		'draws the %s option in the colour it names',
+		(name) => {
+			const swatch = ruleBody(MARKER.colorSwatch(name));
+			expect(swatch).not.toBeNull();
+			expect(swatch).toMatch(
+				new RegExp(`color:\\s*var\\(--aar-marker-${name}\\)`),
+			);
+		},
+	);
+
 	it('frames the waveform in a padded bordered rectangle', () => {
 		const waveform = ruleBody(PLAYER.seekWaveform);
 		expect(waveform).not.toBeNull();
