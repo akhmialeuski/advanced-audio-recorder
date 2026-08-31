@@ -13,6 +13,7 @@ import { Notice, TFile } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { runCostToRecord } from './costs';
 import type { TranscriptionQueue } from './TranscriptionQueue';
 import type { TranscribeFileOptions } from './runTranscription';
 import type { TranscribeRunCost } from './TranscriptionService';
@@ -42,6 +43,13 @@ export interface QueueRunnerDeps {
 	transcribe: QueueTranscriber;
 	/** Absent when the user turned cost estimates off. */
 	costSink?: QueueCostSink | undefined;
+	/**
+	 * How long one queued recording is assumed to be, in seconds, for the
+	 * estimate a run falls back to when its provider reported no usage. The
+	 * same figure the dialog priced the queue with, so what a run is recorded
+	 * at cannot contradict what the user was quoted.
+	 */
+	assumedSecondsPerRecording: number;
 }
 
 /**
@@ -122,15 +130,31 @@ export class QueueRunner {
 	}
 
 	/**
-	 * Adds a finished run to the session total, by the same rule a single run
-	 * follows: what the provider reported, or the estimate when it reported
-	 * nothing, marked as an estimate either way.
+	 * Adds a finished run to the session total, by the same rule a run started
+	 * from the dialog follows.
+	 *
+	 * Through the shared rule rather than its own: written here, the queue
+	 * counted the free local engine the dialog leaves out, and recorded a run
+	 * the provider reported no usage for as unpriced where the dialog fell
+	 * back to the duration estimate. The same recording then reached the
+	 * session total differently depending on which surface had started it.
 	 * @param cost - What the run reported
 	 */
 	private recordCost(cost: TranscribeRunCost): void {
-		if (!this.deps.getSettings().transcriptionShowCostEstimates) {
-			return;
+		// The queue does not measure a recording before sending it, so the
+		// fallback estimate is sized by the same assumed length the dialog
+		// priced the queue with.
+		const recorded = runCostToRecord(
+			cost,
+			this.deps.getSettings(),
+			this.deps.assumedSecondsPerRecording,
+		);
+		if (recorded) {
+			this.deps.costSink?.add(
+				cost.engineId,
+				recorded.usd,
+				recorded.estimated,
+			);
 		}
-		this.deps.costSink?.add(cost.engineId, cost.usd, cost.usd === null);
 	}
 }

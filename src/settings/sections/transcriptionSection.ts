@@ -145,7 +145,7 @@ export function transcriptionGroup(
 			{
 				name: 'Translate speech to English',
 				aliases: ['translation', 'english'],
-				desc: 'Write the recording down in English whatever was spoken, using the engine own translating operation. The language hint above is ignored while this is on.',
+				desc: "Write the recording down in English whatever was spoken, using the engine's own translating operation. The language hint above is ignored while this is on.",
 				visible: enabled,
 				control: {
 					type: 'toggle',

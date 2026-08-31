@@ -79,6 +79,7 @@ function createSut(stored: { path: string; state: string }[] = []): Sut {
 						cost: { engineId: 'deepgram', usd: 0, usage: {} },
 					});
 				},
+				assumedSecondsPerRecording: 600,
 			}),
 			getSettings,
 			assumedSecondsPerRecording: 600,

@@ -133,8 +133,19 @@ export function writeScaled(
 }
 
 /**
+ * Frames kept from the previous window, which the interpolation reaches back
+ * into.
+ *
+ * Two, not one. The advance below leaves `position` in [ratio - 2, ratio - 1),
+ * so at a ratio that is not a neat fraction the first output frame of a window
+ * routinely interpolates between source indices -2 and -1, and both of them sit
+ * in the window that has already been read and handed back.
+ */
+const CARRIED_FRAMES = 2;
+
+/**
  * The state a resampler carries between windows: where in the source it
- * stands, and the frame before it.
+ * stands, and the frames before it.
  *
  * Both are needed because a window boundary falls in the middle of the
  * interpolation. Dropping either restarts the phase at every window, which is
@@ -147,7 +158,10 @@ export interface ResampleState {
 	 * further than it consumed, which is the usual case.
 	 */
 	position: number;
-	/** The last frame of the previous window, one value per channel. */
+	/**
+	 * The last {@link CARRIED_FRAMES} frames of the previous window,
+	 * interleaved: the older frame first, then the last one.
+	 */
 	previous: Int16Array;
 }
 
@@ -157,7 +171,43 @@ export interface ResampleState {
  * @returns The state to hand to the first window
  */
 export function newResampleState(channels: number): ResampleState {
-	return { position: 0, previous: new Int16Array(channels) };
+	return {
+		position: 0,
+		previous: new Int16Array(channels * CARRIED_FRAMES),
+	};
+}
+
+/**
+ * Reads one interleaved frame, where a negative index reaches into the frames
+ * carried from the previous window: -1 is its last frame and -2 the one before
+ * it.
+ *
+ * Reading the carry through the same call as the window is what keeps the two
+ * ends of a boundary in step. Written as two separate lookups, the pair that
+ * spans the boundary took one sample from the carry and the other from a source
+ * index that does not exist, which silently became a zero.
+ * @param source - Source frames, interleaved
+ * @param state - Where the resampler stands, holding the carried frames
+ * @param index - Frame index, negative for the carried frames
+ * @param channel - Channel to read
+ * @param channels - Interleaved channels of the source
+ * @returns The sample, or the oldest carried one where the index runs past it
+ */
+function frameAt(
+	source: Int16Array,
+	state: ResampleState,
+	index: number,
+	channel: number,
+	channels: number,
+): number {
+	if (index >= 0) {
+		return source[index * channels + channel] ?? 0;
+	}
+	// Clamped rather than answered with silence. The phase cannot fall further
+	// back than the carry, and were it ever to, the oldest sample actually held
+	// is a better answer than a zero dropped into the middle of a track.
+	const slot = Math.max(0, index + CARRIED_FRAMES);
+	return state.previous[slot * channels + channel] ?? 0;
 }
 
 /**
@@ -180,8 +230,8 @@ export function sourceFramesNeeded(
 		return 0;
 	}
 	// The last output frame interpolates between two source frames, so one
-	// past the last index is needed. Index -1 is the frame carried from the
-	// previous window and is not in the buffer, so the count starts at 0.
+	// past the last index is needed. A negative index is a frame carried from
+	// the previous window and is not in the buffer, so the count starts at 0.
 	return Math.max(
 		0,
 		Math.floor(state.position + (outputFrames - 1) * ratio) + 2,
@@ -221,16 +271,13 @@ export function resampleWindow(
 		const index = Math.floor(position);
 		const fraction = position - index;
 		for (let channel = 0; channel < channels; channel++) {
-			// Index -1 is the frame before this window, which the previous
-			// call kept: without it the first output frame of every window
-			// interpolates from silence and clicks.
-			const before =
-				index < 0
-					? (state.previous[channel] ?? 0)
-					: (source[index * channels + channel] ?? 0);
+			// A negative index is a frame before this window, which the
+			// previous call kept: without them the opening output frames of
+			// every window interpolate from silence and click.
+			const before = frameAt(source, state, index, channel, channels);
 			const after =
 				index + 1 < sourceFrames
-					? (source[(index + 1) * channels + channel] ?? 0)
+					? frameAt(source, state, index + 1, channel, channels)
 					: before;
 			target[frame * channels + channel] = Math.round(
 				before + (after - before) * fraction,
@@ -240,13 +287,27 @@ export function resampleWindow(
 	// Where the next window starts, expressed against ITS first frame. The
 	// reader hands the frames after this window, so the position is measured
 	// from there and lands negative whenever this window read further than it
-	// consumed. Index -1 then means the last frame of this window, which is
-	// what `previous` holds.
+	// consumed. A negative index then means one of this window's closing
+	// frames, which is what `previous` carries.
 	state.position = state.position + outputFrames * ratio - sourceFrames;
 	for (let channel = 0; channel < channels; channel++) {
-		state.previous[channel] =
-			sourceFrames > 0
-				? (source[(sourceFrames - 1) * channels + channel] ?? 0)
-				: (state.previous[channel] ?? 0);
+		// Both read before either is written: a window shorter than the carry
+		// leaves the new carry reaching back into the old one.
+		const last = frameAt(
+			source,
+			state,
+			sourceFrames - 1,
+			channel,
+			channels,
+		);
+		const prior = frameAt(
+			source,
+			state,
+			sourceFrames - 2,
+			channel,
+			channels,
+		);
+		state.previous[channel] = prior;
+		state.previous[channels + channel] = last;
 	}
 }

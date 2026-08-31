@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.58,
-			"branches": 93.79,
+			"statements": 98.6,
+			"branches": 93.93,
 			"functions": 98.54,
-			"lines": 98.59
+			"lines": 98.61
 		},
 		"files": {
 			"src/constants.ts": {
@@ -482,10 +482,10 @@
 				"lines": 96.26
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 98.98,
+				"statements": 98.99,
 				"branches": 92.59,
 				"functions": 100,
-				"lines": 98.97
+				"lines": 98.98
 			},
 			"src/recording/RecordingMarkerCoordinator.ts": {
 				"statements": 100,
@@ -512,10 +512,10 @@
 				"lines": 99.27
 			},
 			"src/recording/StreamingMixer.ts": {
-				"statements": 98.63,
+				"statements": 98.77,
 				"branches": 82.6,
 				"functions": 100,
-				"lines": 98.55
+				"lines": 98.7
 			},
 			"src/recording/TestRecorder.ts": {
 				"statements": 100,
@@ -537,7 +537,7 @@
 			},
 			"src/recording/mixMath.ts": {
 				"statements": 100,
-				"branches": 73.52,
+				"branches": 84.61,
 				"functions": 100,
 				"lines": 100
 			},
@@ -621,7 +621,7 @@
 			},
 			"src/settings/settingsDefinitions.ts": {
 				"statements": 100,
-				"branches": 90.9,
+				"branches": 100,
 				"functions": 100,
 				"lines": 100
 			},
@@ -836,14 +836,14 @@
 				"lines": 100
 			},
 			"src/transcription/TranscriptionQueue.ts": {
-				"statements": 97.16,
+				"statements": 98.18,
 				"branches": 97.91,
-				"functions": 97.14,
-				"lines": 97.02
+				"functions": 97.29,
+				"lines": 98.07
 			},
 			"src/transcription/TranscriptionService.ts": {
 				"statements": 99.57,
-				"branches": 98.56,
+				"branches": 98.58,
 				"functions": 100,
 				"lines": 99.57
 			},
@@ -867,7 +867,7 @@
 			},
 			"src/transcription/costs.ts": {
 				"statements": 100,
-				"branches": 97.59,
+				"branches": 97.7,
 				"functions": 100,
 				"lines": 100
 			},
@@ -915,7 +915,7 @@
 			},
 			"src/transcription/retryFailedParts.ts": {
 				"statements": 96.96,
-				"branches": 95.45,
+				"branches": 95.83,
 				"functions": 100,
 				"lines": 96.82
 			},
@@ -974,10 +974,10 @@
 				"lines": 97.91
 			},
 			"src/transcription/llm/TranscriptTranslator.ts": {
-				"statements": 98.41,
-				"branches": 89.18,
+				"statements": 100,
+				"branches": 93.93,
 				"functions": 100,
-				"lines": 98.38
+				"lines": 100
 			},
 			"src/transcription/llm/llmResponse.ts": {
 				"statements": 100,
@@ -1190,16 +1190,16 @@
 				"lines": 100
 			},
 			"src/ui/TranscriptionModal.ts": {
-				"statements": 96.64,
-				"branches": 91.66,
+				"statements": 96.63,
+				"branches": 91.44,
 				"functions": 96.05,
-				"lines": 96.64
+				"lines": 96.63
 			},
 			"src/ui/TranscriptionQueueModal.ts": {
-				"statements": 98.27,
+				"statements": 98.3,
 				"branches": 95,
 				"functions": 100,
-				"lines": 98.27
+				"lines": 98.3
 			},
 			"src/ui/formatDescriptions.ts": {
 				"statements": 100,
@@ -1318,9 +1318,9 @@
 		}
 	},
 	"suite": {
-		"suites": 228,
-		"tests": 5216,
-		"passed": 5216,
+		"suites": 229,
+		"tests": 5249,
+		"passed": 5249,
 		"failed": 0,
 		"todo": 0
 	}

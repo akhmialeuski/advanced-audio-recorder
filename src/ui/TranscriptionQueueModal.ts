@@ -104,7 +104,9 @@ export class TranscriptionQueueModal extends PluginModal {
 	/** Says what the queued recordings are expected to cost. */
 	private renderCost(): void {
 		const { estimatedUsd, hasUnpriced } = this.options;
-		const count = this.options.queue.entries().length;
+		// The same count the estimate was priced from, so the number of
+		// recordings named and the money named describe the same work.
+		const count = this.options.queue.pendingCount();
 		const priced =
 			estimatedUsd === null
 				? 'no built-in rate for the selected model'
@@ -166,6 +168,12 @@ export class TranscriptionQueueModal extends PluginModal {
 
 	/**
 	 * Draws the buttons under the list: start it, or pause and resume it.
+	 *
+	 * Closing the dialog and emptying the queue are two buttons rather than
+	 * one. They were a single "Cancel", which read as "I did not mean to open
+	 * this" and answered by throwing the queue away: the dialog is reachable
+	 * from the command palette at any time, so a user who opened it to look at
+	 * a folder queued the night before lost the folder by dismissing it.
 	 * @param running - Whether the queue is already being drained
 	 */
 	private renderControls(running: boolean): void {
@@ -180,7 +188,14 @@ export class TranscriptionQueueModal extends PluginModal {
 					},
 				},
 				{
-					text: 'Cancel',
+					text: 'Close',
+					onClick: () => {
+						this.close();
+					},
+				},
+				{
+					text: 'Discard queue',
+					destructive: true,
 					onClick: () => {
 						this.options.queue.clear();
 						this.close();

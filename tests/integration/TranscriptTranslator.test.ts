@@ -45,15 +45,21 @@ function transcriptOf(
 interface Sut {
 	translator: TranscriptTranslator;
 	prompts: string[];
+	/** What each completed call was accounted at, in call order. */
+	billedUsd: (number | null)[];
 }
 
 /**
  * A translator over a provider that answers with whatever the script says
  * for each successive call.
+ *
+ * The provider reports no usage, so every call is accounted at the estimate,
+ * which is what makes the recorded figures a readable proxy for the stretch of
+ * audio each call was told it covers.
  * @param transcript - The transcript to translate
  * @param answers - One answer per call, in order
  * @param maxTokens - Output ceiling, which decides the chunking
- * @returns The translator and the user prompts it sent
+ * @returns The translator, the user prompts it sent, and what it was billed
  */
 function createSut(
 	transcript: Transcript,
@@ -61,6 +67,7 @@ function createSut(
 	maxTokens = 32000,
 ): Sut {
 	const prompts: string[] = [];
+	const billedUsd: (number | null)[] = [];
 	let call = 0;
 	const llm: LlmProvider = {
 		id: 'openai-compatible',
@@ -78,8 +85,14 @@ function createSut(
 			settings: SETTINGS,
 			llm,
 			maxTokens,
+			costSink: {
+				recordLlmCall: (_provider, _step, usd) => {
+					billedUsd.push(usd);
+				},
+			},
 		}),
 		prompts,
+		billedUsd,
 	};
 }
 
@@ -265,6 +278,24 @@ describe('a transcript too long for one answer', () => {
 		// The second call still says 1, so its answer lands on the second
 		// segment rather than overwriting the first
 		expect(at(prompts, 1)).toBe('1||World');
+	});
+
+	it('sizes each chunk by the audio it covers, not by how far in it reaches', async () => {
+		// Both chunks hold one 59-second segment, so both cost the same to
+		// translate. Sizing a chunk by the end offset of its last segment
+		// instead charged every chunk for the whole recording up to it, and a
+		// transcript split four ways was estimated at two and a half times the
+		// audio it holds.
+		const { translator, billedUsd } = createSut(
+			transcriptOf(['Hello', 'World']),
+			['0||Hola', '1||Mundo'],
+			8,
+		);
+
+		await translator.translate();
+
+		expect(billedUsd).toHaveLength(2);
+		expect(at(billedUsd, 1)).toBe(at(billedUsd, 0));
 	});
 
 	it('sends one call for a transcript that fits', async () => {

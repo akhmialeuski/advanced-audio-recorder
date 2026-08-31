@@ -1726,6 +1726,22 @@ describe('settings definitions', () => {
 			expect(keys).toEqual(new Set(['filePrefix', 'llmPrompt']));
 		});
 
+		it('walks past a group that declares no children', () => {
+			// Obsidian's own `SettingDefinitionGroup` leaves `items` optional,
+			// so a heading with nothing under it is a shape the API allows and
+			// a page can legitimately produce. The scan has to step over it
+			// rather than read a length off undefined.
+			const keys = collectDebouncedControlKeys([
+				{ type: 'group', heading: 'Nothing here yet' },
+				{
+					name: 'Prefix',
+					control: { type: 'text', key: 'filePrefix' },
+				},
+			]);
+
+			expect(keys).toEqual(new Set(['filePrefix']));
+		});
+
 		it('leaves the controls that change once per interaction alone', () => {
 			// A toggle, a dropdown, or a number field fires one change per
 			// interaction: debouncing those would only delay the write.

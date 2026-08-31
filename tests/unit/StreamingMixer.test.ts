@@ -209,6 +209,24 @@ describe('StreamingMixer', () => {
 			expect(quiet).toBeCloseTo(loud / 10, -1);
 		});
 
+		// Two people on two microphones take turns speaking, so the tracks
+		// peak on different frames and their sum never reaches what the two
+		// peaks add up to. Bounding the mix by that total instead of by the
+		// sum it actually writes quietened the commonest multi-track
+		// recording there is by about six decibels, for a clip that was never
+		// going to happen.
+		it('keeps a mix whose tracks peak at different moments as loud as it was captured', async () => {
+			storeSegment('a.tmp', [30000, 0]);
+			storeSegment('b.tmp', [0, 30000]);
+
+			const samples = await mixedSamples([
+				createTrack(['a.tmp']),
+				createTrack(['b.tmp']),
+			]);
+
+			expect(Array.from(samples)).toEqual([30000, 30000]);
+		});
+
 		it('leaves a mix that never approached full scale at its own level', async () => {
 			storeSegment('a.tmp', [1000, -2000]);
 			storeSegment('b.tmp', [500, 500]);

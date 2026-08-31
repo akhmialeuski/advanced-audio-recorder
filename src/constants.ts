@@ -228,11 +228,6 @@ export const MIN_PLAYER_SKIP_SECONDS = 1;
 export const MAX_PLAYER_SKIP_SECONDS = 120;
 
 /**
- * Offset below which a recording counts as unstarted, so nothing is
- * remembered. Resuming a few seconds in saves the listener nothing and would
- * write a sidecar file for a recording that was merely opened.
- */
-/**
  * How long one queued recording is assumed to be when the queue prices a
  * folder, in seconds. The dialog shows an order of magnitude, not an invoice:
  * reading every recording in a folder to measure it would cost more than the
@@ -241,6 +236,11 @@ export const MAX_PLAYER_SKIP_SECONDS = 120;
  */
 export const QUEUE_ASSUMED_RECORDING_SECONDS = 600;
 
+/**
+ * Offset below which a recording counts as unstarted, so nothing is
+ * remembered. Resuming a few seconds in saves the listener nothing and would
+ * write a sidecar file for a recording that was merely opened.
+ */
 export const PLAYBACK_MEMORY_MIN_SECONDS = 15;
 
 /**
@@ -848,16 +848,6 @@ export const DEFAULT_LLM_CLEANUP_PROMPT =
 	'line. Return only the corrected transcript with no preamble.';
 
 /**
- * Default editable system prompt for the translation task. The target
- * language is appended at request time, so this base text names none.
- *
- * The numbering rule is what makes the translation line up with the
- * recording: the pass runs over the transcript's segments, one numbered line
- * each, and the answer is mapped back onto them by that number. A model that
- * merges or drops a line breaks the timecodes, which is the one thing a
- * translated subtitle file cannot survive.
- */
-/**
  * Share of a model's output ceiling one translation chunk may fill.
  *
  * A translation is about as long as what it translates, so the answer has to
@@ -867,6 +857,16 @@ export const DEFAULT_LLM_CLEANUP_PROMPT =
  */
 export const TRANSLATION_CHUNK_TOKEN_SHARE = 0.4;
 
+/**
+ * Default editable system prompt for the translation task. The target
+ * language is appended at request time, so this base text names none.
+ *
+ * The numbering rule is what makes the translation line up with the
+ * recording: the pass runs over the transcript's segments, one numbered line
+ * each, and the answer is mapped back onto them by that number. A model that
+ * merges or drops a line breaks the timecodes, which is the one thing a
+ * translated subtitle file cannot survive.
+ */
 export const DEFAULT_LLM_TRANSLATE_PROMPT =
 	'You are an expert translator. You are given a machine-generated ' +
 	'transcript, one line per spoken segment, in the form ' +

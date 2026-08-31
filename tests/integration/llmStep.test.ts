@@ -15,7 +15,10 @@ import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import type { RunCostStepId } from 'src/transcription/costs';
 import { at, defined } from '../helpers/assertions';
 import { billed, completed } from '../helpers/llmDoubles';
-import type { LlmUsage } from 'src/transcription/llm/llmResponse';
+import {
+	extractGeminiUsage,
+	type LlmUsage,
+} from 'src/transcription/llm/llmResponse';
 
 /**
  * A provider that returns fixed text and records how it was called.
@@ -265,12 +268,23 @@ describe('runLlmStep', () => {
 	it('bills the reasoning tokens a model reports at the output rate', async () => {
 		const sink = stubSink();
 
+		// Read from a real Gemini body rather than hand-built counts: Gemini
+		// bills a thinking response as its candidates plus its thoughts, and
+		// the extractor is what folds the two into the one output total the
+		// step is priced on. Building that total here instead would test the
+		// arithmetic without testing the convention it rests on.
 		await chapterStep(
-			stubLlm('answer', undefined, {
-				inputTokens: 0,
-				outputTokens: 0,
-				reasoningTokens: 1_000_000,
-			}),
+			stubLlm(
+				'answer',
+				undefined,
+				extractGeminiUsage({
+					usageMetadata: {
+						promptTokenCount: 0,
+						candidatesTokenCount: 0,
+						thoughtsTokenCount: 1_000_000,
+					},
+				}),
+			),
 			sink,
 			pricedSettings,
 		);

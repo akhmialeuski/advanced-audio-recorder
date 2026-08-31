@@ -239,7 +239,13 @@ async function runFailedPartRetry(
 		file,
 		services.recordingSidecar,
 		serviceRunner(
-			new TranscriptionService(services.app, services.getSettings),
+			new TranscriptionService(services.app, services.getSettings, {
+				costSink: services.transcriptionCosts,
+			}),
+			// The same sidecar the retry reads its failed parts from, so the
+			// recovered segments come back under the speaker names the user
+			// assigned rather than the engine's own labels.
+			services.recordingSidecar,
 		),
 	);
 	try {

@@ -308,15 +308,26 @@ describe('a top-up that cannot be attempted', () => {
 });
 
 describe('the runner a top-up drives the service through', () => {
+	/** A service double, and the recording a top-up is asked for. */
+	function runnerSut(): {
+		run: jest.Mock;
+		file: TFile;
+		ranges: { startSeconds: number; endSeconds: number }[];
+	} {
+		return {
+			run: jest.fn().mockResolvedValue({
+				transcript: transcriptOf([]),
+				missingParts: [],
+			}),
+			file: Object.assign(Object.create(TFile.prototype), {
+				path: 'rec.webm',
+			}) as TFile,
+			ranges: [{ startSeconds: 30, endSeconds: 120 }],
+		};
+	}
+
 	it('asks the service for exactly the stretches, on the recording', async () => {
-		const run = jest.fn().mockResolvedValue({
-			transcript: transcriptOf([]),
-			missingParts: [],
-		});
-		const file = Object.assign(Object.create(TFile.prototype), {
-			path: 'rec.webm',
-		}) as TFile;
-		const ranges = [{ startSeconds: 30, endSeconds: 120 }];
+		const { run, file, ranges } = runnerSut();
 
 		const result = await serviceRunner({ run })(file, ranges);
 
@@ -325,10 +336,39 @@ describe('the runner a top-up drives the service through', () => {
 			// no Markdown for those links to appear in
 			notePathForLinks: 'rec.webm',
 			onlyRanges: ranges,
+			skipPostProcessing: true,
 		});
 		expect(result).toEqual({
 			transcript: transcriptOf([]),
 			missingParts: [],
 		});
+	});
+
+	it('refuses the LLM document pass, whose answer it would discard', async () => {
+		// The runner keeps the transcript and drops the Markdown, so a cleanup
+		// or translation pass here is a paid call for an answer nothing reads,
+		// made over a handful of recovered segments rather than the document.
+		const { run, file, ranges } = runnerSut();
+
+		await serviceRunner({ run })(file, ranges);
+
+		expect(run.mock.calls[0]?.[1]).toMatchObject({
+			skipPostProcessing: true,
+		});
+	});
+
+	it('hands the sidecar through so recovered speakers keep their names', async () => {
+		// Without it the engine's own labels come back and splice into a
+		// transcript whose speakers the user has since renamed, leaving one
+		// document that calls the same person both "Alice" and "Speaker 1".
+		const { run, file, ranges } = runnerSut();
+		const sidecar = {
+			getTranscript: jest.fn(),
+			setSpeakers: jest.fn(),
+		};
+
+		await serviceRunner({ run }, sidecar)(file, ranges);
+
+		expect(run.mock.calls[0]?.[1]).toMatchObject({ sidecar });
 	});
 });

@@ -13,6 +13,12 @@ import { createMockApp } from '../helpers/createApp';
 import { noticeMessages } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
 
+/**
+ * How long the queue assumes one recording to be. The queue never measures a
+ * file before sending it, so this is what a fallback estimate is sized by.
+ */
+const ASSUMED_SECONDS = 600;
+
 /** A priced run, as the service reports one. */
 function cost(usd: number | null = 0.05): TranscribeRunCost {
 	return { engineId: 'deepgram', usd, usage: {} };
@@ -73,6 +79,7 @@ function createSut(
 				added.push([engineId, usd, estimated]);
 			},
 		},
+		assumedSecondsPerRecording: ASSUMED_SECONDS,
 	});
 	return { runner, queue, transcribed, added };
 }
@@ -198,7 +205,12 @@ describe('what a queued run costs the session', () => {
 		expect(added).toEqual([['deepgram', 0.05, false]]);
 	});
 
-	it('marks a run the provider could not price as an estimate', async () => {
+	// A run the provider reported no usage for falls back to the duration
+	// estimate and is marked as one, which is what the dialog has always done.
+	// Recording it as unpriced instead, as the queue used to, left the same
+	// recording reaching the session total differently depending on which
+	// surface had started it.
+	it('falls back to the estimate when the provider priced nothing', async () => {
 		const { runner, added } = createSut({
 			paths: ['a.webm'],
 			answer: () => Promise.resolve({ cost: cost(null) }),
@@ -206,7 +218,10 @@ describe('what a queued run costs the session', () => {
 
 		await runner.drain();
 
-		expect(added).toEqual([['deepgram', null, true]]);
+		// The figure itself is the shared rule's, pinned where that rule lives;
+		// what matters here is that the runner asked it rather than recording
+		// the unpriced null it used to.
+		expect(added).toEqual([['deepgram', expect.any(Number), true]]);
 	});
 
 	it('counts nothing while cost estimates are off', async () => {

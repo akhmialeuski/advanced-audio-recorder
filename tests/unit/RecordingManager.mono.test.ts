@@ -20,6 +20,7 @@ import {
 	stubAudioStreams,
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
+import { tick } from '../helpers/async';
 import { partial } from '../helpers/doubles';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 import {
@@ -50,6 +51,14 @@ interface BridgeDouble {
 const createdBridges: BridgeDouble[] = [];
 /** When set, the bridge at this construction index fails to start. */
 let failBridgeAtIndex = -1;
+/**
+ * When set, the bridge at this construction index does not finish starting
+ * until {@link releaseHeldBridge} is called, which is how a test observes a
+ * session whose tracks came up at different times.
+ */
+let holdBridgeAtIndex = -1;
+/** Finishes the held bridge's start; set once that bridge is asked to start. */
+let releaseHeldBridge: (() => void) | null = null;
 
 jest.mock('src/recording/MonoCaptureBridge', () => ({
 	MonoCaptureBridge: jest
@@ -69,6 +78,13 @@ jest.mock('src/recording/MonoCaptureBridge', () => ({
 					start: jest.fn(() => {
 						if (index === failBridgeAtIndex) {
 							throw new Error('bridge start failed');
+						}
+						if (index === holdBridgeAtIndex) {
+							return new Promise<MediaStream>((resolve) => {
+								releaseHeldBridge = () => {
+									resolve(monoStream);
+								};
+							});
 						}
 						return monoStream;
 					}),
@@ -94,6 +110,8 @@ describe('RecordingManager mono channel wiring', () => {
 	beforeEach(() => {
 		createdBridges.length = 0;
 		failBridgeAtIndex = -1;
+		holdBridgeAtIndex = -1;
+		releaseHeldBridge = null;
 		jest.spyOn(console, 'error').mockImplementation();
 		useDesktopPlatform();
 		mockApp = createRecordingMockApp();
@@ -136,11 +154,12 @@ describe('RecordingManager mono channel wiring', () => {
 	});
 
 	/**
-	 * Starts a two-track session in which each track records in its own mono
-	 * mode, which is the arrangement a per-track bridge exists for.
+	 * Arranges a two-track session in which each track records in its own mono
+	 * mode, which is the arrangement a per-track bridge exists for. Stops
+	 * short of starting, so a test can also watch the start itself.
 	 * @returns The session's capture streams, in track order
 	 */
-	async function startTwoMonoTracks(): Promise<MediaStream[]> {
+	function arrangeTwoMonoTracks(): MediaStream[] {
 		createDesktopRecorder();
 		const streams = stubAudioStreams({
 			count: 2,
@@ -154,9 +173,41 @@ describe('RecordingManager mono channel wiring', () => {
 			[2, { deviceId: 'b', channelMode: 'mono-mix' as const }],
 		]);
 		mockSettings.outputMode = 'multiple';
+		return streams;
+	}
+
+	/**
+	 * Starts the two-track mono session {@link arrangeTwoMonoTracks} sets up.
+	 * @returns The session's capture streams, in track order
+	 */
+	async function startTwoMonoTracks(): Promise<MediaStream[]> {
+		const streams = arrangeTwoMonoTracks();
 		await manager.startRecording();
 		return streams;
 	}
+
+	// Two microphones in one session are combined into a single file, aligned
+	// at their first sample, so a track that began recording ahead of its
+	// sibling puts the whole of that head start between the two voices for the
+	// length of the recording. A bridge's audio context comes up after a delay
+	// that differs per device, which is why the session waits for all of them.
+	it('arms no recorder until every track has acquired its bridge', async () => {
+		arrangeTwoMonoTracks();
+		holdBridgeAtIndex = 1;
+		const recorderCtor = jest.mocked(global.MediaRecorder);
+
+		const starting = manager.startRecording();
+		await tick();
+
+		expect(at(createdBridges, 0).start).toHaveBeenCalledTimes(1);
+		expect(recorderCtor).not.toHaveBeenCalled();
+
+		releaseHeldBridge?.();
+		await starting;
+
+		expect(recorderCtor).toHaveBeenCalledTimes(2);
+		await manager.stopRecording();
+	});
 
 	it('applies each track its own channel mode in multi-track sessions', async () => {
 		const [streamA, streamB] = await startTwoMonoTracks();

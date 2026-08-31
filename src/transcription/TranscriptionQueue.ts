@@ -103,11 +103,18 @@ export class TranscriptionQueue {
 	/** Whether the disk state has been read yet. */
 	private loaded = false;
 
+	/** The read in flight, so callers arriving during it share that one read. */
+	private loading: Promise<void> | null = null;
+
 	/** Serialized operation chain, which never rejects. */
 	private chain: Promise<void> = Promise.resolve();
 
-	/** Whether a coalesced write is already queued on the chain. */
-	private writeScheduled = false;
+	/**
+	 * Handle of the pending coalesced write, or 0 when none is waiting. A
+	 * handle rather than a flag, because {@link TranscriptionQueue.flush} has
+	 * to be able to call it off and write immediately.
+	 */
+	private saveTimer = 0;
 
 	/** Told whenever the queue changes, so a view can redraw. */
 	private readonly listeners = new Set<() => void>();
@@ -123,18 +130,34 @@ export class TranscriptionQueue {
 	) {}
 
 	/**
-	 * Reads the queue from disk, once. A missing file is an empty queue; a
+	 * Reads the queue from disk, once.
+	 *
+	 * A caller arriving while the read is in flight waits for that same read
+	 * rather than being told the queue is already loaded. Marking it loaded
+	 * before the disk had answered let the second caller straight through to
+	 * an empty queue, and the recordings it added were then overwritten by the
+	 * file the first caller was still waiting for - a folder queued at startup
+	 * silently vanishing.
+	 */
+	async load(): Promise<void> {
+		if (this.loaded) {
+			return;
+		}
+		this.loading ??= this.readFromDisk();
+		await this.loading;
+	}
+
+	/**
+	 * Reads the queue file into memory. A missing file is an empty queue; a
 	 * file that is not a queue is discarded with a warning, because a queue is
 	 * losable and re-queueing costs one action.
 	 */
-	async load(): Promise<void> {
-		if (this.loaded || !this.queuePath) {
-			this.loaded = true;
-			return;
-		}
-		this.loaded = true;
+	private async readFromDisk(): Promise<void> {
 		try {
-			if (!(await this.app.vault.adapter.exists(this.queuePath))) {
+			if (
+				!this.queuePath ||
+				!(await this.app.vault.adapter.exists(this.queuePath))
+			) {
 				return;
 			}
 			const parsed: unknown = JSON.parse(
@@ -152,6 +175,11 @@ export class TranscriptionQueue {
 				`${PLUGIN_LOG_PREFIX} Failed to read the transcription queue:`,
 				error,
 			);
+		} finally {
+			// Set here rather than on the way in, so "loaded" means the disk
+			// has answered and not merely that someone asked.
+			this.loaded = true;
+			this.loading = null;
 		}
 	}
 
@@ -177,13 +205,26 @@ export class TranscriptionQueue {
 	}
 
 	/**
+	 * How many recordings a run of this queue would still transcribe.
+	 *
+	 * What the queue costs is counted from these and not from every entry it
+	 * holds: an entry that is done or failed has already had whatever it cost
+	 * spent on it, and pricing the whole list tells the user a drained queue
+	 * is about to charge them again for work that is finished.
+	 * @returns Entries still waiting or in flight
+	 */
+	pendingCount(): number {
+		return this.state.entries.filter(
+			(entry) => entry.state === 'waiting' || entry.state === 'running',
+		).length;
+	}
+
+	/**
 	 * Whether anything is left to do. What decides that a queue resumed after
 	 * a restart still has work, and what a view asks before offering to run.
 	 */
 	hasWork(): boolean {
-		return this.state.entries.some(
-			(entry) => entry.state === 'waiting' || entry.state === 'running',
-		);
+		return this.pendingCount() > 0;
 	}
 
 	/**
@@ -289,8 +330,18 @@ export class TranscriptionQueue {
 		};
 	}
 
-	/** Writes any pending change now, for plugin unload. */
+	/**
+	 * Writes any pending change now, for plugin unload.
+	 *
+	 * The debounce is cancelled rather than waited out. This call is the write
+	 * that timer was going to make, and unload has no half-second to spare:
+	 * the timer used to sit inside the same serialized chain, so a flush
+	 * queued behind it and the last change a user made before quitting came
+	 * back next session as if it had never happened.
+	 */
 	async flush(): Promise<void> {
+		window.clearTimeout(this.saveTimer);
+		this.saveTimer = 0;
 		await this.enqueue(() => this.write());
 	}
 
@@ -306,19 +357,22 @@ export class TranscriptionQueue {
 	 * Queues one coalesced write. Several changes in a row cost one write,
 	 * which is what keeps a queue that moves per recording from rewriting the
 	 * file on every state change.
+	 *
+	 * The wait is a timer of its own rather than a sleep inside the write
+	 * chain, so it can be cancelled. Held in the chain it blocked everything
+	 * behind it, including the flush that unload depends on.
 	 */
 	private scheduleWrite(): void {
-		if (this.writeScheduled || !this.queuePath) {
+		// Anchored on the first change of a burst rather than the last, so a
+		// queue that keeps moving is still written every half second instead
+		// of postponing its write for as long as anything is happening.
+		if (this.saveTimer !== 0 || !this.queuePath) {
 			return;
 		}
-		this.writeScheduled = true;
-		void this.enqueue(async () => {
-			await new Promise((resolve) =>
-				window.setTimeout(resolve, SAVE_DEBOUNCE_MS),
-			);
-			this.writeScheduled = false;
-			await this.write();
-		});
+		this.saveTimer = window.setTimeout(() => {
+			this.saveTimer = 0;
+			void this.enqueue(() => this.write());
+		}, SAVE_DEBOUNCE_MS);
 	}
 
 	/** Writes the queue, warning rather than throwing on failure. */

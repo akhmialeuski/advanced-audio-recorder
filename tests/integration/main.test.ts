@@ -1363,6 +1363,42 @@ describe('AudioRecorderPlugin transcription queue', () => {
 		expect(settingsFromRun).toBe(plugin.settings);
 	});
 
+	// A queued run was the only run wired without the sidecar store, so it
+	// registered neither the files it wrote nor the parts it lost: a rename
+	// afterwards could not follow its transcript, its speakers kept the
+	// engine's labels, and "Transcribe the parts that failed" answered that
+	// nothing was missing from a transcript with a hole in it.
+	it('gives a queued run the same sidecar store the rest of the plugin writes through', async () => {
+		const { transcribeFile } = jest.requireMock<{
+			transcribeFile: jest.Mock;
+		}>('src/transcription/runTranscription');
+		transcribeFile.mockResolvedValue({
+			cost: { engineId: 'deepgram', usd: 0, usage: {} },
+		});
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+		const deps = at((QueueRunner as jest.Mock).mock.calls, 0)[0] as {
+			transcribe: (file: TFile, options: unknown) => Promise<unknown>;
+		};
+		const services = at(
+			(ContextMenu as jest.Mock).mock.calls,
+			0,
+		)[1] as ActionServices;
+
+		await deps.transcribe(partial<TFile>({ path: 'a.webm' }), {
+			notePathForLinks: 'a.webm',
+		});
+
+		// The same store, not merely a store: every writer of a recording's
+		// sidecar has to serialize on one write chain.
+		expect(at(transcribeFile.mock.calls, 0)[3]).toEqual(
+			expect.objectContaining({
+				notePathForLinks: 'a.webm',
+				sidecar: services.recordingSidecar,
+			}),
+		);
+	});
+
 	it('gives the coordinator the live settings too', async () => {
 		const { plugin } = createPlugin([null]);
 		await onloadWithTimers(plugin);

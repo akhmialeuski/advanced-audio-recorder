@@ -139,7 +139,11 @@ describe('writing a file beside the recording', () => {
 
 		const sheet = created.get('Recordings/talk.cue') ?? '';
 		expect(sheet).toContain('TITLE "talk"');
-		expect(sheet).toContain('FILE "talk.webm" WAVE');
+		// The fixture is a WebM, and the cue format has no name for that
+		// container, so it is declared BINARY. This read WAVE while every
+		// sheet claimed WAVE whatever it pointed at, which told a reader to
+		// seek through a header the file does not have.
+		expect(sheet).toContain('FILE "talk.webm" BINARY');
 		expect(sheet).toContain('TRACK 02 AUDIO');
 	});
 

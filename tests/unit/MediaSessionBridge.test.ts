@@ -311,6 +311,21 @@ describe('taking the announcement down', () => {
 		expect(media.playbackState()).toBe('none');
 	});
 
+	// Clearing the metadata is not the same as giving the controls back. The
+	// transport handlers are bound once at construction, so an unload that
+	// left them registered kept the bridge and its last snapshot alive for the
+	// life of the window, and a press of the play key went on reaching a
+	// plugin that had gone instead of whatever else would have answered it.
+	it('gives every control back to the system when the plugin unloads', () => {
+		const { media, publish, bridge } = createSut();
+		publish(makePlaybackState({ chaptersEnabled: true }));
+		expect(media.registered()).not.toHaveLength(0);
+
+		bridge.dispose();
+
+		expect(media.registered()).toEqual([]);
+	});
+
 	it('announces again after a stop, since the metadata was cleared', () => {
 		const { media, publish } = createSut();
 		publish(makePlaybackState({ recordingPath: 'first.webm' }));

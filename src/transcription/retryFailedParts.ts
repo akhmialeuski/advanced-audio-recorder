@@ -23,6 +23,7 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import { serializeTranscriptFile } from './transcriptFormat';
 import type { PartFailure } from './partFailure';
 import type { Transcript, TranscriptSegment } from './TranscriptTypes';
+import type { TranscriptionSidecarAccess } from './TranscriptionService';
 import type { FileOutput } from '../sidecar/recordingSidecarModel';
 
 /** How close two segments must start to count as the same one. */
@@ -65,6 +66,8 @@ export interface RetryTranscriber {
 		options: {
 			notePathForLinks: string;
 			onlyRanges: readonly { startSeconds: number; endSeconds: number }[];
+			sidecar?: TranscriptionSidecarAccess | undefined;
+			skipPostProcessing?: boolean | undefined;
 		},
 	): Promise<{ transcript: Transcript; missingParts: PartFailure[] }>;
 }
@@ -73,14 +76,29 @@ export interface RetryTranscriber {
  * Turns the transcription service into the runner a top-up calls. The link
  * path is the recording's own: a top-up reads the segments and never renders
  * the Markdown those links would appear in.
+ *
+ * The sidecar travels with the run so the recovered segments carry the speaker
+ * names the user assigned, exactly as a full re-run does. Without it the
+ * engine's own labels come back and splice into a transcript that has since
+ * been renamed, leaving one document that says both "Alice" and "Speaker 1"
+ * for the same person.
  * @param service - The transcription service
+ * @param sidecar - The recording's sidecar, for speaker-name continuity
  * @returns The runner
  */
-export function serviceRunner(service: RetryTranscriber): RetryRunner {
+export function serviceRunner(
+	service: RetryTranscriber,
+	sidecar?: TranscriptionSidecarAccess,
+): RetryRunner {
 	return async (file, ranges) => {
 		const result = await service.run(file, {
 			notePathForLinks: file.path,
 			onlyRanges: ranges,
+			...(sidecar ? { sidecar } : {}),
+			// The rendered document is discarded here, so paying an LLM to
+			// clean up or translate a handful of recovered segments buys
+			// nothing and bills the user for it.
+			skipPostProcessing: true,
 		});
 		return {
 			transcript: result.transcript,

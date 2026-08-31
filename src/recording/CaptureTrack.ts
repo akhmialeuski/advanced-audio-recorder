@@ -34,8 +34,26 @@ export interface CaptureTrack {
 	readonly negotiatedChannels: number | null;
 	/** Sample rate the primitive settled on, or null where it does not negotiate. */
 	readonly negotiatedSampleRate: number | null;
-	/** Begins capturing. */
-	start(): Promise<void>;
+	/**
+	 * Acquires everything capture needs, without capturing yet: a mono
+	 * bridge's audio context, a worklet's module. This is the slow, variable
+	 * half of starting, and separating it is what lets a session hold every
+	 * track at the line.
+	 */
+	prepare(): Promise<void>;
+	/**
+	 * Begins capturing on what {@link CaptureTrack.prepare} acquired, without
+	 * awaiting anything.
+	 *
+	 * Kept apart from the acquisition because the tracks of one session have
+	 * to start together. A mono bridge reaches its running audio context after
+	 * a delay that differs per track and per device, so a track that armed
+	 * itself the moment its own bridge answered began recording tens of
+	 * milliseconds before or after its siblings, and a merged multi-track file
+	 * carried that difference as a fixed offset between two microphones for
+	 * its whole length.
+	 */
+	begin(): void;
 	/** Suspends capture, keeping everything acquired. */
 	pause(): void;
 	/** Resumes capture after {@link CaptureTrack.pause}. */
@@ -112,8 +130,11 @@ export class MediaRecorderCaptureTrack implements CaptureTrack {
 		this.captureStream = stream;
 	}
 
-	async start(): Promise<void> {
+	async prepare(): Promise<void> {
 		this.captureStream = (await this.bridge?.start()) ?? this.stream;
+	}
+
+	begin(): void {
 		this.startRecorder();
 	}
 
@@ -247,8 +268,15 @@ export class PcmCaptureTrack implements CaptureTrack {
 		return this.recorder.sampleRate;
 	}
 
-	start(): Promise<void> {
+	prepare(): Promise<void> {
+		// The worklet captures from the moment it is connected to the source,
+		// and connecting it is the last thing its start does, so a PCM track's
+		// whole start is its acquisition and there is nothing left to arm.
 		return this.recorder.start();
+	}
+
+	begin(): void {
+		// Already capturing; see prepare().
 	}
 
 	pause(): void {

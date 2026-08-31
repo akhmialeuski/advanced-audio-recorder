@@ -106,15 +106,6 @@ export interface TrackFileGroup {
 }
 
 /**
- * Immutable snapshot of the session-scoped recording configuration,
- * taken at recording start. The per-track part and finalization paths
- * read these values repeatedly during the session; without the
- * snapshot, a settings change mid-recording could switch formats
- * between parts or reroute the finalization topology (outputMode
- * decides whether a multi-track session merges, and the auto-split
- * decision already depended on it at start).
- */
-/**
  * Where one track is placed when a session's tracks are combined into one
  * file. Fixed at the session's start, alongside the devices and the channel
  * modes: a settings edit half way through a two-hour recording must not
@@ -127,6 +118,15 @@ export interface TrackMix {
 	pan: number;
 }
 
+/**
+ * Immutable snapshot of the session-scoped recording configuration,
+ * taken at recording start. The per-track part and finalization paths
+ * read these values repeatedly during the session; without the
+ * snapshot, a settings change mid-recording could switch formats
+ * between parts or reroute the finalization topology (outputMode
+ * decides whether a multi-track session merges, and the auto-split
+ * decision already depended on it at start).
+ */
 export interface RecordingSessionConfig {
 	/**
 	 * Chunk-buffer size that forces a part rotation, or null where a

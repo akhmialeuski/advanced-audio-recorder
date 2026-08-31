@@ -28,6 +28,7 @@ export {
 	costEstimateNeedsDuration,
 	estimateStepCost,
 	formatUsd,
+	runCostToRecord,
 } from './costs';
 export type { CostEstimate, CostEstimateLine, RunCostStepId } from './costs';
 export { advancedTwoPassWillRun } from './advanced/advancedBias';

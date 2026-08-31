@@ -15,6 +15,7 @@ import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
+import type { LlmCostSink } from '../transcription/llm/llmStep';
 import type { PlaybackControlsState } from '../player/playbackControls';
 import type { MarkerKind } from '../markers/markerModel';
 
@@ -72,6 +73,13 @@ export interface ActionServices {
 		queueFolder(folder: TFolder): Promise<void>;
 		open(): void;
 	};
+	/**
+	 * Where an action's own transcription run reports what its LLM steps
+	 * cost, so a run started from a menu lands in the same session total as
+	 * one started from the dialog. Optional: an action surface wired without
+	 * one still works and simply accounts nothing.
+	 */
+	readonly transcriptionCosts?: LlmCostSink | undefined;
 }
 
 /** The audio file an action targets, with the services it runs against. */

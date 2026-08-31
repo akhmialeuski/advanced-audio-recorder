@@ -67,7 +67,10 @@ export class QueueCoordinator {
 	 */
 	open(): void {
 		const settings = this.deps.getSettings();
-		const count = this.deps.queue.entries().length;
+		// Only what is still to run: a queue reopened after it drained has
+		// nothing left to bill for, and pricing its finished entries would
+		// quote the user a spend that will not happen.
+		const count = this.deps.queue.pendingCount();
 		const one = buildCostEstimate(
 			settings,
 			this.deps.assumedSecondsPerRecording,

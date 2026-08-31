@@ -81,7 +81,9 @@ A laptop microphone beside a proper interface is many decibels quieter, and a mi
 
 All three are snapshotted when recording starts, alongside the devices and the channel layouts, so editing them mid-session takes effect on the **next** recording and a session interrupted by a crash is rebuilt with the placement it was recorded under.
 
-The mix is **scaled rather than clipped**. Earlier versions cut every sample that landed past full scale, which flattened the loudest moments and left the quiet ones alone - the definition of distortion. The mixer now measures the tracks first and scales the whole file by one factor, so two people talking at once costs level rather than fidelity. A mix that never approached full scale is written exactly as captured.
+The mix is **scaled rather than clipped**. Earlier versions cut every sample that landed past full scale, which flattened the loudest moments and left the quiet ones alone - the definition of distortion. The mixer now measures the tracks first and scales the whole file by one factor, so two people talking at once costs level rather than fidelity. A mix that never approached full scale is written exactly as captured, because the measuring pass sums the tracks the way the mix will write them and reads the peak off that sum rather than adding up the tracks' separate peaks.
+
+**Match track levels** is the one exception. Each track's correction is known only once every track has been measured, so by then the sum that was measured is no longer the sum that will be written, and the scale falls back to the separate peaks. That bound can never clip, but it can leave a mix quieter than it needed to be when the tracks peak at different moments.
 
 ### Multiple files (one per track)
 

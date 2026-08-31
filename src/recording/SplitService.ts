@@ -49,9 +49,6 @@ const SPLIT_DESKTOP_ADVICE =
 	'Only a WAV source splits at this size, because its parts are copied ' +
 	'rather than decoded.';
 
-/**
- * Parameters of one split operation.
- */
 /** One part of a split made at chapter boundaries. */
 export interface ChapterCut {
 	/** Where the part begins, in seconds. */
@@ -60,6 +57,9 @@ export interface ChapterCut {
 	title: string;
 }
 
+/**
+ * Parameters of one split operation.
+ */
 export interface SplitRequest {
 	/** File to split. */
 	sourceFile: TFile;

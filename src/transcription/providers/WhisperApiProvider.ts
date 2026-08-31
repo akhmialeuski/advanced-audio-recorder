@@ -12,16 +12,6 @@
  */
 
 import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
-
-/** Operation that writes the speech down in the language it was spoken in. */
-const WHISPER_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
-
-/**
- * Operation that translates the speech into English while transcribing it.
- * Takes the same fields and answers in the same shape, so only the path and
- * the language hint change.
- */
-const WHISPER_TRANSLATIONS_PATH = '/audio/translations';
 import { whisperPromptValue } from '../dictionaryBias';
 import {
 	authHeader,
@@ -38,6 +28,16 @@ import type {
 	TranscribeOptions,
 	TranscriptionProvider,
 } from './TranscriptionProvider';
+
+/** Operation that writes the speech down in the language it was spoken in. */
+const WHISPER_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
+
+/**
+ * Operation that translates the speech into English while transcribing it.
+ * Takes the same fields and answers in the same shape, so only the path and
+ * the language hint change.
+ */
+const WHISPER_TRANSLATIONS_PATH = '/audio/translations';
 
 /** Configuration for the Whisper API provider. */
 export interface WhisperApiConfig {

@@ -120,6 +120,40 @@ function cueQuoted(value: string): string {
 }
 
 /**
+ * The file types a cue sheet's FILE line can name, by the extension of the
+ * audio it points at.
+ *
+ * The format defines a fixed set and readers act on it: it tells them how to
+ * find a sample offset in the file, so it is a claim about the container
+ * rather than a label.
+ */
+const CUE_FILE_TYPES: Readonly<Record<string, string>> = {
+	wav: 'WAVE',
+	wave: 'WAVE',
+	mp3: 'MP3',
+	aiff: 'AIFF',
+	aif: 'AIFF',
+};
+
+/**
+ * How a cue sheet should describe the recording it points at.
+ *
+ * A container the format has no name for is declared BINARY, which readers
+ * take as raw bytes. That is the honest answer for the WebM and M4A this
+ * plugin also records, and it beats the alternative this once said: every
+ * sheet claimed WAVE, so a cue sheet for an MP3 told its reader to seek
+ * through a header the file does not have, and strict readers refused the
+ * sheet outright.
+ * @param fileName - Name of the audio file the sheet points at
+ * @returns The token for the sheet's FILE line
+ */
+function cueFileType(fileName: string): string {
+	const dot = fileName.lastIndexOf('.');
+	const extension = dot < 0 ? '' : fileName.slice(dot + 1).toLowerCase();
+	return CUE_FILE_TYPES[extension] ?? 'BINARY';
+}
+
+/**
  * The cue sheet for a recording: one TRACK per marker, each with its title
  * and its start.
  *
@@ -139,7 +173,9 @@ export function formatCueSheet(
 		lines.push(`PERFORMER ${cueQuoted(meta.performer)}`);
 	}
 	lines.push(`TITLE ${cueQuoted(meta.title)}`);
-	lines.push(`FILE ${cueQuoted(meta.fileName)} WAVE`);
+	lines.push(
+		`FILE ${cueQuoted(meta.fileName)} ${cueFileType(meta.fileName)}`,
+	);
 	exportable(chapters(markers)).forEach((chapter, index) => {
 		lines.push(`  TRACK ${String(index + 1).padStart(2, '0')} AUDIO`);
 		lines.push(`    TITLE ${cueQuoted(chapter.label)}`);

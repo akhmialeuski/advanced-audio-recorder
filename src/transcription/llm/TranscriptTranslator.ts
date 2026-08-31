@@ -67,6 +67,35 @@ function encodeLine(segment: TranscriptSegment, index: number): string {
 	].join(FIELD_SEPARATOR);
 }
 
+/** One segment of a chunk, with the number the wire lines call it by. */
+interface ChunkEntry {
+	/** The segment's position in the transcript. */
+	index: number;
+	/** The segment itself. */
+	segment: TranscriptSegment;
+}
+
+/**
+ * The stretch of the recording a chunk covers, in seconds.
+ *
+ * Measured across the chunk rather than from the beginning of the recording.
+ * The end offset of the last segment is how far into the recording the chunk
+ * reaches, not how much of it the chunk holds, and sizing every chunk by that
+ * charged the estimate for the whole recording again at each one: four chunks
+ * of a one-hour transcript came to two and a half hours of material.
+ * @param chunk - The segments one call carries
+ * @returns The seconds the chunk covers, or null for a chunk with nothing in it
+ */
+function spanOf(chunk: readonly ChunkEntry[]): number | null {
+	let start = Number.POSITIVE_INFINITY;
+	let end = Number.NEGATIVE_INFINITY;
+	for (const { segment } of chunk) {
+		start = Math.min(start, segment.start);
+		end = Math.max(end, segment.end);
+	}
+	return end === Number.NEGATIVE_INFINITY ? null : Math.max(0, end - start);
+}
+
 /**
  * Reads the translated text out of one answered line. The speaker field is
  * parsed only to be skipped: the original is re-attached either way, so a
@@ -171,24 +200,36 @@ export class TranscriptTranslator {
 		indices: readonly number[],
 	): Promise<Map<number, string>> {
 		const wanted = new Set(indices);
-		for (let attempt = 0; attempt < 2; attempt++) {
-			const answered = await this.askFor(indices);
-			// Extra lines are dropped by the wanted check, and a missing one
-			// leaves the count short; either way the run is not trustworthy.
-			if (answered.size === wanted.size) {
-				return answered;
-			}
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} The translation answered ${String(answered.size)} of ${String(wanted.size)} lines;` +
-					(attempt === 0
-						? ' asking again.'
-						: ' keeping the original text for the rest.'),
-			);
-			if (attempt === 1) {
-				return answered;
+		// Extra lines are dropped by the wanted check, and a missing one
+		// leaves the count short; either way the run is not trustworthy.
+		let answered = await this.askFor(indices);
+		if (answered.size !== wanted.size) {
+			this.warnMismatch(answered.size, wanted.size, true);
+			answered = await this.askFor(indices);
+			if (answered.size !== wanted.size) {
+				this.warnMismatch(answered.size, wanted.size, false);
 			}
 		}
-		return new Map();
+		return answered;
+	}
+
+	/**
+	 * Says an answer did not line up, and what happens to those segments next.
+	 * @param answered - Lines the model came back with
+	 * @param wanted - Lines the run asked for
+	 * @param retrying - Whether the run is about to ask a second time
+	 */
+	private warnMismatch(
+		answered: number,
+		wanted: number,
+		retrying: boolean,
+	): void {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} The translation answered ${String(answered)} of ${String(wanted)} lines;` +
+				(retrying
+					? ' asking again.'
+					: ' keeping the original text for the rest.'),
+		);
 	}
 
 	/**
@@ -202,22 +243,13 @@ export class TranscriptTranslator {
 		indices: readonly number[],
 	): Promise<Map<number, string>> {
 		const wanted = new Set(indices);
-		const segments = this.request.transcript.segments;
+		const chunk = this.resolve(indices);
 		const text = await runLlmStep({
 			step: 'postProcess',
 			llm: this.request.llm,
 			prompt: buildPostProcessPrompt(
-				indices
-					// The index came from the transcript, so the segment is
-					// there; the guard is what keeps the type honest.
-					.map((index) => segments[index])
-					.filter(
-						(segment): segment is TranscriptSegment =>
-							segment !== undefined,
-					)
-					.map((segment, position) =>
-						encodeLine(segment, indices[position] ?? 0),
-					)
+				chunk
+					.map(({ index, segment }) => encodeLine(segment, index))
 					.join('\n'),
 				{
 					task: 'translate',
@@ -232,7 +264,7 @@ export class TranscriptTranslator {
 			settings: this.request.settings,
 			// The stretch these segments cover is what the call reads, so the
 			// estimate is sized by it exactly as a whole-transcript pass is.
-			durationSeconds: this.spanOf(indices),
+			durationSeconds: spanOf(chunk),
 			costSink: this.request.costSink,
 			signal: this.request.signal,
 		});
@@ -247,15 +279,23 @@ export class TranscriptTranslator {
 	}
 
 	/**
-	 * The stretch of the recording a run of segments covers, in seconds.
-	 * @param indices - Segment indices in the run
-	 * @returns The end offset of the last of them, or null when unknown
+	 * Pairs each index with the segment it names, dropping any the transcript
+	 * does not have.
+	 *
+	 * The two travel together rather than being matched up by position later:
+	 * a filtered list renumbers itself, so pairing after the filter would put
+	 * a dropped segment's number on its neighbour and land that neighbour's
+	 * translation on the wrong line.
+	 * @param indices - Segment indices to translate
+	 * @returns The segments this run can ask about, each with its own number
 	 */
-	private spanOf(indices: readonly number[]): number | null {
-		const last = indices.at(-1);
-		return last === undefined
-			? null
-			: (this.request.transcript.segments[last]?.end ?? null);
+	private resolve(indices: readonly number[]): ChunkEntry[] {
+		const segments = this.request.transcript.segments;
+		return indices
+			.map((index) => ({ index, segment: segments[index] }))
+			.filter(
+				(entry): entry is ChunkEntry => entry.segment !== undefined,
+			);
 	}
 
 	/** The language to translate into, defaulting to English. */

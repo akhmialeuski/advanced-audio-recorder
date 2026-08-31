@@ -44,36 +44,51 @@ describe('a PCM capture track', () => {
 		// Every row answers with a promise so the table drives the two
 		// asynchronous operations and the two synchronous ones alike.
 		{
-			name: 'start',
+			name: 'prepare',
+			// A PCM track's whole start is its acquisition, so preparing it is
+			// what reaches the recorder and arming it has nothing left to do.
+			method: 'start',
 			drive: async (t: CaptureTrack): Promise<void> => {
-				await t.start();
+				await t.prepare();
 			},
 		},
 		{
 			name: 'pause',
+			method: 'pause',
 			drive: async (t: CaptureTrack): Promise<void> => {
 				t.pause();
 			},
 		},
 		{
 			name: 'resume',
+			method: 'resume',
 			drive: async (t: CaptureTrack): Promise<void> => {
 				t.resume();
 			},
 		},
 		{
 			name: 'stop',
+			method: 'stop',
 			drive: async (t: CaptureTrack): Promise<void> => {
 				await t.stop();
 			},
 		},
-	])('passes $name straight to the recorder', async ({ name, drive }) => {
+	])('passes $name straight to the recorder', async ({ method, drive }) => {
 		const recorder = makePcmRecorder();
 		const track = new PcmCaptureTrack(recorder);
 
 		await drive(track);
 
-		expect(recorder[name as 'pause']).toHaveBeenCalledTimes(1);
+		expect(recorder[method as 'pause']).toHaveBeenCalledTimes(1);
+	});
+
+	it('arms nothing, because preparing it already left it capturing', () => {
+		const recorder = makePcmRecorder();
+		const track: CaptureTrack = new PcmCaptureTrack(recorder);
+
+		track.begin();
+
+		expect(recorder.start).not.toHaveBeenCalled();
 	});
 
 	it('does nothing on a restart, because it rotates by counting bytes', () => {

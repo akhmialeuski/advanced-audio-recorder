@@ -333,26 +333,114 @@ interface MixLane {
 }
 
 /**
- * Reads every track once and records how loud each one is.
+ * Adds one lane's window into the accumulator, at the multipliers the lane
+ * currently carries.
+ *
+ * Both passes go through here: the measuring pass to learn what the sum
+ * actually reaches, and the mixing pass to write it. One implementation,
+ * because any difference between the two would leave the measurement
+ * describing a mix that was never written.
+ * @param lane - The track to add, whose window has already been read
+ * @param accumulator - The window being summed into
+ * @param frames - Frames to add
+ * @param outChannels - Interleaved channels of the mix
+ */
+function accumulateLane(
+	lane: MixLane,
+	accumulator: Int32Array,
+	frames: number,
+	outChannels: number,
+): void {
+	const window = lane.reader.window;
+	// The `?? 0` narrows the checked index reads with the mix's neutral
+	// element; every access below is in bounds by construction (the buffers
+	// are sized from windowFrames)
+	if (outChannels === 1) {
+		for (let i = 0; i < frames; i++) {
+			accumulator[i] =
+				(accumulator[i] ?? 0) +
+				Math.round((window[i] ?? 0) * lane.left);
+		}
+		return;
+	}
+	if (lane.track.channels === 2) {
+		for (let frame = 0; frame < frames; frame++) {
+			accumulator[frame * 2] =
+				(accumulator[frame * 2] ?? 0) +
+				Math.round((window[frame * 2] ?? 0) * lane.left);
+			accumulator[frame * 2 + 1] =
+				(accumulator[frame * 2 + 1] ?? 0) +
+				Math.round((window[frame * 2 + 1] ?? 0) * lane.right);
+		}
+		return;
+	}
+	// Mono into stereo: the sample reaches both channels, in the proportion
+	// the pan asks for
+	for (let frame = 0; frame < frames; frame++) {
+		const sample = window[frame] ?? 0;
+		accumulator[frame * 2] =
+			(accumulator[frame * 2] ?? 0) + Math.round(sample * lane.left);
+		accumulator[frame * 2 + 1] =
+			(accumulator[frame * 2 + 1] ?? 0) + Math.round(sample * lane.right);
+	}
+}
+
+/**
+ * Gives each lane the multipliers that are known before a sample is read: the
+ * track's own gain, and where its pan puts it.
+ *
+ * Level alignment is not among them, because it is measured from the track
+ * itself, so a mix that aligns levels has its multipliers completed afterwards
+ * in {@link planMix}.
+ * @param lanes - The tracks to place
+ * @param outChannels - Interleaved channels of the mix
+ */
+function placeLanes(lanes: readonly MixLane[], outChannels: number): void {
+	for (const lane of lanes) {
+		const level = gainFactor(lane.track.gainDb ?? 0);
+		// A mono mix has one channel to place a track in, so panning it would
+		// only make it quieter.
+		const pan =
+			outChannels === 2
+				? panGains(lane.track.pan ?? 0)
+				: { left: 1, right: 1 };
+		lane.left = level * pan.left;
+		lane.right = level * pan.right;
+	}
+}
+
+/**
+ * Reads every track once: how loud each one is on its own, and how loud they
+ * are together.
  *
  * The pass exists so the second one can write at a multiplier that is known
  * before the first sample is written, which is the whole difference between
- * scaling a loud mix and clipping it. It costs a second sequential read of
- * the segments and no memory beyond the windows the mix already holds.
+ * scaling a loud mix and clipping it. Summing the tracks here as well is what
+ * makes that multiplier the true one. The alternative, adding up the peaks of
+ * the separate tracks, assumes they all peak on the same frame: two people on
+ * two microphones take turns speaking and never do, so the bound came out
+ * around twice the real peak and quietened by several decibels a mix that
+ * would not have clipped at all.
  * @param lanes - The tracks, whose measurements are filled in
  * @param totalFrames - Frames the mix holds
  * @param windowFrames - Frames per window
+ * @param outChannels - Interleaved channels of the mix
  * @param onWindow - Told the frames measured so far
+ * @returns The largest absolute value the summed mix reached
  */
 async function measureTracks(
 	lanes: readonly MixLane[],
 	totalFrames: number,
 	windowFrames: number,
+	outChannels: number,
 	onWindow: (framesDone: number) => void,
-): Promise<void> {
+): Promise<number> {
+	const accumulator = new Int32Array(windowFrames * outChannels);
+	let summedPeak = 0;
 	let frameOffset = 0;
 	while (frameOffset < totalFrames) {
 		const frames = Math.min(windowFrames, totalFrames - frameOffset);
+		accumulator.fill(0, 0, frames * outChannels);
 		for (const lane of lanes) {
 			await lane.reader.read(frames);
 			const samples = frames * lane.track.channels;
@@ -365,49 +453,56 @@ async function measureTracks(
 					Math.abs(lane.reader.window[i] ?? 0),
 				);
 			}
+			accumulateLane(lane, accumulator, frames, outChannels);
+		}
+		// Walked as a view rather than by index: iterating a typed array
+		// yields a number, where an indexed read yields one that might be
+		// missing and needs a fallback no sample can ever reach.
+		for (const sample of accumulator.subarray(0, frames * outChannels)) {
+			summedPeak = Math.max(summedPeak, Math.abs(sample));
 		}
 		frameOffset += frames;
 		onWindow(frameOffset);
 	}
+	return summedPeak;
 }
 
 /**
- * Gives each track its multipliers and answers with the one the sum is
- * written at.
+ * Completes the multipliers that needed the measurement to be known, and
+ * answers with the one the sum is written at.
  *
- * Measured rather than assumed, which is what the first pass over the
- * segments buys. The peak of the sum is bounded by the peaks of the tracks
- * that make it, so a mix that would have clipped is scaled down whole
- * instead of having its loudest moments flattened, and a mix that never
- * approached full scale is written at the level it was captured at.
- * @param lanes - The measured tracks, whose multipliers are filled in
- * @param outChannels - Interleaved channels of the mix
+ * Without level alignment every multiplier was already in force while the
+ * tracks were measured, so the peak that pass found is the peak this mix will
+ * reach and the scale is exact: a mix that would have clipped is scaled down
+ * whole instead of having its loudest moments flattened, and a mix that never
+ * approached full scale is written exactly as it was captured.
+ *
+ * Alignment multiplies each track by a figure derived from its own level,
+ * which is known only once the measuring pass has finished, so what that pass
+ * summed is no longer what will be written. Only that case falls back to the
+ * peaks of the separate tracks: a bound that can never clip, at the cost of
+ * quietening a mix whose tracks peak at different moments.
+ * @param lanes - The measured tracks, whose multipliers are completed
  * @param alignLevels - Whether to bring the tracks to a common level
+ * @param summedPeak - The peak the measuring pass found for the sum
  * @returns The multiplier the sum is written at
  */
 function planMix(
 	lanes: readonly MixLane[],
-	outChannels: number,
 	alignLevels: boolean,
+	summedPeak: number,
 ): number {
+	if (!alignLevels) {
+		return outputScale(summedPeak);
+	}
 	let leftPeak = 0;
 	let rightPeak = 0;
 	for (const lane of lanes) {
-		const level =
-			gainFactor(lane.track.gainDb ?? 0) *
-			(alignLevels
-				? normalizeFactor(
-						Math.sqrt(lane.squares / Math.max(1, lane.count)),
-					)
-				: 1);
-		// A mono mix has one channel to place a track in, so panning it would
-		// only make it quieter.
-		const pan =
-			outChannels === 2
-				? panGains(lane.track.pan ?? 0)
-				: { left: 1, right: 1 };
-		lane.left = level * pan.left;
-		lane.right = level * pan.right;
+		const level = normalizeFactor(
+			Math.sqrt(lane.squares / Math.max(1, lane.count)),
+		);
+		lane.left *= level;
+		lane.right *= level;
 		leftPeak += lane.peak * lane.left;
 		rightPeak += lane.peak * lane.right;
 	}
@@ -492,8 +587,17 @@ export async function mixPcmTracksToWav(
 		right: 1,
 	}));
 
-	await measureTracks(lanes, totalFrames, windowFrames, reportPass(0));
-	const scale = planMix(lanes, outChannels, options.alignLevels === true);
+	// Placed before the measuring pass, so the sum that pass measures is the
+	// sum this mix will write.
+	placeLanes(lanes, outChannels);
+	const summedPeak = await measureTracks(
+		lanes,
+		totalFrames,
+		windowFrames,
+		outChannels,
+		reportPass(0),
+	);
+	const scale = planMix(lanes, options.alignLevels === true, summedPeak);
 
 	// The readers are sequential and have reached the end of their tracks.
 	for (const lane of lanes) {
@@ -509,39 +613,7 @@ export async function mixPcmTracksToWav(
 
 		for (const lane of lanes) {
 			await lane.reader.read(frames);
-			const window = lane.reader.window;
-
-			// The `?? 0` narrows the checked index reads with the mix's
-			// neutral element; every access below is in bounds by
-			// construction (the buffers are sized from windowFrames)
-			if (outChannels === 1) {
-				for (let i = 0; i < frames; i++) {
-					accumulator[i] =
-						(accumulator[i] ?? 0) +
-						Math.round((window[i] ?? 0) * lane.left);
-				}
-			} else if (lane.track.channels === 2) {
-				for (let frame = 0; frame < frames; frame++) {
-					accumulator[frame * 2] =
-						(accumulator[frame * 2] ?? 0) +
-						Math.round((window[frame * 2] ?? 0) * lane.left);
-					accumulator[frame * 2 + 1] =
-						(accumulator[frame * 2 + 1] ?? 0) +
-						Math.round((window[frame * 2 + 1] ?? 0) * lane.right);
-				}
-			} else {
-				// Mono into stereo: the sample reaches both channels, in the
-				// proportion the pan asks for
-				for (let frame = 0; frame < frames; frame++) {
-					const sample = window[frame] ?? 0;
-					accumulator[frame * 2] =
-						(accumulator[frame * 2] ?? 0) +
-						Math.round(sample * lane.left);
-					accumulator[frame * 2 + 1] =
-						(accumulator[frame * 2 + 1] ?? 0) +
-						Math.round(sample * lane.right);
-				}
-			}
+			accumulateLane(lane, accumulator, frames, outChannels);
 		}
 
 		writeScaled(

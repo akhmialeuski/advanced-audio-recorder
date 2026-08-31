@@ -19,13 +19,19 @@ function createSut(stored?: unknown): {
 	queue: TranscriptionQueue;
 	files: Map<string, string>;
 	app: App;
+	adapter: ReturnType<typeof fakeVaultFiles>['adapter'];
 } {
 	const { files, adapter } = fakeVaultFiles();
 	if (stored !== undefined) {
 		files.set(QUEUE_PATH, JSON.stringify(stored));
 	}
 	const app = createMockApp({ vault: { adapter } }).app;
-	return { queue: new TranscriptionQueue(QUEUE_PATH, app), files, app };
+	return {
+		queue: new TranscriptionQueue(QUEUE_PATH, app),
+		files,
+		app,
+		adapter,
+	};
 }
 
 /** The state of the queue as written to disk. */
@@ -49,6 +55,62 @@ describe('queueing recordings', () => {
 		expect(queue.entries()).toEqual([
 			{ path: 'a.webm', state: 'waiting' },
 			{ path: 'b.webm', state: 'waiting' },
+		]);
+	});
+
+	it('counts only the recordings a run would still bill for', async () => {
+		// What the queue costs is priced from this, so an entry that has
+		// already run must not be in it: its money is spent, and counting it
+		// quotes the user for work that will not happen again.
+		const { queue } = createSut();
+		await queue.load();
+		queue.add(['a.webm', 'b.webm', 'c.webm']);
+		queue.setState('a.webm', 'done');
+		queue.setState('b.webm', 'failed');
+
+		expect(queue.pendingCount()).toBe(1);
+	});
+
+	it('makes a caller arriving during the first read wait for it', async () => {
+		// The plugin loads the queue once the workspace is up while a folder
+		// can be queued from the menu at any moment. Marking the queue loaded
+		// before the disk had answered let the second caller add to an empty
+		// queue, and the file the first caller was still reading then replaced
+		// what it added, losing a folder the user had just queued.
+		const { files, adapter } = fakeVaultFiles([
+			[
+				QUEUE_PATH,
+				JSON.stringify({
+					version: 1,
+					paused: false,
+					entries: [{ path: 'stored.webm', state: 'waiting' }],
+				}),
+			],
+		]);
+		let releaseRead = (): void => {};
+		const held = new Promise<void>((resolve) => {
+			releaseRead = resolve;
+		});
+		adapter.read.mockImplementation(async (path: string) => {
+			await held;
+			return files.get(path) ?? '';
+		});
+		const queue = new TranscriptionQueue(
+			QUEUE_PATH,
+			createMockApp({ vault: { adapter } }).app,
+		);
+
+		const first = queue.load();
+		const second = (async () => {
+			await queue.load();
+			queue.add(['added.webm']);
+		})();
+		releaseRead();
+		await Promise.all([first, second]);
+
+		expect(queue.entries().map((entry) => entry.path)).toEqual([
+			'stored.webm',
+			'added.webm',
 		]);
 	});
 
@@ -174,16 +236,93 @@ describe('pausing, resuming, and dropping an entry', () => {
 });
 
 describe('surviving a restart', () => {
+	/** The one entry a written queue is expected to hold. */
+	const ONE_WAITING = [{ path: 'a.webm', state: 'waiting' }];
+
+	/**
+	 * A loaded queue with one recording in it, ready to be written.
+	 * @returns The queue and the plugin folder it writes into
+	 */
+	async function queued(): Promise<Awaited<ReturnType<typeof createSut>>> {
+		const sut = createSut();
+		await sut.queue.load();
+		sut.queue.add(['a.webm']);
+		return sut;
+	}
+
 	it('writes the queue to the plugin folder', async () => {
-		const { queue, files } = createSut();
-		await queue.load();
-		queue.add(['a.webm']);
+		const { queue, files } = await queued();
 
 		await queue.flush();
 
-		expect(onDisk(files).entries).toEqual([
-			{ path: 'a.webm', state: 'waiting' },
-		]);
+		expect(onDisk(files).entries).toEqual(ONE_WAITING);
+	});
+
+	// The debounce used to be a sleep inside the same serialized chain every
+	// write goes through, so a flush queued up behind it and ran only once the
+	// timer had elapsed. Unload does not get that half second: Obsidian tears
+	// the plugin down synchronously, and the last change a user made before
+	// quitting came back next session as though it had never happened.
+	// The ordinary path, where nobody unloads anything: the queue writes
+	// itself a moment after it changed, off a timer of its own.
+	it('writes itself once the debounce elapses, with no flush at all', async () => {
+		jest.useFakeTimers();
+		try {
+			const { files } = await queued();
+
+			await jest.runAllTimersAsync();
+
+			expect(onDisk(files).entries).toEqual(ONE_WAITING);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('coalesces a burst of changes into one write', async () => {
+		jest.useFakeTimers();
+		try {
+			const { queue, files, adapter } = await queued();
+			queue.add(['b.webm']);
+			queue.setPaused(true);
+
+			await jest.runAllTimersAsync();
+
+			expect(adapter.write).toHaveBeenCalledTimes(1);
+			expect(onDisk(files).entries).toHaveLength(2);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	// A queue is losable by design, so a vault that refuses the write says so
+	// in the console and lets the session carry on. Throwing here would take
+	// down whatever asked, which at unload is the plugin's own teardown.
+	it('reports a write it could not make instead of throwing', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		const { queue, adapter } = await queued();
+		adapter.write.mockRejectedValueOnce(new Error('the disk is full'));
+
+		await expect(queue.flush()).resolves.toBeUndefined();
+
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('Failed to write the transcription queue'),
+			expect.any(Error),
+		);
+	});
+
+	it('writes on unload without waiting the debounce out', async () => {
+		jest.useFakeTimers();
+		try {
+			const { queue, files } = await queued();
+
+			// No timer is advanced, so anything that reaches disk here got
+			// there without the debounce elapsing.
+			await queue.flush();
+
+			expect(onDisk(files).entries).toEqual(ONE_WAITING);
+		} finally {
+			jest.useRealTimers();
+		}
 	});
 
 	it('reads back the queue a previous session left', async () => {

@@ -740,12 +740,6 @@ describe('resuming where a recording was left off', () => {
 });
 
 describe('repeating one chapter', () => {
-	/**
-	 * A markers-enabled player over the two-chapter recording, with the real
-	 * commands registered against the same registry.
-	 * @param shared - The installed shared audio element
-	 * @returns The container, the command host, and the snapshot reader
-	 */
 	/** Reads the pressed state the embed's repeat button reports. */
 	function loopPressed(container: HTMLElement): string | null {
 		return control(container, 'Repeat current chapter').getAttribute(

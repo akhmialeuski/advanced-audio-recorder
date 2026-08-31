@@ -141,6 +141,19 @@ export interface TranscribeRunOptions {
 	 * Omitted for an ordinary run, which transcribes the whole recording.
 	 */
 	onlyRanges?: readonly { startSeconds: number; endSeconds: number }[];
+	/**
+	 * Skips the LLM cleanup, custom, and translation pass.
+	 *
+	 * For a caller that wants the segments and throws the rendered document
+	 * away, which is what a top-up of the parts that failed does. The pass
+	 * rewrites `markdown` and builds `translation`, neither of which such a
+	 * caller reads, so running it spends real money on a paid API for an
+	 * answer nothing receives - and spends it on a partial transcript, whose
+	 * cleanup would be wrong for the whole document anyway.
+	 *
+	 * Omitted for an ordinary run, which writes what the pass produces.
+	 */
+	skipPostProcessing?: boolean | undefined;
 }
 
 /**
@@ -653,7 +666,7 @@ export class TranscriptionService {
 		}
 
 		let translation: TranscriptTranslation | undefined;
-		if (settings.llmPostProcessEnabled) {
+		if (settings.llmPostProcessEnabled && !options.skipPostProcessing) {
 			this.throwIfCancelled(token);
 			const translating = settings.llmPostProcessTask === 'translate';
 			options.onProgress?.(

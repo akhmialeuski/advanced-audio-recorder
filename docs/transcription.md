@@ -414,6 +414,8 @@ What it does with the result:
 - The recovered segments are placed on the timeline **among the ones already there**, and a segment that starts where one already starts is left alone, so a part that partly succeeded is never doubled.
 - Every transcript file the run wrote is **rewritten** with the completed transcript, each in the format it was written in. No second set of files appears beside the first.
 - What still fails is recorded again, so the action can be run once more later; a run that comes back whole clears the record.
+- The speaker names you assigned are **re-applied** to the recovered segments, exactly as a full re-run applies them, so a topped-up transcript does not call the same person both by name and by the engine's own label.
+- No **cleanup, custom, or translation pass** runs over the top-up. It reads segments and writes them back, so what you pay for is the engine time on the missing minutes and nothing else.
 - A translation is left alone: it is a second document, and completing it is the [translation task's](llm-post-processing.md) job rather than the engine's.
 
 Two limits are worth knowing. The top-up reads the transcript back from the run's **JSON output**, which is the only format that keeps the segment timings, so it needs the transcript file format to be JSON (the default); with only subtitles or plain text on disk it says so rather than guessing at the timings those formats drop. And a recording small enough to go in **one request** has no smaller unit to re-send, so a failure there is reported as one to transcribe again in full.

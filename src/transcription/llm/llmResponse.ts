@@ -77,10 +77,18 @@ export function extractGeminiText(body: unknown): string {
 export interface LlmUsage {
 	/** Prompt tokens the vendor billed. */
 	inputTokens?: number;
-	/** Completion tokens the vendor billed. */
+	/**
+	 * Every token billed at the output rate, reasoning included.
+	 *
+	 * One total rather than a total and a reasoning breakdown, because the
+	 * vendors disagree about which of the two their own reasoning count is:
+	 * OpenAI reports it inside `completion_tokens`, Gemini reports it beside
+	 * `candidatesTokenCount` and bills their sum. A caller holding both fields
+	 * cannot combine them without knowing which vendor it is talking to, and
+	 * the extractor that read the response already does. So each extractor
+	 * normalises to this one number and nothing downstream adds anything to it.
+	 */
 	outputTokens?: number;
-	/** Reasoning tokens, billed at the output rate where a vendor reports them. */
-	reasoningTokens?: number;
 }
 
 /** Reads a finite non-negative token count, or undefined. */
@@ -101,13 +109,14 @@ export function extractOpenAiUsage(body: unknown): LlmUsage {
 		return {};
 	}
 	const usage = body.usage;
-	const details = isRecord(usage.completion_tokens_details)
-		? usage.completion_tokens_details
-		: {};
+	// `completion_tokens` is already the whole output charge: OpenAI documents
+	// reasoning tokens as billed as output tokens and reports them as a
+	// breakdown of that total under `completion_tokens_details`, not beside it.
+	// Reading the breakdown out and adding it back would bill a reasoning
+	// model's thinking twice, which on those models is most of the charge.
 	return dropUndefined({
 		inputTokens: tokenCount(usage.prompt_tokens),
 		outputTokens: tokenCount(usage.completion_tokens),
-		reasoningTokens: tokenCount(details.reasoning_tokens),
 	});
 }
 
@@ -136,7 +145,6 @@ export function extractAnthropicUsage(body: unknown): LlmUsage {
 function dropUndefined(counts: {
 	inputTokens: number | undefined;
 	outputTokens: number | undefined;
-	reasoningTokens?: number | undefined;
 }): LlmUsage {
 	return {
 		...(counts.inputTokens === undefined
@@ -145,24 +153,29 @@ function dropUndefined(counts: {
 		...(counts.outputTokens === undefined
 			? {}
 			: { outputTokens: counts.outputTokens }),
-		...(counts.reasoningTokens === undefined
-			? {}
-			: { reasoningTokens: counts.reasoningTokens }),
 	};
 }
 
 /**
- * Maps Gemini's `usageMetadata` onto the billing counts. Thinking tokens are
- * reported separately by Gemini and billed at the output rate, so they are
- * carried through rather than folded in here.
+ * Maps Gemini's `usageMetadata` onto the billing counts.
+ *
+ * Gemini bills thinking on top of the candidates rather than inside them, so
+ * the two are added here, in the one place that knows it is reading a Gemini
+ * response. The same addition on an OpenAI body would charge the reasoning
+ * twice, which is why it lives in the extractor and not in the pricing.
  * @param body - Parsed JSON response
  * @returns What the vendor reported, empty when it reported nothing
  */
 export function extractGeminiUsage(body: unknown): LlmUsage {
 	const counts = geminiUsage(body);
+	const output =
+		counts.candidatesTokenCount === undefined &&
+		counts.thoughtsTokenCount === undefined
+			? undefined
+			: (counts.candidatesTokenCount ?? 0) +
+				(counts.thoughtsTokenCount ?? 0);
 	return dropUndefined({
 		inputTokens: counts.promptTokenCount,
-		outputTokens: counts.candidatesTokenCount,
-		reasoningTokens: counts.thoughtsTokenCount,
+		outputTokens: output,
 	});
 }

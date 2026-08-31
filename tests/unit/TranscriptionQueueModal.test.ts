@@ -56,6 +56,23 @@ describe('what the queue dialog says it will cost', () => {
 		);
 	});
 
+	it('leaves out the recordings that have already run', () => {
+		// Reopening a drained queue used to quote the whole folder again: the
+		// count came from every entry it held, so work that was finished and
+		// paid for was named as a spend about to happen.
+		const { modal, queue } = createSut({
+			paths: ['a.webm', 'b.webm', 'c.webm'],
+		});
+		queue.setState('a.webm', 'done');
+		queue.setState('b.webm', 'failed');
+		modal.contentEl.empty();
+		modal.onOpen();
+
+		expect(el(modal.contentEl, QUEUE.cost).textContent).toContain(
+			'1 recording,',
+		);
+	});
+
 	it('counts one recording in the singular', () => {
 		const { modal } = createSut({ paths: ['a.webm'] });
 
@@ -160,9 +177,25 @@ describe('the controls over a queue', () => {
 	it('empties the queue when the run is called off', () => {
 		const { modal, queue, started } = createSut();
 
-		press(modal, 'Cancel');
+		press(modal, 'Discard queue');
 
 		expect(queue.entries()).toEqual([]);
+		expect(started).not.toHaveBeenCalled();
+	});
+
+	// The dialog is reachable from the command palette at any time, so
+	// dismissing it is not a statement about the work in it. Emptying the
+	// queue on the way out cost a user the folder they had queued the night
+	// before and opened the dialog only to look at.
+	it('leaves the queue alone when the dialog is merely closed', () => {
+		const { modal, queue, started } = createSut();
+
+		press(modal, 'Close');
+
+		expect(queue.entries().map((entry) => entry.path)).toEqual([
+			'Recordings/a.webm',
+			'Recordings/b.webm',
+		]);
 		expect(started).not.toHaveBeenCalled();
 	});
 

@@ -41,6 +41,18 @@ import {
 const RENAME_DEBOUNCE_MS = 400;
 
 /**
+ * Identifies one editable field: the marker it belongs to, and which of that
+ * marker's fields it is. A row offers two fields that are typed into, and both
+ * of them can be waiting to be written at the same moment.
+ * @param id - Marker identifier
+ * @param action - Which field was typed in
+ * @returns The key that field's pending write is held under
+ */
+function editKey(id: string, action: string): string {
+	return `${id}:${action}`;
+}
+
+/**
  * What activating a jump target does, worded by the kind of marker it leads
  * to. Both rows say it: the editable row's timecode button and the read-only
  * row itself, which is a button of its own.
@@ -98,8 +110,16 @@ export class MarkerListView {
 	 * the active-segment highlight never re-sorts on every timeupdate. */
 	private sortedMarkers: PlayerMarker[] = [];
 	private editable = false;
-	/** Pending debounced rename-persist timer. */
-	private renameTimer = 0;
+	/**
+	 * The pending debounced write of each field being typed in, held per
+	 * marker and per field.
+	 *
+	 * One handle for all of them meant a keystroke anywhere cancelled every
+	 * other field's pending write outright rather than merely delaying it:
+	 * renaming a marker and then clicking into a note within the debounce
+	 * window dropped the rename, and nothing fired a change event to save it.
+	 */
+	private readonly pendingEdits = new Map<string, number>();
 
 	/**
 	 * @param host - Lifecycle hooks from the owning render child
@@ -201,14 +221,13 @@ export class MarkerListView {
 				return;
 			}
 			const value = input.value;
-			window.clearTimeout(this.renameTimer);
-			this.renameTimer = window.setTimeout(() => {
+			this.debounceEdit(editKey(id, action), () => {
 				if (action === MARKER_ROW_ACTION.rename) {
 					this.callbacks.onRename(id, value);
 				} else {
 					this.callbacks.onEditNote(id, value);
 				}
-			}, RENAME_DEBOUNCE_MS);
+			});
 		});
 		this.host.registerDomEvent(this.listEl, 'change', (event) => {
 			const input = event.target as
@@ -222,11 +241,11 @@ export class MarkerListView {
 			}
 			switch (input.dataset.action) {
 				case MARKER_ROW_ACTION.rename:
-					window.clearTimeout(this.renameTimer);
+					this.cancelEdit(editKey(id, MARKER_ROW_ACTION.rename));
 					this.callbacks.onRename(id, input.value);
 					break;
 				case MARKER_ROW_ACTION.editNote:
-					window.clearTimeout(this.renameTimer);
+					this.cancelEdit(editKey(id, MARKER_ROW_ACTION.editNote));
 					this.callbacks.onEditNote(id, input.value);
 					break;
 				case MARKER_ROW_ACTION.editTime: {
@@ -254,8 +273,41 @@ export class MarkerListView {
 			}
 		});
 		this.host.register(() => {
-			window.clearTimeout(this.renameTimer);
+			for (const pending of this.pendingEdits.values()) {
+				window.clearTimeout(pending);
+			}
+			this.pendingEdits.clear();
 		});
+	}
+
+	/**
+	 * Debounces one field's write, replacing only that field's own pending
+	 * one so a keystroke elsewhere cannot drop it.
+	 * @param key - Identifies the field being typed in
+	 * @param write - Persists what was typed
+	 */
+	private debounceEdit(key: string, write: () => void): void {
+		this.cancelEdit(key);
+		this.pendingEdits.set(
+			key,
+			window.setTimeout(() => {
+				this.pendingEdits.delete(key);
+				write();
+			}, RENAME_DEBOUNCE_MS),
+		);
+	}
+
+	/**
+	 * Drops one field's pending write, for a change event that is about to
+	 * persist that same field itself.
+	 * @param key - Identifies the field
+	 */
+	private cancelEdit(key: string): void {
+		const pending = this.pendingEdits.get(key);
+		if (pending !== undefined) {
+			window.clearTimeout(pending);
+			this.pendingEdits.delete(key);
+		}
 	}
 
 	/**

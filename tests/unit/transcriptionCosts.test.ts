@@ -14,11 +14,16 @@ import {
 	llmCallCostFromUsage,
 	resolveEnginePricing,
 	resolveLlmPricing,
+	runCostToRecord,
 	selectedEngineModel,
 	sumUsage,
 	type RunCostStepId,
 } from 'src/transcription/costs';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import {
+	extractGeminiUsage,
+	extractOpenAiUsage,
+} from 'src/transcription/llm/llmResponse';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 
 describe('resolveEnginePricing', () => {
@@ -828,14 +833,45 @@ describe('pricing one LLM call from what the vendor reported', () => {
 		).toBeCloseTo(18, 10);
 	});
 
-	it('bills reasoning tokens at the output rate, as the vendors do', () => {
+	it('bills an OpenAI reasoning response for its completion total once', () => {
+		// gpt-4o-mini is $0.60 per million out. `completion_tokens` already
+		// covers the reasoning OpenAI breaks out beneath it, so the charge is
+		// for 1_000_000 output tokens and not for the 800_000 of them that the
+		// breakdown names a second time.
 		expect(
-			llmCallCostFromUsage(LLM_PROVIDER_IDS.ANTHROPIC, settings, {
-				inputTokens: 0,
-				outputTokens: 500_000,
-				reasoningTokens: 500_000,
-			}),
-		).toBeCloseTo(15, 10);
+			llmCallCostFromUsage(
+				LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				settings,
+				extractOpenAiUsage({
+					usage: {
+						prompt_tokens: 0,
+						completion_tokens: 1_000_000,
+						completion_tokens_details: {
+							reasoning_tokens: 800_000,
+						},
+					},
+				}),
+			),
+		).toBeCloseTo(0.6, 10);
+	});
+
+	it('bills a Gemini thinking response for its candidates and thoughts', () => {
+		// gemini-2.5-flash is $2.50 per million out, and Gemini prices a
+		// thinking response as the sum of the two counts, so 400_000 candidate
+		// plus 600_000 thinking tokens is a million billed at the output rate.
+		expect(
+			llmCallCostFromUsage(
+				LLM_PROVIDER_IDS.GEMINI,
+				mergeSettings({ geminiModel: 'gemini-2.5-flash' }),
+				extractGeminiUsage({
+					usageMetadata: {
+						promptTokenCount: 0,
+						candidatesTokenCount: 400_000,
+						thoughtsTokenCount: 600_000,
+					},
+				}),
+			),
+		).toBeCloseTo(2.5, 10);
 	});
 
 	it('bills the half a response reported and nothing for the other', () => {
@@ -867,6 +903,54 @@ describe('pricing one LLM call from what the vendor reported', () => {
 				LLM_PROVIDER_IDS.ANTHROPIC,
 				mergeSettings({ llmAnthropicModel: 'claude-from-the-future' }),
 				{ inputTokens: 1000, outputTokens: 100 },
+			),
+		).toBeNull();
+	});
+});
+
+// One rule for every surface that finishes a transcription. The dialog and the
+// queue each carried their own and they disagreed, so the same recording
+// reached the session total differently depending on where it was started
+// from: the queue counted the free local engine the dialog leaves out, and
+// recorded a run the provider gave no usage for as unpriced where the dialog
+// fell back to the duration estimate.
+describe('what a finished run adds to the session total', () => {
+	const settings = mergeSettings({});
+
+	it('records what the provider reported, and calls it no estimate', () => {
+		expect(
+			runCostToRecord({ engineId: 'deepgram', usd: 0.05 }, settings, 600),
+		).toEqual({ usd: 0.05, estimated: false });
+	});
+
+	it('falls back to the duration estimate the user was already shown', () => {
+		expect(
+			runCostToRecord({ engineId: 'deepgram', usd: null }, settings, 600),
+		).toEqual({
+			usd: estimateStepCost('transcription', settings, 600).usd,
+			estimated: true,
+		});
+	});
+
+	it('records nothing for the free local engine', () => {
+		expect(
+			runCostToRecord(
+				{
+					engineId: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+					usd: null,
+				},
+				settings,
+				600,
+			),
+		).toBeNull();
+	});
+
+	it('records nothing while cost estimates are turned off', () => {
+		expect(
+			runCostToRecord(
+				{ engineId: 'deepgram', usd: 0.05 },
+				mergeSettings({ transcriptionShowCostEstimates: false }),
+				600,
 			),
 		).toBeNull();
 	});

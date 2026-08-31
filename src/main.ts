@@ -294,12 +294,22 @@ export default class AudioRecorderPlugin extends Plugin {
 						this.app,
 						() => this.settings,
 						file,
-						options,
+						// A queued run registers what it wrote and what it
+						// lost exactly as one started from the dialog does.
+						// Without the store its outputs survive no rename, its
+						// speakers keep the engine's own labels, and the parts
+						// it failed on are never offered for a top-up: the
+						// action reports the transcript as complete instead.
+						{ ...options, sidecar: this.sidecarStore },
 						{
 							costSink: this.transcriptionCostTracker,
 						},
 					),
 				costSink: this.transcriptionCostTracker,
+				// The same assumed length the dialog prices the queue with, so
+				// what a finished run is recorded at cannot contradict what
+				// the user was quoted for it.
+				assumedSecondsPerRecording: QUEUE_ASSUMED_RECORDING_SECONDS,
 			}),
 			getSettings: () => this.settings,
 			assumedSecondsPerRecording: QUEUE_ASSUMED_RECORDING_SECONDS,
@@ -808,6 +818,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			},
 			autoChapters: this.autoChapterService,
 			recordingSidecar: this.sidecarStore,
+			transcriptionCosts: this.transcriptionCostTracker,
 		};
 	}
 

@@ -577,6 +577,10 @@ export class RecordingManager {
 	 * part way still leaves the rollback a complete list to release - which is
 	 * what a mono bridge's audio context depends on, Chromium capping how many
 	 * of those one document may hold.
+	 *
+	 * Starting is two steps for the same reason it is one loop: the tracks of
+	 * a session have to begin together, so all of them acquire first and all
+	 * of them are armed afterwards.
 	 */
 	private async buildCaptureTracks(): Promise<void> {
 		this.chunkTargets = await this.createChunkTargets(this.streams.length);
@@ -624,7 +628,7 @@ export class RecordingManager {
 				);
 		await Promise.all(
 			this.captureTracks.map(async (track, index) => {
-				await track.start();
+				await track.prepare();
 				const target = this.chunkTargets[index];
 				if (!target || track.negotiatedChannels === null) {
 					return;
@@ -636,6 +640,14 @@ export class RecordingManager {
 					track.negotiatedSampleRate ?? target.pcmSampleRate;
 			}),
 		);
+		// Every track is armed only once all of them have acquired what they
+		// need. Arming each as its own acquisition returned started the tracks
+		// of one session as far apart as their audio contexts took to come up,
+		// and a merged file carried that gap as a permanent offset between the
+		// microphones.
+		for (const track of this.captureTracks) {
+			track.begin();
+		}
 	}
 
 	/**

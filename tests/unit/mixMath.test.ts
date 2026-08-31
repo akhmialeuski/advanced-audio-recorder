@@ -230,6 +230,82 @@ describe('resampling a track to another rate', () => {
 		expect(Array.from(second)).toEqual([200, 300]);
 	});
 
+	it('interpolates between both carried frames when the phase lands two back', () => {
+		// A window that reads further than it consumes by more than a whole
+		// frame leaves the next one starting at source index -2, so the pair
+		// the interpolation needs is the previous window's last TWO frames.
+		// Carrying only the last one left the second of the pair reading off
+		// the front of the buffer, which became a zero and pulled the sample
+		// most of the way to silence.
+		const state = newResampleState(1);
+		resampleWindow(
+			new Int16Array([0, 100, 200]),
+			3,
+			new Int16Array(3),
+			3,
+			1,
+			0.5,
+			state,
+		);
+		expect(state.position).toBe(-1.5);
+
+		const second = new Int16Array(3);
+		resampleWindow(new Int16Array([300]), 1, second, 3, 1, 0.5, state);
+
+		// The ramp continues: source positions 1.5, 2.0 and 2.5 on a signal
+		// whose frame n is worth 100n.
+		expect(Array.from(second)).toEqual([150, 200, 250]);
+	});
+
+	it('holds the phase across every boundary at rates that do not divide', () => {
+		// A 44.1 kHz track into a 48 kHz mix, driven the way TrackWindowReader
+		// drives it: each window asks for exactly the frames sourceFramesNeeded
+		// reports and is handed the ones after the last window's. The signal is
+		// a ramp, whose linear interpolation is exact, so every output frame
+		// has one right answer and a boundary that loses the phase shows up as
+		// a sample that is not it.
+		const ratio = 44100 / 48000;
+		const windowFrames = 64;
+		const windowCount = 40;
+		const state = newResampleState(1);
+		let sourceCursor = 0;
+		let worstError = 0;
+
+		for (let window = 0; window < windowCount; window++) {
+			const needed = sourceFramesNeeded(windowFrames, ratio, state);
+			const source = new Int16Array(needed);
+			for (let frame = 0; frame < needed; frame++) {
+				// Frame n is worth n, so the value at a source position is
+				// that position and the ideal output needs no second model.
+				source[frame] = sourceCursor + frame;
+			}
+			const target = new Int16Array(windowFrames);
+			const firstOutput = window * windowFrames;
+
+			resampleWindow(
+				source,
+				needed,
+				target,
+				windowFrames,
+				1,
+				ratio,
+				state,
+			);
+
+			for (let frame = 0; frame < windowFrames; frame++) {
+				const wanted = (firstOutput + frame) * ratio;
+				worstError = Math.max(
+					worstError,
+					Math.abs((target[frame] ?? 0) - wanted),
+				);
+			}
+			sourceCursor += needed;
+		}
+
+		// Rounding to int16 is the only error a correct resampler leaves here.
+		expect(worstError).toBeLessThanOrEqual(0.5);
+	});
+
 	it('interpolates a stereo frame channel by channel', () => {
 		const target = new Int16Array(4);
 

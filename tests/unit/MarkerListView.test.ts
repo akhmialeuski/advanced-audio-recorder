@@ -413,15 +413,50 @@ describe('MarkerListView renaming while typing', () => {
 		jest.useRealTimers();
 	});
 
+	/**
+	 * Types into one of a row's fields without committing it.
+	 * @param listContainer - The rendered marker list
+	 * @param selector - The element the field is, `input` or `textarea`
+	 * @param id - Which marker's row to type in
+	 * @param value - What to type
+	 */
+	function typeInto(
+		listContainer: HTMLElement,
+		selector: string,
+		id: string,
+		value: string,
+	): void {
+		const field = el<HTMLInputElement | HTMLTextAreaElement>(
+			listContainer,
+			`${selector}[data-marker-id="${id}"]`,
+		);
+		field.value = value;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+	}
+
 	/** Types into a row's rename input without committing it. */
 	function type(listContainer: HTMLElement, id: string, value: string): void {
-		const input = el<HTMLInputElement>(
-			listContainer,
-			`input[data-marker-id="${id}"]`,
-		);
-		input.value = value;
-		input.dispatchEvent(new Event('input', { bubbles: true }));
+		typeInto(listContainer, 'input', id, value);
 	}
+
+	// The name and the note shared one timer, so a keystroke in either
+	// cancelled the other's pending write rather than merely delaying it.
+	// Clicking straight from a name into a note fires no change event on the
+	// name, so the rename was not saved late: it was lost.
+	it('keeps a pending rename when another field is typed in', () => {
+		const { listContainer, callbacks } = setup(true);
+
+		type(listContainer, 'b', 'Renamed');
+		jest.advanceTimersByTime(200);
+		typeInto(listContainer, 'textarea', 'a', 'Worth coming back to');
+		jest.advanceTimersByTime(400);
+
+		expect(callbacks.onRename).toHaveBeenCalledWith('b', 'Renamed');
+		expect(callbacks.onEditNote).toHaveBeenCalledWith(
+			'a',
+			'Worth coming back to',
+		);
+	});
 
 	it('saves a rename shortly after the typing stops', () => {
 		// Neither change nor blur fires when the player is torn down while a

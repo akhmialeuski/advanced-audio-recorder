@@ -98,6 +98,24 @@ FILE "talk.wav" WAVE
 		);
 	});
 
+	// The FILE line's second token tells a reader how to find a sample offset
+	// in the file, so it is a claim about the container rather than a label.
+	// Declaring an MP3 as WAVE sends the reader looking for a header that is
+	// not there, and a strict one refuses the sheet instead.
+	it.each([
+		{ fileName: 'talk.wav', type: 'WAVE' },
+		{ fileName: 'talk.mp3', type: 'MP3' },
+		{ fileName: 'talk.aiff', type: 'AIFF' },
+		// The plugin's own default format, which the cue format cannot name:
+		// BINARY is what a reader takes as raw bytes.
+		{ fileName: 'talk.webm', type: 'BINARY' },
+		{ fileName: 'talk', type: 'BINARY' },
+	])('describes $fileName to a reader as $type', ({ fileName, type }) => {
+		expect(formatCueSheet([], { ...META, fileName })).toContain(
+			`FILE "${fileName}" ${type}`,
+		);
+	});
+
 	it('credits a performer when the recording names one', () => {
 		expect(
 			formatCueSheet([], { ...META, performer: 'A speaker' }),
