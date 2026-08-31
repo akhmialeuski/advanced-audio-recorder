@@ -238,6 +238,7 @@ describe('ContextMenu', () => {
 				'Convert audio format',
 				'Split audio into parts',
 				'Clean up audio',
+				'Export chapters and markers',
 				'Delete recording',
 			]);
 		});

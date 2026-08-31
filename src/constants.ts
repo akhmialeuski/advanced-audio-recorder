@@ -1206,6 +1206,7 @@ export const COMMAND_IDS = {
 	searchMarkers: 'search-markers',
 	retryFailedParts: 'retry-failed-transcription-parts',
 	openTranscriptionQueue: 'open-transcription-queue',
+	exportChapters: 'export-chapters-and-markers',
 	addPlaybackBookmark: 'add-playback-bookmark',
 	addPlaybackChapter: 'add-playback-chapter',
 } as const;

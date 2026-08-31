@@ -16,6 +16,8 @@ import { SplitModal } from '../ui/SplitModal';
 import { TranscriptionModal } from '../ui/TranscriptionModal';
 import { SpeakerRenameModal } from '../ui/SpeakerRenameModal';
 import { ChapterGenerationModal } from '../ui/ChapterGenerationModal';
+import { ChapterExportModal } from '../ui/ChapterExportModal';
+import type { PlayerMarker } from '../markers/markerModel';
 import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
 import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
 import type { ActionServices, FileAction, FileContext } from './PluginAction';
@@ -182,6 +184,18 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		},
 	},
 	{
+		commandId: COMMAND_IDS.exportChapters,
+		title: 'Export chapters and markers',
+		icon: 'file-output',
+		showInEditorMenu: true,
+		// Whether the recording has markers needs a sidecar read, and
+		// availability is decided synchronously; the dialog reads them and
+		// says so when there are none.
+		isAvailable: (): boolean => true,
+		run: ({ file, services }: FileContext): Promise<void> =>
+			openChapterExport(file, services),
+	},
+	{
 		commandId: COMMAND_IDS.deleteRecording,
 		title: 'Delete recording',
 		icon: 'trash',
@@ -258,4 +272,46 @@ export function describeRetryOutcome(outcome: RetryOutcome): string {
 		: `${recovered} ${String(outcome.stillMissing.length)} part${
 				outcome.stillMissing.length === 1 ? '' : 's'
 			} failed again.`;
+}
+
+/**
+ * Reads a recording's markers and opens the export dialog over them.
+ *
+ * The link builder is the one transcripts use, so an outline timecode is a
+ * real link into the recording rather than text that looks like one.
+ * @param file - The recording whose markers are exported
+ * @param services - Injected services
+ */
+async function openChapterExport(
+	file: TFile,
+	services: ActionServices,
+): Promise<void> {
+	let markers: PlayerMarker[];
+	try {
+		markers = await services.recordingSidecar.getMarkers(file.path);
+	} catch (error) {
+		console.error(
+			`${PLUGIN_LOG_PREFIX} Failed to read the markers of ${file.path}:`,
+			error,
+		);
+		new Notice('Could not read the markers of this recording.');
+		return;
+	}
+	if (markers.length === 0) {
+		new Notice('This recording has no chapters or markers to export.');
+		return;
+	}
+	const notePath = services.app.workspace.getActiveFile()?.path ?? '';
+	new ChapterExportModal(services.app, {
+		file,
+		markers,
+		notePath: notePath === file.path ? '' : notePath,
+		linkBuilder: (seconds, label) =>
+			services.app.fileManager.generateMarkdownLink(
+				file,
+				notePath,
+				`#t=${String(Math.floor(seconds))}`,
+				label,
+			),
+	}).open();
 }

@@ -17,6 +17,7 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
 - [Playback controls in the status bar](#playback-controls-in-the-status-bar)
 - [System media controls](#system-media-controls)
 - [Searching markers across the vault](#searching-markers-across-the-vault)
+- [Exporting chapters and markers](#exporting-chapters-and-markers)
 - [Playback commands and hotkeys](#playback-commands-and-hotkeys)
 - [Markers and chapters](#markers-and-chapters)
 - [Timecode links](#timecode-links)
@@ -278,6 +279,20 @@ A query is matched against three things: the marker's **own name**, the **record
 The vault is scanned **once per session**, on the first search. Every sidecar is read at most once, and typing into the search reads nothing further, so the search stays usable on a phone. Recordings with no markers are not in the index and cannot be found through it.
 
 The index keeps itself current: a recording renamed or deleted is carried over or dropped, and a sidecar written outside a player, by a finished recording or by generated chapters, is re-read for that recording alone.
+
+---
+
+## Exporting chapters and markers
+
+**Export chapters and markers**, in the recording's context menu, the editor menu of its embed, and the command palette, writes the recording's markup out in one of three forms:
+
+- A **timecoded list**, one line per marker with the timecode first, which is the form a video description box takes. Written to `<recording>.chapters.txt` beside the audio.
+- A **cue sheet**, which players and audio editors read. Written to `<recording>.cue`. Only chapters go into it: a cue sheet describes a division of the recording into playable tracks, and a bookmark is a point rather than a division.
+- A **Markdown outline** whose timecodes are **clickable links** into the recording, built by the same mechanism transcripts use, so pressing one moves playback there. It is inserted into the open note or copied to the clipboard, as you choose.
+
+The timecodes widen together to the longest one in the export, so a recording over an hour renders every line as `h:mm:ss` and the list reads as a column. A note written on a marker is appended after a dash, in all three forms.
+
+The action is offered on every recording, because whether it has any markers cannot be known without reading the sidecar; a recording with none simply says so.
 
 ---
 

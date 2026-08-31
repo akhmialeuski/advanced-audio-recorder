@@ -25,6 +25,7 @@ import { SplitModal } from 'src/ui/SplitModal';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import { ChapterGenerationModal } from 'src/ui/ChapterGenerationModal';
+import { ChapterExportModal } from 'src/ui/ChapterExportModal';
 import { AudioProcessingModal } from 'src/cleanup/AudioProcessingModal';
 import { getAudioFileInfo } from 'src/utils/AudioFileAnalyzer';
 import { insertProcessedAudioEmbed } from 'src/recording/NoteInserter';
@@ -49,6 +50,9 @@ jest.mock('src/ui/SpeakerRenameModal', () => ({
 }));
 jest.mock('src/ui/ChapterGenerationModal', () => ({
 	ChapterGenerationModal: jest.fn(() => ({ open: jest.fn() })),
+}));
+jest.mock('src/ui/ChapterExportModal', () => ({
+	ChapterExportModal: jest.fn(() => ({ open: jest.fn() })),
 }));
 jest.mock('src/cleanup/AudioProcessingModal', () => ({
 	AudioProcessingModal: jest.fn(() => ({ open: jest.fn() })),
@@ -121,6 +125,7 @@ describe('FILE_ACTIONS registry', () => {
 			COMMAND_IDS.retryFailedParts,
 			COMMAND_IDS.renameSpeakers,
 			COMMAND_IDS.generateChapters,
+			COMMAND_IDS.exportChapters,
 			COMMAND_IDS.deleteRecording,
 		]);
 	});
@@ -488,5 +493,115 @@ describe('what the user is told a top-up did', () => {
 				blocked: 'Nothing is missing from this transcript.',
 			}),
 		).toBe('Nothing is missing from this transcript.');
+	});
+});
+
+// Whether a recording has markers needs a sidecar read, and availability is
+// decided synchronously, so the action is always offered and the recording
+// with none is told so rather than the entry quietly not being there.
+describe('exporting chapters and markers', () => {
+	it('says so when the recording has no markers', async () => {
+		const { services } = createServices({}, {
+			getMarkers: jest.fn().mockResolvedValue([]),
+		} as unknown as ActionServices['recordingSidecar']);
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('no chapters or markers');
+	});
+
+	it('opens the export dialog over the markers it read', async () => {
+		const { services } = createServices({}, {
+			getMarkers: jest
+				.fn()
+				.mockResolvedValue([
+					{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+				]),
+		} as unknown as ActionServices['recordingSidecar']);
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+
+		expect(ChapterExportModal).toHaveBeenCalledWith(
+			services.app,
+			expect.objectContaining({
+				file,
+				markers: [
+					{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+				],
+			}),
+		);
+	});
+
+	it('links into the recording, so an outline timecode really jumps', async () => {
+		const { services } = createServices({}, {
+			getMarkers: jest
+				.fn()
+				.mockResolvedValue([
+					{ id: 'a', time: 9.7, label: 'Intro', kind: 'chapter' },
+				]),
+		} as unknown as ActionServices['recordingSidecar']);
+		const generate = jest
+			.spyOn(services.app.fileManager, 'generateMarkdownLink')
+			.mockReturnValue('[[take#t=9|0:09]]');
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+		const options = at(
+			(ChapterExportModal as jest.Mock).mock.calls,
+			0,
+		)[1] as {
+			linkBuilder: (seconds: number, label: string) => string;
+		};
+
+		expect(options.linkBuilder(9.7, '0:09')).toBe('[[take#t=9|0:09]]');
+		// Floored, because that is the offset the link syntax carries
+		expect(generate).toHaveBeenCalledWith(
+			file,
+			expect.any(String),
+			'#t=9',
+			'0:09',
+		);
+	});
+
+	it('inserts into no note when the recording itself is what is open', async () => {
+		// Its own path is not a note to write an outline into
+		const { services } = createServices({}, {
+			getMarkers: jest
+				.fn()
+				.mockResolvedValue([
+					{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+				]),
+		} as unknown as ActionServices['recordingSidecar']);
+		jest.spyOn(services.app.workspace, 'getActiveFile').mockReturnValue(
+			file,
+		);
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+
+		expect(ChapterExportModal).toHaveBeenCalledWith(
+			services.app,
+			expect.objectContaining({ notePath: '' }),
+		);
+	});
+
+	it('reports a sidecar it could not read', async () => {
+		const error = jest.spyOn(console, 'error').mockImplementation(() => {
+			// The notice is the assertion.
+		});
+		const { services } = createServices({}, {
+			getMarkers: jest.fn().mockRejectedValue(new Error('unreadable')),
+		} as unknown as ActionServices['recordingSidecar']);
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('Could not read');
+		error.mockRestore();
+	});
+
+	it('is always offered, since nothing here can be known synchronously', () => {
+		const { services } = createServices();
+
+		expect(
+			action(COMMAND_IDS.exportChapters).isAvailable({ file, services }),
+		).toBe(true);
 	});
 });

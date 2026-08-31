@@ -142,6 +142,12 @@ _Figure: The transcription dialog before a job starts._
 
 Learn more: [Transcription](transcription.md)
 
+## Exporting chapters and markers
+
+Write a recording's markup out where the rest of the world can read it: a **timecoded list** for a video description, a **cue sheet** for players and audio editors, or a **Markdown outline** whose timecodes are clickable links into the recording. The two file forms are written beside the audio; the outline goes into the open note or onto the clipboard.
+
+Learn more: [Audio player](audio-player.md)
+
 ## Transcription queue
 
 Right-click a folder and choose **Transcribe every recording in this folder** to queue all of them at once, with a preview of what will run and roughly what it will cost. The queue runs one recording at a time, shows what each is doing, and can be paused, resumed, or trimmed an entry at a time. It is kept on disk, so closing Obsidian does not lose it: a queue with work left is offered back on the next start rather than resumed without asking, since carrying on spends money.
