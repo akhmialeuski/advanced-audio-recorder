@@ -14,6 +14,7 @@ import {
 import {
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
+	providerSupportsSpeechTranslation,
 	wordTimestampsNote,
 	wordTimestampsSelectable,
 } from '../../transcription/providers/capabilities';
@@ -80,6 +81,8 @@ export function transcriptionGroup(
 	const enabled = (): boolean => settings.transcriptionEnabled;
 	const canDiarize = (): boolean =>
 		providerSupportsDiarization(settings.transcriptionProvider);
+	const canTranslateSpeech = (): boolean =>
+		providerSupportsSpeechTranslation(settings.transcriptionProvider);
 	return {
 		type: 'group',
 		cls: SETTINGS_SECTION_CLASS,
@@ -137,6 +140,19 @@ export function transcriptionGroup(
 					// Kept visible on an engine that cannot diarize: the option
 					// exists, this engine just cannot deliver it.
 					disabled: (): boolean => !canDiarize(),
+				},
+			},
+			{
+				name: 'Translate speech to English',
+				aliases: ['translation', 'english'],
+				desc: 'Write the recording down in English whatever was spoken, using the engine own translating operation. The language hint above is ignored while this is on.',
+				visible: enabled,
+				control: {
+					type: 'toggle',
+					key: 'transcriptionTranslateToEnglish',
+					// Kept visible on an engine with no such operation: the
+					// option exists, this engine just has nothing to answer it.
+					disabled: (): boolean => !canTranslateSpeech(),
 				},
 			},
 			// The rosters a run labels speakers with, beside the switch that

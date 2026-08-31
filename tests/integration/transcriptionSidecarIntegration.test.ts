@@ -14,7 +14,6 @@ import type { App, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import {
 	emptyTranscriptSection,
 	type TranscriptSection,
@@ -32,6 +31,8 @@ import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
 import { completed } from '../helpers/llmDoubles';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import type { Transcript } from 'src/transcription/TranscriptTypes';
 
 jest.mock('src/transcription/transcriptOutput', () => ({
 	writeTranscriptFile: jest.fn(),
@@ -554,5 +555,167 @@ describe('transcribeFile output registration', () => {
 				{ createProvider: () => makeProvider(twoSpeakerSegments) },
 			),
 		).resolves.toBeDefined();
+	});
+});
+
+// A translation is a second document with the same timings, so the run writes
+// it beside the original rather than over it: the recording still says what
+// it says, and the subtitle formats come out translated with no further work.
+describe('a run that translates the transcript', () => {
+	/** An LLM that answers the numbered lines in a made-up language. */
+	function translatingLlm(): { complete: jest.Mock } {
+		return {
+			complete: jest.fn(async (prompt: { user: string }) =>
+				completed(
+					prompt.user
+						.split('\n')
+						.map((line) => `${line}-translated`)
+						.join('\n'),
+				),
+			),
+		};
+	}
+
+	/**
+	 * Runs one translating transcription.
+	 * @param overrides - The settings this case cares about
+	 * @returns The sidecar stub the run recorded into
+	 */
+	async function runTranslating(
+		overrides: Partial<AudioRecorderSettings> = {},
+	): Promise<ReturnType<typeof makeSidecar>> {
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		const settings = diarizedSettings({
+			transcriptDestination: 'file',
+			transcriptFileFormat: 'srt',
+			llmPostProcessEnabled: true,
+			llmPostProcessTask: 'translate',
+			llmTranslateTargetLanguage: 'Spanish',
+			...overrides,
+		});
+		await transcribeFile(
+			makeApp(),
+			() => settings,
+			audioFile,
+			{ notePathForLinks: 'note.md', sidecar },
+			{
+				createProvider: () => makeProvider(twoSpeakerSegments),
+				createLlm: () => ({
+					id: LLM_PROVIDER_IDS.GEMINI,
+					label: 'Fake LLM',
+					...translatingLlm(),
+				}),
+			},
+		);
+		return sidecar;
+	}
+
+	it('writes the original and the translation as two files', async () => {
+		writeFileMock.mockImplementation((_a, _f, _t, _fmt, language: string) =>
+			Promise.resolve({
+				path: language ? `rec.${language}.srt` : 'rec.srt',
+			}),
+		);
+
+		await runTranslating();
+
+		expect(writeFileMock).toHaveBeenCalledTimes(2);
+		// The original keeps its own name; the translation names its language
+		expect(writeFileMock.mock.calls[0]?.[4]).toBeUndefined();
+		expect(writeFileMock.mock.calls[1]?.[4]).toBe('Spanish');
+	});
+
+	it('keeps the timings of the original on the translated segments', async () => {
+		writeFileMock.mockResolvedValue({ path: 'rec.srt' });
+
+		await runTranslating();
+
+		const original = writeFileMock.mock.calls[0]?.[2] as Transcript;
+		const translated = writeFileMock.mock.calls[1]?.[2] as Transcript;
+		expect(translated.segments.map((s) => [s.start, s.end])).toEqual(
+			original.segments.map((s) => [s.start, s.end]),
+		);
+		// The number and the speaker are stripped back off, so a segment
+		// carries its translated text and nothing of the wire format
+		expect(translated.segments.map((s) => s.text)).toEqual([
+			'hello-translated',
+			'hi-translated',
+		]);
+		expect(translated.segments.map((s) => s.speaker)).toEqual([
+			'Speaker 1',
+			'Speaker 2',
+		]);
+	});
+
+	it('records the translation under the language it was written in', async () => {
+		writeFileMock.mockImplementation((_a, _f, _t, _fmt, language: string) =>
+			Promise.resolve({
+				path: language ? `rec.${language}.srt` : 'rec.srt',
+			}),
+		);
+
+		const sidecar = await runTranslating();
+
+		expect(sidecar.recordFileOutput).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			expect.objectContaining({
+				path: 'rec.Spanish.srt',
+				language: 'Spanish',
+			}),
+		);
+		expect(sidecar.recordFileOutput).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			expect.not.objectContaining({ language: expect.anything() }),
+		);
+	});
+
+	it('inserts both documents under one heading in the note', async () => {
+		insertMock.mockReturnValue(true);
+		writeFileMock.mockResolvedValue({ path: 'rec.srt' });
+
+		await runTranslating({ transcriptDestination: 'note' });
+
+		const body = insertMock.mock.calls[0]?.[2] as string;
+		expect(body).toContain('hello');
+		expect(body).toContain('### Spanish');
+		expect(body).toContain('hello-translated');
+	});
+
+	it.each([
+		{ task: 'translate' as const, label: 'Translating with LLM...' },
+		{ task: 'cleanup' as const, label: 'Post-processing with LLM...' },
+	])('says it is running the $task pass', async ({ task, label }) => {
+		writeFileMock.mockResolvedValue({ path: 'rec.srt' });
+		const onProgress = jest.fn();
+		const settings = diarizedSettings({
+			transcriptDestination: 'file',
+			llmPostProcessEnabled: true,
+			llmPostProcessTask: task,
+		});
+
+		await transcribeFile(
+			makeApp(),
+			() => settings,
+			audioFile,
+			{ notePathForLinks: 'note.md', onProgress },
+			{
+				createProvider: () => makeProvider(twoSpeakerSegments),
+				createLlm: () => ({
+					id: LLM_PROVIDER_IDS.GEMINI,
+					label: 'Fake LLM',
+					...translatingLlm(),
+				}),
+			},
+		);
+
+		expect(onProgress).toHaveBeenCalledWith(expect.any(Number), label);
+	});
+
+	it('writes one file for a run that was not asked to translate', async () => {
+		writeFileMock.mockResolvedValue({ path: 'rec.srt' });
+
+		await runTranslating({ llmPostProcessEnabled: false });
+
+		expect(writeFileMock).toHaveBeenCalledTimes(1);
 	});
 });

@@ -116,12 +116,28 @@ export async function transcribeFile(
 			settings.transcriptFileFormat,
 		);
 	}
+	// A translation is a second document with the same timings, so it takes
+	// the same route as the original and is named by its language rather than
+	// colliding with it. Written whenever a file is wanted, so the subtitle
+	// formats come out translated with no further work.
+	let translationFile: TFile | null = null;
+	if (wantsFile && result.translation) {
+		translationFile = await writeTranscriptFile(
+			app,
+			file,
+			result.translation.transcript,
+			settings.transcriptFileFormat,
+			result.translation.language,
+		);
+	}
 	let inserted = false;
 	if (wantsNote) {
 		inserted = insertTranscriptIntoNote(
 			app,
 			options.notePathForLinks,
-			result.markdown,
+			result.translation
+				? `${result.markdown}\n\n### ${result.translation.language}\n\n${result.translation.markdown}`
+				: result.markdown,
 			settings.transcriptHeading,
 		);
 	}
@@ -164,6 +180,14 @@ export async function transcribeFile(
 					path: transcriptFile.path,
 					format: settings.transcriptFileFormat,
 					writtenAt,
+				});
+			}
+			if (translationFile && result.translation) {
+				await options.sidecar.recordFileOutput(file.path, {
+					path: translationFile.path,
+					format: settings.transcriptFileFormat,
+					writtenAt,
+					language: result.translation.language,
 				});
 			}
 			if (inserted) {

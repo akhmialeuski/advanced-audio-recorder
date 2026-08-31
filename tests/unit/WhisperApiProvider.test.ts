@@ -178,3 +178,60 @@ describe('WhisperApiProvider request fields', () => {
 		expect(bodyText(calls)).not.toContain('name="language"');
 	});
 });
+
+// The endpoint has a second operation that translates the speech into
+// English while transcribing it. It takes the same fields and answers in the
+// same shape, so only the path and the language hint change.
+describe('asking the endpoint to translate the speech', () => {
+	it('posts to the translations operation instead of transcriptions', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			options({ translateToEnglish: true }),
+		);
+
+		expect(at(calls, 0).url).toBe(`${BASE_URL}/audio/translations`);
+	});
+
+	it('posts to transcriptions when the run asked for no translation', async () => {
+		const calls = capture();
+
+		await provider().transcribe(payload(), options());
+
+		expect(at(calls, 0).url).toBe(`${BASE_URL}/audio/transcriptions`);
+	});
+
+	it('drops the language hint, which describes the audio and not the answer', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			options({ language: 'ru', translateToEnglish: true }),
+		);
+
+		expect(bodyText(calls)).not.toContain('name="language"');
+	});
+
+	it('keeps the language hint for a plain transcription', async () => {
+		const calls = capture();
+
+		await provider().transcribe(payload(), options({ language: 'ru' }));
+
+		expect(bodyText(calls)).toContain('name="language"');
+	});
+
+	it('sends the same model, format, and bias fields either way', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			options({ translateToEnglish: true, dictionary: ['Kubernetes'] }),
+		);
+
+		const body = bodyText(calls);
+		expect(body).toContain('whisper-1');
+		expect(body).toContain('verbose_json');
+		expect(body).toContain('Kubernetes');
+	});
+});

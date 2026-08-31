@@ -1,7 +1,9 @@
 /**
  * Transcription via an OpenAI-compatible Whisper API
- * (`POST {baseUrl}/audio/transcriptions`). Works with OpenAI and any
- * compatible endpoint (e.g. Groq) by changing the base URL and model.
+ * (`POST {baseUrl}/audio/transcriptions`), or translation of the speech into
+ * English through the endpoint's own `/audio/translations` operation. Works
+ * with OpenAI and any compatible endpoint (e.g. Groq) by changing the base URL
+ * and model.
  * Word timestamps are requested best-effort. Speaker diarization is not
  * offered: OpenAI's Whisper returns no speaker labels, so the diarization
  * UI is disabled for this engine rather than requesting a field the API
@@ -10,6 +12,16 @@
  */
 
 import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
+
+/** Operation that writes the speech down in the language it was spoken in. */
+const WHISPER_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
+
+/**
+ * Operation that translates the speech into English while transcribing it.
+ * Takes the same fields and answers in the same shape, so only the path and
+ * the language hint change.
+ */
+const WHISPER_TRANSLATIONS_PATH = '/audio/translations';
 import { whisperPromptValue } from '../dictionaryBias';
 import {
 	authHeader,
@@ -77,7 +89,10 @@ export class WhisperApiProvider implements TranscriptionProvider {
 				value,
 			})),
 		];
-		if (options.language) {
+		// The translation operation writes English whatever was spoken, so a
+		// language hint would be a claim about the answer rather than about
+		// the audio; the endpoint rejects it.
+		if (options.language && !options.translateToEnglish) {
 			fields.push({
 				type: 'text' as const,
 				name: 'language',
@@ -99,7 +114,11 @@ export class WhisperApiProvider implements TranscriptionProvider {
 
 		const { body, contentType } = buildMultipart(fields);
 		const json = await requestJson({
-			url: `${trimTrailingSlash(this.config.baseUrl)}/audio/transcriptions`,
+			url: `${trimTrailingSlash(this.config.baseUrl)}${
+				options.translateToEnglish
+					? WHISPER_TRANSLATIONS_PATH
+					: WHISPER_TRANSCRIPTIONS_PATH
+			}`,
 			method: 'POST',
 			headers: authHeader('Authorization', this.config.apiKey, 'Bearer'),
 			contentType,

@@ -33,6 +33,7 @@ export const PROFILE_KIND_IDS = [
 	'llmCleanup',
 	'llmSummary',
 	'llmCustom',
+	'llmTranslate',
 ] as const;
 
 /** Which kind of thing a profile holds. */
@@ -72,6 +73,7 @@ export function noSelectedProfiles(): SelectedProfileIds {
 		llmCleanup: '',
 		llmSummary: '',
 		llmCustom: '',
+		llmTranslate: '',
 	};
 }
 

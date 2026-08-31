@@ -65,6 +65,7 @@ import {
 	type TranscriptMarkdownOptions,
 } from './transcriptFormat';
 import { buildPostProcessPrompt } from './llmPostProcess';
+import { TranscriptTranslator } from './llm/TranscriptTranslator';
 import { describeDictionaryOmission } from './dictionaryBias';
 import { planDictionaryBias } from './providers/engines';
 import { advancedBiasUnsupportedReason } from './advanced/advancedBias';
@@ -86,6 +87,7 @@ import { vendorMaxTokens } from '../providers/providers';
 import { jobVendorId } from './llm/vendors';
 import {
 	effectiveDiarize,
+	effectiveSpeechTranslation,
 	effectiveWordTimestamps,
 } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
@@ -155,6 +157,23 @@ export interface TranscribeRunResult {
 	markdown: string;
 	/** Cost of the run, from provider-reported usage. */
 	cost: TranscribeRunCost;
+	/**
+	 * The translation, when the run was asked for one. Carried beside the
+	 * transcript rather than in place of it: a translation is a second
+	 * document with the same timings, and the original is what the recording
+	 * actually says.
+	 */
+	translation?: TranscriptTranslation;
+}
+
+/** A translated transcript and the Markdown rendered from it. */
+export interface TranscriptTranslation {
+	/** The translated transcript; same timings, same speakers. */
+	transcript: Transcript;
+	/** Rendered Markdown for insertion into a note. */
+	markdown: string;
+	/** The language it was translated into, used to name its file. */
+	language: string;
 }
 
 /** Raised when a run is cancelled. */
@@ -378,6 +397,12 @@ export class TranscriptionService {
 			dictionary: dictionaryPlan.applied.length
 				? dictionaryPlan.applied
 				: undefined,
+			// Gated like diarize: an engine with no translating operation
+			// never sees a request it has nothing to answer with.
+			translateToEnglish: effectiveSpeechTranslation(
+				settings.transcriptionProvider,
+				settings.transcriptionTranslateToEnglish,
+			),
 			// Providers on abortable transports stop the in-flight request
 			// the moment the user cancels, not at the next chunk boundary.
 			signal: token.signal,
@@ -564,11 +589,12 @@ export class TranscriptionService {
 			: canonical;
 
 		const markdownOptions = this.markdownOptions(settings);
-		let markdown = formatTranscriptMarkdown(
-			transcript,
-			markdownOptions,
-			this.linkBuilder(file, options.notePathForLinks),
-		);
+		const links = this.linkBuilder(file, options.notePathForLinks);
+		// Hoisted so a translation renders through exactly the same options
+		// and link builder as the original, and the two documents read alike.
+		const render = (source: Transcript): string =>
+			formatTranscriptMarkdown(source, markdownOptions, links);
+		let markdown = render(transcript);
 
 		// Some parts failed but others succeeded: keep the good parts and warn,
 		// rather than failing the whole run and discarding a transcript the
@@ -578,22 +604,37 @@ export class TranscriptionService {
 			new Notice(missing.notice);
 		}
 
+		let translation: TranscriptTranslation | undefined;
 		if (settings.llmPostProcessEnabled) {
 			this.throwIfCancelled(token);
+			const translating = settings.llmPostProcessTask === 'translate';
 			options.onProgress?.(
 				TRANSCRIBE_CHUNK_PROGRESS_CEILING,
-				'Post-processing with LLM...',
+				translating
+					? 'Translating with LLM...'
+					: 'Post-processing with LLM...',
 			);
 			// Post-processing is best-effort: a failure (bad key, network,
 			// timeout) must not discard the completed transcript, so fall back
 			// to the raw Markdown and tell the user the cleanup was skipped.
 			try {
-				markdown = await this.postProcess(
-					settings,
-					transcript,
-					markdown,
-					token,
-				);
+				if (translating) {
+					// A translation is a second document, so it is added
+					// rather than written over the transcript it came from.
+					translation = await this.translate(
+						settings,
+						transcript,
+						token,
+						render,
+					);
+				} else {
+					markdown = await this.postProcess(
+						settings,
+						transcript,
+						markdown,
+						token,
+					);
+				}
 			} catch (error) {
 				// The abort of the call in flight arrives as a transport
 				// failure, so a Cancel pressed here is not the pass breaking:
@@ -615,7 +656,45 @@ export class TranscriptionService {
 		markdown = (missing?.callout ?? '') + markdown;
 
 		options.onProgress?.(1, 'Done');
-		return { transcript, markdown, cost: runCost() };
+		return {
+			transcript,
+			markdown,
+			cost: runCost(),
+			...(translation ? { translation } : {}),
+		};
+	}
+
+	/**
+	 * Translates the transcript into the configured language, rendering the
+	 * result with the same Markdown options the original was rendered with so
+	 * the two documents read alike.
+	 * @param settings - The run's settings snapshot
+	 * @param transcript - The transcript to translate
+	 * @param token - Cancellation token for the run
+	 * @param render - Renders a transcript the way this run renders them
+	 * @returns The translated transcript and its Markdown
+	 */
+	private async translate(
+		settings: AudioRecorderSettings,
+		transcript: Transcript,
+		token: CancellationToken,
+		render: (source: Transcript) => string,
+	): Promise<TranscriptTranslation> {
+		const vendorId = jobVendorId(settings, 'postProcess');
+		const { transcript: translated, language } =
+			await new TranscriptTranslator({
+				transcript,
+				settings,
+				llm: this.createLlm(settings, vendorId),
+				maxTokens: vendorMaxTokens(settings, vendorId),
+				costSink: this.costSink,
+				signal: token.signal,
+			}).translate();
+		return {
+			transcript: translated,
+			markdown: render(translated),
+			language,
+		};
 	}
 
 	/**

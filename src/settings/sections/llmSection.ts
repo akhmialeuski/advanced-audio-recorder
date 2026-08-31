@@ -52,12 +52,25 @@ export function llmGroup(
 				),
 				{
 					name: 'Task',
-					desc: 'Clean up, summarize into key points, or apply a custom instruction.',
+					desc: 'Clean up, summarize into key points, translate, or apply a custom instruction.',
 					visible: postProcessing,
 					control: {
 						type: 'dropdown',
 						key: 'llmPostProcessTask',
 						options: LLM_TASK_LABELS,
+					},
+				},
+				{
+					name: 'Translate into',
+					aliases: ['language', 'target language'],
+					desc: 'Language the translation is written in. Leave empty for English. The original transcript is kept alongside it.',
+					visible: (): boolean =>
+						postProcessing() &&
+						settings.llmPostProcessTask === 'translate',
+					control: {
+						type: 'text',
+						key: 'llmTranslateTargetLanguage',
+						placeholder: 'English',
 					},
 				},
 				// The prompt profiles of whichever task is selected: each kind

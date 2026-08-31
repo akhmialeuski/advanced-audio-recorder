@@ -263,6 +263,13 @@ export interface AudioRecorderSettings {
 	transcriptionLanguage: string;
 	/** Request speaker diarization when the provider supports it */
 	transcriptionDiarize: boolean;
+	/**
+	 * Ask the engine to translate the speech into English as it transcribes,
+	 * where the engine has an operation for it. Independent of the LLM
+	 * translation task: this one happens during recognition and only ever
+	 * writes English.
+	 */
+	transcriptionTranslateToEnglish: boolean;
 	/** Request word-level timestamps when supported */
 	transcriptionWordTimestamps: boolean;
 	/**
@@ -375,6 +382,12 @@ export interface AudioRecorderSettings {
 	llmPostProcessEnabled: boolean;
 	/** LLM post-processing task */
 	llmPostProcessTask: LlmTask;
+	/**
+	 * Language the translation task translates into. Empty means English,
+	 * which is what a plain "translate this" is usually taken to mean and
+	 * what the speech-translation endpoint does.
+	 */
+	llmTranslateTargetLanguage: string;
 	/** Engine that runs the post-processing pass */
 	llmProvider: LlmProviderId;
 	/** Engine that divides a transcript into chapters */
@@ -676,6 +689,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionShowCostEstimates: true,
 	transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 	transcriptionLanguage: 'auto',
+	transcriptionTranslateToEnglish: false,
 	transcriptionDiarize: false,
 	transcriptionWordTimestamps: false,
 	transcriptionAdvancedSettingsEnabled: false,
@@ -714,6 +728,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptHeading: '## Transcript',
 	llmPostProcessEnabled: false,
 	llmPostProcessTask: 'cleanup',
+	llmTranslateTargetLanguage: '',
 	profiles: seededProfiles(),
 	selectedProfileIds: {
 		...noSelectedProfiles(),

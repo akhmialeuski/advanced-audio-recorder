@@ -65,6 +65,9 @@ const LLM_OUTPUT_RATIO: Record<LlmTask, number> = {
 	cleanup: 1,
 	summary: 0.25,
 	custom: 1,
+	// A translation is about as long as what it translates, so the pass is
+	// sized like a cleanup rather than like a summary.
+	translate: 1,
 };
 
 /**

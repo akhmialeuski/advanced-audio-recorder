@@ -55,6 +55,14 @@ export interface TranscribeOptions {
 	 * Undefined outside the advanced second pass.
 	 */
 	keyterms?: string[];
+	/**
+	 * Ask the engine to translate the speech into English as it transcribes,
+	 * rather than writing it down in the language it was spoken in. Only ever
+	 * true for an engine whose
+	 * {@link ProviderCapabilities.supportsSpeechTranslation} says it has an
+	 * operation for it.
+	 */
+	translateToEnglish?: boolean;
 }
 
 /**
@@ -148,6 +156,13 @@ export interface ProviderCapabilities {
 	 * and the second pass routes the context onto the matching request field.
 	 */
 	biasChannel: AdvancedBiasChannel;
+	/**
+	 * Whether the engine has an operation that translates the speech into
+	 * English while transcribing it. Gates the offer the way
+	 * {@link supportsDiarization} gates the diarization toggle: an engine with
+	 * no such operation must not be asked for one.
+	 */
+	supportsSpeechTranslation: boolean;
 }
 
 /** A provider that transcribes a single audio payload. */

@@ -10,10 +10,11 @@
 import {
 	DEFAULT_LLM_CLEANUP_PROMPT,
 	DEFAULT_LLM_SUMMARY_PROMPT,
+	DEFAULT_LLM_TRANSLATE_PROMPT,
 } from '../constants';
 
 /** What the LLM should do with the transcript text. */
-export type LlmTask = 'cleanup' | 'summary' | 'custom';
+export type LlmTask = 'cleanup' | 'summary' | 'custom' | 'translate';
 
 /** A provider-neutral prompt: a system instruction and a user message. */
 export interface LlmPrompt {
@@ -39,6 +40,13 @@ export interface PostProcessOptions {
 	summaryPrompt?: string;
 	/** Custom instruction, sent verbatim, used when task is 'custom'. */
 	customInstruction?: string;
+	/**
+	 * Editable translation system prompt (base text, before the target-language
+	 * clause). Falls back to {@link DEFAULT_LLM_TRANSLATE_PROMPT} when empty.
+	 */
+	translatePrompt?: string;
+	/** Language to translate into, used when task is 'translate'. */
+	targetLanguage?: string | undefined;
 	/**
 	 * Canonical spellings of domain names, terms, and acronyms, from the run's
 	 * Dictionary terms. Appended to the cleanup prompt so even a single-pass run
@@ -87,6 +95,16 @@ function summaryLanguageClause(language?: string): string {
 }
 
 /**
+ * Builds the target-language clause appended to the translation prompt.
+ * @param language - Language to translate into, when one is configured
+ */
+function translateLanguageClause(language?: string): string {
+	return language
+		? ` Translate into ${language}.`
+		: ' Translate into English.';
+}
+
+/**
  * Builds a provider-neutral prompt for the requested post-processing task.
  * The cleanup and summary base prompts come from settings (falling back to the
  * shipped defaults) and get the language clause appended; the custom
@@ -122,6 +140,14 @@ export function buildPostProcessPrompt(
 				system:
 					(options.customInstruction ?? '').trim() ||
 					'Process the following transcript as instructed.',
+				user: text,
+			};
+		case 'translate':
+			return {
+				system:
+					(options.translatePrompt?.trim() ||
+						DEFAULT_LLM_TRANSLATE_PROMPT) +
+					translateLanguageClause(options.targetLanguage),
 				user: text,
 			};
 	}

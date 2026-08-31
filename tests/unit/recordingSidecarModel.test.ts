@@ -525,3 +525,88 @@ describe('the remembered playback position', () => {
 		).toBe(false);
 	});
 });
+
+describe('a transcript file written as a translation', () => {
+	const AT = '2026-08-29T10:00:00.000Z';
+
+	it('records the language it was translated into', () => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			transcript: {
+				fileOutputs: [
+					{
+						path: 'rec.Spanish.srt',
+						format: 'srt',
+						writtenAt: AT,
+						language: 'Spanish',
+					},
+				],
+			},
+		});
+
+		expect(parsed.transcript.fileOutputs).toEqual([
+			{
+				path: 'rec.Spanish.srt',
+				format: 'srt',
+				writtenAt: AT,
+				language: 'Spanish',
+			},
+		]);
+	});
+
+	it.each([
+		{ case: 'the recording own language', value: undefined },
+		{ case: 'a language that is not a string', value: 7 },
+		{ case: 'a blank language', value: '  ' },
+	])('records no language for $case', ({ value }) => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			transcript: {
+				fileOutputs: [
+					{
+						path: 'rec.srt',
+						format: 'srt',
+						writtenAt: AT,
+						...(value === undefined ? {} : { language: value }),
+					},
+				],
+			},
+		});
+
+		expect(parsed.transcript.fileOutputs[0]?.language).toBeUndefined();
+	});
+
+	it('writes the language back, and omits it for the original', () => {
+		const payload = serializeRecordingSidecar({
+			markers: [],
+			transcript: {
+				...emptyTranscriptSection(),
+				fileOutputs: [
+					{ path: 'a.srt', format: 'srt', writtenAt: AT },
+					{
+						path: 'a.Spanish.srt',
+						format: 'srt',
+						writtenAt: AT,
+						language: 'Spanish',
+					},
+				],
+			},
+		});
+
+		expect(payload.transcript).toMatchObject({
+			fileOutputs: [
+				{ path: 'a.srt', format: 'srt', writtenAt: AT },
+				{
+					path: 'a.Spanish.srt',
+					format: 'srt',
+					writtenAt: AT,
+					language: 'Spanish',
+				},
+			],
+		});
+		const outputs = (
+			payload.transcript as { fileOutputs: Record<string, unknown>[] }
+		).fileOutputs;
+		expect('language' in (outputs[0] ?? {})).toBe(false);
+	});
+});

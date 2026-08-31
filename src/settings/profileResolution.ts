@@ -35,6 +35,7 @@ const PROMPT_KIND_OF_TASK: Record<LlmTask, ProfileKindId> = {
 	cleanup: 'llmCleanup',
 	summary: 'llmSummary',
 	custom: 'llmCustom',
+	translate: 'llmTranslate',
 };
 
 /**

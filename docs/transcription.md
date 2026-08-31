@@ -34,10 +34,11 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 2. **Transcription engine** - the row naming the service that transcribes, with the **Engines** entry under it opening the page where that service is configured: base URL, API key, and model.
 3. **Language** - `auto` to detect, or an ISO code.
 4. **Speaker diarization** - request speaker labels (only some engines).
-5. **Word-level timestamps** - per-word timing in JSON output, selectable on Whisper API and decided by the engine on the other three.
-6. **Request timeout** - the per-request network deadline (cloud engines only), replaced by **Local run timeout** on local whisper.cpp.
-7. **Transcript output** - destination, file format, and in-note formatting.
-8. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
+5. **Translate speech to English** - write the recording down in English whatever was spoken, using the engine's own translating operation (only some engines).
+6. **Word-level timestamps** - per-word timing in JSON output, selectable on Whisper API and decided by the engine on the other three.
+7. **Request timeout** - the per-request network deadline (cloud engines only), replaced by **Local run timeout** on local whisper.cpp.
+8. **Transcript output** - destination, file format, and in-note formatting.
+9. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
 9. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
 
 ---
@@ -89,6 +90,7 @@ Behavior and limits:
 - **Per-request limit is a hard 25 MB.** Files **at or under 25 MB** are uploaded in their **original container**, untouched.
 - **Larger files** are resampled to **16 kHz mono**, split into upload-sized WAV chunks (sized by **Upload chunk size**, default 24 MB to stay under the 25 MB limit), and the per-chunk results are stitched back onto one timeline.
 - **No diarization.** Whisper does not return speaker labels, so **Speaker diarization** is disabled for this engine.
+- **Speech translation.** The endpoint carries a second operation that writes the recording down in **English** whatever was spoken. Turn on **Translate speech to English** to use it: the request is otherwise identical, so chunking, the dictionary bias, and word timestamps all behave the same, and the **Language** hint is ignored because it would describe the audio rather than the answer. This is the only engine that offers it. To translate into any other language, or on any other engine, use the [translation task](llm-post-processing.md) of LLM post-processing instead, which runs on the finished transcript.
 - **Model requirements.** Only models that return `verbose_json` with segment timestamps work. `whisper-1` is OpenAI's; `whisper-large-v3` and `whisper-large-v3-turbo` are served by Groq and other compatible hosts. (OpenAI's `gpt-4o-transcribe` models do **not** support `verbose_json` and are intentionally excluded.)
 
 Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The catalogue link next to the model picker points at the [OpenAI speech-to-text guide](https://platform.openai.com/docs/guides/speech-to-text).

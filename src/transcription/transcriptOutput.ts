@@ -36,21 +36,40 @@ export function effectiveTranscriptDestination(
 }
 
 /**
+ * A language name reduced to something a file name can carry: a dot would
+ * split the extension, and a slash would move the file.
+ * @param language - Language name as the user wrote it
+ * @returns The label to put in the file name, or '' when nothing survives
+ */
+function languageLabel(language: string): string {
+	return language
+		.trim()
+		.replace(/[^\p{L}\p{N}]+/gu, '-')
+		.replace(/^-+|-+$/g, '');
+}
+
+/**
  * Builds the transcript sidecar file name for an audio path and format.
  * JSON uses a `.transcript.json` suffix to avoid being mistaken for other
  * JSON; subtitle/text formats use their conventional extension.
+ *
+ * A translation names its language, so it sits beside the original instead
+ * of colliding with it and being saved under a bare `_1`.
  * @param audioPath - Vault path of the audio file
  * @param format - Transcript file format
+ * @param language - Language of a translation; omitted for the original
  * @returns Sidecar file path (same directory as the audio)
  */
 export function buildTranscriptFilePath(
 	audioPath: string,
 	format: TranscriptFileFormat,
+	language = '',
 ): string {
 	const dotIndex = audioPath.lastIndexOf('.');
 	const base = dotIndex > 0 ? audioPath.slice(0, dotIndex) : audioPath;
 	const suffix = format === 'json' ? 'transcript.json' : format;
-	return `${base}.${suffix}`;
+	const label = languageLabel(language);
+	return label ? `${base}.${label}.${suffix}` : `${base}.${suffix}`;
 }
 
 /**
@@ -60,6 +79,7 @@ export function buildTranscriptFilePath(
  * @param audioFile - Source audio file
  * @param transcript - Transcript to serialize
  * @param format - File format
+ * @param language - Language of a translation; omitted for the original
  * @returns The created transcript file
  */
 export async function writeTranscriptFile(
@@ -67,8 +87,9 @@ export async function writeTranscriptFile(
 	audioFile: TFile,
 	transcript: Transcript,
 	format: TranscriptFileFormat,
+	language = '',
 ): Promise<TFile> {
-	const desired = buildTranscriptFilePath(audioFile.path, format);
+	const desired = buildTranscriptFilePath(audioFile.path, format, language);
 	const directory = directoryOf(desired);
 	const fileName = desired.slice(
 		directory.length === 0 ? 0 : directory.length + 1,

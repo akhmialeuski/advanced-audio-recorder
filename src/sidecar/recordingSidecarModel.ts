@@ -125,6 +125,12 @@ export interface FileOutput {
 	format: TranscriptFileFormat;
 	/** ISO-8601 timestamp of the write. */
 	writtenAt: string;
+	/**
+	 * Language this file was translated into, absent for the transcript in
+	 * the recording's own language. What tells a translation apart from the
+	 * original when both were written for one run.
+	 */
+	language?: string;
 }
 
 /** Provenance of the last transcription run that wrote outputs. */
@@ -423,11 +429,13 @@ function parseFileOutputs(value: unknown): FileOutput[] {
 			continue;
 		}
 		seen.add(path);
+		const language = trimmedString(record.language);
 		result.push({
 			path,
 			format: format as TranscriptFileFormat,
 			writtenAt:
 				typeof record.writtenAt === 'string' ? record.writtenAt : '',
+			...(language ? { language } : {}),
 		});
 	}
 	return result;
@@ -608,6 +616,7 @@ export function serializeRecordingSidecar(
 				path: output.path,
 				format: output.format,
 				writtenAt: output.writtenAt,
+				...(output.language ? { language: output.language } : {}),
 			})),
 			history: sidecar.transcript.history.map((entry) => ({
 				at: entry.at,

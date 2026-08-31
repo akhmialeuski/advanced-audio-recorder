@@ -59,6 +59,7 @@ export function fullyPopulatedSettings(): Omit<
 		transcriptionProvider: 'local-whisper',
 		transcriptionLanguage: 'ru',
 		transcriptionDiarize: true,
+		transcriptionTranslateToEnglish: true,
 		transcriptionWordTimestamps: true,
 		transcriptionAdvancedSettingsEnabled: true,
 		transcriptionAdvancedEnabled: true,
@@ -96,6 +97,7 @@ export function fullyPopulatedSettings(): Omit<
 		transcriptHeading: '# T',
 		llmPostProcessEnabled: true,
 		llmPostProcessTask: 'summary',
+		llmTranslateTargetLanguage: 'Spanish',
 		profiles: [
 			{ id: 'p1', kind: 'dictionary', name: 'General', body: 'Foo\nBar' },
 			{
@@ -117,6 +119,7 @@ export function fullyPopulatedSettings(): Omit<
 			chapterPrompt: 'c1',
 			llmCleanup: '',
 			llmSummary: 'l1',
+			llmTranslate: '',
 			llmCustom: '',
 		},
 		llmProvider: 'anthropic',

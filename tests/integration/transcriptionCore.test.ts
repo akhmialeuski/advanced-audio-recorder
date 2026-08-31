@@ -231,6 +231,34 @@ describe('buildPostProcessPrompt', () => {
 		expect(prompt.system).toContain('ru');
 	});
 
+	it('names the target language in the translation prompt', () => {
+		const prompt = buildPostProcessPrompt('0||Hello', {
+			task: 'translate',
+			targetLanguage: 'Spanish',
+		});
+		expect(prompt.user).toBe('0||Hello');
+		expect(prompt.system).toContain('Spanish');
+		// The wire format is what keeps a translated line on its own segment,
+		// so the instruction has to describe it.
+		expect(prompt.system).toContain('number|speaker|text');
+	});
+
+	it('translates into English when the run named no language', () => {
+		expect(
+			buildPostProcessPrompt('0||Hola', { task: 'translate' }).system,
+		).toContain('English');
+	});
+
+	it('uses the profile translation prompt over the built-in one', () => {
+		expect(
+			buildPostProcessPrompt('0||Hello', {
+				task: 'translate',
+				translatePrompt: 'Render it as a shanty.',
+				targetLanguage: 'Spanish',
+			}).system,
+		).toBe('Render it as a shanty. Translate into Spanish.');
+	});
+
 	it('uses the custom instruction for the custom task', () => {
 		const prompt = buildPostProcessPrompt('x', {
 			task: 'custom',
@@ -347,6 +375,54 @@ describe('buildTranscriptFilePath', () => {
 			'audio/rec.srt',
 		);
 		expect(buildTranscriptFilePath('rec.mp3', 'vtt')).toBe('rec.vtt');
+	});
+
+	// A translation is written beside the original rather than over it, so
+	// the two cannot collide and be told apart only by a bare _1 suffix.
+	it('names the language of a translation', () => {
+		expect(
+			buildTranscriptFilePath('audio/rec.webm', 'srt', 'Spanish'),
+		).toBe('audio/rec.Spanish.srt');
+		expect(
+			buildTranscriptFilePath('audio/rec.webm', 'json', 'Spanish'),
+		).toBe('audio/rec.Spanish.transcript.json');
+	});
+
+	it.each([
+		{
+			case: 'a language written with spaces',
+			language: 'Brazilian Portuguese',
+			expected: 'rec.Brazilian-Portuguese.srt',
+		},
+		{
+			case: 'a language written in its own script',
+			language: 'Русский',
+			expected: 'rec.Русский.srt',
+		},
+		{
+			case: 'a dot, which would otherwise split the extension',
+			language: 'en.US',
+			expected: 'rec.en-US.srt',
+		},
+		{
+			case: 'a slash, which would otherwise move the file',
+			language: 'pt/br',
+			expected: 'rec.pt-br.srt',
+		},
+	])('carries $case into the file name', ({ language, expected }) => {
+		expect(buildTranscriptFilePath('rec.webm', 'srt', language)).toBe(
+			expected,
+		);
+	});
+
+	it.each([
+		{ case: 'no language at all', language: undefined },
+		{ case: 'a blank language', language: '   ' },
+		{ case: 'a language of only separators', language: '///' },
+	])('names nothing for $case', ({ language }) => {
+		expect(buildTranscriptFilePath('rec.webm', 'srt', language)).toBe(
+			'rec.srt',
+		);
 	});
 });
 

@@ -37,6 +37,9 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	// The one engine that reads the request: it adds the `word` granularity.
 	wordTimestamps: 'requested',
 	biasChannel: 'prompt',
+	// The endpoint has an /audio/translations operation taking the same
+	// fields as transcription and answering in the same shape.
+	supportsSpeechTranslation: true,
 };
 
 /** Deepgram pre-recorded API: diarizes a whole request with stable labels. */
@@ -51,6 +54,7 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	// mapping keeps them; there is nothing to request and nothing to turn off.
 	wordTimestamps: 'always',
 	biasChannel: 'keyterm',
+	supportsSpeechTranslation: false,
 };
 
 /** Local whisper.cpp: no upload limit, needs decoded WAV, no diarization. */
@@ -64,6 +68,7 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	// The -oj output carries segment offsets and nothing finer.
 	wordTimestamps: 'none',
 	biasChannel: 'prompt',
+	supportsSpeechTranslation: false,
 };
 
 /**
@@ -86,6 +91,7 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	// and does not return, a timing per word.
 	wordTimestamps: 'none',
 	biasChannel: 'prompt',
+	supportsSpeechTranslation: false,
 };
 
 /** Capabilities for every engine, keyed by its settings id. */
@@ -125,6 +131,34 @@ export function effectiveDiarize(
 	requested: boolean,
 ): boolean {
 	return requested && providerSupportsDiarization(id);
+}
+
+/**
+ * Whether the engine has an operation that translates speech into English
+ * while transcribing it.
+ * @param id - Selected transcription engine id
+ * @returns Whether the engine can be asked to translate the speech
+ */
+export function providerSupportsSpeechTranslation(
+	id: TranscriptionProviderId,
+): boolean {
+	return TRANSCRIPTION_PROVIDER_CAPABILITIES[id].supportsSpeechTranslation;
+}
+
+/**
+ * The speech translation actually requested for a run: the user's preference
+ * AND the engine's capability, gated in one place exactly as
+ * {@link effectiveDiarize} is, so a stored "on" left from Whisper stops
+ * travelling the moment another engine is chosen.
+ * @param id - Selected transcription engine id
+ * @param requested - The user's speech-translation preference
+ * @returns Whether the translating operation should be used
+ */
+export function effectiveSpeechTranslation(
+	id: TranscriptionProviderId,
+	requested: boolean,
+): boolean {
+	return requested && providerSupportsSpeechTranslation(id);
 }
 
 /**
