@@ -341,6 +341,11 @@ export class AudioPlayerRegistry {
 					controller.skip(deltaSeconds);
 				});
 			},
+			onSeekTo: (seconds) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.seekToPosition(seconds);
+				});
+			},
 			onToggleMute: () => {
 				this.runPlaybackCommand(key, (controller) => {
 					controller.toggleMute();

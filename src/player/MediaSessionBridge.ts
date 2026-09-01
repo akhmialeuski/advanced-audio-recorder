@@ -74,10 +74,16 @@ const TRANSPORT_ACTIONS: ReadonlyMap<MediaSessionAction, TransportHandler> =
 			},
 		],
 		[
+			// The one action that names a destination rather than a step, so
+			// it is the one that goes through the absolute seek. Expressed as
+			// a skip it was a delta against the last published snapshot, which
+			// lags playback by a timeupdate: a scrubber dragged at speed
+			// landed short of where it was dropped, and it took the fixed-step
+			// path, which the chapter repeat does not follow.
 			'seekto',
 			(state, details): void => {
 				if (details.seekTime !== undefined) {
-					state.onSkip(details.seekTime - state.currentTime);
+					state.onSeekTo(details.seekTime);
 				}
 			},
 		],

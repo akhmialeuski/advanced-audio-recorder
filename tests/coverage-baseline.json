@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.61,
-			"branches": 93.94,
-			"functions": 98.55,
-			"lines": 98.62
+			"statements": 98.64,
+			"branches": 94.01,
+			"functions": 98.56,
+			"lines": 98.65
 		},
 		"files": {
 			"src/constants.ts": {
@@ -20,7 +20,7 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 99.43,
+				"statements": 99.44,
 				"branches": 96.92,
 				"functions": 98.86,
 				"lines": 99.71
@@ -242,22 +242,22 @@
 				"lines": 100
 			},
 			"src/player/AudioPlayer.ts": {
-				"statements": 98.93,
-				"branches": 91.26,
-				"functions": 98.43,
-				"lines": 98.93
+				"statements": 98.94,
+				"branches": 91.4,
+				"functions": 98.46,
+				"lines": 98.94
 			},
 			"src/player/AudioPlayerRegistry.ts": {
-				"statements": 99.51,
+				"statements": 99.52,
 				"branches": 95.18,
-				"functions": 98.18,
+				"functions": 98.24,
 				"lines": 99.51
 			},
 			"src/player/DetachedPlayback.ts": {
-				"statements": 93.42,
-				"branches": 73.68,
-				"functions": 96.55,
-				"lines": 94.66
+				"statements": 93.5,
+				"branches": 75,
+				"functions": 96.66,
+				"lines": 94.73
 			},
 			"src/player/DurationProbe.ts": {
 				"statements": 100,
@@ -266,10 +266,10 @@
 				"lines": 100
 			},
 			"src/player/EnhancedPlayerRegistrar.ts": {
-				"statements": 98.85,
-				"branches": 93.65,
-				"functions": 97.36,
-				"lines": 98.85
+				"statements": 98.88,
+				"branches": 93.84,
+				"functions": 97.43,
+				"lines": 98.88
 			},
 			"src/player/MediaEmbedShell.ts": {
 				"statements": 100,
@@ -813,8 +813,8 @@
 			},
 			"src/transcription/QueueCoordinator.ts": {
 				"statements": 97.56,
-				"branches": 81.25,
-				"functions": 90,
+				"branches": 85.71,
+				"functions": 90.9,
 				"lines": 97.56
 			},
 			"src/transcription/QueueRunner.ts": {
@@ -842,10 +842,10 @@
 				"lines": 98.16
 			},
 			"src/transcription/TranscriptionService.ts": {
-				"statements": 99.57,
-				"branches": 98.58,
+				"statements": 99.59,
+				"branches": 98.63,
 				"functions": 100,
-				"lines": 99.57
+				"lines": 99.59
 			},
 			"src/transcription/api.ts": {
 				"statements": 100,
@@ -914,10 +914,10 @@
 				"lines": 100
 			},
 			"src/transcription/retryFailedParts.ts": {
-				"statements": 97.26,
-				"branches": 96.15,
+				"statements": 100,
+				"branches": 100,
 				"functions": 100,
-				"lines": 97.14
+				"lines": 100
 			},
 			"src/transcription/runTranscription.ts": {
 				"statements": 97.77,
@@ -1196,10 +1196,10 @@
 				"lines": 96.6
 			},
 			"src/ui/TranscriptionQueueModal.ts": {
-				"statements": 98.3,
-				"branches": 95,
+				"statements": 100,
+				"branches": 100,
 				"functions": 100,
-				"lines": 98.3
+				"lines": 100
 			},
 			"src/ui/formatDescriptions.ts": {
 				"statements": 100,
@@ -1319,8 +1319,8 @@
 	},
 	"suite": {
 		"suites": 229,
-		"tests": 5272,
-		"passed": 5272,
+		"tests": 5308,
+		"passed": 5308,
 		"failed": 0,
 		"todo": 0
 	}

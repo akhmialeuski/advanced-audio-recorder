@@ -984,6 +984,35 @@ describe('driving playback from the system media controls', () => {
 		expect(media.metadata()).toMatchObject({ album: 'Middle' });
 	});
 
+	it('lands a lock-screen scrub on the offset the system named', async () => {
+		const shared = sharedAudio();
+		const { container, media, snapshot } = await announcedEmbed(shared);
+
+		media.fire('seekto', { action: 'seekto', seekTime: 300 });
+
+		expect(timeText(container)).toBe('5:00 / 10:00');
+		expect(snapshot()?.currentTime).toBe(300);
+	});
+
+	it('takes the chapter repeat with a scrub, as the seek bar does', async () => {
+		// The scrubber names a destination rather than a step, so it has to
+		// reach the same seek a drag of the embed's own seek bar does, and the
+		// repeat follows the listener to the chapter they moved to. Expressed
+		// as a skip it took the fixed-step path, which the repeat does not
+		// follow, and the next timeupdate pulled playback back to 0:00.
+		const shared = sharedAudio();
+		const { container, media, snapshot } = await announcedEmbed(shared);
+		// Parked at 0:30, inside the chapter at 0:00 that the one at 2:00 closes
+		control(container, 'Repeat current chapter').click();
+
+		media.fire('seekto', { action: 'seekto', seekTime: 300 });
+
+		// Now inside the chapter at 2:00, which nothing closes but the end of
+		// the recording, so playback stays where it was dropped
+		expect(timeText(container)).toBe('5:00 / 10:00');
+		expect(snapshot()?.currentTime).toBe(300);
+	});
+
 	it('names the recording and the chapter playback is inside', async () => {
 		const shared = sharedAudio();
 		const { media } = await announcedEmbed(shared);

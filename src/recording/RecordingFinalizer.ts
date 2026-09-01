@@ -574,12 +574,19 @@ export class RecordingFinalizer {
 	 * Audio merge takes them.
 	 *
 	 * Derived from the rules the streaming mixer applies rather than written
-	 * again, so a session merged by either route comes out the same: the
-	 * level in decibels through {@link gainFactor}, the position through the
-	 * balance law of {@link panGains}, and the alignment through
-	 * {@link normalizeFactor}. Only the unit differs, because the mixer reads
-	 * a level on the int16 scale the capture works in while a decoded buffer
-	 * is a share of full scale.
+	 * again, so a session is placed the same by either route: the level in
+	 * decibels through {@link gainFactor}, the position through the balance law
+	 * of {@link panGains}, and the alignment through {@link normalizeFactor}.
+	 * Only the unit differs, because the mixer reads a level on the int16 scale
+	 * the capture works in while a decoded buffer is a share of full scale.
+	 *
+	 * The placement is the same; the final level is not, once levels are
+	 * aligned. This route renders the mix and measures the peak it actually
+	 * reached, while the streaming one cannot: its measuring pass runs before
+	 * the alignment figures exist, so it bounds the sum by the tracks' separate
+	 * peaks and comes out quieter by however far apart they peak. Closing that
+	 * would cost the streaming route a third full read of the session, which is
+	 * the memory-bounded route's whole reason for existing.
 	 * @returns The placement for this session's merge
 	 */
 	private mergePlacement(): MergePlacement {

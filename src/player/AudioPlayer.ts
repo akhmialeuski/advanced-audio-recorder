@@ -459,6 +459,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				skip: (deltaSeconds) => {
 					this.skip(deltaSeconds);
 				},
+				// Through the same seek a timecode link and a marker jump
+				// take, so an outside scrubber engages the timeline and moves
+				// the chapter repeat exactly as the embed's own seek bar does.
+				seekToPosition: (seconds) => {
+					this.seekTo(seconds, !this.audio.paused);
+				},
 				toggleMute: () => {
 					this.toggleMute();
 				},

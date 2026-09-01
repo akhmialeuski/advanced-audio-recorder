@@ -173,8 +173,14 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * The queue of recordings to transcribe. Built on load so a queue a
 	 * previous session left can be offered back, and so the folder menu has
 	 * something to queue into.
+	 *
+	 * Nullable rather than asserted, because it is built well into onload and
+	 * Obsidian still unloads a plugin whose load threw. Asserted, the first
+	 * line of the teardown raised on the missing field and took the rest of it
+	 * with it: the recorder was never stopped and the encoding worker was left
+	 * running.
 	 */
-	private transcriptionQueue!: QueueCoordinator;
+	private transcriptionQueue: QueueCoordinator | null = null;
 
 	/** The queue itself, kept so its pending writes are flushed on unload. */
 	private queuedTranscriptions: TranscriptionQueue | null = null;
@@ -316,9 +322,11 @@ export default class AudioRecorderPlugin extends Plugin {
 		});
 		this.queuedTranscriptions = queue;
 		// Offered once the workspace is up, so the prompt lands on a window
-		// the user can see rather than during load.
+		// the user can see rather than during load. Held as a local, since the
+		// coordinator this closure resumes is the one built right here.
+		const coordinator = this.transcriptionQueue;
 		this.app.workspace.onLayoutReady(() => {
-			void this.transcriptionQueue.resumeIfPending();
+			void coordinator.resumeIfPending();
 		});
 
 		// Media kinds persist across sessions so the first open of a note
@@ -502,7 +510,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		// stop left it. A drain holds the app and the settings reader, so
 		// without this it went on calling a paid engine and writing
 		// transcripts into a vault the plugin had already been removed from.
-		this.transcriptionQueue.stop();
+		this.transcriptionQueue?.stop();
 		// The queue is losable but not worth losing a change to: whatever the
 		// last state change was, it goes to disk before the plugin does.
 		void this.queuedTranscriptions?.flush();
@@ -814,11 +822,15 @@ export default class AudioRecorderPlugin extends Plugin {
 			primeForEnhancement: (paths) =>
 				this.playerRegistrar.primeSavedRecordingsForEnhancement(paths),
 			getWorkerClient: () => this.encodingWorker,
+			// Read through the field rather than captured, because the queue is
+			// built after these services are: a menu entry acts long after
+			// load, and there is nothing to act on before it finished.
 			transcriptionQueue: {
-				queueFolder: (folder) =>
-					this.transcriptionQueue.queueFolder(folder),
+				queueFolder: async (folder) => {
+					await this.transcriptionQueue?.queueFolder(folder);
+				},
 				open: () => {
-					this.transcriptionQueue.open();
+					this.transcriptionQueue?.open();
 				},
 			},
 			autoChapters: this.autoChapterService,
@@ -860,7 +872,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		registerActionCommands(this, SEARCH_ACTIONS, () => ({
 			openMarkerSearch: () => this.playerRegistrar.openMarkerSearch(),
 			openTranscriptionQueue: () => {
-				this.transcriptionQueue.open();
+				this.transcriptionQueue?.open();
 			},
 		}));
 	}

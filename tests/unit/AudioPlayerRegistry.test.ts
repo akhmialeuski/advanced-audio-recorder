@@ -32,6 +32,7 @@ function makePlaybackController(
 		togglePlay: jest.fn(),
 		stop: jest.fn(),
 		skip: jest.fn(),
+		seekToPosition: jest.fn(),
 		toggleMute: jest.fn(),
 		setVolume: jest.fn(),
 		setPlaybackRate: jest.fn(),

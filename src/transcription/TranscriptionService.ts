@@ -75,7 +75,11 @@ import {
 	reportAdvancedSkip,
 	type TranscribePass,
 } from './advanced/AdvancedTwoPassRunner';
-import { missingPartsWarning, type PartFailure } from './partFailure';
+import {
+	missingPartsWarning,
+	type PartFailure,
+	type RecordingRange,
+} from './partFailure';
 import {
 	resolveDictionaryTermList,
 	resolveLlmPrompt,
@@ -140,7 +144,7 @@ export interface TranscribeRunOptions {
 	 *
 	 * Omitted for an ordinary run, which transcribes the whole recording.
 	 */
-	onlyRanges?: readonly { startSeconds: number; endSeconds: number }[];
+	onlyRanges?: readonly RecordingRange[];
 	/**
 	 * Skips the LLM cleanup, custom, and translation pass.
 	 *
@@ -154,6 +158,22 @@ export interface TranscribeRunOptions {
 	 * Omitted for an ordinary run, which writes what the pass produces.
 	 */
 	skipPostProcessing?: boolean | undefined;
+}
+
+/**
+ * Whether a run was asked for stretches of the recording rather than all of it.
+ *
+ * The single reading of the restriction, because two questions turn on it and
+ * an answer they disagreed about is a defect either way: which parts are sent,
+ * and whether what comes back describes the recording or only a piece of it. An
+ * empty list is no restriction at all, the same as an absent one.
+ * @param ranges - The stretches asked for, or undefined for all of it
+ * @returns True when the run covers only part of the recording
+ */
+export function isRestrictedRun(
+	ranges: readonly RecordingRange[] | undefined,
+): ranges is readonly RecordingRange[] {
+	return ranges !== undefined && ranges.length > 0;
 }
 
 /**
@@ -172,9 +192,9 @@ export interface TranscribeRunOptions {
  */
 export function selectRanges(
 	payloads: PreparedPayload[],
-	ranges: readonly { startSeconds: number; endSeconds: number }[] | undefined,
+	ranges: readonly RecordingRange[] | undefined,
 ): PreparedPayload[] {
-	if (!ranges || ranges.length === 0) {
+	if (!isRestrictedRun(ranges)) {
 		return payloads;
 	}
 	return payloads.filter((payload) => {
@@ -684,6 +704,7 @@ export class TranscriptionService {
 						names: resolveRunParticipants(settings),
 						profileId: selectedProfileId(settings, 'participants'),
 					},
+					!isRestrictedRun(options.onlyRanges),
 				)
 			: canonical;
 
@@ -932,6 +953,14 @@ export class TranscriptionService {
 	 * @param transcript - Fresh diarized transcript with original labels
 	 * @param participants - The run's participant profile, recorded with the
 	 *   roster
+	 * @param wholeRecording - Whether this transcript covers the whole
+	 *   recording. Only then is the roster refreshed from it: a restricted run
+	 *   sees the speakers of the stretches it was asked for and nothing else,
+	 *   so writing its list back dated every speaker's first turn to inside
+	 *   that stretch, reordered the roster the rename dialog reads, and warned
+	 *   that the labels had changed on a top-up that changed nothing. The names
+	 *   are applied either way, which is what a restricted run wants the stored
+	 *   roster for.
 	 * @returns The transcript with stored names applied (or unchanged)
 	 */
 	private async applyStoredSpeakerNames(
@@ -939,6 +968,7 @@ export class TranscriptionService {
 		path: string,
 		transcript: Transcript,
 		participants: ParticipantUpdate,
+		wholeRecording: boolean,
 	): Promise<Transcript> {
 		if (!sidecar || transcript.speakers.length === 0) {
 			return transcript;
@@ -967,24 +997,26 @@ export class TranscriptionService {
 				storedNames[entry.label] = entry.name;
 			}
 			const renamed = renameSpeakers(transcript, storedNames);
-			// Measured on the original-label transcript, so the offsets are
-			// keyed by the same labels the roster stores.
-			const firstTurns = collectFirstTurns(transcript.segments);
-			await sidecar.setSpeakers(
-				path,
-				transcript.speakers.map((label) => {
-					const name = storedNames[label];
-					const turn = firstTurns.get(label);
-					return {
-						label,
-						...(name ? { name } : {}),
-						...(turn
-							? { firstStart: turn.start, firstEnd: turn.end }
-							: {}),
-					};
-				}),
-				participants,
-			);
+			if (wholeRecording) {
+				// Measured on the original-label transcript, so the offsets are
+				// keyed by the same labels the roster stores.
+				const firstTurns = collectFirstTurns(transcript.segments);
+				await sidecar.setSpeakers(
+					path,
+					transcript.speakers.map((label) => {
+						const name = storedNames[label];
+						const turn = firstTurns.get(label);
+						return {
+							label,
+							...(name ? { name } : {}),
+							...(turn
+								? { firstStart: turn.start, firstEnd: turn.end }
+								: {}),
+						};
+					}),
+					participants,
+				);
+			}
 			if (droppedCollisions) {
 				new Notice(
 					"A stored speaker name matched another speaker's label " +
@@ -994,6 +1026,7 @@ export class TranscriptionService {
 			}
 			const previousLabels = section.speakers.map((entry) => entry.label);
 			if (
+				wholeRecording &&
 				previousLabels.length > 0 &&
 				!sameLabelComposition(previousLabels, transcript.speakers)
 			) {

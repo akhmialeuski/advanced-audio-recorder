@@ -77,6 +77,8 @@ function createSut(
 		cost?: TranscribeRunCost;
 		/** What the run reports having sent, which need not be what it asked for. */
 		sentSeconds?: number | null;
+		/** Outputs the vault refuses to write: read-only, locked, out of space. */
+		unwritable?: string[];
 	} = {},
 ): Sut {
 	const written = new Map<string, string>();
@@ -85,6 +87,7 @@ function createSut(
 	const files: Record<string, string> = options.files ?? {
 		'rec.transcript.json': JSON.stringify(transcriptOf(HEARD)),
 	};
+	const unwritable = new Set(options.unwritable ?? []);
 	const app = createMockApp({
 		vault: {
 			getAbstractFileByPath: (path: string) =>
@@ -93,6 +96,9 @@ function createSut(
 					: null,
 			read: (file: TFile) => Promise.resolve(files[file.path] ?? ''),
 			modify: (file: TFile, data: string) => {
+				if (unwritable.has(file.path)) {
+					return Promise.reject(new Error('the file is read-only'));
+				}
 				written.set(file.path, data);
 				return Promise.resolve();
 			},
@@ -356,6 +362,34 @@ describe('topping up a transcript', () => {
 
 		expect((await retry.retry()).rewritten).toBe(1);
 	});
+
+	it('counts out an output the vault refused, and rewrites the rest', async () => {
+		// A file that is still there can still refuse a write: read-only,
+		// locked by another process, no space left. The engine has already
+		// been paid by then, so the top-up reports what it managed instead of
+		// throwing away a transcript it just completed.
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+			// The reported counts are the assertion.
+		});
+		const { retry, written } = createSut({
+			outputs: [
+				{ path: 'rec.transcript.json', format: 'json' },
+				{ path: 'rec.srt', format: 'srt' },
+			],
+			files: {
+				'rec.transcript.json': JSON.stringify(transcriptOf(HEARD)),
+				'rec.srt': 'subtitles',
+			},
+			unwritable: ['rec.srt'],
+		});
+
+		const outcome = await retry.retry();
+
+		expect(outcome.rewritten).toBe(1);
+		expect(outcome.recovered).toBe(1);
+		expect(written.has('rec.srt')).toBe(false);
+		warn.mockRestore();
+	});
 });
 
 describe('a top-up that cannot be attempted', () => {
@@ -403,6 +437,13 @@ describe('a top-up that cannot be attempted', () => {
 			case: 'the recorded JSON is not a transcript',
 			outputs: [{ path: 'rec.transcript.json', format: 'json' }],
 			files: { 'rec.transcript.json': '{"hello":true}' },
+		},
+		{
+			// Valid JSON that is not an object at all, which a truncated or
+			// half-synced file readily produces
+			case: 'the recorded JSON is not even an object',
+			outputs: [{ path: 'rec.transcript.json', format: 'json' }],
+			files: { 'rec.transcript.json': '"a transcript, honest"' },
 		},
 	])('says so when $case', async ({ outputs, files }) => {
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {

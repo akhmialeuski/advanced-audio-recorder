@@ -143,6 +143,7 @@ export function makePlaybackState(
 		onTogglePlay: jest.fn(),
 		onStop: jest.fn(),
 		onSkip: jest.fn(),
+		onSeekTo: jest.fn(),
 		onToggleMute: jest.fn(),
 		onVolumeInput: jest.fn(),
 		onSetPlaybackRate: jest.fn(),

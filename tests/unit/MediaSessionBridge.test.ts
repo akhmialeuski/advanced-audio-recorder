@@ -210,14 +210,18 @@ describe('the controls the system is offered', () => {
 		expect(state.onSkip).toHaveBeenCalledWith(45);
 	});
 
-	it('turns a scrubber drop into a move from where playback stands', () => {
+	it('sends a scrubber drop to the position it names', () => {
+		// The destination itself, not a step measured from a position read a
+		// moment ago: the snapshot lags playback by a timeupdate, and the
+		// fixed-step path is not the one the chapter repeat follows.
 		const { media, publish } = createSut();
 		const state = makePlaybackState({ currentTime: 65 });
 		publish(state);
 
 		media.fire('seekto', { action: 'seekto', seekTime: 200 });
 
-		expect(state.onSkip).toHaveBeenCalledWith(135);
+		expect(state.onSeekTo).toHaveBeenCalledWith(200);
+		expect(state.onSkip).not.toHaveBeenCalled();
 	});
 
 	it('ignores a scrubber drop that names no position', () => {
@@ -227,7 +231,7 @@ describe('the controls the system is offered', () => {
 
 		media.fire('seekto', { action: 'seekto' });
 
-		expect(state.onSkip).not.toHaveBeenCalled();
+		expect(state.onSeekTo).not.toHaveBeenCalled();
 	});
 
 	it('offers the chapter controls only where there are chapters', () => {

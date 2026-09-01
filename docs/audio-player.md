@@ -112,7 +112,7 @@ The **loop** button toggles whether the recording repeats when it reaches the en
 
 The **repeat chapter** button repeats the chapter playback is currently inside. When playback reaches the start of the following chapter it returns to the start of the repeated one, which is what makes an unclear passage or a stretch of foreign speech replay without touching the seek bar. The last chapter is repeated too: nothing follows it, so the end of the recording is its boundary.
 
-Moving to another chapter moves what repeats. A chapter jump, a click on a marker, and a drag of the seek bar all take the repeat with them, so you are never pulled back to the chapter you were listening to a moment ago.
+Moving to another chapter moves what repeats. A chapter jump, a click on a marker, a drag of the seek bar, and a drag of the system scrubber described below all take the repeat with them, so you are never pulled back to the chapter you were listening to a moment ago.
 
 The button appears only when **Markers and chapters** is enabled for the recording, because a recording without chapters defines no stretch to repeat. Repeat is per recording and starts **off**; it is not remembered between sessions.
 
@@ -168,7 +168,7 @@ The system is offered **play**, **pause**, **stop**, **skip back**, **skip forwa
 
 Every one of those controls drives the **same playback** as the embed and the status bar, because all three go through one shared audio element per recording. A skip from the media keys moves the embed's time display, and a pause from the lock screen shows the play icon in both surfaces.
 
-The skip controls move by the configured **Skip step**, unless the system asks for a specific offset of its own, in which case that offset is used.
+The skip controls move by the configured **Skip step**, unless the system asks for a specific offset of its own, in which case that offset is used. Dragging the system scrubber is a different thing from a skip: it moves playback to the position it names rather than by a step, and it takes the chapter repeat with it exactly as a drag of the embed's own seek bar does.
 
 The announcement is **taken down** when playback stops and when the plugin unloads, so the system controls never outlive the plugin that answers them. A platform that offers no media session integration gets no announcement and is otherwise unaffected.
 

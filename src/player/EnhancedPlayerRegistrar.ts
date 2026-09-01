@@ -259,9 +259,17 @@ export class EnhancedPlayerRegistrar {
 			}),
 		);
 		// A sidecar written outside a player - by a finished recording, by
-		// generated chapters, by a sync - is how markers appear for a
-		// recording the index already scanned, so it re-reads that one rather
-		// than going stale until the next session.
+		// generated chapters - is how markers appear for a recording the index
+		// already scanned, so it re-reads that one rather than going stale
+		// until the next session.
+		//
+		// A write from outside the plugin is not covered: those writes reach
+		// the index through the sidecar store, whose cached document is
+		// authoritative for the session precisely so queued mutations and
+		// readers share one object, so the re-read hands back what the plugin
+		// last wrote. Every other reader of the store has the same view, and
+		// giving the index a fresher one alone would be worse than the
+		// staleness.
 		this.plugin.registerEvent(
 			this.app.vault.on('modify', (file) => {
 				this.reindexSidecar(file);

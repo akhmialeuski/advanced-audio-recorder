@@ -108,6 +108,25 @@ const twoSpeakerSegments: TranscriptSegment[] = [
 	{ start: 1, end: 2, text: 'hi', speaker: 'Speaker 2' },
 ];
 
+/**
+ * A recording that already carries the given roster, with a diarizing service
+ * over the segments this run's engine answers with.
+ * @param speakers - The roster stored for the recording
+ * @param segments - What the engine returns, the two-speaker pair by default
+ * @returns The sidecar stub to assert on and the service to run
+ */
+function rosterRun(
+	speakers: TranscriptSection['speakers'],
+	segments: TranscriptSegment[] = twoSpeakerSegments,
+): { sidecar: ReturnType<typeof makeSidecar>; service: TranscriptionService } {
+	return {
+		sidecar: makeSidecar({ ...emptyTranscriptSection(), speakers }),
+		service: new TranscriptionService(makeApp(), () => diarizedSettings(), {
+			createProvider: () => makeProvider(segments),
+		}),
+	};
+}
+
 describe('TranscriptionService stored speaker names', () => {
 	it('re-applies stored names to every output and refreshes the roster', async () => {
 		const sidecar = makeSidecar({
@@ -182,6 +201,64 @@ describe('TranscriptionService stored speaker names', () => {
 		expect(Notice).not.toHaveBeenCalledWith(
 			expect.stringContaining('Speaker labels changed'),
 		);
+	});
+
+	it('leaves the roster alone for a run that covered part of the recording', async () => {
+		// A top-up sees the speakers of the stretches it asked for and no
+		// others, so its list is not the recording's roster. Written back, it
+		// dated every speaker's first turn to inside that stretch, moved the
+		// order the rename dialog reads, and warned that the labels had
+		// changed on a top-up where nothing had.
+		const { sidecar, service } = rosterRun(
+			[
+				{
+					label: 'Speaker 1',
+					name: 'Alex',
+					firstStart: 0,
+					firstEnd: 1,
+				},
+				{ label: 'Speaker 2', name: 'Sam', firstStart: 1, firstEnd: 2 },
+			],
+			[
+				{
+					start: 300,
+					end: 302,
+					text: 'the recovered line',
+					speaker: 'Speaker 1',
+				},
+			],
+		);
+
+		const { transcript } = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			sidecar,
+			onlyRanges: [{ startSeconds: 300, endSeconds: 302 }],
+		});
+
+		// The stored names still reach the recovered segments, which is what
+		// a top-up carries the roster for
+		expect(transcript.speakers).toEqual(['Alex']);
+		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
+		expect(Notice).not.toHaveBeenCalledWith(
+			expect.stringContaining('Speaker labels changed'),
+		);
+	});
+
+	it('refreshes the roster for a run asked for an empty list of stretches', async () => {
+		// No stretches is no restriction, which is the same run as one that
+		// named none at all: the reading that decides which parts are sent
+		// has to be the one that decides whether the roster may be refreshed.
+		const { sidecar, service } = rosterRun([
+			{ label: 'Speaker 1', name: 'Alex' },
+		]);
+
+		await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			sidecar,
+			onlyRanges: [],
+		});
+
+		expect(sidecar.setSpeakers).toHaveBeenCalledTimes(1);
 	});
 
 	it('drops a stored name that collides with another label of the run', async () => {

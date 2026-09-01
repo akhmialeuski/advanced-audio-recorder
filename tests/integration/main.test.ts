@@ -1427,4 +1427,24 @@ describe('AudioRecorderPlugin transcription queue', () => {
 		);
 		expect(coordinator().open).toHaveBeenCalledTimes(1);
 	});
+
+	it('answers the folder menu before the queue has been built', async () => {
+		// The menu is wired during load, ahead of the queue, and its entries
+		// read the field when they are clicked rather than when they were
+		// wired. A load that stopped in between left them dereferencing a
+		// field that was never assigned.
+		const { plugin } = createPlugin([null]);
+		const services = (
+			plugin as unknown as { createActionServices(): ActionServices }
+		).createActionServices();
+
+		expect(() => {
+			services.transcriptionQueue.open();
+		}).not.toThrow();
+		await expect(
+			services.transcriptionQueue.queueFolder(
+				partial<TFolder>({ path: 'Recordings' }),
+			),
+		).resolves.toBeUndefined();
+	});
 });

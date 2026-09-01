@@ -28,6 +28,17 @@ export interface PlaybackController {
 	stop(): void;
 	/** Moves playback by a signed number of seconds. */
 	skip(deltaSeconds: number): void;
+	/**
+	 * Moves playback to an absolute offset, preserving the play/pause state.
+	 *
+	 * Distinct from {@link PlaybackController.skip} because a surface that
+	 * knows where it wants to land must not have to express that as a delta
+	 * against a position it read a moment ago: the arithmetic is off by
+	 * however far playback advanced in between, and it bypasses whatever a
+	 * player does around a real seek.
+	 * @param seconds - Target offset from the start of the recording
+	 */
+	seekToPosition(seconds: number): void;
 	/** Toggles muted output. */
 	toggleMute(): void;
 	/** Applies a volume in the inclusive 0..1 range. */
@@ -77,6 +88,13 @@ export interface PlaybackControlsState {
 	onStop(): void;
 	/** Moves playback by a signed number of seconds. */
 	onSkip(deltaSeconds: number): void;
+	/**
+	 * Moves playback to an absolute offset, preserving the play/pause state.
+	 * What a scrubber drives, as opposed to the fixed step
+	 * {@link PlaybackControlsState.onSkip} moves by.
+	 * @param seconds - Target offset from the start of the recording
+	 */
+	onSeekTo(seconds: number): void;
 	/** Toggles muted output. */
 	onToggleMute(): void;
 	/** Applies a volume in the inclusive 0..1 range. */

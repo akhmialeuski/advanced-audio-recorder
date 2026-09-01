@@ -66,12 +66,6 @@ export interface QueueModalOptions {
  * Shows the queue and the controls over it.
  */
 export class TranscriptionQueueModal extends PluginModal {
-	/** The list element, rebuilt whenever the queue moves. */
-	private listEl: HTMLElement | null = null;
-
-	/** The cost line, rewritten whenever the queue moves. */
-	private costEl: HTMLElement | null = null;
-
 	/** Drops the queue subscription when the dialog closes. */
 	private unsubscribe: (() => void) | null = null;
 
@@ -91,17 +85,21 @@ export class TranscriptionQueueModal extends PluginModal {
 		this.setDialogTitle(
 			running ? 'Transcription queue' : 'Queue these recordings',
 		);
-		this.costEl = this.contentEl.createDiv({ cls: QUEUE_COST_CLASS });
-		this.renderCost();
-		this.listEl = this.contentEl.createDiv({ cls: QUEUE_LIST_CLASS });
-		this.renderList();
+		// Handed to the draw calls rather than held as fields. Both elements
+		// live exactly as long as the dialog and are built before anything can
+		// draw into them, so a field would carry a null state that never
+		// happens and two branches no test could reach.
+		const costEl = this.contentEl.createDiv({ cls: QUEUE_COST_CLASS });
+		const listEl = this.contentEl.createDiv({ cls: QUEUE_LIST_CLASS });
 		// Both halves follow the same change, because they describe the same
 		// queue: dropping an entry that the list stops showing must not leave
 		// the line above it quoting a spend for work that is no longer there.
-		this.unsubscribe = this.options.queue.subscribe(() => {
-			this.renderCost();
-			this.renderList();
-		});
+		const redraw = (): void => {
+			this.renderCost(costEl);
+			this.renderList(listEl);
+		};
+		redraw();
+		this.unsubscribe = this.options.queue.subscribe(redraw);
 		this.renderControls(running);
 	}
 
@@ -113,11 +111,11 @@ export class TranscriptionQueueModal extends PluginModal {
 		super.onClose();
 	}
 
-	/** Says what the queued recordings still to run are expected to cost. */
-	private renderCost(): void {
-		if (!this.costEl) {
-			return;
-		}
+	/**
+	 * Says what the queued recordings still to run are expected to cost.
+	 * @param costEl - The line to write into
+	 */
+	private renderCost(costEl: HTMLElement): void {
 		const { usdPerRecording, hasUnpriced } = this.options;
 		// One count for both halves of the sentence, so the number of
 		// recordings named and the money named describe the same work.
@@ -126,7 +124,7 @@ export class TranscriptionQueueModal extends PluginModal {
 			usdPerRecording === null
 				? 'no built-in rate for the selected model'
 				: `about ${formatUsd(usdPerRecording * count)}`;
-		this.costEl.setText(
+		costEl.setText(
 			`${String(count)} recording${count === 1 ? '' : 's'}, ${priced}.` +
 				(hasUnpriced
 					? ' Some of it could not be priced and is left out of the total.'
@@ -134,12 +132,11 @@ export class TranscriptionQueueModal extends PluginModal {
 		);
 	}
 
-	/** Draws one row per queued recording, replacing whatever was there. */
-	private renderList(): void {
-		const list = this.listEl;
-		if (!list) {
-			return;
-		}
+	/**
+	 * Draws one row per queued recording, replacing whatever was there.
+	 * @param list - The list to draw into
+	 */
+	private renderList(list: HTMLElement): void {
 		list.empty();
 		for (const entry of this.options.queue.entries()) {
 			this.renderRow(list, entry);
