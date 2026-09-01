@@ -480,15 +480,20 @@ describe('transcribing the parts that failed', () => {
 			transcript: { segments: [], speakers: [], language: 'en' },
 			missingParts: [],
 			cost: { engineId: 'deepgram', usd: 0.02, usage: {} },
+			// The part covering the ninety-second gap runs to five minutes,
+			// which is what a plan coarser than the request sends.
+			sentSeconds: 300,
 		});
 
 		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
 
-		// Priced against the ninety seconds it sent, not the whole recording
+		// Priced against the audio the run sent. Adding up the stretches it
+		// asked for instead quoted ninety seconds for five minutes of engine
+		// time, so the session total came out short by the difference.
 		expect(recordRun).toHaveBeenCalledWith(
 			{ engineId: 'deepgram', usd: 0.02, usage: {} },
 			expect.anything(),
-			90,
+			300,
 		);
 	});
 

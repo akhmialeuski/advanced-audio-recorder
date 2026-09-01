@@ -41,7 +41,7 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 7. **Request timeout** - the per-request network deadline (cloud engines only), replaced by **Local run timeout** on local whisper.cpp.
 8. **Transcript output** - destination, file format, and in-note formatting.
 9. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
-9. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
+10. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
 
 ---
 
@@ -92,7 +92,7 @@ Behavior and limits:
 - **Per-request limit is a hard 25 MB.** Files **at or under 25 MB** are uploaded in their **original container**, untouched.
 - **Larger files** are resampled to **16 kHz mono**, split into upload-sized WAV chunks (sized by **Upload chunk size**, default 24 MB to stay under the 25 MB limit), and the per-chunk results are stitched back onto one timeline.
 - **No diarization.** Whisper does not return speaker labels, so **Speaker diarization** is disabled for this engine.
-- **Speech translation.** The endpoint carries a second operation that writes the recording down in **English** whatever was spoken. Turn on **Translate speech to English** to use it: the request is otherwise identical, so chunking, the dictionary bias, and word timestamps all behave the same, and the **Language** hint is ignored because it would describe the audio rather than the answer. This is the only engine that offers it. To translate into any other language, or on any other engine, use the [translation task](llm-post-processing.md) of LLM post-processing instead, which runs on the finished transcript.
+- **Speech translation.** The endpoint carries a second operation that writes the recording down in **English** whatever was spoken. Turn on **Translate speech to English** to use it. Chunking and the dictionary bias behave exactly as they do on the transcription operation, but the translation one takes a narrower set of fields, so two things are dropped from the request rather than sent and refused. The **Language** hint goes, because it would describe the audio rather than the answer. **Word-level timestamps** go with it, because the operation has no timing granularity to ask for and answers with segments only, so a translated transcript carries per-segment timings and never per-word ones. This is the only engine that offers speech translation at all. To translate into any other language, or on any other engine, use the [translation task](llm-post-processing.md) of LLM post-processing instead, which runs on the finished transcript.
 - **Model requirements.** Only models that return `verbose_json` with segment timestamps work. `whisper-1` is OpenAI's; `whisper-large-v3` and `whisper-large-v3-turbo` are served by Groq and other compatible hosts. (OpenAI's `gpt-4o-transcribe` models do **not** support `verbose_json` and are intentionally excluded.)
 
 Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The catalogue link next to the model picker points at the [OpenAI speech-to-text guide](https://platform.openai.com/docs/guides/speech-to-text).
@@ -411,14 +411,14 @@ A recording longer than the engine takes in one request is sent in parts, and a 
 
 What it does with the result:
 
-- The recovered segments are placed on the timeline **among the ones already there**, and a segment that starts where one already starts is left alone, so a part that partly succeeded is never doubled.
+- The stretches that were sent are **replaced wholesale** by what came back for them, and everything outside those stretches is left untouched. The decision is made by stretch rather than by comparing segment starts, because a chunk size or an engine changed since the first run moves the part boundaries: the parts that already succeeded would then come back a few tenths of a second off, and a proximity test would read them as new segments and write the same speech into the transcript twice. Anything you edited by hand inside a retried stretch is overwritten along with the rest of it.
 - Every transcript file the run wrote is **rewritten** with the completed transcript, each in the format it was written in. No second set of files appears beside the first.
 - What still fails is recorded again, so the action can be run once more later; a run that comes back whole clears the record.
 - The speaker names you assigned are **re-applied** to the recovered segments, exactly as a full re-run applies them, so a topped-up transcript does not call the same person both by name and by the engine's own label.
 - No **cleanup, custom, or translation pass** runs over the top-up. It reads segments and writes them back, so what you pay for is the engine time on the missing minutes and nothing else.
 - A translation is left alone: it is a second document, and completing it is the [translation task's](llm-post-processing.md) job rather than the engine's.
 
-Two limits are worth knowing. The top-up reads the transcript back from the run's **JSON output**, which is the only format that keeps the segment timings, so it needs the transcript file format to be JSON (the default); with only subtitles or plain text on disk it says so rather than guessing at the timings those formats drop. And a recording small enough to go in **one request** has no smaller unit to re-send, so a failure there is reported as one to transcribe again in full.
+Two limits are worth knowing. The top-up reads the transcript back from a **JSON transcript file**, which is the only output that keeps the segment timings, and whether such a file exists is decided by **Transcript output > Destination** rather than by the format alone. On the default destination, **Insert into note**, the transcript goes into the note and no file is written at all, so the top-up has nothing to read and says so. Choose a destination that saves a file (**Save to file**, **Note and file**, or **Save to file and link it in the note**) and set **File format** to JSON, and every run from then on leaves behind what a top-up needs. With only subtitles or plain text on disk it likewise says so rather than guessing at the timings those formats drop. And a recording small enough to go in **one request** has no smaller unit to re-send, so a failure there is reported as one to transcribe again in full.
 
 The action is offered on every recording, because whether anything is missing cannot be known without reading the sidecar: a recording with nothing missing is simply told so.
 

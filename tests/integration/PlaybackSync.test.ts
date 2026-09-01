@@ -83,6 +83,38 @@ function makeContainer(): HTMLElement {
 }
 
 /**
+ * Mounts a real AudioPlayer for the file into a fresh container and hands the
+ * player back with it, for a case that has to unload it: closing the note is a
+ * lifecycle event the player answers, and nothing else can trigger it.
+ * @param registry - The registry the player binds its shared element through
+ * @param store - Sidecar the player reads and writes; its own by default
+ * @param startSeconds - The embed's #t= offset, absent by default
+ * @returns The container the player rendered into, and the player itself
+ */
+function mountPlayerChild(
+	registry: AudioPlayerRegistry,
+	store: RecordingSidecarStore = makeMarkerStore(),
+	startSeconds: number | null = null,
+): { container: HTMLElement; player: AudioPlayer } {
+	const container = makeContainer();
+	const player = new AudioPlayer(
+		container,
+		app,
+		makeFile(),
+		PLAIN,
+		registry,
+		new WaveformPeakCache(),
+		decoder,
+		store,
+		{ startSeconds, sourcePath: 'note.md', immediate: true },
+	);
+	// Through load() rather than onload(), so the component records itself as
+	// loaded and a later unload() actually runs what the player registered.
+	player.load();
+	return { container, player };
+}
+
+/**
  * Mounts a real AudioPlayer for the file into a fresh container.
  * @param registry - The registry the player binds its shared element through
  * @param store - Sidecar the player reads and writes; its own by default
@@ -94,19 +126,7 @@ function mountPlayer(
 	store: RecordingSidecarStore = makeMarkerStore(),
 	startSeconds: number | null = null,
 ): HTMLElement {
-	const container = makeContainer();
-	new AudioPlayer(
-		container,
-		app,
-		makeFile(),
-		PLAIN,
-		registry,
-		new WaveformPeakCache(),
-		decoder,
-		store,
-		{ startSeconds, sourcePath: 'note.md', immediate: true },
-	).onload();
-	return container;
+	return mountPlayerChild(registry, store, startSeconds).container;
 }
 
 /** A container nested in a CodeMirror editor, so the player is editable. */
@@ -750,6 +770,39 @@ describe('resuming where a recording was left off', () => {
 		await tick();
 
 		expect(store.positions.has('rec.mp4')).toBe(false);
+	});
+
+	it('remembers where a closed note left the recording', async () => {
+		const shared = loadedAudio();
+		const registry = new AudioPlayerRegistry();
+		const store = makeMarkerStore();
+		const { player } = mountPlayerChild(registry, store);
+		await tick();
+		startPlaybackAt(registry, shared.audio, 420);
+
+		player.unload();
+		await tick();
+
+		expect(store.positions.get('rec.mp4')).toBe(420);
+	});
+
+	it('keeps the stored position when a timecode embed is closed unplayed', async () => {
+		// A #t= embed gets its own shared element and never restores, so it
+		// knows nothing about what is on disk. Closing it reported the
+		// timecode as the place the listener stopped, and an offset that
+		// early reads as "not worth resuming" - which cleared the position an
+		// earlier session had left, from a note that was only opened.
+		const shared = loadedAudio();
+		const registry = new AudioPlayerRegistry();
+		const store = storeHolding(300);
+		const { player } = mountPlayerChild(registry, store, 5);
+		await tick();
+
+		player.unload();
+		await tick();
+
+		expect(store.positions.get('rec.mp4')).toBe(300);
+		expect(shared.audio.currentTime).toBe(0);
 	});
 });
 

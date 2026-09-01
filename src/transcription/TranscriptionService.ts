@@ -191,6 +191,36 @@ export function selectRanges(
 }
 
 /**
+ * How much audio a run sends, which is what the engine bills it for.
+ *
+ * Measured from the parts themselves rather than from the stretches a
+ * restricted run asked for, because the two are not the same thing: a part is
+ * sent whole, so a plan that has since grown coarser - a larger chunk size, an
+ * engine that takes the recording in one request - sends more than was asked
+ * for and is charged for all of it. Sizing the estimate by the request instead
+ * quoted a top-up at the minutes it wanted rather than the minutes it sent.
+ *
+ * Null as soon as one part carries no measured end, which is the whole-file
+ * path: its duration is never measured, so the honest answer is that this run
+ * does not know how much it sent, and the estimate that depends on it says it
+ * could not be priced rather than naming a figure that is short.
+ * @param payloads - The parts the run will send, after any restriction
+ * @returns Their total length in seconds, or null when a part has no bounds
+ */
+export function sentSeconds(
+	payloads: readonly PreparedPayload[],
+): number | null {
+	let total = 0;
+	for (const payload of payloads) {
+		if (payload.endSeconds === undefined) {
+			return null;
+		}
+		total += Math.max(0, payload.endSeconds - payload.offsetSeconds);
+	}
+	return total;
+}
+
+/**
  * Cost summary of a (partial or finished) transcription run, computed
  * from what the provider actually reported billing for.
  */
@@ -218,6 +248,12 @@ export interface TranscribeRunResult {
 	 * be asked for again. Empty when the run came back whole.
 	 */
 	missingParts: PartFailure[];
+	/**
+	 * Seconds of audio this run sent, which is what it was billed for and
+	 * what sizes the estimate when the provider reports no usage. Null when a
+	 * part carried no measured bounds; see {@link sentSeconds}.
+	 */
+	sentSeconds: number | null;
 	/**
 	 * The translation, when the run was asked for one. Carried beside the
 	 * transcript rather than in place of it: a translation is a second
@@ -619,7 +655,9 @@ export class TranscriptionService {
 			}).run();
 			if (outcome.status === 'improved') {
 				working = outcome.transcript;
-				missingParts = outcome.failedParts;
+				// An adopted pass is one that succeeded on every part, so it
+				// clears whatever the first pass lost along with it.
+				missingParts = [];
 			} else {
 				reportAdvancedSkip(outcome);
 			}
@@ -722,6 +760,7 @@ export class TranscriptionService {
 			markdown,
 			cost: runCost(),
 			missingParts,
+			sentSeconds: sentSeconds(payloads),
 			...(translation ? { translation } : {}),
 		};
 	}

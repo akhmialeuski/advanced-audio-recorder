@@ -5,7 +5,35 @@
  * @module player/playerSettings
  */
 
+import {
+	MAX_PLAYER_SKIP_SECONDS,
+	MIN_PLAYER_SKIP_SECONDS,
+	PLAYER_SKIP_SECONDS,
+} from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+
+/**
+ * Brings a configured skip step inside the range its settings row declares.
+ *
+ * The row is the only place that bound was enforced, and a stored value never
+ * passes through it: settings are read from disk without validation, so a
+ * hand-edited file reached three surfaces and an audio element unchecked, and
+ * a zero step made every skip control inert while a non-number moved playback
+ * to NaN. Applied here because this is where the step is resolved for all of
+ * them at once.
+ * @param seconds - Seconds the settings hold
+ * @returns Whole seconds within the declared range, or the default for
+ * non-finite input
+ */
+function clampSkipSeconds(seconds: number): number {
+	if (!Number.isFinite(seconds)) {
+		return PLAYER_SKIP_SECONDS;
+	}
+	return Math.min(
+		MAX_PLAYER_SKIP_SECONDS,
+		Math.max(MIN_PLAYER_SKIP_SECONDS, Math.floor(seconds)),
+	);
+}
 
 /**
  * Render-ready view of the enhanced player's two user-toggleable windows.
@@ -21,8 +49,10 @@ export interface ResolvedPlayerSettings {
 	/** Show the markers and chapters window (list, ticks, edit controls). */
 	enableMarkers: boolean;
 	/**
-	 * Seconds a skip moves by. Resolved once here so the embed, the status bar
-	 * and the commands cannot offer three different steps.
+	 * Seconds a skip moves by, always inside the range the settings row
+	 * declares. Resolved once here so the embed, the status bar and the
+	 * commands cannot offer three different steps, and bounded here because
+	 * this is the last point before the value reaches an audio element.
 	 */
 	skipSeconds: number;
 }
@@ -38,7 +68,7 @@ export function resolvePlayerSettings(
 	return {
 		showWaveform: settings.playerShowWaveform,
 		enableMarkers: settings.playerEnableMarkers,
-		skipSeconds: settings.playerSkipSeconds,
+		skipSeconds: clampSkipSeconds(settings.playerSkipSeconds),
 	};
 }
 

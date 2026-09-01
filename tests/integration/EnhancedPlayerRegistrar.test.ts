@@ -1898,4 +1898,26 @@ describe('EnhancedPlayerRegistrar keeping the marker index current', () => {
 
 		expect(searchedRecordings()).toEqual([]);
 	});
+
+	// The store removes a sidecar the moment it holds nothing, which is what
+	// deleting a recording's last marker does. Only the audio file was
+	// recognised on the delete event, so that recording stayed in the search
+	// for the rest of the session and offered a marker that no longer existed.
+	it('drops a recording whose sidecar went with its last marker', async () => {
+		const { app, registrar } = await indexed();
+
+		vaultHandler(app, 'delete')(fileFromPath('rec.mp4.markers.json'));
+		await registrar.openMarkerSearch();
+
+		expect(searchedRecordings()).toEqual([]);
+	});
+
+	it('leaves the index alone when something else is deleted', async () => {
+		const { app, registrar } = await indexed();
+
+		vaultHandler(app, 'delete')(fileFromPath('note.md'));
+		await registrar.openMarkerSearch();
+
+		expect(searchedRecordings()).toEqual(['rec.mp4']);
+	});
 });

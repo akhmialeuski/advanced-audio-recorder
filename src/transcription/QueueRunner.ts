@@ -12,6 +12,7 @@
 import { Notice, TFile } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { CancellationSource } from '../utils/cancellation';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { RunCostSink } from './SessionCostTracker';
 import type { TranscriptionQueue } from './TranscriptionQueue';
@@ -49,6 +50,13 @@ export class QueueRunner {
 	private draining = false;
 
 	/**
+	 * Cancellation for the drain in flight. Rebuilt at the start of each one,
+	 * because a cancelled source stays cancelled and the next Start has to be
+	 * able to run.
+	 */
+	private cancellation = new CancellationSource();
+
+	/**
 	 * @param deps - The queue, the app, and how to transcribe one recording
 	 */
 	constructor(private readonly deps: QueueRunnerDeps) {}
@@ -59,19 +67,40 @@ export class QueueRunner {
 	}
 
 	/**
+	 * Stops the drain: the request in flight is aborted and nothing after it
+	 * is started.
+	 *
+	 * Called when the plugin unloads. The loop holds the app and the settings
+	 * reader, so without this a disabled or reloading plugin went on calling a
+	 * paid engine and writing transcripts into the vault, with nothing left on
+	 * screen to say it was still working.
+	 */
+	stop(): void {
+		this.cancellation.cancel();
+	}
+
+	/**
 	 * Transcribes every queued recording that is still waiting, stopping when
-	 * the queue is paused or empty. Calling it while it is already running is
-	 * a no-op, so the folder action, the resume prompt, and a view button can
-	 * all ask without racing each other.
+	 * the queue is emptied, paused, or stopped. Calling it while it is already
+	 * running is a no-op, so the folder action, the resume prompt, and a view
+	 * button can all ask without racing each other.
+	 *
+	 * Starting lifts a pause the queue is still carrying, because every caller
+	 * is a user asking for the queue to run. Left in place, that flag outlived
+	 * the drain that honoured it: once the recording in flight had finished
+	 * the loop exited, the dialog stopped offering Resume, and the queue could
+	 * not be started again at all.
 	 */
 	async drain(): Promise<void> {
 		if (this.draining) {
 			return;
 		}
+		this.deps.queue.setPaused(false);
+		this.cancellation = new CancellationSource();
 		this.draining = true;
 		try {
 			let entry = this.deps.queue.next();
-			while (entry) {
+			while (entry && !this.cancellation.token.isCancelled()) {
 				await this.runOne(entry.path);
 				entry = this.deps.queue.next();
 			}
@@ -103,6 +132,9 @@ export class QueueRunner {
 				// recording stands in for one: the transcript is written to
 				// its own file, which is what a batch is for.
 				notePathForLinks: file.path,
+				// So the request in flight ends with the drain rather than
+				// outliving the plugin that started it.
+				token: this.cancellation.token,
 			});
 			// The queue does not measure a recording before sending it, so
 			// the fallback estimate is sized by the same assumed length the
@@ -114,6 +146,14 @@ export class QueueRunner {
 			);
 			this.deps.queue.setState(path, 'done');
 		} catch (error) {
+			if (this.cancellation.token.isCancelled()) {
+				// Stopped rather than refused, so the recording goes back in
+				// the queue: it never had its chance, and recording it as a
+				// failure would leave the user clearing by hand something the
+				// engine never even answered about.
+				this.deps.queue.setState(path, 'waiting');
+				return;
+			}
 			const message =
 				error instanceof Error ? error.message : String(error);
 			console.warn(

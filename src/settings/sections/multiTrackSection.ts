@@ -42,6 +42,12 @@ export function multiTrackPage(
 			// mix: one file per track keeps every track exactly as captured.
 			const mixed = (): boolean =>
 				offered() && settings.outputMode === 'single';
+			// A place in the mix is bound to the track's device, exactly as
+			// its channel layout is: the writer refuses one for a track with
+			// no input, so a row that took the edit anyway accepted a number
+			// and then showed the old one back.
+			const unassigned = (): boolean =>
+				!settings.trackAudioSources.get(track)?.deviceId;
 			rows.push(
 				{
 					name: `Track ${String(track)} input`,
@@ -88,6 +94,7 @@ export function multiTrackPage(
 						min: MIN_TRACK_GAIN_DB,
 						max: MAX_TRACK_GAIN_DB,
 						step: 1,
+						disabled: unassigned,
 					},
 				},
 				{
@@ -101,6 +108,7 @@ export function multiTrackPage(
 						min: -1,
 						max: 1,
 						step: 0.25,
+						disabled: unassigned,
 					},
 				},
 			);

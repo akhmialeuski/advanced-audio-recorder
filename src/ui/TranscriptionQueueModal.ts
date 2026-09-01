@@ -46,10 +46,14 @@ export interface QueueModalOptions {
 	/** The queue being shown. */
 	queue: TranscriptionQueue;
 	/**
-	 * What the queued recordings are expected to cost in total, or null when
-	 * the run cannot be priced (an unknown model, a free local engine).
+	 * What one queued recording is expected to cost, or null when the run
+	 * cannot be priced (an unknown model, a free local engine).
+	 *
+	 * Per recording rather than a total, because the dialog owns the count:
+	 * it reads how many are still pending from the live queue, so a total
+	 * priced elsewhere named a spend for a queue the user had since edited.
 	 */
-	estimatedUsd: number | null;
+	usdPerRecording: number | null;
 	/** Whether any queued recording could not be priced. */
 	hasUnpriced: boolean;
 	/** Starts draining the queue. */
@@ -64,6 +68,9 @@ export interface QueueModalOptions {
 export class TranscriptionQueueModal extends PluginModal {
 	/** The list element, rebuilt whenever the queue moves. */
 	private listEl: HTMLElement | null = null;
+
+	/** The cost line, rewritten whenever the queue moves. */
+	private costEl: HTMLElement | null = null;
 
 	/** Drops the queue subscription when the dialog closes. */
 	private unsubscribe: (() => void) | null = null;
@@ -84,10 +91,15 @@ export class TranscriptionQueueModal extends PluginModal {
 		this.setDialogTitle(
 			running ? 'Transcription queue' : 'Queue these recordings',
 		);
+		this.costEl = this.contentEl.createDiv({ cls: QUEUE_COST_CLASS });
 		this.renderCost();
 		this.listEl = this.contentEl.createDiv({ cls: QUEUE_LIST_CLASS });
 		this.renderList();
+		// Both halves follow the same change, because they describe the same
+		// queue: dropping an entry that the list stops showing must not leave
+		// the line above it quoting a spend for work that is no longer there.
 		this.unsubscribe = this.options.queue.subscribe(() => {
+			this.renderCost();
 			this.renderList();
 		});
 		this.renderControls(running);
@@ -101,24 +113,25 @@ export class TranscriptionQueueModal extends PluginModal {
 		super.onClose();
 	}
 
-	/** Says what the queued recordings are expected to cost. */
+	/** Says what the queued recordings still to run are expected to cost. */
 	private renderCost(): void {
-		const { estimatedUsd, hasUnpriced } = this.options;
-		// The same count the estimate was priced from, so the number of
+		if (!this.costEl) {
+			return;
+		}
+		const { usdPerRecording, hasUnpriced } = this.options;
+		// One count for both halves of the sentence, so the number of
 		// recordings named and the money named describe the same work.
 		const count = this.options.queue.pendingCount();
 		const priced =
-			estimatedUsd === null
+			usdPerRecording === null
 				? 'no built-in rate for the selected model'
-				: `about ${formatUsd(estimatedUsd)}`;
-		this.contentEl.createDiv({
-			cls: QUEUE_COST_CLASS,
-			text:
-				`${String(count)} recording${count === 1 ? '' : 's'}, ${priced}.` +
+				: `about ${formatUsd(usdPerRecording * count)}`;
+		this.costEl.setText(
+			`${String(count)} recording${count === 1 ? '' : 's'}, ${priced}.` +
 				(hasUnpriced
 					? ' Some of it could not be priced and is left out of the total.'
 					: ''),
-		});
+		);
 	}
 
 	/** Draws one row per queued recording, replacing whatever was there. */

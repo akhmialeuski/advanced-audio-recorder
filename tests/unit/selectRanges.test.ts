@@ -5,7 +5,10 @@
  * leaves the gap it was called to close.
  */
 
-import { selectRanges } from 'src/transcription/TranscriptionService';
+import {
+	selectRanges,
+	sentSeconds,
+} from 'src/transcription/TranscriptionService';
 import type { PreparedPayload } from 'src/transcription/audioPrep';
 
 /** A prepared part covering the given stretch. */
@@ -80,5 +83,33 @@ describe('choosing the parts a restricted run sends', () => {
 		expect(
 			kept([part(0)], [{ startSeconds: 300, endSeconds: 360 }]),
 		).toEqual([0]);
+	});
+});
+
+describe('how much audio a run reports having sent', () => {
+	it('adds up the parts it will send', () => {
+		expect(sentSeconds(PARTS)).toBe(180);
+	});
+
+	it('measures the parts rather than the stretch they were chosen for', () => {
+		// A part is sent whole. A plan coarser than the request - a larger
+		// chunk size, or an engine that takes the recording in one go - sends
+		// more than the stretch that failed, and is charged for all of it, so
+		// the figure the session total is estimated from has to be the audio
+		// that went over the wire rather than the audio that was wanted.
+		const asked = [{ startSeconds: 70, endSeconds: 80 }];
+
+		expect(sentSeconds(selectRanges(PARTS, asked))).toBe(60);
+	});
+
+	it('answers nothing when a part carries no measured end', () => {
+		// The whole-file path never measures a duration, so a total that
+		// counted it as zero would name a figure that is short; the estimate
+		// that reads this says it could not be priced instead.
+		expect(sentSeconds([part(0, 60), part(60)])).toBeNull();
+	});
+
+	it('sends nothing for a run with no parts at all', () => {
+		expect(sentSeconds([])).toBe(0);
 	});
 });

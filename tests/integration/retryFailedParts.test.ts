@@ -46,6 +46,14 @@ const LOST: PartFailure = {
 	endSeconds: 120,
 };
 
+/**
+ * What the run reports having sent for {@link LOST}. Deliberately longer than
+ * the ninety seconds that stretch covers: a part is sent whole, so a plan
+ * coarser than the request sends more than was asked for, and the figure the
+ * top-up is billed on is the run's own rather than the request's.
+ */
+const SENT_SECONDS = 300;
+
 interface Sut {
 	retry: FailedPartRetry;
 	written: Map<string, string>;
@@ -67,6 +75,8 @@ function createSut(
 		stillMissing?: PartFailure[];
 		files?: Record<string, string>;
 		cost?: TranscribeRunCost;
+		/** What the run reports having sent, which need not be what it asked for. */
+		sentSeconds?: number | null;
 	} = {},
 ): Sut {
 	const written = new Map<string, string>();
@@ -127,6 +137,10 @@ function createSut(
 				),
 				missingParts: options.stillMissing ?? [],
 				cost: options.cost ?? RUN_COST,
+				sentSeconds:
+					options.sentSeconds === undefined
+						? SENT_SECONDS
+						: options.sentSeconds,
 			});
 		},
 	);
@@ -280,7 +294,7 @@ describe('topping up a transcript', () => {
 		expect(outcome.stillMissing).toEqual([WHOLE_FILE]);
 	});
 
-	it('reports what the engine charged for the stretches it sent', async () => {
+	it('reports what the engine charged for the audio it sent', async () => {
 		// A top-up calls the same paid engine a full run does, and the
 		// session total covered every other surface but not this one
 		const { retry } = createSut();
@@ -288,7 +302,31 @@ describe('topping up a transcript', () => {
 		const outcome = await retry.retry();
 
 		expect(outcome.cost).toEqual(RUN_COST);
-		expect(outcome.sentSeconds).toBe(90);
+		expect(outcome.sentSeconds).toBe(SENT_SECONDS);
+	});
+
+	it('bills the audio the run sent, not the stretch it asked for', async () => {
+		// Adding the asked-for stretches up quoted ninety seconds for a run
+		// that sent five minutes: a part is sent whole, so a plan that has
+		// grown coarser since the failed run - a larger chunk size, or an
+		// engine that takes the recording in one request - is charged for
+		// more than the gap it was called to close.
+		const { retry, asked } = createSut();
+
+		const outcome = await retry.retry();
+
+		expect(at(asked, 0)).toEqual([{ startSeconds: 30, endSeconds: 120 }]);
+		expect(outcome.sentSeconds).not.toBe(90);
+	});
+
+	it('reports nothing measurable for a run that could not tell', async () => {
+		// The whole-file path never measures a duration, and the session
+		// total prices an unknown length as unpriced rather than as zero.
+		const { retry } = createSut({ sentSeconds: null });
+
+		const outcome = await retry.retry();
+
+		expect(outcome.sentSeconds).toBeNull();
 	});
 
 	it('leaves a translation alone, since it is a second document', async () => {
@@ -375,6 +413,20 @@ describe('a top-up that cannot be attempted', () => {
 		expect((await retry.retry()).blocked).toContain('JSON transcript');
 		expect(asked).toHaveLength(0);
 		warn.mockRestore();
+	});
+
+	// Whether a transcript file exists at all is decided by the destination
+	// and not by the format. On the default destination the transcript goes
+	// into the note, no file is written, and the format row is not even
+	// shown, so naming the format alone sent the user looking for a control
+	// they could not see, to set a value it already held.
+	it('names the destination that decides whether a file was written', async () => {
+		const { retry } = createSut({
+			outputs: [{ path: 'rec.srt', format: 'srt' }],
+			files: { 'rec.srt': 'subtitles' },
+		});
+
+		expect((await retry.retry()).blocked).toContain('Destination');
 	});
 });
 

@@ -87,6 +87,23 @@ const ENHANCED_FLAG = 'aarEnhanced';
 const RERENDER_DEBOUNCE_MS = 50;
 
 /**
+ * The recording a sidecar file belongs to, or null for anything that is not
+ * one.
+ *
+ * Both halves of keeping the marker index current read the same event stream
+ * and ask the same question of it - a sidecar written, a sidecar deleted - so
+ * they ask it in one place rather than each carrying its own suffix
+ * arithmetic.
+ * @param file - The vault file an event named
+ * @returns The recording's vault-relative path, or null
+ */
+function sidecarRecordingPath(file: TAbstractFile): string | null {
+	return file instanceof TFile && file.path.endsWith(SIDECAR_SUFFIX)
+		? file.path.slice(0, -SIDECAR_SUFFIX.length)
+		: null;
+}
+
+/**
  * Registers and owns the enhanced player integration.
  */
 export class EnhancedPlayerRegistrar {
@@ -228,6 +245,16 @@ export class EnhancedPlayerRegistrar {
 					this.markerSearch.remove(file.path);
 					this.mediaKindCache.delete(file.path);
 					this.mediaKindStore?.handleDelete(file.path);
+					return;
+				}
+				// A sidecar is removed the moment its last marker goes, and
+				// that recording has to leave the index with it. Dropped
+				// outright rather than re-read: the file is gone, so there is
+				// nothing on disk to answer with, and the store's own cache
+				// would still hand back what it was holding.
+				const recording = sidecarRecordingPath(file);
+				if (recording !== null) {
+					this.markerSearch.remove(recording);
 				}
 			}),
 		);
@@ -252,10 +279,9 @@ export class EnhancedPlayerRegistrar {
 	 * @param file - The vault file that was written
 	 */
 	private reindexSidecar(file: TAbstractFile): void {
-		if (file instanceof TFile && file.path.endsWith(SIDECAR_SUFFIX)) {
-			void this.markerSearch.refresh(
-				file.path.slice(0, -SIDECAR_SUFFIX.length),
-			);
+		const recording = sidecarRecordingPath(file);
+		if (recording !== null) {
+			void this.markerSearch.refresh(recording);
 		}
 	}
 

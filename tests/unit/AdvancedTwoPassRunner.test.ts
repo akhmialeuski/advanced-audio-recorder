@@ -174,7 +174,12 @@ describe('a second pass that is declined', () => {
 });
 
 describe('a second pass that is adopted', () => {
-	it('answers with the improved transcript and the parts it still missed', async () => {
+	// The outcome carries nothing but the transcript. A pass that lost a part
+	// is turned into a skip before it can be adopted, so an adopted one has no
+	// failures to report and the caller clears the first pass's own without
+	// testing anything. The exact match is what keeps a list of them from
+	// growing back onto an outcome that can never carry one.
+	it('answers with the improved transcript and nothing else', async () => {
 		mockGenerateContext.mockResolvedValue(usableContext());
 		const { runner } = createSut();
 
@@ -189,7 +194,6 @@ describe('a second pass that is adopted', () => {
 					}),
 				],
 			}),
-			failedParts: [],
 		});
 	});
 

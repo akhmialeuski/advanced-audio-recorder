@@ -27,7 +27,7 @@ function createSut(
 	options: {
 		paths?: string[];
 		running?: boolean;
-		estimatedUsd?: number | null;
+		usdPerRecording?: number | null;
 		hasUnpriced?: boolean;
 	} = {},
 ): Sut {
@@ -37,8 +37,10 @@ function createSut(
 	const started = jest.fn();
 	const modal = new TranscriptionQueueModal(new App(), {
 		queue,
-		estimatedUsd:
-			options.estimatedUsd === undefined ? 0.5 : options.estimatedUsd,
+		usdPerRecording:
+			options.usdPerRecording === undefined
+				? 0.5
+				: options.usdPerRecording,
 		hasUnpriced: options.hasUnpriced ?? false,
 		onStart: started,
 		isRunning: () => options.running ?? false,
@@ -52,7 +54,7 @@ describe('what the queue dialog says it will cost', () => {
 		const { modal } = createSut();
 
 		expect(el(modal.contentEl, QUEUE.cost).textContent).toBe(
-			'2 recordings, about $0.50.',
+			'2 recordings, about $1.00.',
 		);
 	});
 
@@ -73,6 +75,21 @@ describe('what the queue dialog says it will cost', () => {
 		);
 	});
 
+	it('reprices itself when a recording is dropped from the open dialog', () => {
+		// The line was written once at open while the list below it followed
+		// the queue, so dropping an entry left the two describing different
+		// queues: a spend was still quoted for work that was no longer there.
+		const { modal, queue } = createSut({
+			paths: ['a.webm', 'b.webm', 'c.webm'],
+		});
+
+		queue.remove('b.webm');
+
+		expect(el(modal.contentEl, QUEUE.cost).textContent).toBe(
+			'2 recordings, about $1.00.',
+		);
+	});
+
 	it('counts one recording in the singular', () => {
 		const { modal } = createSut({ paths: ['a.webm'] });
 
@@ -82,7 +99,7 @@ describe('what the queue dialog says it will cost', () => {
 	});
 
 	it('says so when the model has no built-in rate', () => {
-		const { modal } = createSut({ estimatedUsd: null });
+		const { modal } = createSut({ usdPerRecording: null });
 
 		expect(el(modal.contentEl, QUEUE.cost).textContent).toContain(
 			'no built-in rate',
@@ -233,7 +250,7 @@ describe('the controls over a queue', () => {
 		const started = jest.fn();
 		const modal = new TranscriptionQueueModal(new App(), {
 			queue,
-			estimatedUsd: 0.5,
+			usdPerRecording: 0.5,
 			hasUnpriced: false,
 			onStart: started,
 			isRunning: () => true,

@@ -31,16 +31,21 @@ export interface JournalTrack {
 	/** Sample rate of the PCM data in Hz (PCM tracks). */
 	pcmSampleRate: number;
 	/**
-	 * Level and stereo position this track was to be given in a merged
-	 * file, so a mix rebuilt from recovered parts reproduces the one the
-	 * interrupted session was going to write. Absent on a session that
-	 * writes one file per track, and on every journal written before the
-	 * mixer could place a track.
+	 * Level and stereo position this track was to be given in a merged file.
+	 * Absent on a session that writes one file per track, and on every
+	 * journal written before the mixer could place a track.
+	 *
+	 * Recorded rather than used: {@link module:recording/RecoveryService}
+	 * writes one file per track and mixes nothing, so nothing reads these
+	 * today. They are written because they cannot be recovered later - the
+	 * settings they came from may have changed by the next launch, and the
+	 * placement of a crashed session is only knowable from the session
+	 * itself. A recovery that learns to merge reads them here.
 	 *
 	 * Adding them deliberately did not bump JOURNAL_VERSION, by the
-	 * precedent captureMode set: an older plugin ignores the fields and
-	 * mixes the recovered tracks flat, while a bump would make it skip the
-	 * whole journal and lose the recovery itself.
+	 * precedent captureMode set: an older plugin ignores fields it does not
+	 * know, while a bump would make it skip the whole journal and lose the
+	 * recovery itself.
 	 */
 	gainDb?: number;
 	/** Stereo position for the merged file; see {@link JournalTrack.gainDb}. */

@@ -45,13 +45,19 @@ export type AdvancedSkipReason =
 	| 'too-short'
 	| 'failed';
 
-/** What the second pass answered: an improved transcript, or a reason it did not run. */
+/**
+ * What the second pass answered: an improved transcript, or a reason it did
+ * not run.
+ *
+ * An adopted pass carries no failed parts, and says so by not having the
+ * field: it is only ever adopted when it succeeded on every part, so the list
+ * could hold nothing but an empty array. Stating that in the type is what
+ * lets the caller clear the first pass's own failures without testing
+ * anything, which is the point of adopting a whole pass rather than merging
+ * two.
+ */
 export type AdvancedPassOutcome =
-	| {
-			status: 'improved';
-			transcript: Transcript;
-			failedParts: PartFailure[];
-	  }
+	| { status: 'improved'; transcript: Transcript }
 	| { status: 'skipped'; reason: AdvancedSkipReason; detail?: string };
 
 /** One transcribed part, as the run accumulates them. */
@@ -271,13 +277,11 @@ export class AdvancedTwoPassRunner {
 			// lost this much text is discarded in favour of the baseline.
 			return { status: 'skipped', reason: 'too-short' };
 		}
-		// The adopted pass succeeded on every part, including any the first pass
-		// lost, so the incomplete-transcription warning follows it.
-		return {
-			status: 'improved',
-			transcript: secondPass,
-			failedParts: secondFailed,
-		};
+		// Reached only with `secondFailed` empty, because the guard above turns
+		// any part this pass lost into a skip. So the adopted pass succeeded on
+		// every part, including any the first pass lost, and the
+		// incomplete-transcription warning follows it away.
+		return { status: 'improved', transcript: secondPass };
 	}
 }
 

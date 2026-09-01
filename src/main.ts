@@ -498,6 +498,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * Called when the plugin is unloaded.
 	 */
 	override onunload(): void {
+		// Stopped before the flush, so what goes to disk is the queue as the
+		// stop left it. A drain holds the app and the settings reader, so
+		// without this it went on calling a paid engine and writing
+		// transcripts into a vault the plugin had already been removed from.
+		this.transcriptionQueue.stop();
 		// The queue is losable but not worth losing a change to: whatever the
 		// last state change was, it goes to disk before the plugin does.
 		void this.queuedTranscriptions?.flush();

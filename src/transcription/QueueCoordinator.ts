@@ -40,6 +40,14 @@ export class QueueCoordinator {
 	constructor(private readonly deps: QueueCoordinatorDeps) {}
 
 	/**
+	 * Stops a drain in flight, for plugin unload. The coordinator is what the
+	 * plugin holds, so the lifecycle reaches the runner through here.
+	 */
+	stop(): void {
+		this.deps.runner.stop();
+	}
+
+	/**
 	 * Queues every recording in a folder and shows what will run. Recordings
 	 * already queued are skipped, so queueing a folder twice does not
 	 * transcribe anything twice.
@@ -67,17 +75,17 @@ export class QueueCoordinator {
 	 */
 	open(): void {
 		const settings = this.deps.getSettings();
-		// Only what is still to run: a queue reopened after it drained has
-		// nothing left to bill for, and pricing its finished entries would
-		// quote the user a spend that will not happen.
-		const count = this.deps.queue.pendingCount();
+		// Priced per recording and multiplied by the dialog, which reads how
+		// many are still to run from the live queue: a queue reopened after it
+		// drained has nothing left to bill for, and one edited while it is
+		// open must not go on quoting the count it was opened with.
 		const one = buildCostEstimate(
 			settings,
 			this.deps.assumedSecondsPerRecording,
 		);
 		new TranscriptionQueueModal(this.deps.app, {
 			queue: this.deps.queue,
-			estimatedUsd: one.totalUsd === null ? null : one.totalUsd * count,
+			usdPerRecording: one.totalUsd,
 			hasUnpriced: one.hasUnpriced,
 			onStart: () => {
 				void this.deps.runner.drain();

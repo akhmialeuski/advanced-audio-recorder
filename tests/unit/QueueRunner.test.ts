@@ -5,7 +5,10 @@
  */
 
 import { TFile } from 'obsidian';
-import { QueueRunner } from 'src/transcription/QueueRunner';
+import {
+	QueueRunner,
+	type QueueTranscriber,
+} from 'src/transcription/QueueRunner';
 import {
 	TranscriptionQueue,
 	TRANSCRIPTION_QUEUE_FILE,
@@ -31,9 +34,26 @@ const QUEUE_PATH = `.obsidian/plugins/aar/${TRANSCRIPTION_QUEUE_FILE}`;
  */
 const RUNAWAY_CALL_CAP = 5;
 
+/**
+ * The cancellation a run is handed, taken from the runner's own contract so
+ * the test records exactly the type it passes on.
+ */
+type RunToken = Parameters<QueueTranscriber>[1]['token'];
+
 /** A priced run, as the service reports one. */
 function cost(usd: number | null = 0.05): TranscribeRunCost {
 	return { engineId: 'deepgram', usd, usage: {} };
+}
+
+/**
+ * A run that stops the drain and then rejects the way an aborted request
+ * does, which is what unloading the plugin looks like from inside one.
+ * @param runner - The runner whose drain is stopped
+ * @returns The rejection the stopped run answers with
+ */
+function stoppedRun(runner: QueueRunner): Promise<{ cost: TranscribeRunCost }> {
+	runner.stop();
+	return Promise.reject(new Error('signal is aborted'));
 }
 
 /** One finished run as the session counter was handed it. */
@@ -48,6 +68,8 @@ interface Sut {
 	queue: TranscriptionQueue;
 	transcribed: string[];
 	recorded: RecordedRun[];
+	/** The cancellation each run was handed, in the order they ran. */
+	tokens: RunToken[];
 }
 
 /**
@@ -68,6 +90,7 @@ function createSut(
 	const missing = new Set(options.missing ?? []);
 	const transcribed: string[] = [];
 	const recorded: RecordedRun[] = [];
+	const tokens: RunToken[] = [];
 	const app = createMockApp({
 		vault: {
 			getAbstractFileByPath: (path: string) =>
@@ -87,8 +110,9 @@ function createSut(
 		app,
 		queue,
 		getSettings: () => mergeSettings({}),
-		transcribe: (file) => {
+		transcribe: (file, runOptions) => {
 			transcribed.push(file.path);
+			tokens.push(runOptions.token);
 			return (
 				options.answer?.(file.path) ?? Promise.resolve({ cost: cost() })
 			);
@@ -105,7 +129,7 @@ function createSut(
 		},
 		assumedSecondsPerRecording: ASSUMED_SECONDS,
 	});
-	return { runner, queue, transcribed, recorded };
+	return { runner, queue, transcribed, recorded, tokens };
 }
 
 describe('draining the queue', () => {
@@ -178,6 +202,21 @@ describe('draining the queue', () => {
 		);
 	});
 
+	it('starts a queue that was left paused', async () => {
+		// A pause outlived the drain that honoured it. Once the recording in
+		// flight had finished the loop exited, the dialog stopped offering
+		// Resume, and the flag was left on disk with nothing able to clear
+		// it: Start called drain, drain read the flag and returned, and the
+		// queue could not be run again in this session or any later one.
+		const { runner, queue, transcribed } = createSut();
+		queue.setPaused(true);
+
+		await runner.drain();
+
+		expect(transcribed).toEqual(['a.webm', 'b.webm']);
+		expect(queue.isPaused()).toBe(false);
+	});
+
 	it('stops after the recording in flight when the queue is paused', async () => {
 		const { runner, queue, transcribed } = createSut({
 			answer: (path) => {
@@ -192,6 +231,80 @@ describe('draining the queue', () => {
 
 		expect(transcribed).toEqual(['a.webm']);
 		expect(queue.hasWork()).toBe(true);
+	});
+
+	it('hands each run a cancellation that the stop aborts', async () => {
+		// The request the drain has in flight belongs to the plugin that
+		// started it, so unloading has to be able to end it rather than let
+		// it finish against a vault the plugin has left.
+		const { runner, tokens } = createSut({
+			paths: ['a.webm'],
+			answer: () => {
+				runner.stop();
+				return Promise.resolve({ cost: cost() });
+			},
+		});
+
+		await runner.drain();
+
+		expect(at(tokens, 0)?.isCancelled()).toBe(true);
+	});
+
+	it('starts nothing after the drain is stopped', async () => {
+		const { runner, transcribed } = createSut({
+			answer: (path) => {
+				if (path === 'a.webm') {
+					runner.stop();
+				}
+				return Promise.resolve({ cost: cost() });
+			},
+		});
+
+		await runner.drain();
+
+		expect(transcribed).toEqual(['a.webm']);
+	});
+
+	it('leaves a stopped recording queued rather than failed', async () => {
+		// The abort reaches the run as a rejection, and recording that as a
+		// failure would leave the user clearing by hand something the engine
+		// never refused; it waits instead, so the next session picks it up.
+		const { runner, queue } = createSut({
+			answer: (path) =>
+				path === 'a.webm'
+					? stoppedRun(runner)
+					: Promise.resolve({ cost: cost() }),
+		});
+
+		await runner.drain();
+
+		expect(queue.entries().map((entry) => entry.state)).toEqual([
+			'waiting',
+			'waiting',
+		]);
+		expect(noticeMessages()).toEqual([]);
+	});
+
+	it('runs again after a stop, on a fresh cancellation', async () => {
+		// The source is rebuilt at the start of each drain, so a stop cannot
+		// leave the runner permanently unable to start.
+		let stopThisRun = true;
+		const { runner, queue, transcribed } = createSut({
+			paths: ['a.webm'],
+			answer: () => {
+				if (!stopThisRun) {
+					return Promise.resolve({ cost: cost() });
+				}
+				stopThisRun = false;
+				return stoppedRun(runner);
+			},
+		});
+		await runner.drain();
+
+		await runner.drain();
+
+		expect(transcribed).toEqual(['a.webm', 'a.webm']);
+		expect(at(queue.entries(), 0).state).toBe('done');
 	});
 
 	it('does nothing while a drain is already running', async () => {

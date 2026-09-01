@@ -2,11 +2,16 @@
  * Transcribes again only the parts a previous run could not, and splices what
  * comes back into the transcript that run already produced.
  *
- * The parts are known exactly: the plan that cuts a recording into parts is a
- * pure function of its duration and the engine's limit, so the same recording
- * prepares to the same boundaries every time, and the run recorded the bounds
- * of what it lost. That is what makes this a top-up rather than a second run:
- * exactly the missing stretches are sent, and exactly those are billed.
+ * The parts are known: the plan that cuts a recording into parts is a pure
+ * function of its duration and the engine's limit, so a recording prepares to
+ * the same boundaries every time and the run recorded the bounds of what it
+ * lost. That is what makes this a top-up rather than a second run: the parts
+ * covering the missing stretches are sent and the rest of the recording is
+ * not. A part is sent whole, though, so a plan that has grown coarser since
+ * the failed run - a larger chunk size, an engine that takes the recording in
+ * one request - sends more than was asked for. What the run reports having
+ * sent is therefore what the session total is estimated from, rather than the
+ * length of the stretches that were asked for.
  *
  * The transcript is read back from the run's own JSON output, which is a
  * serialized transcript and therefore the one lossless source. A recording
@@ -42,9 +47,13 @@ export interface RetryOutcome {
 	rewritten: number;
 	/**
 	 * Seconds of audio the top-up sent, which is what it was billed for and
-	 * what sizes the estimate when the engine reports no usage.
+	 * what sizes the estimate when the engine reports no usage. Reported by
+	 * the run rather than added up from the stretches asked for, because a
+	 * part is sent whole and a plan coarser than the request sends more than
+	 * it was asked for. Null when the run could not measure what it sent, and
+	 * zero when nothing was attempted.
 	 */
-	sentSeconds: number;
+	sentSeconds: number | null;
 	/**
 	 * What the engine reported for those stretches, so the caller puts the
 	 * spend into the session total by the rule every surface follows. Absent
@@ -75,6 +84,8 @@ export interface RetryRun {
 	missingParts: PartFailure[];
 	/** What the engine reported for the run, for the session total. */
 	cost: TranscribeRunCost;
+	/** Seconds of audio the run actually sent; null when it could not tell. */
+	sentSeconds: number | null;
 }
 
 /** Runs the missing stretches again; the service, narrowed to what is used. */
@@ -128,6 +139,7 @@ export function serviceRunner(
 			transcript: result.transcript,
 			missingParts: result.missingParts,
 			cost: result.cost,
+			sentSeconds: result.sentSeconds,
 		};
 	};
 }
@@ -215,14 +227,21 @@ export class FailedPartRetry {
 		}
 		const source = await this.readTranscript();
 		if (!source) {
+			// The destination is named before the format, because that is the
+			// setting that decides whether a transcript file exists at all. A
+			// run that inserts into the note writes none, and on that
+			// destination the format row is not even shown, so naming the
+			// format alone sent the user looking for a control they could not
+			// see - while the format it told them to choose was already JSON.
 			return this.blocked(
-				'Topping up needs the run to have written a JSON transcript, which is the only output that keeps the segment timings. Set the transcript file format to JSON and transcribe again.',
+				'Topping up needs a JSON transcript file, which is the only output that keeps the segment timings. A transcript inserted into a note leaves no such file behind, so set Transcript output > Destination to one that saves a file, with File format set to JSON, and transcribe again.',
 			);
 		}
 		const {
 			transcript: recovered,
 			missingParts,
 			cost,
+			sentSeconds,
 		} = await this.run(this.file, ranges);
 		const completed = spliceSegments(
 			source.transcript,
@@ -241,7 +260,7 @@ export class FailedPartRetry {
 				completed.transcript,
 				source.outputs,
 			),
-			sentSeconds: sentSeconds(ranges),
+			sentSeconds,
 			cost,
 		};
 	}
@@ -362,19 +381,6 @@ function partitionParts(parts: readonly PartFailure[]): {
 		});
 	}
 	return { ranges, unsent };
-}
-
-/**
- * How much audio a top-up sends, which is what it is billed for.
- * @param ranges - The stretches being transcribed again
- * @returns Their total length in seconds
- */
-function sentSeconds(ranges: readonly RecordingRange[]): number {
-	return ranges.reduce(
-		(total, range) =>
-			total + Math.max(0, range.endSeconds - range.startSeconds),
-		0,
-	);
 }
 
 /**

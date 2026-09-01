@@ -780,6 +780,33 @@ describe('settings definitions', () => {
 
 			expect(typeof disabled === 'function' && disabled()).toBe(false);
 		});
+
+		it.each(['Track 1 level', 'Track 1 position'])(
+			'disables %s while the track has no device',
+			(name) => {
+				// The writer refuses a place in the mix for a track with no
+				// input, exactly as it refuses a channel layout, so a row that
+				// took the edit anyway accepted a number and then showed the
+				// old one back.
+				settings.enableMultiTrack = true;
+				settings.outputMode = 'single';
+				// A track with no input at all, which is what every track
+				// starts as and what the writer refuses a placement for.
+				settings.trackAudioSources.delete(1);
+				const disabled = rowOf(build(), MULTI, name).control?.disabled;
+
+				expect(typeof disabled === 'function' && disabled()).toBe(true);
+
+				settings.trackAudioSources.set(1, {
+					deviceId: 'mic-1',
+					channelMode: 'source',
+				});
+
+				expect(typeof disabled === 'function' && disabled()).toBe(
+					false,
+				);
+			},
+		);
 	});
 
 	describe('the audio splitting section', () => {

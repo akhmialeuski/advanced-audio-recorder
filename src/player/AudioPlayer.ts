@@ -430,10 +430,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.register(() => {
 			// Closing the note is the other way a listener leaves a recording
 			// part-heard, and it fires no pause.
-			this.positionMemory.remember(
-				this.audio.currentTime,
-				this.knownDuration(),
-			);
+			this.rememberPosition();
 		});
 		const unregisterPlaybackController =
 			this.registry.registerPlaybackController(this.audioKey, {
@@ -934,10 +931,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			// Where a listener stops is where they want to come back to, so
 			// the pause is what commits the position rather than a timer
 			// rewriting the sidecar every few seconds while it plays.
-			this.positionMemory.remember(
-				this.audio.currentTime,
-				this.knownDuration(),
-			);
+			this.rememberPosition();
 			this.controls?.setPlaying(false);
 		});
 		this.registerDomEvent(this.audio, 'ended', () => {
@@ -1008,6 +1002,28 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		// The status bar reports the loop but reads it from this player, and
 		// nothing on the audio element changed to make it look again.
 		this.registry.refreshPlaybackState();
+	}
+
+	/**
+	 * Reports where playback stands as the position to come back to, but only
+	 * for a playback somebody actually engaged.
+	 *
+	 * A player whose shared audio was never played or sought has no listening
+	 * position to report: what `currentTime` holds there is the embed's own
+	 * `#t=` offset, or a plain zero. Reported anyway, an offset that early
+	 * reads as "not worth resuming" and clears the recording - so merely
+	 * opening a note that embeds a timecode into a recording, and closing it
+	 * again, threw away the position an earlier session had left. The registry
+	 * already answers whether the timeline moved, which is the same question.
+	 */
+	private rememberPosition(): void {
+		if (!this.registry.isAudioEngaged(this.audioKey)) {
+			return;
+		}
+		this.positionMemory.remember(
+			this.audio.currentTime,
+			this.knownDuration(),
+		);
 	}
 
 	/**
