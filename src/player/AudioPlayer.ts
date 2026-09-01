@@ -570,11 +570,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 
 	/**
 	 * Re-renders the player UI in place with new settings (e.g. after the
-	 * waveform or markers window is toggled). Does nothing when the settings
-	 * are unchanged, so a save that did not touch a player window - even an
-	 * unrelated recording setting - never rebuilds an open player or resets
-	 * its playback. Playback continues uninterrupted because the audio
-	 * element is not rebuilt.
+	 * waveform or markers window is toggled, or the skip step is changed).
+	 * Does nothing when the settings are unchanged, so a save that touched
+	 * none of them - even an unrelated recording setting - never rebuilds an
+	 * open player or resets its playback. Playback continues uninterrupted
+	 * because the audio element is not rebuilt.
 	 * @param settings - The new render-ready player settings
 	 */
 	applySettings(settings: ResolvedPlayerSettings): void {

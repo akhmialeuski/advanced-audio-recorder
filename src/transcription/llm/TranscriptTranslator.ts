@@ -189,10 +189,17 @@ export class TranscriptTranslator {
 	}
 
 	/**
-	 * Translates one run of segments, retrying once when the answer does not
-	 * line up. A second mismatch leaves those segments in their own language:
-	 * a partly translated transcript with correct timings is worth more than
-	 * one whose lines have slipped against the clock.
+	 * Translates one run of segments, asking again for whatever the answer
+	 * left out. A second gap leaves those segments in their own language: a
+	 * partly translated transcript with correct timings is worth more than one
+	 * whose lines have slipped against the clock.
+	 *
+	 * The second call asks only for the lines still missing and keeps what the
+	 * first one answered. Repeating the whole run and taking the new answer
+	 * instead threw away work the user had already paid for: a first call that
+	 * came back with ninety-five of a hundred lines followed by a second that
+	 * came back with five left ninety-five segments untranslated that were
+	 * already translated.
 	 * @param indices - Segment indices to translate
 	 * @returns The translated text of each segment the answer covered
 	 */
@@ -202,13 +209,18 @@ export class TranscriptTranslator {
 		const wanted = new Set(indices);
 		// Extra lines are dropped by the wanted check, and a missing one
 		// leaves the count short; either way the run is not trustworthy.
-		let answered = await this.askFor(indices);
+		const answered = await this.askFor(indices);
+		if (answered.size === wanted.size) {
+			return answered;
+		}
+		this.warnMismatch(answered.size, wanted.size, true);
+		for (const [index, text] of await this.askFor(
+			indices.filter((index) => !answered.has(index)),
+		)) {
+			answered.set(index, text);
+		}
 		if (answered.size !== wanted.size) {
-			this.warnMismatch(answered.size, wanted.size, true);
-			answered = await this.askFor(indices);
-			if (answered.size !== wanted.size) {
-				this.warnMismatch(answered.size, wanted.size, false);
-			}
+			this.warnMismatch(answered.size, wanted.size, false);
 		}
 		return answered;
 	}

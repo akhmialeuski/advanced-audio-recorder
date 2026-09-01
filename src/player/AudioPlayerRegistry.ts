@@ -491,6 +491,11 @@ export class AudioPlayerRegistry {
 	 * settings change (e.g. toggling the waveform or markers window) takes
 	 * effect immediately without re-rendering the note. Disconnected players
 	 * are pruned in passing.
+	 *
+	 * The snapshot is republished afterwards because part of what it reports
+	 * is read from the player that owns the playback rather than from the
+	 * audio element - the skip step is - and nothing about the element
+	 * changed to make the status bar and the commands look again.
 	 * @param settings - The new render-ready player settings
 	 */
 	applySettings(settings: ResolvedPlayerSettings): void {
@@ -503,6 +508,7 @@ export class AudioPlayerRegistry {
 				player.applySettings(settings);
 			}
 		}
+		this.emitPlaybackState();
 	}
 
 	/**

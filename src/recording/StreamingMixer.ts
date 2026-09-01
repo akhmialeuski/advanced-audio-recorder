@@ -121,17 +121,7 @@ export function mixLayout(tracks: readonly PcmMixSize[]): MixLayout {
 	}
 	const sampleRate = Math.max(...tracks.map((track) => track.sampleRate));
 	const totalFrames = Math.max(
-		...tracks.map((track) => {
-			const frames = Math.floor(
-				track.pcmBytes / (PCM_BYTES_PER_SAMPLE * track.channels),
-			);
-			// A track slower than the output covers the same seconds in fewer
-			// frames, and rounding down would drop its last fraction of a
-			// window rather than the silence after it.
-			return track.sampleRate === sampleRate
-				? frames
-				: Math.ceil((frames * sampleRate) / track.sampleRate);
-		}),
+		...tracks.map((track) => trackFrames(track, sampleRate)),
 	);
 	const outChannels = tracks.some((track) => (track.pan ?? 0) !== 0)
 		? 2
@@ -142,6 +132,29 @@ export function mixLayout(tracks: readonly PcmMixSize[]): MixLayout {
 		sampleRate,
 		pcmByteLength: totalFrames * outChannels * PCM_BYTES_PER_SAMPLE,
 	};
+}
+
+/**
+ * How many frames one track covers at the rate the mix is written at.
+ *
+ * A function of its own because it is asked twice and for opposite reasons:
+ * the layout takes the longest of them as the length of the whole file, and
+ * each track takes its own as the point past which it contributes silence
+ * rather than audio.
+ * @param track - What the track captured, in bytes, channels, and rate
+ * @param sampleRate - Rate the mix is written at
+ * @returns The track's own length in frames, at that rate
+ */
+export function trackFrames(track: PcmMixSize, sampleRate: number): number {
+	const frames = Math.floor(
+		track.pcmBytes / (PCM_BYTES_PER_SAMPLE * track.channels),
+	);
+	// A track slower than the output covers the same seconds in fewer frames,
+	// and rounding down would drop its last fraction of a window rather than
+	// the silence after it.
+	return track.sampleRate === sampleRate
+		? frames
+		: Math.ceil((frames * sampleRate) / track.sampleRate);
 }
 
 /**
@@ -318,6 +331,12 @@ class TrackWindowReader {
 interface MixLane {
 	/** The track this lane carries. */
 	readonly track: PcmMixTrack;
+	/**
+	 * Frames the track itself captured, at the output rate. A track shorter
+	 * than the mix is read out as silence past this point, and that silence
+	 * belongs to the mix rather than to the track.
+	 */
+	readonly frames: number;
 	/** Reader at the output rate; replaced between the two passes. */
 	reader: TrackWindowReader;
 	/** Sum of the squared samples seen, which becomes the track's level. */
@@ -443,7 +462,16 @@ async function measureTracks(
 		accumulator.fill(0, 0, frames * outChannels);
 		for (const lane of lanes) {
 			await lane.reader.read(frames);
-			const samples = frames * lane.track.channels;
+			// Measured over what the track captured and no further. A track
+			// shorter than the mix is read out as silence to the end, and
+			// counting that silence as part of the track understates how loud
+			// it is, which had the level alignment raise a participant who
+			// joined half way through above everyone who was there throughout.
+			const measured = Math.max(
+				0,
+				Math.min(frames, lane.frames - frameOffset),
+			);
+			const samples = measured * lane.track.channels;
 			const rms = windowRms(lane.reader.window, samples);
 			lane.squares += rms * rms * samples;
 			lane.count += samples;
@@ -453,6 +481,8 @@ async function measureTracks(
 					Math.abs(lane.reader.window[i] ?? 0),
 				);
 			}
+			// The whole window is summed even so, because the silence a track
+			// runs out into is genuinely part of the mix.
 			accumulateLane(lane, accumulator, frames, outChannels);
 		}
 		// Walked as a view rather than by index: iterating a typed array
@@ -538,8 +568,13 @@ export async function mixPcmTracksToWav(
 	}
 	const windowFrames = options.windowFrames ?? DEFAULT_WINDOW_FRAMES;
 
-	// Captured bytes per track from the segment sizes on disk
-	const sizes: PcmMixSize[] = [];
+	if (tracks.length === 0) {
+		throw new Error('No tracks to mix');
+	}
+	// Captured bytes per track from the segment sizes on disk, kept paired
+	// with the track they were measured from: the lane below needs both, and
+	// two arrays walked by index is the shape that lets them drift apart.
+	const sized: { track: PcmMixTrack; size: PcmMixSize }[] = [];
 	for (const track of tracks) {
 		let bytes = 0;
 		for (const path of track.segmentPaths) {
@@ -549,18 +584,19 @@ export async function mixPcmTracksToWav(
 			}
 			bytes += stat.size;
 		}
-		sizes.push({
-			pcmBytes: bytes,
-			channels: track.channels,
-			sampleRate: track.sampleRate,
-			...(track.pan === undefined ? {} : { pan: track.pan }),
+		sized.push({
+			track,
+			size: {
+				pcmBytes: bytes,
+				channels: track.channels,
+				sampleRate: track.sampleRate,
+				...(track.pan === undefined ? {} : { pan: track.pan }),
+			},
 		});
 	}
-	if (tracks.length === 0) {
-		throw new Error('No tracks to mix');
-	}
-	const { totalFrames, outChannels, sampleRate, pcmByteLength } =
-		mixLayout(sizes);
+	const { totalFrames, outChannels, sampleRate, pcmByteLength } = mixLayout(
+		sized.map((entry) => entry.size),
+	);
 
 	const wavBuffer = createWavFileBuffer(
 		outChannels,
@@ -577,8 +613,9 @@ export async function mixPcmTracksToWav(
 	};
 	const newReader = (track: PcmMixTrack): TrackWindowReader =>
 		new TrackWindowReader(track, sampleRate, windowFrames, app);
-	const lanes: MixLane[] = tracks.map((track) => ({
+	const lanes: MixLane[] = sized.map(({ track, size }) => ({
 		track,
+		frames: trackFrames(size, sampleRate),
 		reader: newReader(track),
 		squares: 0,
 		count: 0,

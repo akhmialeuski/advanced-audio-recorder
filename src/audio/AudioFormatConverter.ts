@@ -361,6 +361,218 @@ export function convertBlobToFormatBuffer(
 	);
 }
 
+/** How one merged track is placed: its multiplier into each output channel. */
+export interface TrackLevels {
+	/** Multiplier into the left, or only, output channel. */
+	left: number;
+	/** Multiplier into the right output channel. */
+	right: number;
+}
+
+/** A track left where it was captured, which is what an unplaced one is. */
+const CENTRED: TrackLevels = { left: 1, right: 1 };
+
+/**
+ * Where the tracks of a merge sit, and whether they are levelled first.
+ *
+ * Handed in rather than read here, because where a track sits belongs to the
+ * recording session and the rules that turn decibels and a position into
+ * multipliers belong beside the streaming mixer that already applies them. A
+ * session merged by either route then comes out the same, which is the whole
+ * point: these controls were silently ignored on this route, so a level and a
+ * position set on a session recorded to anything but desktop WAV did nothing.
+ */
+export interface MergePlacement {
+	/**
+	 * Multipliers into each output channel, one per target and aligned with
+	 * them. A track with no entry stays where it was captured.
+	 */
+	readonly levels: readonly TrackLevels[];
+	/**
+	 * Brings one track to the shared level from the level it was measured at,
+	 * given as a share of full scale. Absent when the session does not align
+	 * levels, which is what makes alignment cost nothing when it is off.
+	 */
+	readonly normalize?: ((rms: number) => number) | undefined;
+}
+
+/** One decoded track, with the placement its own target carries. */
+interface PlacedTrack {
+	buffer: AudioBuffer;
+	levels: TrackLevels;
+}
+
+/**
+ * How loud one decoded track is, as a share of full scale, across every
+ * channel it carries.
+ * @param buffer - The decoded track
+ * @returns Its root mean square, between 0 and 1
+ */
+function bufferRms(buffer: AudioBuffer): number {
+	let sum = 0;
+	let count = 0;
+	for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+		const data = buffer.getChannelData(channel);
+		for (const sample of data) {
+			sum += sample * sample;
+		}
+		count += data.length;
+	}
+	return count === 0 ? 0 : Math.sqrt(sum / count);
+}
+
+/**
+ * Spreads a mono track across the two channels of a stereo mix at its own
+ * multiplier for each side, which is what panning one means: a mono buffer
+ * has one channel and nowhere to put a side.
+ * @param buffer - The mono track
+ * @param left - Multiplier into the left channel
+ * @param right - Multiplier into the right channel
+ * @param context - Builds the two-channel buffer
+ * @returns A stereo buffer holding the placed track
+ */
+function spreadMonoToStereo(
+	buffer: AudioBuffer,
+	left: number,
+	right: number,
+	context: BaseAudioContext,
+): AudioBuffer {
+	const source = buffer.getChannelData(0);
+	const spread = context.createBuffer(2, buffer.length, buffer.sampleRate);
+	const leftChannel = spread.getChannelData(0);
+	const rightChannel = spread.getChannelData(1);
+	// Walked as a view rather than by index: iterating a typed array yields a
+	// number, where an indexed read yields one that might be missing and
+	// needs a fallback no sample can ever reach.
+	let frame = 0;
+	for (const sample of source) {
+		leftChannel[frame] = sample * left;
+		rightChannel[frame] = sample * right;
+		frame++;
+	}
+	return spread;
+}
+
+/**
+ * Multiplies a track's channels in place, the first by the left figure and
+ * the second, where there is one, by the right.
+ * @param buffer - The track to scale
+ * @param left - Multiplier for the first channel
+ * @param right - Multiplier for the second channel
+ */
+function scaleChannels(buffer: AudioBuffer, left: number, right: number): void {
+	for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+		// The first channel takes the left figure and every other the right,
+		// which is exactly the pair for the one and two channel tracks a mix
+		// is made of. A source carrying more is downmixed by the graph, and
+		// the two figures are equal whenever nothing was panned at all.
+		const factor = channel === 0 ? left : right;
+		const data = buffer.getChannelData(channel);
+		let frame = 0;
+		for (const sample of data) {
+			data[frame] = sample * factor;
+			frame++;
+		}
+	}
+}
+
+/**
+ * Interleaved channels the merge is rendered at.
+ *
+ * Mono when every input is mono and nothing is panned: a stereo render would
+ * duplicate the mix into both channels while doubling encode time and file
+ * size. A track placed off centre takes the mix to stereo whatever its own
+ * channel count, which is the rule the streaming mixer's layout applies too -
+ * two mono microphones one to each side is the reason panning exists.
+ * @param tracks - The decoded tracks with their placement
+ * @returns 1 or 2
+ */
+function mergeChannelCount(tracks: readonly PlacedTrack[]): number {
+	if (tracks.some((track) => track.levels.left !== track.levels.right)) {
+		return 2;
+	}
+	return Math.min(
+		2,
+		Math.max(...tracks.map((track) => track.buffer.numberOfChannels)),
+	);
+}
+
+/**
+ * Applies each track's placement to the samples it is summed from.
+ *
+ * Written onto the decoded buffers rather than built as a graph of gain and
+ * panner nodes, because the panning here is the balance law the streaming
+ * mixer uses, where the centre leaves both sides at full level. A
+ * StereoPannerNode applies the constant-power law instead, which would put
+ * the centre at 0.707 and quieten by 3 dB every mix nobody panned. One rule
+ * shared with the other route is worth more than the node count.
+ *
+ * A track nothing was asked of is handed back untouched, so the common
+ * session pays nothing for the capability and its mix is the sum it has
+ * always been.
+ * @param tracks - The decoded tracks with the placement each carries
+ * @param channelCount - Interleaved channels of the mix
+ * @param context - Builds the buffer a panned mono track needs
+ * @param normalize - Brings a track to the shared level, when aligning
+ * @returns The buffers to sum, in the order given
+ */
+function placeTracks(
+	tracks: readonly PlacedTrack[],
+	channelCount: number,
+	context: BaseAudioContext,
+	normalize: ((rms: number) => number) | undefined,
+): AudioBuffer[] {
+	return tracks.map((track) => {
+		const level = normalize ? normalize(bufferRms(track.buffer)) : 1;
+		const left = track.levels.left * level;
+		const right = track.levels.right * level;
+		if (left === 1 && right === 1) {
+			return track.buffer;
+		}
+		if (channelCount === 2 && track.buffer.numberOfChannels === 1) {
+			return spreadMonoToStereo(track.buffer, left, right, context);
+		}
+		scaleChannels(track.buffer, left, right);
+		return track.buffer;
+	});
+}
+
+/**
+ * Brings a rendered mix onto the output range, in place.
+ *
+ * The sum of several tracks routinely lands past full scale, and clipping it
+ * is what turns two people talking at once into distortion. Scaling the whole
+ * mix by one factor instead keeps the balance between the tracks and costs
+ * only level, which is the trade the streaming mixer makes for the same
+ * reason. A mix that never reached full scale is left exactly as it was
+ * rendered.
+ * @param buffer - The rendered mix
+ * @returns The same buffer, scaled where it needed it
+ */
+function applyHeadroom(buffer: AudioBuffer): AudioBuffer {
+	const channels: Float32Array[] = [];
+	let peak = 0;
+	for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+		const data = buffer.getChannelData(channel);
+		channels.push(data);
+		for (const sample of data) {
+			peak = Math.max(peak, Math.abs(sample));
+		}
+	}
+	if (peak <= 1) {
+		return buffer;
+	}
+	const scale = 1 / peak;
+	for (const data of channels) {
+		let frame = 0;
+		for (const sample of data) {
+			data[frame] = sample * scale;
+			frame++;
+		}
+	}
+	return buffer;
+}
+
 /**
  * Merges multiple audio tracks into a single mixed audio blob. The
  * caller resolves the encodable target format (and names the output
@@ -373,8 +585,8 @@ export function convertBlobToFormatBuffer(
  * an OfflineAudioContext, so peak memory scales with total session PCM
  * (audit finding 6.4). This path is a deliberate fallback - it is reached
  * only when the streaming mix cannot apply (tryStreamMixToWav covers PCM
- * tracks with matching sample rates) - and should be revisited if the
- * streaming mixer ever grows resampling support for mismatched rates.
+ * tracks written as WAV) - and should be revisited if the streaming mixer
+ * ever learns to write a compressed format.
  * @param chunkTargets - Recording targets for each track
  * @param targetFormat - Resolved encodable output format
  * @param bitrate - Encoder bitrate in bits per second
@@ -382,6 +594,7 @@ export function convertBlobToFormatBuffer(
  * @param buildPcmTrackWavBlob - Function to build WAV blob from PCM target
  * @param buildTrackBlob - Function to build blob from MediaRecorder target
  * @param onProgress - Optional progress callback (percent, description)
+ * @param placement - Where the tracks sit; absent leaves them as captured
  * @returns Merged audio blob in the target format
  */
 export async function mergeAudioTracks(
@@ -392,12 +605,13 @@ export async function mergeAudioTracks(
 	buildPcmTrackWavBlob: TrackBlobBuilder,
 	buildTrackBlob: TrackBlobBuilder,
 	onProgress?: (percent: number, description: string) => void,
+	placement?: MergePlacement,
 ): Promise<Blob> {
 	const audioContext = new AudioContext();
 	let renderedBuffer: AudioBuffer;
 	try {
-		const buffers = await Promise.all(
-			chunkTargets.map(async (target) => {
+		const decoded = await Promise.all(
+			chunkTargets.map(async (target, index) => {
 				const blob = isWavPcmRecording
 					? await buildPcmTrackWavBlob(target)
 					: await buildTrackBlob(target);
@@ -405,39 +619,45 @@ export async function mergeAudioTracks(
 					return null;
 				}
 				const arrayBuffer = await blob.arrayBuffer();
-				return audioContext.decodeAudioData(arrayBuffer);
+				return {
+					buffer: await audioContext.decodeAudioData(arrayBuffer),
+					// Read against the target's own index, before the tracks
+					// that recorded nothing are dropped: the placement is
+					// aligned with the targets, and filtering first shifts
+					// every track after a silent one into another's place.
+					levels: placement?.levels[index] ?? CENTRED,
+				};
 			}),
 		);
 
-		const validBuffers = buffers.filter(
-			(buffer): buffer is AudioBuffer => buffer !== null,
+		const tracks = decoded.filter(
+			(track): track is PlacedTrack => track !== null,
 		);
-		if (validBuffers.length === 0) {
+		if (tracks.length === 0) {
 			throw new Error('No audio data recorded');
 		}
 
 		const longestDuration = Math.max(
-			...validBuffers.map((buffer) => buffer.duration),
+			...tracks.map((track) => track.buffer.duration),
 		);
-		// Mix in mono when every input is mono: a stereo render would just
-		// duplicate the mix into both channels while doubling encode time
-		// and file size. Any stereo input keeps the stereo render.
-		const channelCount = Math.min(
-			2,
-			Math.max(...validBuffers.map((buffer) => buffer.numberOfChannels)),
-		);
+		const channelCount = mergeChannelCount(tracks);
 		const offlineContext = new OfflineAudioContext(
 			channelCount,
 			audioContext.sampleRate * longestDuration,
 			audioContext.sampleRate,
 		);
 
-		validBuffers.forEach((buffer) => {
+		for (const buffer of placeTracks(
+			tracks,
+			channelCount,
+			offlineContext,
+			placement?.normalize,
+		)) {
 			const source = offlineContext.createBufferSource();
 			source.buffer = buffer;
 			source.connect(offlineContext.destination);
 			source.start(0);
-		});
+		}
 
 		renderedBuffer = await offlineContext.startRendering();
 	} finally {
@@ -453,7 +673,7 @@ export async function mergeAudioTracks(
 	}
 
 	return encodeAudioBuffer(
-		renderedBuffer,
+		applyHeadroom(renderedBuffer),
 		{
 			format: targetFormat,
 			bitrate,

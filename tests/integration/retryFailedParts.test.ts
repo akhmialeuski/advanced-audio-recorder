@@ -13,6 +13,7 @@ import {
 	type RetrySidecar,
 } from 'src/transcription/retryFailedParts';
 import type { PartFailure } from 'src/transcription/partFailure';
+import type { TranscribeRunCost } from 'src/transcription/TranscriptionService';
 import type {
 	Transcript,
 	TranscriptSegment,
@@ -30,6 +31,13 @@ const HEARD: TranscriptSegment[] = [
 	{ start: 0, end: 30, text: 'the opening' },
 	{ start: 120, end: 150, text: 'the closing' },
 ];
+
+/** What the engine reported for a top-up run. */
+const RUN_COST: TranscribeRunCost = {
+	engineId: 'deepgram',
+	usd: 0.02,
+	usage: {},
+};
 
 const LOST: PartFailure = {
 	label: '0:30-2:00',
@@ -58,6 +66,7 @@ function createSut(
 		recovered?: TranscriptSegment[];
 		stillMissing?: PartFailure[];
 		files?: Record<string, string>;
+		cost?: TranscribeRunCost;
 	} = {},
 ): Sut {
 	const written = new Map<string, string>();
@@ -117,6 +126,7 @@ function createSut(
 					],
 				),
 				missingParts: options.stillMissing ?? [],
+				cost: options.cost ?? RUN_COST,
 			});
 		},
 	);
@@ -124,41 +134,71 @@ function createSut(
 }
 
 describe('splicing recovered segments into a transcript', () => {
-	it('puts them in time order among the ones already there', () => {
-		const spliced = spliceSegments(transcriptOf(HEARD), [
-			{ start: 60, end: 90, text: 'the middle' },
-		]);
+	/** The stretch the top-up asked for in these cases. */
+	const ASKED = [{ startSeconds: 30, endSeconds: 120 }];
 
-		expect(spliced.segments.map((s) => s.text)).toEqual([
+	it('puts them in time order among the ones already there', () => {
+		const { transcript, spliced } = spliceSegments(
+			transcriptOf(HEARD),
+			[{ start: 60, end: 90, text: 'the middle' }],
+			ASKED,
+		);
+
+		expect(transcript.segments.map((s) => s.text)).toEqual([
+			'the opening',
+			'the middle',
+			'the closing',
+		]);
+		expect(spliced).toBe(1);
+	});
+
+	it('replaces whatever the transcript held inside the asked stretch', () => {
+		// A stretch was asked for again because what was there is not wanted,
+		// so what comes back for it is what it holds afterwards
+		const { transcript } = spliceSegments(
+			transcriptOf([
+				...HEARD,
+				{ start: 60, end: 90, text: 'a garbled attempt' },
+			]),
+			[{ start: 60, end: 90, text: 'the middle' }],
+			ASKED,
+		);
+
+		expect(transcript.segments.map((s) => s.text)).toEqual([
 			'the opening',
 			'the middle',
 			'the closing',
 		]);
 	});
 
-	it('leaves a segment that is already there alone', () => {
-		// A part that partly succeeded before must not come back doubled
-		const spliced = spliceSegments(transcriptOf(HEARD), [
-			{ start: 0, end: 30, text: 'the opening, again' },
+	it('drops what the answer carried from outside the asked stretch', () => {
+		// The part plan is a function of the settings in force, so a chunk
+		// size changed between the run and the top-up sends neighbouring
+		// parts again. They come back a fraction of a second off the stored
+		// offsets, and taking them writes the same speech into the transcript
+		// twice.
+		const { transcript, spliced } = spliceSegments(
+			transcriptOf(HEARD),
+			[
+				{ start: 0.4, end: 30, text: 'the opening, again' },
+				{ start: 60, end: 90, text: 'the middle' },
+			],
+			ASKED,
+		);
+
+		expect(transcript.segments.map((s) => s.text)).toEqual([
+			'the opening',
+			'the middle',
+			'the closing',
 		]);
-
-		expect(spliced.segments).toHaveLength(2);
-		expect(at(spliced.segments, 0).text).toBe('the opening');
-	});
-
-	it('treats a segment starting a hair apart as the same one', () => {
-		const spliced = spliceSegments(transcriptOf(HEARD), [
-			{ start: 0.01, end: 30, text: 'the opening, again' },
-		]);
-
-		expect(spliced.segments).toHaveLength(2);
+		expect(spliced).toBe(1);
 	});
 
 	it('keeps everything else about the transcript', () => {
-		const spliced = spliceSegments(transcriptOf(HEARD), []);
+		const { transcript } = spliceSegments(transcriptOf(HEARD), [], ASKED);
 
-		expect(spliced.language).toBe('en');
-		expect(spliced.segments).toHaveLength(2);
+		expect(transcript.language).toBe('en');
+		expect(transcript.segments).toHaveLength(2);
 	});
 });
 
@@ -218,6 +258,37 @@ describe('topping up a transcript', () => {
 		const clean = createSut();
 		await clean.retry.retry();
 		expect(at(clean.recorded, 0)).toEqual([]);
+	});
+
+	it('keeps a part it had no bounds to ask for on the record', async () => {
+		// It was never sent, so it is still missing. Writing only what came
+		// back erased it, and an absent record means "nothing is missing":
+		// the recording then reported itself complete with a gap in it.
+		const WHOLE_FILE: PartFailure = {
+			label: 'the recording',
+			message: 'too big',
+			startSeconds: 0,
+		};
+		const { retry, recorded, asked } = createSut({
+			failed: [WHOLE_FILE, LOST],
+		});
+
+		const outcome = await retry.retry();
+
+		expect(at(asked, 0)).toEqual([{ startSeconds: 30, endSeconds: 120 }]);
+		expect(at(recorded, 0)).toEqual([WHOLE_FILE]);
+		expect(outcome.stillMissing).toEqual([WHOLE_FILE]);
+	});
+
+	it('reports what the engine charged for the stretches it sent', async () => {
+		// A top-up calls the same paid engine a full run does, and the
+		// session total covered every other surface but not this one
+		const { retry } = createSut();
+
+		const outcome = await retry.retry();
+
+		expect(outcome.cost).toEqual(RUN_COST);
+		expect(outcome.sentSeconds).toBe(90);
 	});
 
 	it('leaves a translation alone, since it is a second document', async () => {

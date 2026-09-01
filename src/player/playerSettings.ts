@@ -44,17 +44,26 @@ export function resolvePlayerSettings(
 
 /**
  * Whether two resolved player layouts are identical. A settings save that
- * does not change either window toggle re-applies nothing to live players,
- * so an unrelated setting change never rebuilds an open player.
+ * changes none of them re-applies nothing to live players, so an unrelated
+ * setting change never rebuilds an open player.
+ *
+ * Every field of the resolved layout is compared, the skip step included. It
+ * is what an open player answers the status bar and the commands with, so a
+ * step this call reports as unchanged never reaches them: the embed went on
+ * moving by the old number while a timecode playback started afterwards used
+ * the new one, which is the disagreement resolving the step in one place
+ * exists to prevent.
  * @param a - One resolved layout
  * @param b - Another resolved layout
- * @returns True when both toggles match
+ * @returns True when every resolved field matches
  */
 export function playerSettingsEqual(
 	a: ResolvedPlayerSettings,
 	b: ResolvedPlayerSettings,
 ): boolean {
 	return (
-		a.showWaveform === b.showWaveform && a.enableMarkers === b.enableMarkers
+		a.showWaveform === b.showWaveform &&
+		a.enableMarkers === b.enableMarkers &&
+		a.skipSeconds === b.skipSeconds
 	);
 }

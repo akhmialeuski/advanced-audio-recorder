@@ -3,6 +3,8 @@
  */
 
 import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
+import { mergeSettings } from 'src/settings/settingsSerialization';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 describe('SessionCostTracker', () => {
 	it('starts empty', () => {
@@ -98,5 +100,83 @@ describe('telling a measured total from an estimated one', () => {
 
 		expect(tracker.estimatedRuns()).toBe(1);
 		expect(tracker.totalUsd()).toBeCloseTo(0.03, 10);
+	});
+});
+
+// One rule for the three surfaces that run a transcription: the dialog, the
+// queue, and the top-up of the parts that failed. Each of them used to apply
+// it and forward the answer itself, two of them differently and the third not
+// at all, so the same recording reached the total differently depending on
+// which surface had started it.
+describe('recording a finished transcription run', () => {
+	const SETTINGS = mergeSettings({});
+
+	it('counts what the provider reported, as a measured figure', () => {
+		const tracker = new SessionCostTracker();
+
+		expect(
+			tracker.recordRun(
+				{ engineId: 'deepgram', usd: 0.05 },
+				SETTINGS,
+				600,
+			),
+		).toBe(0.05);
+
+		expect(tracker.engineTotals()).toEqual([
+			{
+				engineId: 'deepgram',
+				usd: 0.05,
+				runs: 1,
+				unpricedRuns: 0,
+				estimatedRuns: 0,
+			},
+		]);
+	});
+
+	it('falls back to the duration estimate when the provider priced nothing', () => {
+		const tracker = new SessionCostTracker();
+
+		tracker.recordRun({ engineId: 'deepgram', usd: null }, SETTINGS, 600);
+
+		// Recorded as spend, and marked as the guess it is rather than
+		// dropped as unpriced
+		expect(tracker.engineTotals()).toEqual([
+			{
+				engineId: 'deepgram',
+				usd: expect.any(Number),
+				runs: 1,
+				unpricedRuns: 0,
+				estimatedRuns: 1,
+			},
+		]);
+	});
+
+	it('counts nothing while cost estimates are off', () => {
+		const tracker = new SessionCostTracker();
+
+		expect(
+			tracker.recordRun(
+				{ engineId: 'deepgram', usd: 0.05 },
+				mergeSettings({ transcriptionShowCostEstimates: false }),
+				600,
+			),
+		).toBeNull();
+
+		expect(tracker.engineTotals()).toEqual([]);
+	});
+
+	it('counts nothing for the local engine, which bills nothing', () => {
+		const tracker = new SessionCostTracker();
+
+		tracker.recordRun(
+			{
+				engineId: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				usd: 0.05,
+			},
+			SETTINGS,
+			600,
+		);
+
+		expect(tracker.engineTotals()).toEqual([]);
 	});
 });

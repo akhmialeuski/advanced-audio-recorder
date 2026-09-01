@@ -17,7 +17,35 @@
  * @module transcription/SessionCostTracker
  */
 
-import type { RunCostStepId } from './costs';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { runCostToRecord, type RunCostStepId } from './costs';
+
+/**
+ * Where a finished transcription run reports what it cost.
+ *
+ * Declared as one interface because three surfaces run a transcription - the
+ * dialog, the queue, and the top-up of the parts that failed - and each of
+ * them used to apply the shared pricing rule and forward the answer itself.
+ * Two of them did it differently, and the third did not do it at all, so a
+ * recording reached the session total differently depending on which surface
+ * had started it. Naming the whole operation instead leaves no plumbing for a
+ * surface to get wrong.
+ */
+export interface RunCostSink {
+	/**
+	 * Records one finished transcription run.
+	 * @param cost - Engine and price the run reported, the price null when
+	 *   the provider gave no usage to bill from
+	 * @param settings - The run's settings snapshot
+	 * @param durationSeconds - Audio the run sent, for the fallback estimate
+	 * @returns The USD recorded, or null when the run is not counted
+	 */
+	recordRun(
+		cost: { engineId: string; usd: number | null },
+		settings: AudioRecorderSettings,
+		durationSeconds: number | null,
+	): number | null;
+}
 
 /** Accumulated spending for one provider in this session. */
 export interface SessionEngineCost {
@@ -87,6 +115,29 @@ export class SessionCostTracker {
 		estimated: boolean,
 	): void {
 		this.add(providerId, usd, estimated);
+	}
+
+	/**
+	 * Records one finished transcription run, priced by the rule every
+	 * surface that runs one follows: the provider's own usage where it
+	 * reported any, the duration estimate where it did not, and nothing at
+	 * all for a run this session does not count.
+	 * @param cost - Engine and price the run reported
+	 * @param settings - The run's settings snapshot
+	 * @param durationSeconds - Audio the run sent, for the fallback estimate
+	 * @returns The USD recorded, or null when the run is not counted
+	 */
+	recordRun(
+		cost: { engineId: string; usd: number | null },
+		settings: AudioRecorderSettings,
+		durationSeconds: number | null,
+	): number | null {
+		const recorded = runCostToRecord(cost, settings, durationSeconds);
+		if (!recorded) {
+			return null;
+		}
+		this.add(cost.engineId, recorded.usd, recorded.estimated);
+		return recorded.usd;
 	}
 
 	/** Per-provider totals, in first-use order. */

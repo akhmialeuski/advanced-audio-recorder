@@ -9,7 +9,7 @@
  * @module tests/unit/fileActions.test
  */
 
-import { Notice } from 'obsidian';
+import { Notice, TFile } from 'obsidian';
 import { describeRetryOutcome, FILE_ACTIONS } from 'src/actions/fileActions';
 import type { ActionServices } from 'src/actions/PluginAction';
 import { COMMAND_IDS } from 'src/constants';
@@ -64,6 +64,15 @@ jest.mock('src/utils/AudioFileAnalyzer', () => ({
 jest.mock('src/recording/NoteInserter', () => ({
 	insertProcessedAudioEmbed: jest.fn().mockResolvedValue(undefined),
 }));
+/** What the spied engine answers a top-up with. */
+const mockEngineRun = jest.fn();
+
+// The engine the top-up drives is a spy for the same reason the dialogs are:
+// what the action owes is sending the stretches that failed and accounting
+// what came back, not what the engine does with them.
+jest.mock('src/transcription/TranscriptionService', () => ({
+	TranscriptionService: jest.fn(() => ({ run: mockEngineRun })),
+}));
 
 /** The action registered under a command id. */
 function action(commandId: string): (typeof FILE_ACTIONS)[number] {
@@ -78,18 +87,36 @@ function action(commandId: string): (typeof FILE_ACTIONS)[number] {
 	return found;
 }
 
-/** The services an action is handed, all of them spies. */
+/**
+ * The services an action is handed, all of them spies.
+ * @param settings - Settings this case varies
+ * @param sidecar - The recording sidecar the case drives
+ * @param files - Vault contents the case reads back, by path
+ * @returns The services, and the spies a case asserts on
+ */
 function createServices(
 	settings: Partial<AudioRecorderSettings> = {},
 	sidecar: ActionServices['recordingSidecar'] = {} as ActionServices['recordingSidecar'],
+	files: Record<string, string> = {},
 ): {
 	services: ActionServices;
 	primeForEnhancement: jest.Mock;
+	recordRun: jest.Mock;
 } {
-	const { app } = createMockApp();
+	const { app } = createMockApp({
+		vault: {
+			getAbstractFileByPath: (path: string) =>
+				path in files
+					? Object.assign(Object.create(TFile.prototype), { path })
+					: null,
+			read: (target: TFile) => Promise.resolve(files[target.path] ?? ''),
+		},
+	});
 	const primeForEnhancement = jest.fn();
+	const recordRun = jest.fn().mockReturnValue(0.02);
 	return {
 		primeForEnhancement,
+		recordRun,
 		services: {
 			app,
 			getSettings: () => ({ ...DEFAULT_SETTINGS, ...settings }),
@@ -100,6 +127,7 @@ function createServices(
 			autoChapters: {} as ActionServices['autoChapters'],
 			recordingSidecar: sidecar,
 			transcriptionQueue: queueServicesDouble(),
+			transcriptionCosts: { recordLlmCall: jest.fn(), recordRun },
 		},
 	};
 }
@@ -424,6 +452,46 @@ describe('transcribing the parts that failed', () => {
 		error.mockRestore();
 	});
 
+	it('puts what the top-up cost into the session total', async () => {
+		// It calls the same paid engine a full run does, and the counter
+		// covered every other surface that runs one but not this one
+		const LOST = {
+			label: '0:30-2:00',
+			message: 'rate limited',
+			startSeconds: 30,
+			endSeconds: 120,
+		};
+		const { services, recordRun } = createServices(
+			{ transcriptionEnabled: true },
+			sidecarDouble({
+				getFailedParts: jest
+					.fn()
+					.mockResolvedValue({ parts: [LOST], recordedAt: 'then' }),
+				setFailedParts: jest.fn().mockResolvedValue(undefined),
+				getTranscript: jest.fn().mockResolvedValue({
+					fileOutputs: [
+						{ path: 'take.json', format: 'json', writtenAt: '' },
+					],
+				}),
+			}),
+			{ 'take.json': JSON.stringify({ segments: [], language: 'en' }) },
+		);
+		mockEngineRun.mockResolvedValue({
+			transcript: { segments: [], speakers: [], language: 'en' },
+			missingParts: [],
+			cost: { engineId: 'deepgram', usd: 0.02, usage: {} },
+		});
+
+		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+
+		// Priced against the ninety seconds it sent, not the whole recording
+		expect(recordRun).toHaveBeenCalledWith(
+			{ engineId: 'deepgram', usd: 0.02, usage: {} },
+			expect.anything(),
+			90,
+		);
+	});
+
 	it('is offered only while transcription is on', () => {
 		const on = createServices({ transcriptionEnabled: true });
 		const off = createServices({ transcriptionEnabled: false });
@@ -441,6 +509,7 @@ describe('what the user is told a top-up did', () => {
 				recovered: 3,
 				stillMissing: [],
 				rewritten: 2,
+				sentSeconds: 90,
 			}),
 		).toBe('Recovered 3 segments and rewrote 2 transcript files.');
 	});
@@ -451,6 +520,7 @@ describe('what the user is told a top-up did', () => {
 				recovered: 1,
 				stillMissing: [],
 				rewritten: 1,
+				sentSeconds: 90,
 			}),
 		).toBe('Recovered 1 segment and rewrote 1 transcript file.');
 	});
@@ -461,6 +531,7 @@ describe('what the user is told a top-up did', () => {
 				recovered: 1,
 				stillMissing: [{ label: 'x', message: 'y', startSeconds: 0 }],
 				rewritten: 1,
+				sentSeconds: 90,
 			}),
 		).toContain('1 part failed again');
 	});
@@ -474,6 +545,7 @@ describe('what the user is told a top-up did', () => {
 					{ label: 'b', message: 'y', startSeconds: 60 },
 				],
 				rewritten: 1,
+				sentSeconds: 90,
 			}),
 		).toContain('2 parts failed again');
 	});
@@ -484,6 +556,7 @@ describe('what the user is told a top-up did', () => {
 				recovered: 0,
 				stillMissing: [],
 				rewritten: 0,
+				sentSeconds: 0,
 				blocked: 'Nothing is missing from this transcript.',
 			}),
 		).toBe('Nothing is missing from this transcript.');

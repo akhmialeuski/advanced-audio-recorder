@@ -39,7 +39,6 @@ import {
 	effectiveWordTimestamps,
 	effectiveTranscriptDestination,
 	formatUsd,
-	runCostToRecord,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 	wordTimestampsNote,
@@ -799,18 +798,15 @@ export class TranscriptionModal extends PluginModal {
 		// Actual multi-pass billing flows through the summed usage in cost.usd;
 		// the shared rule only estimates when the provider reported no usage to
 		// price from, and leaves out the runs that are not counted at all.
-		const recorded = runCostToRecord(cost, settings, this.durationSeconds);
-		if (!recorded) {
-			return null;
-		}
-		this.options.costTracker?.add(
-			cost.engineId,
-			recorded.usd,
-			recorded.estimated,
-		);
+		const usd =
+			this.options.costTracker?.recordRun(
+				cost,
+				settings,
+				this.durationSeconds,
+			) ?? null;
 		// Refresh the session line so a follow-up run sees the new total.
 		this.updateCostEstimate();
-		return recorded.usd;
+		return usd;
 	}
 
 	/**

@@ -376,8 +376,9 @@ export class EnhancedPlayerRegistrar {
 			return;
 		}
 		const resolved = resolvePlayerSettings(this.getSettings());
-		// Skip when no player window changed, so an unrelated settings save
-		// never reapplies the layout to (or rebuilds) open players
+		// Skip when nothing a player renders or answers with changed, so an
+		// unrelated settings save never reapplies the layout to (or rebuilds)
+		// open players
 		if (
 			this.lastResolved &&
 			playerSettingsEqual(resolved, this.lastResolved)

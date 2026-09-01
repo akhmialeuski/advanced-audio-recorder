@@ -69,7 +69,11 @@ function isValidQueue(value: unknown): value is QueueFileShape {
 	}
 	const candidate = value as Partial<QueueFileShape>;
 	if (
-		typeof candidate.version !== 'number' ||
+		// Only the shape this version writes is read. A file stamped with a
+		// later one is discarded rather than taken for this shape, which would
+		// write it back stamped as this version and lose whatever the newer
+		// one added; a migration for it hooks in here.
+		candidate.version !== QUEUE_VERSION ||
 		typeof candidate.paused !== 'boolean' ||
 		!Array.isArray(candidate.entries)
 	) {
@@ -91,6 +95,31 @@ function isValidQueue(value: unknown): value is QueueFileShape {
 /** A queue with nothing in it. */
 function emptyQueue(): QueueFileShape {
 	return { version: QUEUE_VERSION, entries: [], paused: false };
+}
+
+/**
+ * The entries with each path kept once, the first occurrence winning so an
+ * entry already carrying a state survives a path offered again.
+ *
+ * One path names one entry, and every operation on the queue depends on it:
+ * {@link TranscriptionQueue.next} hands out the first entry still waiting
+ * while {@link TranscriptionQueue.setState} moves the first entry with that
+ * path, so a path present twice leaves a copy no state change can reach and a
+ * drain that hands the same recording to a paid API for as long as it runs.
+ * Applied at both doors into the queue, the one the plugin adds through and
+ * the one a file on disk comes in through, so no caller has to remember it.
+ * @param entries - Entries as offered
+ * @returns The entries, one per path, in the order they were queued
+ */
+function uniqueByPath(entries: readonly QueueEntry[]): QueueEntry[] {
+	const seen = new Set<string>();
+	return entries.filter((entry) => {
+		if (seen.has(entry.path)) {
+			return false;
+		}
+		seen.add(entry.path);
+		return true;
+	});
 }
 
 /**
@@ -164,11 +193,14 @@ export class TranscriptionQueue {
 				await this.app.vault.adapter.read(this.queuePath),
 			);
 			if (isValidQueue(parsed)) {
-				this.state = parsed;
+				this.state = {
+					...parsed,
+					entries: uniqueByPath(parsed.entries),
+				};
 				return;
 			}
 			console.warn(
-				`${PLUGIN_LOG_PREFIX} The transcription queue file is not a queue; starting empty.`,
+				`${PLUGIN_LOG_PREFIX} The transcription queue file is not a queue this version reads; starting empty.`,
 			);
 		} catch (error) {
 			console.warn(
@@ -228,19 +260,21 @@ export class TranscriptionQueue {
 	}
 
 	/**
-	 * Adds recordings to the queue, skipping any already in it. A path queued
-	 * twice would transcribe it twice and bill for it twice.
+	 * Adds recordings to the queue, keeping one entry per path: a recording
+	 * already queued is left as it is, and a path offered twice in the same
+	 * call arrives once. Either way a second entry would transcribe the
+	 * recording again and bill for it again.
 	 * @param paths - Vault-relative recording paths
 	 * @returns How many were added
 	 */
 	add(paths: readonly string[]): number {
-		const known = new Set(this.state.entries.map((entry) => entry.path));
-		const added = paths.filter((path) => !known.has(path));
-		this.state.entries.push(
-			...added.map((path): QueueEntry => ({ path, state: 'waiting' })),
-		);
+		const before = this.state.entries.length;
+		this.state.entries = uniqueByPath([
+			...this.state.entries,
+			...paths.map((path): QueueEntry => ({ path, state: 'waiting' })),
+		]);
 		this.changed();
-		return added.length;
+		return this.state.entries.length - before;
 	}
 
 	/**

@@ -101,4 +101,16 @@ describe('playerSettingsEqual', () => {
 			),
 		).toBe(false);
 	});
+
+	it('is false when the skip step differs', () => {
+		// The step is what an open player answers the status bar and the
+		// commands with, so a layout reported as unchanged leaves them on the
+		// old number while anything started afterwards uses the new one.
+		expect(
+			playerSettingsEqual(
+				{ showWaveform: true, enableMarkers: true, skipSeconds: 10 },
+				{ showWaveform: true, enableMarkers: true, skipSeconds: 30 },
+			),
+		).toBe(false);
+	});
 });

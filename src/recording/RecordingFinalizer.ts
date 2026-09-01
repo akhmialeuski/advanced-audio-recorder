@@ -37,11 +37,14 @@ import {
 	convertBlobToWavBuffer,
 	convertBlobToFormatBuffer,
 	mergeAudioTracks,
+	type MergePlacement,
 } from '../audio/AudioFormatConverter';
+import { INT16_MAX } from '../audio/pcm';
 import { buildMimeType } from '../audio/AudioCapabilityDetector';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { audioMimeForExtension } from '../audio/formatRegistry';
 import { canStreamMix, mixPcmTracksToWav } from './StreamingMixer';
+import { gainFactor, normalizeFactor, panGains } from './mixMath';
 import { buildPartFileName } from './AudioSplitter';
 import { insertFileLinks } from './NoteInserter';
 import type { TrackWriteQueue } from './TrackWriteQueue';
@@ -216,6 +219,7 @@ export class RecordingFinalizer {
 					(percent, description) => {
 						this.reportProgress(percent, description);
 					},
+					this.mergePlacement(),
 				);
 				this.reportProgress(60, 'Writing file...');
 				const fileName = `${this.settings.filePrefix}-multitrack-${effectiveTimestamp}.${targetFormat}`;
@@ -563,6 +567,39 @@ export class RecordingFinalizer {
 				`Recording saved, but temporary files could not be removed: ${failedPaths.join(', ')}`,
 			);
 		}
+	}
+
+	/**
+	 * Where this session's tracks sit in a merged file, in the terms the Web
+	 * Audio merge takes them.
+	 *
+	 * Derived from the rules the streaming mixer applies rather than written
+	 * again, so a session merged by either route comes out the same: the
+	 * level in decibels through {@link gainFactor}, the position through the
+	 * balance law of {@link panGains}, and the alignment through
+	 * {@link normalizeFactor}. Only the unit differs, because the mixer reads
+	 * a level on the int16 scale the capture works in while a decoded buffer
+	 * is a share of full scale.
+	 * @returns The placement for this session's merge
+	 */
+	private mergePlacement(): MergePlacement {
+		const session = this.requireSession();
+		return {
+			levels: session.trackMix.map((mix) => {
+				const level = gainFactor(mix.gainDb);
+				const pan = panGains(mix.pan);
+				return {
+					left: level * pan.left,
+					right: level * pan.right,
+				};
+			}),
+			...(session.alignTrackLevels
+				? {
+						normalize: (rms: number): number =>
+							normalizeFactor(rms * INT16_MAX),
+					}
+				: {}),
+		};
 	}
 
 	/**

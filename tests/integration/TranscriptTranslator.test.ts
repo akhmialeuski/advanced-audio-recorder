@@ -192,6 +192,28 @@ describe('an answer that does not line up', () => {
 		warn.mockRestore();
 	});
 
+	it('asks the second time only for the lines still missing', async () => {
+		const warn = quietWarn();
+		const source = transcriptOf(['Hello', 'World', 'Again']);
+		// The second call answers nothing at all: what the first one got has
+		// been paid for, and repeating the whole run and taking the newer
+		// answer instead threw it away
+		const { translator, prompts } = createSut(source, [
+			'0||Hola\n1||Mundo',
+			'',
+		]);
+
+		const { transcript: result } = await translator.translate();
+
+		expect(at(prompts, 1)).toBe('2||Again');
+		expect(result.segments.map((s) => s.text)).toEqual([
+			'Hola',
+			'Mundo',
+			'Again',
+		]);
+		warn.mockRestore();
+	});
+
 	it('keeps the original text of a line the model never answered for', async () => {
 		const warn = quietWarn();
 		const source = transcriptOf(['Hello', 'World']);

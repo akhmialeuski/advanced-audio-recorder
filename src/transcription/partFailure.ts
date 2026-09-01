@@ -12,6 +12,21 @@
  */
 
 /**
+ * A stretch of a recording, in seconds from its start.
+ *
+ * The unit a top-up works in: the parts that failed are recorded as bounds,
+ * exactly those bounds are sent again, and exactly those are replaced in the
+ * transcript. Named here beside {@link PartFailure}, which is where every one
+ * of them comes from.
+ */
+export interface RecordingRange {
+	/** Where the stretch begins, in seconds. */
+	startSeconds: number;
+	/** Where it ends, in seconds. */
+	endSeconds: number;
+}
+
+/**
  * A part the run could not transcribe, named the way the user sees it and
  * carrying the reason the engine gave.
  */

@@ -342,6 +342,28 @@ describe('StreamingMixer', () => {
 			expect(Array.from(samples)).toEqual([16384, -16384]);
 		});
 
+		// A participant who joined half way through was as loud as everyone
+		// else while they spoke, and the silence after them belongs to the
+		// mix rather than to their track. Measuring that silence as part of
+		// the track understated its level and had the alignment raise it
+		// above everyone who was there throughout.
+		it('aligns a short track by its own audio, not the silence after it', async () => {
+			storeSegment('throughout.tmp', [8000, -8000, 8000, -8000]);
+			storeSegment('latecomer.tmp', [8000, -8000]);
+
+			const samples = await mixedSamples(
+				[
+					createTrack(['throughout.tmp']),
+					createTrack(['latecomer.tmp']),
+				],
+				{ alignLevels: true },
+			);
+
+			// Both were captured at the same level, so both are raised by the
+			// same factor and the frames they share come out at twice one
+			expect(Array.from(samples)).toEqual([16384, -16384, 8192, -8192]);
+		});
+
 		it('leaves the tracks as captured when alignment is off', async () => {
 			storeSegment('quiet.tmp', [2000, -2000]);
 			storeSegment('loud.tmp', [16000, -16000]);

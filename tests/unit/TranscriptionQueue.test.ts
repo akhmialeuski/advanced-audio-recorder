@@ -127,6 +127,18 @@ describe('queueing recordings', () => {
 		]);
 	});
 
+	it('takes one recording named twice in the same call once', async () => {
+		// One path names one entry, and everything below depends on it: the
+		// second copy would never leave "waiting", because a state change
+		// moves the first entry with that path
+		const { queue } = createSut();
+		await queue.load();
+
+		expect(queue.add(['a.webm', 'a.webm'])).toBe(1);
+
+		expect(queue.entries().map((e) => e.path)).toEqual(['a.webm']);
+	});
+
 	it('hands out a copy, so a caller cannot edit the queue by reading it', async () => {
 		const { queue } = createSut();
 		await queue.load();
@@ -343,6 +355,43 @@ describe('surviving a restart', () => {
 		]);
 		expect(queue.isPaused()).toBe(true);
 		expect(queue.hasWork()).toBe(true);
+	});
+
+	it('reads a recording the file names twice as one entry', async () => {
+		// A hand-edited or half-written file is the other way a path can
+		// arrive twice, and the entry the state changes never reach hands the
+		// same recording to a paid API for as long as the drain runs
+		const { queue } = createSut({
+			version: 1,
+			paused: false,
+			entries: [
+				{ path: 'a.webm', state: 'done' },
+				{ path: 'a.webm', state: 'waiting' },
+			],
+		});
+
+		await queue.load();
+
+		expect(queue.entries()).toEqual([{ path: 'a.webm', state: 'done' }]);
+		expect(queue.next()).toBeNull();
+	});
+
+	it('starts empty for a queue written by a later version', async () => {
+		// Read as this shape it would be written back stamped as this
+		// version, losing whatever the newer one added
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+			// The discard is expected; the message is not the assertion
+		});
+		const { queue } = createSut({
+			version: 2,
+			paused: false,
+			entries: [{ path: 'a.webm', state: 'waiting' }],
+		});
+
+		await queue.load();
+
+		expect(queue.entries()).toEqual([]);
+		warn.mockRestore();
 	});
 
 	it('waits again for a recording that was running when the window closed', async () => {

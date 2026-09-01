@@ -16,6 +16,7 @@ import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import type { LlmCostSink } from '../transcription/llm/llmStep';
+import type { RunCostSink } from '../transcription/SessionCostTracker';
 import type { PlaybackControlsState } from '../player/playbackControls';
 import type { MarkerKind } from '../markers/markerModel';
 
@@ -74,12 +75,15 @@ export interface ActionServices {
 		open(): void;
 	};
 	/**
-	 * Where an action's own transcription run reports what its LLM steps
-	 * cost, so a run started from a menu lands in the same session total as
-	 * one started from the dialog. Optional: an action surface wired without
-	 * one still works and simply accounts nothing.
+	 * Where an action's own transcription run reports what it cost: the
+	 * engine call through {@link RunCostSink}, its LLM steps through
+	 * {@link LlmCostSink}. Both, because a run started from a menu lands in
+	 * the same session total as one started from the dialog, and a total that
+	 * covered only half of it would read as a cheaper run rather than as an
+	 * incomplete count. Optional: an action surface wired without one still
+	 * works and simply accounts nothing.
 	 */
-	readonly transcriptionCosts?: LlmCostSink | undefined;
+	readonly transcriptionCosts?: (LlmCostSink & RunCostSink) | undefined;
 }
 
 /** The audio file an action targets, with the services it runs against. */

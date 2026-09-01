@@ -29,6 +29,7 @@ import {
 } from 'src/audio/WavEncoder';
 import { insertFileLinks } from 'src/recording/NoteInserter';
 import { canStreamMix, mixPcmTracksToWav } from 'src/recording/StreamingMixer';
+import type { MergePlacement } from 'src/audio/AudioFormatConverter';
 import { createSession, createTarget } from '../helpers/recordingFixtures';
 
 jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
@@ -584,7 +585,75 @@ describe('RecordingFinalizer', () => {
 				expect.any(Function),
 				expect.any(Function),
 				expect.any(Function),
+				{ levels: [] },
 			);
+		});
+
+		/**
+		 * Runs a merged two-track session through the Web Audio route and
+		 * answers with the placement the merge was handed.
+		 * @param session - What this case varies about the session
+		 * @returns The placement passed to the merge
+		 */
+		async function placementFor(
+			session: Partial<RecordingSessionConfig>,
+		): Promise<MergePlacement | undefined> {
+			buildFinalizer(
+				createSession({
+					outputMode: 'single',
+					outputFormat: 'webm',
+					...session,
+				}),
+			);
+			await finalizer.saveRecording(
+				[
+					createTarget({ segmentPaths: ['a.tmp'] }),
+					createTarget({ segmentPaths: ['b.tmp'] }),
+				],
+				'stamp',
+				null,
+			);
+			return at(jest.mocked(mergeAudioTracks).mock.calls, 0)[7];
+		}
+
+		// The route every merged session that is not desktop WAV takes:
+		// anything compressed, and every MediaRecorder session. It used to
+		// take no placement at all, so a level and a position set on such a
+		// session did nothing and said nothing about doing nothing.
+		it('carries the session placement into the Web Audio mix', async () => {
+			const placement = await placementFor({
+				trackMix: [
+					{ gainDb: 0, pan: -1 },
+					{ gainDb: -6, pan: 1 },
+				],
+				alignTrackLevels: true,
+			});
+
+			// Hard left at the level it was captured, hard right six decibels
+			// down, and a normaliser because the session asked to align
+			expect(placement?.levels).toEqual([
+				{ left: 1, right: 0 },
+				{ left: 0, right: expect.closeTo(0.5012, 4) },
+			]);
+			// The alignment rule is the mixer's own, read here in the unit a
+			// decoded buffer speaks: a quarter of full scale is already the
+			// level the mixer brings a track to, so it is left alone
+			expect(placement?.normalize?.(0.25)).toBeCloseTo(1, 5);
+		});
+
+		it('leaves the placement neutral when nothing was placed', async () => {
+			const placement = await placementFor({
+				trackMix: [
+					{ gainDb: 0, pan: 0 },
+					{ gainDb: 0, pan: 0 },
+				],
+			});
+
+			expect(placement?.levels).toEqual([
+				{ left: 1, right: 1 },
+				{ left: 1, right: 1 },
+			]);
+			expect(placement?.normalize).toBeUndefined();
 		});
 
 		// Every other streaming-mix failure is a reason to mix another way, so

@@ -14,7 +14,7 @@
 import { App, Modal } from 'obsidian';
 import { menuInstances } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
-import { allEls, control, el } from '../helpers/dom';
+import { allEls, clickControl, control, el } from '../helpers/dom';
 import { MARKER, PLAYER } from '../helpers/selectors';
 import { PLAYBACK_ACTIONS } from 'src/actions/playbackActions';
 import { registerActionCommands } from 'src/actions/registerActionCommands';
@@ -184,14 +184,15 @@ function withPlaybackCommands(registry: AudioPlayerRegistry): {
  * the shared element, the real commands over the same registry, and playback
  * parked at a known position.
  * @param shared - The installed shared audio element
- * @returns The player's container, the command host, and a reader for what
- *   the status bar was pushed
+ * @returns The player's container, the registry behind it, the command host,
+ *   and a reader for what the status bar was pushed
  */
 async function playingEmbed(
 	shared: ReturnType<typeof installSharedAudio>,
 ): Promise<{
 	container: HTMLElement;
 	plugin: ReturnType<typeof asMockPlugin>;
+	registry: AudioPlayerRegistry;
 	snapshot: () => PlaybackControlsState | null;
 }> {
 	const registry = new AudioPlayerRegistry();
@@ -199,7 +200,7 @@ async function playingEmbed(
 	const container = mountPlayer(registry);
 	await tick();
 	startPlaybackAt(registry, shared.audio, 30);
-	return { container, plugin, snapshot };
+	return { container, plugin, registry, snapshot };
 }
 
 /** Starts the shared playback and parks it at a known position. */
@@ -464,6 +465,27 @@ describe('generated chapters reach an already-open player', () => {
 	});
 });
 
+describe('changing the skip step', () => {
+	it('moves the embed, the status bar, and the commands to the new step', async () => {
+		const shared = sharedAudio();
+		const { container, plugin, registry, snapshot } =
+			await playingEmbed(shared);
+
+		registry.applySettings({ ...PLAIN, skipSeconds: 30 });
+
+		// The embed relabels its own control and moves by the new step, and
+		// the status-bar snapshot reports the same number, so a saved step
+		// cannot leave the surfaces of one playback disagreeing
+		expect(snapshot()?.skipSeconds).toBe(30);
+		clickControl(container, 'Forward 30s');
+		expect(shared.audio.currentTime).toBe(60);
+
+		// The command reads the step through that same snapshot
+		expect(plugin.invokeCommand('skip-playback-back')).toBe(true);
+		expect(shared.audio.currentTime).toBe(30);
+	});
+});
+
 describe('playback commands drive the same playback as the controls', () => {
 	it('offers no command while nothing is playing', () => {
 		const registry = new AudioPlayerRegistry();
@@ -557,16 +579,8 @@ describe('playback commands drive the same playback as the controls', () => {
 	it('jumps to a chapter in the embed and the snapshot', async () => {
 		const shared = installSharedAudio();
 		try {
-			const registry = new AudioPlayerRegistry();
-			const { plugin, snapshot } = withPlaybackCommands(registry);
-			const store = makeMarkerStore();
-			const container = makeEditableContainer();
-			mountMarkerPlayer(registry, store, container);
-			await tick();
-			await store.updateMarkers('rec.mp4', () => CHAPTERS);
-			registry.reloadMarkers('rec.mp4', null);
-			await tick();
-			startPlaybackAt(registry, shared.audio, 30);
+			const { container, plugin, snapshot } =
+				await chapteredEmbed(shared);
 
 			expect(plugin.invokeCommand('go-to-next-chapter')).toBe(true);
 

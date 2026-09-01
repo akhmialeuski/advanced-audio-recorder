@@ -6,10 +6,13 @@
 
 import { TFile } from 'obsidian';
 import { QueueRunner } from 'src/transcription/QueueRunner';
-import { TranscriptionQueue } from 'src/transcription/TranscriptionQueue';
+import {
+	TranscriptionQueue,
+	TRANSCRIPTION_QUEUE_FILE,
+} from 'src/transcription/TranscriptionQueue';
 import type { TranscribeRunCost } from 'src/transcription/TranscriptionService';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { createMockApp } from '../helpers/createApp';
+import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { noticeMessages } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
 
@@ -19,16 +22,32 @@ import { at } from '../helpers/assertions';
  */
 const ASSUMED_SECONDS = 600;
 
+/** Where a queue read back from disk lives in these cases. */
+const QUEUE_PATH = `.obsidian/plugins/aar/${TRANSCRIPTION_QUEUE_FILE}`;
+
+/**
+ * Calls after which a drain that will not end is stopped, so the case that
+ * guards against one fails on its assertion instead of never returning.
+ */
+const RUNAWAY_CALL_CAP = 5;
+
 /** A priced run, as the service reports one. */
 function cost(usd: number | null = 0.05): TranscribeRunCost {
 	return { engineId: 'deepgram', usd, usage: {} };
+}
+
+/** One finished run as the session counter was handed it. */
+interface RecordedRun {
+	engineId: string;
+	usd: number | null;
+	seconds: number | null;
 }
 
 interface Sut {
 	runner: QueueRunner;
 	queue: TranscriptionQueue;
 	transcribed: string[];
-	added: [string, number | null, boolean | undefined][];
+	recorded: RecordedRun[];
 }
 
 /**
@@ -41,13 +60,14 @@ function createSut(
 		paths?: string[];
 		missing?: string[];
 		answer?: (path: string) => Promise<{ cost: TranscribeRunCost }>;
-		estimates?: boolean;
+		/** A queue built by the case, for one read back from disk. */
+		queue?: TranscriptionQueue;
 	} = {},
 ): Sut {
 	const paths = options.paths ?? ['a.webm', 'b.webm'];
 	const missing = new Set(options.missing ?? []);
 	const transcribed: string[] = [];
-	const added: [string, number | null, boolean | undefined][] = [];
+	const recorded: RecordedRun[] = [];
 	const app = createMockApp({
 		vault: {
 			getAbstractFileByPath: (path: string) =>
@@ -59,15 +79,14 @@ function createSut(
 						}),
 		},
 	}).app;
-	const queue = new TranscriptionQueue(null, app);
-	queue.add(paths);
+	const queue = options.queue ?? new TranscriptionQueue(null, app);
+	if (!options.queue) {
+		queue.add(paths);
+	}
 	const runner = new QueueRunner({
 		app,
 		queue,
-		getSettings: () =>
-			mergeSettings({
-				transcriptionShowCostEstimates: options.estimates ?? true,
-			}),
+		getSettings: () => mergeSettings({}),
 		transcribe: (file) => {
 			transcribed.push(file.path);
 			return (
@@ -75,13 +94,18 @@ function createSut(
 			);
 		},
 		costSink: {
-			add: (engineId, usd, estimated) => {
-				added.push([engineId, usd, estimated]);
+			recordRun: (cost, _settings, durationSeconds) => {
+				recorded.push({
+					engineId: cost.engineId,
+					usd: cost.usd,
+					seconds: durationSeconds,
+				});
+				return cost.usd;
 			},
 		},
 		assumedSecondsPerRecording: ASSUMED_SECONDS,
 	});
-	return { runner, queue, transcribed, added };
+	return { runner, queue, transcribed, recorded };
 }
 
 describe('draining the queue', () => {
@@ -194,55 +218,85 @@ describe('draining the queue', () => {
 
 		expect(transcribed).toEqual([]);
 	});
+
+	it('ends on a stored queue naming one recording twice', async () => {
+		// The drain runs until nothing is waiting, and a state change moves
+		// the first entry with that path, so a second copy is one nothing can
+		// ever move and the same recording goes to a paid API for as long as
+		// the drain lives. The cap keeps a regression here a failed
+		// assertion rather than a test that never returns.
+		const { files, adapter } = fakeVaultFiles();
+		files.set(
+			QUEUE_PATH,
+			JSON.stringify({
+				version: 1,
+				paused: false,
+				entries: [
+					{ path: 'a.webm', state: 'waiting' },
+					{ path: 'a.webm', state: 'waiting' },
+				],
+			}),
+		);
+		const queue = new TranscriptionQueue(
+			QUEUE_PATH,
+			createMockApp({ vault: { adapter } }).app,
+		);
+		await queue.load();
+		const sut = createSut({
+			queue,
+			answer: () => {
+				if (sut.transcribed.length >= RUNAWAY_CALL_CAP) {
+					queue.setPaused(true);
+				}
+				return Promise.resolve({ cost: cost() });
+			},
+		});
+
+		await sut.runner.drain();
+
+		expect(sut.transcribed).toEqual(['a.webm']);
+		await queue.flush();
+	});
 });
 
 describe('what a queued run costs the session', () => {
-	it('counts what the provider reported', async () => {
-		const { runner, added } = createSut({ paths: ['a.webm'] });
+	// What the runner owes is handing a finished run to the session counter
+	// with the length the queue was priced at; how that becomes a figure is
+	// the shared rule's, pinned where the rule lives.
+	it('hands a finished run over at the length the queue was quoted', async () => {
+		const { runner, recorded } = createSut({ paths: ['a.webm'] });
 
 		await runner.drain();
 
-		expect(added).toEqual([['deepgram', 0.05, false]]);
+		expect(recorded).toEqual([
+			{ engineId: 'deepgram', usd: 0.05, seconds: ASSUMED_SECONDS },
+		]);
 	});
 
-	// A run the provider reported no usage for falls back to the duration
-	// estimate and is marked as one, which is what the dialog has always done.
-	// Recording it as unpriced instead, as the queue used to, left the same
-	// recording reaching the session total differently depending on which
-	// surface had started it.
-	it('falls back to the estimate when the provider priced nothing', async () => {
-		const { runner, added } = createSut({
+	// The queue used to record such a run as unpriced where the dialog fell
+	// back to the duration estimate, so the same recording reached the
+	// session total differently depending on which surface had started it.
+	it('hands over a run the provider priced nothing for', async () => {
+		const { runner, recorded } = createSut({
 			paths: ['a.webm'],
 			answer: () => Promise.resolve({ cost: cost(null) }),
 		});
 
 		await runner.drain();
 
-		// The figure itself is the shared rule's, pinned where that rule lives;
-		// what matters here is that the runner asked it rather than recording
-		// the unpriced null it used to.
-		expect(added).toEqual([['deepgram', expect.any(Number), true]]);
+		expect(recorded).toEqual([
+			{ engineId: 'deepgram', usd: null, seconds: ASSUMED_SECONDS },
+		]);
 	});
 
-	it('counts nothing while cost estimates are off', async () => {
-		const { runner, added } = createSut({
-			paths: ['a.webm'],
-			estimates: false,
-		});
-
-		await runner.drain();
-
-		expect(added).toEqual([]);
-	});
-
-	it('counts nothing for a run that failed', async () => {
-		const { runner, added } = createSut({
+	it('hands over nothing for a run that failed', async () => {
+		const { runner, recorded } = createSut({
 			paths: ['a.webm'],
 			answer: () => Promise.reject(new Error('refused')),
 		});
 
 		await runner.drain();
 
-		expect(added).toEqual([]);
+		expect(recorded).toEqual([]);
 	});
 });

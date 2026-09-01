@@ -250,6 +250,16 @@ async function runFailedPartRetry(
 	);
 	try {
 		const outcome = await retry.retry();
+		if (outcome.cost) {
+			// A top-up calls the same paid engine a full run does, so it goes
+			// into the session total by the same rule, priced against the
+			// stretches it actually sent rather than the whole recording.
+			services.transcriptionCosts?.recordRun(
+				outcome.cost,
+				services.getSettings(),
+				outcome.sentSeconds,
+			);
+		}
 		new Notice(describeRetryOutcome(outcome));
 	} catch (error) {
 		console.error(

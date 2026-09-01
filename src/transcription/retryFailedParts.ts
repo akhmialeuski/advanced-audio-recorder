@@ -21,22 +21,36 @@ import { TFile } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { serializeTranscriptFile } from './transcriptFormat';
-import type { PartFailure } from './partFailure';
+import type { PartFailure, RecordingRange } from './partFailure';
 import type { Transcript, TranscriptSegment } from './TranscriptTypes';
-import type { TranscriptionSidecarAccess } from './TranscriptionService';
+import type {
+	TranscribeRunCost,
+	TranscriptionSidecarAccess,
+} from './TranscriptionService';
 import type { FileOutput } from '../sidecar/recordingSidecarModel';
-
-/** How close two segments must start to count as the same one. */
-const SAME_SEGMENT_TOLERANCE_SECONDS = 0.05;
 
 /** What the retry did, in the terms the user is told it in. */
 export interface RetryOutcome {
-	/** Segments recovered and spliced in. */
+	/** Segments the top-up placed on the timeline. */
 	recovered: number;
-	/** Parts that failed again, with the reason they gave this time. */
+	/**
+	 * Parts still missing afterwards: the ones that failed again, and the
+	 * ones this top-up had no bounds to ask for.
+	 */
 	stillMissing: PartFailure[];
 	/** Transcript files rewritten with the completed transcript. */
 	rewritten: number;
+	/**
+	 * Seconds of audio the top-up sent, which is what it was billed for and
+	 * what sizes the estimate when the engine reports no usage.
+	 */
+	sentSeconds: number;
+	/**
+	 * What the engine reported for those stretches, so the caller puts the
+	 * spend into the session total by the rule every surface follows. Absent
+	 * when nothing was sent.
+	 */
+	cost?: TranscribeRunCost;
 	/** Why nothing was attempted, when nothing was. */
 	blocked?: string;
 }
@@ -53,11 +67,21 @@ export interface RetrySidecar {
 	getTranscript(path: string): Promise<{ fileOutputs: FileOutput[] }>;
 }
 
+/** What one top-up run of the engine answers with. */
+export interface RetryRun {
+	/** The segments that came back for the stretches that were sent. */
+	transcript: Transcript;
+	/** The parts that failed again. */
+	missingParts: PartFailure[];
+	/** What the engine reported for the run, for the session total. */
+	cost: TranscribeRunCost;
+}
+
 /** Runs the missing stretches again; the service, narrowed to what is used. */
 export type RetryRunner = (
 	file: TFile,
-	ranges: readonly { startSeconds: number; endSeconds: number }[],
-) => Promise<{ transcript: Transcript; missingParts: PartFailure[] }>;
+	ranges: readonly RecordingRange[],
+) => Promise<RetryRun>;
 
 /** The slice of the transcription service a top-up drives. */
 export interface RetryTranscriber {
@@ -65,11 +89,11 @@ export interface RetryTranscriber {
 		file: TFile,
 		options: {
 			notePathForLinks: string;
-			onlyRanges: readonly { startSeconds: number; endSeconds: number }[];
+			onlyRanges: readonly RecordingRange[];
 			sidecar?: TranscriptionSidecarAccess | undefined;
 			skipPostProcessing?: boolean | undefined;
 		},
-	): Promise<{ transcript: Transcript; missingParts: PartFailure[] }>;
+	): Promise<RetryRun>;
 }
 
 /**
@@ -103,36 +127,58 @@ export function serviceRunner(
 		return {
 			transcript: result.transcript,
 			missingParts: result.missingParts,
+			cost: result.cost,
 		};
 	};
 }
 
+/** A transcript with the retried stretches replaced, and by how much. */
+export interface SplicedTranscript {
+	/** The completed transcript, segments in time order. */
+	transcript: Transcript;
+	/** How many segments the top-up placed on the timeline. */
+	spliced: number;
+}
+
 /**
- * Merges recovered segments into a transcript by their place on the
- * timeline. A segment that starts where one already there starts is the same
- * segment and is left alone, so a part that partly succeeded before is not
- * doubled by the part that succeeded now.
+ * Replaces the stretches a top-up asked for with what came back for them.
+ *
+ * Decided by the stretches rather than by comparing segment starts. The parts
+ * a recording prepares to are a function of its duration and of the settings
+ * in force, so a chunk size or an engine changed between the run and the
+ * top-up moves the boundaries: parts that already succeeded are sent again,
+ * come back at offsets a few tenths of a second from the ones stored, and a
+ * proximity test then reads them as new segments and writes the same speech
+ * into the transcript twice. A stretch cannot drift, because the stretch is
+ * what the top-up asked for and was billed for, so what it holds afterwards
+ * is exactly what came back for it - and anything the answer carried from
+ * outside it is dropped rather than added beside what is already there.
  * @param existing - The transcript the earlier run produced
  * @param recovered - Segments the retry brought back
- * @returns The completed transcript, segments in time order
+ * @param ranges - The stretches the retry asked for
+ * @returns The completed transcript and how many segments it took
  */
 export function spliceSegments(
 	existing: Transcript,
 	recovered: readonly TranscriptSegment[],
-): Transcript {
-	const merged = [...existing.segments];
-	for (const segment of recovered) {
-		const duplicate = merged.some(
-			(present) =>
-				Math.abs(present.start - segment.start) <
-				SAME_SEGMENT_TOLERANCE_SECONDS,
+	ranges: readonly RecordingRange[],
+): SplicedTranscript {
+	const inside = (segment: TranscriptSegment): boolean =>
+		ranges.some(
+			(range) =>
+				segment.start < range.endSeconds &&
+				segment.end > range.startSeconds,
 		);
-		if (!duplicate) {
-			merged.push(segment);
-		}
-	}
+	const taken = recovered.filter(inside);
+	const merged = [
+		...existing.segments.filter((segment) => !inside(segment)),
+		...taken,
+	];
 	merged.sort((a, b) => a.start - b.start);
-	return { ...existing, segments: merged };
+	return {
+		transcript: { ...existing, segments: merged },
+		spliced: taken.length,
+	};
 }
 
 /**
@@ -159,7 +205,7 @@ export class FailedPartRetry {
 	 */
 	async retry(): Promise<RetryOutcome> {
 		const record = await this.sidecar.getFailedParts(this.file.path);
-		const ranges = retryableRanges(record?.parts ?? []);
+		const { ranges, unsent } = partitionParts(record?.parts ?? []);
 		if (ranges.length === 0) {
 			return this.blocked(
 				record
@@ -173,17 +219,30 @@ export class FailedPartRetry {
 				'Topping up needs the run to have written a JSON transcript, which is the only output that keeps the segment timings. Set the transcript file format to JSON and transcribe again.',
 			);
 		}
-		const { transcript: recovered, missingParts } = await this.run(
-			this.file,
+		const {
+			transcript: recovered,
+			missingParts,
+			cost,
+		} = await this.run(this.file, ranges);
+		const completed = spliceSegments(
+			source.transcript,
+			recovered.segments,
 			ranges,
 		);
-		const completed = spliceSegments(source.transcript, recovered.segments);
-		await this.sidecar.setFailedParts(this.file.path, missingParts);
+		// A part this top-up had no bounds for was never sent, so it is still
+		// missing and stays on the record. Writing only what came back would
+		// erase it, and an absent record means "nothing is missing".
+		const stillMissing = [...unsent, ...missingParts];
+		await this.sidecar.setFailedParts(this.file.path, stillMissing);
 		return {
-			recovered:
-				completed.segments.length - source.transcript.segments.length,
-			stillMissing: missingParts,
-			rewritten: await this.rewriteOutputs(completed, source.outputs),
+			recovered: completed.spliced,
+			stillMissing,
+			rewritten: await this.rewriteOutputs(
+				completed.transcript,
+				source.outputs,
+			),
+			sentSeconds: sentSeconds(ranges),
+			cost,
 		};
 	}
 
@@ -269,30 +328,53 @@ export class FailedPartRetry {
 			recovered: 0,
 			stillMissing: [],
 			rewritten: 0,
+			sentSeconds: 0,
 			blocked: reason,
 		};
 	}
 }
 
 /**
- * The stretches a retry can ask for: the recorded parts that carry a measured
- * end. A part with none is the whole-file path, which has no smaller unit to
- * send and so cannot be topped up.
+ * Splits the recorded parts into the stretches a top-up can ask for and the
+ * parts it cannot.
+ *
+ * A part carries a measured end only where the run cut the recording up; the
+ * whole-file path has no smaller unit to send. Both halves are needed at the
+ * end as well as the start, because a part that was never sent is still
+ * missing and has to stay on the record beside whatever failed again.
  * @param parts - The recorded failed parts
- * @returns The stretches to transcribe again
+ * @returns The stretches to transcribe again, and the parts left alone
  */
-function retryableRanges(
-	parts: readonly PartFailure[],
-): { startSeconds: number; endSeconds: number }[] {
-	return parts
-		.filter(
-			(part): part is PartFailure & { endSeconds: number } =>
-				part.endSeconds !== undefined,
-		)
-		.map((part) => ({
+function partitionParts(parts: readonly PartFailure[]): {
+	ranges: RecordingRange[];
+	unsent: PartFailure[];
+} {
+	const ranges: RecordingRange[] = [];
+	const unsent: PartFailure[] = [];
+	for (const part of parts) {
+		if (part.endSeconds === undefined) {
+			unsent.push(part);
+			continue;
+		}
+		ranges.push({
 			startSeconds: part.startSeconds,
 			endSeconds: part.endSeconds,
-		}));
+		});
+	}
+	return { ranges, unsent };
+}
+
+/**
+ * How much audio a top-up sends, which is what it is billed for.
+ * @param ranges - The stretches being transcribed again
+ * @returns Their total length in seconds
+ */
+function sentSeconds(ranges: readonly RecordingRange[]): number {
+	return ranges.reduce(
+		(total, range) =>
+			total + Math.max(0, range.endSeconds - range.startSeconds),
+		0,
+	);
 }
 
 /**
