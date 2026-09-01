@@ -9,12 +9,14 @@
  * @module actions/PluginAction
  */
 
-import type { App, TFile } from 'obsidian';
+import type { App, TFile, TFolder } from 'obsidian';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
+import type { LlmCostSink } from '../transcription/llm/llmStep';
+import type { RunCostSink } from '../transcription/SessionCostTracker';
 import type { PlaybackControlsState } from '../player/playbackControls';
 import type { MarkerKind } from '../markers/markerModel';
 
@@ -62,6 +64,26 @@ export interface ActionServices {
 	readonly autoChapters: AutoChapterService;
 	/** Shared per-recording sidecar store (markers + transcript data). */
 	readonly recordingSidecar: RecordingSidecarStore;
+	/**
+	 * The transcription queue, so a folder can be queued from the menu it is
+	 * right-clicked in. Declared as the two things that surface needs rather
+	 * than the coordinator itself, so the action definitions stay independent
+	 * of the queue's internals.
+	 */
+	readonly transcriptionQueue: {
+		queueFolder(folder: TFolder): Promise<void>;
+		open(): void;
+	};
+	/**
+	 * Where an action's own transcription run reports what it cost: the
+	 * engine call through {@link RunCostSink}, its LLM steps through
+	 * {@link LlmCostSink}. Both, because a run started from a menu lands in
+	 * the same session total as one started from the dialog, and a total that
+	 * covered only half of it would read as a cheaper run rather than as an
+	 * incomplete count. Optional: an action surface wired without one still
+	 * works and simply accounts nothing.
+	 */
+	readonly transcriptionCosts?: (LlmCostSink & RunCostSink) | undefined;
 }
 
 /** The audio file an action targets, with the services it runs against. */
@@ -129,3 +151,21 @@ export type SessionAction = PluginCommand<SessionServices>;
  * from the palette (and inert as a hotkey) while nothing plays.
  */
 export type PlaybackAction = PluginCommand<PlaybackControlsState>;
+
+/** What a vault-wide search action needs. */
+export interface SearchServices {
+	/**
+	 * Indexes the vault's markers if it has not been indexed yet and opens
+	 * the search over them.
+	 */
+	readonly openMarkerSearch: () => Promise<void>;
+	/** Shows the transcription queue, whatever state it is in. */
+	readonly openTranscriptionQueue: () => void;
+}
+
+/**
+ * An action that searches the vault. Its context always resolves, because it
+ * is bound to no file and no playback: a marker can be looked for from any
+ * note, which is exactly why it is not a file action.
+ */
+export type SearchAction = PluginCommand<SearchServices>;

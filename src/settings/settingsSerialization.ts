@@ -22,6 +22,8 @@ import {
 } from '../providers/providers';
 import { reconcileEngineSettings } from '../providers/engineSettings';
 import {
+	MIN_TRACK_GAIN_DB,
+	MAX_TRACK_GAIN_DB,
 	DEEPGRAM_MODEL_SUGGESTIONS,
 	GEMINI_MODEL_SUGGESTIONS,
 	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
@@ -61,6 +63,21 @@ import {
 } from '../speakers/participantRoster';
 
 /**
+ * Coerces an untrusted number into a range, with the neutral 0 for anything
+ * that is not a number at all. Both mix placements are absent in every
+ * settings file written before they existed, and hand-editable in the rest.
+ * @param value - Candidate value from storage
+ * @param min - Lowest value accepted
+ * @param max - Highest value accepted
+ * @returns The value inside the range, or 0
+ */
+function clampNumber(value: unknown, min: number, max: number): number {
+	return typeof value === 'number' && Number.isFinite(value)
+		? Math.min(max, Math.max(min, value))
+		: 0;
+}
+
+/**
  * Normalizes track audio sources into a Map. Accepts the current
  * object form, the bare device-id string older versions persisted,
  * and Map values that predate the channel mode field; every entry
@@ -88,14 +105,23 @@ function normalizeTrackAudioSources(
 			sources.set(trackNumber, {
 				deviceId: value,
 				channelMode: normalizeChannelMode(undefined),
+				gainDb: 0,
+				pan: 0,
 			});
 			continue;
 		}
 		if (value && typeof value === 'object' && 'deviceId' in value) {
 			const { deviceId, channelMode } = value;
+			const placement = value as { gainDb?: unknown; pan?: unknown };
 			sources.set(trackNumber, {
 				deviceId: typeof deviceId === 'string' ? deviceId : '',
 				channelMode: normalizeChannelMode(channelMode),
+				gainDb: clampNumber(
+					placement.gainDb,
+					MIN_TRACK_GAIN_DB,
+					MAX_TRACK_GAIN_DB,
+				),
+				pan: clampNumber(placement.pan, -1, 1),
 			});
 		}
 	}
@@ -113,6 +139,8 @@ export function serializeTrackAudioSources(
 		serialized[trackNumber] = {
 			deviceId: source.deviceId,
 			channelMode: source.channelMode,
+			gainDb: source.gainDb ?? 0,
+			pan: source.pan ?? 0,
 		};
 	}
 	return serialized;

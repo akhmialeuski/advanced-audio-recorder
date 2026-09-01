@@ -17,6 +17,7 @@
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { PlayerMarker } from '../markers/markerModel';
+import type { PartFailure } from '../transcription/partFailure';
 import { serializeMarkers } from '../markers/markerModel';
 import { mergeParticipantNames } from '../speakers/participantRoster';
 import { TRANSCRIPT_FILE_FORMATS } from '../transcription/TranscriptTypes';
@@ -31,6 +32,8 @@ import {
 	type FileOutput,
 	type NoteOutput,
 	type ParticipantUpdate,
+	type FailedPartsSection,
+	type PlaybackState,
 	type RecordingSidecar,
 	type SpeakerEntry,
 	type TranscriptProvenance,
@@ -38,7 +41,7 @@ import {
 } from './recordingSidecarModel';
 
 /** Suffix appended to a recording's path to form its sidecar path. */
-const SIDECAR_SUFFIX = '.markers.json';
+export const SIDECAR_SUFFIX = '.markers.json';
 
 /**
  * File extensions a recorded output can have: notes plus the transcript file
@@ -129,6 +132,85 @@ export class RecordingSidecarStore {
 			sidecar.markers = result;
 		});
 		return serializeMarkers(result);
+	}
+
+	/**
+	 * Returns the parts the last run could not transcribe, or null when it
+	 * came back whole (or nothing has been transcribed yet).
+	 * @param path - Vault-relative recording path
+	 */
+	async getFailedParts(path: string): Promise<FailedPartsSection | null> {
+		const stored = (await this.load(path)).failedParts;
+		return stored
+			? {
+					recordedAt: stored.recordedAt,
+					parts: stored.parts.map((part) => ({ ...part })),
+				}
+			: null;
+	}
+
+	/**
+	 * Records what a run could not transcribe, or clears the record when it
+	 * came back whole. Every run writes this, so an absent record always
+	 * means "nothing is missing" and never "nobody looked".
+	 * @param path - Vault-relative recording path
+	 * @param parts - The parts that failed; an empty list clears the record
+	 */
+	async setFailedParts(
+		path: string,
+		parts: readonly PartFailure[],
+	): Promise<void> {
+		return this.mutate(path, (sidecar) => {
+			if (parts.length === 0) {
+				if (!sidecar.failedParts) {
+					return false;
+				}
+				delete sidecar.failedParts;
+				return true;
+			}
+			sidecar.failedParts = {
+				parts: parts.map((part) => ({ ...part })),
+				recordedAt: new Date().toISOString(),
+			};
+			return true;
+		});
+	}
+
+	/**
+	 * Returns the remembered playback position for a recording, or null when
+	 * none is stored.
+	 * @param path - Vault-relative recording path
+	 */
+	async getPlayback(path: string): Promise<PlaybackState | null> {
+		const stored = (await this.load(path)).playback;
+		return stored ? { ...stored } : null;
+	}
+
+	/**
+	 * Stores or clears the remembered playback position. Writing the position
+	 * the document already holds is skipped, so the repeated saves a pause
+	 * produces do not each rewrite the file.
+	 * @param path - Vault-relative recording path
+	 * @param state - Position to remember, or null to forget it
+	 */
+	async setPlayback(
+		path: string,
+		state: PlaybackState | null,
+	): Promise<void> {
+		return this.mutate(path, (sidecar) => {
+			if (!state) {
+				if (!sidecar.playback) {
+					return false;
+				}
+				delete sidecar.playback;
+				return true;
+			}
+			if (sidecar.playback?.position === state.position) {
+				return false;
+			}
+			sidecar.playback = { ...state };
+			return true;
+		});
 	}
 
 	/**
@@ -400,10 +482,36 @@ export class RecordingSidecarStore {
 	}
 
 	/**
+	 * Every recording in the vault that has a sidecar, with the document it
+	 * holds. One pass over the vault's files, and each sidecar is parsed and
+	 * cached at most once through {@link load} - a later call finds them all
+	 * cached and touches the disk not at all. The reads run concurrently
+	 * rather than one await at a time, which is what keeps a vault with
+	 * hundreds of recordings from paying hundreds of serialized round-trips.
+	 *
+	 * A sidecar that cannot be read yields an empty document and is flagged
+	 * corrupt, exactly as a single read would, so one broken file never takes
+	 * the scan down with it.
+	 * @returns One entry per recording with a sidecar, in no particular order
+	 */
+	async allRecordings(): Promise<
+		{ path: string; sidecar: RecordingSidecar }[]
+	> {
+		const recordings = this.app.vault
+			.getFiles()
+			.filter((file) => file.path.endsWith(SIDECAR_SUFFIX))
+			.map((file) => file.path.slice(0, -SIDECAR_SUFFIX.length));
+		return Promise.all(
+			recordings.map(async (path) => ({
+				path,
+				sidecar: await this.load(path),
+			})),
+		);
+	}
+
+	/**
 	 * Finds the recordings whose sidecar (cached or on disk) records the
-	 * given output path. On-disk candidates are read through {@link load}, so
-	 * each sidecar is parsed and cached at most once - later scans check the
-	 * cache only and never touch the disk again.
+	 * given output path.
 	 * @param outputPath - Output path to search for
 	 */
 	private async recordingsReferencing(outputPath: string): Promise<string[]> {
@@ -411,31 +519,17 @@ export class RecordingSidecarStore {
 		const references = (doc: RecordingSidecar): boolean =>
 			doc.transcript.noteOutputs.some((o) => o.path === outputPath) ||
 			doc.transcript.fileOutputs.some((o) => o.path === outputPath);
+		// The cache is checked as well as the scan: a recording whose sidecar
+		// has not been written yet lives only there, and has no file for
+		// allRecordings to find.
 		for (const [recording, doc] of this.cache) {
 			if (references(doc)) {
 				hits.add(recording);
 			}
 		}
-		// Whether a sidecar records this output cannot be known without reading
-		// it, so every not-yet-cached one is read - but concurrently rather than
-		// one await at a time, which turned a rename in a vault with hundreds of
-		// recordings into hundreds of serialized disk round-trips. load() caches
-		// and is race-safe, so this costs one read per sidecar per session; a
-		// later rename finds them all cached and touches the disk not at all.
-		const uncached = this.app.vault
-			.getFiles()
-			.filter((file) => file.path.endsWith(SIDECAR_SUFFIX))
-			.map((file) => file.path.slice(0, -SIDECAR_SUFFIX.length))
-			.filter((recording) => !this.cache.has(recording));
-		const loaded = await Promise.all(
-			uncached.map(async (recording) => ({
-				recording,
-				doc: await this.load(recording),
-			})),
-		);
-		for (const { recording, doc } of loaded) {
-			if (references(doc)) {
-				hits.add(recording);
+		for (const { path, sidecar } of await this.allRecordings()) {
+			if (references(sidecar)) {
+				hits.add(path);
 			}
 		}
 		return [...hits];

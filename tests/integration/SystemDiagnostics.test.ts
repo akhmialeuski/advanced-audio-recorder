@@ -106,8 +106,13 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 		const result = SystemDiagnostics.collectPluginSettings(settings);
 
 		expect(result.trackAudioSources).toEqual({
-			1: { deviceId: 'dev-a', channelMode: 'source' },
-			2: { deviceId: 'dev-b', channelMode: 'mono-left' },
+			1: { deviceId: 'dev-a', channelMode: 'source', gainDb: 0, pan: 0 },
+			2: {
+				deviceId: 'dev-b',
+				channelMode: 'mono-left',
+				gainDb: 0,
+				pan: 0,
+			},
 		});
 	});
 

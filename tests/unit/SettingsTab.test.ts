@@ -620,16 +620,48 @@ describe('AudioRecorderSettingTab', () => {
 			expect(saveSettingsMock).toHaveBeenCalledTimes(1);
 		});
 
-		it('keeps the channel layout across a device swap', async () => {
+		it('keeps the channel layout and the mix placement across a device swap', async () => {
 			await tab.setControlValue('track.1.deviceId', 'mic-1');
 			await tab.setControlValue('track.1.channelMode', 'mono-left');
+			await tab.setControlValue('track.1.gainDb', -6);
+			await tab.setControlValue('track.1.pan', -1);
 
 			await tab.setControlValue('track.1.deviceId', 'iface-1');
 
 			expect(sourceOf(1)).toEqual({
 				deviceId: 'iface-1',
 				channelMode: 'mono-left',
+				gainDb: -6,
+				pan: -1,
 			});
+		});
+
+		// The number control hands back whatever the field held, and a level
+		// stored as the string '-6' would multiply the track by nothing.
+		it('stores a level and a position as numbers', async () => {
+			await tab.setControlValue('track.1.deviceId', 'mic-1');
+
+			await tab.setControlValue('track.1.gainDb', '-6');
+			await tab.setControlValue('track.1.pan', '0.5');
+
+			expect(sourceOf(1)).toEqual({
+				deviceId: 'mic-1',
+				channelMode: 'source',
+				gainDb: -6,
+				pan: 0.5,
+			});
+			expect(tab.getControlValue('track.1.gainDb')).toBe(-6);
+		});
+
+		it('ignores a placement written to a track with no device', async () => {
+			await tab.setControlValue('track.2.gainDb', 12);
+
+			expect(sourceOf(2)).toBeUndefined();
+		});
+
+		it('reads an unplaced track as centred, at the level it was captured', () => {
+			expect(tab.getControlValue('track.4.gainDb')).toBe(0);
+			expect(tab.getControlValue('track.4.pan')).toBe(0);
 		});
 
 		it('drops the entry when the device is cleared', async () => {

@@ -1,12 +1,13 @@
 # LLM post-processing
 
-**LLM post-processing** is an optional step that passes a finished transcript through a large language model (LLM) before it is written to your note or sidecar file. Use it to **clean up** the raw machine transcript, **summarize** it into key points and action items, or apply your own **custom** instruction. It is part of the transcription pipeline: it only runs when transcription runs, after the speech-to-text engine produces the transcript and before the output is saved.
+**LLM post-processing** is an optional step that passes a finished transcript through a large language model (LLM) before it is written to your note or sidecar file. Use it to **clean up** the raw machine transcript, **summarize** it into key points and action items, **translate** it into another language, or apply your own **custom** instruction. It is part of the transcription pipeline: it only runs when transcription runs, after the speech-to-text engine produces the transcript and before the output is saved.
 
 - [What it does and when it runs](#what-it-does-and-when-it-runs)
 - [Enabling it](#enabling-it)
-- [The three tasks](#the-three-tasks)
+- [The four tasks](#the-four-tasks)
     - [Clean up](#clean-up)
     - [Summarize](#summarize)
+    - [Translate](#translate)
     - [Custom](#custom)
 - [Prompt profiles](#prompt-profiles)
 - [Default prompts](#default-prompts)
@@ -47,7 +48,7 @@ If transcription itself is off, there is nothing for this step to process, so th
 
 ---
 
-## The three tasks
+## The four tasks
 
 Pick what the LLM should do with the transcript from the **Task** dropdown.
 
@@ -55,6 +56,7 @@ Pick what the LLM should do with the transcript from the **Task** dropdown.
 | ------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | **Clean up**  | Fixes punctuation, capitalization, and obvious speech-to-text errors; adds paragraph breaks; trims filler artifacts. | The speaker's exact wording and meaning, plus any speaker labels and timestamps. |
 | **Summarize** | Condenses the transcript into key points and action items as Markdown bullet lists under short headings.             | Both: the summary is added **above** the full transcript, which is kept intact.  |
+| **Translate** | Writes the transcript in another language, one line per spoken segment.                                              | Both: the translation is written **beside** the original, with the same timings. |
 | **Custom**    | Sends your own instruction to the LLM, verbatim, and uses the model's reply as the transcript body.                  | Whatever your instruction tells it to preserve.                                  |
 
 ### Clean up
@@ -64,6 +66,16 @@ The default task. The LLM is asked to act as a transcription editor: correct pun
 ### Summarize
 
 The LLM is asked to act as an analyst and produce a concise set of key points and action items as Markdown bullet lists under short headings, faithful to the content and inventing nothing. Unlike the other two tasks, summarize **does not replace** the transcript: the output is written as a `### Summary` section, followed by a `### Transcript` section that contains the full transcript unchanged. The summary is generated from the plain transcript text (timestamps and player links are not fed to the model), so you get a clean prose summary plus the complete transcript underneath.
+
+### Translate
+
+The transcript is translated into the language named in **Translate into** (English when the field is empty). Like summarize, translation **does not replace** the transcript: the original is kept and the translation is written beside it. With a file destination that means **two files**, the second one naming its language (`recording.Spanish.srt`); in a note the translation follows the original under a heading of its language.
+
+The pass runs over the transcript's **segments**, not over the rendered text. Each segment is sent as one numbered line carrying its speaker, and the answer is mapped back onto the segment its number names. The start, end, and speaker of every segment are held by the plugin throughout and re-attached unchanged, so the translation carries the recording's own timeline whatever the model returns. That is what makes **SubRip and WebVTT come out translated** with no further work, and their timecodes identical to the original's.
+
+A long transcript is translated in **several calls**, sized so the answer fits the model's output ceiling rather than being cut off at it. A call whose answer does not line up, one line short or one line too many, is asked again once; if it still does not line up, those segments keep their original text. A partly translated transcript with correct timings is worth more than one whose lines have slipped against the clock.
+
+Translation is a separate thing from the engine's own [speech translation](transcription.md): that one happens during recognition, only ever writes English, and is offered only where the engine has an operation for it. This one runs afterwards, on the finished transcript, into any language, on any engine.
 
 ### Custom
 

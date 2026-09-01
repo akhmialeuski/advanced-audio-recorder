@@ -206,6 +206,22 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 			settings.llmPostProcessTask === 'summary',
 	}),
 	defineKind({
+		id: 'llmTranslate',
+		section: 'llm',
+		heading: 'Translation prompt profiles',
+		catalogueDesc:
+			'Named system instructions for the translation pass. Keep one per target audience instead of rewriting the single prompt each time.',
+		selectionName: 'Translation prompt profile',
+		selectionDesc: promptSelectionDesc('the translation pass'),
+		bodyName: 'Translation prompt',
+		bodyDesc:
+			'System instruction for the translation pass. The target language is appended automatically.',
+		summary: promptSummary,
+		visible: (settings) =>
+			postProcessing(settings) &&
+			settings.llmPostProcessTask === 'translate',
+	}),
+	defineKind({
 		id: 'llmCustom',
 		section: 'llm',
 		heading: 'Custom instruction profiles',

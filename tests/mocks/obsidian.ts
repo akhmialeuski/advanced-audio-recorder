@@ -1047,6 +1047,71 @@ export class Modal {
 	}
 }
 
+/** One item a fuzzy search matched, as Obsidian hands it to a renderer. */
+export interface FuzzyMatch<T> {
+	item: T;
+	match: { score: number; matches: number[][] };
+}
+
+/**
+ * Mock FuzzySuggestModal. Obsidian's own fuzzy ranking is not modelled: what
+ * a plugin owns is which items it offers, how each is named, what it draws
+ * for a row, and what choosing one does, so the query filter here is a plain
+ * case-insensitive substring test over the item text the plugin supplies.
+ *
+ * The surface is Obsidian's own, so a test drives the dialog the way the
+ * dialog is really driven: `getSuggestions` for a keystroke and
+ * `onChooseSuggestion` for a pick. Rendering happens inside getSuggestions
+ * rather than in a separate pass, which is the one shortcut taken here, so a
+ * test that types can read what the rows say.
+ */
+export abstract class FuzzySuggestModal<T> extends Modal {
+	inputEl: HTMLInputElement = document.createElement('input');
+
+	resultContainerEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+
+	emptyStateText = 'No results found.';
+
+	abstract getItems(): T[];
+
+	abstract getItemText(item: T): string;
+
+	abstract onChooseItem(item: T, evt: MouseEvent | KeyboardEvent): void;
+
+	renderSuggestion(_match: FuzzyMatch<T>, _el: HTMLElement): void {
+		// Obsidian draws the item text by default; a plugin overrides this.
+	}
+
+	setPlaceholder(placeholder: string): void {
+		this.inputEl.placeholder = placeholder;
+	}
+
+	override open(): void {
+		super.open();
+		this.getSuggestions('');
+	}
+
+	getSuggestions(query: string): FuzzyMatch<T>[] {
+		const needle = query.toLowerCase();
+		const matches = this.getItems()
+			.filter((item) =>
+				this.getItemText(item).toLowerCase().includes(needle),
+			)
+			.map((item) => ({ item, match: { score: 0, matches: [] } }));
+		this.resultContainerEl.empty();
+		for (const match of matches) {
+			this.renderSuggestion(match, this.resultContainerEl.createDiv());
+		}
+		return matches;
+	}
+
+	onChooseSuggestion(match: FuzzyMatch<T>, evt: MouseEvent | KeyboardEvent) {
+		this.onChooseItem(match.item, evt);
+	}
+}
+
 /**
  * Mock ButtonComponent class.
  */

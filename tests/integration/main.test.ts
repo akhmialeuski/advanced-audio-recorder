@@ -30,6 +30,12 @@ import {
 import { updateStatusBar } from 'src/ui/StatusBar';
 import { ConversionModal } from 'src/ui/ConversionModal';
 import type { JournalSession } from 'src/recording/SessionJournal';
+import { QueueCoordinator } from 'src/transcription/QueueCoordinator';
+import { QueueRunner } from 'src/transcription/QueueRunner';
+import { ContextMenu } from 'src/ui/ContextMenu';
+import type { ActionServices } from 'src/actions/PluginAction';
+import type { TFolder } from 'obsidian';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -56,6 +62,26 @@ jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
 		subscribePlayback: jest.fn(),
 		currentPlaybackState: jest.fn(() => null),
 		primeSavedRecordingsForEnhancement: jest.fn(),
+		openMarkerSearch: jest.fn().mockResolvedValue(undefined),
+	})),
+}));
+
+jest.mock('src/transcription/runTranscription', () => ({
+	transcribeFile: jest.fn(),
+}));
+
+jest.mock('src/transcription/QueueRunner', () => ({
+	QueueRunner: jest.fn().mockImplementation(() => ({
+		drain: jest.fn().mockResolvedValue(undefined),
+		isRunning: jest.fn(() => false),
+	})),
+}));
+
+jest.mock('src/transcription/QueueCoordinator', () => ({
+	QueueCoordinator: jest.fn().mockImplementation(() => ({
+		queueFolder: jest.fn().mockResolvedValue(undefined),
+		open: jest.fn(),
+		resumeIfPending: jest.fn().mockResolvedValue(undefined),
 	})),
 }));
 
@@ -720,6 +746,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 interface PlayerRegistrarDouble {
 	subscribePlayback: jest.Mock;
 	currentPlaybackState: jest.Mock;
+	openMarkerSearch: jest.Mock;
 }
 
 /**
@@ -840,25 +867,7 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		const { plugin, onPlayback } = await pluginWithPlayback();
 		const { renderPlaybackStatusBar, renderTranscriptionStatusBar } =
 			jest.requireMock('src/ui/StatusBar');
-		const playbackState: PlaybackControlsState = {
-			currentTime: 5,
-			duration: 60,
-			paused: false,
-			volume: 1,
-			muted: false,
-			playbackRate: 1,
-			markersEnabled: true,
-			chaptersEnabled: true,
-			onTogglePlay: jest.fn(),
-			onStop: jest.fn(),
-			onSkip: jest.fn(),
-			onToggleMute: jest.fn(),
-			onVolumeInput: jest.fn(),
-			onSetPlaybackRate: jest.fn(),
-			onAddMarker: jest.fn(),
-			onPreviousChapter: jest.fn(),
-			onNextChapter: jest.fn(),
-		};
+		const playbackState = makePlaybackState();
 
 		onPlayback(playbackState);
 		expect(renderPlaybackStatusBar).toHaveBeenLastCalledWith(
@@ -915,25 +924,10 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		// status bar. It must be stored without repainting, so the recording
 		// controls (and their live stats) are never rebuilt out from under the
 		// 200 ms live-stat cadence.
-		const playbackState: PlaybackControlsState = {
-			currentTime: 5,
-			duration: 60,
-			paused: false,
-			volume: 1,
-			muted: false,
-			playbackRate: 1,
+		const playbackState = makePlaybackState({
 			markersEnabled: false,
 			chaptersEnabled: false,
-			onTogglePlay: jest.fn(),
-			onStop: jest.fn(),
-			onSkip: jest.fn(),
-			onToggleMute: jest.fn(),
-			onVolumeInput: jest.fn(),
-			onSetPlaybackRate: jest.fn(),
-			onAddMarker: jest.fn(),
-			onPreviousChapter: jest.fn(),
-			onNextChapter: jest.fn(),
-		};
+		});
 		onPlayback(playbackState);
 
 		expect(jest.mocked(updateStatusBar)).not.toHaveBeenCalled();
@@ -1283,5 +1277,174 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 		expect(openSpy).toHaveBeenCalledWith(second, 'mono-right');
 		// Keep the aggregate notice available so the other file can be fixed.
 		expect(notice.hide).not.toHaveBeenCalled();
+	});
+});
+
+describe('AudioRecorderPlugin searching the vault for a marker', () => {
+	it('offers the search from any note, and opens it on the registrar', async () => {
+		const { plugin, registrar } = await pluginWithPlayback();
+
+		// Bound to no file and no playback, so unlike the file and playback
+		// commands it is available with nothing open at all
+		expect(
+			asMockPlugin(plugin).invokeCommand(COMMAND_IDS.searchMarkers),
+		).toBe(true);
+		expect(registrar.openMarkerSearch).toHaveBeenCalledTimes(1);
+	});
+});
+
+// The queue is wired in three places - the folder menu, the palette command,
+// and the offer to carry on after a restart - and each is a closure that has
+// to reach the one coordinator the plugin built.
+describe('AudioRecorderPlugin transcription queue', () => {
+	/** The coordinator the plugin built on load. */
+	function coordinator(): {
+		queueFolder: jest.Mock;
+		open: jest.Mock;
+		resumeIfPending: jest.Mock;
+	} {
+		return at((QueueCoordinator as jest.Mock).mock.results, 0).value as {
+			queueFolder: jest.Mock;
+			open: jest.Mock;
+			resumeIfPending: jest.Mock;
+		};
+	}
+
+	it('offers to carry on with a queue a previous session left', async () => {
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+
+		expect(coordinator().resumeIfPending).toHaveBeenCalledTimes(1);
+	});
+
+	it('shows the queue from the palette', async () => {
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+
+		expect(
+			asMockPlugin(plugin).invokeCommand(
+				COMMAND_IDS.openTranscriptionQueue,
+			),
+		).toBe(true);
+
+		expect(coordinator().open).toHaveBeenCalledTimes(1);
+	});
+
+	it('gives the runner the live settings and the transcribe entry point', async () => {
+		const { transcribeFile } = jest.requireMock<{
+			transcribeFile: jest.Mock;
+		}>('src/transcription/runTranscription');
+		let settingsFromRun: unknown = null;
+		transcribeFile.mockImplementation(
+			(_app: unknown, getSettings: () => AudioRecorderSettings) => {
+				// The run reads the settings when it runs, not when it was
+				// wired, so a change during a long queue reaches it
+				settingsFromRun = getSettings();
+				return Promise.resolve({
+					cost: { engineId: 'deepgram', usd: 0, usage: {} },
+				});
+			},
+		);
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+		const deps = at((QueueRunner as jest.Mock).mock.calls, 0)[0] as {
+			getSettings: () => AudioRecorderSettings;
+			transcribe: (file: TFile, options: unknown) => Promise<unknown>;
+		};
+
+		// Read live rather than captured, so a settings change during a long
+		// queue reaches the recordings still to run
+		expect(deps.getSettings()).toBe(plugin.settings);
+		await deps.transcribe(partial<TFile>({ path: 'a.webm' }), {
+			notePathForLinks: 'a.webm',
+		});
+
+		expect(transcribeFile).toHaveBeenCalledTimes(1);
+		expect(settingsFromRun).toBe(plugin.settings);
+	});
+
+	// A queued run was the only run wired without the sidecar store, so it
+	// registered neither the files it wrote nor the parts it lost: a rename
+	// afterwards could not follow its transcript, its speakers kept the
+	// engine's labels, and "Transcribe the parts that failed" answered that
+	// nothing was missing from a transcript with a hole in it.
+	it('gives a queued run the same sidecar store the rest of the plugin writes through', async () => {
+		const { transcribeFile } = jest.requireMock<{
+			transcribeFile: jest.Mock;
+		}>('src/transcription/runTranscription');
+		transcribeFile.mockResolvedValue({
+			cost: { engineId: 'deepgram', usd: 0, usage: {} },
+		});
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+		const deps = at((QueueRunner as jest.Mock).mock.calls, 0)[0] as {
+			transcribe: (file: TFile, options: unknown) => Promise<unknown>;
+		};
+		const services = at(
+			(ContextMenu as jest.Mock).mock.calls,
+			0,
+		)[1] as ActionServices;
+
+		await deps.transcribe(partial<TFile>({ path: 'a.webm' }), {
+			notePathForLinks: 'a.webm',
+		});
+
+		// The same store, not merely a store: every writer of a recording's
+		// sidecar has to serialize on one write chain.
+		expect(at(transcribeFile.mock.calls, 0)[3]).toEqual(
+			expect.objectContaining({
+				notePathForLinks: 'a.webm',
+				sidecar: services.recordingSidecar,
+			}),
+		);
+	});
+
+	it('gives the coordinator the live settings too', async () => {
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+		const deps = at((QueueCoordinator as jest.Mock).mock.calls, 0)[0] as {
+			getSettings: () => AudioRecorderSettings;
+		};
+
+		expect(deps.getSettings()).toBe(plugin.settings);
+	});
+
+	it('hands the folder menu the same queue', async () => {
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+		const services = at(
+			(ContextMenu as jest.Mock).mock.calls,
+			0,
+		)[1] as ActionServices;
+
+		await services.transcriptionQueue.queueFolder(
+			partial<TFolder>({ path: 'Recordings' }),
+		);
+		services.transcriptionQueue.open();
+
+		expect(coordinator().queueFolder).toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'Recordings' }),
+		);
+		expect(coordinator().open).toHaveBeenCalledTimes(1);
+	});
+
+	it('answers the folder menu before the queue has been built', async () => {
+		// The menu is wired during load, ahead of the queue, and its entries
+		// read the field when they are clicked rather than when they were
+		// wired. A load that stopped in between left them dereferencing a
+		// field that was never assigned.
+		const { plugin } = createPlugin([null]);
+		const services = (
+			plugin as unknown as { createActionServices(): ActionServices }
+		).createActionServices();
+
+		expect(() => {
+			services.transcriptionQueue.open();
+		}).not.toThrow();
+		await expect(
+			services.transcriptionQueue.queueFolder(
+				partial<TFolder>({ path: 'Recordings' }),
+			),
+		).resolves.toBeUndefined();
 	});
 });

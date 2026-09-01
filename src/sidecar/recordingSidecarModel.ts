@@ -1,7 +1,8 @@
 /**
  * Data model for the per-recording sidecar document (`<recording>.markers.json`).
- * Version 2 holds two independent sections: the player markers (unchanged from
- * version 1) and a `transcript` section that records the speaker roster of the
+ * Version 2 holds three independent sections: the player markers (unchanged
+ * from version 1), a `playback` section carrying the position the recording
+ * was left at, and a `transcript` section that records the speaker roster of the
  * last diarized transcription, the participant names the recording carries, the
  * outputs the plugin wrote (with the render templates in effect at write time),
  * and a short history of applied name mappings for undo. Every function here is
@@ -18,6 +19,7 @@ import {
 	type PlayerMarker,
 } from '../markers/markerModel';
 import { normalizeParticipantNames } from '../speakers/participantRoster';
+import type { PartFailure } from '../transcription/partFailure';
 import {
 	TRANSCRIPT_FILE_FORMATS,
 	type TranscriptFileFormat,
@@ -124,6 +126,12 @@ export interface FileOutput {
 	format: TranscriptFileFormat;
 	/** ISO-8601 timestamp of the write. */
 	writtenAt: string;
+	/**
+	 * Language this file was translated into, absent for the transcript in
+	 * the recording's own language. What tells a translation apart from the
+	 * original when both were written for one run.
+	 */
+	language?: string;
 }
 
 /** Provenance of the last transcription run that wrote outputs. */
@@ -184,10 +192,40 @@ export interface ParticipantUpdate {
 	profileId: string;
 }
 
+/**
+ * Where playback of this recording was left off. Written when playback
+ * pauses, stops, or the player unloads, and cleared once the recording has
+ * been heard to the end, so a finished recording starts from the beginning
+ * again rather than from its last second.
+ */
+export interface PlaybackState {
+	/** Offset to resume from, in seconds. */
+	position: number;
+	/** ISO-8601 timestamp of the write. */
+	updatedAt: string;
+}
+
+/**
+ * The parts the last transcription run could not transcribe, kept so exactly
+ * those can be asked for again instead of paying for the whole recording a
+ * second time. Written by every run, so an empty list is a run that came back
+ * whole rather than a run nothing is known about.
+ */
+export interface FailedPartsSection {
+	/** The parts that failed, in the order the run attempted them. */
+	parts: PartFailure[];
+	/** ISO-8601 timestamp of the run that recorded them. */
+	recordedAt: string;
+}
+
 /** The full parsed sidecar document for one recording. */
 export interface RecordingSidecar {
 	markers: PlayerMarker[];
 	transcript: TranscriptSection;
+	/** Last playback position; absent until the recording is left part-heard. */
+	playback?: PlaybackState;
+	/** Parts the last run could not transcribe; absent when it came back whole. */
+	failedParts?: FailedPartsSection;
 }
 
 /** Returns a fresh, empty transcript section. */
@@ -226,13 +264,24 @@ export function isTranscriptSectionEmpty(section: TranscriptSection): boolean {
 }
 
 /**
- * Whether a sidecar document holds nothing worth persisting: no markers and
- * an empty transcript section. Only then may the file be deleted.
+ * Whether a sidecar document holds nothing worth persisting: no markers, an
+ * empty transcript section, and no remembered playback position. Only then
+ * may the file be deleted.
+ *
+ * The playback position counts as content, so a recording left part-heard
+ * gets a sidecar of its own. That is the only way the position can survive
+ * for a recording that carries no markers, which is exactly the long
+ * recording the feature exists for. Clutter is bounded at the other end
+ * instead: the position is written only once playback is meaningfully into
+ * the recording and is cleared when the end is reached, which deletes the
+ * file again when nothing else is in it.
  * @param sidecar - Parsed sidecar document
  */
 export function isSidecarEmpty(sidecar: RecordingSidecar): boolean {
 	return (
 		sidecar.markers.length === 0 &&
+		sidecar.playback === undefined &&
+		sidecar.failedParts === undefined &&
 		isTranscriptSectionEmpty(sidecar.transcript)
 	);
 }
@@ -251,6 +300,65 @@ function offsetSeconds(value: unknown): number | null {
 	return typeof value === 'number' && Number.isFinite(value) && value >= 0
 		? value
 		: null;
+}
+
+/**
+ * Parses the recorded failed parts. A part with no usable start locates
+ * nothing and is dropped; a section with no parts left, or with no write
+ * timestamp, reads as no record at all, which is the same answer as a run
+ * that came back whole.
+ * @param value - Raw `failedParts` value from the parsed JSON
+ */
+function parseFailedParts(value: unknown): FailedPartsSection | null {
+	if (typeof value !== 'object' || value === null) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	const recordedAt = trimmedString(record.recordedAt);
+	if (!recordedAt || !Array.isArray(record.parts)) {
+		return null;
+	}
+	const parts: PartFailure[] = [];
+	for (const entry of record.parts) {
+		if (typeof entry !== 'object' || entry === null) {
+			continue;
+		}
+		const part = entry as Record<string, unknown>;
+		const startSeconds = offsetSeconds(part.startSeconds);
+		if (startSeconds === null) {
+			continue;
+		}
+		const endSeconds = offsetSeconds(part.endSeconds);
+		parts.push({
+			label: trimmedString(part.label) ?? '',
+			message: trimmedString(part.message) ?? '',
+			startSeconds,
+			...(endSeconds === null || endSeconds <= startSeconds
+				? {}
+				: { endSeconds }),
+		});
+	}
+	return parts.length > 0 ? { parts, recordedAt } : null;
+}
+
+/**
+ * Parses the remembered playback position. A position that is missing, not a
+ * positive finite number, or carries no write timestamp yields null: resuming
+ * from the very start is what happens anyway, so a half-written section is
+ * dropped rather than resumed from.
+ * @param value - Raw `playback` value from the parsed JSON
+ */
+function parsePlaybackState(value: unknown): PlaybackState | null {
+	if (typeof value !== 'object' || value === null) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	const position = offsetSeconds(record.position);
+	const updatedAt = trimmedString(record.updatedAt);
+	if (position === null || position <= 0 || !updatedAt) {
+		return null;
+	}
+	return { position, updatedAt };
 }
 
 /**
@@ -377,11 +485,13 @@ function parseFileOutputs(value: unknown): FileOutput[] {
 			continue;
 		}
 		seen.add(path);
+		const language = trimmedString(record.language);
 		result.push({
 			path,
 			format: format as TranscriptFileFormat,
 			writtenAt:
 				typeof record.writtenAt === 'string' ? record.writtenAt : '',
+			...(language ? { language } : {}),
 		});
 	}
 	return result;
@@ -515,9 +625,13 @@ export function parseRecordingSidecar(value: unknown): RecordingSidecar {
 		return emptyRecordingSidecar();
 	}
 	const record = value as Record<string, unknown>;
+	const playback = parsePlaybackState(record.playback);
+	const failedParts = parseFailedParts(record.failedParts);
 	return {
 		markers: parseMarkers(record.markers),
 		transcript: parseTranscriptSection(record.transcript),
+		...(playback ? { playback } : {}),
+		...(failedParts ? { failedParts } : {}),
 	};
 }
 
@@ -534,6 +648,25 @@ export function serializeRecordingSidecar(
 		version: SIDECAR_VERSION,
 		markers: serializeMarkers(sidecar.markers),
 	};
+	if (sidecar.playback) {
+		payload.playback = {
+			position: sidecar.playback.position,
+			updatedAt: sidecar.playback.updatedAt,
+		};
+	}
+	if (sidecar.failedParts) {
+		payload.failedParts = {
+			recordedAt: sidecar.failedParts.recordedAt,
+			parts: sidecar.failedParts.parts.map((part) => ({
+				label: part.label,
+				message: part.message,
+				startSeconds: part.startSeconds,
+				...(part.endSeconds === undefined
+					? {}
+					: { endSeconds: part.endSeconds }),
+			})),
+		};
+	}
 	if (!isTranscriptSectionEmpty(sidecar.transcript)) {
 		payload.transcript = {
 			speakers: sidecar.transcript.speakers.map(cloneSpeakerEntry),
@@ -554,6 +687,7 @@ export function serializeRecordingSidecar(
 				path: output.path,
 				format: output.format,
 				writtenAt: output.writtenAt,
+				...(output.language ? { language: output.language } : {}),
 			})),
 			history: sidecar.transcript.history.map((entry) => ({
 				at: entry.at,

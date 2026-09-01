@@ -1,19 +1,19 @@
 /**
  * Transcription via an OpenAI-compatible Whisper API
- * (`POST {baseUrl}/audio/transcriptions`). Works with OpenAI and any
- * compatible endpoint (e.g. Groq) by changing the base URL and model.
- * Word timestamps are requested best-effort. Speaker diarization is not
- * offered: OpenAI's Whisper returns no speaker labels, so the diarization
- * UI is disabled for this engine rather than requesting a field the API
- * silently ignores.
+ * (`POST {baseUrl}/audio/transcriptions`), or translation of the speech into
+ * English through the endpoint's own `/audio/translations` operation. Works
+ * with OpenAI and any compatible endpoint (e.g. Groq) by changing the base URL
+ * and model.
+ * Word timestamps are requested best-effort from the transcription operation,
+ * and not at all from the translation one, which has no timing granularity to
+ * ask for. Speaker diarization is not offered: OpenAI's Whisper returns no
+ * speaker labels, so the diarization UI is disabled for this engine rather
+ * than requesting a field the API silently ignores.
  * @module transcription/providers/WhisperApiProvider
  */
 
 import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
-import {
-	DICTIONARY_JOIN_SEPARATOR,
-	termsWithinWhisperPrompt,
-} from '../dictionaryBias';
+import { whisperPromptValue } from '../dictionaryBias';
 import {
 	authHeader,
 	buildMultipart,
@@ -29,6 +29,20 @@ import type {
 	TranscribeOptions,
 	TranscriptionProvider,
 } from './TranscriptionProvider';
+
+/** Operation that writes the speech down in the language it was spoken in. */
+const WHISPER_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
+
+/**
+ * Operation that translates the speech into English while transcribing it.
+ *
+ * It answers in the same shape but takes a narrower set of fields than the
+ * transcription operation does: file, model, prompt, response_format, and
+ * temperature, and nothing else. A language hint and a timestamp granularity
+ * are both outside that set, so what the request carries changes with the
+ * path and not only the path itself.
+ */
+const WHISPER_TRANSLATIONS_PATH = '/audio/translations';
 
 /** Configuration for the Whisper API provider. */
 export interface WhisperApiConfig {
@@ -56,9 +70,18 @@ export class WhisperApiProvider implements TranscriptionProvider {
 		payload: AudioPayload,
 		options: TranscribeOptions,
 	): Promise<WhisperResult> {
-		const granularities: string[] = ['segment'];
-		if (options.wordTimestamps) {
-			granularities.push('word');
+		const translating = options.translateToEnglish === true;
+		// Asked for only where there is an operation that answers them. The
+		// translation one has no timestamp granularity among its fields, and
+		// returns segments and never words, so a granularity sent to it is
+		// refused exactly as the language hint below is - which cost the whole
+		// translation, since every part of every recording carried one.
+		const granularities: string[] = [];
+		if (!translating) {
+			granularities.push('segment');
+			if (options.wordTimestamps) {
+				granularities.push('word');
+			}
 		}
 		const fields = [
 			{
@@ -80,43 +103,36 @@ export class WhisperApiProvider implements TranscriptionProvider {
 				value,
 			})),
 		];
-		if (options.language) {
+		// The translation operation writes English whatever was spoken, so a
+		// language hint would be a claim about the answer rather than about
+		// the audio; the endpoint rejects it.
+		if (options.language && !translating) {
 			fields.push({
 				type: 'text' as const,
 				name: 'language',
 				value: options.language,
 			});
 		}
-		// The advanced second pass supplies a full bias sentence that already
-		// folds the relevant terms in; it takes the `prompt` slot over the plain
-		// dictionary join (only one prompt field can be sent). Whisper reads the
-		// last ~224 tokens of the prompt and the sentence puts its most valuable
-		// tokens last, so an over-long sentence degrades from the front.
-		const biasPrompt = options.biasPrompt?.trim();
-		if (biasPrompt) {
+		// OpenAI's `prompt` seeds recognition with preferred spellings, and it
+		// is also where the advanced second pass puts its bias sentence. Which
+		// of the two wins, and how a dictionary is bounded to fit, is one policy
+		// shared with the local engine.
+		const promptValue = whisperPromptValue(options);
+		if (promptValue) {
 			fields.push({
 				type: 'text' as const,
 				name: 'prompt',
-				value: biasPrompt,
+				value: promptValue,
 			});
-		} else if (options.dictionary?.length) {
-			// OpenAI's `prompt` seeds recognition with preferred spellings, but
-			// Whisper only reads the last ~224 tokens, so terms beyond the window
-			// are bounded out here. The service applies the same bound and warns
-			// about the dropped terms; this keeps a directly used provider safe.
-			const terms = termsWithinWhisperPrompt(options.dictionary);
-			if (terms.length) {
-				fields.push({
-					type: 'text' as const,
-					name: 'prompt',
-					value: terms.join(DICTIONARY_JOIN_SEPARATOR),
-				});
-			}
 		}
 
 		const { body, contentType } = buildMultipart(fields);
 		const json = await requestJson({
-			url: `${trimTrailingSlash(this.config.baseUrl)}/audio/transcriptions`,
+			url: `${trimTrailingSlash(this.config.baseUrl)}${
+				translating
+					? WHISPER_TRANSLATIONS_PATH
+					: WHISPER_TRANSCRIPTIONS_PATH
+			}`,
 			method: 'POST',
 			headers: authHeader('Authorization', this.config.apiKey, 'Bearer'),
 			contentType,

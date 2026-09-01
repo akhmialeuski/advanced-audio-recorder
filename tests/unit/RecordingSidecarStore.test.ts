@@ -1014,4 +1014,266 @@ describe('RecordingSidecarStore', () => {
 			expect(section.history).toHaveLength(1);
 		});
 	});
+	describe('the remembered playback position', () => {
+		const AT = '2026-08-28T10:00:00.000Z';
+
+		it('reports no position for a recording that has no sidecar', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+
+			expect(await store.getPlayback('missing.wav')).toBeNull();
+		});
+
+		it('persists the position and reads it back from disk', async () => {
+			const { app, files } = makeApp();
+			await new RecordingSidecarStore(app).setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+			expect(files.has('rec.wav.markers.json')).toBe(true);
+
+			const reloaded = new RecordingSidecarStore(app);
+			expect(await reloaded.getPlayback('rec.wav')).toEqual({
+				position: 842,
+				updatedAt: AT,
+			});
+		});
+
+		it('hands out a copy, so a caller cannot edit the stored position', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+
+			const first = await store.getPlayback('rec.wav');
+			expect(first).not.toBeNull();
+			if (first) {
+				first.position = 1;
+			}
+
+			expect((await store.getPlayback('rec.wav'))?.position).toBe(842);
+		});
+
+		it('leaves the markers alone when the position changes', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 10)]);
+
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+
+			const raw = rawSidecar(files);
+			expect(raw.playback).toEqual({ position: 842, updatedAt: AT });
+			expect(raw.markers).toEqual([marker('a', 10)]);
+		});
+
+		it('rewrites nothing when the position has not moved', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+			files.delete('rec.wav.markers.json');
+
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: '2026-08-28T11:00:00.000Z',
+			});
+
+			// The write was skipped, so the file the test removed stays gone
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+
+		it('deletes the file when clearing the only thing in it', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+
+			await store.setPlayback('rec.wav', null);
+
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+			expect(await store.getPlayback('rec.wav')).toBeNull();
+		});
+
+		it('keeps the file when clearing a position beside markers', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 10)]);
+			await store.setPlayback('rec.wav', {
+				position: 842,
+				updatedAt: AT,
+			});
+
+			await store.setPlayback('rec.wav', null);
+
+			expect(files.has('rec.wav.markers.json')).toBe(true);
+			expect('playback' in rawSidecar(files)).toBe(false);
+		});
+
+		it('writes nothing when clearing a position that was never stored', async () => {
+			const { app, files } = makeApp();
+
+			await new RecordingSidecarStore(app).setPlayback('rec.wav', null);
+
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+	});
+	describe('scanning the vault', () => {
+		it('returns every recording that has a sidecar, with its document', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('a.wav', [marker('m1', 10)]);
+			await store.setMarkers('folder/b.wav', [marker('m2', 20)]);
+
+			const scanned = await new RecordingSidecarStore(
+				app,
+			).allRecordings();
+
+			expect(
+				scanned
+					.map((entry) => entry.path)
+					.sort((x, y) => x.localeCompare(y)),
+			).toEqual(['a.wav', 'folder/b.wav']);
+			expect(
+				scanned.flatMap((entry) =>
+					entry.sidecar.markers.map((m) => m.id),
+				),
+			).toEqual(expect.arrayContaining(['m1', 'm2']));
+		});
+
+		it('reads each sidecar once, so a second scan touches no disk', async () => {
+			const { app } = makeApp();
+			await new RecordingSidecarStore(app).setMarkers('a.wav', [
+				marker('m1', 10),
+			]);
+			const store = new RecordingSidecarStore(app);
+			const reads = jest.spyOn(app.vault.adapter, 'read');
+
+			await store.allRecordings();
+			const afterFirst = reads.mock.calls.length;
+			await store.allRecordings();
+
+			expect(afterFirst).toBe(1);
+			expect(reads).toHaveBeenCalledTimes(1);
+			reads.mockRestore();
+		});
+
+		it('finds nothing in a vault with no sidecars', async () => {
+			const { app } = makeApp();
+
+			expect(
+				await new RecordingSidecarStore(app).allRecordings(),
+			).toEqual([]);
+		});
+
+		it('survives one sidecar that cannot be read', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('good.wav', [marker('m1', 10)]);
+			files.set('broken.wav.markers.json', '{ not json');
+			const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+				// The surviving entry is the assertion.
+			});
+
+			const scanned = await new RecordingSidecarStore(
+				app,
+			).allRecordings();
+
+			expect(scanned).toHaveLength(2);
+			expect(
+				scanned.find((entry) => entry.path === 'good.wav')?.sidecar
+					.markers,
+			).toHaveLength(1);
+			expect(
+				scanned.find((entry) => entry.path === 'broken.wav')?.sidecar
+					.markers,
+			).toEqual([]);
+			warn.mockRestore();
+		});
+	});
+	describe('the parts a run could not transcribe', () => {
+		const PART = {
+			label: '0:30-2:00',
+			message: 'rate limited',
+			startSeconds: 30,
+			endSeconds: 120,
+		};
+
+		it('reports nothing for a recording that was never transcribed', async () => {
+			const { app } = makeApp();
+
+			expect(
+				await new RecordingSidecarStore(app).getFailedParts('rec.wav'),
+			).toBeNull();
+		});
+
+		it('persists the parts and reads them back from disk', async () => {
+			const { app } = makeApp();
+			await new RecordingSidecarStore(app).setFailedParts('rec.wav', [
+				PART,
+			]);
+
+			const reloaded = await new RecordingSidecarStore(
+				app,
+			).getFailedParts('rec.wav');
+
+			expect(reloaded?.parts).toEqual([PART]);
+			expect(reloaded?.recordedAt).toEqual(expect.any(String));
+		});
+
+		it('hands out a copy, so a caller cannot edit what is stored', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setFailedParts('rec.wav', [PART]);
+
+			const first = await store.getFailedParts('rec.wav');
+			const part = first?.parts[0];
+			if (part) {
+				part.startSeconds = 1;
+			}
+
+			expect(
+				(await store.getFailedParts('rec.wav'))?.parts[0]?.startSeconds,
+			).toBe(30);
+		});
+
+		it('clears the record when a later run comes back whole', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setFailedParts('rec.wav', [PART]);
+
+			await store.setFailedParts('rec.wav', []);
+
+			expect(await store.getFailedParts('rec.wav')).toBeNull();
+			// Nothing else was in the file, so it goes away with the record
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+
+		it('leaves the markers alone when the record changes', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 10)]);
+
+			await store.setFailedParts('rec.wav', [PART]);
+
+			expect(rawSidecar(files).markers).toEqual([marker('a', 10)]);
+			expect(await store.getMarkers('rec.wav')).toHaveLength(1);
+		});
+
+		it('writes nothing when clearing a record that was never written', async () => {
+			const { app, files } = makeApp();
+
+			await new RecordingSidecarStore(app).setFailedParts('rec.wav', []);
+
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+	});
 });

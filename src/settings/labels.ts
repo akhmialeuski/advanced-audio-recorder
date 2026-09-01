@@ -74,6 +74,7 @@ export const LLM_TASK_LABELS: Record<LlmTask, string> = {
 	cleanup: 'Clean up',
 	summary: 'Summarize',
 	custom: 'Custom',
+	translate: 'Translate',
 };
 
 /**

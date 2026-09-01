@@ -26,6 +26,7 @@ import {
 } from '../helpers/mediaMocks';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { completed } from '../helpers/llmDoubles';
 
 jest.mock('src/chapters/transcriptSources', () => ({
 	...jest.requireActual<typeof import('src/chapters/transcriptSources')>(
@@ -76,7 +77,7 @@ function makeLlm(output: string): LlmProvider {
 	return {
 		id: LLM_PROVIDER_IDS.GEMINI,
 		label: 'Fake',
-		complete: jest.fn(() => Promise.resolve(output)),
+		complete: jest.fn(() => Promise.resolve(completed(output))),
 	};
 }
 

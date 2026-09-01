@@ -8,11 +8,7 @@
  */
 
 import { setIcon } from 'obsidian';
-import {
-	PLAYER_ICONS,
-	PLAYER_SKIP_SECONDS,
-	PLAYER_VOLUME_SLIDER_STEP,
-} from '../../constants';
+import { PLAYER_ICONS, PLAYER_VOLUME_SLIDER_STEP } from '../../constants';
 import { MARKER_KIND, type MarkerKind } from '../../markers/markerModel';
 import { formatTimecode } from '../../utils/TimeUtils';
 import { formatPlaybackRate } from '../playbackRate';
@@ -30,6 +26,10 @@ export interface PlayerControlsState {
 	loop: boolean;
 	/** Render the marker/chapter buttons. */
 	markersEnabled: boolean;
+	/** Seconds the skip buttons move by, and the number their labels name. */
+	skipSeconds: number;
+	/** Whether playback is repeating the chapter it is inside. */
+	chapterLoop: boolean;
 }
 
 /** What each control does (owned by the player). */
@@ -45,6 +45,13 @@ export interface PlayerControlsCallbacks {
 	onAddMarker(kind: MarkerKind): void;
 	onPreviousChapter(): void;
 	onNextChapter(): void;
+	/**
+	 * Toggles repeating of the current chapter. Nothing is returned, and the
+	 * button is repainted by {@link PlayerControlsView.setChapterLoop}: the
+	 * status bar drives the same toggle, so the button has to follow the
+	 * player's state rather than its own click.
+	 */
+	onToggleChapterLoop(): void;
 	onCopyTimestampLink(): void;
 }
 
@@ -82,6 +89,7 @@ export class PlayerControlsView {
 	private playButton: HTMLElement | null = null;
 	private speedButton: HTMLElement | null = null;
 	private muteButton: HTMLElement | null = null;
+	private chapterLoopButton: HTMLElement | null = null;
 	private timeEl: HTMLElement | null = null;
 
 	constructor(
@@ -115,20 +123,23 @@ export class PlayerControlsView {
 		// already does it, so the icon and the state have one place to be set.
 		this.setPlaying(!state.paused);
 
+		// The label names the step so the button says what it will do, and the
+		// handler uses the same number rather than a second copy of it.
+		const skip = state.skipSeconds;
 		this.createIconButton(
 			controls,
 			PLAYER_ICONS.skipBack,
-			`Back ${String(PLAYER_SKIP_SECONDS)}s`,
+			`Back ${String(skip)}s`,
 			() => {
-				this.callbacks.onSkip(-PLAYER_SKIP_SECONDS);
+				this.callbacks.onSkip(-skip);
 			},
 		);
 		this.createIconButton(
 			controls,
 			PLAYER_ICONS.skipForward,
-			`Forward ${String(PLAYER_SKIP_SECONDS)}s`,
+			`Forward ${String(skip)}s`,
 			() => {
-				this.callbacks.onSkip(PLAYER_SKIP_SECONDS);
+				this.callbacks.onSkip(skip);
 			},
 		);
 
@@ -213,6 +224,15 @@ export class PlayerControlsView {
 					this.callbacks.onNextChapter();
 				},
 			);
+			this.chapterLoopButton = this.createIconButton(
+				controls,
+				PLAYER_ICONS.chapterLoop,
+				'Repeat current chapter',
+				() => {
+					this.callbacks.onToggleChapterLoop();
+				},
+			);
+			setToggleState(this.chapterLoopButton, state.chapterLoop);
 		}
 
 		this.timeEl = controls.createDiv({ cls: 'aar-player-time' });
@@ -271,6 +291,18 @@ export class PlayerControlsView {
 				muted ? PLAYER_ICONS.muted : PLAYER_ICONS.volume,
 			);
 			setToggleState(this.muteButton, muted);
+		}
+	}
+
+	/**
+	 * Reflects chapter repeating on its button. Driven by the player rather
+	 * than by the click, because the status-bar control toggles the same
+	 * state and this button has to show it either way.
+	 * @param active - True while the current chapter repeats
+	 */
+	setChapterLoop(active: boolean): void {
+		if (this.chapterLoopButton) {
+			setToggleState(this.chapterLoopButton, active);
 		}
 	}
 

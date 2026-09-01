@@ -12,6 +12,7 @@ import {
 	Editor,
 	Notice,
 	MarkdownView,
+	TFolder,
 } from 'obsidian';
 import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
@@ -291,10 +292,34 @@ export class ContextMenu {
 							{ file, services: this.services },
 							this.renderedSetFor(menu),
 						);
+						return;
+					}
+					// A folder is not a file action: it targets no recording
+					// and every entry in that list would be wrong for it.
+					if (file instanceof TFolder) {
+						this.addFolderQueueItem(menu, file);
 					}
 				},
 			),
 		);
+	}
+
+	/**
+	 * Adds the queue-this-folder entry to a folder's menu.
+	 * @param menu - The folder's context menu
+	 * @param folder - The folder that was right-clicked
+	 */
+	private addFolderQueueItem(menu: Menu, folder: TFolder): void {
+		if (!this.services.getSettings().transcriptionEnabled) {
+			return;
+		}
+		menu.addItem((item) => {
+			item.setTitle('Transcribe every recording in this folder')
+				.setIcon('list-plus')
+				.onClick(() => {
+					void this.services.transcriptionQueue.queueFolder(folder);
+				});
+		});
 	}
 
 	/**

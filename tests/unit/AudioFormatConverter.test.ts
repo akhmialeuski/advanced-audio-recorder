@@ -116,6 +116,7 @@ import {
 	convertBlobToFormatBuffer,
 	decodeAudioBlob,
 	mergeAudioTracks,
+	type MergePlacement,
 } from 'src/audio/AudioFormatConverter';
 import { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
 import {
@@ -1252,6 +1253,211 @@ describe('AudioFormatConverter', () => {
 			).value;
 			expect(ctxInstance.close).toHaveBeenCalledTimes(1);
 		});
+	});
+});
+
+// The controls this route ignored. A level and a position are offered for any
+// merged multi-track session, but only the streaming mixer read them, so a
+// session recorded to anything but desktop WAV came out as if they had been
+// left alone - and said nothing about it.
+describe('placing the tracks of a merge', () => {
+	/** A decoded track holding the given samples on each of its channels. */
+	function trackBuffer(samples: number[], channels = 1): AudioBuffer {
+		const data = Array.from({ length: channels }, () =>
+			Float32Array.from(samples),
+		);
+		return partial<AudioBuffer>({
+			duration: samples.length / 44100,
+			length: samples.length,
+			sampleRate: 44100,
+			numberOfChannels: channels,
+			getChannelData: (channel: number) => at(data, channel),
+		});
+	}
+
+	/**
+	 * Runs a merge over the given tracks and answers with the buffers the mix
+	 * was actually summed from, which is where a placement shows.
+	 * @param tracks - What each track decodes to; null for one that flushed
+	 *   nothing at all
+	 * @param options - The placement, and what the render answers with
+	 * @returns The buffers connected as sources, in order
+	 */
+	async function summedBuffers(
+		tracks: (AudioBuffer | null)[],
+		options: { placement?: MergePlacement; rendered?: AudioBuffer } = {},
+	): Promise<AudioBuffer[]> {
+		const decode = jest.fn();
+		for (const buffer of tracks) {
+			if (buffer) {
+				decode.mockResolvedValueOnce(buffer);
+			}
+		}
+		jest.mocked(AudioContext).mockImplementationOnce(() =>
+			partial<AudioContext>({
+				decodeAudioData: decode,
+				close: jest.fn().mockResolvedValue(undefined),
+				sampleRate: 44100,
+			}),
+		);
+		const summed: AudioBuffer[] = [];
+		jest.mocked(OfflineAudioContext).mockImplementationOnce(() =>
+			partial<OfflineAudioContext>({
+				createBufferSource: () =>
+					partial<AudioBufferSourceNode>({
+						connect: jest.fn(),
+						start: jest.fn(),
+						set buffer(value: AudioBuffer | null) {
+							if (value) {
+								summed.push(value);
+							}
+						},
+					}),
+				// The rate is the one trackBuffer already answers with
+				createBuffer: (channels: number, length: number) =>
+					trackBuffer(
+						Array.from({ length }, () => 0),
+						channels,
+					),
+				startRendering: () =>
+					Promise.resolve(options.rendered ?? trackBuffer([0])),
+				destination: {} as AudioDestinationNode,
+			}),
+		);
+		let index = 0;
+		await mergeAudioTracks(
+			tracks.map((_, position) =>
+				createTarget({ fileBaseName: `t${String(position)}` }),
+			),
+			'wav',
+			128000,
+			false,
+			jest.fn(),
+			jest.fn(() =>
+				Promise.resolve(tracks[index++] ? new Blob(['a']) : null),
+			),
+			undefined,
+			options.placement,
+		);
+		return summed;
+	}
+
+	/** The buffer the mix was handed to the encoder as. */
+	function encoded(): AudioBuffer {
+		return at(jest.mocked(encodeAudioBuffer).mock.calls, 0)[0];
+	}
+
+	it('applies a track gain before summing', async () => {
+		const summed = await summedBuffers([trackBuffer([1, -1])], {
+			placement: { levels: [{ left: 0.5, right: 0.5 }] },
+		});
+
+		expect([...at(summed, 0).getChannelData(0)]).toEqual([0.5, -0.5]);
+	});
+
+	it('sends a panned mono track to one side of a stereo mix', async () => {
+		// A mono buffer has one channel and nowhere to put a side, so the
+		// placement is what takes the mix to stereo and spreads it
+		const summed = await summedBuffers([trackBuffer([1, -1])], {
+			placement: { levels: [{ left: 1, right: 0 }] },
+		});
+
+		expect(OfflineAudioContext).toHaveBeenCalledWith(
+			2,
+			expect.any(Number),
+			44100,
+		);
+		expect([...at(summed, 0).getChannelData(0)]).toEqual([1, -1]);
+		// Silence, signed as multiplying by zero leaves it
+		expect([...at(summed, 0).getChannelData(1)]).toEqual([0, -0]);
+	});
+
+	it('places each channel of a stereo track on its own side', async () => {
+		const summed = await summedBuffers([trackBuffer([1, -1], 2)], {
+			placement: { levels: [{ left: 1, right: 0.25 }] },
+		});
+
+		expect([...at(summed, 0).getChannelData(0)]).toEqual([1, -1]);
+		expect([...at(summed, 0).getChannelData(1)]).toEqual([0.25, -0.25]);
+	});
+
+	it('reads the placement against the track it belongs to', async () => {
+		// A track that recorded nothing is dropped, and reading the placement
+		// after that shifts every track behind it into the place of the one
+		// that went
+		const summed = await summedBuffers([null, trackBuffer([1, -1])], {
+			placement: {
+				levels: [
+					{ left: 0.25, right: 0.25 },
+					{ left: 1, right: 1 },
+				],
+			},
+		});
+
+		// The surviving track keeps its own neutral placement rather than
+		// inheriting the quarter level meant for the one that flushed nothing
+		expect([...at(summed, 0).getChannelData(0)]).toEqual([1, -1]);
+	});
+
+	it('brings the tracks to a common level when the session aligns them', async () => {
+		const summed = await summedBuffers(
+			[trackBuffer([0.5, -0.5]), trackBuffer([0.25, -0.25])],
+			{
+				placement: {
+					levels: [
+						{ left: 1, right: 1 },
+						{ left: 1, right: 1 },
+					],
+					// The rule itself belongs to the mixer; this stands for one
+					normalize: (rms) => 0.5 / rms,
+				},
+			},
+		);
+
+		expect([...at(summed, 0).getChannelData(0)]).toEqual([0.5, -0.5]);
+		expect([...at(summed, 1).getChannelData(0)]).toEqual([0.5, -0.5]);
+	});
+
+	it('leaves a track that decoded to nothing out of the levelling', async () => {
+		// A segment that flushed no samples has no level to be brought to a
+		// common one, and dividing by the samples it does not have is how
+		// that becomes a NaN across the whole mix
+		const summed = await summedBuffers([trackBuffer([])], {
+			placement: {
+				levels: [{ left: 1, right: 1 }],
+				normalize: (rms) => (rms === 0 ? 1 : 0.5 / rms),
+			},
+		});
+
+		expect([...at(summed, 0).getChannelData(0)]).toEqual([]);
+	});
+
+	it('leaves a track nothing was asked of exactly as it decoded', async () => {
+		const decoded = trackBuffer([1, -1]);
+
+		const summed = await summedBuffers([decoded], {
+			placement: { levels: [{ left: 1, right: 1 }] },
+		});
+
+		expect(at(summed, 0)).toBe(decoded);
+	});
+
+	it('scales a mix that would clip instead of flattening its peak', async () => {
+		// Two people talking at once sum past full scale, and the encoder
+		// clamps what it is handed; the whole mix comes down instead
+		await summedBuffers([trackBuffer([1, -1])], {
+			rendered: trackBuffer([1.5, -1.5]),
+		});
+
+		expect([...encoded().getChannelData(0)]).toEqual([1, -1]);
+	});
+
+	it('leaves a mix that never reached full scale at its own level', async () => {
+		await summedBuffers([trackBuffer([1, -1])], {
+			rendered: trackBuffer([0.5, -0.5]),
+		});
+
+		expect([...encoded().getChannelData(0)]).toEqual([0.5, -0.5]);
 	});
 });
 

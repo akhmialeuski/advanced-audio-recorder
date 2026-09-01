@@ -28,6 +28,7 @@ import {
 	notifyTranscriptWritten,
 	writeTranscriptFile,
 } from './transcriptOutput';
+import type { PartFailure } from './partFailure';
 
 /**
  * The sidecar surface a transcribe-and-write run needs: the service's name
@@ -45,6 +46,11 @@ export interface TranscriptOutputSidecar extends TranscriptionSidecarAccess {
 		path: string,
 		provenance: TranscriptProvenance,
 	): Promise<void>;
+	/**
+	 * Records what this run could not transcribe, so exactly those parts can
+	 * be asked for again. An empty list clears the previous record.
+	 */
+	setFailedParts(path: string, parts: readonly PartFailure[]): Promise<void>;
 }
 
 /** Options for a full transcribe-and-write run. */
@@ -116,12 +122,28 @@ export async function transcribeFile(
 			settings.transcriptFileFormat,
 		);
 	}
+	// A translation is a second document with the same timings, so it takes
+	// the same route as the original and is named by its language rather than
+	// colliding with it. Written whenever a file is wanted, so the subtitle
+	// formats come out translated with no further work.
+	let translationFile: TFile | null = null;
+	if (wantsFile && result.translation) {
+		translationFile = await writeTranscriptFile(
+			app,
+			file,
+			result.translation.transcript,
+			settings.transcriptFileFormat,
+			result.translation.language,
+		);
+	}
 	let inserted = false;
 	if (wantsNote) {
 		inserted = insertTranscriptIntoNote(
 			app,
 			options.notePathForLinks,
-			result.markdown,
+			result.translation
+				? `${result.markdown}\n\n### ${result.translation.language}\n\n${result.translation.markdown}`
+				: result.markdown,
 			settings.transcriptHeading,
 		);
 	}
@@ -156,6 +178,22 @@ export async function transcribeFile(
 	// run registers, diarized or not: absence of records must always mean "no
 	// transcript", never "a transcript this feature ignored". Best-effort: a
 	// sidecar failure never fails a completed (and possibly billed) run.
+	if (options.sidecar) {
+		// Written whatever the run produced, and before the output records:
+		// an absent record has to mean "nothing is missing", so a run that
+		// came back whole must clear what an earlier one left behind.
+		try {
+			await options.sidecar.setFailedParts(
+				file.path,
+				result.missingParts,
+			);
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to record the missing parts of ${file.path}:`,
+				error,
+			);
+		}
+	}
 	if (options.sidecar && (transcriptFile || inserted)) {
 		try {
 			const writtenAt = new Date().toISOString();
@@ -164,6 +202,14 @@ export async function transcribeFile(
 					path: transcriptFile.path,
 					format: settings.transcriptFileFormat,
 					writtenAt,
+				});
+			}
+			if (translationFile && result.translation) {
+				await options.sidecar.recordFileOutput(file.path, {
+					path: translationFile.path,
+					format: settings.transcriptFileFormat,
+					writtenAt,
+					language: result.translation.language,
 				});
 			}
 			if (inserted) {

@@ -14,11 +14,23 @@ import { LLM_PROVIDER_IDS } from 'src/constants';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import type { RunCostStepId } from 'src/transcription/costs';
 import { at, defined } from '../helpers/assertions';
+import { billed, completed } from '../helpers/llmDoubles';
+import {
+	extractGeminiUsage,
+	type LlmUsage,
+} from 'src/transcription/llm/llmResponse';
 
-/** A provider that returns fixed text and records how it was called. */
+/**
+ * A provider that returns fixed text and records how it was called.
+ * @param text - What the provider answers with
+ * @param fail - Rejects the call with this instead of answering
+ * @param usage - Token counts to report, as a vendor that reports them does
+ * @returns The provider double and the calls it recorded
+ */
 function stubLlm(
 	text = 'answer',
 	fail?: Error,
+	usage?: LlmUsage,
 ): LlmProvider & { calls: unknown[][] } {
 	const calls: unknown[][] = [];
 	return {
@@ -27,20 +39,24 @@ function stubLlm(
 		calls,
 		complete: (prompt, maxTokens, options) => {
 			calls.push([prompt, maxTokens, options]);
-			return fail ? Promise.reject(fail) : Promise.resolve(text);
+			return fail
+				? Promise.reject(fail)
+				: Promise.resolve(
+						usage ? billed(text, usage) : completed(text),
+					);
 		},
 	};
 }
 
 /** A sink that records every reported call. */
 function stubSink(): LlmCostSink & {
-	records: [string, RunCostStepId, number | null][];
+	records: [string, RunCostStepId, number | null, boolean][];
 } {
-	const records: [string, RunCostStepId, number | null][] = [];
+	const records: [string, RunCostStepId, number | null, boolean][] = [];
 	return {
 		records,
-		recordLlmCall: (providerId, step, usd) => {
-			records.push([providerId, step, usd]);
+		recordLlmCall: (providerId, step, usd, estimated) => {
+			records.push([providerId, step, usd, estimated]);
 		},
 	};
 }
@@ -50,6 +66,41 @@ const settings = mergeSettings({
 	llmGeminiModel: 'gemini-2.5-flash',
 	llmMaxTokens: 32000,
 });
+
+/**
+ * The same run against a model with a known rate. The Gemini vendor reads
+ * `geminiModel`, which is the key the accounting prices from, so a case about
+ * what a call was billed has to set that one.
+ */
+const pricedSettings = mergeSettings({
+	...settings,
+	geminiModel: 'gemini-2.5-flash',
+});
+
+/**
+ * One chapter step, which is the call every accounting case makes. Named
+ * once so a case says only what it varies: the provider and where the cost
+ * is reported.
+ * @param llm - The provider to call
+ * @param costSink - Where the cost is reported
+ * @param stepSettings - The run's settings; the unpriced default by default
+ * @returns The step's text
+ */
+function chapterStep(
+	llm: LlmProvider,
+	costSink: LlmCostSink,
+	stepSettings = settings,
+): Promise<string> {
+	return runLlmStep({
+		step: 'autoChapters',
+		llm,
+		prompt: { system: 's', user: 'u' },
+		maxTokens: 100,
+		settings: stepSettings,
+		durationSeconds: 600,
+		costSink,
+	});
+}
 
 describe('runLlmStep', () => {
 	it('returns the provider text and passes the call through unchanged', async () => {
@@ -174,27 +225,102 @@ describe('runLlmStep', () => {
 		expect(sink.records).toHaveLength(0);
 	});
 
-	it('reports the step cost the shared model prices', async () => {
+	it('falls back to the step model when the vendor reported nothing', async () => {
 		const sink = stubSink();
 
-		await runLlmStep({
-			step: 'autoChapters',
-			llm: stubLlm(),
-			prompt: { system: 's', user: 'u' },
-			maxTokens: 100,
-			settings,
-			durationSeconds: 600,
-			costSink: sink,
-		});
+		await chapterStep(stubLlm(), sink);
 
 		// The same figure the pre-run breakdown shows for this step, so the
-		// estimate the user saw is the one that lands in the total.
+		// estimate the user saw is the one that lands in the total, and it is
+		// marked as an estimate rather than passed off as a measurement.
 		const expected = estimateStepCost('autoChapters', settings, 600).usd;
 		expect(at(sink.records, 0)).toEqual([
 			LLM_PROVIDER_IDS.GEMINI,
 			'autoChapters',
 			expected,
+			true,
 		]);
+	});
+
+	it('bills what the vendor reported, not what the step model expected', async () => {
+		const sink = stubSink();
+
+		// gemini-2.5-flash is $0.30 per million in, $2.50 per million out
+		await chapterStep(
+			stubLlm('answer', undefined, {
+				inputTokens: 1_000_000,
+				outputTokens: 1_000_000,
+			}),
+			sink,
+			pricedSettings,
+		);
+
+		// The vendor's own counts, and not marked as an estimate: this is what
+		// the call cost, not what it was expected to cost
+		expect(at(sink.records, 0)).toEqual([
+			LLM_PROVIDER_IDS.GEMINI,
+			'autoChapters',
+			2.8,
+			false,
+		]);
+	});
+
+	it('bills the reasoning tokens a model reports at the output rate', async () => {
+		const sink = stubSink();
+
+		// Read from a real Gemini body rather than hand-built counts: Gemini
+		// bills a thinking response as its candidates plus its thoughts, and
+		// the extractor is what folds the two into the one output total the
+		// step is priced on. Building that total here instead would test the
+		// arithmetic without testing the convention it rests on.
+		await chapterStep(
+			stubLlm(
+				'answer',
+				undefined,
+				extractGeminiUsage({
+					usageMetadata: {
+						promptTokenCount: 0,
+						candidatesTokenCount: 0,
+						thoughtsTokenCount: 1_000_000,
+					},
+				}),
+			),
+			sink,
+			pricedSettings,
+		);
+
+		expect(at(sink.records, 0)[2]).toBeCloseTo(2.5, 10);
+	});
+
+	it('falls back to the estimate for a model with no built-in rate', async () => {
+		const sink = stubSink();
+
+		await chapterStep(
+			stubLlm('answer', undefined, { inputTokens: 1000 }),
+			sink,
+			mergeSettings({
+				llmProvider: LLM_PROVIDER_IDS.GEMINI,
+				geminiModel: 'gemini-from-the-future',
+			}),
+		);
+
+		// Counts the pricing cannot use are the same case as no counts at all
+		expect(at(sink.records, 0)[3]).toBe(true);
+	});
+
+	it('prices nothing when no one is accounting the call', async () => {
+		const llm = stubLlm('answer', undefined, { inputTokens: 1000 });
+
+		const text = await runLlmStep({
+			step: 'autoChapters',
+			llm,
+			prompt: { system: 's', user: 'u' },
+			maxTokens: 100,
+			settings,
+			durationSeconds: 600,
+		});
+
+		expect(text).toBe('answer');
 	});
 
 	it('records an unknown duration as unpriced rather than as free', async () => {
@@ -252,15 +378,7 @@ describe('SessionCostTracker as an LLM cost sink', () => {
 		const tracker = new SessionCostTracker();
 		tracker.add('deepgram', 0.04);
 
-		await runLlmStep({
-			step: 'autoChapters',
-			llm: stubLlm(),
-			prompt: { system: 's', user: 'u' },
-			maxTokens: 100,
-			settings,
-			durationSeconds: 600,
-			costSink: tracker,
-		});
+		await chapterStep(stubLlm(), tracker);
 
 		const step = defined(
 			estimateStepCost('autoChapters', settings, 600).usd,

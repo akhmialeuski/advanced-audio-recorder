@@ -46,6 +46,7 @@ import type { ActionServices, SessionServices } from './actions/PluginAction';
 import { activeAudioFile, FILE_ACTIONS } from './actions/fileActions';
 import { SESSION_ACTIONS } from './actions/sessionActions';
 import { PLAYBACK_ACTIONS } from './actions/playbackActions';
+import { SEARCH_ACTIONS } from './actions/searchActions';
 import { registerActionCommands } from './actions/registerActionCommands';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
@@ -65,6 +66,14 @@ import {
 import type { MarkerKind } from './markers/markerModel';
 import type { PlaybackControlsState } from './player/playbackControls';
 import { delay } from './utils/TimeUtils';
+import { QueueCoordinator } from './transcription/QueueCoordinator';
+import { QueueRunner } from './transcription/QueueRunner';
+import {
+	TranscriptionQueue,
+	TRANSCRIPTION_QUEUE_FILE,
+} from './transcription/TranscriptionQueue';
+import { QUEUE_ASSUMED_RECORDING_SECONDS } from './constants';
+import { transcribeFile } from './transcription/runTranscription';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
 const SETTINGS_READ_RETRY_DELAY_MS = 250;
@@ -159,6 +168,22 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * across dialogs until Obsidian restarts.
 	 */
 	private readonly transcriptionCostTracker = new SessionCostTracker();
+
+	/**
+	 * The queue of recordings to transcribe. Built on load so a queue a
+	 * previous session left can be offered back, and so the folder menu has
+	 * something to queue into.
+	 *
+	 * Nullable rather than asserted, because it is built well into onload and
+	 * Obsidian still unloads a plugin whose load threw. Asserted, the first
+	 * line of the teardown raised on the missing field and took the rest of it
+	 * with it: the recorder was never stopped and the encoding worker was left
+	 * running.
+	 */
+	private transcriptionQueue: QueueCoordinator | null = null;
+
+	/** The queue itself, kept so its pending writes are flushed on unload. */
+	private queuedTranscriptions: TranscriptionQueue | null = null;
 	/** Current actionable silent-channel notice, replaced per save. */
 	private silentChannelNotice: Notice | null = null;
 	/** Invalidates an older asynchronous analysis when a newer save starts. */
@@ -256,6 +281,53 @@ export default class AudioRecorderPlugin extends Plugin {
 			FILE_ACTIONS,
 		);
 		this.contextMenu.register();
+
+		// The queue outlives a session, so it is built before anything can
+		// queue into it and offered back once the workspace is up.
+		const queue = new TranscriptionQueue(
+			this.getPluginFilePath(TRANSCRIPTION_QUEUE_FILE),
+			this.app,
+		);
+		this.transcriptionQueue = new QueueCoordinator({
+			app: this.app,
+			queue,
+			runner: new QueueRunner({
+				app: this.app,
+				queue,
+				getSettings: () => this.settings,
+				transcribe: (file, options) =>
+					transcribeFile(
+						this.app,
+						() => this.settings,
+						file,
+						// A queued run registers what it wrote and what it
+						// lost exactly as one started from the dialog does.
+						// Without the store its outputs survive no rename, its
+						// speakers keep the engine's own labels, and the parts
+						// it failed on are never offered for a top-up: the
+						// action reports the transcript as complete instead.
+						{ ...options, sidecar: this.sidecarStore },
+						{
+							costSink: this.transcriptionCostTracker,
+						},
+					),
+				costSink: this.transcriptionCostTracker,
+				// The same assumed length the dialog prices the queue with, so
+				// what a finished run is recorded at cannot contradict what
+				// the user was quoted for it.
+				assumedSecondsPerRecording: QUEUE_ASSUMED_RECORDING_SECONDS,
+			}),
+			getSettings: () => this.settings,
+			assumedSecondsPerRecording: QUEUE_ASSUMED_RECORDING_SECONDS,
+		});
+		this.queuedTranscriptions = queue;
+		// Offered once the workspace is up, so the prompt lands on a window
+		// the user can see rather than during load. Held as a local, since the
+		// coordinator this closure resumes is the one built right here.
+		const coordinator = this.transcriptionQueue;
+		this.app.workspace.onLayoutReady(() => {
+			void coordinator.resumeIfPending();
+		});
 
 		// Media kinds persist across sessions so the first open of a note
 		// never repeats a file's probe (and the embed upgrade behind it)
@@ -434,6 +506,14 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * Called when the plugin is unloaded.
 	 */
 	override onunload(): void {
+		// Stopped before the flush, so what goes to disk is the queue as the
+		// stop left it. A drain holds the app and the settings reader, so
+		// without this it went on calling a paid engine and writing
+		// transcripts into a vault the plugin had already been removed from.
+		this.transcriptionQueue?.stop();
+		// The queue is losable but not worth losing a change to: whatever the
+		// last state change was, it goes to disk before the plugin does.
+		void this.queuedTranscriptions?.flush();
 		// Set before anything is torn down: the recorder's stop sequence is
 		// asynchronous, so disabling the plugin mid-save leaves its status and
 		// saved-recording callbacks in flight, and both of them reach back
@@ -742,8 +822,20 @@ export default class AudioRecorderPlugin extends Plugin {
 			primeForEnhancement: (paths) =>
 				this.playerRegistrar.primeSavedRecordingsForEnhancement(paths),
 			getWorkerClient: () => this.encodingWorker,
+			// Read through the field rather than captured, because the queue is
+			// built after these services are: a menu entry acts long after
+			// load, and there is nothing to act on before it finished.
+			transcriptionQueue: {
+				queueFolder: async (folder) => {
+					await this.transcriptionQueue?.queueFolder(folder);
+				},
+				open: () => {
+					this.transcriptionQueue?.open();
+				},
+			},
 			autoChapters: this.autoChapterService,
 			recordingSidecar: this.sidecarStore,
+			transcriptionCosts: this.transcriptionCostTracker,
 		};
 	}
 
@@ -774,6 +866,15 @@ export default class AudioRecorderPlugin extends Plugin {
 		registerActionCommands(this, PLAYBACK_ACTIONS, () =>
 			this.playerRegistrar.currentPlaybackState(),
 		);
+
+		// A vault-wide search is bound to no file and no playback, so its
+		// context always resolves and the command is always offered.
+		registerActionCommands(this, SEARCH_ACTIONS, () => ({
+			openMarkerSearch: () => this.playerRegistrar.openMarkerSearch(),
+			openTranscriptionQueue: () => {
+				this.transcriptionQueue?.open();
+			},
+		}));
 	}
 
 	/**

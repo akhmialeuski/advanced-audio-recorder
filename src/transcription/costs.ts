@@ -18,6 +18,7 @@ import type {
 	TranscriptionProviderId,
 } from '../settings/settingsSchema';
 import { autoChaptersAfterTranscribe } from '../settings/settingsSchema';
+import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import {
 	advancedBiasChannel,
 	advancedTwoPassWillRun,
@@ -40,6 +41,7 @@ import {
 export type { EnginePricing } from './providers/engines';
 import type { LlmTask } from './llmPostProcess';
 import type { TranscriptionUsage } from './TranscriptTypes';
+import type { LlmUsage } from './llm/llmResponse';
 
 /**
  * Audio tokens per second for Gemini models (Google's documented rate for
@@ -64,6 +66,9 @@ const LLM_OUTPUT_RATIO: Record<LlmTask, number> = {
 	cleanup: 1,
 	summary: 0.25,
 	custom: 1,
+	// A translation is about as long as what it translates, so the pass is
+	// sized like a cleanup rather than like a summary.
+	translate: 1,
 };
 
 /**
@@ -133,6 +138,43 @@ export function resolveLlmPricing(
 		usdPerMillionTextInput: rate.input,
 		usdPerMillionOutput: rate.output,
 	};
+}
+
+/**
+ * Prices one LLM call from the token counts the vendor reported, so a step
+ * that was actually billed is recorded at what it cost rather than at what it
+ * was expected to cost. {@link LlmUsage.outputTokens} already carries every
+ * token billed at the output rate, reasoning included, because only the
+ * extractor that read the response knows whether its vendor counts reasoning
+ * inside that total or beside it.
+ *
+ * Null when the model has no built-in rate, or when the vendor reported no
+ * counts at all, both of which send the caller back to the estimate.
+ * @param providerId - LLM vendor billed for the call
+ * @param settings - The run's settings, which select the model
+ * @param usage - Token counts the vendor reported
+ */
+export function llmCallCostFromUsage(
+	providerId: LlmProviderId,
+	settings: AudioRecorderSettings,
+	usage: LlmUsage,
+): number | null {
+	const pricing = resolveLlmPricing(
+		providerId,
+		llmVendor(providerId).settings.model(settings),
+	);
+	if (pricing === null) {
+		return null;
+	}
+	if (usage.inputTokens === undefined && usage.outputTokens === undefined) {
+		return null;
+	}
+	return costFromUsage(pricing, {
+		...(usage.inputTokens === undefined
+			? {}
+			: { inputTokens: usage.inputTokens }),
+		outputTokens: usage.outputTokens ?? 0,
+	});
 }
 
 /**
@@ -599,6 +641,45 @@ export function estimateStepCost(
 	durationSeconds: number | null,
 ): CostEstimateLine {
 	return RUN_COST_STEPS[step].line(settings, durationSeconds);
+}
+
+/**
+ * What a finished transcription run adds to the session total, or null when it
+ * adds nothing.
+ *
+ * One rule for every surface that runs a transcription. The dialog and the
+ * queue each carried their own, and they disagreed: the queue recorded a run
+ * the provider reported no usage for as unpriced, where the dialog fell back
+ * to the duration estimate, and the queue counted the free local engine the
+ * dialog leaves out. The same recording therefore reached the session total
+ * differently depending on which surface started it.
+ * @param cost - Engine and price the run reported, the price null when the
+ *   provider gave no usage to bill from
+ * @param settings - The run's settings snapshot
+ * @param durationSeconds - Audio duration for the fallback estimate, null when
+ *   unknown
+ * @returns What to record, or null when this run is not counted at all
+ */
+export function runCostToRecord(
+	cost: { engineId: string; usd: number | null },
+	settings: AudioRecorderSettings,
+	durationSeconds: number | null,
+): { usd: number | null; estimated: boolean } | null {
+	if (
+		!settings.transcriptionShowCostEstimates ||
+		cost.engineId === TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER
+	) {
+		return null;
+	}
+	// The fallback goes through the shared transcription step, which already
+	// scales by the passes a run actually makes, so it can never drift from
+	// the pre-run estimate the user was shown.
+	return {
+		usd:
+			cost.usd ??
+			estimateStepCost('transcription', settings, durationSeconds).usd,
+		estimated: cost.usd === null,
+	};
 }
 
 /**

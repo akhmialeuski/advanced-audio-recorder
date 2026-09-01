@@ -10,6 +10,7 @@ import { PlayerMarkerController } from 'src/player/PlayerMarkerController';
 import type { PlayerMarkerHost } from 'src/player/PlayerMarkerController';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import { MARKER_KIND, type PlayerMarker } from 'src/markers/markerModel';
+import { at } from '../helpers/assertions';
 import { partial } from '../helpers/doubles';
 
 const noticeMock = jest.mocked(Notice);
@@ -151,5 +152,151 @@ describe('PlayerMarkerController', () => {
 
 		// The removal was refused, so the marker is restored from the store.
 		expect(controller.all.map((m) => m.id)).toEqual(['keep']);
+	});
+});
+
+/**
+ * A controller over a store already holding the given markers, loaded.
+ * @param markers - What the sidecar holds for this recording
+ * @returns The controller with the host and the store behind it
+ */
+async function createLoadedSut(markers: PlayerMarker[]): Promise<{
+	controller: PlayerMarkerController;
+	host: ReturnType<typeof makeHost>;
+	read: () => PlayerMarker[];
+}> {
+	const { store, read } = makeStore(markers);
+	const host = makeHost();
+	const controller = new PlayerMarkerController(store, 'rec.wav', host);
+	await controller.load();
+	// The load renders once by itself; cleared here so each test counts only
+	// what its own edit caused.
+	host.renderMarkers.mockClear();
+	host.refreshTicks.mockClear();
+	host.notifyOthers.mockClear();
+	return { controller, host, read };
+}
+
+describe('moving, noting and colouring a marker', () => {
+	it('persists a new time and rebuilds the list, because the order changed', async () => {
+		const { controller, host, read } = await createLoadedSut([
+			{ id: 'a', time: 10, label: 'Intro', kind: 'chapter' },
+			{ id: 'b', time: 30, label: 'Note', kind: 'bookmark' },
+		]);
+
+		await controller.setTime('a', 40);
+
+		expect(read().map((m) => m.id)).toEqual(['b', 'a']);
+		expect(host.renderMarkers).toHaveBeenCalledTimes(1);
+		expect(host.notifyOthers).toHaveBeenCalledTimes(1);
+	});
+
+	it('refuses to move a marker before the start of the recording', async () => {
+		const { controller, read } = await createLoadedSut([
+			{ id: 'a', time: 10, label: 'Intro', kind: 'chapter' },
+		]);
+
+		await controller.setTime('a', -5);
+
+		expect(at(read(), 0).time).toBe(0);
+	});
+
+	it('persists a note and refreshes only the ticks, so the field keeps focus', async () => {
+		const { controller, host, read } = await createLoadedSut([
+			{ id: 'a', time: 10, label: 'Intro', kind: 'chapter' },
+		]);
+		await controller.setNote('a', 'the bit about pricing');
+
+		expect(at(read(), 0).note).toBe('the bit about pricing');
+		expect(host.refreshTicks).toHaveBeenCalledTimes(1);
+		expect(host.renderMarkers).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ name: 'an empty string', typed: '' },
+		{ name: 'only whitespace', typed: '   ' },
+	])('clears the note when given $name', async ({ typed }) => {
+		const { controller, read } = await createLoadedSut([
+			{ id: 'a', time: 10, label: 'Intro', kind: 'chapter', note: 'old' },
+		]);
+
+		await controller.setNote('a', typed);
+
+		// Absent rather than empty, so an otherwise empty sidecar is still
+		// deleted instead of being kept alive by a blank field.
+		expect(at(read(), 0)).not.toHaveProperty('note');
+	});
+
+	it('persists a colour and rebuilds the list, because the tick changed too', async () => {
+		const { controller, host, read } = await createLoadedSut([
+			{ id: 'a', time: 10, label: 'Intro', kind: 'chapter' },
+		]);
+
+		await controller.setColor('a', 'blue');
+
+		expect(at(read(), 0).color).toBe('blue');
+		expect(host.renderMarkers).toHaveBeenCalledTimes(1);
+	});
+
+	it('clears the colour when told none', async () => {
+		const { controller, read } = await createLoadedSut([
+			{
+				id: 'a',
+				time: 10,
+				label: 'Intro',
+				kind: 'chapter',
+				color: 'red',
+			},
+		]);
+
+		await controller.setColor('a', null);
+
+		expect(at(read(), 0)).not.toHaveProperty('color');
+	});
+
+	it('reports a refused write and re-syncs, rather than leaving the edit on screen', async () => {
+		const store = makeCorruptStore();
+		const host = makeHost();
+		const controller = new PlayerMarkerController(store, 'rec.wav', host);
+
+		await controller.setNote('a', 'never saved');
+
+		expect(noticeMock).toHaveBeenCalledWith(
+			expect.stringContaining('could not be saved'),
+		);
+	});
+});
+
+describe('naming the chapter a position falls in', () => {
+	const CHAPTERS: PlayerMarker[] = [
+		{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+		{ id: 'b', time: 120, label: 'Middle', kind: 'chapter' },
+		{ id: 'c', time: 60, label: 'A bookmark', kind: 'bookmark' },
+	];
+
+	it.each([
+		{ where: 'inside the first chapter', time: 30, label: 'Intro' },
+		{ where: 'exactly on a boundary', time: 120, label: 'Middle' },
+		{ where: 'past the last chapter', time: 400, label: 'Middle' },
+	])('names the chapter $where', async ({ time, label }) => {
+		const { controller } = await createLoadedSut(CHAPTERS);
+
+		expect(controller.currentChapterLabel(time)).toBe(label);
+	});
+
+	it('names nothing for a recording with no chapters at all', async () => {
+		const { controller } = await createLoadedSut([
+			{ id: 'c', time: 0, label: 'A bookmark', kind: 'bookmark' },
+		]);
+
+		expect(controller.currentChapterLabel(30)).toBeNull();
+	});
+
+	it('names nothing before the first chapter starts', async () => {
+		const { controller } = await createLoadedSut([
+			{ id: 'b', time: 120, label: 'Middle', kind: 'chapter' },
+		]);
+
+		expect(controller.currentChapterLabel(30)).toBeNull();
 	});
 });

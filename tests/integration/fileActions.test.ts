@@ -9,8 +9,8 @@
  * @module tests/unit/fileActions.test
  */
 
-import { Notice } from 'obsidian';
-import { FILE_ACTIONS } from 'src/actions/fileActions';
+import { Notice, TFile } from 'obsidian';
+import { describeRetryOutcome, FILE_ACTIONS } from 'src/actions/fileActions';
 import type { ActionServices } from 'src/actions/PluginAction';
 import { COMMAND_IDS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
@@ -25,9 +25,11 @@ import { SplitModal } from 'src/ui/SplitModal';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import { ChapterGenerationModal } from 'src/ui/ChapterGenerationModal';
+import { ChapterExportModal } from 'src/ui/ChapterExportModal';
 import { AudioProcessingModal } from 'src/cleanup/AudioProcessingModal';
 import { getAudioFileInfo } from 'src/utils/AudioFileAnalyzer';
 import { insertProcessedAudioEmbed } from 'src/recording/NoteInserter';
+import { silenceConsole, queueServicesDouble } from '../helpers/doubles';
 
 // Each dialog is a spy that records the arguments and exposes open(): what an
 // action owes its surface is that picking it opens the right dialog over the
@@ -50,6 +52,9 @@ jest.mock('src/ui/SpeakerRenameModal', () => ({
 jest.mock('src/ui/ChapterGenerationModal', () => ({
 	ChapterGenerationModal: jest.fn(() => ({ open: jest.fn() })),
 }));
+jest.mock('src/ui/ChapterExportModal', () => ({
+	ChapterExportModal: jest.fn(() => ({ open: jest.fn() })),
+}));
 jest.mock('src/cleanup/AudioProcessingModal', () => ({
 	AudioProcessingModal: jest.fn(() => ({ open: jest.fn() })),
 }));
@@ -58,6 +63,15 @@ jest.mock('src/utils/AudioFileAnalyzer', () => ({
 }));
 jest.mock('src/recording/NoteInserter', () => ({
 	insertProcessedAudioEmbed: jest.fn().mockResolvedValue(undefined),
+}));
+/** What the spied engine answers a top-up with. */
+const mockEngineRun = jest.fn();
+
+// The engine the top-up drives is a spy for the same reason the dialogs are:
+// what the action owes is sending the stretches that failed and accounting
+// what came back, not what the engine does with them.
+jest.mock('src/transcription/TranscriptionService', () => ({
+	TranscriptionService: jest.fn(() => ({ run: mockEngineRun })),
 }));
 
 /** The action registered under a command id. */
@@ -73,15 +87,36 @@ function action(commandId: string): (typeof FILE_ACTIONS)[number] {
 	return found;
 }
 
-/** The services an action is handed, all of them spies. */
-function createServices(settings: Partial<AudioRecorderSettings> = {}): {
+/**
+ * The services an action is handed, all of them spies.
+ * @param settings - Settings this case varies
+ * @param sidecar - The recording sidecar the case drives
+ * @param files - Vault contents the case reads back, by path
+ * @returns The services, and the spies a case asserts on
+ */
+function createServices(
+	settings: Partial<AudioRecorderSettings> = {},
+	sidecar: ActionServices['recordingSidecar'] = {} as ActionServices['recordingSidecar'],
+	files: Record<string, string> = {},
+): {
 	services: ActionServices;
 	primeForEnhancement: jest.Mock;
+	recordRun: jest.Mock;
 } {
-	const { app } = createMockApp();
+	const { app } = createMockApp({
+		vault: {
+			getAbstractFileByPath: (path: string) =>
+				path in files
+					? Object.assign(Object.create(TFile.prototype), { path })
+					: null,
+			read: (target: TFile) => Promise.resolve(files[target.path] ?? ''),
+		},
+	});
 	const primeForEnhancement = jest.fn();
+	const recordRun = jest.fn().mockReturnValue(0.02);
 	return {
 		primeForEnhancement,
+		recordRun,
 		services: {
 			app,
 			getSettings: () => ({ ...DEFAULT_SETTINGS, ...settings }),
@@ -90,9 +125,23 @@ function createServices(settings: Partial<AudioRecorderSettings> = {}): {
 			primeForEnhancement,
 			getWorkerClient: jest.fn(() => null),
 			autoChapters: {} as ActionServices['autoChapters'],
-			recordingSidecar: {} as ActionServices['recordingSidecar'],
+			recordingSidecar: sidecar,
+			transcriptionQueue: queueServicesDouble(),
+			transcriptionCosts: { recordLlmCall: jest.fn(), recordRun },
 		},
 	};
+}
+
+/**
+ * A sidecar double typed once as the services expect it, so each case names
+ * only the methods it drives.
+ * @param methods - The sidecar methods this case needs
+ * @returns The double
+ */
+function sidecarDouble(
+	methods: Record<string, jest.Mock>,
+): ActionServices['recordingSidecar'] {
+	return methods as unknown as ActionServices['recordingSidecar'];
 }
 
 const file = createFile('Recordings/take.webm');
@@ -111,8 +160,10 @@ describe('FILE_ACTIONS registry', () => {
 			COMMAND_IDS.splitAudio,
 			COMMAND_IDS.cleanupAudio,
 			COMMAND_IDS.transcribeAudio,
+			COMMAND_IDS.retryFailedParts,
 			COMMAND_IDS.renameSpeakers,
 			COMMAND_IDS.generateChapters,
+			COMMAND_IDS.exportChapters,
 			COMMAND_IDS.deleteRecording,
 		]);
 	});
@@ -344,5 +395,300 @@ describe('the transcribe action', () => {
 		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toBe(
 			options,
 		);
+	});
+});
+
+// The top-up is offered on every recording, because whether anything is
+// missing cannot be known without reading the sidecar and availability is
+// decided synchronously. So a recording with nothing missing has to be told
+// so, and every other outcome has to reach the user as one sentence.
+describe('transcribing the parts that failed', () => {
+	it('says so when the recording has nothing missing', async () => {
+		const { services } = createServices(
+			{ transcriptionEnabled: true },
+			sidecarDouble({
+				getFailedParts: jest.fn().mockResolvedValue(null),
+				setFailedParts: jest.fn().mockResolvedValue(undefined),
+				getTranscript: jest.fn().mockResolvedValue({ fileOutputs: [] }),
+			}),
+		);
+
+		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('Nothing is missing');
+	});
+
+	it('reports what went wrong instead of failing silently', async () => {
+		const error = silenceConsole('error');
+		const { services } = createServices(
+			{ transcriptionEnabled: true },
+			sidecarDouble({
+				getFailedParts: jest
+					.fn()
+					.mockRejectedValue(new Error('sidecar unreadable')),
+			}),
+		);
+
+		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('sidecar unreadable');
+		error.mockRestore();
+	});
+
+	it('reports a rejection that is not an error at all', async () => {
+		const error = silenceConsole('error');
+		const { services } = createServices(
+			{ transcriptionEnabled: true },
+			sidecarDouble({
+				getFailedParts: jest
+					.fn()
+					.mockRejectedValue('the disk went away'),
+			}),
+		);
+
+		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('the disk went away');
+		error.mockRestore();
+	});
+
+	it('puts what the top-up cost into the session total', async () => {
+		// It calls the same paid engine a full run does, and the counter
+		// covered every other surface that runs one but not this one
+		const LOST = {
+			label: '0:30-2:00',
+			message: 'rate limited',
+			startSeconds: 30,
+			endSeconds: 120,
+		};
+		const { services, recordRun } = createServices(
+			{ transcriptionEnabled: true },
+			sidecarDouble({
+				getFailedParts: jest
+					.fn()
+					.mockResolvedValue({ parts: [LOST], recordedAt: 'then' }),
+				setFailedParts: jest.fn().mockResolvedValue(undefined),
+				getTranscript: jest.fn().mockResolvedValue({
+					fileOutputs: [
+						{ path: 'take.json', format: 'json', writtenAt: '' },
+					],
+				}),
+			}),
+			{ 'take.json': JSON.stringify({ segments: [], language: 'en' }) },
+		);
+		mockEngineRun.mockResolvedValue({
+			transcript: { segments: [], speakers: [], language: 'en' },
+			missingParts: [],
+			cost: { engineId: 'deepgram', usd: 0.02, usage: {} },
+			// The part covering the ninety-second gap runs to five minutes,
+			// which is what a plan coarser than the request sends.
+			sentSeconds: 300,
+		});
+
+		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+
+		// Priced against the audio the run sent. Adding up the stretches it
+		// asked for instead quoted ninety seconds for five minutes of engine
+		// time, so the session total came out short by the difference.
+		expect(recordRun).toHaveBeenCalledWith(
+			{ engineId: 'deepgram', usd: 0.02, usage: {} },
+			expect.anything(),
+			300,
+		);
+	});
+
+	it('is offered only while transcription is on', () => {
+		const on = createServices({ transcriptionEnabled: true });
+		const off = createServices({ transcriptionEnabled: false });
+		const entry = action(COMMAND_IDS.retryFailedParts);
+
+		expect(entry.isAvailable({ file, services: on.services })).toBe(true);
+		expect(entry.isAvailable({ file, services: off.services })).toBe(false);
+	});
+});
+
+describe('what the user is told a top-up did', () => {
+	it('names what came back and what was rewritten', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 3,
+				stillMissing: [],
+				rewritten: 2,
+				sentSeconds: 90,
+			}),
+		).toBe('Recovered 3 segments and rewrote 2 transcript files.');
+	});
+
+	it('counts one of each in the singular', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 1,
+				stillMissing: [],
+				rewritten: 1,
+				sentSeconds: 90,
+			}),
+		).toBe('Recovered 1 segment and rewrote 1 transcript file.');
+	});
+
+	it('says how many parts failed again', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 1,
+				stillMissing: [{ label: 'x', message: 'y', startSeconds: 0 }],
+				rewritten: 1,
+				sentSeconds: 90,
+			}),
+		).toContain('1 part failed again');
+	});
+
+	it('counts more than one part that failed again in the plural', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 2,
+				stillMissing: [
+					{ label: 'a', message: 'x', startSeconds: 0 },
+					{ label: 'b', message: 'y', startSeconds: 60 },
+				],
+				rewritten: 1,
+				sentSeconds: 90,
+			}),
+		).toContain('2 parts failed again');
+	});
+
+	it('gives the reason nothing was attempted, when nothing was', () => {
+		expect(
+			describeRetryOutcome({
+				recovered: 0,
+				stillMissing: [],
+				rewritten: 0,
+				sentSeconds: 0,
+				blocked: 'Nothing is missing from this transcript.',
+			}),
+		).toBe('Nothing is missing from this transcript.');
+	});
+});
+
+// Whether a recording has markers needs a sidecar read, and availability is
+// decided synchronously, so the action is always offered and the recording
+// with none is told so rather than the entry quietly not being there.
+describe('exporting chapters and markers', () => {
+	it('says so when the recording has no markers', async () => {
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest.fn().mockResolvedValue([]),
+			}),
+		);
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('no chapters or markers');
+	});
+
+	it('opens the export dialog over the markers it read', async () => {
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest
+					.fn()
+					.mockResolvedValue([
+						{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+					]),
+			}),
+		);
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+
+		expect(ChapterExportModal).toHaveBeenCalledWith(
+			services.app,
+			expect.objectContaining({
+				file,
+				markers: [
+					{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+				],
+			}),
+		);
+	});
+
+	it('links into the recording, so an outline timecode really jumps', async () => {
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest
+					.fn()
+					.mockResolvedValue([
+						{ id: 'a', time: 9.7, label: 'Intro', kind: 'chapter' },
+					]),
+			}),
+		);
+		const generate = jest
+			.spyOn(services.app.fileManager, 'generateMarkdownLink')
+			.mockReturnValue('[[take#t=9|0:09]]');
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+		const options = at(
+			(ChapterExportModal as jest.Mock).mock.calls,
+			0,
+		)[1] as {
+			linkBuilder: (seconds: number, label: string) => string;
+		};
+
+		expect(options.linkBuilder(9.7, '0:09')).toBe('[[take#t=9|0:09]]');
+		// Floored, because that is the offset the link syntax carries
+		expect(generate).toHaveBeenCalledWith(
+			file,
+			expect.any(String),
+			'#t=9',
+			'0:09',
+		);
+	});
+
+	it('inserts into no note when the recording itself is what is open', async () => {
+		// Its own path is not a note to write an outline into
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest
+					.fn()
+					.mockResolvedValue([
+						{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+					]),
+			}),
+		);
+		jest.spyOn(services.app.workspace, 'getActiveFile').mockReturnValue(
+			file,
+		);
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+
+		expect(ChapterExportModal).toHaveBeenCalledWith(
+			services.app,
+			expect.objectContaining({ notePath: '' }),
+		);
+	});
+
+	it('reports a sidecar it could not read', async () => {
+		const error = silenceConsole('error');
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest
+					.fn()
+					.mockRejectedValue(new Error('unreadable')),
+			}),
+		);
+
+		await action(COMMAND_IDS.exportChapters).run({ file, services });
+
+		expect(noticeMessages().join(' ')).toContain('Could not read');
+		error.mockRestore();
+	});
+
+	it('is always offered, since nothing here can be known synchronously', () => {
+		const { services } = createServices();
+
+		expect(
+			action(COMMAND_IDS.exportChapters).isAvailable({ file, services }),
+		).toBe(true);
 	});
 });

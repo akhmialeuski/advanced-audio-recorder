@@ -107,7 +107,8 @@ If your plugin does not need CSS, delete this file.
 .aar-playback-controls,
 .aar-playback-buttons,
 .aar-playback-audio-controls,
-.aar-playback-marker-controls {
+.aar-playback-marker-controls,
+.aar-playback-chapter-controls {
     display: inline-flex;
     align-items: center;
 }
@@ -121,7 +122,8 @@ If your plugin does not need CSS, delete this file.
 
 .aar-playback-buttons,
 .aar-playback-audio-controls,
-.aar-playback-marker-controls {
+.aar-playback-marker-controls,
+.aar-playback-chapter-controls {
     gap: 2px;
 }
 
@@ -550,8 +552,22 @@ input.aar-input-invalid {
     cursor: pointer;
 }
 
+/*
+ * The colours a marker may carry, mapped to the theme's own accents so a
+ * coloured marker stays legible in light and dark alike. A marker with no
+ * colour sets no property, which leaves the default each rule below declares.
+ */
+.aar-player {
+    --aar-marker-red: var(--color-red);
+    --aar-marker-orange: var(--color-orange);
+    --aar-marker-yellow: var(--color-yellow);
+    --aar-marker-green: var(--color-green);
+    --aar-marker-blue: var(--color-blue);
+    --aar-marker-purple: var(--color-purple);
+}
+
 .aar-player-tick-bookmark {
-    background-color: var(--text-accent);
+    background-color: var(--aar-marker-color, var(--text-accent));
     opacity: 0.7;
 }
 
@@ -560,7 +576,10 @@ input.aar-input-invalid {
 }
 
 .aar-player-tick-chapter {
-    background-color: var(--text-warning, var(--color-orange));
+    background-color: var(
+        --aar-marker-color,
+        var(--text-warning, var(--color-orange))
+    );
     width: 2px;
     opacity: 0.85;
 }
@@ -571,7 +590,10 @@ input.aar-input-invalid {
     top: 0;
     left: -2px;
     border: 3px solid transparent;
-    border-top-color: var(--text-warning, var(--color-orange));
+    border-top-color: var(
+        --aar-marker-color,
+        var(--text-warning, var(--color-orange))
+    );
 }
 
 /* Marker / chapter list below the player */
@@ -583,6 +605,8 @@ input.aar-input-invalid {
 
 .aar-player-marker-row {
     display: flex;
+    /* The note takes a line of its own under the controls, so the row wraps. */
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     padding: 1px 4px;
@@ -624,6 +648,126 @@ input.aar-input-invalid {
 .aar-player-marker-label:focus {
     border-color: var(--background-modifier-border);
     background-color: var(--background-primary);
+}
+
+.aar-player-marker-time-edit {
+    width: 7ch;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85em;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-muted);
+}
+
+.aar-player-marker-time-edit:hover,
+.aar-player-marker-time-edit:focus {
+    border-color: var(--background-modifier-border);
+    background-color: var(--background-primary);
+}
+
+.aar-player-marker-here {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-faint);
+    cursor: pointer;
+}
+
+.aar-player-marker-here:hover {
+    color: var(--text-accent);
+}
+
+.aar-player-marker-here svg {
+    width: 14px;
+    height: 14px;
+}
+
+.aar-player-marker-color {
+    flex: none;
+    font-size: 0.8em;
+    max-width: 8em;
+}
+
+/*
+ * Every colour names itself in the menu and draws itself as well: the option
+ * text is a filled circle plus the name, both in the colour the marker gets.
+ */
+.aar-player-marker-color-red {
+    color: var(--aar-marker-red);
+}
+
+.aar-player-marker-color-orange {
+    color: var(--aar-marker-orange);
+}
+
+.aar-player-marker-color-yellow {
+    color: var(--aar-marker-yellow);
+}
+
+.aar-player-marker-color-green {
+    color: var(--aar-marker-green);
+}
+
+.aar-player-marker-color-blue {
+    color: var(--aar-marker-blue);
+}
+
+.aar-player-marker-color-purple {
+    color: var(--aar-marker-purple);
+}
+
+/*
+ * The note is prose, so it takes the whole width under the row's own line
+ * rather than a share of the control column, which would show four characters
+ * of it.
+ */
+.aar-player-marker-note {
+    flex-basis: 100%;
+    min-height: 1.6em;
+    resize: vertical;
+    font-size: 0.8em;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-muted);
+}
+
+.aar-player-marker-note:hover,
+.aar-player-marker-note:focus {
+    border-color: var(--background-modifier-border);
+    background-color: var(--background-primary);
+}
+
+/*
+ * The note starts where the marker's icon does, not under its timecode. The
+ * indent is a hidden copy of the timecode rather than a fixed measurement, so
+ * a list whose stamps run to an hour lines up as well as one that does not,
+ * and a note long enough to wrap keeps its whole block in the same column.
+ */
+.aar-player-marker-note-line {
+    display: flex;
+    flex-basis: 100%;
+    gap: 6px;
+}
+
+.aar-player-marker-note-indent {
+    flex: none;
+    visibility: hidden;
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+    padding: 0 4px;
+}
+
+.aar-player-marker-note-static {
+    flex: 1;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    text-align: left;
 }
 
 .aar-player-marker-delete {
@@ -689,6 +833,12 @@ button.aar-player-marker-row {
     color: inherit;
     font: inherit;
     text-align: left;
+    /* A marker with a note wraps onto a second line, and a themed button
+       carries a fixed height and nowrap text: without these the note spilled
+       out of its own row and over the one below it. */
+    height: auto;
+    min-height: 0;
+    white-space: normal;
 }
 
 .aar-player-marker-row-clickable {
@@ -710,6 +860,27 @@ button.aar-player-marker-row {
 .aar-player-marker-row.is-active {
     background-color: var(--background-modifier-hover);
     box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+/*
+ * The colour a marker carries, drawn as a left edge. Stated with the row
+ * class as well, so it outranks the reading-view button reset above: that
+ * rule clears every box-shadow, and a plain .aar-player-marker-row-colored
+ * lost to it, which is why a colour showed while editing and vanished the
+ * moment the note was read.
+ */
+.aar-player-marker-row.aar-player-marker-row-colored {
+    box-shadow: inset 3px 0 0 var(--aar-marker-color);
+}
+
+/*
+ * Playing and coloured at once: the accent sits behind the colour rather
+ * than replacing it, so the edge says both things.
+ */
+.aar-player-marker-row.aar-player-marker-row-colored.is-active {
+    box-shadow:
+        inset 3px 0 0 var(--aar-marker-color),
+        inset 6px 0 0 var(--color-accent);
 }
 
 /* Modal text shared by the transcription and audio-cleanup dialogs */
@@ -1114,4 +1285,55 @@ button.aar-player-marker-row {
 .aar-number-input {
     width: 6em;
     text-align: right;
+}
+
+/* One row of the vault-wide marker search: the marker's own name above,
+   where it is and what it says below, in the muted colour Obsidian uses for
+   secondary text in its own suggestion lists. */
+.aar-marker-search-title {
+    font-weight: var(--font-medium);
+}
+
+.aar-marker-search-meta {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+}
+
+/* The transcription queue: one row per recording, its state to the right and
+   a way to drop it at the end. Scrolls rather than growing, so a folder of a
+   hundred recordings still fits a dialog. */
+.aar-queue-cost {
+    margin-bottom: 8px;
+    color: var(--text-muted);
+}
+
+.aar-queue-list {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.aar-queue-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.aar-queue-state {
+    flex: 1;
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    text-align: right;
+}
+
+.aar-queue-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-muted);
+    cursor: pointer;
 }

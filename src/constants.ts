@@ -178,6 +178,12 @@ export const MS_PER_SECOND = 1000;
 /** Default duration of one split part in minutes. */
 export const DEFAULT_SPLIT_CHUNK_MINUTES = 15;
 
+/** Quietest a track may be turned down at the mix, in decibels. */
+export const MIN_TRACK_GAIN_DB = -24;
+
+/** Loudest a track may be turned up at the mix, in decibels. */
+export const MAX_TRACK_GAIN_DB = 24;
+
 /** Minimum allowed split part duration in minutes. */
 export const MIN_SPLIT_CHUNK_MINUTES = 1;
 
@@ -205,8 +211,45 @@ export const SPLIT_PART_SUFFIX_RULE_TEXT =
 /** Waveform height in pixels. */
 export const PLAYER_WAVEFORM_HEIGHT = 48;
 
-/** Seconds skipped by the player's skip-forward/back buttons. */
+/**
+ * Seconds skipped by the player's skip-forward/back buttons, by default.
+ *
+ * The value is a setting now: five seconds suits picking apart speech, thirty
+ * suits sitting through a lecture, and which one is right is a property of the
+ * recording rather than of the plugin. This stays as the default and as the
+ * value every surface falls back to before settings are resolved.
+ */
 export const PLAYER_SKIP_SECONDS = 10;
+
+/** Fewest seconds a skip may be set to. */
+export const MIN_PLAYER_SKIP_SECONDS = 1;
+
+/** Most seconds a skip may be set to. */
+export const MAX_PLAYER_SKIP_SECONDS = 120;
+
+/**
+ * How long one queued recording is assumed to be when the queue prices a
+ * folder, in seconds. The dialog shows an order of magnitude, not an invoice:
+ * reading every recording in a folder to measure it would cost more than the
+ * estimate is worth, and the session counter reports what each run actually
+ * cost as it finishes.
+ */
+export const QUEUE_ASSUMED_RECORDING_SECONDS = 600;
+
+/**
+ * Offset below which a recording counts as unstarted, so nothing is
+ * remembered. Resuming a few seconds in saves the listener nothing and would
+ * write a sidecar file for a recording that was merely opened.
+ */
+export const PLAYBACK_MEMORY_MIN_SECONDS = 15;
+
+/**
+ * Distance from the end within which a recording counts as heard. The last
+ * seconds of a recording are not a place to resume from, and treating them as
+ * finished is what clears the stored position (and, with nothing else in it,
+ * the sidecar file).
+ */
+export const PLAYBACK_MEMORY_TAIL_SECONDS = 15;
 
 /**
  * Step of the player volume sliders, shared by the embedded control row and
@@ -232,6 +275,8 @@ export const PLAYER_ICONS = {
 	addChapter: 'list-plus',
 	previousChapter: 'chevron-first',
 	nextChapter: 'chevron-last',
+	chapterLoop: 'repeat-1',
+	searchMarkers: 'search',
 	speed: 'gauge',
 	copyLink: 'link',
 } as const;
@@ -803,6 +848,37 @@ export const DEFAULT_LLM_CLEANUP_PROMPT =
 	'line. Return only the corrected transcript with no preamble.';
 
 /**
+ * Share of a model's output ceiling one translation chunk may fill.
+ *
+ * A translation is about as long as what it translates, so the answer has to
+ * fit alongside the question: half the ceiling would leave nothing for a
+ * language that spells the same meaning longer, and the whole of it would
+ * truncate every chunk. Two fifths leaves room for both.
+ */
+export const TRANSLATION_CHUNK_TOKEN_SHARE = 0.4;
+
+/**
+ * Default editable system prompt for the translation task. The target
+ * language is appended at request time, so this base text names none.
+ *
+ * The numbering rule is what makes the translation line up with the
+ * recording: the pass runs over the transcript's segments, one numbered line
+ * each, and the answer is mapped back onto them by that number. A model that
+ * merges or drops a line breaks the timecodes, which is the one thing a
+ * translated subtitle file cannot survive.
+ */
+export const DEFAULT_LLM_TRANSLATE_PROMPT =
+	'You are an expert translator. You are given a machine-generated ' +
+	'transcript, one line per spoken segment, in the form ' +
+	'number|speaker|text. Translate the text field of every line ' +
+	'faithfully, keeping the register and meaning of the original; do NOT ' +
+	'summarize, merge, split, reorder, or omit lines. Return exactly one ' +
+	'line per input line, in the same order and the same form, with the ' +
+	'number and the speaker label copied over unchanged and only the text ' +
+	'translated. Add no timestamps and no commentary, and return only the ' +
+	'lines with no preamble.';
+
+/**
  * Default editable system prompt for the summary task. The language clause is
  * appended automatically at request time (see {@link summaryLanguageClause}),
  * so this base text carries no language directive.
@@ -1132,6 +1208,11 @@ export const COMMAND_IDS = {
 	decreasePlaybackSpeed: 'decrease-playback-speed',
 	previousChapter: 'go-to-previous-chapter',
 	nextChapter: 'go-to-next-chapter',
+	toggleChapterLoop: 'toggle-chapter-loop',
+	searchMarkers: 'search-markers',
+	retryFailedParts: 'retry-failed-transcription-parts',
+	openTranscriptionQueue: 'open-transcription-queue',
+	exportChapters: 'export-chapters-and-markers',
 	addPlaybackBookmark: 'add-playback-bookmark',
 	addPlaybackChapter: 'add-playback-chapter',
 } as const;

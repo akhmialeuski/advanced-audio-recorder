@@ -9,7 +9,7 @@ import {
 	mixLayout,
 	mixPcmTracksToWav,
 } from 'src/recording/StreamingMixer';
-import type { PcmMixTrack } from 'src/recording/StreamingMixer';
+import type { MixOptions, PcmMixTrack } from 'src/recording/StreamingMixer';
 import type { App } from 'obsidian';
 import { createMockApp } from '../helpers/createApp';
 
@@ -28,18 +28,19 @@ describe('StreamingMixer', () => {
 		paths: string[],
 		channels = 1,
 		sampleRate = 44100,
-	): PcmMixTrack => ({ segmentPaths: paths, channels, sampleRate });
+		placement: Pick<PcmMixTrack, 'gainDb' | 'pan'> = {},
+	): PcmMixTrack => ({
+		segmentPaths: paths,
+		channels,
+		sampleRate,
+		...placement,
+	});
 
 	const mixedSamples = async (
 		tracks: PcmMixTrack[],
-		windowFrames?: number,
+		options: MixOptions = {},
 	): Promise<Int16Array> => {
-		const wav = await mixPcmTracksToWav(
-			tracks,
-			mockApp,
-			undefined,
-			windowFrames,
-		);
+		const wav = await mixPcmTracksToWav(tracks, mockApp, options);
 		return new Int16Array(wav, WAV_HEADER_SIZE);
 	};
 
@@ -72,13 +73,14 @@ describe('StreamingMixer', () => {
 	describe('mixLayout', () => {
 		it('sizes a mix of equal mono tracks as one of them', () => {
 			const layout = mixLayout([
-				{ pcmBytes: 800, channels: 1 },
-				{ pcmBytes: 800, channels: 1 },
+				{ pcmBytes: 800, channels: 1, sampleRate: 44100 },
+				{ pcmBytes: 800, channels: 1, sampleRate: 44100 },
 			]);
 
 			expect(layout).toEqual({
 				totalFrames: 400,
 				outChannels: 1,
+				sampleRate: 44100,
 				pcmByteLength: 800,
 			});
 		});
@@ -88,8 +90,8 @@ describe('StreamingMixer', () => {
 		// mix up to stereo.
 		it('doubles a long mono track that a stereo one takes up to stereo', () => {
 			const layout = mixLayout([
-				{ pcmBytes: 800, channels: 1 },
-				{ pcmBytes: 80, channels: 2 },
+				{ pcmBytes: 800, channels: 1, sampleRate: 44100 },
+				{ pcmBytes: 80, channels: 2, sampleRate: 44100 },
 			]);
 
 			expect(layout.outChannels).toBe(2);
@@ -99,8 +101,8 @@ describe('StreamingMixer', () => {
 		it('takes its length from the longest track', () => {
 			expect(
 				mixLayout([
-					{ pcmBytes: 400, channels: 2 },
-					{ pcmBytes: 1200, channels: 2 },
+					{ pcmBytes: 400, channels: 2, sampleRate: 44100 },
+					{ pcmBytes: 1200, channels: 2, sampleRate: 44100 },
 				]).pcmByteLength,
 			).toBe(1200);
 		});
@@ -109,8 +111,22 @@ describe('StreamingMixer', () => {
 			expect(mixLayout([])).toEqual({
 				totalFrames: 0,
 				outChannels: 0,
+				sampleRate: 0,
 				pcmByteLength: 0,
 			});
+		});
+
+		// The mix runs at the fastest track's rate, so no track is decimated
+		// to suit another, and the slower one covers the same seconds in more
+		// frames than it was captured in.
+		it('writes at the fastest rate and lengthens the slower track to it', () => {
+			const layout = mixLayout([
+				{ pcmBytes: 800, channels: 1, sampleRate: 22050 },
+				{ pcmBytes: 400, channels: 1, sampleRate: 44100 },
+			]);
+
+			expect(layout.sampleRate).toBe(44100);
+			expect(layout.totalFrames).toBe(800);
 		});
 	});
 
@@ -124,13 +140,19 @@ describe('StreamingMixer', () => {
 			).toBe(true);
 		});
 
-		it('rejects mismatched sample rates', () => {
+		// Two interfaces at 44100 and 48000 used to send an hour of audio
+		// through a full decode for a difference of ten percent.
+		it('accepts mismatched sample rates, which it now resamples', () => {
 			expect(
 				canStreamMix([
 					createTrack(['a.tmp'], 1, 44100),
 					createTrack(['b.tmp'], 1, 48000),
 				]),
-			).toBe(false);
+			).toBe(true);
+		});
+
+		it('rejects a track with no rate at all', () => {
+			expect(canStreamMix([createTrack(['a.tmp'], 1, 0)])).toBe(false);
 		});
 
 		it('rejects empty input', () => {
@@ -168,16 +190,53 @@ describe('StreamingMixer', () => {
 			expect(view.getUint32(40, true)).toBe(4); // data length
 		});
 
-		it('clamps clipping sums to the int16 range', async () => {
-			storeSegment('a.tmp', [30000, -30000]);
-			storeSegment('b.tmp', [30000, -30000]);
+		// Clipping flattened the loud moment and left the quiet one alone,
+		// which is distortion. Scaling the file by one factor costs level and
+		// keeps the shape of what was recorded.
+		it('scales a sum that would clip instead of flattening its peak', async () => {
+			storeSegment('a.tmp', [30000, 3000]);
+			storeSegment('b.tmp', [30000, 3000]);
 
 			const samples = await mixedSamples([
 				createTrack(['a.tmp']),
 				createTrack(['b.tmp']),
 			]);
 
-			expect(Array.from(samples)).toEqual([32767, -32768]);
+			const [loud, quiet] = [samples[0] ?? 0, samples[1] ?? 0];
+			expect(loud).toBe(32767);
+			// The ratio between the two moments survives, which is what
+			// clipping destroyed: it wrote 32767 and 6000
+			expect(quiet).toBeCloseTo(loud / 10, -1);
+		});
+
+		// Two people on two microphones take turns speaking, so the tracks
+		// peak on different frames and their sum never reaches what the two
+		// peaks add up to. Bounding the mix by that total instead of by the
+		// sum it actually writes quietened the commonest multi-track
+		// recording there is by about six decibels, for a clip that was never
+		// going to happen.
+		it('keeps a mix whose tracks peak at different moments as loud as it was captured', async () => {
+			storeSegment('a.tmp', [30000, 0]);
+			storeSegment('b.tmp', [0, 30000]);
+
+			const samples = await mixedSamples([
+				createTrack(['a.tmp']),
+				createTrack(['b.tmp']),
+			]);
+
+			expect(Array.from(samples)).toEqual([30000, 30000]);
+		});
+
+		it('leaves a mix that never approached full scale at its own level', async () => {
+			storeSegment('a.tmp', [1000, -2000]);
+			storeSegment('b.tmp', [500, 500]);
+
+			const samples = await mixedSamples([
+				createTrack(['a.tmp']),
+				createTrack(['b.tmp']),
+			]);
+
+			expect(Array.from(samples)).toEqual([1500, -1500]);
 		});
 
 		it('pads shorter tracks with silence', async () => {
@@ -213,7 +272,7 @@ describe('StreamingMixer', () => {
 			// Window of two frames forces several read iterations
 			const samples = await mixedSamples(
 				[createTrack(['a1.tmp', 'a2.tmp']), createTrack(['b1.tmp'])],
-				2,
+				{ windowFrames: 2 },
 			);
 
 			expect(Array.from(samples)).toEqual([11, 22, 33, 44, 55]);
@@ -223,14 +282,188 @@ describe('StreamingMixer', () => {
 			storeSegment('a.tmp', [1, 2, 3, 4]);
 			const onProgress = jest.fn();
 
-			await mixPcmTracksToWav(
-				[createTrack(['a.tmp'])],
-				mockApp,
+			await mixPcmTracksToWav([createTrack(['a.tmp'])], mockApp, {
 				onProgress,
-				2,
-			);
+				windowFrames: 2,
+			});
 
 			expect(onProgress).toHaveBeenLastCalledWith(100);
+		});
+
+		it('applies a track gain before summing', async () => {
+			storeSegment('a.tmp', [1000, -1000]);
+
+			const samples = await mixedSamples([
+				createTrack(['a.tmp'], 1, 44100, { gainDb: -6 }),
+			]);
+
+			// Six decibels down is half the amplitude
+			expect(Array.from(samples)).toEqual([501, -501]);
+		});
+
+		// Two mono microphones one to each side is the reason panning exists,
+		// so the pan itself has to take the mix to stereo.
+		it('sends panned mono tracks to opposite sides of a stereo mix', async () => {
+			storeSegment('left.tmp', [100, 200]);
+			storeSegment('right.tmp', [30, 40]);
+
+			const samples = await mixedSamples([
+				createTrack(['left.tmp'], 1, 44100, { pan: -1 }),
+				createTrack(['right.tmp'], 1, 44100, { pan: 1 }),
+			]);
+
+			expect(Array.from(samples)).toEqual([100, 30, 200, 40]);
+		});
+
+		it('keeps a centred track at full level on both sides', async () => {
+			storeSegment('stereo.tmp', [10, 20]);
+			storeSegment('mono.tmp', [100]);
+
+			const samples = await mixedSamples([
+				createTrack(['stereo.tmp'], 2),
+				createTrack(['mono.tmp'], 1, 44100, { pan: 0 }),
+			]);
+
+			expect(Array.from(samples)).toEqual([110, 120]);
+		});
+
+		// A guest recorded on a laptop microphone beside a host on an
+		// interface is the case: without this the guest is inaudible.
+		it('brings tracks to a common level when asked to align them', async () => {
+			storeSegment('quiet.tmp', [2000, -2000]);
+			storeSegment('loud.tmp', [16000, -16000]);
+
+			const samples = await mixedSamples(
+				[createTrack(['quiet.tmp']), createTrack(['loud.tmp'])],
+				{ alignLevels: true },
+			);
+
+			// Both tracks now contribute the same 8192
+			expect(Array.from(samples)).toEqual([16384, -16384]);
+		});
+
+		// A participant who joined half way through was as loud as everyone
+		// else while they spoke, and the silence after them belongs to the
+		// mix rather than to their track. Measuring that silence as part of
+		// the track understated its level and had the alignment raise it
+		// above everyone who was there throughout.
+		it('aligns a short track by its own audio, not the silence after it', async () => {
+			storeSegment('throughout.tmp', [8000, -8000, 8000, -8000]);
+			storeSegment('latecomer.tmp', [8000, -8000]);
+
+			const samples = await mixedSamples(
+				[
+					createTrack(['throughout.tmp']),
+					createTrack(['latecomer.tmp']),
+				],
+				{ alignLevels: true },
+			);
+
+			// Both were captured at the same level, so both are raised by the
+			// same factor and the frames they share come out at twice one
+			expect(Array.from(samples)).toEqual([16384, -16384, 8192, -8192]);
+		});
+
+		it('leaves the tracks as captured when alignment is off', async () => {
+			storeSegment('quiet.tmp', [2000, -2000]);
+			storeSegment('loud.tmp', [16000, -16000]);
+
+			const samples = await mixedSamples([
+				createTrack(['quiet.tmp']),
+				createTrack(['loud.tmp']),
+			]);
+
+			expect(Array.from(samples)).toEqual([18000, -18000]);
+		});
+
+		// The route this used to refuse: one interface at 22050 beside one at
+		// 44100 sent the whole session through a full decode.
+		it('resamples a slower track into the fastest rate present', async () => {
+			storeSegment('slow.tmp', [0, 1000, 2000, 0]);
+			storeSegment('fast.tmp', [0, 0, 0, 0, 0, 0, 0, 0]);
+
+			const samples = await mixedSamples([
+				createTrack(['slow.tmp'], 1, 22050),
+				createTrack(['fast.tmp'], 1, 44100),
+			]);
+
+			expect(Array.from(samples)).toEqual([
+				0, 500, 1000, 1500, 2000, 1000, 0, 0,
+			]);
+		});
+
+		it('writes the mix at the fastest rate present', async () => {
+			storeSegment('slow.tmp', [1, 2]);
+			storeSegment('fast.tmp', [3, 4]);
+
+			const wav = await mixPcmTracksToWav(
+				[
+					createTrack(['slow.tmp'], 1, 22050),
+					createTrack(['fast.tmp'], 1, 48000),
+				],
+				mockApp,
+			);
+
+			expect(new DataView(wav).getUint32(24, true)).toBe(48000);
+		});
+
+		// The reason this mixer exists. The Web Audio route decodes every
+		// track into float32 before it can sum them, which is what cost
+		// gigabytes for an hour of two-track audio. Here the session grows
+		// fourfold and what the mixer holds does not move: only the output
+		// file, which is the deliverable, grows with it.
+		it('holds one segment per track however long the session is', async () => {
+			const segmentFrames = 512;
+			const mixSession = async (
+				segmentCount: number,
+			): Promise<{ held: number; captured: number }> => {
+				const slow: string[] = [];
+				const fast: string[] = [];
+				for (let index = 0; index < segmentCount; index++) {
+					const names = [
+						`slow-${String(segmentCount)}-${String(index)}.tmp`,
+						`fast-${String(segmentCount)}-${String(index)}.tmp`,
+					] as const;
+					slow.push(names[0]);
+					fast.push(names[1]);
+					storeSegment(
+						names[0],
+						new Array<number>(segmentFrames).fill(index * 100),
+					);
+					storeSegment(
+						names[1],
+						new Array<number>(segmentFrames).fill(index * 50),
+					);
+				}
+				jest.mocked(mockApp.vault.adapter.readBinary).mockClear();
+				await mixPcmTracksToWav(
+					[createTrack(slow, 1, 22050), createTrack(fast, 1, 44100)],
+					mockApp,
+					{ windowFrames: 128 },
+				);
+				const reads = jest
+					.mocked(mockApp.vault.adapter.readBinary)
+					.mock.calls.map(
+						([path]) => segments.get(path)?.byteLength ?? 0,
+					);
+				return {
+					// A reader drops the segment before it reads the next, so
+					// what the mix holds at once is one segment per track
+					held: Math.max(...reads) * 2,
+					captured: new Set(
+						jest
+							.mocked(mockApp.vault.adapter.readBinary)
+							.mock.calls.map(([path]) => path),
+					).size,
+				};
+			};
+
+			const short = await mixSession(4);
+			const long = await mixSession(16);
+
+			expect(long.held).toBe(short.held);
+			expect(long.held).toBe(segmentFrames * 2 * 2);
+			expect(long.captured).toBe(short.captured * 4);
 		});
 
 		it('throws when the adapter cannot report sizes', async () => {

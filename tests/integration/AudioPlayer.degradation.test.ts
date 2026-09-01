@@ -39,6 +39,7 @@ import { internalsOf } from '../helpers/doubles';
 const PLAIN: ResolvedPlayerSettings = {
 	showWaveform: false,
 	enableMarkers: false,
+	skipSeconds: 10,
 };
 
 /** A player over a fresh container, rendered immediately. */
@@ -497,7 +498,11 @@ describe('settings applied to a live player', () => {
 		const render = jest.spyOn(internals(player), 'renderPlayer');
 
 		player.unload();
-		player.applySettings({ showWaveform: true, enableMarkers: true });
+		player.applySettings({
+			showWaveform: true,
+			enableMarkers: true,
+			skipSeconds: 10,
+		});
 		await tick();
 
 		expect(render).not.toHaveBeenCalled();

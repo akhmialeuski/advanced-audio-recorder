@@ -12,13 +12,17 @@ import { formatTimecode } from '../utils/TimeUtils';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import {
 	addMarker,
+	activeMarkerIndex,
 	chapters,
+	chapterSpan,
 	nextChapterTime,
 	previousChapterTime,
 	removeMarker,
 	updateMarker,
 	type MarkerKind,
 	type PlayerMarker,
+	type MarkerColor,
+	type ChapterSpan,
 } from '../markers/markerModel';
 import { defaultMarkerLabel, generateMarkerId } from '../markers/markerFactory';
 
@@ -130,6 +134,53 @@ export class PlayerMarkerController {
 	}
 
 	/**
+	 * Moves a marker to a new time, persists, and re-renders.
+	 *
+	 * The list is rebuilt rather than refreshed: a marker that moved changes
+	 * the order and every neighbouring segment length, so the row itself has
+	 * to move with it.
+	 * @param id - Marker identifier
+	 * @param seconds - New offset from the start of the file
+	 */
+	async setTime(id: string, seconds: number): Promise<void> {
+		const time = Math.max(0, seconds);
+		this.markers = updateMarker(this.markers, id, { time });
+		this.host.renderMarkers();
+		await this.persist((stored) => updateMarker(stored, id, { time }));
+	}
+
+	/**
+	 * Sets or clears a marker's note, persists, and refreshes the ticks. The
+	 * list is not rebuilt, so the field the user is typing in keeps focus.
+	 * @param id - Marker identifier
+	 * @param note - New note; blank clears it
+	 */
+	async setNote(id: string, note: string): Promise<void> {
+		// A blank note is no note: storing an empty string would keep the
+		// field in the sidecar and stop an otherwise empty one being deleted.
+		const next = note.trim() === '' ? undefined : note;
+		this.markers = updateMarker(this.markers, id, { note: next });
+		this.host.refreshTicks();
+		await this.persist((stored) =>
+			updateMarker(stored, id, { note: next }),
+		);
+	}
+
+	/**
+	 * Sets or clears a marker's colour, persists, and re-renders.
+	 * @param id - Marker identifier
+	 * @param color - New colour, or null to go back to the default look
+	 */
+	async setColor(id: string, color: MarkerColor | null): Promise<void> {
+		const next = color ?? undefined;
+		this.markers = updateMarker(this.markers, id, { color: next });
+		this.host.renderMarkers();
+		await this.persist((stored) =>
+			updateMarker(stored, id, { color: next }),
+		);
+	}
+
+	/**
 	 * The next chapter boundary after the given position, or null.
 	 * @param currentTime - Current playback position in seconds
 	 */
@@ -144,6 +195,28 @@ export class PlayerMarkerController {
 	 */
 	previousChapter(currentTime: number): number | null {
 		return previousChapterTime(chapters(this.markers), currentTime);
+	}
+
+	/**
+	 * The stretch covered by the chapter the given position falls in, or null
+	 * when it falls before the first chapter (a recording with no chapters
+	 * included). This is what a chapter loop repeats.
+	 * @param currentTime - Current playback position in seconds
+	 */
+	currentChapterSpan(currentTime: number): ChapterSpan | null {
+		return chapterSpan(chapters(this.markers), currentTime);
+	}
+
+	/**
+	 * The title of the chapter the given position falls in, or null when it
+	 * falls before the first one. What the system media controls name.
+	 * @param currentTime - Current playback position in seconds
+	 */
+	currentChapterLabel(currentTime: number): string | null {
+		const sorted = chapters(this.markers);
+		// An index of -1 reads as undefined, which is the same "no chapter
+		// covers this position" answer as an empty list.
+		return sorted[activeMarkerIndex(sorted, currentTime)]?.label ?? null;
 	}
 
 	/**
@@ -195,7 +268,7 @@ export class PlayerMarkerController {
 	}
 }
 
-/** Whether two marker lists are identical in ids, times, labels, and kinds. */
+/** Whether two marker lists are identical in every field a row can show. */
 function sameMarkers(
 	a: readonly PlayerMarker[],
 	b: readonly PlayerMarker[],
@@ -210,7 +283,9 @@ function sameMarkers(
 			marker.id === other.id &&
 			marker.time === other.time &&
 			marker.label === other.label &&
-			marker.kind === other.kind
+			marker.kind === other.kind &&
+			marker.note === other.note &&
+			marker.color === other.color
 		);
 	});
 }

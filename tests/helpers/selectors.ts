@@ -46,7 +46,29 @@ export const MARKER = {
 	staticLabel: '.aar-player-marker-label-static',
 	label: '.aar-player-marker-label',
 	segment: '.aar-player-marker-segment',
+	/** The marker's timecode as shown in reading view. */
+	time: '.aar-player-marker-time',
 	delete: '.aar-player-marker-delete',
+	timeEdit: 'input.aar-player-marker-time-edit',
+	here: '.aar-player-marker-here',
+	color: 'select.aar-player-marker-color',
+	note: 'textarea.aar-player-marker-note',
+	staticNote: '.aar-player-marker-note-static',
+	/** The line the reading-view note sits on, with its alignment indent. */
+	noteLine: '.aar-player-marker-note-line',
+	/** The hidden copy of the timecode that holds the note's column open. */
+	noteIndent: '.aar-player-marker-note-indent',
+	/** One colour of the palette, on an option or on the closed control. */
+	colorSwatch: (name: string): string => `.aar-player-marker-color-${name}`,
+	searchTitle: '.aar-marker-search-title',
+	searchMeta: '.aar-marker-search-meta',
+	coloredRow: '.aar-player-marker-row-colored',
+	buttonRow: 'button.aar-player-marker-row',
+	coloredButtonRow: '.aar-player-marker-row.aar-player-marker-row-colored',
+	/** The note field by its class alone, for reading its CSS rule. */
+	noteRule: '.aar-player-marker-note',
+	/** A bookmark tick on the timeline. */
+	tickBookmark: '.aar-player-tick-bookmark',
 	/** The overlay the ticks are drawn onto, over the seek area. */
 	overlay: '.aar-player-markers',
 	/** The list of marker rows under the player. */
@@ -64,6 +86,8 @@ export const PLAYBACK = {
 	mute: '.aar-playback-mute',
 	volume: '.aar-playback-volume',
 	markerControls: '.aar-playback-marker-controls',
+	chapterControls: '.aar-playback-chapter-controls',
+	chapterLoop: '.aar-playback-chapter-loop',
 	time: '.aar-playback-time',
 } as const;
 
@@ -119,4 +143,13 @@ export const MODAL = {
 	splitSource: '.aar-split-source',
 	recoverySession: '.aar-recovery-session',
 	silentChannelConvert: '.aar-silent-channel-convert',
+} as const;
+
+/** The transcription queue dialog. */
+export const QUEUE = {
+	cost: '.aar-queue-cost',
+	list: '.aar-queue-list',
+	row: '.aar-queue-row',
+	state: '.aar-queue-state',
+	remove: '.aar-queue-remove',
 } as const;

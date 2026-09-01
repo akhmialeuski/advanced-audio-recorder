@@ -105,7 +105,7 @@ Learn more: [File operations](file-operations.md#delete-recording)
 
 ## Enhanced audio player
 
-When **Enhanced audio player** is enabled, the plugin replaces Obsidian's built-in audio embed with a richer player anywhere an audio file is embedded. It adds a **waveform seek bar** (click, drag, or use the keyboard to seek; the played portion uses the theme accent), **playback speed** presets (0.5×-3×), **skip** buttons (±10s), **volume** and **mute**, a **loop** toggle, a **time display** (elapsed/total), and a **copy timestamp link** button. While a recording plays, the same transport, volume, marker, chapter, and time controls also appear in the **status bar**, and they dismiss when playback stops. Each of those actions, plus the speed steps and the chapter jumps, is also a **command**, so any of them can carry a hotkey; the commands are offered only while a recording is playing. Timecode links (`#t=90`, `#t=1:30`, `#t=1:02:03`) jump a visible player to that position, so clicking a transcript timestamp moves playback straight to that line. The enhanced player takes over audio-only files; files with a video track and undecodable files keep Obsidian's built-in player.
+When **Enhanced audio player** is enabled, the plugin replaces Obsidian's built-in audio embed with a richer player anywhere an audio file is embedded. It adds a **waveform seek bar** (click, drag, or use the keyboard to seek; the played portion uses the theme accent), **playback speed** presets (0.5×-3×), **skip** buttons whose step is a setting, **volume** and **mute**, a **loop** toggle, a **repeat chapter** toggle, a **time display** (elapsed/total), and a **copy timestamp link** button. A recording you leave part-heard **resumes where you stopped** the next time you open it, unless the embed names a position of its own. Playback is also announced to the **operating system**, so the lock screen, the media keys, and a headset button drive the same recording, with chapter jumps mapped to previous and next track. The command **Search markers and chapters** finds any marker in the **whole vault** by its name, its recording, or its note, and plays the recording from it. While a recording plays, the same transport, volume, marker, chapter, and time controls also appear in the **status bar**, and they dismiss when playback stops. Each of those actions, plus the speed steps and the chapter jumps, is also a **command**, so any of them can carry a hotkey; the commands are offered only while a recording is playing. Timecode links (`#t=90`, `#t=1:30`, `#t=1:02:03`) jump a visible player to that position, so clicking a transcript timestamp moves playback straight to that line. The enhanced player takes over audio-only files; files with a video track and undecodable files keep Obsidian's built-in player.
 
 ![Enhanced audio player with waveform seek bar, speed, skip, volume, loop, and time display](images/player-overview.png)
 _Figure: The enhanced player replaces the built-in audio embed._
@@ -114,7 +114,7 @@ Learn more: [Audio player](audio-player.md)
 
 ## Markers and chapters
 
-With **Markers and chapters** enabled, each recording carries per-file **bookmarks** (jump points) and **chapters** (named segments). Add a bookmark with the bookmark button or by double-clicking the waveform; add a chapter with the chapter button. Markers and chapters render on the seek bar (ticks and labelled boundaries), an optional **marker list** below the player lets you jump, rename, or delete each entry, and prev/next chapter buttons navigate between boundaries. Markers are stored in a sidecar file next to the recording (e.g. `recording.webm.markers.json`), so they travel with the vault and follow rename, move, and delete. Editing is allowed in Live Preview; markers are read-only (still clickable) in Reading view.
+With **Markers and chapters** enabled, each recording carries per-file **bookmarks** (jump points) and **chapters** (named segments). Add a bookmark with the bookmark button or by double-clicking the waveform; add a chapter with the chapter button. Markers and chapters render on the seek bar (ticks and labelled boundaries), an optional **marker list** below the player lets you jump to, rename, move, note, colour, or delete each entry, and prev/next chapter buttons navigate between boundaries. A marker is moved by typing a new time or by taking the current playback position, which is the usual correction for one pressed a beat late; its note holds the reason a short label cannot, and its colour tells apart what different markers are for, on the row and on the seek bar alike. Markers are stored in a sidecar file next to the recording (e.g. `recording.webm.markers.json`), so they travel with the vault and follow rename, move, and delete. Editing is allowed in Live Preview; markers are read-only (still clickable) in Reading view.
 
 ![Enhanced player with the marker list open below it, showing bookmarks and chapters](images/player-marker-list.png)
 _Figure: The marker list lets you jump to, rename, or delete each entry._
@@ -142,9 +142,29 @@ _Figure: The transcription dialog before a job starts._
 
 Learn more: [Transcription](transcription.md)
 
+## Exporting chapters and markers
+
+Write a recording's markup out where the rest of the world can read it: a **timecoded list** for a video description, a **cue sheet** for players and audio editors, or a **Markdown outline** whose timecodes are clickable links into the recording. The two file forms are written beside the audio; the outline goes into the open note or onto the clipboard.
+
+Learn more: [Audio player](audio-player.md)
+
+Chapters also divide the audio itself: the split dialog offers **Cut at chapters** for a recording that has them, naming each part after the chapter it holds.
+
+## Transcription queue
+
+Right-click a folder and choose **Transcribe every recording in this folder** to queue all of them at once, with a preview of what will run and roughly what it will cost. The queue runs one recording at a time, shows what each is doing, and can be paused, resumed, or trimmed an entry at a time. It is kept on disk, so closing Obsidian does not lose it: a queue with work left is offered back on the next start rather than resumed without asking, since carrying on spends money.
+
+Learn more: [Transcription](transcription.md)
+
+## Transcribing the parts that failed
+
+A long recording is transcribed in parts, and a part can fail on its own. The run keeps what came back and records what it lost, with the time bounds of each missing part. **Transcribe the parts that failed** sends exactly those again and splices the result into the transcript already written, rewriting the files it finds rather than adding a second set beside them, so you are billed for the missing minutes instead of the whole recording.
+
+Learn more: [Transcription](transcription.md)
+
 ## LLM post-processing
 
-Optionally pass a finished transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. Each task has its own editable prompt. Engines are **OpenAI** (default `gpt-5.6-sol`), **Anthropic (Claude)** (default `claude-opus-4-8`), and **Google Gemini** (default `gemini-3.5-flash`), each configured once on its own page; the OpenAI and Gemini pages are shared with the matching transcription engines, while Anthropic keeps its own. Auto chapters and the advanced two-pass agents each pick an engine of their own, so a run can summarize with one service and title its chapters with another.
+Optionally pass a finished transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. A translation is written beside the original rather than over it, one line per spoken segment, so it carries the recording's own timings and the SubRip and WebVTT outputs come out translated with matching timecodes. The Whisper API additionally offers its own operation for translating the speech into English during recognition. Each task has its own editable prompt. Engines are **OpenAI** (default `gpt-5.6-sol`), **Anthropic (Claude)** (default `claude-opus-4-8`), and **Google Gemini** (default `gemini-3.5-flash`), each configured once on its own page; the OpenAI and Gemini pages are shared with the matching transcription engines, while Anthropic keeps its own. Auto chapters and the advanced two-pass agents each pick an engine of their own, so a run can summarize with one service and title its chapters with another.
 
 Learn more: [LLM post-processing](llm-post-processing.md)
 

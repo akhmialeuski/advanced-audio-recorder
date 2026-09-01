@@ -37,6 +37,7 @@ import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import { internalsOf, partial } from '../helpers/doubles';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
+import { completed } from '../helpers/llmDoubles';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
 interface ModalInternals {
@@ -216,25 +217,27 @@ function makeCleanupLlm(): LlmProvider {
 		label: 'Fake cleanup',
 		complete: (prompt: { user: string }) =>
 			Promise.resolve(
-				prompt.user
-					.split('\n')
-					.map((line) => {
-						// Everything up to and including the label plus its
-						// separator is the part the prompt tells the model to
-						// leave alone; only what follows is repunctuated.
-						const spoken =
-							/^(.*\*\*Speaker \d+\*\*[^A-Za-z]*)(.+)$/.exec(
-								line,
-							);
-						if (!spoken) {
-							return line;
-						}
-						const text = spoken[2] ?? '';
-						return `${spoken[1] ?? ''}${
-							text.charAt(0).toUpperCase() + text.slice(1)
-						}.`;
-					})
-					.join('\n'),
+				completed(
+					prompt.user
+						.split('\n')
+						.map((line) => {
+							// Everything up to and including the label plus its
+							// separator is the part the prompt tells the model to
+							// leave alone; only what follows is repunctuated.
+							const spoken =
+								/^(.*\*\*Speaker \d+\*\*[^A-Za-z]*)(.+)$/.exec(
+									line,
+								);
+							if (!spoken) {
+								return line;
+							}
+							const text = spoken[2] ?? '';
+							return `${spoken[1] ?? ''}${
+								text.charAt(0).toUpperCase() + text.slice(1)
+							}.`;
+						})
+						.join('\n'),
+				),
 			),
 	} as unknown as LlmProvider;
 }
@@ -250,10 +253,14 @@ function makeRestructuringLlm(): LlmProvider {
 		label: 'Fake custom pass',
 		complete: (prompt: { user: string }) =>
 			Promise.resolve(
-				prompt.user
-					.split('\n')
-					.map((line) => line.replace(/^\[\[[^\]]*\]\]\s*-\s*/, ''))
-					.join('\n'),
+				completed(
+					prompt.user
+						.split('\n')
+						.map((line) =>
+							line.replace(/^\[\[[^\]]*\]\]\s*-\s*/, ''),
+						)
+						.join('\n'),
+				),
 			),
 	} as unknown as LlmProvider;
 }

@@ -13,7 +13,7 @@
  */
 
 import type { App, TFile } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
+import { PLAYER_SKIP_SECONDS, PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 import { DurationProbe } from './DurationProbe';
 import {
@@ -32,8 +32,13 @@ import {
 export class DetachedPlayback {
 	private disposed = false;
 	private unregisterController: () => void = () => undefined;
-	/** Offset to start from once the duration is known and the probe settles. */
-	private pendingSeek: number | null = null;
+	/**
+	 * Offset to move to once the duration is known and the probe settles, and
+	 * whether reaching it starts playback. The two travel together because a
+	 * deferred seek that lost its intent resumes a playback the listener had
+	 * paused, and a click on a timecode is the only one that means to play.
+	 */
+	private pendingSeek: { seconds: number; autoplay: boolean } | null = null;
 	/** Coaxes a real duration out of a stream that loads without one. */
 	private readonly durationProbe: DurationProbe;
 
@@ -59,6 +64,7 @@ export class DetachedPlayback {
 	 * @param key - Playback key the audio was acquired under
 	 * @param audio - Shared audio element for the file
 	 * @param onDispose - Called once when this playback tears down
+	 * @param skipSeconds - Seconds a skip moves by
 	 */
 	private constructor(
 		private readonly registry: AudioPlayerRegistry,
@@ -66,6 +72,7 @@ export class DetachedPlayback {
 		private readonly key: string,
 		private readonly audio: HTMLAudioElement,
 		private readonly onDispose: () => void,
+		private readonly skipSeconds: number,
 	) {
 		// Once the far-seek probe resolves the real duration it restores the
 		// start, so the pending offset is applied afterwards - never mid-probe
@@ -91,6 +98,7 @@ export class DetachedPlayback {
 		file: TFile,
 		seconds: number,
 		onDispose: () => void,
+		skipSeconds: number = PLAYER_SKIP_SECONDS,
 	): DetachedPlayback {
 		const key = playbackKey(file.path, null);
 		const { audio } = registry.acquireAudio(
@@ -103,6 +111,7 @@ export class DetachedPlayback {
 			key,
 			audio,
 			onDispose,
+			skipSeconds,
 		);
 		playback.register();
 		playback.seek(seconds);
@@ -115,12 +124,14 @@ export class DetachedPlayback {
 	 * the start), then the offset is applied, so a stream that loads without a
 	 * length still starts at the right place and shows a real total.
 	 * @param seconds - Offset in seconds to seek to
+	 * @param autoplay - Start playback on arrival; a timecode click means to
+	 * listen, while a scrubber leaves a paused playback paused
 	 */
-	seek(seconds: number): void {
+	seek(seconds: number, autoplay = true): void {
 		if (this.disposed) {
 			return;
 		}
-		this.pendingSeek = seconds;
+		this.pendingSeek = { seconds, autoplay };
 		if (this.durationKnown()) {
 			this.applyPendingSeek();
 		} else if (this.audio.readyState >= 1) {
@@ -160,6 +171,13 @@ export class DetachedPlayback {
 				// would define
 				canAddMarkers: () => false,
 				canNavigateChapters: () => false,
+				// Note-independent playback has no marker list, so it has no chapters
+				// to repeat; the surfaces gate the control on canNavigateChapters and
+				// never reach these.
+				chapterLoopEnabled: () => false,
+				toggleChapterLoop: () => undefined,
+				currentChapterLabel: () => null,
+				skipSeconds: () => this.skipSeconds,
 				togglePlay: () => {
 					togglePlayback(this.audio, this.onPlayError);
 				},
@@ -168,6 +186,12 @@ export class DetachedPlayback {
 				},
 				skip: (deltaSeconds) => {
 					skipAudio(this.audio, deltaSeconds);
+				},
+				// Through the same deferral a timecode click takes, so a
+				// scrubber moved before the length is known still lands where
+				// it was dragged; it only leaves the play state alone.
+				seekToPosition: (seconds) => {
+					this.seek(seconds, !this.audio.paused);
 				},
 				toggleMute: () => {
 					toggleAudioMuted(this.audio);
@@ -210,15 +234,15 @@ export class DetachedPlayback {
 		}
 	}
 
-	/** Applies the deferred offset and starts playback, then clears it. */
+	/** Applies the deferred offset with the intent it was asked with. */
 	private applyPendingSeek(): void {
 		if (this.disposed || this.pendingSeek === null) {
 			return;
 		}
-		const seconds = this.pendingSeek;
+		const { seconds, autoplay } = this.pendingSeek;
 		this.pendingSeek = null;
 		seekAudio(this.audio, seconds, {
-			autoplay: true,
+			autoplay,
 			onError: this.onPlayError,
 		});
 	}

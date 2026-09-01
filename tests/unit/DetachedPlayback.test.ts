@@ -13,7 +13,11 @@ import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { at } from '../helpers/assertions';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
-import { installControlledAudio } from '../helpers/mediaMocks';
+import {
+	installControlledAudio,
+	type ControlledAudio,
+	type ControlledAudioOptions,
+} from '../helpers/mediaMocks';
 import { tick } from '../helpers/async';
 
 /** App stub exposing only the media resource lookup DetachedPlayback needs. */
@@ -26,6 +30,30 @@ function appStub(): App {
 /** Audio file stub with the path DetachedPlayback keys its playback on. */
 function fileStub(path = 'rec.mp4'): TFile {
 	return partial<TFile>({ path });
+}
+
+/**
+ * A playback started from a timecode, with the status-bar snapshot it
+ * publishes. The arrangement most of these cases open with, named once so the
+ * case itself is only what it varies and what it asserts.
+ * @param options - Audio options, for a stream whose length is not usable yet
+ * @returns The audio harness, the registry, and the latest published snapshot
+ */
+function startedPlayback(options: ControlledAudioOptions = {}): {
+	harness: ControlledAudio;
+	registry: AudioPlayerRegistry;
+	state: () => PlaybackControlsState | null;
+} {
+	const harness = installControlledAudio(options);
+	const registry = new AudioPlayerRegistry();
+	const listener = jest.fn<void, [PlaybackControlsState | null]>();
+	registry.subscribePlayback(listener);
+	DetachedPlayback.start(registry, appStub(), fileStub(), 30, jest.fn());
+	return {
+		harness,
+		registry,
+		state: () => listener.mock.lastCall?.[0] ?? null,
+	};
 }
 
 describe('DetachedPlayback', () => {
@@ -72,37 +100,47 @@ describe('DetachedPlayback', () => {
 		controller.addMarker('bookmark');
 		controller.previousChapter();
 		controller.nextChapter();
+		controller.toggleChapterLoop();
 
 		expect(controller.canAddMarkers()).toBe(false);
 		expect(controller.canNavigateChapters()).toBe(false);
+		expect(controller.chapterLoopEnabled()).toBe(false);
+		expect(controller.currentChapterLabel()).toBeNull();
 		expect(harness.audio.currentTime).toBe(30);
 	});
 
-	it('delegates transport, mute, volume, and speed to the shared audio', () => {
-		const harness = installControlledAudio();
-		const registry = new AudioPlayerRegistry();
-		const listener = jest.fn<void, [PlaybackControlsState | null]>();
-		registry.subscribePlayback(listener);
-		DetachedPlayback.start(registry, appStub(), fileStub(), 30, jest.fn());
+	it('leaves a paused playback paused when a scrubber moves it', () => {
+		// A click on a timecode means to listen, so it plays on arrival; a
+		// scrubber only says where. Both go through the same deferred seek,
+		// so the intent has to travel with the offset rather than being
+		// assumed, or a scrub resumes a playback the listener had stopped.
+		const { harness, state } = startedPlayback();
+		state()?.onTogglePlay();
+		expect(harness.audio.paused).toBe(true);
+		harness.play.mockClear();
 
-		let state = listener.mock.lastCall?.[0];
-		state?.onSkip(-10);
+		state()?.onSeekTo(75);
+
+		expect(harness.audio.currentTime).toBe(75);
+		expect(harness.play).not.toHaveBeenCalled();
+		expect(harness.audio.paused).toBe(true);
+	});
+
+	it('delegates transport, mute, volume, and speed to the shared audio', () => {
+		const { harness, state } = startedPlayback();
+
+		state()?.onSkip(-10);
 		expect(harness.audio.currentTime).toBe(20);
-		state = listener.mock.lastCall?.[0];
-		state?.onSkip(500);
+		state()?.onSkip(500);
 		expect(harness.audio.currentTime).toBe(120);
-		state = listener.mock.lastCall?.[0];
-		state?.onToggleMute();
+		state()?.onToggleMute();
 		expect(harness.audio.muted).toBe(true);
-		state = listener.mock.lastCall?.[0];
-		state?.onVolumeInput(0.4);
+		state()?.onVolumeInput(0.4);
 		expect(harness.audio.volume).toBe(0.4);
 		expect(harness.audio.muted).toBe(false);
-		state = listener.mock.lastCall?.[0];
-		state?.onSetPlaybackRate(1.5);
+		state()?.onSetPlaybackRate(1.5);
 		expect(harness.audio.playbackRate).toBe(1.5);
-		state = listener.mock.lastCall?.[0];
-		state?.onTogglePlay();
+		state()?.onTogglePlay();
 		expect(harness.pause).toHaveBeenCalled();
 	});
 
@@ -209,15 +247,11 @@ describe('DetachedPlayback', () => {
 	});
 
 	it('resumes playback from the status bar after a pause', () => {
-		const harness = installControlledAudio();
-		const registry = new AudioPlayerRegistry();
-		const listener = jest.fn<void, [PlaybackControlsState | null]>();
-		registry.subscribePlayback(listener);
-		DetachedPlayback.start(registry, appStub(), fileStub(), 30, jest.fn());
+		const { harness, state } = startedPlayback();
 
-		listener.mock.lastCall?.[0]?.onTogglePlay();
+		state()?.onTogglePlay();
 		expect(harness.pause).toHaveBeenCalledTimes(1);
-		listener.mock.lastCall?.[0]?.onTogglePlay();
+		state()?.onTogglePlay();
 		expect(harness.play).toHaveBeenCalledTimes(2);
 	});
 
@@ -225,14 +259,10 @@ describe('DetachedPlayback', () => {
 		// A multitrack mp4 that reports Infinity until probed: the offset is
 		// deferred until the probe restores a real length, so the status bar
 		// and any embed show a real total instead of 0:00
-		const harness = installControlledAudio({
+		const { harness, state } = startedPlayback({
 			duration: Number.POSITIVE_INFINITY,
 			readyState: 1,
 		});
-		const registry = new AudioPlayerRegistry();
-		const listener = jest.fn<void, [PlaybackControlsState | null]>();
-		registry.subscribePlayback(listener);
-		DetachedPlayback.start(registry, appStub(), fileStub(), 30, jest.fn());
 
 		// Nothing plays while the length is still unknown
 		expect(harness.play).not.toHaveBeenCalled();
@@ -243,7 +273,7 @@ describe('DetachedPlayback', () => {
 
 		expect(harness.audio.currentTime).toBe(30);
 		expect(harness.play).toHaveBeenCalledTimes(1);
-		expect(listener.mock.lastCall?.[0]?.duration).toBe(3600);
+		expect(state()?.duration).toBe(3600);
 	});
 
 	// The user clicked a timecode link, so the browser's autoplay policy

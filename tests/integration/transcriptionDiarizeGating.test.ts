@@ -347,3 +347,39 @@ describe('TranscriptionService speaker output gating', () => {
 		expect(transcript.speakers).toEqual(['Speaker 1']);
 	});
 });
+
+// The endpoint's translating operation is gated exactly as diarization is:
+// the run asks for it only where the engine has one, so a preference left on
+// from Whisper stops travelling the moment another engine is chosen.
+describe('TranscriptionService speech-translation gating', () => {
+	it('asks the Whisper API to translate when the run wants it', async () => {
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			transcriptionTranslateToEnglish: true,
+		});
+		expect(lastOptions(provider)?.translateToEnglish).toBe(true);
+	});
+
+	it.each([
+		{ engine: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM },
+		{ engine: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER },
+		{ engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI },
+	])(
+		'asks $engine for no translation, even if enabled',
+		async ({ engine }) => {
+			const provider = await runWith({
+				transcriptionProvider: engine,
+				transcriptionTranslateToEnglish: true,
+			});
+			expect(lastOptions(provider)?.translateToEnglish).toBe(false);
+		},
+	);
+
+	it('asks for no translation when the run did not want one', async () => {
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			transcriptionTranslateToEnglish: false,
+		});
+		expect(lastOptions(provider)?.translateToEnglish).toBe(false);
+	});
+});

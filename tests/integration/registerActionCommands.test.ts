@@ -30,7 +30,7 @@ import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { partialPlugin } from '../helpers/obsidianMock';
-import { partial } from '../helpers/doubles';
+import { partial, commonActionServices } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/ui/AudioFileInfoModal', () => ({
@@ -88,17 +88,7 @@ function makeServices(activeFile: TFile | null): ActionServices {
 				transcriptionSpeakerRenameEnabled: true,
 				transcriptionAutoChaptersEnabled: true,
 			}),
-		saveSettings: () => Promise.resolve(),
-		createTranscriptionModalOptions: () => ({}),
-		primeForEnhancement: () => {},
-		getWorkerClient: () => null,
-		autoChapters: partial<ActionServices>({
-			generate: jest.fn(),
-		})['autoChapters'],
-		recordingSidecar: partial<ActionServices>({
-			getTranscript: jest.fn().mockResolvedValue(null),
-			updateTranscript: jest.fn().mockResolvedValue(undefined),
-		})['recordingSidecar'],
+		...commonActionServices(),
 	};
 }
 
@@ -125,8 +115,10 @@ describe('file actions over the active audio file', () => {
 			COMMAND_IDS.splitAudio,
 			COMMAND_IDS.cleanupAudio,
 			COMMAND_IDS.transcribeAudio,
+			COMMAND_IDS.retryFailedParts,
 			COMMAND_IDS.renameSpeakers,
 			COMMAND_IDS.generateChapters,
+			COMMAND_IDS.exportChapters,
 			COMMAND_IDS.deleteRecording,
 		]);
 	});
@@ -478,6 +470,7 @@ describe('playback actions over the active snapshot', () => {
 			COMMAND_IDS.decreasePlaybackSpeed,
 			COMMAND_IDS.previousChapter,
 			COMMAND_IDS.nextChapter,
+			COMMAND_IDS.toggleChapterLoop,
 			COMMAND_IDS.addPlaybackBookmark,
 			COMMAND_IDS.addPlaybackChapter,
 		]);

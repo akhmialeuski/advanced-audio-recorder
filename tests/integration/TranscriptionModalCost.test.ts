@@ -256,6 +256,58 @@ describe('TranscriptionModal cost estimate', () => {
 			'Spent this session: ~$0.12',
 		);
 	});
+
+	/**
+	 * Opens the dialog over a tracker in a given state and reads the session
+	 * line it renders.
+	 * @param fill - Puts the tracker into the state under test
+	 * @returns The session line's text
+	 */
+	async function sessionLine(
+		fill: (tracker: SessionCostTracker) => void,
+	): Promise<string> {
+		const tracker = new SessionCostTracker();
+		fill(tracker);
+		const { modal, internals } = createModal(
+			{
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+			},
+			tracker,
+		);
+		modal.onOpen();
+		await tick();
+		return internals.costEstimateEl?.textContent ?? '';
+	}
+
+	it('says how much of the total is estimated rather than measured', async () => {
+		const line = await sessionLine((tracker) => {
+			tracker.add('deepgram', 0.12, false);
+			tracker.recordLlmCall('gemini', 'autoChapters', 0.01, true);
+		});
+
+		expect(line).toContain('Spent this session: ~$0.13 (1 step estimated)');
+	});
+
+	it('says nothing extra when every figure came from a vendor', async () => {
+		const line = await sessionLine((tracker) => {
+			tracker.add('deepgram', 0.12, false);
+			tracker.recordLlmCall('gemini', 'autoChapters', 0.01, false);
+		});
+
+		expect(line).toContain('Spent this session: ~$0.13');
+		expect(line).not.toContain('estimated');
+	});
+
+	it('reports the unpriced runs and the estimated steps together', async () => {
+		const line = await sessionLine((tracker) => {
+			tracker.add('deepgram', null);
+			tracker.recordLlmCall('gemini', 'autoChapters', 0.01, true);
+			tracker.recordLlmCall('gemini', 'postProcess', 0.02, true);
+		});
+
+		expect(line).toContain('(1 run not priced, 2 steps estimated)');
+	});
 });
 
 describe('TranscriptionModal accountRunCost', () => {

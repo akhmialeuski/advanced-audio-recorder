@@ -34,6 +34,7 @@ import {
 const WITH_MARKERS: ResolvedPlayerSettings = {
 	showWaveform: false,
 	enableMarkers: true,
+	skipSeconds: 10,
 };
 
 const MARKERS: PlayerMarker[] = [
@@ -189,7 +190,11 @@ describe('the marker list', () => {
 
 	it('reads no markers while the marker window is off', async () => {
 		const { player, store } = await openWithMarkers();
-		player.applySettings({ showWaveform: false, enableMarkers: false });
+		player.applySettings({
+			showWaveform: false,
+			enableMarkers: false,
+			skipSeconds: 10,
+		});
 		jest.mocked(store.getMarkers).mockClear();
 
 		player.reloadMarkers();
@@ -439,5 +444,118 @@ describe('jumping between chapters at the edges', () => {
 
 		expect(audio.volume).toBe(0.6);
 		expect(audio.muted).toBe(false);
+	});
+});
+
+describe('moving, noting and colouring a marker from the list', () => {
+	/** Commits a value into one of a row's fields. */
+	function commit(
+		container: HTMLElement,
+		selector: string,
+		index: number,
+		value: string,
+	): void {
+		const field = at(
+			allEls<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+				container,
+				selector,
+			),
+			index,
+		);
+		field.value = value;
+		field.dispatchEvent(new Event('change', { bubbles: true }));
+	}
+
+	it('moves a marker to a typed time and stores it there', async () => {
+		const { container, store } = await openWithMarkers();
+
+		commit(container, MARKER.timeEdit, 0, '0:45');
+		await tick();
+
+		expect(store.data.get('rec.wav')?.find((m) => m.id === 'a')?.time).toBe(
+			45,
+		);
+	});
+
+	it('refuses a time past the end of the recording and says so', async () => {
+		const { container, store } = await openWithMarkers();
+
+		// The recording is sixty seconds; ninety is not a place in it.
+		commit(container, MARKER.timeEdit, 0, '1:30');
+		await tick();
+
+		expect(store.data.get('rec.wav')?.find((m) => m.id === 'a')?.time).toBe(
+			10,
+		);
+		expect(noticeMessages()).toContainEqual(
+			expect.stringContaining('outside the recording'),
+		);
+	});
+
+	it('moves a marker to where playback currently is', async () => {
+		const { container, audio, store } = await openWithMarkers();
+		audio.currentTime = 22;
+
+		at(allEls(container, MARKER.here), 0).click();
+		await tick();
+
+		expect(store.data.get('rec.wav')?.find((m) => m.id === 'a')?.time).toBe(
+			22,
+		);
+	});
+
+	it('stores a note typed against a marker', async () => {
+		const { container, store } = await openWithMarkers();
+
+		commit(container, MARKER.note, 0, 'the bit about pricing');
+		await tick();
+
+		expect(store.data.get('rec.wav')?.find((m) => m.id === 'a')?.note).toBe(
+			'the bit about pricing',
+		);
+	});
+
+	it('stores a colour chosen for a marker', async () => {
+		const { container, store } = await openWithMarkers();
+
+		commit(container, MARKER.color, 0, 'blue');
+		await tick();
+
+		expect(
+			store.data.get('rec.wav')?.find((m) => m.id === 'a')?.color,
+		).toBe('blue');
+	});
+
+	it('clears a colour when the empty choice is made', async () => {
+		const { container, store } = await openWithMarkers([
+			{
+				id: 'a',
+				time: 10,
+				label: 'Intro',
+				kind: 'chapter',
+				color: 'red',
+			},
+		]);
+
+		commit(container, MARKER.color, 0, '');
+		await tick();
+
+		expect(
+			store.data.get('rec.wav')?.find((m) => m.id === 'a'),
+		).not.toHaveProperty('color');
+	});
+
+	it('accepts any time while the recording length is still unknown', async () => {
+		const { container, audio, store } = await openWithMarkers();
+		// A webm written by MediaRecorder carries no duration until it is
+		// probed, and a marker must still be movable in the meantime.
+		audio.duration = Number.NaN;
+
+		commit(container, MARKER.timeEdit, 0, '5:00');
+		await tick();
+
+		expect(store.data.get('rec.wav')?.find((m) => m.id === 'a')?.time).toBe(
+			300,
+		);
 	});
 });

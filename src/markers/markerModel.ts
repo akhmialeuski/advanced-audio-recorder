@@ -37,6 +37,37 @@ const TIME_EPSILON_SECONDS = 1e-6;
 const CHAPTER_LEAD_IN_SECONDS = 2;
 
 /**
+ * The colours a marker may carry.
+ *
+ * A closed set rather than a free colour: the list is drawn against the
+ * reader's theme, and a chosen colour has to stay legible on both. Each name
+ * maps to one of Obsidian's own accent variables in the stylesheet, so a marker
+ * looks like part of the app rather than like a swatch pasted onto it.
+ */
+export const MARKER_COLORS = [
+	'red',
+	'orange',
+	'yellow',
+	'green',
+	'blue',
+	'purple',
+] as const;
+
+/** One of {@link MARKER_COLORS}. */
+export type MarkerColor = (typeof MARKER_COLORS)[number];
+
+/**
+ * Whether a value is one of the offered colours.
+ * @param value - Value to test
+ */
+export function isMarkerColor(value: unknown): value is MarkerColor {
+	return (
+		typeof value === 'string' &&
+		(MARKER_COLORS as readonly string[]).includes(value)
+	);
+}
+
+/**
  * A labelled point in an audio file.
  */
 export interface PlayerMarker {
@@ -48,6 +79,57 @@ export interface PlayerMarker {
 	label: string;
 	/** Whether the marker is a bookmark or a chapter boundary. */
 	kind: MarkerKind;
+	/**
+	 * Free-form note explaining why the marker is here. Absent on a marker
+	 * that carries none, so a file written by an older version round-trips
+	 * unchanged and an empty marker list stays empty.
+	 */
+	note?: string;
+	/** Colour shown on the timeline and in the list, when one was chosen. */
+	color?: MarkerColor;
+}
+
+/**
+ * A partial change to a marker.
+ *
+ * Written out rather than derived from `Partial` because the two optional
+ * fields have to be clearable, and with exactOptionalPropertyTypes on that
+ * needs an explicit undefined the derived type refuses.
+ */
+export interface MarkerPatch {
+	/** New offset in seconds. */
+	time?: number;
+	/** New label. */
+	label?: string;
+	/** New kind. */
+	kind?: MarkerKind;
+	/** New note, or undefined to clear it. */
+	note?: string | undefined;
+	/** New colour, or undefined to clear it. */
+	color?: MarkerColor | undefined;
+}
+
+/**
+ * Applies a patch to one marker.
+ *
+ * Built field by field rather than spread, because a spread cannot express the
+ * difference between "leave the note alone" and "remove it": both arrive as an
+ * absent value, and only the presence of the key tells them apart.
+ * @param marker - The marker to change
+ * @param patch - Fields to overwrite, with undefined clearing a nullable one
+ * @returns The changed marker
+ */
+function applyPatch(marker: PlayerMarker, patch: MarkerPatch): PlayerMarker {
+	const note = 'note' in patch ? patch.note : marker.note;
+	const color = 'color' in patch ? patch.color : marker.color;
+	return {
+		id: marker.id,
+		time: patch.time ?? marker.time,
+		label: patch.label ?? marker.label,
+		kind: patch.kind ?? marker.kind,
+		...(note !== undefined ? { note } : {}),
+		...(color !== undefined ? { color } : {}),
+	};
 }
 
 /**
@@ -93,10 +175,10 @@ export function removeMarker(
 export function updateMarker(
 	markers: readonly PlayerMarker[],
 	id: string,
-	patch: Partial<Omit<PlayerMarker, 'id'>>,
+	patch: MarkerPatch,
 ): PlayerMarker[] {
 	const updated = markers.map((marker) =>
-		marker.id === id ? { ...marker, ...patch } : marker,
+		marker.id === id ? applyPatch(marker, patch) : marker,
 	);
 	return sortMarkers(updated);
 }
@@ -164,6 +246,10 @@ export function serializeMarkers(
 		time: marker.time,
 		label: marker.label,
 		kind: marker.kind,
+		// Written only when set, so a marker made by an older version comes
+		// back byte for byte and an otherwise empty sidecar stays empty.
+		...(marker.note !== undefined ? { note: marker.note } : {}),
+		...(marker.color !== undefined ? { color: marker.color } : {}),
 	}));
 }
 
@@ -195,11 +281,18 @@ export function parseMarkers(value: unknown): PlayerMarker[] {
 		) {
 			continue;
 		}
+		const note = record.note;
+		const color = record.color;
 		result.push({
 			id,
 			time: Math.max(0, time),
 			label: typeof label === 'string' ? label : '',
 			kind,
+			// A field the file does not carry stays absent rather than
+			// becoming an empty string, which is what keeps a marker written
+			// by an older version identical after a read and a write.
+			...(typeof note === 'string' && note !== '' ? { note } : {}),
+			...(isMarkerColor(color) ? { color } : {}),
 		});
 	}
 	return sortMarkers(result);
@@ -214,6 +307,10 @@ export const MARKER_ROW_ACTION = {
 	jump: 'jump',
 	rename: 'rename',
 	delete: 'delete',
+	editTime: 'edit-time',
+	useCurrentTime: 'use-current-time',
+	editNote: 'edit-note',
+	setColor: 'set-color',
 } as const;
 
 /** Action available on a marker-list row. */
@@ -229,6 +326,10 @@ export interface MarkerRow {
 	time: number;
 	label: string;
 	kind: MarkerKind;
+	/** The marker's note, when it carries one. */
+	note?: string;
+	/** The marker's colour, when one was chosen. */
+	color?: MarkerColor;
 	/** Actions offered on this row. */
 	actions: MarkerRowAction[];
 	/**
@@ -260,6 +361,10 @@ export function markerRows(
 				MARKER_ROW_ACTION.jump,
 				MARKER_ROW_ACTION.rename,
 				MARKER_ROW_ACTION.delete,
+				MARKER_ROW_ACTION.editTime,
+				MARKER_ROW_ACTION.useCurrentTime,
+				MARKER_ROW_ACTION.editNote,
+				MARKER_ROW_ACTION.setColor,
 			]
 		: [MARKER_ROW_ACTION.jump];
 	const sorted = sortMarkers(markers);
@@ -276,6 +381,8 @@ export function markerRows(
 			time: marker.time,
 			label: marker.label,
 			kind: marker.kind,
+			...(marker.note !== undefined ? { note: marker.note } : {}),
+			...(marker.color !== undefined ? { color: marker.color } : {}),
 			actions: [...actions],
 			segmentSeconds,
 		};
@@ -306,4 +413,37 @@ export function activeMarkerIndex(
 		}
 	}
 	return index;
+}
+
+/** The stretch of a recording one chapter covers. */
+export interface ChapterSpan {
+	/** Start of the chapter, in seconds. */
+	start: number;
+	/**
+	 * Start of the following chapter, or null for the last one, whose end is
+	 * the end of the recording and is therefore not a marker time.
+	 */
+	end: number | null;
+}
+
+/**
+ * Returns the chapter containing the given time, as the stretch it covers.
+ * Null when the time falls before the first chapter, which is the answer for
+ * a recording with no chapters at all.
+ * @param sortedChapters - Chapters sorted by time ascending
+ * @param time - Playback offset in seconds
+ */
+export function chapterSpan(
+	sortedChapters: readonly PlayerMarker[],
+	time: number,
+): ChapterSpan | null {
+	const index = activeMarkerIndex(sortedChapters, time);
+	const current = index < 0 ? undefined : sortedChapters[index];
+	if (!current) {
+		return null;
+	}
+	return {
+		start: current.time,
+		end: sortedChapters[index + 1]?.time ?? null,
+	};
 }

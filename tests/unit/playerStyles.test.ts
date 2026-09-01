@@ -59,6 +59,88 @@ describe('read-only player styles', () => {
 		expect(active).toMatch(/background-color/);
 	});
 
+	it('leaves an uncoloured tick the colour its kind always gave it', () => {
+		const bookmark = ruleBody(MARKER.tickBookmark);
+		expect(bookmark).not.toBeNull();
+		// The property is read with a fallback, so a marker that carries no
+		// colour is drawn exactly as it was before colours existed.
+		expect(bookmark).toMatch(
+			/background-color:\s*var\(--aar-marker-color,\s*var\(--text-accent\)\)/,
+		);
+	});
+
+	it('draws a coloured row with an edge in the colour it carries', () => {
+		const row = ruleBody(MARKER.coloredRow);
+		expect(row).not.toBeNull();
+		expect(row).toMatch(/var\(--aar-marker-color\)/);
+	});
+
+	// Reading view renders the row as a button, and the button reset clears
+	// every box-shadow. A colour stated on the bare class lost to it, so a
+	// coloured marker showed its edge while editing and nothing at all when
+	// read - which is the mode a marker list is mostly looked at in.
+	it('keeps the colour edge where the row is a reading-view button', () => {
+		const reset = ruleBody(MARKER.buttonRow);
+		expect(reset).not.toBeNull();
+		expect(reset).toMatch(/box-shadow:\s*none/);
+
+		const colored = ruleBody(MARKER.coloredButtonRow);
+		expect(colored).not.toBeNull();
+		expect(colored).toMatch(
+			/box-shadow:\s*inset[^;]*var\(--aar-marker-color\)/,
+		);
+		// Specificity settles it only if the colour also comes last.
+		expect(css.indexOf(MARKER.coloredButtonRow)).toBeGreaterThan(
+			css.indexOf(MARKER.buttonRow),
+		);
+	});
+
+	// The same button carries a themed height and nowrap text, so the note
+	// that wraps onto a second line spilled over the row below it.
+	it('lets a reading-view row grow to fit the note that wrapped', () => {
+		const reset = ruleBody(MARKER.buttonRow);
+		expect(reset).not.toBeNull();
+		expect(reset).toMatch(/height:\s*auto/);
+		expect(reset).toMatch(/min-height:\s*0/);
+		expect(reset).toMatch(/white-space:\s*normal/);
+	});
+
+	it('gives the note a line of its own under the row it belongs to', () => {
+		const note = ruleBody(MARKER.noteRule);
+		expect(note).not.toBeNull();
+		expect(note).toMatch(/flex-basis:\s*100%/);
+
+		const row = ruleBody(MARKER.row);
+		expect(row).toMatch(/flex-wrap:\s*wrap/);
+	});
+
+	// A note under its own timecode read as a caption on the time rather than
+	// on the marker, and the eye had nothing to run down.
+	it('starts the reading-view note where the marker icon starts', () => {
+		const line = ruleBody(MARKER.noteLine);
+		expect(line).not.toBeNull();
+		expect(line).toMatch(/flex-basis:\s*100%/);
+		expect(line).toMatch(/display:\s*flex/);
+
+		// The indent is a hidden copy of the timecode, so it is exactly as
+		// wide as the column it aligns to whatever the stamps run to
+		const indent = ruleBody(MARKER.noteIndent);
+		expect(indent).not.toBeNull();
+		expect(indent).toMatch(/visibility:\s*hidden/);
+		expect(indent).toMatch(/font-variant-numeric:\s*tabular-nums/);
+	});
+
+	it.each(['red', 'orange', 'yellow', 'green', 'blue', 'purple'])(
+		'draws the %s option in the colour it names',
+		(name) => {
+			const swatch = ruleBody(MARKER.colorSwatch(name));
+			expect(swatch).not.toBeNull();
+			expect(swatch).toMatch(
+				new RegExp(`color:\\s*var\\(--aar-marker-${name}\\)`),
+			);
+		},
+	);
+
 	it('frames the waveform in a padded bordered rectangle', () => {
 		const waveform = ruleBody(PLAYER.seekWaveform);
 		expect(waveform).not.toBeNull();

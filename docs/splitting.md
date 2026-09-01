@@ -7,6 +7,7 @@ Splitting breaks one long recording into several shorter part files. **Advanced 
 - [Manual splitting (existing file)](#manual-splitting-existing-file)
     - [The split dialog](#the-split-dialog)
     - [Part naming](#part-naming)
+- [Cutting at chapters](#cutting-at-chapters)
 - [How link updating works](#how-link-updating-works)
 - [Lossless vs lossy splitting](#lossless-vs-lossy-splitting)
 - [Failure handling](#failure-handling)
@@ -112,6 +113,16 @@ For a source `meeting.wav` split with the default suffix, you get `meeting-part1
 - The **extension** of the parts depends on the source format - see [Lossless vs lossy splitting](#lossless-vs-lossy-splitting). WAV sources stay `.wav`; a compressed source keeps its own extension when an offline encoder is available for it, and otherwise the parts are written as WAV (with a notice explaining the fallback).
 
 ---
+
+## Cutting at chapters
+
+A recording that carries chapters can be cut **at them** instead of every N minutes. The **Cut at chapters** switch appears in the split dialog once the recording is known to have chapters, and turning it on hides the part duration and the name suffix: neither applies, because the parts are as long as the chapters make them and each is named after the chapter it holds.
+
+The names come from the chapter titles, with the characters a file name cannot carry replaced and a number appended when two chapters share a title. The audio before the first chapter, when a recording has any, is a part of its own named after the recording rather than after a chapter that starts later.
+
+Everything else is unchanged. An uncompressed WAV is still cut **without decoding**, so a recording too large to hold in memory can still be split; every other format still goes through the decode path; and links to the original are rewritten by the same rules an even split follows.
+
+Bookmarks are left out. A cut divides the recording into parts, and a bookmark marks a point rather than a division.
 
 ## How link updating works
 

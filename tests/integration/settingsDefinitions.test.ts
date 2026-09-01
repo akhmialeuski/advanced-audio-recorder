@@ -780,6 +780,33 @@ describe('settings definitions', () => {
 
 			expect(typeof disabled === 'function' && disabled()).toBe(false);
 		});
+
+		it.each(['Track 1 level', 'Track 1 position'])(
+			'disables %s while the track has no device',
+			(name) => {
+				// The writer refuses a place in the mix for a track with no
+				// input, exactly as it refuses a channel layout, so a row that
+				// took the edit anyway accepted a number and then showed the
+				// old one back.
+				settings.enableMultiTrack = true;
+				settings.outputMode = 'single';
+				// A track with no input at all, which is what every track
+				// starts as and what the writer refuses a placement for.
+				settings.trackAudioSources.delete(1);
+				const disabled = rowOf(build(), MULTI, name).control?.disabled;
+
+				expect(typeof disabled === 'function' && disabled()).toBe(true);
+
+				settings.trackAudioSources.set(1, {
+					deviceId: 'mic-1',
+					channelMode: 'source',
+				});
+
+				expect(typeof disabled === 'function' && disabled()).toBe(
+					false,
+				);
+			},
+		);
 	});
 
 	describe('the audio splitting section', () => {
@@ -1515,6 +1542,7 @@ describe('settings definitions', () => {
 				'Enhanced audio player',
 				'Show waveform',
 				'Markers and chapters',
+				'Skip step',
 			]);
 			expect(rowOf(build(), PLAYER, 'Show waveform').control).toEqual({
 				type: 'toggle',
@@ -1723,6 +1751,22 @@ describe('settings definitions', () => {
 			]);
 
 			expect(keys).toEqual(new Set(['filePrefix', 'llmPrompt']));
+		});
+
+		it('walks past a group that declares no children', () => {
+			// Obsidian's own `SettingDefinitionGroup` leaves `items` optional,
+			// so a heading with nothing under it is a shape the API allows and
+			// a page can legitimately produce. The scan has to step over it
+			// rather than read a length off undefined.
+			const keys = collectDebouncedControlKeys([
+				{ type: 'group', heading: 'Nothing here yet' },
+				{
+					name: 'Prefix',
+					control: { type: 'text', key: 'filePrefix' },
+				},
+			]);
+
+			expect(keys).toEqual(new Set(['filePrefix']));
 		});
 
 		it('leaves the controls that change once per interaction alone', () => {

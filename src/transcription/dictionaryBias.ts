@@ -172,6 +172,38 @@ export function termsWithinWhisperPrompt(terms: string[]): string[] {
 }
 
 /**
+ * The value a Whisper-family engine should send in its single prompt slot.
+ *
+ * Both engines that have such a slot answer the same three questions in the
+ * same order, and both used to answer them in their own words. The advanced
+ * second pass supplies a full bias sentence that already folds the relevant
+ * terms in, so it takes the slot whenever it is present - only one prompt can
+ * be sent. Otherwise the dictionary is bounded to the ~224-token window Whisper
+ * reads and joined the way the window was measured. Nothing to say leaves the
+ * slot empty rather than sending a blank prompt.
+ *
+ * The service applies the same bound and warns about the terms it dropped; this
+ * keeps a directly used provider safe, and the bound is idempotent so applying
+ * it twice changes nothing.
+ * @param options - The run's bias sentence and dictionary, if it has either
+ * @returns The prompt to send, or undefined when there is nothing to send
+ */
+export function whisperPromptValue(options: {
+	biasPrompt?: string | undefined;
+	dictionary?: string[] | undefined;
+}): string | undefined {
+	const biasPrompt = options.biasPrompt?.trim();
+	if (biasPrompt) {
+		return biasPrompt;
+	}
+	if (!options.dictionary?.length) {
+		return undefined;
+	}
+	const terms = termsWithinWhisperPrompt(options.dictionary);
+	return terms.length ? terms.join(DICTIONARY_JOIN_SEPARATOR) : undefined;
+}
+
+/**
  * The leading dictionary terms that fit Deepgram's Nova-3 keyterm limits: at
  * most {@link DEEPGRAM_KEYTERM_LIMIT} entries and {@link DEEPGRAM_KEYTERM_TOKEN_LIMIT}
  * tokens in aggregate. Keyterms are separate query params, so the separator does

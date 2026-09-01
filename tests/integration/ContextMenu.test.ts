@@ -31,8 +31,9 @@ import {
 	Vault,
 	FileManager,
 	MarkdownView,
+	TFolder,
 } from 'obsidian';
-import { partial } from '../helpers/doubles';
+import { partial, commonActionServices } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
 import { AudioFileInfoModal } from 'src/ui/AudioFileInfoModal';
@@ -154,17 +155,7 @@ describe('ContextMenu', () => {
 						deleteSourceAfterConversion: true,
 						conversionLinkAction: 'replace',
 					}),
-				saveSettings: () => Promise.resolve(),
-				createTranscriptionModalOptions: () => ({}),
-				primeForEnhancement: () => {},
-				getWorkerClient: () => null,
-				autoChapters: partial<ActionServices>({
-					generate: jest.fn(),
-				})['autoChapters'],
-				recordingSidecar: partial<ActionServices>({
-					getTranscript: jest.fn().mockResolvedValue(null),
-					updateTranscript: jest.fn().mockResolvedValue(undefined),
-				})['recordingSidecar'],
+				...commonActionServices(),
 			},
 			FILE_ACTIONS,
 		);
@@ -233,8 +224,84 @@ describe('ContextMenu', () => {
 				'Convert audio format',
 				'Split audio into parts',
 				'Clean up audio',
+				'Export chapters and markers',
 				'Delete recording',
 			]);
+		});
+
+		/** A folder, as the vault hands one to the menu handler. */
+		function folder(): TFolder {
+			return Object.assign(Object.create(TFolder.prototype), {
+				name: 'Recordings',
+				path: 'Recordings',
+				children: [],
+			}) as TFolder;
+		}
+
+		/**
+		 * Fires the file menu for a folder against a menu built with the
+		 * given transcription setting.
+		 * @param transcriptionEnabled - Whether transcription is on
+		 * @returns The menu, and the queue the entry would reach
+		 */
+		function folderMenu(transcriptionEnabled: boolean): {
+			menu: Menu;
+			queueFolder: jest.Mock;
+		} {
+			const queueFolder = jest.fn().mockResolvedValue(undefined);
+			new ContextMenu(
+				mockPlugin,
+				{
+					app: mockApp,
+					getSettings: () =>
+						partial<AudioRecorderSettings>({
+							transcriptionEnabled,
+						}),
+					saveSettings: () => Promise.resolve(),
+					createTranscriptionModalOptions: () => ({}),
+					primeForEnhancement: () => {},
+					getWorkerClient: () => null,
+					autoChapters: partial<ActionServices>({})['autoChapters'],
+					recordingSidecar: partial<ActionServices>({})[
+						'recordingSidecar'
+					],
+					transcriptionQueue: { queueFolder, open: jest.fn() },
+				},
+				FILE_ACTIONS,
+			).register();
+			const call = (mockWorkspace.on as jest.Mock).mock.calls
+				.filter((c) => c[0] === 'file-menu')
+				.at(-1);
+			const menu = new Menu();
+			(call?.[1] as (m: Menu, f: TFolder) => void)(menu, folder());
+			return { menu, queueFolder };
+		}
+
+		// A folder is not a file action: it targets no recording, and every
+		// entry in that list would be wrong for it. It gets the one thing
+		// that does apply to a folder.
+		it('offers to queue a folder of recordings', () => {
+			const { menu } = folderMenu(true);
+
+			expect(titlesOf(menu)).toEqual([
+				'Transcribe every recording in this folder',
+			]);
+		});
+
+		it('queues the folder that was right-clicked', async () => {
+			const { menu, queueFolder } = folderMenu(true);
+
+			await clickItem(menu, 'Transcribe every recording in this folder');
+
+			expect(queueFolder).toHaveBeenCalledWith(
+				expect.objectContaining({ path: 'Recordings' }),
+			);
+		});
+
+		it('offers a folder nothing while transcription is off', () => {
+			const { menu } = folderMenu(false);
+
+			expect(titlesOf(menu)).toEqual([]);
 		});
 
 		it('opens the file-info modal from "Audio file info"', async () => {
@@ -304,6 +371,9 @@ describe('ContextMenu', () => {
 				mockApp,
 				file,
 				expect.any(Function),
+				// The sidecar, so the dialog can offer to cut at the
+				// recording's own chapters
+				expect.anything(),
 			);
 			// Every dialog takes an accessor rather than a snapshot, so it reads
 			// the settings that are current when it opens.

@@ -85,7 +85,7 @@ describe('the output-token parameter the OpenAI provider sends', () => {
 	it('asks with the original name first, and asks only once when it is taken', async () => {
 		const sent = script([{ status: 200, text: OK_BODY }]);
 
-		expect(await provider().complete(PROMPT, 4096)).toBe('ok');
+		expect((await provider().complete(PROMPT, 4096)).text).toBe('ok');
 
 		const bodies = sent.bodies();
 		expect(bodies).toHaveLength(1);
@@ -115,7 +115,7 @@ describe('the output-token parameter the OpenAI provider sends', () => {
 			{ status: 200, text: OK_BODY },
 		]);
 
-		expect(await provider().complete(PROMPT, 2048)).toBe('ok');
+		expect((await provider().complete(PROMPT, 2048)).text).toBe('ok');
 
 		const bodies = sent.bodies();
 		expect(bodies).toHaveLength(2);
@@ -172,7 +172,7 @@ describe('the output-token parameter the OpenAI provider sends', () => {
 		const llm = provider();
 
 		await llm.complete(PROMPT, 512);
-		expect(await llm.complete(PROMPT, 512)).toBe('ok');
+		expect((await llm.complete(PROMPT, 512)).text).toBe('ok');
 
 		const bodies = sent.bodies();
 		expect(bodies).toHaveLength(3);

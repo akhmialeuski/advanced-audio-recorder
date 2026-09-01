@@ -9,7 +9,7 @@
  * @module player/AudioPlayerRegistry
  */
 
-import { SHARED_AUDIO_GRACE_MS } from '../constants';
+import { PLAYER_SKIP_SECONDS, SHARED_AUDIO_GRACE_MS } from '../constants';
 import type { MarkerKind } from '../markers/markerModel';
 import type { ResolvedPlayerSettings } from '../player/playerSettings';
 import {
@@ -56,6 +56,16 @@ const withChapters = (controller: PlaybackController): boolean =>
  */
 export function playbackKey(path: string, startSeconds: number | null): string {
 	return `${path}${PLAYBACK_KEY_SEPARATOR}t=${startSeconds === null ? '' : String(startSeconds)}`;
+}
+
+/**
+ * The recording path a playback key was built from. The separator cannot
+ * occur in a vault path, so the split is exact.
+ * @param key - Playback key of the embed (see playbackKey)
+ * @returns The vault-relative recording path
+ */
+export function playbackPath(key: string): string {
+	return key.slice(0, key.lastIndexOf(PLAYBACK_KEY_SEPARATOR));
 }
 
 /** A reference-counted audio element shared by every player of one
@@ -296,6 +306,28 @@ export class AudioPlayerRegistry {
 			playbackRate: snapshot.playbackRate,
 			markersEnabled: this.controllerFor(entry, withMarkers) !== null,
 			chaptersEnabled: this.controllerFor(entry, withChapters) !== null,
+			// Read from the player that owns this playback, the same way the
+			// skip step is, so the status bar shows the loop the embed is
+			// actually running rather than a second, disagreeing flag.
+			chapterLoopEnabled:
+				this.controllerFor(entry, withChapters)?.chapterLoopEnabled() ??
+				false,
+			recordingPath: playbackPath(key),
+			// Read from the same player the chapter jumps go to, so the
+			// system media controls name the chapter that player would move
+			// away from.
+			chapterLabel:
+				this.controllerFor(
+					entry,
+					withChapters,
+				)?.currentChapterLabel() ?? null,
+			// Read from whichever player owns this playback, so the status bar
+			// and the commands skip by the same step the embed does. Nothing
+			// owns it only while the element is being released, and the
+			// default is what the plugin shipped with.
+			skipSeconds:
+				this.controllerFor(entry, anyController)?.skipSeconds() ??
+				PLAYER_SKIP_SECONDS,
 			onTogglePlay: () => {
 				this.runPlaybackCommand(key, (controller) => {
 					controller.togglePlay();
@@ -307,6 +339,11 @@ export class AudioPlayerRegistry {
 			onSkip: (deltaSeconds) => {
 				this.runPlaybackCommand(key, (controller) => {
 					controller.skip(deltaSeconds);
+				});
+			},
+			onSeekTo: (seconds) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.seekToPosition(seconds);
 				});
 			},
 			onToggleMute: () => {
@@ -341,6 +378,15 @@ export class AudioPlayerRegistry {
 					key,
 					(controller) => {
 						controller.nextChapter();
+					},
+					withChapters,
+				);
+			},
+			onToggleChapterLoop: () => {
+				this.runPlaybackCommand(
+					key,
+					(controller) => {
+						controller.toggleChapterLoop();
 					},
 					withChapters,
 				);
@@ -450,6 +496,11 @@ export class AudioPlayerRegistry {
 	 * settings change (e.g. toggling the waveform or markers window) takes
 	 * effect immediately without re-rendering the note. Disconnected players
 	 * are pruned in passing.
+	 *
+	 * The snapshot is republished afterwards because part of what it reports
+	 * is read from the player that owns the playback rather than from the
+	 * audio element - the skip step is - and nothing about the element
+	 * changed to make the status bar and the commands look again.
 	 * @param settings - The new render-ready player settings
 	 */
 	applySettings(settings: ResolvedPlayerSettings): void {
@@ -462,6 +513,7 @@ export class AudioPlayerRegistry {
 				player.applySettings(settings);
 			}
 		}
+		this.emitPlaybackState();
 	}
 
 	/**
@@ -477,6 +529,16 @@ export class AudioPlayerRegistry {
 		if (entry) {
 			entry.engaged = true;
 		}
+	}
+
+	/**
+	 * Republishes the active playback snapshot. A player calls this after it
+	 * changes something the snapshot reports but the audio element does not
+	 * carry - the chapter loop - so the status bar and the commands do not
+	 * keep showing the old state until the next timeupdate happens to arrive.
+	 */
+	refreshPlaybackState(): void {
+		this.emitPlaybackState();
 	}
 
 	/**

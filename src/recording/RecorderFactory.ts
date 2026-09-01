@@ -90,7 +90,7 @@ export function createPcmRecorders(
 	streams: MediaStream[],
 	sampleRate: number,
 	onChunk: (index: number, data: ArrayBuffer) => void,
-	channelModes: ChannelMode[] = [],
+	channelModes: readonly ChannelMode[] = [],
 ): PcmStreamRecorder[] {
 	return streams.map(
 		(stream, index) =>

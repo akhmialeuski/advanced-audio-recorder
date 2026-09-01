@@ -18,6 +18,14 @@ export interface TrackAudioSource {
 	deviceId: string;
 	/** Channel mode captured atomically with the selected device. */
 	channelMode: ChannelMode;
+	/**
+	 * Level applied to this track at the mix, in decibels. Absent means the
+	 * track as captured, which is what every session recorded before the
+	 * mixer could place a track was.
+	 */
+	gainDb?: number;
+	/** Where this track sits in the mix, from -1 (left) to 1 (right). */
+	pan?: number;
 }
 
 /**
@@ -323,6 +331,8 @@ export function getOrderedTrackSources(
 				trackNumber: i,
 				deviceId: source.deviceId,
 				channelMode: normalizeChannelMode(source.channelMode),
+				gainDb: source.gainDb ?? 0,
+				pan: source.pan ?? 0,
 			});
 		}
 	}

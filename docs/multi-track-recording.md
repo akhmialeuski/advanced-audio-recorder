@@ -6,6 +6,7 @@
 - [Setup](#setup)
 - [Output modes](#output-modes)
     - [Single file (mixed)](#single-file-mixed)
+    - [Placing a track in the mix](#placing-a-track-in-the-mix)
     - [Multiple files (one per track)](#multiple-files-one-per-track)
     - [File naming in Multiple files mode](#file-naming-in-multiple-files-mode)
 - [Behavior](#behavior)
@@ -70,6 +71,20 @@ Because the tracks are mixed only once at stop, **merged output cannot be auto-s
 ![Single-file output mode selected in the Output mode dropdown](images/settings-multi-track-single.png)
 _Figure: the Output mode dropdown set to Single file._
 
+### Placing a track in the mix
+
+A laptop microphone beside a proper interface is many decibels quieter, and a mix that just sums them buries one participant behind the other. Three controls decide how each track lands in the combined file. They appear only in **Single file** mode, because **Multiple files** never mixes and keeps every track exactly as it was captured.
+
+- **Track N level** raises or lowers that track before it is summed, from **-24 to +24 dB** (default **0**, the track as captured). Six decibels down is half the amplitude.
+- **Track N position** places the track between **-1** (fully left) and **1** (fully right), default **0** (centre). A track placed off centre makes the combined file **stereo** even when every input is mono, which is what lets two mono microphones sit one to each side.
+- **Match track levels** brings every track to a common level before summing, so a quiet participant is not lost behind a loud one. It is **off by default**: it is a judgement about the recording rather than a property of it, and a session combined twice has to come out the same both times. A track that is only noise - a muted microphone, someone who never spoke - is left alone rather than amplified into audibility.
+
+All three are snapshotted when recording starts, alongside the devices and the channel layouts, so editing them mid-session takes effect on the **next** recording and a session interrupted by a crash is rebuilt with the placement it was recorded under.
+
+The mix is **scaled rather than clipped**. Earlier versions cut every sample that landed past full scale, which flattened the loudest moments and left the quiet ones alone - the definition of distortion. The mixer now measures the tracks first and scales the whole file by one factor, so two people talking at once costs level rather than fidelity. A mix that never approached full scale is written exactly as captured, because the measuring pass sums the tracks the way the mix will write them and reads the peak off that sum rather than adding up the tracks' separate peaks.
+
+**Match track levels** is the one exception. Each track's correction is known only once every track has been measured, so by then the sum that was measured is no longer the sum that will be written, and the scale falls back to the separate peaks. That bound can never clip, but it can leave a mix quieter than it needed to be when the tracks peak at different moments.
+
 ### Multiple files (one per track)
 
 Each track is saved as its **own separate file** - no mixing happens. You get one file per track, each at your configured format and bitrate, and a link to **each** part file is inserted into the note when the recording stops. This mode keeps memory low (nothing is decoded for a mixdown) and is the recommended choice for long multi-track sessions.
@@ -108,14 +123,16 @@ When **two tracks use the same device**, their source names would be identical a
 
 Mixing tracks into a **Single file** has to bring audio together in memory, and how much memory that takes depends on the format. This only matters in **Single file** mode - **Multiple files** mode never mixes and stays low on memory.
 
-| Merged session                             | How it is mixed                                                             | Memory footprint                                          |
-| ------------------------------------------ | --------------------------------------------------------------------------- | --------------------------------------------------------- |
-| **WAV tracks > mixed WAV**                 | Mixed directly from the on-disk PCM in small fixed-size windows             | Stays close to the **size of the final file**, any length |
-| **Compressed, or mismatched sample rates** | Decoded through the Web Audio engine (each track fully decoded into memory) | Roughly **1.2 GB per hour-long stereo track**             |
+| Merged session               | How it is mixed                                                             | Memory footprint                                          |
+| ---------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------- |
+| **WAV tracks > mixed WAV**   | Mixed directly from the on-disk PCM in small fixed-size windows             | Stays close to the **size of the final file**, any length |
+| **Compressed merged output** | Decoded through the Web Audio engine (each track fully decoded into memory) | Roughly **1.2 GB per hour-long stereo track**             |
 
 - **WAV > WAV merges are cheap.** Because WAV tracks are already raw PCM on disk, they are mixed straight from disk in small windows. Peak memory is about the output file plus one window per track, regardless of how long the recording is.
-- **Compressed or rate-mismatched merges are expensive.** A compressed merged output (or tracks whose sample rates do not match) must be decoded through the Web Audio engine, which loads **every track into memory** - about **1.2 GB per hour-long stereo track**.
-- **For very long multi-track sessions, prefer `Multiple files` or WAV.** Either switch to **Multiple files** output (no mixdown at all) or record to **[WAV](formats.md)** so the cheap streaming mix is used. Both keep memory bounded for hour-plus sessions.
+- **Mismatched sample rates no longer force the expensive route.** Tracks captured at different rates - one interface at 44100 and another at 48000 is the ordinary case - are resampled into the fastest rate present as they are read, so the whole session no longer goes through a full decode over a difference of ten percent. The combined file is written at the fastest rate, so no track is decimated to suit another.
+- **Compressed merges are still expensive.** A compressed merged output must be decoded through the Web Audio engine, which loads **every track into memory** - about **1.2 GB per hour-long stereo track**.
+- **The tracks are read twice.** The streaming mix measures the tracks in one pass and combines them in a second, which is what lets it scale the file instead of clipping it and lets **Match track levels** know how loud each track actually is. The cost is a second sequential read of the segments already on disk; memory does not move.
+- **For very long compressed sessions, prefer `Multiple files` or WAV.** Either switch to **Multiple files** output (no mixdown at all) or record to **[WAV](formats.md)** so the cheap streaming mix is used. Both keep memory bounded for hour-plus sessions.
 
 ---
 
@@ -143,6 +160,9 @@ All multi-track controls live under **Settings > Advanced Audio Recorder > Multi
 | **Output mode**                  | `Single file` mixes all tracks into one file. `Multiple files` saves one file per track.                                                     | Single file          |
 | **Track N input**                | Input device assigned to each track. One dropdown per track, up to **Maximum tracks**.                                                       | -                    |
 | **Track N channels**             | Channel layout for that track's capture: device layout, mono mix, or one picked channel. Disabled without a device or for mono-only devices. | Same as input device |
+| **Match track levels**           | Bring the tracks to a common level before combining them. Single file mode only.                                                             | Off                  |
+| **Track N level**                | Level applied to that track in the combined file, in decibels (-24 to +24). Single file mode only.                                           | 0                    |
+| **Track N position**             | Where that track sits in the combined file: -1 fully left, 0 centre, 1 fully right. Single file mode only.                                   | 0                    |
 
 Settings that also shape multi-track output:
 

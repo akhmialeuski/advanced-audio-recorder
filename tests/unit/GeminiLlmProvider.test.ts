@@ -53,7 +53,7 @@ describe('GeminiLlmProvider.complete', () => {
 
 		const out = await provider().complete(PROMPT, MAX_TOKENS);
 
-		expect(out).toBe('Cleaned.');
+		expect(out.text).toBe('Cleaned.');
 		expect(seen?.url).toBe(
 			`${BASE_URL}/v1beta/models/${MODEL}:generateContent`,
 		);

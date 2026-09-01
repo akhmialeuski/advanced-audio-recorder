@@ -34,6 +34,7 @@ import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 import { outcomeOf } from '../helpers/async';
+import { completed } from '../helpers/llmDoubles';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -154,7 +155,7 @@ function makeLlm(output: string): LlmProvider {
 	return {
 		id: LLM_PROVIDER_IDS.GEMINI,
 		label: 'Fake LLM',
-		complete: jest.fn(async () => output),
+		complete: jest.fn(async () => completed(output)),
 	};
 }
 

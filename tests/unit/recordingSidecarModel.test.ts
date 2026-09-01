@@ -449,3 +449,283 @@ describe('provenance and emptiness', () => {
 		);
 	});
 });
+
+describe('the remembered playback position', () => {
+	const AT = '2026-08-28T10:00:00.000Z';
+
+	it('parses a position written alongside the other sections', () => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			markers: [marker],
+			playback: { position: 842, updatedAt: AT },
+		});
+
+		expect(parsed.playback).toEqual({ position: 842, updatedAt: AT });
+		expect(parsed.markers).toEqual([marker]);
+	});
+
+	it.each([
+		{ case: 'no section at all', value: undefined },
+		{ case: 'a section that is not an object', value: 'somewhere' },
+		{ case: 'a position of zero', value: { position: 0, updatedAt: AT } },
+		{
+			case: 'a negative position',
+			value: { position: -30, updatedAt: AT },
+		},
+		{
+			case: 'a position that is not a number',
+			value: { position: '842', updatedAt: AT },
+		},
+		{
+			case: 'an infinite position',
+			value: { position: Infinity, updatedAt: AT },
+		},
+		{ case: 'no write timestamp', value: { position: 842 } },
+	])('remembers nothing from $case', ({ value }) => {
+		const parsed = parseRecordingSidecar({ version: 2, playback: value });
+
+		expect(parsed.playback).toBeUndefined();
+	});
+
+	it('survives a transcript section that cannot be parsed', () => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			transcript: 'corrupt',
+			playback: { position: 842, updatedAt: AT },
+		});
+
+		expect(parsed.playback?.position).toBe(842);
+	});
+
+	it('writes the section back, and omits it when there is none', () => {
+		const withPosition = serializeRecordingSidecar({
+			markers: [],
+			transcript: emptyTranscriptSection(),
+			playback: { position: 842, updatedAt: AT },
+		});
+		expect(withPosition.playback).toEqual({ position: 842, updatedAt: AT });
+
+		const without = serializeRecordingSidecar({
+			markers: [marker],
+			transcript: emptyTranscriptSection(),
+		});
+		expect('playback' in without).toBe(false);
+	});
+
+	it('keeps a sidecar that holds only a position', () => {
+		// The position has to count as content, or a recording with no
+		// markers could never be resumed: the file would be deleted the
+		// moment it was written.
+		expect(
+			isSidecarEmpty({
+				markers: [],
+				transcript: emptyTranscriptSection(),
+				playback: { position: 842, updatedAt: AT },
+			}),
+		).toBe(false);
+	});
+});
+
+describe('a transcript file written as a translation', () => {
+	const AT = '2026-08-29T10:00:00.000Z';
+
+	it('records the language it was translated into', () => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			transcript: {
+				fileOutputs: [
+					{
+						path: 'rec.Spanish.srt',
+						format: 'srt',
+						writtenAt: AT,
+						language: 'Spanish',
+					},
+				],
+			},
+		});
+
+		expect(parsed.transcript.fileOutputs).toEqual([
+			{
+				path: 'rec.Spanish.srt',
+				format: 'srt',
+				writtenAt: AT,
+				language: 'Spanish',
+			},
+		]);
+	});
+
+	it.each([
+		{ case: 'the recording own language', value: undefined },
+		{ case: 'a language that is not a string', value: 7 },
+		{ case: 'a blank language', value: '  ' },
+	])('records no language for $case', ({ value }) => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			transcript: {
+				fileOutputs: [
+					{
+						path: 'rec.srt',
+						format: 'srt',
+						writtenAt: AT,
+						...(value === undefined ? {} : { language: value }),
+					},
+				],
+			},
+		});
+
+		expect(parsed.transcript.fileOutputs[0]?.language).toBeUndefined();
+	});
+
+	it('writes the language back, and omits it for the original', () => {
+		const payload = serializeRecordingSidecar({
+			markers: [],
+			transcript: {
+				...emptyTranscriptSection(),
+				fileOutputs: [
+					{ path: 'a.srt', format: 'srt', writtenAt: AT },
+					{
+						path: 'a.Spanish.srt',
+						format: 'srt',
+						writtenAt: AT,
+						language: 'Spanish',
+					},
+				],
+			},
+		});
+
+		expect(payload.transcript).toMatchObject({
+			fileOutputs: [
+				{ path: 'a.srt', format: 'srt', writtenAt: AT },
+				{
+					path: 'a.Spanish.srt',
+					format: 'srt',
+					writtenAt: AT,
+					language: 'Spanish',
+				},
+			],
+		});
+		const outputs = (
+			payload.transcript as { fileOutputs: Record<string, unknown>[] }
+		).fileOutputs;
+		expect('language' in (outputs[0] ?? {})).toBe(false);
+	});
+});
+
+describe('the parts a run could not transcribe', () => {
+	const AT = '2026-08-31T10:00:00.000Z';
+	const PART = {
+		label: '0:30-2:00',
+		message: 'rate limited',
+		startSeconds: 30,
+		endSeconds: 120,
+	};
+
+	it('parses a part with the bounds that let it be asked for again', () => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			failedParts: { recordedAt: AT, parts: [PART] },
+		});
+
+		expect(parsed.failedParts).toEqual({ recordedAt: AT, parts: [PART] });
+	});
+
+	it('keeps a part that carries no end, which cannot be asked for alone', () => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			failedParts: {
+				recordedAt: AT,
+				parts: [
+					{ label: 'all of it', message: 'too big', startSeconds: 0 },
+				],
+			},
+		});
+
+		expect(parsed.failedParts?.parts).toEqual([
+			{ label: 'all of it', message: 'too big', startSeconds: 0 },
+		]);
+	});
+
+	it.each([
+		{ case: 'no section at all', value: undefined },
+		{ case: 'a section that is not an object', value: 'lost' },
+		{ case: 'no write timestamp', value: { parts: [PART] } },
+		{
+			case: 'parts that are not a list',
+			value: { recordedAt: AT, parts: 7 },
+		},
+		{ case: 'an empty list', value: { recordedAt: AT, parts: [] } },
+		{
+			case: 'a part with no usable start',
+			value: { recordedAt: AT, parts: [{ label: 'x', message: 'y' }] },
+		},
+		{
+			case: 'a part that is not an object',
+			value: { recordedAt: AT, parts: ['lost'] },
+		},
+	])('records nothing for $case', ({ value }) => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			...(value === undefined ? {} : { failedParts: value }),
+		});
+
+		expect(parsed.failedParts).toBeUndefined();
+	});
+
+	it('keeps a part whose label and reason were lost', () => {
+		// The bounds are what a top-up needs; the prose is what the user is
+		// shown, and losing it is no reason to lose the part
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			failedParts: {
+				recordedAt: AT,
+				parts: [{ startSeconds: 30, endSeconds: 120 }],
+			},
+		});
+
+		expect(parsed.failedParts?.parts).toEqual([
+			{ label: '', message: '', startSeconds: 30, endSeconds: 120 },
+		]);
+	});
+
+	it('drops an end that does not come after its start', () => {
+		const parsed = parseRecordingSidecar({
+			version: 2,
+			failedParts: {
+				recordedAt: AT,
+				parts: [{ ...PART, endSeconds: 10 }],
+			},
+		});
+
+		expect(parsed.failedParts?.parts[0]?.endSeconds).toBeUndefined();
+	});
+
+	it('writes the section back, and omits it when nothing is missing', () => {
+		expect(
+			serializeRecordingSidecar({
+				markers: [],
+				transcript: emptyTranscriptSection(),
+				failedParts: { recordedAt: AT, parts: [PART] },
+			}).failedParts,
+		).toEqual({ recordedAt: AT, parts: [PART] });
+
+		expect(
+			'failedParts' in
+				serializeRecordingSidecar({
+					markers: [marker],
+					transcript: emptyTranscriptSection(),
+				}),
+		).toBe(false);
+	});
+
+	it('keeps a sidecar that holds only the parts that failed', () => {
+		// They are the record that says a top-up is possible, so the file has
+		// to survive on them alone
+		expect(
+			isSidecarEmpty({
+				markers: [],
+				transcript: emptyTranscriptSection(),
+				failedParts: { recordedAt: AT, parts: [PART] },
+			}),
+		).toBe(false);
+	});
+});

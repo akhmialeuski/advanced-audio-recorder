@@ -16,10 +16,7 @@ import { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import type { MarkerKind } from '../markers/markerModel';
 import type { RecordingMarkerHandle } from './recordingMarkers';
 import { RecordingMarkerCoordinator } from './RecordingMarkerCoordinator';
-import type {
-	AudioRecorderSettings,
-	OutputMode,
-} from '../settings/settingsSchema';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	getAudioStreams,
 	getAudioSourceName,
@@ -29,11 +26,7 @@ import {
 import type { TrackAudioSource } from './AudioStreamHandler';
 import {
 	PLUGIN_LOG_PREFIX,
-	RECORDER_STOP_TIMEOUT_MS,
 	PCM_FLUSH_THRESHOLD_BYTES,
-	DEFAULT_SPLIT_CHUNK_MINUTES,
-	DEFAULT_SPLIT_PART_SUFFIX,
-	DEFAULT_BITRATE,
 	FORMAT_WEBM,
 	FORMAT_WAV,
 } from '../constants';
@@ -47,20 +40,9 @@ import {
 	buildMimeType,
 	resolveEffectiveOutputFormat,
 } from '../audio/AudioCapabilityDetector';
-import {
-	CHANNEL_MODE_SOURCE,
-	isMonoChannelMode,
-	normalizeChannelMode,
-	type ChannelMode,
-} from '../audio/downmix';
-import { MonoCaptureBridge } from './MonoCaptureBridge';
+import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
 import { CaptureLossWatcher } from './CaptureLossWatcher';
-import type { PcmStreamRecorder } from './PcmStreamRecorder';
-import {
-	createAndStartMediaRecorders,
-	createPcmRecorders,
-	detachRecorderHandlers,
-} from './RecorderFactory';
+import { createPcmRecorders } from './RecorderFactory';
 import { describeRecordingError } from './recordingErrors';
 import { InputLevelMonitor } from './InputLevelMonitor';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
@@ -71,38 +53,33 @@ import { RecordingFinalizer } from './RecordingFinalizer';
 import { mixLayout } from './StreamingMixer';
 import { PartRotationController } from './PartRotationController';
 import { SessionJournal } from './SessionJournal';
-import {
-	clampSplitMinutes,
-	computePcmPartLimitBytes,
-	sanitizePartSuffix,
-} from './AudioSplitter';
+import { computePcmPartLimitBytes } from './AudioSplitter';
 import { captureInsertionContext } from './NoteInserter';
 import { sessionTimestamp } from '../utils/ids';
+import {
+	createCaptureSession,
+	IDLE_CAPTURE_SESSION,
+	type CaptureSession,
+} from './CaptureSession';
+import {
+	type CaptureTrack,
+	MediaRecorderCaptureTrack,
+	PcmCaptureTrack,
+} from './CaptureTrack';
 
 /**
  * Manages the audio recording lifecycle.
  */
 export class RecordingManager {
-	private recorders: MediaRecorder[] = [];
-	private pcmRecorders: PcmStreamRecorder[] = [];
+	/**
+	 * How each acquired stream is captured, aligned with
+	 * {@link RecordingManager.streams}. Which primitive is behind a track is
+	 * decided once, when the tracks are built, so every later step of the
+	 * session is the same loop over this one list.
+	 */
+	private captureTracks: CaptureTrack[] = [];
 	private chunkTargets: RecordingTarget[] = [];
 	private streams: MediaStream[] = [];
-	/**
-	 * Mono bridges wrapping the raw streams (MediaRecorder path only),
-	 * aligned with {@link RecordingManager.streams} and null where a track
-	 * records its raw stream. Indexed rather than packed, because a stream
-	 * that loses its device has to reach its own bridge and nothing else
-	 * says which one that is.
-	 */
-	private monoBridges: (MonoCaptureBridge | null)[] = [];
-	/** Streams the MediaRecorders record from (bridged or raw). */
-	private captureStreams: MediaStream[] = [];
-	/**
-	 * Channel mode per stream for the current session (snapshot,
-	 * aligned with the streams array). Multi-track sessions read each
-	 * track's own mode; single-track sessions read the global setting.
-	 */
-	private sessionChannelModes: ChannelMode[] = [];
 	private trackOrder: TrackAudioSource[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
 	private onStatusChange: (
@@ -119,21 +96,13 @@ export class RecordingManager {
 	private levelMonitor: InputLevelMonitor | null = null;
 	/** Watches the session's capture devices for going away mid-session. */
 	private readonly captureLoss = new CaptureLossWatcher();
-	private isWavPcmRecording: boolean = false;
-	private activeRecorderFormat: string = FORMAT_WEBM;
 	private insertionContext: InsertionContext | null = null;
-	/** Whether auto-split is active for the current session (snapshot). */
-	private sessionSplitEnabled: boolean = false;
-	/** Part duration in minutes for the current session (snapshot). */
-	private sessionPartMinutes: number = DEFAULT_SPLIT_CHUNK_MINUTES;
-	/** Part name suffix for the current session (snapshot). */
-	private sessionPartSuffix: string = DEFAULT_SPLIT_PART_SUFFIX;
-	/** Output format for the current session (snapshot). */
-	private sessionOutputFormat: string = FORMAT_WEBM;
-	/** Output mode for the current session (snapshot). */
-	private sessionOutputMode: OutputMode = 'multiple';
-	/** Encoder bitrate for the current session (snapshot). */
-	private sessionBitrate: number = DEFAULT_BITRATE;
+	/**
+	 * Everything this session was fixed to at its start, frozen. Between
+	 * sessions it is the idle session, so no reader has to test for null and
+	 * an operation arriving late reads settled, harmless answers.
+	 */
+	private session: CaptureSession = IDLE_CAPTURE_SESSION;
 	/** Serialized per-track write queue (buffering and flushes). */
 	private readonly writeQueue: TrackWriteQueue;
 	/** Finalization stage producing the final files at session stop. */
@@ -196,12 +165,8 @@ export class RecordingManager {
 				getTargets: () => this.chunkTargets,
 				getStatus: () => this.status,
 				stopRecorders: async () => {
-					const recordersToStop = [...this.recorders];
-					await Promise.all(
-						recordersToStop.map((recorder) =>
-							this.stopMediaRecorder(recorder),
-						),
-					);
+					const stopping = [...this.captureTracks];
+					await Promise.all(stopping.map((track) => track.stop()));
 				},
 				restartRecorders: () => {
 					this.restartMediaRecorders();
@@ -366,14 +331,14 @@ export class RecordingManager {
 				});
 			}
 			const outputFormat = effectiveFormat.format;
-			this.isWavPcmRecording =
+			const isWavPcm =
 				outputFormat === FORMAT_WAV && isPcmWavCaptureSupported();
 
-			if (!this.isWavPcmRecording) {
-				const { recorderFormat, mimeType } =
-					resolveRecorderFormat(outputFormat);
-				this.activeRecorderFormat = recorderFormat;
-				this.debugLogger.logMimeType(mimeType);
+			let recorderFormat = FORMAT_WEBM;
+			if (!isWavPcm) {
+				const resolved = resolveRecorderFormat(outputFormat);
+				recorderFormat = resolved.recorderFormat;
+				this.debugLogger.logMimeType(resolved.mimeType);
 				this.debugLogger.log('Recording format configuration', {
 					outputFormat,
 					recorderFormat,
@@ -392,26 +357,32 @@ export class RecordingManager {
 			this.streams = streams;
 			this.trackOrder = trackOrder;
 
-			this.snapshotSessionSettings(streams.length, outputFormat);
-			const sessionConfig = {
-				// Platforms that must not leave raw mid-stream segments
-				// behind run their buffer flushes as full part rotations
-				// at this size boundary.
-				chunkRotationBytes: isMidStreamSegmentFlushAllowed()
-					? null
-					: getChunkFlushThresholdBytes(),
-				isWavPcm: this.isWavPcmRecording,
-				recorderFormat: this.activeRecorderFormat,
-				outputFormat: this.sessionOutputFormat,
-				outputMode: this.sessionOutputMode,
-				bitrate: this.sessionBitrate,
-				splitEnabled: this.sessionSplitEnabled,
-				partMinutes: this.sessionPartMinutes,
-				partSuffix: this.sessionPartSuffix,
-			};
-			this.writeQueue.beginSession(sessionConfig);
-			this.finalizer.beginSession(sessionConfig);
-			this.rotation.beginSession(sessionConfig);
+			const plan = createCaptureSession({
+				settings: this.settings,
+				streamCount: streams.length,
+				trackOrder,
+				outputFormat,
+				recorderFormat,
+				isWavPcm,
+			});
+			this.session = plan.session;
+			if (plan.autoSplitSkipped) {
+				new Notice(
+					'Auto-split is skipped for merged multi-track recordings.',
+				);
+			}
+			if (this.session.splitEnabled) {
+				this.debugLogger.log('Auto-split enabled for this session', {
+					partMinutes: this.session.partMinutes,
+					partSuffix: this.session.partSuffix,
+				});
+			}
+			// One object, handed on rather than rebuilt, so the queue, the
+			// finalizer and the rotation controller cannot disagree with the
+			// manager about what this session is.
+			this.writeQueue.beginSession(this.session);
+			this.finalizer.beginSession(this.session);
+			this.rotation.beginSession(this.session);
 
 			this.recordingStartTime = Date.now();
 			this.recordingTimestamp = sessionTimestamp();
@@ -420,11 +391,7 @@ export class RecordingManager {
 			this.recordedBytes = 0;
 			this.startLevelMonitor();
 
-			if (this.isWavPcmRecording) {
-				await this.initPcmRecording();
-			} else {
-				await this.initMediaRecording();
-			}
+			await this.buildCaptureTracks();
 
 			// Every session is journaled. What differs per platform is what
 			// the journal points at: raw mid-stream segments to concatenate
@@ -439,16 +406,17 @@ export class RecordingManager {
 				captureMode: isMidStreamSegmentFlushAllowed()
 					? 'stream'
 					: 'rotation',
-				outputFormat: this.sessionOutputFormat,
-				recorderFormat: this.activeRecorderFormat,
-				bitrate: this.sessionBitrate,
-				tracks: this.chunkTargets.map((target) => ({
+				outputFormat: this.session.outputFormat,
+				recorderFormat: this.session.recorderFormat,
+				bitrate: this.session.bitrate,
+				tracks: this.chunkTargets.map((target, index) => ({
 					fileBaseName: target.fileBaseName,
-					isPcm: this.isWavPcmRecording,
+					isPcm: this.session.isWavPcm,
 					pcmChannels: target.pcmChannels,
 					pcmSampleRate: target.pcmSampleRate,
 					segmentPaths: [],
 					partPaths: [],
+					...(this.session.trackMix[index] ?? {}),
 				})),
 			});
 
@@ -509,25 +477,8 @@ export class RecordingManager {
 	 * @param when - Names the path in the log line
 	 */
 	private stopRecordersNow(when: string): void {
-		for (const recorder of this.pcmRecorders) {
-			recorder.stop().catch((error: unknown) => {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to release PCM recorder ${when}:`,
-					error,
-				);
-			});
-		}
-		for (const recorder of this.recorders) {
-			try {
-				if (recorder.state !== 'inactive') {
-					recorder.stop();
-				}
-			} catch (error) {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to stop recorder ${when}:`,
-					error,
-				);
-			}
+		for (const track of this.captureTracks) {
+			track.release(when);
 		}
 	}
 
@@ -545,85 +496,20 @@ export class RecordingManager {
 	private releaseSessionResources(): void {
 		this.stopLevelMonitor();
 		this.captureLoss.release();
-		this.releaseMonoBridges();
+		for (const track of this.captureTracks) {
+			track.release('while releasing the session');
+		}
+		this.captureTracks = [];
 		stopAllStreams(this.streams);
 		this.streams = [];
-		detachRecorderHandlers(this.recorders);
-		this.recorders = [];
-		this.pcmRecorders = [];
 		this.chunkTargets = [];
 		this.trackOrder = [];
 		this.recordingTimestamp = null;
 		this.totalChunks = 0;
 		this.recordedBytes = 0;
-		this.isWavPcmRecording = false;
 		this.insertionContext = null;
-		this.sessionSplitEnabled = false;
+		this.session = IDLE_CAPTURE_SESSION;
 		this.markers.clearBuffer();
-	}
-
-	/**
-	 * Snapshots the session-scoped settings (output format, output
-	 * mode, bitrate, auto-split configuration) used by the per-track
-	 * part and finalization paths, which read them repeatedly during
-	 * the session: updateSettings swaps the settings reference while
-	 * recording, and without the snapshot each rotation could produce
-	 * a part in a different format, or an outputMode change could
-	 * reroute a split session into the merged finalization and drop
-	 * its part files from the inserted links.
-	 * Auto-split is skipped for merged multi-track output because the
-	 * tracks are mixed only once at stop.
-	 * @param streamCount - Number of acquired audio streams
-	 * @param outputFormat - Effective output format resolved for this
-	 *   session (the stored preference, or the platform fallback)
-	 */
-	private snapshotSessionSettings(
-		streamCount: number,
-		outputFormat: string,
-	): void {
-		this.sessionOutputFormat = outputFormat;
-		this.sessionOutputMode = this.settings.outputMode;
-		this.sessionBitrate = this.settings.bitrate;
-		// Normalized once per session: capture primitives branch on the
-		// modes, and a hand-edited data.json must not leave them split
-		// between mono and pass-through behavior. Multi-track device ids
-		// and channel modes were captured together before getUserMedia,
-		// so a settings edit while permission is pending cannot combine
-		// one device with another device's mode. The global setting covers
-		// the single-track session.
-		this.sessionChannelModes =
-			this.trackOrder.length > 0
-				? this.trackOrder.map((source) =>
-						normalizeChannelMode(source.channelMode),
-					)
-				: Array.from({ length: streamCount }, () =>
-						normalizeChannelMode(this.settings.recordingChannels),
-					);
-		this.sessionPartMinutes = clampSplitMinutes(
-			this.settings.splitChunkMinutes,
-		);
-		this.sessionPartSuffix = sanitizePartSuffix(
-			this.settings.splitPartSuffix,
-		);
-		this.sessionSplitEnabled = this.settings.autoSplitEnabled;
-
-		if (
-			this.sessionSplitEnabled &&
-			this.sessionOutputMode === 'single' &&
-			streamCount > 1
-		) {
-			this.sessionSplitEnabled = false;
-			new Notice(
-				'Auto-split is skipped for merged multi-track recordings.',
-			);
-		}
-
-		if (this.sessionSplitEnabled) {
-			this.debugLogger.log('Auto-split enabled for this session', {
-				partMinutes: this.sessionPartMinutes,
-				partSuffix: this.sessionPartSuffix,
-			});
-		}
 	}
 
 	/**
@@ -684,94 +570,84 @@ export class RecordingManager {
 	}
 
 	/**
-	 * Initializes PCM recording for WAV output on desktop.
-	 * Creates PcmStreamRecorder instances and segment-based targets.
+	 * Builds the capture tracks for this session and starts them.
+	 *
+	 * The choice between the two primitives is made here and nowhere else.
+	 * Every track is constructed before any is started, so a start that fails
+	 * part way still leaves the rollback a complete list to release - which is
+	 * what a mono bridge's audio context depends on, Chromium capping how many
+	 * of those one document may hold.
+	 *
+	 * Starting is two steps for the same reason it is one loop: the tracks of
+	 * a session have to begin together, so all of them acquire first and all
+	 * of them are armed afterwards.
 	 */
-	private async initPcmRecording(): Promise<void> {
+	private async buildCaptureTracks(): Promise<void> {
 		this.chunkTargets = await this.createChunkTargets(this.streams.length);
-
-		this.pcmRecorders = createPcmRecorders(
-			this.streams,
-			this.settings.sampleRate,
-			(index, data) => {
-				void this.handlePcmChunk(index, data);
-			},
-			this.sessionChannelModes,
-		);
-
+		this.captureTracks = this.session.isWavPcm
+			? createPcmRecorders(
+					this.streams,
+					this.settings.sampleRate,
+					(index, data) => {
+						void this.handlePcmChunk(index, data);
+					},
+					this.session.channelModes,
+				).map((recorder) => new PcmCaptureTrack(recorder))
+			: this.streams.map(
+					(stream, index) =>
+						new MediaRecorderCaptureTrack(
+							stream,
+							this.session.channelModes[index] ??
+								CHANNEL_MODE_SOURCE,
+							this.settings.sampleRate,
+							{
+								mimeType: buildMimeType(
+									this.session.recorderFormat,
+								),
+								bitrate: this.session.bitrate,
+							},
+							{
+								onChunk: (data) => {
+									void this.handleChunk(index, data);
+									this.debugLogger.logChunkSize(
+										index,
+										data.size,
+									);
+								},
+								onError: (event) => {
+									console.error(
+										`${PLUGIN_LOG_PREFIX} Recorder error:`,
+										event,
+									);
+									new Notice(
+										'Recording error occurred. Check console for details.',
+									);
+								},
+							},
+						),
+				);
 		await Promise.all(
-			this.pcmRecorders.map(async (recorder, index) => {
-				await recorder.start();
+			this.captureTracks.map(async (track, index) => {
+				await track.prepare();
 				const target = this.chunkTargets[index];
-				if (!target) {
+				if (!target || track.negotiatedChannels === null) {
 					return;
 				}
-				target.pcmChannels = recorder.channels;
-				target.pcmSampleRate = recorder.sampleRate;
+				// The PCM worklet answers with what the device gave it, and
+				// the WAV header written at the end has to describe that.
+				target.pcmChannels = track.negotiatedChannels;
+				target.pcmSampleRate =
+					track.negotiatedSampleRate ?? target.pcmSampleRate;
 			}),
 		);
-	}
-
-	/**
-	 * Initializes MediaRecorder-based recording for non-WAV formats
-	 * and mobile WAV. A mono channel mode wraps every raw stream in a
-	 * MonoCaptureBridge so the recorders encode mono at capture time,
-	 * without a second lossy generation at finalization.
-	 */
-	private async initMediaRecording(): Promise<void> {
-		this.chunkTargets = await this.createChunkTargets(this.streams.length);
-		// One bridge per mono-mode stream, aligned by index; tracks in
-		// the source mode record their raw stream. Every bridge
-		// registers before any starts, so a failed start (e.g. an audio
-		// context stuck in the suspended state) still releases all
-		// acquired contexts via releasePartialSession.
-		this.monoBridges = this.streams.map((stream, index) => {
-			const mode = this.sessionChannelModes[index] ?? CHANNEL_MODE_SOURCE;
-			return isMonoChannelMode(mode)
-				? new MonoCaptureBridge(stream, mode, this.settings.sampleRate)
-				: null;
-		});
-		this.captureStreams = await Promise.all(
-			this.streams.map(
-				(stream, index) =>
-					this.monoBridges[index]?.start() ?? Promise.resolve(stream),
-			),
-		);
-		this.startMediaRecorders();
-	}
-
-	/**
-	 * Creates and starts MediaRecorders on the current streams via the
-	 * recorder factory. Used at recording start and after each auto-split
-	 * part rotation.
-	 */
-	private startMediaRecorders(): void {
-		// The recorders being replaced (initial start: none; part rotation:
-		// the stopped previous batch) must not fire a late chunk into the
-		// new part's accounting.
-		detachRecorderHandlers(this.recorders);
-		this.recorders = createAndStartMediaRecorders(
-			this.captureStreams,
-			{
-				mimeType: buildMimeType(this.activeRecorderFormat),
-				bitrate: this.sessionBitrate,
-			},
-			{
-				onChunk: (index, data) => {
-					void this.handleChunk(index, data);
-					this.debugLogger.logChunkSize(index, data.size);
-				},
-				onError: (_index, event) => {
-					console.error(
-						`${PLUGIN_LOG_PREFIX} Recorder error:`,
-						event,
-					);
-					new Notice(
-						'Recording error occurred. Check console for details.',
-					);
-				},
-			},
-		);
+		// Every track is armed only once all of them have acquired what they
+		// need. Arming each as its own acquisition returned started the tracks
+		// of one session as far apart as their audio contexts took to come up,
+		// and a merged file carried that gap as a permanent offset between the
+		// microphones.
+		for (const track of this.captureTracks) {
+			track.begin();
+		}
 	}
 
 	/**
@@ -804,7 +680,7 @@ export class RecordingManager {
 			// silent one on the other, and the sentence below was true of
 			// only the first. Releasing this stream's bridge ends its output
 			// too, which is the same thing the direct path does.
-			this.monoBridges[index]?.release();
+			this.captureTracks[index]?.detachFromDevice();
 			new Notice(
 				`Track "${name}" stopped: its input device was disconnected. ` +
 					'The other tracks are still recording.',
@@ -869,21 +745,11 @@ export class RecordingManager {
 
 		try {
 			// Let an in-flight part rotation finish before tearing down:
-			// it replaces this.recorders, and its part files must be
-			// written before the residual is saved
+			// it restarts the tracks, and its part files must be written
+			// before the residual is saved
 			await this.rotation.waitForPendingRotation();
 
-			if (this.isWavPcmRecording) {
-				await Promise.all(
-					this.pcmRecorders.map((recorder) => recorder.stop()),
-				);
-			} else {
-				await Promise.all(
-					this.recorders.map((recorder) =>
-						this.stopMediaRecorder(recorder),
-					),
-				);
-			}
+			await Promise.all(this.captureTracks.map((track) => track.stop()));
 
 			await this.writeQueue.drain(this.chunkTargets);
 
@@ -941,86 +807,26 @@ export class RecordingManager {
 	}
 
 	/**
-	 * Stops a MediaRecorder and resolves once its stop event has fired,
-	 * which guarantees the final dataavailable chunk was delivered.
-	 * Resolves immediately for recorders that are already inactive
-	 * (e.g. stopped by an in-flight part rotation), because calling
-	 * stop() on an inactive recorder throws. A watchdog timeout keeps
-	 * the stop sequence from hanging forever when the audio subsystem
-	 * died and the stop event never arrives; the chunks delivered so
-	 * far are still saved.
-	 * @param recorder - Recorder to stop
-	 */
-	private stopMediaRecorder(recorder: MediaRecorder): Promise<void> {
-		return new Promise<void>((resolve) => {
-			if (recorder.state === 'inactive') {
-				resolve();
-				return;
-			}
-			const watchdog = window.setTimeout(() => {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} MediaRecorder stop event did not arrive within ${String(
-						RECORDER_STOP_TIMEOUT_MS,
-					)} ms; continuing with the data received so far`,
-				);
-				resolve();
-			}, RECORDER_STOP_TIMEOUT_MS);
-			recorder.addEventListener(
-				'stop',
-				() => {
-					window.clearTimeout(watchdog);
-					resolve();
-				},
-				{ once: true },
-			);
-			try {
-				recorder.stop();
-			} catch (error) {
-				// The recorder went inactive between the state check and
-				// stop(): its data is already delivered, nothing to wait for
-				window.clearTimeout(watchdog);
-				console.error(
-					`${PLUGIN_LOG_PREFIX} MediaRecorder stop() failed:`,
-					error,
-				);
-				resolve();
-			}
-		});
-	}
-
-	/**
 	 * Toggles pause/resume state.
 	 */
 	togglePauseResume(): void {
 		if (this.status === RecordingStatus.Recording) {
-			if (this.isWavPcmRecording) {
-				this.pcmRecorders.forEach((recorder) => recorder.pause());
-			} else {
-				// During a part rotation the recorders are momentarily
-				// inactive and pausing them would throw; the rotation
-				// re-applies the paused status when it restarts capture
-				this.recorders.forEach((recorder) => {
-					if (recorder.state !== 'inactive') {
-						recorder.pause();
-					}
-				});
-			}
+			// During a part rotation a browser recorder is momentarily
+			// inactive and pausing it would throw; the rotation re-applies
+			// the paused status when it restarts capture.
+			this.captureTracks.forEach((track) => {
+				track.pause();
+			});
 			// Freeze active-time accounting used by auto-split rotation
 			this.rotation.markPaused();
 			this.setStatus(RecordingStatus.Paused);
 			new Notice('Recording paused');
 		} else if (this.status === RecordingStatus.Paused) {
-			if (this.isWavPcmRecording) {
-				this.pcmRecorders.forEach((recorder) => recorder.resume());
-			} else {
-				// Skip recorders stopped by an in-flight part rotation;
-				// they are recreated in the resumed state
-				this.recorders.forEach((recorder) => {
-					if (recorder.state !== 'inactive') {
-						recorder.resume();
-					}
-				});
-			}
+			// A track stopped by an in-flight part rotation is skipped; it
+			// is recreated in the resumed state.
+			this.captureTracks.forEach((track) => {
+				track.resume();
+			});
 			this.rotation.markResumed();
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording resumed');
@@ -1046,7 +852,7 @@ export class RecordingManager {
 		// Cleared here rather than with the rest of the session state below,
 		// because a PCM chunk arriving during the flushes would otherwise
 		// still try to finalize a part on a session that is going away.
-		this.sessionSplitEnabled = false;
+		this.session = IDLE_CAPTURE_SESSION;
 		this.stopRecordersNow('on unload');
 		for (const target of this.chunkTargets) {
 			void this.writeQueue.enqueue(target, async () => {
@@ -1055,19 +861,6 @@ export class RecordingManager {
 			});
 		}
 		this.releaseSessionResources();
-	}
-
-	/**
-	 * Releases the mono capture bridges and clears the capture-stream
-	 * list. Runs on every teardown path (stop, unload, failed start);
-	 * bridge release never throws, so teardown always completes.
-	 */
-	private releaseMonoBridges(): void {
-		for (const bridge of this.monoBridges) {
-			bridge?.release();
-		}
-		this.monoBridges = [];
-		this.captureStreams = [];
 	}
 
 	/**
@@ -1143,10 +936,10 @@ export class RecordingManager {
 			target.pcmBufferedBytes += data.byteLength;
 			target.filePcmBytes += data.byteLength;
 			this.warnOnApproachingWavCeiling(target);
-			if (this.sessionSplitEnabled) {
+			if (this.session.splitEnabled) {
 				target.partPcmBytes += data.byteLength;
 				const partLimitBytes = computePcmPartLimitBytes(
-					this.sessionPartMinutes,
+					this.session.partMinutes,
 					target.pcmSampleRate,
 					target.pcmChannels,
 				);
@@ -1207,8 +1000,8 @@ export class RecordingManager {
 		target: RecordingTarget,
 	): readonly RecordingTarget[] {
 		const merged =
-			this.isWavPcmRecording &&
-			this.sessionOutputMode === 'single' &&
+			this.session.isWavPcm &&
+			this.session.outputMode === 'single' &&
 			this.chunkTargets.length > 1;
 		return merged ? this.chunkTargets : [target];
 	}
@@ -1234,6 +1027,14 @@ export class RecordingManager {
 			feeding.map((chunkTarget) => ({
 				pcmBytes: chunkTarget.filePcmBytes,
 				channels: chunkTarget.pcmChannels,
+				sampleRate: chunkTarget.pcmSampleRate,
+				// A track placed off centre takes the merged file to stereo,
+				// which doubles it. The warning has to see the same file the
+				// mixer will write, or it lets the ceiling past unannounced.
+				pan:
+					this.session.trackMix[
+						this.chunkTargets.indexOf(chunkTarget)
+					]?.pan ?? 0,
 			})),
 		).pcmByteLength;
 	}
@@ -1247,9 +1048,9 @@ export class RecordingManager {
 	 */
 	private restartMediaRecorders(): void {
 		try {
-			this.startMediaRecorders();
-			if (this.status === RecordingStatus.Paused) {
-				this.recorders.forEach((recorder) => recorder.pause());
+			const paused = this.status === RecordingStatus.Paused;
+			for (const track of this.captureTracks) {
+				track.restart(paused);
 			}
 		} catch (error) {
 			console.error(

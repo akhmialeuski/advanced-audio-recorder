@@ -109,6 +109,7 @@ describe('the profile kinds together', () => {
 		expect(promptKinds.map((kind) => kind.id)).toEqual([
 			'llmCleanup',
 			'llmSummary',
+			'llmTranslate',
 			'llmCustom',
 		]);
 	});

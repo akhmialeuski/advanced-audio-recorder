@@ -24,6 +24,7 @@ export function addObsidianDomExtensions<T extends HTMLElement>(el: T): T {
 			text?: string;
 			cls?: string | string[];
 			attr?: Record<string, string>;
+			value?: string;
 		},
 	): HTMLElement => {
 		const child = document.createElement(tag);
@@ -39,6 +40,16 @@ export function addObsidianDomExtensions<T extends HTMLElement>(el: T): T {
 			Object.entries(opts.attr).forEach(([k, v]) =>
 				child.setAttribute(k, v),
 			);
+		}
+		// Obsidian's DomElementInfo carries `value`, and it is the property
+		// rather than the attribute: an <option> built without it cannot be
+		// selected by value, so a <select> silently refuses every assignment.
+		if (opts?.value !== undefined) {
+			if ('value' in child) {
+				(child as HTMLInputElement).value = opts.value;
+			} else {
+				child.setAttribute('value', opts.value);
+			}
 		}
 		el.appendChild(child);
 		return child;

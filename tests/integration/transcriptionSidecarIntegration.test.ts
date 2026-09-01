@@ -14,7 +14,6 @@ import type { App, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import {
 	emptyTranscriptSection,
 	type TranscriptSection,
@@ -31,6 +30,9 @@ import {
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
+import { completed } from '../helpers/llmDoubles';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import type { Transcript } from 'src/transcription/TranscriptTypes';
 
 jest.mock('src/transcription/transcriptOutput', () => ({
 	writeTranscriptFile: jest.fn(),
@@ -79,6 +81,7 @@ function makeSidecar(section: TranscriptSection): {
 	recordNoteOutput: jest.Mock;
 	recordFileOutput: jest.Mock;
 	recordProvenance: jest.Mock;
+	setFailedParts: jest.Mock;
 } {
 	return {
 		getTranscript: jest.fn().mockResolvedValue(section),
@@ -86,6 +89,7 @@ function makeSidecar(section: TranscriptSection): {
 		recordNoteOutput: jest.fn().mockResolvedValue(undefined),
 		recordFileOutput: jest.fn().mockResolvedValue(undefined),
 		recordProvenance: jest.fn().mockResolvedValue(undefined),
+		setFailedParts: jest.fn().mockResolvedValue(undefined),
 	};
 }
 
@@ -103,6 +107,25 @@ const twoSpeakerSegments: TranscriptSegment[] = [
 	{ start: 0, end: 1, text: 'hello', speaker: 'Speaker 1' },
 	{ start: 1, end: 2, text: 'hi', speaker: 'Speaker 2' },
 ];
+
+/**
+ * A recording that already carries the given roster, with a diarizing service
+ * over the segments this run's engine answers with.
+ * @param speakers - The roster stored for the recording
+ * @param segments - What the engine returns, the two-speaker pair by default
+ * @returns The sidecar stub to assert on and the service to run
+ */
+function rosterRun(
+	speakers: TranscriptSection['speakers'],
+	segments: TranscriptSegment[] = twoSpeakerSegments,
+): { sidecar: ReturnType<typeof makeSidecar>; service: TranscriptionService } {
+	return {
+		sidecar: makeSidecar({ ...emptyTranscriptSection(), speakers }),
+		service: new TranscriptionService(makeApp(), () => diarizedSettings(), {
+			createProvider: () => makeProvider(segments),
+		}),
+	};
+}
 
 describe('TranscriptionService stored speaker names', () => {
 	it('re-applies stored names to every output and refreshes the roster', async () => {
@@ -178,6 +201,64 @@ describe('TranscriptionService stored speaker names', () => {
 		expect(Notice).not.toHaveBeenCalledWith(
 			expect.stringContaining('Speaker labels changed'),
 		);
+	});
+
+	it('leaves the roster alone for a run that covered part of the recording', async () => {
+		// A top-up sees the speakers of the stretches it asked for and no
+		// others, so its list is not the recording's roster. Written back, it
+		// dated every speaker's first turn to inside that stretch, moved the
+		// order the rename dialog reads, and warned that the labels had
+		// changed on a top-up where nothing had.
+		const { sidecar, service } = rosterRun(
+			[
+				{
+					label: 'Speaker 1',
+					name: 'Alex',
+					firstStart: 0,
+					firstEnd: 1,
+				},
+				{ label: 'Speaker 2', name: 'Sam', firstStart: 1, firstEnd: 2 },
+			],
+			[
+				{
+					start: 300,
+					end: 302,
+					text: 'the recovered line',
+					speaker: 'Speaker 1',
+				},
+			],
+		);
+
+		const { transcript } = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			sidecar,
+			onlyRanges: [{ startSeconds: 300, endSeconds: 302 }],
+		});
+
+		// The stored names still reach the recovered segments, which is what
+		// a top-up carries the roster for
+		expect(transcript.speakers).toEqual(['Alex']);
+		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
+		expect(Notice).not.toHaveBeenCalledWith(
+			expect.stringContaining('Speaker labels changed'),
+		);
+	});
+
+	it('refreshes the roster for a run asked for an empty list of stretches', async () => {
+		// No stretches is no restriction, which is the same run as one that
+		// named none at all: the reading that decides which parts are sent
+		// has to be the one that decides whether the roster may be refreshed.
+		const { sidecar, service } = rosterRun([
+			{ label: 'Speaker 1', name: 'Alex' },
+		]);
+
+		await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			sidecar,
+			onlyRanges: [],
+		});
+
+		expect(sidecar.setSpeakers).toHaveBeenCalledTimes(1);
 	});
 
 	it('drops a stored name that collides with another label of the run', async () => {
@@ -480,7 +561,7 @@ describe('transcribeFile output registration', () => {
 				createLlm: () => ({
 					id: LLM_PROVIDER_IDS.GEMINI,
 					label: 'Fake LLM',
-					complete: jest.fn(async () => 'cleaned body'),
+					complete: jest.fn(async () => completed('cleaned body')),
 				}),
 			},
 		);
@@ -553,5 +634,218 @@ describe('transcribeFile output registration', () => {
 				{ createProvider: () => makeProvider(twoSpeakerSegments) },
 			),
 		).resolves.toBeDefined();
+	});
+});
+
+// A translation is a second document with the same timings, so the run writes
+// it beside the original rather than over it: the recording still says what
+// it says, and the subtitle formats come out translated with no further work.
+describe('a run that translates the transcript', () => {
+	/** An LLM that answers the numbered lines in a made-up language. */
+	function translatingLlm(): { complete: jest.Mock } {
+		return {
+			complete: jest.fn(async (prompt: { user: string }) =>
+				completed(
+					prompt.user
+						.split('\n')
+						.map((line) => `${line}-translated`)
+						.join('\n'),
+				),
+			),
+		};
+	}
+
+	/**
+	 * Runs one translating transcription.
+	 * @param overrides - The settings this case cares about
+	 * @returns The sidecar stub the run recorded into
+	 */
+	async function runTranslating(
+		overrides: Partial<AudioRecorderSettings> = {},
+	): Promise<ReturnType<typeof makeSidecar>> {
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		const settings = diarizedSettings({
+			transcriptDestination: 'file',
+			transcriptFileFormat: 'srt',
+			llmPostProcessEnabled: true,
+			llmPostProcessTask: 'translate',
+			llmTranslateTargetLanguage: 'Spanish',
+			...overrides,
+		});
+		await transcribeFile(
+			makeApp(),
+			() => settings,
+			audioFile,
+			{ notePathForLinks: 'note.md', sidecar },
+			{
+				createProvider: () => makeProvider(twoSpeakerSegments),
+				createLlm: () => ({
+					id: LLM_PROVIDER_IDS.GEMINI,
+					label: 'Fake LLM',
+					...translatingLlm(),
+				}),
+			},
+		);
+		return sidecar;
+	}
+
+	it('writes the original and the translation as two files', async () => {
+		writeFileMock.mockImplementation((_a, _f, _t, _fmt, language: string) =>
+			Promise.resolve({
+				path: language ? `rec.${language}.srt` : 'rec.srt',
+			}),
+		);
+
+		await runTranslating();
+
+		expect(writeFileMock).toHaveBeenCalledTimes(2);
+		// The original keeps its own name; the translation names its language
+		expect(writeFileMock.mock.calls[0]?.[4]).toBeUndefined();
+		expect(writeFileMock.mock.calls[1]?.[4]).toBe('Spanish');
+	});
+
+	it('keeps the timings of the original on the translated segments', async () => {
+		writeFileMock.mockResolvedValue({ path: 'rec.srt' });
+
+		await runTranslating();
+
+		const original = writeFileMock.mock.calls[0]?.[2] as Transcript;
+		const translated = writeFileMock.mock.calls[1]?.[2] as Transcript;
+		expect(translated.segments.map((s) => [s.start, s.end])).toEqual(
+			original.segments.map((s) => [s.start, s.end]),
+		);
+		// The number and the speaker are stripped back off, so a segment
+		// carries its translated text and nothing of the wire format
+		expect(translated.segments.map((s) => s.text)).toEqual([
+			'hello-translated',
+			'hi-translated',
+		]);
+		expect(translated.segments.map((s) => s.speaker)).toEqual([
+			'Speaker 1',
+			'Speaker 2',
+		]);
+	});
+
+	it('records the translation under the language it was written in', async () => {
+		writeFileMock.mockImplementation((_a, _f, _t, _fmt, language: string) =>
+			Promise.resolve({
+				path: language ? `rec.${language}.srt` : 'rec.srt',
+			}),
+		);
+
+		const sidecar = await runTranslating();
+
+		expect(sidecar.recordFileOutput).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			expect.objectContaining({
+				path: 'rec.Spanish.srt',
+				language: 'Spanish',
+			}),
+		);
+		expect(sidecar.recordFileOutput).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			expect.not.objectContaining({ language: expect.anything() }),
+		);
+	});
+
+	it('inserts both documents under one heading in the note', async () => {
+		insertMock.mockReturnValue(true);
+		writeFileMock.mockResolvedValue({ path: 'rec.srt' });
+
+		await runTranslating({ transcriptDestination: 'note' });
+
+		const body = insertMock.mock.calls[0]?.[2] as string;
+		expect(body).toContain('hello');
+		expect(body).toContain('### Spanish');
+		expect(body).toContain('hello-translated');
+	});
+
+	it.each([
+		{ task: 'translate' as const, label: 'Translating with LLM...' },
+		{ task: 'cleanup' as const, label: 'Post-processing with LLM...' },
+	])('says it is running the $task pass', async ({ task, label }) => {
+		writeFileMock.mockResolvedValue({ path: 'rec.srt' });
+		const onProgress = jest.fn();
+		const settings = diarizedSettings({
+			transcriptDestination: 'file',
+			llmPostProcessEnabled: true,
+			llmPostProcessTask: task,
+		});
+
+		await transcribeFile(
+			makeApp(),
+			() => settings,
+			audioFile,
+			{ notePathForLinks: 'note.md', onProgress },
+			{
+				createProvider: () => makeProvider(twoSpeakerSegments),
+				createLlm: () => ({
+					id: LLM_PROVIDER_IDS.GEMINI,
+					label: 'Fake LLM',
+					...translatingLlm(),
+				}),
+			},
+		);
+
+		expect(onProgress).toHaveBeenCalledWith(expect.any(Number), label);
+	});
+
+	it('writes one file for a run that was not asked to translate', async () => {
+		writeFileMock.mockResolvedValue({ path: 'rec.srt' });
+
+		await runTranslating({ llmPostProcessEnabled: false });
+
+		expect(writeFileMock).toHaveBeenCalledTimes(1);
+	});
+});
+
+// An absent record has to mean "nothing is missing", never "nobody looked",
+// so every run writes what it lost - including a run that lost nothing.
+describe('recording what a run could not transcribe', () => {
+	it('records the parts that failed, with the bounds to ask for again', async () => {
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		writeFileMock.mockResolvedValue({ path: 'rec.json' });
+		const failing = fakeProvider({
+			id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			transcribe: { segments: [{ start: 0, end: 1, text: 'hi' }] },
+		});
+
+		await transcribeFile(
+			makeApp(),
+			() => diarizedSettings({ transcriptDestination: 'file' }),
+			audioFile,
+			{ notePathForLinks: 'note.md', sidecar },
+			{ createProvider: () => failing },
+		);
+
+		// This run came back whole, so the record is cleared rather than left
+		expect(sidecar.setFailedParts).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			[],
+		);
+	});
+
+	it('warns instead of failing a paid run when the record cannot be written', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+			// The completed run is the assertion.
+		});
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		sidecar.setFailedParts.mockRejectedValue(new Error('sidecar locked'));
+		writeFileMock.mockResolvedValue({ path: 'rec.json' });
+
+		const result = await transcribeFile(
+			makeApp(),
+			() => diarizedSettings({ transcriptDestination: 'file' }),
+			audioFile,
+			{ notePathForLinks: 'note.md', sidecar },
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
+		);
+
+		expect(result.transcript.segments).toHaveLength(2);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('missing parts'),
+			expect.any(Error),
+		);
+		warn.mockRestore();
 	});
 });

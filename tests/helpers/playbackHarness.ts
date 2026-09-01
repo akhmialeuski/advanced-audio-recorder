@@ -10,6 +10,7 @@
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
+import { makePlaybackDouble } from './audioPlayerHarness';
 
 /** Controllable audio element whose setters emit the matching media events. */
 export interface ControllableAudio extends HTMLAudioElement {
@@ -86,9 +87,12 @@ export function installSharedAudio(): {
  * registrar's vault wiring and dispose run against it.
  * @returns A RecordingSidecarStore double backed by an in-memory map
  */
-export function makeMarkerStore(): RecordingSidecarStore {
+export function makeMarkerStore(): RecordingSidecarStore & {
+	positions: Map<string, number>;
+} {
 	const data = new Map<string, PlayerMarker[]>();
 	return {
+		...makePlaybackDouble(),
 		getMarkers: jest.fn((path: string) =>
 			Promise.resolve([...(data.get(path) ?? [])]),
 		),
@@ -108,7 +112,9 @@ export function makeMarkerStore(): RecordingSidecarStore {
 		handleOutputRename: jest.fn().mockResolvedValue(undefined),
 		handleDelete: jest.fn().mockResolvedValue(undefined),
 		clearCache: jest.fn(),
-	} as unknown as RecordingSidecarStore;
+	} as unknown as RecordingSidecarStore & {
+		positions: Map<string, number>;
+	};
 }
 
 /**
@@ -129,16 +135,22 @@ export function makePlaybackState(
 		muted: false,
 		playbackRate: 1,
 		markersEnabled: true,
+		skipSeconds: 10,
 		chaptersEnabled: true,
+		chapterLoopEnabled: false,
+		recordingPath: 'Recordings/lecture.webm',
+		chapterLabel: null,
 		onTogglePlay: jest.fn(),
 		onStop: jest.fn(),
 		onSkip: jest.fn(),
+		onSeekTo: jest.fn(),
 		onToggleMute: jest.fn(),
 		onVolumeInput: jest.fn(),
 		onSetPlaybackRate: jest.fn(),
 		onAddMarker: jest.fn(),
 		onPreviousChapter: jest.fn(),
 		onNextChapter: jest.fn(),
+		onToggleChapterLoop: jest.fn(),
 		...overrides,
 	};
 }

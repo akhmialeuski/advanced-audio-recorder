@@ -50,6 +50,7 @@ function makeCallbacks(): jest.Mocked<PlayerControlsCallbacks> {
 		onAddMarker: jest.fn(),
 		onPreviousChapter: jest.fn(),
 		onNextChapter: jest.fn(),
+		onToggleChapterLoop: jest.fn(),
 		onCopyTimestampLink: jest.fn(),
 	};
 }
@@ -76,6 +77,8 @@ function createSut(state: Partial<PlayerControlsState> = {}): Sut {
 		muted: false,
 		loop: false,
 		markersEnabled: true,
+		skipSeconds: 10,
+		chapterLoop: false,
 		...state,
 	});
 	return { view, container, callbacks };
@@ -92,12 +95,13 @@ const FIXED_CONTROLS = [
 	'Loop',
 ];
 
-/** The four a markerless render leaves out, in their place in the row. */
+/** The five a markerless render leaves out, in their place in the row. */
 const MARKER_CONTROLS = [
 	'Add marker at current position',
 	'Add chapter at current position',
 	'Previous chapter',
 	'Next chapter',
+	'Repeat current chapter',
 ];
 
 describe('the controls the row offers', () => {
@@ -367,6 +371,10 @@ describe('a state change reported before anything is mounted', () => {
 			act: (v: PlayerControlsView) => v.setPlaybackRate(2),
 		},
 		{ name: 'a time', act: (v: PlayerControlsView) => v.setTime('0:01') },
+		{
+			name: 'a chapter loop',
+			act: (v: PlayerControlsView) => v.setChapterLoop(true),
+		},
 	])('ignores $name', ({ act }) => {
 		const view = unmounted();
 
@@ -467,5 +475,51 @@ describe('reporting a toggle state to assistive technology', () => {
 		const { container } = createSut({ paused: false });
 
 		expect(control(container, 'Play / pause')).not.toBeActiveControl();
+	});
+});
+
+// The status bar toggles the same repeat, so the button follows what the
+// player reports rather than its own click - which is why it returns nothing.
+describe('repeating the current chapter', () => {
+	const LABEL = 'Repeat current chapter';
+
+	it('asks the player to toggle, without deciding the state itself', () => {
+		const { container, callbacks } = createSut();
+
+		control(container, LABEL).click();
+
+		expect(callbacks.onToggleChapterLoop).toHaveBeenCalledTimes(1);
+		expect(control(container, LABEL)).not.toBeActiveControl();
+	});
+
+	it('marks the button once the player reports the loop engaged', () => {
+		const { view, container } = createSut();
+
+		view.setChapterLoop(true);
+
+		expect(control(container, LABEL)).toBeActiveControl();
+		expect(control(container, LABEL).getAttribute('aria-pressed')).toBe(
+			'true',
+		);
+	});
+
+	it('clears the mark once the player reports it switched off', () => {
+		const { view, container } = createSut({ chapterLoop: true });
+
+		view.setChapterLoop(false);
+
+		expect(control(container, LABEL)).not.toBeActiveControl();
+	});
+
+	it('shows the loop a re-rendered row was mounted over', () => {
+		const { container } = createSut({ chapterLoop: true });
+
+		expect(control(container, LABEL)).toBeActiveControl();
+	});
+
+	it('offers no repeat where there are no chapters to repeat', () => {
+		const { container } = createSut({ markersEnabled: false });
+
+		expect(maybeControl(container, LABEL)).toBeNull();
 	});
 });

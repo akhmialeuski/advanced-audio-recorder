@@ -42,13 +42,31 @@ describe('normalizePlatformScopedSettings', () => {
 		const branch = normalizePlatformScopedSettings({
 			audioDeviceId: 123,
 			recordingChannels: 'sideways',
-			trackAudioSources: { 1: 'bare-device-id' },
+			trackAudioSources: {
+				1: 'bare-device-id',
+				2: {
+					deviceId: 'dev',
+					channelMode: 'source',
+					gainDb: 400,
+					pan: 'hard left',
+				},
+			},
 		});
 		expect(branch.audioDeviceId).toBe('');
 		expect(branch.recordingChannels).toBe('source');
 		expect(branch.trackAudioSources.get(1)).toEqual({
 			deviceId: 'bare-device-id',
 			channelMode: 'source',
+			gainDb: 0,
+			pan: 0,
+		});
+		// A level that would multiply the track by a thousand, and a position
+		// that is not a number at all
+		expect(branch.trackAudioSources.get(2)).toEqual({
+			deviceId: 'dev',
+			channelMode: 'source',
+			gainDb: 24,
+			pan: 0,
 		});
 	});
 });
@@ -210,8 +228,18 @@ describe('serializeSettings platform separation', () => {
 		const merged = mergeSettings(legacyStored(), 'desktop');
 		const serialized = serializeSettings(merged, 'desktop');
 		expect(serialized.perPlatform.desktop.trackAudioSources).toEqual({
-			1: { deviceId: 'desktop-dev-1', channelMode: 'source' },
-			2: { deviceId: 'desktop-dev-2-bare-id', channelMode: 'source' },
+			1: {
+				deviceId: 'desktop-dev-1',
+				channelMode: 'source',
+				gainDb: 0,
+				pan: 0,
+			},
+			2: {
+				deviceId: 'desktop-dev-2-bare-id',
+				channelMode: 'source',
+				gainDb: 0,
+				pan: 0,
+			},
 		});
 		expect(serialized.perPlatform.mobile.trackAudioSources).toEqual({});
 	});

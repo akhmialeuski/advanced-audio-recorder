@@ -178,3 +178,84 @@ describe('WhisperApiProvider request fields', () => {
 		expect(bodyText(calls)).not.toContain('name="language"');
 	});
 });
+
+// The endpoint has a second operation that translates the speech into English
+// while transcribing it. It answers in the same shape but takes a narrower set
+// of fields - file, model, prompt, response_format, temperature - so what the
+// request carries changes with the path and not only the path itself.
+describe('asking the endpoint to translate the speech', () => {
+	it('posts to the translations operation instead of transcriptions', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			options({ translateToEnglish: true }),
+		);
+
+		expect(at(calls, 0).url).toBe(`${BASE_URL}/audio/translations`);
+	});
+
+	it('posts to transcriptions when the run asked for no translation', async () => {
+		const calls = capture();
+
+		await provider().transcribe(payload(), options());
+
+		expect(at(calls, 0).url).toBe(`${BASE_URL}/audio/transcriptions`);
+	});
+
+	it('drops the language hint, which describes the audio and not the answer', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			options({ language: 'ru', translateToEnglish: true }),
+		);
+
+		expect(bodyText(calls)).not.toContain('name="language"');
+	});
+
+	it('keeps the language hint for a plain transcription', async () => {
+		const calls = capture();
+
+		await provider().transcribe(payload(), options({ language: 'ru' }));
+
+		expect(bodyText(calls)).toContain('name="language"');
+	});
+
+	// A timestamp granularity is not one of the translation operation's
+	// fields, so sending one is refused exactly as the language hint is. It
+	// went out on every request, which cost the whole feature: every part of
+	// every recording was rejected before a word of it was translated.
+	it('asks for no timing granularity, which the operation does not take', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			options({ translateToEnglish: true, wordTimestamps: true }),
+		);
+
+		expect(bodyText(calls)).not.toContain('timestamp_granularities');
+	});
+
+	it('keeps asking for one on a plain transcription', async () => {
+		const calls = capture();
+
+		await provider().transcribe(payload(), options());
+
+		expect(bodyText(calls)).toContain('timestamp_granularities');
+	});
+
+	it('sends the same model, format, and bias fields either way', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			options({ translateToEnglish: true, dictionary: ['Kubernetes'] }),
+		);
+
+		const body = bodyText(calls);
+		expect(body).toContain('whisper-1');
+		expect(body).toContain('verbose_json');
+		expect(body).toContain('Kubernetes');
+	});
+});

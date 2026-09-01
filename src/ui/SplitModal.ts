@@ -31,6 +31,9 @@ import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
 } from '../settings/settingsSchema';
+import type { ChapterCut } from '../recording/SplitService';
+import { chapters, type PlayerMarker } from '../markers/markerModel';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
  * Modal for splitting an audio file into parts of a fixed duration.
@@ -42,6 +45,13 @@ export class SplitModal extends PluginModal {
 	private bitrate: number;
 	private deleteSource: boolean;
 	private linkAction: ConversionLinkAction;
+	/**
+	 * Cut at the recording's chapter boundaries rather than every N minutes.
+	 * Offered only when the recording has chapters to cut at.
+	 */
+	private byChapters = false;
+	/** The recording's chapters, loaded when the dialog opens. */
+	private chapterCuts: ChapterCut[] = [];
 	/** Whether the split pipeline is currently running. */
 	private isSplitting = false;
 	/** Progress notice shown when the modal is closed mid-split. */
@@ -53,6 +63,13 @@ export class SplitModal extends PluginModal {
 		app: App,
 		sourceFile: TFile,
 		getSettings: () => AudioRecorderSettings,
+		/**
+		 * Where the recording's chapters are read from. Absent, the dialog
+		 * offers a fixed-length split only, exactly as it did before.
+		 */
+		private readonly markers?: {
+			getMarkers(path: string): Promise<PlayerMarker[]>;
+		},
 	) {
 		super(app);
 		const settings = getSettings();
@@ -75,20 +92,18 @@ export class SplitModal extends PluginModal {
 			cls: 'aar-split-source',
 		});
 
-		addNumberInputTo(
-			new Setting(contentEl)
-				.setName('Part duration')
-				.setDesc('Length of each part in minutes.'),
-			{
-				min: MIN_SPLIT_CHUNK_MINUTES,
-				max: MAX_SPLIT_CHUNK_MINUTES,
-				step: 1,
-				get: () => this.partMinutes,
-				set: (value) => {
-					this.partMinutes = value;
-				},
+		const durationSetting = new Setting(contentEl)
+			.setName('Part duration')
+			.setDesc('Length of each part in minutes.');
+		addNumberInputTo(durationSetting, {
+			min: MIN_SPLIT_CHUNK_MINUTES,
+			max: MAX_SPLIT_CHUNK_MINUTES,
+			step: 1,
+			get: () => this.partMinutes,
+			set: (value) => {
+				this.partMinutes = value;
 			},
-		);
+		});
 
 		const suffixSetting = new Setting(contentEl).setName(
 			'Part name suffix',
@@ -151,6 +166,17 @@ export class SplitModal extends PluginModal {
 			},
 		});
 
+		// Offered only once the recording is known to have chapters: a toggle
+		// that cuts at nothing is worse than no toggle.
+		const chapterSetting = new Setting(contentEl)
+			.setName('Cut at chapters')
+			.setDesc('Loading the recording chapters...');
+		chapterSetting.settingEl.toggle(false);
+		void this.loadChapters(chapterSetting, [
+			durationSetting,
+			suffixSetting,
+		]);
+
 		const progressEl = contentEl.createDiv({
 			cls: 'aar-split-progress',
 		});
@@ -166,6 +192,62 @@ export class SplitModal extends PluginModal {
 					});
 				});
 		});
+	}
+
+	/**
+	 * Reads the recording's chapters and, when it has any, offers to cut at
+	 * them. Loaded rather than assumed: the sidecar read is asynchronous, and
+	 * the dialog is worth showing before it answers.
+	 * @param setting - The row the toggle goes in
+	 * @param hideWhenByChapters - Rows that mean nothing for a chapter split
+	 */
+	private async loadChapters(
+		setting: Setting,
+		hideWhenByChapters: readonly Setting[],
+	): Promise<void> {
+		const markers = await this.readMarkers();
+		this.chapterCuts = chapters(markers).map((chapter) => ({
+			startSeconds: chapter.time,
+			title: chapter.label,
+		}));
+		if (this.chapterCuts.length === 0) {
+			return;
+		}
+		setting.setDesc(
+			`Cut the recording at its ${String(this.chapterCuts.length)} chapters instead of every few minutes. Each part is named after its chapter.`,
+		);
+		setting.addToggle((toggle) => {
+			toggle.setValue(this.byChapters).onChange((value) => {
+				this.byChapters = value;
+				// A chapter split has no fixed length and names its parts
+				// after the chapters, so neither row applies to it.
+				for (const row of hideWhenByChapters) {
+					row.settingEl.toggle(!value);
+				}
+			});
+		});
+		setting.settingEl.toggle(true);
+	}
+
+	/**
+	 * The recording's markers, or none when they cannot be read. A sidecar
+	 * that will not open is a reason to offer no chapter split, never a
+	 * reason to fail the dialog.
+	 * @returns The markers, or an empty list
+	 */
+	private async readMarkers(): Promise<PlayerMarker[]> {
+		if (!this.markers) {
+			return [];
+		}
+		try {
+			return await this.markers.getMarkers(this.sourceFile.path);
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to read the chapters of ${this.sourceFile.path}:`,
+				error,
+			);
+			return [];
+		}
 	}
 
 	override onClose(): void {
@@ -246,6 +328,7 @@ export class SplitModal extends PluginModal {
 					bitrate: this.bitrate,
 					deleteSource: this.deleteSource,
 					linkAction: this.linkAction,
+					...(this.byChapters ? { cuts: this.chapterCuts } : {}),
 				},
 				(text) => {
 					this.setProgress(progressEl, text);
