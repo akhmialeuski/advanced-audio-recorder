@@ -16,9 +16,11 @@ import {
 	detectCodecSupport,
 	getExpectedCodec,
 	buildMimeType,
+	listBitrateAvailability,
 	resolveEffectiveOutputFormat,
 	validateRecordingCapability,
 } from '../audio/AudioCapabilityDetector';
+import { AUDIO_FORMAT_IDS, getFormatDescriptor } from '../audio/formatRegistry';
 import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
 import { audioDeviceApi } from '../recording/AudioStreamHandler';
@@ -108,6 +110,13 @@ export interface DiagnosticsAudioCapabilities {
 	supportedFormats: string[];
 	supportedSampleRates: number[];
 	supportedBitrates: number[];
+	/**
+	 * Bitrates each compressed format's encoder really accepts here, in bps,
+	 * at the configured sample rate. AAC is what this measures: WebCodecs
+	 * hands the decision to the platform encoder, so the answer differs
+	 * between Windows, macOS and iOS and no declaration can stand in for it.
+	 */
+	reachableBitrates: Record<string, number[]>;
 	codecSupport: CodecSupportEntry[];
 	mediaRecorderAvailable: boolean;
 	getUserMediaAvailable: boolean;
@@ -264,18 +273,35 @@ export class SystemDiagnostics {
 
 	/**
 	 * Detects audio recording capabilities of the current environment.
+	 * @param sampleRate - Rate the bitrate probe asks about, since what an
+	 *   encoder accepts depends on it
 	 * @returns Audio capabilities descriptor
 	 */
-	static async collectAudioCapabilities(): Promise<DiagnosticsAudioCapabilities> {
+	static async collectAudioCapabilities(
+		sampleRate: number,
+	): Promise<DiagnosticsAudioCapabilities> {
 		const capabilities = await detectCapabilities();
 		const mediaRecorderAvailable = typeof MediaRecorder !== 'undefined';
 		const getUserMediaAvailable =
 			typeof audioDeviceApi()?.getUserMedia === 'function';
 
+		const reachableBitrates: Record<string, number[]> = {};
+		for (const format of AUDIO_FORMAT_IDS) {
+			// A PCM format takes no bitrate, so there is nothing to measure.
+			if (getFormatDescriptor(format)?.isPcm) {
+				continue;
+			}
+			const entries = await listBitrateAvailability(format, sampleRate);
+			reachableBitrates[format] = entries
+				.filter((entry) => entry.available)
+				.map((entry) => entry.bitrate);
+		}
+
 		return {
 			supportedFormats: capabilities.supportedFormats,
 			supportedSampleRates: capabilities.supportedSampleRates,
 			supportedBitrates: capabilities.supportedBitrates,
+			reachableBitrates,
 			codecSupport: detectCodecSupport(),
 			mediaRecorderAvailable,
 			getUserMediaAvailable,
@@ -353,7 +379,7 @@ export class SystemDiagnostics {
 		const [audioDevices, audioCapabilities, activeRecordingConfig] =
 			await Promise.all([
 				SystemDiagnostics.collectAudioDevices(),
-				SystemDiagnostics.collectAudioCapabilities(),
+				SystemDiagnostics.collectAudioCapabilities(settings.sampleRate),
 				SystemDiagnostics.collectActiveRecordingConfig(settings),
 			]);
 

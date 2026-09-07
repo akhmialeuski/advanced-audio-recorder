@@ -11,7 +11,7 @@ import {
 import type { EncodingOptions } from 'src/audio/AudioEncoder';
 import { EncodingError } from 'src/errors';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
-import { canEncodeAudio } from 'mediabunny';
+import { canEncodeAudio, Quality } from 'mediabunny';
 import { registerMp3Encoder } from '@mediabunny/mp3-encoder';
 import { registerFlacEncoder } from '@mediabunny/flac-encoder';
 
@@ -43,6 +43,9 @@ jest.mock('mediabunny', () => ({
 	Mp3OutputFormat: jest.fn(),
 	WavOutputFormat: jest.fn(),
 	canEncodeAudio: jest.fn().mockResolvedValue(false),
+	// Carries the requested bitrate into the probe's options; the assertions
+	// read it back off the instance.
+	Quality: jest.fn().mockImplementation((options: unknown) => ({ options })),
 }));
 
 // Mock encoder extensions (register custom encoders with mediabunny)
@@ -353,7 +356,48 @@ describe('AudioEncoder', () => {
 			await expect(probeOfflineEncodingSupport('webm')).resolves.toBe(
 				true,
 			);
-			expect(jest.mocked(canEncodeAudio)).toHaveBeenCalledWith('opus');
+			expect(jest.mocked(canEncodeAudio)).toHaveBeenCalledWith(
+				'opus',
+				{},
+			);
+		});
+
+		it('carries the encoding parameters it was asked about', async () => {
+			// What a bitrate row learns from: the codec alone answers whether
+			// a format encodes at all, never whether one rate reaches it.
+			jest.mocked(canEncodeAudio).mockResolvedValueOnce(true);
+
+			await expect(
+				probeOfflineEncodingSupport('m4a', {
+					sampleRate: 44100,
+					bitrate: 24000,
+				}),
+			).resolves.toBe(true);
+			expect(jest.mocked(canEncodeAudio)).toHaveBeenCalledWith('aac', {
+				sampleRate: 44100,
+				quality: expect.anything(),
+			});
+			expect(jest.mocked(Quality)).toHaveBeenCalledWith({
+				bitrate: 24000,
+			});
+		});
+
+		it('asks nothing about the bitrate of a PCM target', async () => {
+			// WAV takes no bitrate at all, so a rate offered for it is not a
+			// question the encoder can answer.
+			jest.mocked(canEncodeAudio).mockResolvedValueOnce(true);
+
+			await expect(
+				probeOfflineEncodingSupport('wav', {
+					sampleRate: 44100,
+					bitrate: 24000,
+				}),
+			).resolves.toBe(true);
+			expect(jest.mocked(canEncodeAudio)).toHaveBeenCalledWith(
+				'pcm-s16',
+				{ sampleRate: 44100 },
+			);
+			expect(jest.mocked(Quality)).not.toHaveBeenCalled();
 		});
 
 		it('reports false when the browser cannot encode the codec', async () => {

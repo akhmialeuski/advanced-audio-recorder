@@ -131,13 +131,16 @@ export interface TranscriptionBlocks {
 }
 
 /**
- * The output-format rows that stay imperative. The format list is blocked per
- * option by an asynchronous encoder probe, which no control type expresses, and
- * the summary is derived from two other rows rather than stored.
+ * The output-format rows that stay imperative. The format and bitrate lists
+ * are blocked per option by an asynchronous encoder probe, which no control
+ * type expresses, and the summary is derived from two other rows rather than
+ * stored.
  */
 export interface OutputFormatRows {
 	/** Fills the recording-format row and starts its availability probe. */
 	readonly renderFormatRow: (setting: Setting) => void;
+	/** Fills the bitrate row and starts its availability probe. */
+	readonly renderBitrateRow: (setting: Setting) => void;
 	/** Fills the row that summarises the effective output. */
 	readonly renderSummaryRow: (setting: Setting) => void;
 }

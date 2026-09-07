@@ -21,6 +21,7 @@ import { MODAL } from '../helpers/selectors';
 import { createMockApp } from '../helpers/createApp';
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { convertBlobToFormatBuffer } from 'src/audio/AudioFormatConverter';
+import { getSupportedBitrates } from 'src/audio/AudioCapabilityDetector';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { defined } from '../helpers/assertions';
 
@@ -65,6 +66,7 @@ jest.mock('src/audio/AudioCapabilityDetector', () => ({
 	getSupportedSampleRates: jest
 		.fn()
 		.mockReturnValue([8000, 16000, 22050, 44100, 48000]),
+	listBitrateAvailability: jest.fn().mockResolvedValue([]),
 }));
 
 // Real settings rather than a two-field cast: the dialog seeds format,
@@ -552,6 +554,39 @@ describe('ConversionModal', () => {
 			// wav is the source format: refused while the channels are kept,
 			// offered again the moment they are not.
 			expect(offered()).toContain('wav');
+		});
+
+		it('re-offers the bitrates the new target format reaches', () => {
+			// The bitrate row is built before a target is picked, so a target
+			// chosen later leaves it offering rates that target cannot write.
+			openDialog();
+			jest.mocked(getSupportedBitrates).mockReturnValue([32000, 64000]);
+
+			changeSetting('Target format', 'dropdown', 'mp3');
+
+			expect(jest.mocked(getSupportedBitrates)).toHaveBeenCalledWith(
+				'mp3',
+				expect.any(Number),
+			);
+			expect(
+				(settingRow('Bitrate').dropdownOptions ?? []).map(
+					(option) => option.value,
+				),
+			).toEqual(['32000', '64000']);
+		});
+
+		it('hides the bitrate row for a WAV target, which discards it', () => {
+			// The bitrate reaches the encoder and is thrown away for PCM, so
+			// a live dropdown here describes a file it cannot describe.
+			openDialog();
+			expect(settingRow('Bitrate').el.style.display).not.toBe('none');
+
+			// wav is the source format, offered again only once the channels
+			// stop being kept.
+			changeSetting('Channels', 'dropdown', 'mono-mix');
+			changeSetting('Target format', 'dropdown', 'wav');
+
+			expect(settingRow('Bitrate').el.style.display).toBe('none');
 		});
 
 		it('locks the button for the length of the conversion', async () => {

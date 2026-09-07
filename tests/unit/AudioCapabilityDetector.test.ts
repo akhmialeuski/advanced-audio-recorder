@@ -16,12 +16,22 @@ jest.mock('src/audio/AudioEncoder', () => ({
 	),
 }));
 
-import { FORMAT_FLAC } from 'src/constants';
+import {
+	DEFAULT_BITRATE,
+	DEFAULT_SAMPLE_RATE,
+	FORMAT_FLAC,
+	FORMAT_MP3,
+	FORMAT_WAV,
+	FORMAT_WEBM,
+} from 'src/constants';
+import { probeOfflineEncodingSupport } from 'src/audio/AudioEncoder';
 import {
 	buildMimeType,
 	detectSupportedFormats,
+	effectiveBitrate,
 	getSupportedSampleRates,
 	getSupportedBitrates,
+	listBitrateAvailability,
 	validateRecordingCapability,
 	detectCapabilities,
 	detectCodecSupport,
@@ -127,7 +137,8 @@ describe('AudioCapabilityDetector', () => {
 			const bitrates = getSupportedBitrates();
 
 			expect(bitrates).toEqual([
-				64000, 96000, 128000, 160000, 192000, 256000, 320000,
+				24000, 32000, 48000, 64000, 96000, 128000, 160000, 192000,
+				256000, 320000,
 			]);
 		});
 
@@ -137,6 +148,148 @@ describe('AudioCapabilityDetector', () => {
 
 			expect(b1).not.toBe(b2);
 			expect(b1).toEqual(b2);
+		});
+
+		// MP3 at 32 kHz and above is MPEG-1 Layer III, whose table defines
+		// nothing under 32 kbps. The bundled LAME bridge pins the output rate
+		// to the input rate, so it cannot reach the lower MPEG-2 tables.
+		it('drops what MP3 cannot write at a MPEG-1 sample rate', () => {
+			const offered = getSupportedBitrates(FORMAT_MP3, 44100);
+
+			expect(offered).not.toContain(24000);
+			expect(offered[0]).toBe(32000);
+		});
+
+		it('keeps the low rates for MP3 at a MPEG-2 sample rate', () => {
+			expect(getSupportedBitrates(FORMAT_MP3, 22050)).toContain(24000);
+		});
+
+		it('offers Opus the low rates at every sample rate', () => {
+			expect(getSupportedBitrates(FORMAT_WEBM, 48000)).toContain(24000);
+			expect(getSupportedBitrates(FORMAT_WEBM, 8000)).toContain(24000);
+		});
+
+		it.each([FORMAT_WAV, FORMAT_FLAC, 'not-a-registered-format'])(
+			'floors nothing for %s, which declares no floor',
+			(format) => {
+				expect(getSupportedBitrates(format, 44100)).toEqual(
+					getSupportedBitrates(),
+				);
+			},
+		);
+	});
+
+	describe('effectiveBitrate', () => {
+		// The rate a file really gets. A stored value reaches the encoder
+		// without passing the row that offers only reachable ones, and LAME
+		// lifts what its table lacks without saying so, which is what makes
+		// the difference between the two worth naming here.
+		it.each([
+			['a rate MP3 can write', FORMAT_MP3, 64000, 44100, 64000],
+			['a rate MPEG-1 has no table for', FORMAT_MP3, 24000, 44100, 32000],
+			[
+				'the same rate where MPEG-2 has one',
+				FORMAT_MP3,
+				24000,
+				22050,
+				24000,
+			],
+			[
+				'a low rate on Opus, which reaches it',
+				FORMAT_WEBM,
+				24000,
+				44100,
+				24000,
+			],
+			[
+				'a WAV target, which takes no bitrate',
+				FORMAT_WAV,
+				24000,
+				44100,
+				24000,
+			],
+			[
+				'a zero left by a corrupt file',
+				FORMAT_WEBM,
+				0,
+				44100,
+				DEFAULT_BITRATE,
+			],
+			['a negative one', FORMAT_WEBM, -1, 44100, DEFAULT_BITRATE],
+			['a NaN', FORMAT_WEBM, Number.NaN, 44100, DEFAULT_BITRATE],
+			['a format outside the registry', 'aiff', 24000, 44100, 24000],
+			[
+				'an Infinity',
+				FORMAT_WEBM,
+				Number.POSITIVE_INFINITY,
+				44100,
+				DEFAULT_BITRATE,
+			],
+		])('resolves %s', (_case, format, bitrate, sampleRate, expected) => {
+			expect(effectiveBitrate(format, bitrate, sampleRate)).toBe(
+				expected,
+			);
+		});
+	});
+
+	describe('the sample rate these two assume when not told one', () => {
+		it('floors a bitrate at the plugin default rate', () => {
+			// DEFAULT_SAMPLE_RATE is a MPEG-1 rate, the conservative
+			// assumption for a caller that does not know its source's own.
+			expect(effectiveBitrate(FORMAT_MP3, 24000)).toBe(32000);
+		});
+
+		it('probes at the plugin default rate', async () => {
+			jest.mocked(probeOfflineEncodingSupport).mockResolvedValue(true);
+
+			const entries = await listBitrateAvailability(FORMAT_MP3);
+
+			expect(entries.map((entry) => entry.bitrate)).toEqual(
+				getSupportedBitrates(FORMAT_MP3, DEFAULT_SAMPLE_RATE),
+			);
+		});
+
+		afterEach(() => {
+			jest.mocked(probeOfflineEncodingSupport).mockImplementation(
+				(format: string) =>
+					Promise.resolve(['mp3', 'flac', 'aac'].includes(format)),
+			);
+		});
+	});
+
+	describe('listBitrateAvailability', () => {
+		afterEach(() => {
+			// clearMocks keeps the implementation a test installed, and the
+			// suites below this one read the module-level probe answer.
+			jest.mocked(probeOfflineEncodingSupport).mockImplementation(
+				(format: string) =>
+					Promise.resolve(['mp3', 'flac', 'aac'].includes(format)),
+			);
+		});
+
+		it('probes each offered bitrate and reports its own answer', async () => {
+			jest.mocked(probeOfflineEncodingSupport).mockImplementation(
+				(_format, quality) =>
+					Promise.resolve((quality?.bitrate ?? 0) >= 64000),
+			);
+
+			const entries = await listBitrateAvailability(FORMAT_WEBM, 48000);
+
+			expect(
+				entries
+					.filter((entry) => entry.available)
+					.map((entry) => entry.bitrate),
+			).toEqual([64000, 96000, 128000, 160000, 192000, 256000, 320000]);
+		});
+
+		it('asks only about the bitrates the format reaches', async () => {
+			jest.mocked(probeOfflineEncodingSupport).mockResolvedValue(true);
+
+			const entries = await listBitrateAvailability(FORMAT_MP3, 44100);
+
+			expect(entries.map((entry) => entry.bitrate)).toEqual(
+				getSupportedBitrates(FORMAT_MP3, 44100),
+			);
 		});
 	});
 

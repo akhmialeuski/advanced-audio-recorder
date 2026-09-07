@@ -30,6 +30,52 @@ import {
 } from '../constants';
 
 /**
+ * Sample rate at and above which MP3 uses the MPEG-1 Layer III bitrate table.
+ * Below it the encoder switches to the MPEG-2 and MPEG-2.5 tables.
+ */
+const MPEG1_MIN_SAMPLE_RATE = 32000;
+
+/** Lowest bitrate MPEG-1 Layer III defines, in bits per second. */
+const MP3_MPEG1_MIN_BITRATE = 32000;
+
+/** Lowest bitrate MPEG-2 and MPEG-2.5 Layer III define, in bits per second. */
+const MP3_MPEG2_MIN_BITRATE = 8000;
+
+/** Lowest bitrate the Opus specification defines, in bits per second. */
+const OPUS_MIN_BITRATE = 6000;
+
+/**
+ * A codec that constrains nothing: a lossless or PCM format, which takes no
+ * bitrate at all, or one whose floor only the platform encoder knows. Both
+ * leave every candidate bitrate on offer, and what refuses a value is caught
+ * by the encoder probe instead.
+ * @returns Always zero
+ */
+const noBitrateFloor = (): number => 0;
+
+/**
+ * Opus encodes from 6 kbit/s at every sample rate it accepts (RFC 6716
+ * section 2.1.1), so its floor does not move.
+ * @returns The Opus floor in bits per second
+ */
+const opusBitrateFloor = (): number => OPUS_MIN_BITRATE;
+
+/**
+ * MP3's floor moves with the sample rate. MPEG-1 Layer III, used at 32 kHz
+ * and above, defines nothing below 32 kbit/s, while the MPEG-2 and MPEG-2.5
+ * tables used below it start at 8 kbit/s. The bundled LAME bridge pins the
+ * output rate to the input rate, so the encoder cannot reach the lower tables
+ * on its own: it silently lifts an unreachable request to the nearest rate
+ * the table does define.
+ * @param sampleRate - Rate the encoder will write at
+ * @returns The floor in bits per second
+ */
+const mp3BitrateFloor = (sampleRate: number): number =>
+	sampleRate >= MPEG1_MIN_SAMPLE_RATE
+		? MP3_MPEG1_MIN_BITRATE
+		: MP3_MPEG2_MIN_BITRATE;
+
+/**
  * Everything the plugin knows about one audio format.
  */
 export interface AudioFormatDescriptor {
@@ -39,6 +85,13 @@ export interface AudioFormatDescriptor {
 	readonly createOutputFormat: () => OutputFormat;
 	/** Uncompressed PCM: a bitrate option is invalid for the encoder. */
 	readonly isPcm: boolean;
+	/**
+	 * Lowest bitrate this format's codec encodes at the given sample rate, in
+	 * bits per second. Zero means the format declares no floor of its own,
+	 * which covers both a format that takes no bitrate and one whose floor the
+	 * platform encoder settles and the bitrate row probes for.
+	 */
+	readonly minBitrate: (sampleRate: number) => number;
 	/**
 	 * Encoding goes through the WebCodecs AudioEncoder global; offline
 	 * encoding to this format is unavailable when the global is missing.
@@ -75,6 +128,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'pcm-s16',
 		createOutputFormat: (): OutputFormat => new WavOutputFormat(),
 		isPcm: true,
+		minBitrate: noBitrateFloor,
 		requiresWebCodecs: false,
 		offlineOnly: false,
 		mediaRecorderCandidate: false,
@@ -87,6 +141,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'opus',
 		createOutputFormat: (): OutputFormat => new WebMOutputFormat(),
 		isPcm: false,
+		minBitrate: opusBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: false,
 		mediaRecorderCandidate: true,
@@ -99,6 +154,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'opus',
 		createOutputFormat: (): OutputFormat => new OggOutputFormat(),
 		isPcm: false,
+		minBitrate: opusBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: false,
 		mediaRecorderCandidate: true,
@@ -111,6 +167,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'mp3',
 		createOutputFormat: (): OutputFormat => new Mp3OutputFormat(),
 		isPcm: false,
+		minBitrate: mp3BitrateFloor,
 		requiresWebCodecs: false,
 		offlineOnly: true,
 		mediaRecorderCandidate: true,
@@ -123,6 +180,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'aac',
 		createOutputFormat: (): OutputFormat => new Mp4OutputFormat(),
 		isPcm: false,
+		minBitrate: noBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: false,
 		mediaRecorderCandidate: true,
@@ -135,6 +193,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'aac',
 		createOutputFormat: (): OutputFormat => new Mp4OutputFormat(),
 		isPcm: false,
+		minBitrate: noBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: false,
 		mediaRecorderCandidate: true,
@@ -152,6 +211,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'flac',
 		createOutputFormat: (): OutputFormat => new FlacOutputFormat(),
 		isPcm: false,
+		minBitrate: noBitrateFloor,
 		requiresWebCodecs: false,
 		offlineOnly: true,
 		mediaRecorderCandidate: false,
@@ -164,6 +224,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'aac',
 		createOutputFormat: (): OutputFormat => new Mp4OutputFormat(),
 		isPcm: false,
+		minBitrate: noBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: true,
 		mediaRecorderCandidate: false,

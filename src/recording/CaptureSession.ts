@@ -25,6 +25,7 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TrackAudioSource } from './AudioStreamHandler';
 import { normalizeChannelMode, type ChannelMode } from '../audio/downmix';
 import { clampSplitMinutes, sanitizePartSuffix } from './AudioSplitter';
+import { effectiveBitrate } from '../audio/AudioCapabilityDetector';
 import {
 	getChunkFlushThresholdBytes,
 	isMidStreamSegmentFlushAllowed,
@@ -119,7 +120,15 @@ export function createCaptureSession(
 		recorderFormat: request.recorderFormat,
 		outputFormat: request.outputFormat,
 		outputMode: settings.outputMode,
-		bitrate: settings.bitrate,
+		// Lifted to the output format's floor here, at the one point every
+		// recorder, merge and conversion of the session reads it from: a rate
+		// the codec cannot write would otherwise be raised silently by the
+		// encoder, leaving the file at a bitrate nothing announced.
+		bitrate: effectiveBitrate(
+			request.outputFormat,
+			settings.bitrate,
+			settings.sampleRate,
+		),
 		splitEnabled: requestedSplit && !autoSplitSkipped,
 		partMinutes: clampSplitMinutes(settings.splitChunkMinutes),
 		partSuffix: sanitizePartSuffix(settings.splitPartSuffix),

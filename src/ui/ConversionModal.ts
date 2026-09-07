@@ -17,6 +17,7 @@ import {
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import {
 	addBitrateSetting,
+	type BitrateRow,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
 } from '../settings/settingControls';
@@ -41,12 +42,14 @@ export interface ConversionModalOptions {
 export class ConversionModal extends PluginModal {
 	private readonly sourceFile: TFile;
 	private targetFormat: string = FORMAT_WAV;
-	private bitrate: number = 128000;
+	private bitrate: number;
 	private channelMode: ChannelMode = CHANNEL_MODE_SOURCE;
 	private deleteSource: boolean;
 	private linkAction: ConversionLinkAction;
 	/** Target-format dropdown, rebuilt when the channel mode changes. */
 	private formatDropdown: DropdownComponent | null = null;
+	/** Bitrate row, re-offered when the target format changes. */
+	private bitrateRow: BitrateRow | null = null;
 	/** Whether the conversion pipeline is currently running. */
 	private isConverting = false;
 	/** Progress notice shown when the modal is closed mid-conversion. */
@@ -76,6 +79,7 @@ export class ConversionModal extends PluginModal {
 		super(app);
 		const settings = getSettings();
 		this.sourceFile = sourceFile;
+		this.bitrate = settings.bitrate;
 		this.deleteSource = settings.deleteSourceAfterConversion;
 		this.linkAction = settings.conversionLinkAction;
 		this.channelMode = normalizeChannelMode(options.initialChannelMode);
@@ -104,6 +108,7 @@ export class ConversionModal extends PluginModal {
 				this.rebuildFormatOptions();
 				dropdown.onChange((value) => {
 					this.targetFormat = value;
+					this.bitrateRow?.rebuild(value);
 				});
 			});
 
@@ -129,13 +134,15 @@ export class ConversionModal extends PluginModal {
 				});
 			});
 
-		this.bitrate = addBitrateSetting(contentEl, {
-			desc: 'Audio bitrate for compressed formats.',
+		this.bitrateRow = addBitrateSetting(contentEl, {
+			desc: 'Audio bitrate for compressed formats. The lowest values are a mono speech mode and cost real quality on music or stereo.',
+			format: this.targetFormat,
 			initialBitrate: this.bitrate,
 			onChange: (bitrate) => {
 				this.bitrate = bitrate;
 			},
 		});
+		this.bitrate = this.bitrateRow.value;
 
 		addDeleteSourceSetting(contentEl, {
 			desc: 'Remove the original file after successful conversion.',
@@ -207,6 +214,9 @@ export class ConversionModal extends PluginModal {
 			this.targetFormat = first;
 		}
 		dropdown.setValue(this.targetFormat);
+		// The channel mode can settle on a different target, and the
+		// bitrates that target reaches are not the ones on offer now.
+		this.bitrateRow?.rebuild(this.targetFormat);
 	}
 
 	override onClose(): void {

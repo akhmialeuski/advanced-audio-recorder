@@ -8,6 +8,7 @@
 
 import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
+import { effectiveBitrate } from '../audio/AudioCapabilityDetector';
 import { isMonoChannelMode, normalizeChannelMode } from '../audio/downmix';
 import { MonoCaptureBridge } from './MonoCaptureBridge';
 import {
@@ -98,7 +99,14 @@ export class TestRecorder {
 			// await point below
 			const recorder = new MediaRecorder(captureStream, {
 				mimeType,
-				audioBitsPerSecond: settings.bitrate,
+				// The floor a real session applies, taken from the chosen
+				// output format the same way, so the test capture is encoded
+				// the way the recording it stands in for would be.
+				audioBitsPerSecond: effectiveBitrate(
+					settings.recordingFormat,
+					settings.bitrate,
+					settings.sampleRate,
+				),
 			});
 			this.recorder = recorder;
 

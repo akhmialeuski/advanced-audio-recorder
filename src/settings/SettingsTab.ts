@@ -48,6 +48,7 @@ import type { AudioRecorderSettings } from './settingsSchema';
 import {
 	getSupportedSampleRates,
 	buildMimeType,
+	effectiveBitrate,
 	listFormatAvailability,
 	resolveEffectiveOutputFormat,
 	type FormatAvailabilityEntry,
@@ -97,6 +98,7 @@ import {
 	type EngineSettingsStore,
 } from '../providers/engineSettings';
 import { ModelIdModal } from '../ui/ModelIdModal';
+import { fillBitrateDropdown } from './settingControls';
 import type { SettingsSectionContext } from './settingControls';
 import { isMultiTrackCaptureSupported } from '../platform/capabilities';
 import { effectiveWordTimestamps } from '../transcription/providers/capabilities';
@@ -261,6 +263,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			outputFormat: {
 				renderFormatRow: (setting): void => {
 					this.renderFormatRow(setting);
+				},
+				renderBitrateRow: (setting): void => {
+					this.renderBitrateRow(setting);
 				},
 				renderSummaryRow: (setting): void => {
 					this.renderSummaryRow(setting);
@@ -891,13 +896,48 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * Fills the bitrate row. Which bitrates a recording can use depends on the
+	 * format and the sample rate chosen above it, and which of those the
+	 * device's own encoder accepts is settled by an asynchronous probe, so
+	 * neither a fixed option map nor a whole-control disable expresses it.
+	 * @param setting - The row to fill
+	 */
+	private renderBitrateRow(setting: Setting): void {
+		const settings = this.plugin.settings;
+		setting.addDropdown((dropdown) => {
+			// Snapping the stored value onto the offered grid is what the
+			// summary row below then reports, so the two never disagree.
+			settings.bitrate = fillBitrateDropdown(dropdown, {
+				format: settings.recordingFormat,
+				sampleRate: settings.sampleRate,
+				selected: settings.bitrate,
+			});
+			dropdown.onChange(async (value) => {
+				settings.bitrate = parseInt(value, 10);
+				// The summary row beneath reads this, so the tree is rebuilt
+				// rather than patched.
+				await this.commit();
+			});
+		});
+	}
+
+	/**
 	 * Fills the row that summarises the effective output, which is derived from
 	 * the format and bitrate rows rather than stored.
 	 * @param setting - The row to fill
 	 */
 	private renderSummaryRow(setting: Setting): void {
 		const format = this.plugin.settings.recordingFormat;
-		const kbps = Math.round(this.plugin.settings.bitrate / 1000);
+		// The bitrate encoding will really use, not the one on file: a value
+		// left behind by a format change is lifted to that format's floor
+		// before it reaches an encoder, silently, so the line has to say so.
+		const kbps = Math.round(
+			effectiveBitrate(
+				format,
+				this.plugin.settings.bitrate,
+				this.plugin.settings.sampleRate,
+			) / 1000,
+		);
 		setting.descEl
 			.createDiv()
 			.setText(

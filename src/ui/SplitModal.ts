@@ -140,14 +140,18 @@ export class SplitModal extends PluginModal {
 				}),
 		);
 
-		if (this.sourceFile.extension.toLowerCase() !== FORMAT_WAV) {
+		const sourceFormat = this.sourceFile.extension.toLowerCase();
+		if (sourceFormat !== FORMAT_WAV) {
+			// Parts keep the source's format, so that format's own floor is
+			// what the offered bitrates are cut to.
 			this.bitrate = addBitrateSetting(contentEl, {
-				desc: 'Bitrate used when re-encoding parts of compressed formats.',
+				desc: 'Bitrate used when re-encoding parts of compressed formats. The lowest values are a mono speech mode and cost real quality on music or stereo.',
+				format: sourceFormat,
 				initialBitrate: this.bitrate,
 				onChange: (bitrate) => {
 					this.bitrate = bitrate;
 				},
-			});
+			}).value;
 		}
 
 		addDeleteSourceSetting(contentEl, {

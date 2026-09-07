@@ -97,14 +97,19 @@ When in doubt, record in **WebM** and use **[Convert audio format](file-operatio
 
 ## Bitrate guidance
 
-The **Audio bitrate** setting controls the quality and size of **compressed** recordings. Options are **64, 96, 128, 160, 192, 256, and 320 kbps**, with a default of **128 kbps**. Higher values produce **better quality and larger files**; lower values save space at the cost of fidelity.
+The **Audio bitrate** setting controls the quality and size of **compressed** recordings. Options run from **24 kbps up to 320 kbps**, with a default of **128 kbps**. Higher values produce **better quality and larger files**, and lower values save space at the cost of fidelity.
 
-| Bitrate          | Typical use                                                             |
-| ---------------- | ----------------------------------------------------------------------- |
-| **64-96 kbps**   | Voice notes and dictation where size matters more than fidelity.        |
-| **128 kbps**     | Default. A good balance of quality and size for speech and general use. |
-| **160-192 kbps** | Higher-quality speech, interviews, or recordings you will edit later.   |
-| **256-320 kbps** | Music or anything where you want the best the codec can deliver.        |
+| Bitrate          | Typical use                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| **24-48 kbps**   | Mono speech only. An hour fits in about 11 MB, which is small enough to transcribe as a single request. |
+| **64-96 kbps**   | Voice notes and dictation where size matters more than fidelity.                                        |
+| **128 kbps**     | Default. A good balance of quality and size for speech and general use.                                 |
+| **160-192 kbps** | Higher-quality speech, interviews, or recordings you will edit later.                                   |
+| **256-320 kbps** | Music or anything where you want the best the codec can deliver.                                        |
+
+The low end of the scale is a **mono speech mode**, not a general setting. Opus at 24 kbps stays intelligible for a single voice, which keeps an hour of meeting under the 25 MB a single Whisper request accepts, so the recording is transcribed in one pass and speaker numbering stays consistent across it. On music, or on a stereo recording of any kind, the same value costs real quality.
+
+**Which values you can pick depends on the format and the sample rate**, because the floor belongs to the codec rather than to the dropdown. Opus, used by WebM and OGG, encodes from 6 kbps upward at every sample rate, so the whole scale is available. MP3 follows the MPEG bitrate tables: at 32 kHz and above it uses MPEG-1 Layer III, which defines nothing below **32 kbps**, and only at 22.05 kHz or lower does it reach the MPEG-2 tables where 24 kbps exists. AAC, used by MP4, M4A, and AAC, leaves the decision to the platform encoder, so the values it refuses are shown blocked once the plugin has asked it. A value the chosen format cannot write is lifted to that format's floor before encoding, and the **Output summary** line reports the lifted value rather than the stored one.
 
 Bitrate applies to the **compressed** formats (WebM, OGG, MP3, FLAC, MP4, M4A, AAC). It is **not used for WAV**: WAV is uncompressed 16-bit PCM, so its size is fixed by the sample rate and channel count, and a bitrate setting would be meaningless for it. For that reason the bitrate control is irrelevant to WAV output and is hidden in the WAV split/convert flows.
 

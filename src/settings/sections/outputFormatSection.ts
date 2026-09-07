@@ -2,8 +2,11 @@
  * The recording's output format, its bitrate, and the summary derived from
  * both.
  *
- * The format list itself is drawn by hand: which options an install can encode
- * is settled by an asynchronous probe, so the row cannot be declared.
+ * Neither list is declared. Which formats an install can encode is settled by
+ * an asynchronous probe, and the bitrates one of them reaches depend on the
+ * chosen format and sample rate and are blocked per option by the same probe.
+ * A declared dropdown carries a fixed option map and disables only as a whole,
+ * so both rows are drawn by hand.
  * @module settings/sections/outputFormatSection
  */
 
@@ -11,13 +14,10 @@ import { CONVERSION_LINK_ACTION_LABELS } from '../labels';
 import { type OutputFormatRows, SETTINGS_SECTION_CLASS } from './context';
 import type { Setting, SettingDefinitionItem } from 'obsidian';
 
-/** Bitrates the output-format section offers, in kbps. */
-const BITRATE_OPTIONS_KBPS = [64, 96, 128, 160, 192, 256, 320];
-
 /**
  * The recorded file's format, its bitrate, and what a conversion does with the
  * source file it replaces.
- * @param rows - The two rows that cannot be expressed as controls
+ * @param rows - The three rows that cannot be expressed as controls
  */
 export function outputFormatGroup(
 	rows: OutputFormatRows,
@@ -38,16 +38,9 @@ export function outputFormatGroup(
 			{
 				name: 'Audio bitrate',
 				aliases: ['quality', 'kbps'],
-				desc: 'Compression quality and resulting file size.',
-				control: {
-					type: 'dropdown',
-					key: 'bitrate',
-					options: Object.fromEntries(
-						BITRATE_OPTIONS_KBPS.map((kbps) => [
-							String(kbps * 1000),
-							`${String(kbps)} kbps`,
-						]),
-					),
+				desc: 'Compression quality and resulting file size. The lowest values are a mono speech mode, small enough to send an hour as one transcription request, and they cost real quality on music or stereo. Values the chosen format and sample rate cannot reach are shown blocked.',
+				render: (setting: Setting): void => {
+					rows.renderBitrateRow(setting);
 				},
 			},
 			{

@@ -16,10 +16,16 @@
  */
 
 import { Setting } from 'obsidian';
-import type { TextComponent } from 'obsidian';
+import type { DropdownComponent, TextComponent } from 'obsidian';
 import type { AudioRecorderSettings } from './settingsSchema';
 import { CONVERSION_LINK_ACTION_OPTIONS, type LabeledOption } from './labels';
-import { getSupportedBitrates } from '../audio/AudioCapabilityDetector';
+import {
+	getSupportedBitrates,
+	listBitrateAvailability,
+	type BitrateAvailabilityEntry,
+} from '../audio/AudioCapabilityDetector';
+import { DEFAULT_SAMPLE_RATE } from '../constants';
+import { getFormatDescriptor } from '../audio/formatRegistry';
 import type { ConversionLinkAction } from './settingsSchema';
 
 /** Class applied to a setting row that is rendered disabled (dimmed). */
@@ -359,47 +365,188 @@ export function addStageRowTo(
 }
 
 /**
- * Adds a bitrate dropdown listing the supported bitrates. The initial
- * value is snapped to the closest supported entry so the dropdown
- * always shows the bitrate actually used for encoding.
- * @param containerEl - Container to render the setting into
- * @param options - Labels, initial value, and change callback
- * @returns The effective (possibly snapped) initial bitrate
+ * The fill each bitrate dropdown is currently showing, keyed by its own select
+ * element. A row re-offered for another format starts a second probe while the
+ * first is still in flight, and the answers can arrive in either order, so the
+ * later fill wins and the earlier answer is dropped. The settings tab keeps
+ * the same guard as a counter on itself; this list has three owners, so the
+ * count belongs to the dropdown.
  */
-export function addBitrateSetting(
-	containerEl: HTMLElement,
-	options: {
-		desc: string;
-		initialBitrate: number;
-		onChange: (bitrate: number) => void;
-	},
+const bitrateFillGeneration = new WeakMap<object, number>();
+
+/**
+ * Blocks the bitrates this device's encoder refuses, once the probe answers.
+ *
+ * Nothing is blocked when the probe finds nothing available at all, because
+ * that is what an environment without a WebCodecs AudioEncoder reports for
+ * every value, and a row with no selectable option would be worse than one
+ * offering a value the encoder later declines.
+ * @param dropdown - The dropdown whose options are blocked
+ * @param format - Format the bitrates were offered for
+ * @param sampleRate - Rate the encoder will write at
+ * @param generation - The fill this answer belongs to
+ */
+async function blockUnreachableBitrates(
+	dropdown: DropdownComponent,
+	format: string,
+	sampleRate: number,
+	generation: number,
+): Promise<void> {
+	let entries: BitrateAvailabilityEntry[];
+	try {
+		entries = await listBitrateAvailability(format, sampleRate);
+	} catch {
+		// Probing failed entirely: leave every option selectable, the
+		// encoder still reports a refusal when the run reaches it
+		return;
+	}
+	if (
+		bitrateFillGeneration.get(dropdown.selectEl) !== generation ||
+		!entries.some((entry) => entry.available)
+	) {
+		return;
+	}
+	for (const option of Array.from(dropdown.selectEl.options)) {
+		const entry = entries.find(
+			(candidate) => String(candidate.bitrate) === option.value,
+		);
+		if (entry) {
+			option.disabled = !entry.available;
+		}
+	}
+}
+
+/**
+ * Fills a bitrate dropdown with the rates the target format encodes at the
+ * given sample rate, selects the closest one to the value asked for, and
+ * blocks the rest against this device's own encoder.
+ *
+ * Selecting the closest offered value rather than the stored one is what
+ * keeps the dropdown showing the bitrate encoding will really use: a value
+ * left behind by a format change is otherwise held by a control that has no
+ * option for it.
+ * @param dropdown - The dropdown to fill
+ * @param options - Target format, sample rate, and the bitrate asked for
+ * @returns The effective (possibly snapped) bitrate
+ */
+export function fillBitrateDropdown(
+	dropdown: DropdownComponent,
+	options: { format: string; sampleRate: number; selected: number },
 ): number {
-	const bitrates = getSupportedBitrates();
-	let effectiveBitrate = options.initialBitrate;
+	const bitrates = getSupportedBitrates(options.format, options.sampleRate);
+	let effectiveBitrate = options.selected;
 	if (bitrates.length > 0 && !bitrates.includes(effectiveBitrate)) {
 		effectiveBitrate = bitrates.reduce((closest, bps) =>
-			Math.abs(bps - options.initialBitrate) <
-			Math.abs(closest - options.initialBitrate)
+			Math.abs(bps - options.selected) <
+			Math.abs(closest - options.selected)
 				? bps
 				: closest,
 		);
 	}
 
-	new Setting(containerEl)
-		.setName('Bitrate')
-		.setDesc(options.desc)
-		.addDropdown((dropdown) => {
-			bitrates.forEach((bps) => {
-				const kbps = Math.round(bps / 1000);
-				dropdown.addOption(String(bps), `${String(kbps)} kbps`);
-			});
-			dropdown.setValue(String(effectiveBitrate));
-			dropdown.onChange((value) => {
-				options.onChange(parseInt(value, 10));
-			});
-		});
+	dropdown.selectEl.empty();
+	bitrates.forEach((bps) => {
+		const kbps = Math.round(bps / 1000);
+		dropdown.addOption(String(bps), `${String(kbps)} kbps`);
+	});
+	dropdown.setValue(String(effectiveBitrate));
+
+	const generation = (bitrateFillGeneration.get(dropdown.selectEl) ?? 0) + 1;
+	bitrateFillGeneration.set(dropdown.selectEl, generation);
+	void blockUnreachableBitrates(
+		dropdown,
+		options.format,
+		options.sampleRate,
+		generation,
+	);
 
 	return effectiveBitrate;
+}
+
+/**
+ * Whether a target format carries a bitrate at all. A PCM target discards
+ * one, so a row offering it would describe a file it cannot describe.
+ * @param format - Target audio format
+ * @returns Whether the bitrate row applies to this format
+ */
+function takesBitrate(format: string): boolean {
+	return getFormatDescriptor(format)?.isPcm === false;
+}
+
+/** A bitrate row a dialog can re-offer when its target format changes. */
+export interface BitrateRow {
+	/** The bitrate currently offered and selected. */
+	readonly value: number;
+	/**
+	 * Re-offers the bitrates a target format reaches, hiding the row for a
+	 * target that takes no bitrate at all, and reports a value the new list
+	 * moved through the builder's own onChange.
+	 * @param format - The new target format
+	 */
+	rebuild(format: string): void;
+}
+
+/**
+ * Adds a bitrate dropdown listing the bitrates a target format reaches. The
+ * dialogs pick a target after the row is drawn, so the row is returned rather
+ * than only its value: a target the source format rules out, or one that
+ * takes no bitrate at all, changes what the row must show.
+ * @param containerEl - Container to render the setting into
+ * @param options - Labels, target format, initial value, and change callback
+ * @returns The row, carrying its effective value and a way to re-offer it
+ */
+export function addBitrateSetting(
+	containerEl: HTMLElement,
+	options: {
+		desc: string;
+		format: string;
+		sampleRate?: number;
+		initialBitrate: number;
+		onChange: (bitrate: number) => void;
+	},
+): BitrateRow {
+	const sampleRate = options.sampleRate ?? DEFAULT_SAMPLE_RATE;
+	let current = options.initialBitrate;
+	let dropdown: DropdownComponent | null = null;
+
+	const setting = new Setting(containerEl)
+		.setName('Bitrate')
+		.setDesc(options.desc)
+		.addDropdown((component) => {
+			dropdown = component;
+			current = fillBitrateDropdown(component, {
+				format: options.format,
+				sampleRate,
+				selected: current,
+			});
+			component.onChange((value) => {
+				current = parseInt(value, 10);
+				options.onChange(current);
+			});
+		});
+	setting.settingEl.toggle(takesBitrate(options.format));
+
+	return {
+		get value(): number {
+			return current;
+		},
+		rebuild(format: string): void {
+			const applies = takesBitrate(format);
+			setting.settingEl.toggle(applies);
+			if (!dropdown || !applies) {
+				return;
+			}
+			const settled = fillBitrateDropdown(dropdown, {
+				format,
+				sampleRate,
+				selected: current,
+			});
+			if (settled !== current) {
+				current = settled;
+				options.onChange(settled);
+			}
+		},
+	};
 }
 
 /**

@@ -30,8 +30,11 @@ const COMPRESSED_INTERMEDIATES = COMPRESSED_INTERMEDIATE_FORMATS;
 const CANDIDATE_SAMPLE_RATES = [
 	8000, 16000, 22050, 44100, 48000,
 ] as const satisfies readonly number[];
+// The low end exists for mono speech: Opus at 24 kbps stays intelligible and
+// keeps an hour of meeting inside the 25 MB a single Whisper request accepts.
+// Not every codec reaches down here, which is what minBitrate settles.
 const CANDIDATE_BITRATES_BPS = [
-	64000, 96000, 128000, 160000, 192000, 256000, 320000,
+	24000, 32000, 48000, 64000, 96000, 128000, 160000, 192000, 256000, 320000,
 ] as const satisfies readonly number[];
 
 /**
@@ -184,11 +187,56 @@ export function getSupportedSampleRates(): number[] {
 }
 
 /**
- * Returns the list of candidate bitrates.
- * @returns Array of bitrates in bps
+ * Bitrates offered for a format, floored by what its codec encodes at the
+ * given sample rate. Called without a format it returns every candidate,
+ * which is what the diagnostics report asks for.
+ * @param format - Target audio format, or undefined for every candidate
+ * @param sampleRate - Rate the encoder will write at. Defaults to the
+ *   plugin's own default, the conservative case for a caller that does not
+ *   know the rate its source carries.
+ * @returns Array of reachable bitrates in bps, ascending
  */
-export function getSupportedBitrates(): number[] {
-	return [...CANDIDATE_BITRATES_BPS];
+export function getSupportedBitrates(
+	format?: string,
+	sampleRate: number = DEFAULT_SAMPLE_RATE,
+): number[] {
+	const floor = format
+		? (getFormatDescriptor(format)?.minBitrate(sampleRate) ?? 0)
+		: 0;
+	return CANDIDATE_BITRATES_BPS.filter((bps) => bps >= floor);
+}
+
+/**
+ * The bitrate a format really encodes at: the configured one, lifted to the
+ * format's floor.
+ *
+ * Clamped rather than read straight through, for the reason
+ * localWhisperTimeoutMs is: the row that offers only reachable values is not
+ * the only way a value reaches the field. A data.json edited by hand, synced
+ * from an install on another format, or simply left behind by a format change
+ * never passes that row, and the load path fills a missing field from the
+ * defaults without normalising any number it does find.
+ *
+ * What makes an unreachable value worth guarding is that nothing downstream
+ * refuses it. LAME lifts a rate its table does not define to the nearest one
+ * that it does, without a word, so the file ends up at a bitrate the
+ * interface never mentioned.
+ * @param format - Format the file will be written in
+ * @param bitrate - The configured bitrate in bps
+ * @param sampleRate - Rate the encoder will write at
+ * @returns The bitrate encoding will really use, in bps
+ */
+export function effectiveBitrate(
+	format: string,
+	bitrate: number,
+	sampleRate: number = DEFAULT_SAMPLE_RATE,
+): number {
+	const requested =
+		Number.isFinite(bitrate) && bitrate > 0 ? bitrate : DEFAULT_BITRATE;
+	return Math.max(
+		requested,
+		getFormatDescriptor(format)?.minBitrate(sampleRate) ?? 0,
+	);
 }
 
 /**
@@ -278,6 +326,49 @@ export async function listFormatAvailability(): Promise<
 			format,
 			available: (await validateRecordingCapability(format)).valid,
 			direct: directRecordingMimeType(format) !== null,
+		});
+	}
+	return entries;
+}
+
+/**
+ * Availability of one candidate bitrate for a format on this device.
+ */
+export interface BitrateAvailabilityEntry {
+	/** Candidate bitrate in bps. */
+	bitrate: number;
+	/** Whether this device's encoder accepts it for the format. */
+	available: boolean;
+}
+
+/**
+ * Reports which of a format's offered bitrates this device's encoder really
+ * accepts, in ascending order. AAC is the case this exists for: WebCodecs
+ * hands the decision to the platform encoder, so the answer differs between
+ * Windows, macOS and iOS and no declaration can stand in for it.
+ *
+ * It says nothing new about MP3 or FLAC, whose bundled encoders report
+ * support without reading the bitrate at all, and it cannot answer where the
+ * WebCodecs AudioEncoder is missing, when every entry comes back unavailable.
+ * A caller that gets nothing available has learnt nothing and should leave
+ * the choice open; the registry's declared floor is the claim that holds in
+ * all three cases.
+ * @param format - Target audio format
+ * @param sampleRate - Rate the encoder will write at
+ * @returns One entry per offered bitrate
+ */
+export async function listBitrateAvailability(
+	format: string,
+	sampleRate: number = DEFAULT_SAMPLE_RATE,
+): Promise<BitrateAvailabilityEntry[]> {
+	const entries: BitrateAvailabilityEntry[] = [];
+	for (const bitrate of getSupportedBitrates(format, sampleRate)) {
+		entries.push({
+			bitrate,
+			available: await probeOfflineEncodingSupport(format, {
+				sampleRate,
+				bitrate,
+			}),
 		});
 	}
 	return entries;

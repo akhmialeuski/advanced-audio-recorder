@@ -65,6 +65,7 @@ describe('settings definitions', () => {
 	let settings: AudioRecorderSettings;
 	let renderDocs: jest.Mock;
 	let renderFormatRow: jest.Mock;
+	let renderBitrateRow: jest.Mock;
 	let addModel: jest.Mock;
 	let addProfile: jest.Mock;
 	let renameProfile: jest.Mock;
@@ -87,6 +88,7 @@ describe('settings definitions', () => {
 			host.createDiv({ cls: 'aar-doc-callout' });
 		});
 		renderFormatRow = jest.fn();
+		renderBitrateRow = jest.fn();
 		addModel = jest.fn();
 		addProfile = jest.fn();
 		renameProfile = jest.fn();
@@ -116,6 +118,7 @@ describe('settings definitions', () => {
 		sampleRates: [44100, 48000],
 		outputFormat: {
 			renderFormatRow: renderFormatRow as (setting: Setting) => void,
+			renderBitrateRow: renderBitrateRow as (setting: Setting) => void,
 			renderSummaryRow: renderSummaryRow as (setting: Setting) => void,
 		},
 		renderDocumentationLink: renderDocs as (host: HTMLElement) => void,
@@ -1775,6 +1778,22 @@ describe('settings definitions', () => {
 			const keys = collectDebouncedControlKeys(build());
 
 			expect(keys.has('debug')).toBe(false);
+		});
+	});
+
+	describe('the output format section', () => {
+		it('draws the bitrate row by hand rather than declaring its options', () => {
+			// The list depends on the format and the sample rate chosen above
+			// it, and its options are blocked one by one against the device's
+			// encoder. A declared dropdown carries a fixed option map and
+			// disables only as a whole, so neither is expressible.
+			const row = rowOf(build(), 'Output format', 'Audio bitrate');
+			const host = {} as Setting;
+
+			row.render?.(host);
+
+			expect(row.control).toBeUndefined();
+			expect(renderBitrateRow).toHaveBeenCalledWith(host);
 		});
 	});
 

@@ -11,6 +11,7 @@ import {
 	FORMAT_WEBM,
 	FORMAT_OGG,
 	FORMAT_MP4,
+	FORMAT_WAV,
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
 } from 'src/constants';
@@ -373,7 +374,10 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 			defaultBitrate: DEFAULT_BITRATE,
 		});
 
-		const result = await SystemDiagnostics.collectAudioCapabilities();
+		const result =
+			await SystemDiagnostics.collectAudioCapabilities(
+				DEFAULT_SAMPLE_RATE,
+			);
 
 		expect(result.supportedFormats).toEqual([FORMAT_WEBM, FORMAT_OGG]);
 		expect(result.supportedSampleRates).toEqual([
@@ -381,6 +385,35 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 			48000,
 		]);
 		expect(result.supportedBitrates).toEqual([DEFAULT_BITRATE, 256000]);
+	});
+
+	it('reports the bitrates each compressed format really accepts', async () => {
+		// The AAC floor differs between Windows, macOS and iOS and no
+		// declaration can stand in for it, so the report carries what the
+		// probe answered here. WAV is left out: it takes no bitrate at all.
+		const { probeOfflineEncodingSupport } = jest.requireMock(
+			'src/audio/AudioEncoder',
+		);
+		(probeOfflineEncodingSupport as jest.Mock).mockImplementation(
+			(_format: string, quality?: { bitrate?: number }) =>
+				Promise.resolve(quality?.bitrate === 320000),
+		);
+		mockDetectCapabilities.mockResolvedValueOnce({
+			supportedFormats: [FORMAT_WEBM],
+			supportedSampleRates: [DEFAULT_SAMPLE_RATE],
+			supportedBitrates: [DEFAULT_BITRATE],
+			defaultFormat: FORMAT_WEBM,
+			defaultSampleRate: DEFAULT_SAMPLE_RATE,
+			defaultBitrate: DEFAULT_BITRATE,
+		});
+
+		const result =
+			await SystemDiagnostics.collectAudioCapabilities(
+				DEFAULT_SAMPLE_RATE,
+			);
+
+		expect(result.reachableBitrates[FORMAT_WEBM]).toEqual([320000]);
+		expect(result.reachableBitrates).not.toHaveProperty(FORMAT_WAV);
 	});
 
 	it('includes codecSupport from detectCodecSupport()', async () => {
@@ -407,7 +440,10 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 		];
 		mockDetectCodecSupport.mockReturnValueOnce(fakeCodecSupport);
 
-		const result = await SystemDiagnostics.collectAudioCapabilities();
+		const result =
+			await SystemDiagnostics.collectAudioCapabilities(
+				DEFAULT_SAMPLE_RATE,
+			);
 
 		expect(result.codecSupport).toEqual(fakeCodecSupport);
 	});
@@ -423,7 +459,10 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 		});
 
 		// MediaRecorder appears in jsdom
-		const result = await SystemDiagnostics.collectAudioCapabilities();
+		const result =
+			await SystemDiagnostics.collectAudioCapabilities(
+				DEFAULT_SAMPLE_RATE,
+			);
 
 		expect(result.mediaRecorderAvailable).toBe(
 			typeof MediaRecorder !== 'undefined',
@@ -440,7 +479,10 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 			defaultBitrate: DEFAULT_BITRATE,
 		});
 
-		const result = await SystemDiagnostics.collectAudioCapabilities();
+		const result =
+			await SystemDiagnostics.collectAudioCapabilities(
+				DEFAULT_SAMPLE_RATE,
+			);
 
 		const expected =
 			typeof navigator.mediaDevices !== 'undefined' &&
