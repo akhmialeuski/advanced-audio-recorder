@@ -13,6 +13,7 @@ import { isMonoChannelMode, normalizeChannelMode } from '../audio/downmix';
 import { MonoCaptureBridge } from './MonoCaptureBridge';
 import {
 	getProcessingConstraints,
+	recordingEncodingFor,
 	resolveCaptureDeviceId,
 } from './AudioStreamHandler';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
@@ -100,12 +101,13 @@ export class TestRecorder {
 			const recorder = new MediaRecorder(captureStream, {
 				mimeType,
 				// The floor a real session applies, taken from the chosen
-				// output format the same way, so the test capture is encoded
-				// the way the recording it stands in for would be.
+				// output format at the rate the encoder writes at, so the
+				// test capture is encoded the way the recording it stands in
+				// for would be.
 				audioBitsPerSecond: effectiveBitrate(
 					settings.recordingFormat,
 					settings.bitrate,
-					settings.sampleRate,
+					recordingEncodingFor(settings).sampleRate,
 				),
 			});
 			this.recorder = recorder;

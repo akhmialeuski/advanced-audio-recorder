@@ -109,7 +109,14 @@ export class ConversionModal extends PluginModal {
 				this.rebuildFormatOptions();
 				dropdown.onChange((value) => {
 					this.targetFormat = value;
-					this.bitrateRow?.rebuild(value);
+					// The layout is re-stated with the format because the
+					// encoder answers a different question for each: a mono
+					// conversion picked before the format would otherwise be
+					// probed as the stereo one the row was built with.
+					this.bitrateRow?.rebuild(
+						value,
+						channelCountFor(this.channelMode),
+					);
 				});
 			});
 

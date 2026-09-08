@@ -27,7 +27,7 @@ import {
 	type BitrateOffer,
 } from '../audio/AudioCapabilityDetector';
 import { DEFAULT_SAMPLE_RATE } from '../constants';
-import { getFormatDescriptor } from '../audio/formatRegistry';
+import { getFormatDescriptor, takesBitrate } from '../audio/formatRegistry';
 import type { ConversionLinkAction } from './settingsSchema';
 
 /**
@@ -417,6 +417,15 @@ function kilohertz(sampleRate: number): string {
 }
 
 /**
+ * Where a rate the current format's encoder refuses is still to be had. Opus
+ * encodes from 6 kbps by specification, at every sample rate, on every device
+ * with a WebCodecs encoder, so a user after a small speech file is sent there
+ * rather than left with a refusal.
+ */
+const LOW_RATES_ELSEWHERE =
+	'For the lower rates use WebM or OGG, whose Opus encoder writes all of them.';
+
+/**
  * One sentence saying which bitrates the row is offering and what decided
  * them, which is the only way a missing value is accounted for: a rate the
  * codec has no table for at this sample rate never appears, and neither does
@@ -472,15 +481,6 @@ export function bitrateOfferNote(
 		}
 	}
 }
-
-/**
- * Where a rate the current format's encoder refuses is still to be had. Opus
- * encodes from 6 kbps by specification, at every sample rate, on every device
- * with a WebCodecs encoder, so a user after a small speech file is sent there
- * rather than left with a refusal.
- */
-const LOW_RATES_ELSEWHERE =
-	'For the lower rates use WebM or OGG, whose Opus encoder writes all of them.';
 
 /**
  * Re-offers the bitrates this device's encoder accepts, once it answers.
@@ -595,18 +595,6 @@ export function fillBitrateDropdown(
 	});
 
 	return selected;
-}
-
-/**
- * Whether a target format carries a bitrate at all. A lossless target has
- * none to choose - PCM discards one and FLAC ignores it and writes whatever
- * the signal compresses to - so a row offering it would describe a file it
- * cannot describe, and the value it showed beside a 607 kbps FLAC was noise.
- * @param format - Target audio format
- * @returns Whether the bitrate row applies to this format
- */
-export function takesBitrate(format: string): boolean {
-	return getFormatDescriptor(format)?.lossless === false;
 }
 
 /** A bitrate row a dialog can re-offer when its target format changes. */

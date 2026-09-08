@@ -23,6 +23,7 @@ import {
 	COMPRESSED_INTERMEDIATE_FORMATS,
 	MEDIA_RECORDER_CANDIDATE_FORMATS,
 	getFormatDescriptor,
+	takesBitrate,
 	type AudioFormatId,
 } from './formatRegistry';
 
@@ -585,25 +586,46 @@ async function acceptedBitrates(
  * not fail until the recording is already over and its audio is being encoded
  * to the target format. Asking before the first sample is captured is what
  * turns a lost take into a notice and a slightly different file.
+ *
+ * The question is only worth asking about a session mediabunny will encode.
+ * The session shape decides that, exactly as it decides the format check:
+ * a lossless target carries no bitrate for an encoder to refuse, and a
+ * single-track file MediaRecorder writes itself never reaches the WebCodecs
+ * encoder at all, so its answer describes another encoder than the one
+ * running. Substituting on it moved a recording off a rate it could have
+ * used, and told the user an encoder had refused a value it was never asked
+ * about.
  * @param format - Format the file will be written in
  * @param bitrate - The configured bitrate in bps
- * @param sampleRate - Rate the encoder will write at
- * @param numberOfChannels - Layout the recording will have
+ * @param encoding - What the session hands the encoder, from
+ *   {@link recordingEncodingFor}
  * @returns The bitrate to record with, and why it differs when it does
  */
 export async function resolveEffectiveBitrate(
 	format: string,
 	bitrate: number,
-	sampleRate: number,
-	numberOfChannels: number,
+	encoding: RecordingEncoding,
 ): Promise<{ bitrate: number; fellBack: boolean; reason: string }> {
-	const requested = effectiveBitrate(format, bitrate, sampleRate);
+	const requested = effectiveBitrate(format, bitrate, encoding.sampleRate);
+	const encodedHere =
+		takesBitrate(format) &&
+		(encoding.mergesTracks || directRecordingMimeType(format) === null);
+	if (!encodedHere) {
+		return { bitrate: requested, fellBack: false, reason: '' };
+	}
 	const offer = await resolveBitrateOffer(
 		format,
-		sampleRate,
-		numberOfChannels,
+		encoding.sampleRate,
+		encoding.numberOfChannels,
 	);
-	if (offer.encoder !== 'confirmed' || offer.bitrates.includes(requested)) {
+	if (
+		offer.encoder !== 'confirmed' ||
+		// Answered at the reference rate because the encoder refused every
+		// rate at the one asked about. No bitrate rescues that: it is the
+		// format that cannot be written here, which the format check reports.
+		offer.sampleRate !== encoding.sampleRate ||
+		offer.bitrates.includes(requested)
+	) {
 		// Unavailable: nothing to check against. Refused: no rate would help,
 		// and the format check at start has already moved the session off
 		// this format.
@@ -614,7 +636,7 @@ export async function resolveEffectiveBitrate(
 		fellBack: true,
 		reason: `This device's ${format.toUpperCase()} encoder does not accept ${String(
 			Math.round(requested / 1000),
-		)} kbps at ${String(Math.round(sampleRate / 1000))} kHz.`,
+		)} kbps at ${String(Math.round(encoding.sampleRate / 1000))} kHz.`,
 	};
 }
 

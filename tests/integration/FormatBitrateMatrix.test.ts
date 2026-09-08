@@ -31,8 +31,8 @@ import {
 	validateRecordingCapability,
 	type EncoderVerdict,
 } from 'src/audio/AudioCapabilityDetector';
-import { AUDIO_FORMAT_IDS } from 'src/audio/formatRegistry';
-import { bitrateOfferNote, takesBitrate } from 'src/settings/settingControls';
+import { AUDIO_FORMAT_IDS, takesBitrate } from 'src/audio/formatRegistry';
+import { bitrateOfferNote } from 'src/settings/settingControls';
 import { recordingEncodingFor } from 'src/recording/AudioStreamHandler';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { useDesktopPlatform } from '../helpers/platform';

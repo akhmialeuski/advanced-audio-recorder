@@ -16,7 +16,7 @@ jest.mock('mediabunny', () => require('../mocks/modules/mediabunny'));
 
 import { canEncodeAudio } from 'mediabunny';
 import { installWindowsAacEncoder } from '../helpers/encoderProfiles';
-import { FORMAT_M4A, FORMAT_WEBM } from 'src/constants';
+import { FORMAT_FLAC, FORMAT_M4A, FORMAT_WEBM } from 'src/constants';
 import {
 	closestBitrate,
 	getSupportedBitrates,
@@ -24,6 +24,7 @@ import {
 	resolveEffectiveBitrate,
 	resolveEffectiveOutputFormat,
 	validateRecordingCapability,
+	type RecordingEncoding,
 } from 'src/audio/AudioCapabilityDetector';
 
 /**
@@ -173,14 +174,31 @@ describe('which bitrates a recording can really use', () => {
 	});
 
 	describe('the bitrate a recording starts with', () => {
+		/**
+		 * A session mediabunny encodes: its tracks are mixed into one file,
+		 * so the WebCodecs encoder writes it whatever MediaRecorder could
+		 * have captured directly.
+		 * @param overrides - What this session differs in
+		 * @returns The encoding to resolve against
+		 */
+		function mergedSession(
+			overrides: Partial<RecordingEncoding> = {},
+		): RecordingEncoding {
+			return {
+				sampleRate: 48000,
+				numberOfChannels: MONO,
+				mergesTracks: true,
+				...overrides,
+			};
+		}
+
 		it('substitutes a rate the encoder refuses', async () => {
 			encoderAccepting(MEDIA_FOUNDATION_AAC_BITRATES);
 
 			const resolved = await resolveEffectiveBitrate(
 				FORMAT_M4A,
 				24000,
-				48000,
-				MONO,
+				mergedSession(),
 			);
 
 			expect(resolved.bitrate).toBe(96000);
@@ -194,8 +212,7 @@ describe('which bitrates a recording can really use', () => {
 			const resolved = await resolveEffectiveBitrate(
 				FORMAT_M4A,
 				128000,
-				48000,
-				MONO,
+				mergedSession(),
 			);
 
 			expect(resolved.bitrate).toBe(128000);
@@ -211,12 +228,67 @@ describe('which bitrates a recording can really use', () => {
 			const resolved = await resolveEffectiveBitrate(
 				FORMAT_M4A,
 				24000,
-				48000,
-				MONO,
+				mergedSession(),
 			);
 
 			expect(resolved.bitrate).toBe(24000);
 			expect(resolved.fellBack).toBe(false);
+		});
+
+		it('leaves a file MediaRecorder writes itself at the rate it was given', async () => {
+			// A single-track M4A on Windows is captured straight into the
+			// container by MediaRecorder, which encodes it with its own
+			// codec; mediabunny never sees it. Substituting on the WebCodecs
+			// answer moved such a recording off a rate it could have used and
+			// blamed an encoder that was never going to run.
+			(global as Record<string, unknown>).MediaRecorder = {
+				isTypeSupported: (mime: string): boolean =>
+					mime.startsWith('audio/mp4'),
+			};
+			encoderAccepting(MEDIA_FOUNDATION_AAC_BITRATES);
+
+			const resolved = await resolveEffectiveBitrate(
+				FORMAT_M4A,
+				24000,
+				mergedSession({ mergesTracks: false }),
+			);
+
+			expect(resolved.bitrate).toBe(24000);
+			expect(resolved.fellBack).toBe(false);
+			expect(canEncodeAudio).not.toHaveBeenCalled();
+		});
+
+		it('asks nothing about a format that carries no bitrate', async () => {
+			// FLAC compresses to whatever size the signal needs and ignores a
+			// requested rate, so there is no value for an encoder to refuse
+			// and nothing to substitute.
+			encoderAccepting([]);
+
+			const resolved = await resolveEffectiveBitrate(
+				FORMAT_FLAC,
+				24000,
+				mergedSession(),
+			);
+
+			expect(resolved.bitrate).toBe(24000);
+			expect(canEncodeAudio).not.toHaveBeenCalled();
+		});
+
+		it('does not blame the bitrate for a format the encoder refuses outright', async () => {
+			// Chromium refuses every AAC rate at 22.05 kHz, where mediabunny
+			// asks it about HE-AAC, and the offer then answers at the
+			// reference rate instead. Reading that as a narrowed list made the
+			// notice name a bitrate, while what has to change is the format.
+			installWindowsAacEncoder();
+
+			const resolved = await resolveEffectiveBitrate(
+				FORMAT_M4A,
+				24000,
+				mergedSession({ sampleRate: 22050 }),
+			);
+
+			expect(resolved.fellBack).toBe(false);
+			expect(resolved.reason).toBe('');
 		});
 	});
 

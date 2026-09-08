@@ -163,13 +163,30 @@ export async function decodeAudioBlob(
 }
 
 /**
+ * The rate this device's AudioContext runs at, read once per implementation.
+ *
+ * The rate is a property of the device, not of the call, and the only way to
+ * learn it is to construct a context. The settings tab asks several times
+ * per render and again after every save, and Chromium caps the number of
+ * live hardware contexts while close() frees a slot only asynchronously, so
+ * a context per call is a burst of renders away from a refused constructor.
+ * Keyed on the constructor rather than held in a plain variable so the
+ * reading belongs to the audio implementation that produced it: a test that
+ * installs another one gets a fresh read instead of the previous test's
+ * answer.
+ */
+const deviceSampleRates = new WeakMap<typeof AudioContext, number>();
+
+/**
  * The sample rate an offline encode runs at on this device.
  *
  * Nothing encoded after capture is written at the rate the settings ask for.
  * A merged multi-track file is rendered through an OfflineAudioContext at the
  * default AudioContext rate, and a single track re-encoded to an offline-only
- * format is decoded through an AudioContext first, which resamples to the
- * same default. An encoder question asked at the requested rate therefore
+ * format arrives from a recorder whose container already carries the rate it
+ * encoded at, 48 kHz for Opus whatever was requested, or is decoded through an
+ * AudioContext on the last rung of the conversion ladder, which resamples to
+ * the same default. An encoder question asked at the requested rate therefore
  * describes a file that is never written: at 22.05 kHz it asked Chromium for
  * HE-AAC and got a refusal, while the 48 kHz mix it really encodes is AAC-LC
  * and fine. Answers with the requested rate only where there is no
@@ -181,11 +198,21 @@ export function offlineEncodeSampleRate(requested: number): number {
 	if (typeof AudioContext === 'undefined') {
 		return requested;
 	}
+	const known = deviceSampleRates.get(AudioContext);
+	if (known !== undefined) {
+		return known;
+	}
 	const context = new AudioContext();
 	const rate = context.sampleRate;
-	// Released without waiting: the rate has been read and the promise a
-	// close returns is not something this caller can do anything with.
-	void context.close();
+	deviceSampleRates.set(AudioContext, rate);
+	// Released without waiting: the rate has been read, and a close that
+	// fails leaves nothing for this caller to do but say so.
+	context.close().catch((error: unknown) => {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Failed to close the AudioContext opened to read its sample rate:`,
+			error,
+		);
+	});
 	return rate;
 }
 

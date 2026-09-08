@@ -270,6 +270,22 @@ export function getFormatDescriptor(
 }
 
 /**
+ * Whether a target format carries a bitrate at all. A lossless target has
+ * none to choose - PCM discards one and FLAC ignores it and writes whatever
+ * the signal compresses to - so a row offering it would describe a file it
+ * cannot describe, and the value it showed beside a 607 kbps FLAC was noise.
+ *
+ * It lives with the descriptor that declares `lossless` because the settings
+ * row, the conversion dialog and the recording start all ask it, and a copy
+ * of the test in any of them is a rule that can drift from the registry.
+ * @param format - Target audio format
+ * @returns Whether a bitrate applies to this format
+ */
+export function takesBitrate(format: string): boolean {
+	return getFormatDescriptor(format)?.lossless === false;
+}
+
+/**
  * Resolves the canonical container MIME type for a file extension,
  * defaulting to `audio/<ext>` for anything not in the registry.
  * @param extension - Lowercased file extension

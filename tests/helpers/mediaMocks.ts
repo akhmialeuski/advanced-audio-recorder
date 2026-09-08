@@ -155,6 +155,56 @@ export function installObjectUrlMock(): InstalledMock<ObjectUrlDouble> {
 	};
 }
 
+/** One AudioContext the double handed out, as a test reads it back. */
+export interface AudioContextDouble {
+	/** The rate this context reports, which is the device's own. */
+	sampleRate: number;
+	/** Whether the plugin released it. */
+	closed: boolean;
+}
+
+/**
+ * Installs an AudioContext that only reports a sample rate.
+ *
+ * Every bitrate floor in the plugin is taken at the rate an offline encode
+ * runs at, and that is the rate the audio hardware provides rather than the
+ * one the settings ask for. A suite about a floor therefore has to say which
+ * machine it is on, and four of them said it by hand-rolling this same
+ * constructor. The instances are recorded so a test can also assert how many
+ * contexts were opened, which is what keeps the reading memoised.
+ * @param sampleRate - The rate the device runs at
+ * @param close - What closing the context does, for the failure path
+ * @returns Handle whose instances are the contexts that were constructed
+ */
+export function installAudioContextRate(
+	sampleRate: number,
+	close: () => Promise<void> = () => Promise.resolve(),
+): InstalledMock<AudioContextDouble> {
+	const instances: AudioContextDouble[] = [];
+	const previous = (global as Record<string, unknown>)['AudioContext'];
+	(global as Record<string, unknown>)['AudioContext'] = jest.fn(() => {
+		const context: AudioContextDouble = { sampleRate, closed: false };
+		instances.push(context);
+		return {
+			sampleRate,
+			close: (): Promise<void> => {
+				context.closed = true;
+				return close();
+			},
+		};
+	});
+	return {
+		instances,
+		restore: () => {
+			if (previous === undefined) {
+				delete (global as Record<string, unknown>)['AudioContext'];
+				return;
+			}
+			(global as Record<string, unknown>)['AudioContext'] = previous;
+		},
+	};
+}
+
 /**
  * Builds a `MediaDeviceInfo` the way the browser reports one.
  *

@@ -53,7 +53,7 @@ import {
 	resolveEffectiveOutputFormat,
 	type FormatAvailabilityEntry,
 } from '../audio/AudioCapabilityDetector';
-import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
+import { AUDIO_FORMAT_IDS, takesBitrate } from '../audio/formatRegistry';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
 import {
@@ -99,7 +99,7 @@ import {
 	type EngineSettingsStore,
 } from '../providers/engineSettings';
 import { ModelIdModal } from '../ui/ModelIdModal';
-import { fillBitrateDropdown, takesBitrate } from './settingControls';
+import { fillBitrateDropdown } from './settingControls';
 import type { SettingsSectionContext } from './settingControls';
 import { BITRATE_ROW_DESC } from './sections/outputFormatSection';
 import { isMultiTrackCaptureSupported } from '../platform/capabilities';
@@ -916,14 +916,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// bumps: an answer arriving after the tab was left must not write
 			// into a tree nobody is looking at.
 			const generation = this.formatAvailabilityGeneration;
+			// The file the recording will really produce: the rate the
+			// encoder writes at, which is the device's own rather than the
+			// requested one, and the layout the capture has. The summary
+			// line and the session snapshot read the same answer, so a floor
+			// that moves with the rate lands on one value everywhere; asked
+			// at the requested rate, the row offered 24 kbps for MP3 while
+			// the line beneath it said 32.
+			const encoding = recordingEncodingFor(settings);
 			fillBitrateDropdown(dropdown, {
 				format: settings.recordingFormat,
-				sampleRate: settings.sampleRate,
-				// The layout the recording will really have. An encoder answers
-				// per layout, so asking about stereo for a mono capture is
-				// asking about a different file than the one being recorded.
-				numberOfChannels:
-					recordingEncodingFor(settings).numberOfChannels,
+				sampleRate: encoding.sampleRate,
+				numberOfChannels: encoding.numberOfChannels,
 				selected: settings.bitrate,
 				isStale: () => this.formatAvailabilityGeneration !== generation,
 				// The encoder's answer arrives after the row is on screen. A

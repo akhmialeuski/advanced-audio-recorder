@@ -21,7 +21,10 @@ import { MODAL } from '../helpers/selectors';
 import { createMockApp } from '../helpers/createApp';
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { convertBlobToFormatBuffer } from 'src/audio/AudioFormatConverter';
-import { getSupportedBitrates } from 'src/audio/AudioCapabilityDetector';
+import {
+	getSupportedBitrates,
+	resolveBitrateOffer,
+} from 'src/audio/AudioCapabilityDetector';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { defined } from '../helpers/assertions';
 
@@ -567,6 +570,26 @@ describe('ConversionModal', () => {
 					(option) => option.value,
 				),
 			).toEqual(['32000', '64000']);
+		});
+
+		it('asks the encoder about the layout the conversion writes, not the one it opened with', async () => {
+			// The encoder accepts its own set of rates per layout, and
+			// mediabunny builds the codec string from the channel count, so a
+			// mono conversion is a different question than a stereo one. A
+			// format picked after the channels were changed re-stated only the
+			// format, and the row was then probed as the stereo file the
+			// dialog had opened with.
+			openDialog();
+
+			changeSetting('Channels', 'dropdown', 'mono-mix');
+			changeSetting('Target format', 'dropdown', 'm4a');
+			await tick();
+
+			expect(jest.mocked(resolveBitrateOffer)).toHaveBeenLastCalledWith(
+				'm4a',
+				expect.any(Number),
+				1,
+			);
 		});
 
 		it('hides the bitrate row for a WAV target, which discards it', () => {

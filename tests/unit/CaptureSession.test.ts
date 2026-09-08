@@ -21,6 +21,11 @@ import type { CaptureSessionRequest } from 'src/recording/CaptureSession';
 import { DEFAULT_BITRATE, FORMAT_MP3, FORMAT_WEBM } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { useDesktopPlatform } from '../helpers/platform';
+import {
+	installAudioContextRate,
+	type AudioContextDouble,
+	type InstalledMock,
+} from '../helpers/mediaMocks';
 
 /**
  * A single-track session request over the default settings.
@@ -52,8 +57,16 @@ function requestWith(overrides: {
 }
 
 describe('createCaptureSession', () => {
+	/** The device this case is running on, restored after it. */
+	let device: InstalledMock<AudioContextDouble> | null = null;
+
 	beforeEach(() => {
+		device = null;
 		useDesktopPlatform();
+	});
+
+	afterEach(() => {
+		device?.restore();
 	});
 
 	it('keeps a bitrate the output format can write', () => {
@@ -92,17 +105,31 @@ describe('createCaptureSession', () => {
 		expect(session.bitrate).toBe(32000);
 	});
 
-	it('keeps it where the sample rate reaches the lower MPEG tables', () => {
-		const { session } = createCaptureSession(
-			requestWith({
-				bitrate: 24000,
-				sampleRate: 22050,
-				outputFormat: FORMAT_MP3,
-			}),
-		);
+	// One session asking for 24 kbps MP3 at 22.05 kHz, on two devices. It is
+	// the device that decides, because an offline encode runs at the rate the
+	// hardware provides whatever the settings ask for: the MPEG-2 tables MP3
+	// uses below 32 kHz reach 24 kbps, while MPEG-1 has no table under 32.
+	// Cut at the requested rate instead, the session carried 24 kbps onto a
+	// 48 kHz device and LAME lifted it without a word.
+	it.each([
+		['reaches the lower MPEG tables', 22050, 24000],
+		['is held to the MPEG-1 table', 48000, 32000],
+	])(
+		'takes the floor at the rate the encoder writes at, which %s',
+		(_case, deviceRate, expected) => {
+			device = installAudioContextRate(deviceRate);
 
-		expect(session.bitrate).toBe(24000);
-	});
+			const { session } = createCaptureSession(
+				requestWith({
+					bitrate: 24000,
+					sampleRate: 22050,
+					outputFormat: FORMAT_MP3,
+				}),
+			);
+
+			expect(session.bitrate).toBe(expected);
+		},
+	);
 
 	it('takes the floor from the output format, not the recorder container', () => {
 		// An offline-only target records through an intermediate whose own

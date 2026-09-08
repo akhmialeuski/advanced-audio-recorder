@@ -22,7 +22,10 @@ import {
 } from '../constants';
 import type { RecordingSessionConfig, TrackMix } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
-import type { TrackAudioSource } from './AudioStreamHandler';
+import {
+	recordingEncodingFor,
+	type TrackAudioSource,
+} from './AudioStreamHandler';
 import { normalizeChannelMode, type ChannelMode } from '../audio/downmix';
 import { clampSplitMinutes, sanitizePartSuffix } from './AudioSplitter';
 import {
@@ -142,13 +145,15 @@ export function createCaptureSession(
 		// Snapped onto the output format's own rates here, at the one point
 		// every recorder, merge and conversion of the session reads it from: a
 		// rate the codec cannot write would otherwise be raised silently by
-		// the encoder, leaving the file at a bitrate nothing announced.
+		// the encoder, leaving the file at a bitrate nothing announced. The
+		// floor is taken at the rate the encoder writes at, which is what the
+		// bitrate row and the summary line are cut to as well.
 		bitrate:
 			request.bitrate ??
 			effectiveBitrate(
 				request.outputFormat,
 				settings.bitrate,
-				settings.sampleRate,
+				recordingEncodingFor(settings, trackOrder).sampleRate,
 			),
 		splitEnabled: requestedSplit && !autoSplitSkipped,
 		partMinutes: clampSplitMinutes(settings.splitChunkMinutes),

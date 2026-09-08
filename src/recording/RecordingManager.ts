@@ -377,8 +377,7 @@ export class RecordingManager {
 			const resolvedBitrate = await resolveEffectiveBitrate(
 				outputFormat,
 				this.settings.bitrate,
-				encoding.sampleRate,
-				encoding.numberOfChannels,
+				encoding,
 			);
 			if (resolvedBitrate.fellBack) {
 				new Notice(

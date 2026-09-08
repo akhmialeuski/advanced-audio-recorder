@@ -9,6 +9,7 @@ import { at } from '../helpers/assertions';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { partial } from '../helpers/doubles';
+import { installAudioContextRate } from '../helpers/mediaMocks';
 
 /** Bridge doubles created by the recorder under test. */
 interface BridgeDouble {
@@ -98,6 +99,25 @@ describe('TestRecorder', () => {
 			getUserMedia: jest.fn().mockResolvedValue(raw.stream),
 		};
 		settings = { ...DEFAULT_SETTINGS, recordingFormat: 'webm' };
+	});
+
+	it('cuts the bitrate at the rate the encoder writes at, as a real session does', async () => {
+		// The test capture stands in for a recording, so it is encoded the
+		// way one would be: 22.05 kHz in the settings is a 48 kHz file on this
+		// device, where MP3 has no table under 32 kbps.
+		const device = installAudioContextRate(48000);
+		settings.recordingFormat = 'mp3';
+		settings.sampleRate = 22050;
+		settings.bitrate = 24000;
+		try {
+			await new TestRecorder().record(settings, 0);
+		} finally {
+			device.restore();
+		}
+
+		expect(at(MockMediaRecorder.instances, 0).options).toEqual(
+			expect.objectContaining({ audioBitsPerSecond: 32000 }),
+		);
 	});
 
 	it('records the raw stream in the source mode', async () => {

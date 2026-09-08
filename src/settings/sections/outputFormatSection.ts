@@ -11,8 +11,10 @@
  */
 
 import { CONVERSION_LINK_ACTION_LABELS } from '../labels';
-import { takesBitrate } from '../settingControls';
+import { takesBitrate } from '../../audio/formatRegistry';
 import type { AudioRecorderSettings } from '../settingsSchema';
+import { type OutputFormatRows, SETTINGS_SECTION_CLASS } from './context';
+import type { Setting, SettingDefinitionItem } from 'obsidian';
 
 /**
  * What the bitrate row says before the format, the sample rate and the encoder
@@ -22,8 +24,6 @@ import type { AudioRecorderSettings } from '../settingsSchema';
  */
 export const BITRATE_ROW_DESC =
 	'Compression quality and resulting file size. The lowest values are a mono speech mode, small enough to send an hour as one transcription request, and they cost real quality on music or stereo.';
-import { type OutputFormatRows, SETTINGS_SECTION_CLASS } from './context';
-import type { Setting, SettingDefinitionItem } from 'obsidian';
 
 /**
  * The recorded file's format, its bitrate, and what a conversion does with the

@@ -41,7 +41,12 @@ import {
 	settingRow,
 } from '../helpers/settingRows';
 import { partial } from '../helpers/doubles';
-import { mediaDevice } from '../helpers/mediaMocks';
+import {
+	installAudioContextRate,
+	mediaDevice,
+	type AudioContextDouble,
+	type InstalledMock,
+} from '../helpers/mediaMocks';
 import { closeSettingsPage } from 'src/obsidian/settingsNavigation';
 import { listFormatAvailability } from 'src/audio/AudioCapabilityDetector';
 
@@ -2213,6 +2218,8 @@ describe('AudioRecorderSettingTab offering the vault folders', () => {
 describe('AudioRecorderSettingTab probing the output rows', () => {
 	let tab: AudioRecorderSettingTab;
 	let mockSettings: AudioRecorderSettings;
+	/** The device a case is running on, restored after it. */
+	let device: InstalledMock<AudioContextDouble> | null = null;
 
 	/** The dropdown the format row rendered, and the description beside it. */
 	function formatRow(): {
@@ -2313,6 +2320,13 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 			),
 		);
 		tab = withoutDeclarativeSettings(() => tabOver(mockSettings));
+		device = null;
+	});
+
+	afterEach(() => {
+		// A device rate one case installed must not decide the next one's
+		// list; without the global the rows are cut at the requested rate.
+		device?.restore();
 	});
 
 	it('leaves every format selectable when the probe itself fails', async () => {
@@ -2362,14 +2376,36 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		expect(values[0]).toBe('32000');
 	});
 
-	it('offers the low rates once the sample rate reaches them', () => {
+	it('offers the low rates once the device encodes at a rate that reaches them', () => {
 		// The MPEG-2 tables, which MP3 uses below 32 kHz, start at 8 kbps.
+		// It is the device's own rate that decides, because that is the rate
+		// an offline encode runs at whatever the settings ask for.
+		device = installAudioContextRate(22050);
 		mockSettings.recordingFormat = 'mp3';
 		mockSettings.sampleRate = 22050;
 
 		expect(
 			Array.from(bitrateRow().options).map((option) => option.value),
 		).toContain('24000');
+	});
+
+	it('cuts the row at the rate the encoder writes at, not the one requested', () => {
+		// 22.05 kHz in the settings is a 48 kHz file on this device, where
+		// MP3 is MPEG-1 and starts at 32 kbps. Asked at the requested rate,
+		// the row offered 24 kbps while the summary line beneath it, which
+		// asks at the device rate, said 32: two answers for one stored value.
+		device = installAudioContextRate(48000);
+		mockSettings.recordingFormat = 'mp3';
+		mockSettings.sampleRate = 22050;
+		mockSettings.bitrate = 24000;
+
+		const row = bitrateRow();
+
+		expect(
+			Array.from(row.options).map((option) => option.value),
+		).not.toContain('24000');
+		expect(row.value).toBe('32000');
+		expect(summaryText()).toContain('MP3, 32 kbps');
 	});
 
 	it('lifts a stored bitrate the chosen format cannot write', () => {
