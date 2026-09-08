@@ -23,7 +23,10 @@ import {
 import { AUDIO_FORMAT_IDS, getFormatDescriptor } from '../audio/formatRegistry';
 import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
-import { audioDeviceApi } from '../recording/AudioStreamHandler';
+import {
+	audioDeviceApi,
+	recordingEncodingFor,
+} from '../recording/AudioStreamHandler';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
@@ -275,27 +278,45 @@ export class SystemDiagnostics {
 	 * Detects audio recording capabilities of the current environment.
 	 * @param sampleRate - Rate the bitrate probe asks about, since what an
 	 *   encoder accepts depends on it
+	 * @param numberOfChannels - Layout the probe asks about, which an encoder
+	 *   answers separately for
 	 * @returns Audio capabilities descriptor
 	 */
 	static async collectAudioCapabilities(
 		sampleRate: number,
+		numberOfChannels: number,
 	): Promise<DiagnosticsAudioCapabilities> {
 		const capabilities = await detectCapabilities();
 		const mediaRecorderAvailable = typeof MediaRecorder !== 'undefined';
 		const getUserMediaAvailable =
 			typeof audioDeviceApi()?.getUserMedia === 'function';
 
-		const reachableBitrates: Record<string, number[]> = {};
-		for (const format of AUDIO_FORMAT_IDS) {
-			// A PCM format takes no bitrate, so there is nothing to measure.
-			if (getFormatDescriptor(format)?.isPcm) {
-				continue;
-			}
-			const entries = await listBitrateAvailability(format, sampleRate);
-			reachableBitrates[format] = entries
-				.filter((entry) => entry.available)
-				.map((entry) => entry.bitrate);
-		}
+		// A lossless format takes no bitrate, so there is nothing to measure.
+		const measured = AUDIO_FORMAT_IDS.filter(
+			(format) => getFormatDescriptor(format)?.lossless === false,
+		);
+		// Concurrently because the probes share no state and there are two per
+		// bitrate per format; run in sequence they would put a visible pause in
+		// front of the System info report.
+		const reachableBitrates = Object.fromEntries(
+			await Promise.all(
+				measured.map(
+					async (format) =>
+						[
+							format,
+							(
+								await listBitrateAvailability(
+									format,
+									sampleRate,
+									numberOfChannels,
+								)
+							)
+								.filter((entry) => entry.available)
+								.map((entry) => entry.bitrate),
+						] as const,
+				),
+			),
+		);
 
 		return {
 			supportedFormats: capabilities.supportedFormats,
@@ -323,18 +344,24 @@ export class SystemDiagnostics {
 		settings: AudioRecorderSettings,
 	): Promise<ActiveRecordingConfig> {
 		const requestedFormat = settings.recordingFormat.toLowerCase();
+		// Asked about the audio these settings produce, the way a session
+		// start asks, so the report shows the fallback a recording would take.
+		const encoding = recordingEncodingFor(settings);
 		// Validate the stored preference so a fallback's cause (why the
 		// requested format is unrecordable here) stays in the report.
-		const validationResult =
-			await validateRecordingCapability(requestedFormat);
+		const validationResult = await validateRecordingCapability(
+			requestedFormat,
+			encoding,
+		);
 
 		// Resolve the format recording will actually use: the request when
 		// recordable, else the platform fallback. Diagnostics then mirror
 		// the effective session instead of an unrecordable preference.
 		let outputFormat = requestedFormat;
 		try {
-			outputFormat = (await resolveEffectiveOutputFormat(requestedFormat))
-				.format;
+			outputFormat = (
+				await resolveEffectiveOutputFormat(requestedFormat, encoding)
+			).format;
 		} catch {
 			// Nothing is recordable here; keep the requested format so the
 			// unsupported branch below reports it honestly.
@@ -379,7 +406,10 @@ export class SystemDiagnostics {
 		const [audioDevices, audioCapabilities, activeRecordingConfig] =
 			await Promise.all([
 				SystemDiagnostics.collectAudioDevices(),
-				SystemDiagnostics.collectAudioCapabilities(settings.sampleRate),
+				SystemDiagnostics.collectAudioCapabilities(
+					settings.sampleRate,
+					recordingEncodingFor(settings).numberOfChannels,
+				),
 				SystemDiagnostics.collectActiveRecordingConfig(settings),
 			]);
 

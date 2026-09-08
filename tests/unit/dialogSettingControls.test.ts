@@ -7,13 +7,21 @@ import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
+	bitrateOfferNote,
 	type BitrateRow,
 } from 'src/settings/settingControls';
-import { FORMAT_MP3, FORMAT_WAV, FORMAT_WEBM } from 'src/constants';
+import {
+	DEFAULT_SAMPLE_RATE,
+	FORMAT_FLAC,
+	FORMAT_MP3,
+	FORMAT_WAV,
+	FORMAT_WEBM,
+} from 'src/constants';
 import {
 	getSupportedBitrates,
-	listBitrateAvailability,
-	type BitrateAvailabilityEntry,
+	resolveBitrateOffer,
+	type BitrateOffer,
+	type EncoderVerdict,
 } from 'src/audio/AudioCapabilityDetector';
 import { at } from '../helpers/assertions';
 import { tick } from '../helpers/async';
@@ -26,17 +34,17 @@ jest.mock('obsidian', () =>
 );
 
 // The floors themselves are the format registry's business and are pinned in
-// its own suite; here the detector is a stand-in so the builder can be asked
-// what it passes on and what it does with the answer.
-jest.mock('src/audio/AudioCapabilityDetector', () => ({
-	getSupportedBitrates: jest
-		.fn()
-		.mockReturnValue([64000, 96000, 128000, 192000]),
-	listBitrateAvailability: jest.fn().mockResolvedValue([]),
-}));
+// its own suite; here the detector is the shared double so the builder can be
+// asked what it passes on and what it does with the answer.
+jest.mock('src/audio/AudioCapabilityDetector', () =>
+	require('../mocks/modules/audioCapabilityDetector'),
+);
 
 describe('dialog setting builders', () => {
 	let containerEl: HTMLElement;
+
+	/** The bitrates the detector double offers, in the order it offers them. */
+	const OFFERED = [64000, 96000, 128000, 192000];
 
 	beforeEach(() => {
 		capturedSettings.length = 0;
@@ -46,7 +54,11 @@ describe('dialog setting builders', () => {
 		jest.mocked(getSupportedBitrates).mockReturnValue([
 			64000, 96000, 128000, 192000,
 		]);
-		jest.mocked(listBitrateAvailability).mockResolvedValue([]);
+		jest.mocked(resolveBitrateOffer).mockResolvedValue({
+			bitrates: [...OFFERED],
+			encoder: 'unavailable',
+			sampleRate: DEFAULT_SAMPLE_RATE,
+		});
 	});
 
 	/**
@@ -57,21 +69,20 @@ describe('dialog setting builders', () => {
 		return at(capturedSettings, 0);
 	}
 
-	/** The bitrates the detector double offers, in the order it offers them. */
-	const OFFERED = [64000, 96000, 128000, 192000];
-
 	/**
-	 * Scripts the encoder probe's answer for those bitrates.
-	 * @param available - Whether each offered bitrate is accepted, in order
-	 * @returns The entries the probe will resolve with
+	 * Scripts what the encoder question resolves to.
+	 * @param bitrates - The rates the row should end up offering
+	 * @param encoder - What this device's encoder said about them
 	 */
-	function probeAnswers(available: boolean[]): BitrateAvailabilityEntry[] {
-		const entries = OFFERED.map((bitrate, index) => ({
-			bitrate,
-			available: available[index] ?? false,
-		}));
-		jest.mocked(listBitrateAvailability).mockResolvedValue(entries);
-		return entries;
+	function encoderOffers(
+		bitrates: number[],
+		encoder: EncoderVerdict = 'confirmed',
+	): void {
+		jest.mocked(resolveBitrateOffer).mockResolvedValue({
+			bitrates,
+			encoder,
+			sampleRate: DEFAULT_SAMPLE_RATE,
+		});
 	}
 
 	/**
@@ -119,14 +130,13 @@ describe('dialog setting builders', () => {
 			addBitrateSetting(containerEl, {
 				desc: 'Bitrate.',
 				format: FORMAT_MP3,
-				sampleRate: 44100,
 				initialBitrate: 128000,
 				onChange: jest.fn(),
 			});
 
 			expect(jest.mocked(getSupportedBitrates)).toHaveBeenCalledWith(
 				FORMAT_MP3,
-				44100,
+				DEFAULT_SAMPLE_RATE,
 			);
 		});
 
@@ -163,6 +173,14 @@ describe('dialog setting builders', () => {
 			expect(onChange).toHaveBeenCalledWith(128000);
 		});
 
+		it('hides itself for a lossless target', () => {
+			const bitrateRow = bitrateRowFor(FORMAT_FLAC);
+
+			expect(row().el.style.display).toBe('none');
+			bitrateRow.rebuild(FORMAT_WEBM);
+			expect(row().el.style.display).not.toBe('none');
+		});
+
 		it('hides itself for a target that takes no bitrate', () => {
 			const bitrateRow = bitrateRowFor();
 			expect(row().el.style.display).not.toBe('none');
@@ -172,26 +190,18 @@ describe('dialog setting builders', () => {
 			expect(row().el.style.display).toBe('none');
 		});
 
-		it('blocks a bitrate this device cannot encode', async () => {
-			probeAnswers([false, true, true, true]);
+		it('offers only the bitrates this device can encode', async () => {
+			// Narrowed, not dimmed. A native select keeps showing a disabled
+			// option it already sits on, so dimming left the row displaying a
+			// rate the encoder had just refused.
+			encoderOffers([96000, 128000, 192000]);
 
 			bitrateRowFor();
 			await tick();
 
 			expect(
-				(row().dropdownOptions ?? []).map((option) => option.disabled),
-			).toEqual([true, false, false, false]);
-		});
-
-		it('blocks nothing when the probe finds nothing available', async () => {
-			// What an environment without a WebCodecs AudioEncoder reports for
-			// every value. A row with no selectable option is worse than one
-			// offering a value the encoder may later decline.
-			probeAnswers([false, false, false, false]);
-
-			bitrateRowFor();
-			await tick();
-
+				(row().dropdownOptions ?? []).map((option) => option.value),
+			).toEqual(['96000', '128000', '192000']);
 			expect(
 				(row().dropdownOptions ?? []).every(
 					(option) => !option.disabled,
@@ -199,37 +209,114 @@ describe('dialog setting builders', () => {
 			).toBe(true);
 		});
 
-		it('leaves an option the probe said nothing about alone', async () => {
-			// The probe answers about the bitrates the format reaches, and a
-			// row rebuilt in the meantime can be showing more than those.
-			jest.mocked(listBitrateAvailability).mockResolvedValue([
-				{ bitrate: 64000, available: false },
-				{ bitrate: 96000, available: true },
-			]);
+		it('moves the selection onto a rate the encoder accepts', async () => {
+			const onChange = jest.fn();
+			encoderOffers([96000, 128000, 192000]);
+
+			const bitrateRow = bitrateRowFor(FORMAT_WEBM, 64000, onChange);
+			await tick();
+
+			expect(row().dropdownValue).toBe('96000');
+			expect(bitrateRow.value).toBe(96000);
+			expect(onChange).toHaveBeenCalledWith(96000);
+		});
+
+		it('leaves a selection the encoder accepts where it is', async () => {
+			const onChange = jest.fn();
+			encoderOffers([96000, 128000, 192000]);
+
+			const bitrateRow = bitrateRowFor(FORMAT_WEBM, 128000, onChange);
+			await tick();
+
+			expect(row().dropdownValue).toBe('128000');
+			expect(bitrateRow.value).toBe(128000);
+			expect(onChange).not.toHaveBeenCalled();
+		});
+
+		it('says which values the codec reaches before the encoder answers', () => {
+			bitrateRowFor(FORMAT_MP3);
+
+			expect(row().desc).toContain('Bitrate.');
+			expect(row().desc).toContain('kbps.');
+		});
+
+		it('says the encoder narrowed the list and where the low rates went', async () => {
+			// The Windows case: AAC takes 96 kbps upward, and the whole point
+			// of the low rates is a small speech file, so the row names the
+			// formats that still write them instead of stopping at a refusal.
+			encoderOffers([96000, 128000, 192000]);
 
 			bitrateRowFor();
 			await tick();
 
-			expect(
-				(row().dropdownOptions ?? []).map((option) => option.disabled),
-			).toEqual([true, false, false, false]);
-		});
-
-		it('leaves the list alone when the probe itself fails', async () => {
-			// A failed probe says nothing about the device, and the encoder
-			// still reports a refusal when the run reaches it.
-			jest.mocked(listBitrateAvailability).mockRejectedValue(
-				new Error('probe failed'),
+			expect(row().desc).toContain(
+				'The encoder on this device accepts only the values listed.',
 			);
+			expect(row().desc).toContain('use WebM or OGG');
+		});
+
+		it('says the encoder confirmed the list when it took every value', async () => {
+			encoderOffers([...OFFERED]);
+
+			bitrateRowFor();
+			await tick();
+
+			expect(row().desc).toContain(
+				'The encoder on this device accepts all of them.',
+			);
+		});
+
+		it('says there is no encoder to ask when there is none', async () => {
+			encoderOffers([...OFFERED], 'unavailable');
 
 			bitrateRowFor();
 			await tick();
 
 			expect(
-				(row().dropdownOptions ?? []).every(
-					(option) => !option.disabled,
-				),
-			).toBe(true);
+				(row().dropdownOptions ?? []).map((option) => option.value),
+			).toEqual(OFFERED.map(String));
+			expect(row().desc).toContain(
+				'There is no encoder on this device to confirm them.',
+			);
+		});
+
+		it('sends the user to the format when the encoder refused every rate', async () => {
+			// No bitrate would help, so the row keeps the codec's range to show
+			// and names what has to change instead.
+			encoderOffers([...OFFERED], 'refused');
+
+			bitrateRowFor();
+			await tick();
+
+			expect(row().desc).toContain('cannot write OPUS at 44.1 kHz.');
+			expect(row().desc).toContain('use WebM or OGG');
+		});
+
+		it('drops an answer overtaken by a later target', async () => {
+			// Two targets in flight at once: the answer for the one no longer
+			// on screen must not re-offer a list it was never asked about.
+			let settleWebm: (offer: BitrateOffer) => void = () => undefined;
+			jest.mocked(resolveBitrateOffer).mockReturnValueOnce(
+				new Promise((resolve) => {
+					settleWebm = resolve;
+				}),
+			);
+			const bitrateRow = bitrateRowFor();
+
+			jest.mocked(getSupportedBitrates).mockReturnValue([128000, 192000]);
+			encoderOffers([128000, 192000]);
+			bitrateRow.rebuild(FORMAT_MP3);
+			await tick();
+			settleWebm({
+				bitrates: [64000],
+				encoder: 'confirmed',
+				sampleRate: DEFAULT_SAMPLE_RATE,
+			});
+			await tick();
+
+			expect(
+				(row().dropdownOptions ?? []).map((option) => option.value),
+			).toEqual(['128000', '192000']);
 		});
 
 		it('hides itself for a target outside the registry', () => {
@@ -247,34 +334,43 @@ describe('dialog setting builders', () => {
 
 			expect(bitrateRowFor(FORMAT_WEBM, 111000).value).toBe(111000);
 		});
+	});
 
-		it('drops a probe answer overtaken by a later target', async () => {
-			// Two targets in flight at once: the answer for the one no longer
-			// on screen must not disable options it was never asked about.
-			let settleWebm: (
-				entries: BitrateAvailabilityEntry[],
-			) => void = () => undefined;
-			jest.mocked(listBitrateAvailability).mockReturnValueOnce(
-				new Promise((resolve) => {
-					settleWebm = resolve;
-				}),
+	describe('bitrateOfferNote', () => {
+		it('names the codec and the range it reaches', () => {
+			expect(bitrateOfferNote(FORMAT_MP3, 44100, null)).toBe(
+				'MP3 at 44.1 kHz reaches 64-192 kbps.',
 			);
-			const bitrateRow = bitrateRowFor();
+		});
 
-			probeAnswers([true, true, true, true]);
-			bitrateRow.rebuild(FORMAT_MP3);
-			await tick();
-			settleWebm([
-				{ bitrate: 64000, available: false },
-				{ bitrate: 96000, available: false },
-			]);
-			await tick();
+		it('falls back to the format id for a codec it does not know', () => {
+			// A hand-edited extension, or one from a newer version. The row
+			// still says which values it is offering and at what rate.
+			expect(bitrateOfferNote('aiff', 48000, null)).toContain(
+				'AIFF at 48 kHz reaches',
+			);
+		});
 
+		it('does not point elsewhere when the list kept its low end', () => {
+			// An encoder that drops the high end has taken nothing a speech
+			// recording wanted, so the Opus pointer would only be noise.
 			expect(
-				(row().dropdownOptions ?? []).every(
-					(option) => !option.disabled,
-				),
-			).toBe(true);
+				bitrateOfferNote(FORMAT_MP3, 44100, {
+					bitrates: [64000, 96000],
+					encoder: 'confirmed',
+					sampleRate: 44100,
+				}),
+			).not.toContain('use WebM or OGG');
+		});
+
+		it('says nothing when there is nothing on offer', () => {
+			expect(
+				bitrateOfferNote(FORMAT_MP3, 44100, {
+					bitrates: [],
+					encoder: 'confirmed',
+					sampleRate: 44100,
+				}),
+			).toBe('');
 		});
 	});
 

@@ -25,7 +25,10 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TrackAudioSource } from './AudioStreamHandler';
 import { normalizeChannelMode, type ChannelMode } from '../audio/downmix';
 import { clampSplitMinutes, sanitizePartSuffix } from './AudioSplitter';
-import { effectiveBitrate } from '../audio/AudioCapabilityDetector';
+import {
+	buildMimeType,
+	effectiveBitrate,
+} from '../audio/AudioCapabilityDetector';
 import {
 	getChunkFlushThresholdBytes,
 	isMidStreamSegmentFlushAllowed,
@@ -66,8 +69,22 @@ export interface CaptureSessionRequest {
 	readonly outputFormat: string;
 	/** Container the MediaRecorders produce, unused on the PCM path. */
 	readonly recorderFormat: string;
+	/**
+	 * MIME type the platform agreed to record that container as, unused on
+	 * the PCM path. Left out, the plain `audio/<format>` type is assumed,
+	 * which is what every session recorded before an M4A refusal used.
+	 */
+	readonly recorderMimeType?: string;
 	/** Whether this session captures raw PCM for WAV output. */
 	readonly isWavPcm: boolean;
+	/**
+	 * Bitrate already resolved against this device's encoder, when the caller
+	 * asked it. Only the encoder knows which rates a platform AAC codec
+	 * accepts, and that answer is asynchronous, so a caller that can wait for
+	 * it passes the result here. Left out, the format's own tables settle the
+	 * rate, which is everything a synchronous caller can know.
+	 */
+	readonly bitrate?: number;
 }
 
 /**
@@ -118,17 +135,21 @@ export function createCaptureSession(
 			: getChunkFlushThresholdBytes(),
 		isWavPcm: request.isWavPcm,
 		recorderFormat: request.recorderFormat,
+		recorderMimeType:
+			request.recorderMimeType ?? buildMimeType(request.recorderFormat),
 		outputFormat: request.outputFormat,
 		outputMode: settings.outputMode,
-		// Lifted to the output format's floor here, at the one point every
-		// recorder, merge and conversion of the session reads it from: a rate
-		// the codec cannot write would otherwise be raised silently by the
-		// encoder, leaving the file at a bitrate nothing announced.
-		bitrate: effectiveBitrate(
-			request.outputFormat,
-			settings.bitrate,
-			settings.sampleRate,
-		),
+		// Snapped onto the output format's own rates here, at the one point
+		// every recorder, merge and conversion of the session reads it from: a
+		// rate the codec cannot write would otherwise be raised silently by
+		// the encoder, leaving the file at a bitrate nothing announced.
+		bitrate:
+			request.bitrate ??
+			effectiveBitrate(
+				request.outputFormat,
+				settings.bitrate,
+				settings.sampleRate,
+			),
 		splitEnabled: requestedSplit && !autoSplitSkipped,
 		partMinutes: clampSplitMinutes(settings.splitChunkMinutes),
 		partSuffix: sanitizePartSuffix(settings.splitPartSuffix),
@@ -144,6 +165,7 @@ export const IDLE_CAPTURE_SESSION: CaptureSession = Object.freeze({
 	chunkRotationBytes: null,
 	isWavPcm: false,
 	recorderFormat: FORMAT_WEBM,
+	recorderMimeType: buildMimeType(FORMAT_WEBM),
 	outputFormat: FORMAT_WEBM,
 	outputMode: 'multiple' as const,
 	bitrate: 0,

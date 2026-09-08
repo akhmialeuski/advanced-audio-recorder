@@ -7,7 +7,13 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioStreamError } from '../errors';
 import { delay } from '../utils/TimeUtils';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
-import { normalizeChannelMode, type ChannelMode } from '../audio/downmix';
+import {
+	channelCountFor,
+	normalizeChannelMode,
+	type ChannelMode,
+} from '../audio/downmix';
+import type { RecordingEncoding } from '../audio/AudioCapabilityDetector';
+import { offlineEncodeSampleRate } from '../audio/AudioFormatConverter';
 import {
 	isDeviceSelectionSupported,
 	isMultiTrackCaptureSupported,
@@ -312,6 +318,43 @@ export async function getAudioStreams(
 		processing,
 	);
 	return { streams: [stream], trackOrder: [] };
+}
+
+/**
+ * What a session recorded under these settings will hand the encoder, as far
+ * as the settings can say: the requested sample rate, and the layout the
+ * finished file will have. A single track has the layout its channel mode
+ * gives it; a merged multi-track file takes the widest of its tracks and goes
+ * stereo for a panned one, which is the rule the mixer applies. The rate is
+ * the one an offline encode runs at here, which is the device's own rather
+ * than the requested one (see {@link offlineEncodeSampleRate}).
+ * @param settings - Plugin settings
+ * @param tracks - The session's tracks. A manager passes the ones it opened
+ *   streams for, captured before permission was asked, so an edit made while
+ *   it was pending cannot describe a different session; the tab reads them
+ *   from the settings it is showing.
+ * @returns Rate, layout, and whether the tracks are mixed into one file
+ */
+export function recordingEncodingFor(
+	settings: AudioRecorderSettings,
+	tracks: readonly TrackAudioSource[] = isMultiTrackSessionEnabled(settings)
+		? getOrderedTrackSources(settings)
+		: [],
+): RecordingEncoding {
+	const modes =
+		tracks.length > 0
+			? tracks.map((source) => source.channelMode)
+			: [normalizeChannelMode(settings.recordingChannels)];
+	const mergesTracks = settings.outputMode === 'single' && tracks.length > 1;
+	const panned = tracks.some((source) => (source.pan ?? 0) !== 0);
+	return {
+		sampleRate: offlineEncodeSampleRate(settings.sampleRate),
+		numberOfChannels:
+			mergesTracks && panned
+				? 2
+				: Math.max(...modes.map((mode) => channelCountFor(mode))),
+		mergesTracks,
+	};
 }
 
 /**

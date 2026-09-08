@@ -106,7 +106,7 @@ export function buildSettingsDefinitions(
 			},
 		]),
 		audioInputGroup(ctx.settings, ctx.devices, ctx.sampleRates),
-		outputFormatGroup(ctx.outputFormat),
+		outputFormatGroup(ctx.outputFormat, ctx.settings),
 		fileStorageGroup(ctx.settings),
 		...sectionItems([
 			audioSplittingPage(ctx.settings),

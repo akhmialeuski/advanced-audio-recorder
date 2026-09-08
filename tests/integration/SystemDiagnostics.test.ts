@@ -83,6 +83,23 @@ function withUserAgent(value: string): void {
 
 // collectPluginSettings
 
+/** The layout the diagnostics cases ask the encoder about. */
+const STEREO_CHANNELS = 2;
+
+/**
+ * Collects the audio capabilities the way the diagnostics report does, for the
+ * cases that differ only in what they then read off the result.
+ * @returns The capabilities descriptor
+ */
+async function collectCapabilities(): Promise<
+	Awaited<ReturnType<typeof SystemDiagnostics.collectAudioCapabilities>>
+> {
+	return SystemDiagnostics.collectAudioCapabilities(
+		DEFAULT_SAMPLE_RATE,
+		STEREO_CHANNELS,
+	);
+}
+
 describe('SystemDiagnostics.collectPluginSettings', () => {
 	it('serializes all scalar settings fields', () => {
 		const settings = makeSettings();
@@ -364,20 +381,37 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 		mockDetectCodecSupport.mockReturnValue([]);
 	});
 
-	it('maps detectCapabilities result to capabilities object', async () => {
+	/**
+	 * Scripts what the detector reports, for the cases that care about one field
+	 * of it. The defaults are the empty environment; a case names only what it is
+	 * about.
+	 * @param overrides - The fields this case is asserting on
+	 */
+	function stubCapabilities(
+		overrides: {
+			supportedFormats?: string[];
+			supportedSampleRates?: number[];
+			supportedBitrates?: number[];
+		} = {},
+	): void {
 		mockDetectCapabilities.mockResolvedValueOnce({
-			supportedFormats: [FORMAT_WEBM, FORMAT_OGG],
-			supportedSampleRates: [DEFAULT_SAMPLE_RATE, 48000],
-			supportedBitrates: [DEFAULT_BITRATE, 256000],
+			supportedFormats: overrides.supportedFormats ?? [],
+			supportedSampleRates: overrides.supportedSampleRates ?? [],
+			supportedBitrates: overrides.supportedBitrates ?? [],
 			defaultFormat: FORMAT_WEBM,
 			defaultSampleRate: DEFAULT_SAMPLE_RATE,
 			defaultBitrate: DEFAULT_BITRATE,
 		});
+	}
 
-		const result =
-			await SystemDiagnostics.collectAudioCapabilities(
-				DEFAULT_SAMPLE_RATE,
-			);
+	it('maps detectCapabilities result to capabilities object', async () => {
+		stubCapabilities({
+			supportedFormats: [FORMAT_WEBM, FORMAT_OGG],
+			supportedSampleRates: [DEFAULT_SAMPLE_RATE, 48000],
+			supportedBitrates: [DEFAULT_BITRATE, 256000],
+		});
+
+		const result = await collectCapabilities();
 
 		expect(result.supportedFormats).toEqual([FORMAT_WEBM, FORMAT_OGG]);
 		expect(result.supportedSampleRates).toEqual([
@@ -398,33 +432,20 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 			(_format: string, quality?: { bitrate?: number }) =>
 				Promise.resolve(quality?.bitrate === 320000),
 		);
-		mockDetectCapabilities.mockResolvedValueOnce({
+		stubCapabilities({
 			supportedFormats: [FORMAT_WEBM],
 			supportedSampleRates: [DEFAULT_SAMPLE_RATE],
 			supportedBitrates: [DEFAULT_BITRATE],
-			defaultFormat: FORMAT_WEBM,
-			defaultSampleRate: DEFAULT_SAMPLE_RATE,
-			defaultBitrate: DEFAULT_BITRATE,
 		});
 
-		const result =
-			await SystemDiagnostics.collectAudioCapabilities(
-				DEFAULT_SAMPLE_RATE,
-			);
+		const result = await collectCapabilities();
 
 		expect(result.reachableBitrates[FORMAT_WEBM]).toEqual([320000]);
 		expect(result.reachableBitrates).not.toHaveProperty(FORMAT_WAV);
 	});
 
 	it('includes codecSupport from detectCodecSupport()', async () => {
-		mockDetectCapabilities.mockResolvedValueOnce({
-			supportedFormats: [],
-			supportedSampleRates: [],
-			supportedBitrates: [],
-			defaultFormat: FORMAT_WEBM,
-			defaultSampleRate: DEFAULT_SAMPLE_RATE,
-			defaultBitrate: DEFAULT_BITRATE,
-		});
+		stubCapabilities();
 		const fakeCodecSupport = [
 			{
 				mimeType: 'audio/webm',
@@ -440,29 +461,16 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 		];
 		mockDetectCodecSupport.mockReturnValueOnce(fakeCodecSupport);
 
-		const result =
-			await SystemDiagnostics.collectAudioCapabilities(
-				DEFAULT_SAMPLE_RATE,
-			);
+		const result = await collectCapabilities();
 
 		expect(result.codecSupport).toEqual(fakeCodecSupport);
 	});
 
 	it('reports mediaRecorderAvailable as true when MediaRecorder exists', async () => {
-		mockDetectCapabilities.mockResolvedValueOnce({
-			supportedFormats: [],
-			supportedSampleRates: [],
-			supportedBitrates: [],
-			defaultFormat: FORMAT_WEBM,
-			defaultSampleRate: DEFAULT_SAMPLE_RATE,
-			defaultBitrate: DEFAULT_BITRATE,
-		});
+		stubCapabilities();
 
 		// MediaRecorder appears in jsdom
-		const result =
-			await SystemDiagnostics.collectAudioCapabilities(
-				DEFAULT_SAMPLE_RATE,
-			);
+		const result = await collectCapabilities();
 
 		expect(result.mediaRecorderAvailable).toBe(
 			typeof MediaRecorder !== 'undefined',
@@ -470,19 +478,9 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 	});
 
 	it('reports getUserMediaAvailable based on navigator.mediaDevices', async () => {
-		mockDetectCapabilities.mockResolvedValueOnce({
-			supportedFormats: [],
-			supportedSampleRates: [],
-			supportedBitrates: [],
-			defaultFormat: FORMAT_WEBM,
-			defaultSampleRate: DEFAULT_SAMPLE_RATE,
-			defaultBitrate: DEFAULT_BITRATE,
-		});
+		stubCapabilities();
 
-		const result =
-			await SystemDiagnostics.collectAudioCapabilities(
-				DEFAULT_SAMPLE_RATE,
-			);
+		const result = await collectCapabilities();
 
 		const expected =
 			typeof navigator.mediaDevices !== 'undefined' &&

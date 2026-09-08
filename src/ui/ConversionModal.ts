@@ -10,6 +10,7 @@ import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
 	CHANNEL_MODE_SOURCE,
 	CHANNEL_MODES,
+	channelCountFor,
 	isMonoChannelMode,
 	normalizeChannelMode,
 	type ChannelMode,
@@ -137,6 +138,9 @@ export class ConversionModal extends PluginModal {
 		this.bitrateRow = addBitrateSetting(contentEl, {
 			desc: 'Audio bitrate for compressed formats. The lowest values are a mono speech mode and cost real quality on music or stereo.',
 			format: this.targetFormat,
+			// A mono conversion writes one channel, and an encoder accepts a
+			// different set of rates for each layout.
+			numberOfChannels: channelCountFor(this.channelMode),
 			initialBitrate: this.bitrate,
 			onChange: (bitrate) => {
 				this.bitrate = bitrate;
@@ -214,9 +218,13 @@ export class ConversionModal extends PluginModal {
 			this.targetFormat = first;
 		}
 		dropdown.setValue(this.targetFormat);
-		// The channel mode can settle on a different target, and the
-		// bitrates that target reaches are not the ones on offer now.
-		this.bitrateRow?.rebuild(this.targetFormat);
+		// The channel mode can settle on a different target, and neither the
+		// bitrates that target reaches nor the layout the encoder is asked
+		// about are the ones on offer now.
+		this.bitrateRow?.rebuild(
+			this.targetFormat,
+			channelCountFor(this.channelMode),
+		);
 	}
 
 	override onClose(): void {

@@ -32,6 +32,7 @@ function requestWith(overrides: {
 	sampleRate?: number;
 	outputFormat: string;
 	recorderFormat?: string;
+	resolvedBitrate?: number;
 }): CaptureSessionRequest {
 	return {
 		settings: {
@@ -44,6 +45,9 @@ function requestWith(overrides: {
 		outputFormat: overrides.outputFormat,
 		recorderFormat: overrides.recorderFormat ?? overrides.outputFormat,
 		isWavPcm: false,
+		...(overrides.resolvedBitrate === undefined
+			? {}
+			: { bitrate: overrides.resolvedBitrate }),
 	};
 }
 
@@ -58,6 +62,23 @@ describe('createCaptureSession', () => {
 		);
 
 		expect(session.bitrate).toBe(24000);
+	});
+
+	it('takes the rate the caller already resolved against the encoder', () => {
+		// Only the platform encoder knows which rates it accepts, and asking
+		// it is asynchronous, so the manager resolves the rate before the
+		// session is built. A session that re-derived it from the settings
+		// would put back the value the encoder had just refused, and the
+		// recording would fail while it was being saved.
+		const { session } = createCaptureSession(
+			requestWith({
+				bitrate: 24000,
+				outputFormat: FORMAT_WEBM,
+				resolvedBitrate: 96000,
+			}),
+		);
+
+		expect(session.bitrate).toBe(96000);
 	});
 
 	it('lifts a bitrate the output format has no table for', () => {

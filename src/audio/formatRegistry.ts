@@ -86,6 +86,13 @@ export interface AudioFormatDescriptor {
 	/** Uncompressed PCM: a bitrate option is invalid for the encoder. */
 	readonly isPcm: boolean;
 	/**
+	 * Writes the audio without loss, so a bitrate is not a choice but a
+	 * result: FLAC takes the size the signal compresses to and ignores a
+	 * requested rate, as PCM does. A bitrate row for such a format describes
+	 * nothing the file has.
+	 */
+	readonly lossless: boolean;
+	/**
 	 * Lowest bitrate this format's codec encodes at the given sample rate, in
 	 * bits per second. Zero means the format declares no floor of its own,
 	 * which covers both a format that takes no bitrate and one whose floor the
@@ -128,6 +135,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'pcm-s16',
 		createOutputFormat: (): OutputFormat => new WavOutputFormat(),
 		isPcm: true,
+		lossless: true,
 		minBitrate: noBitrateFloor,
 		requiresWebCodecs: false,
 		offlineOnly: false,
@@ -141,6 +149,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'opus',
 		createOutputFormat: (): OutputFormat => new WebMOutputFormat(),
 		isPcm: false,
+		lossless: false,
 		minBitrate: opusBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: false,
@@ -154,6 +163,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'opus',
 		createOutputFormat: (): OutputFormat => new OggOutputFormat(),
 		isPcm: false,
+		lossless: false,
 		minBitrate: opusBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: false,
@@ -167,6 +177,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'mp3',
 		createOutputFormat: (): OutputFormat => new Mp3OutputFormat(),
 		isPcm: false,
+		lossless: false,
 		minBitrate: mp3BitrateFloor,
 		requiresWebCodecs: false,
 		offlineOnly: true,
@@ -180,6 +191,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'aac',
 		createOutputFormat: (): OutputFormat => new Mp4OutputFormat(),
 		isPcm: false,
+		lossless: false,
 		minBitrate: noBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: false,
@@ -193,6 +205,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'aac',
 		createOutputFormat: (): OutputFormat => new Mp4OutputFormat(),
 		isPcm: false,
+		lossless: false,
 		minBitrate: noBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: false,
@@ -211,6 +224,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'flac',
 		createOutputFormat: (): OutputFormat => new FlacOutputFormat(),
 		isPcm: false,
+		lossless: true,
 		minBitrate: noBitrateFloor,
 		requiresWebCodecs: false,
 		offlineOnly: true,
@@ -224,6 +238,7 @@ export const FORMAT_REGISTRY = {
 		codec: 'aac',
 		createOutputFormat: (): OutputFormat => new Mp4OutputFormat(),
 		isPcm: false,
+		lossless: false,
 		minBitrate: noBitrateFloor,
 		requiresWebCodecs: true,
 		offlineOnly: true,

@@ -38,10 +38,9 @@ jest.mock('src/audio/AudioEncoder', () => ({
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/mp3' })),
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
 }));
-jest.mock('src/audio/AudioCapabilityDetector', () => ({
-	getSupportedBitrates: jest.fn().mockReturnValue([128000, 192000]),
-	getSupportedSampleRates: jest.fn().mockReturnValue([44100, 48000]),
-}));
+jest.mock('src/audio/AudioCapabilityDetector', () =>
+	require('../mocks/modules/audioCapabilityDetector'),
+);
 
 const AUDIO = 'Recordings/meeting.wav';
 const NOTE = 'Notes/meeting.md';

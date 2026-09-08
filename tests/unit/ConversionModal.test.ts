@@ -59,15 +59,9 @@ jest.mock('src/audio/AudioEncoder', () => ({
 }));
 
 // Mock AudioCapabilityDetector
-jest.mock('src/audio/AudioCapabilityDetector', () => ({
-	getSupportedBitrates: jest
-		.fn()
-		.mockReturnValue([64000, 96000, 128000, 192000, 256000, 320000]),
-	getSupportedSampleRates: jest
-		.fn()
-		.mockReturnValue([8000, 16000, 22050, 44100, 48000]),
-	listBitrateAvailability: jest.fn().mockResolvedValue([]),
-}));
+jest.mock('src/audio/AudioCapabilityDetector', () =>
+	require('../mocks/modules/audioCapabilityDetector'),
+);
 
 // Real settings rather than a two-field cast: the dialog seeds format,
 // bitrate, and link action from them, so a partial fixture only type-checks

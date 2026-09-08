@@ -18,7 +18,6 @@ jest.mock('src/audio/AudioEncoder', () => ({
 
 import {
 	DEFAULT_BITRATE,
-	DEFAULT_SAMPLE_RATE,
 	FORMAT_FLAC,
 	FORMAT_MP3,
 	FORMAT_WAV,
@@ -39,6 +38,9 @@ import {
 	resolveEffectiveOutputFormat,
 } from 'src/audio/AudioCapabilityDetector';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
+
+/** The layout the cases below ask the encoder about. */
+const STEREO_CHANNELS = 2;
 
 describe('AudioCapabilityDetector', () => {
 	describe('buildMimeType', () => {
@@ -232,21 +234,11 @@ describe('AudioCapabilityDetector', () => {
 		});
 	});
 
-	describe('the sample rate these two assume when not told one', () => {
+	describe('the sample rate effectiveBitrate assumes when not told one', () => {
 		it('floors a bitrate at the plugin default rate', () => {
 			// DEFAULT_SAMPLE_RATE is a MPEG-1 rate, the conservative
 			// assumption for a caller that does not know its source's own.
 			expect(effectiveBitrate(FORMAT_MP3, 24000)).toBe(32000);
-		});
-
-		it('probes at the plugin default rate', async () => {
-			jest.mocked(probeOfflineEncodingSupport).mockResolvedValue(true);
-
-			const entries = await listBitrateAvailability(FORMAT_MP3);
-
-			expect(entries.map((entry) => entry.bitrate)).toEqual(
-				getSupportedBitrates(FORMAT_MP3, DEFAULT_SAMPLE_RATE),
-			);
 		});
 
 		afterEach(() => {
@@ -267,13 +259,47 @@ describe('AudioCapabilityDetector', () => {
 			);
 		});
 
+		it('asks about the channel layout it was given', async () => {
+			// The defect this exists to stop: mediabunny defaults the probe to
+			// two channels while a downmixed recording encodes with one, and
+			// for AAC it derives the codec string from that count. Asking
+			// about the wrong layout made the row promise a rate the encoder
+			// then refused once the recording was over.
+			jest.mocked(probeOfflineEncodingSupport).mockResolvedValue(true);
+
+			await listBitrateAvailability(FORMAT_MP3, 44100, 1);
+
+			const layouts = jest
+				.mocked(probeOfflineEncodingSupport)
+				.mock.calls.map((call) => call[1]?.numberOfChannels);
+			expect(new Set(layouts)).toEqual(new Set([1]));
+		});
+
+		it('reports a rate the given layout is refused for as unavailable', async () => {
+			// The stub accepts stereo and an unstated layout alike, which is
+			// what mediabunny does with a count nobody passed, so a probe that
+			// failed to state the mono layout would call every rate available.
+			jest.mocked(probeOfflineEncodingSupport).mockImplementation(
+				(_format, quality) =>
+					Promise.resolve((quality?.numberOfChannels ?? 2) === 2),
+			);
+
+			const entries = await listBitrateAvailability(FORMAT_MP3, 44100, 1);
+
+			expect(entries.every((entry) => !entry.available)).toBe(true);
+		});
+
 		it('probes each offered bitrate and reports its own answer', async () => {
 			jest.mocked(probeOfflineEncodingSupport).mockImplementation(
 				(_format, quality) =>
 					Promise.resolve((quality?.bitrate ?? 0) >= 64000),
 			);
 
-			const entries = await listBitrateAvailability(FORMAT_WEBM, 48000);
+			const entries = await listBitrateAvailability(
+				FORMAT_WEBM,
+				48000,
+				STEREO_CHANNELS,
+			);
 
 			expect(
 				entries
@@ -285,7 +311,11 @@ describe('AudioCapabilityDetector', () => {
 		it('asks only about the bitrates the format reaches', async () => {
 			jest.mocked(probeOfflineEncodingSupport).mockResolvedValue(true);
 
-			const entries = await listBitrateAvailability(FORMAT_MP3, 44100);
+			const entries = await listBitrateAvailability(
+				FORMAT_MP3,
+				44100,
+				STEREO_CHANNELS,
+			);
 
 			expect(entries.map((entry) => entry.bitrate)).toEqual(
 				getSupportedBitrates(FORMAT_MP3, 44100),

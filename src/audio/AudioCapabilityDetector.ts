@@ -13,7 +13,10 @@ import {
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
 } from '../constants';
-import { probeOfflineEncodingSupport } from './AudioEncoder';
+import {
+	isOfflineEncodingSupported,
+	probeOfflineEncodingSupport,
+} from './AudioEncoder';
 import { isPcmWavCaptureSupported } from '../platform/capabilities';
 import {
 	AUDIO_FORMAT_IDS,
@@ -77,6 +80,31 @@ export interface CodecSupportEntry {
 	supported: boolean;
 	/** Per-codec variant probing results. */
 	withCodecs: CodecVariantEntry[];
+}
+
+/**
+ * The audio an encoder will be handed, as far as that decides what it accepts.
+ * A platform encoder answers per sample rate and per channel layout, and for
+ * AAC mediabunny even picks the codec profile from the two, so a capability
+ * question asked without them is asked about a different file.
+ */
+export interface EncodingDimensions {
+	readonly sampleRate: number;
+	readonly numberOfChannels: number;
+}
+
+/**
+ * What a recording session will hand the encoder, for validating a format
+ * against it before the first sample is captured.
+ */
+export interface RecordingEncoding extends EncodingDimensions {
+	/**
+	 * Whether the session mixes its tracks into one file. A merged file is
+	 * rendered and then encoded by mediabunny even for a format MediaRecorder
+	 * records directly, so the direct-recording shortcut does not apply and
+	 * the offline encoder has to be asked.
+	 */
+	readonly mergesTracks: boolean;
 }
 
 /**
@@ -207,10 +235,38 @@ export function getSupportedBitrates(
 }
 
 /**
- * The bitrate a format really encodes at: the configured one, lifted to the
- * format's floor.
+ * The offered bitrate closest to a requested one, preferring the higher of two
+ * equally distant ones so a tie never costs quality.
  *
- * Clamped rather than read straight through, for the reason
+ * Exported because snapping happens at two moments that must agree: here, when
+ * a stored value is normalised against the format's own tables, and in the
+ * bitrate row, when the encoder's answer moves the selection off a rate it
+ * refused.
+ * @param offered - Candidate bitrates in ascending order
+ * @param requested - The bitrate asked for
+ * @returns The closest candidate, or the requested value when none is offered
+ */
+export function closestBitrate(
+	offered: readonly number[],
+	requested: number,
+): number {
+	return offered.reduce(
+		(closest, bps) =>
+			Math.abs(bps - requested) <= Math.abs(closest - requested)
+				? bps
+				: closest,
+		// Seeding with the first candidate keeps the comparison honest and
+		// makes an empty list answer with the value asked for, so no caller
+		// has to test the list before handing it over.
+		offered[0] ?? requested,
+	);
+}
+
+/**
+ * The bitrate a format really encodes at: the configured one, snapped onto the
+ * rates offered for that format and sample rate.
+ *
+ * Normalised rather than read straight through, for the reason
  * localWhisperTimeoutMs is: the row that offers only reachable values is not
  * the only way a value reaches the field. A data.json edited by hand, synced
  * from an install on another format, or simply left behind by a format change
@@ -221,6 +277,11 @@ export function getSupportedBitrates(
  * refuses it. LAME lifts a rate its table does not define to the nearest one
  * that it does, without a word, so the file ends up at a bitrate the
  * interface never mentioned.
+ *
+ * Snapping to the offered list rather than only lifting to the floor is what
+ * keeps one answer everywhere: the dropdown, the output summary and the
+ * session snapshot all read this, and a value between two offered rates would
+ * otherwise be shown as one thing by the row and encoded as another.
  * @param format - Format the file will be written in
  * @param bitrate - The configured bitrate in bps
  * @param sampleRate - Rate the encoder will write at
@@ -233,10 +294,7 @@ export function effectiveBitrate(
 ): number {
 	const requested =
 		Number.isFinite(bitrate) && bitrate > 0 ? bitrate : DEFAULT_BITRATE;
-	return Math.max(
-		requested,
-		getFormatDescriptor(format)?.minBitrate(sampleRate) ?? 0,
-	);
+	return closestBitrate(getSupportedBitrates(format, sampleRate), requested);
 }
 
 /**
@@ -245,10 +303,15 @@ export function effectiveBitrate(
  * path really needs: a recordable intermediate AND a probed working
  * offline encoder for the target format.
  * @param format - Audio format to validate
+ * @param encoding - What the session will hand the encoder. Without it only
+ *   the codec is asked about, which is all the settings search and the
+ *   diagnostics summary need; a session about to record passes it, because a
+ *   codec the device has is not a file the device can write at every rate.
  * @returns Validation result with diagnostic info
  */
 export async function validateRecordingCapability(
 	format: string,
+	encoding?: RecordingEncoding,
 ): Promise<ValidationResult> {
 	if (format === FORMAT_WAV) {
 		// WAV records via direct PCM capture where the platform allows it
@@ -268,7 +331,9 @@ export async function validateRecordingCapability(
 		return { valid: true, reason: '' };
 	}
 
-	if (directRecordingMimeType(format) !== null) {
+	// A merged session mixes and then encodes offline whatever MediaRecorder
+	// could have produced directly, so for it the direct path answers nothing.
+	if (!encoding?.mergesTracks && directRecordingMimeType(format) !== null) {
 		return { valid: true, reason: '' };
 	}
 
@@ -285,15 +350,27 @@ export async function validateRecordingCapability(
 			)} is supported on this device.`,
 		};
 	}
-	if (await probeOfflineEncodingSupport(format)) {
+	const dimensions = encoding
+		? {
+				sampleRate: encoding.sampleRate,
+				numberOfChannels: encoding.numberOfChannels,
+			}
+		: undefined;
+	if (await probeOfflineEncodingSupport(format, dimensions)) {
 		return { valid: true, reason: '' };
 	}
 
 	return {
 		valid: false,
-		reason: `The format "${format}" (${buildMimeType(
-			format,
-		)}) cannot be recorded or encoded on this device.`,
+		reason: encoding
+			? `The format "${format}" cannot be encoded at ${String(
+					encoding.sampleRate / 1000,
+				)} kHz with ${String(encoding.numberOfChannels)} channel${
+					encoding.numberOfChannels === 1 ? '' : 's'
+				} on this device.`
+			: `The format "${format}" (${buildMimeType(
+					format,
+				)}) cannot be recorded or encoded on this device.`,
 	};
 }
 
@@ -305,6 +382,8 @@ export interface FormatAvailabilityEntry {
 	format: AudioFormatId;
 	/** Whether the format can be recorded here (directly or offline). */
 	available: boolean;
+	/** Why it cannot be, empty when it can. */
+	reason: string;
 	/** Whether MediaRecorder records it directly (no offline encoding). */
 	direct: boolean;
 }
@@ -317,14 +396,16 @@ export interface FormatAvailabilityEntry {
  * support is probed for real.
  * @returns One availability entry per registry format
  */
-export async function listFormatAvailability(): Promise<
-	FormatAvailabilityEntry[]
-> {
+export async function listFormatAvailability(
+	encoding?: RecordingEncoding,
+): Promise<FormatAvailabilityEntry[]> {
 	const entries: FormatAvailabilityEntry[] = [];
 	for (const format of AUDIO_FORMAT_IDS) {
+		const validation = await validateRecordingCapability(format, encoding);
 		entries.push({
 			format,
-			available: (await validateRecordingCapability(format)).valid,
+			available: validation.valid,
+			reason: validation.reason,
 			direct: directRecordingMimeType(format) !== null,
 		});
 	}
@@ -348,30 +429,193 @@ export interface BitrateAvailabilityEntry {
  * Windows, macOS and iOS and no declaration can stand in for it.
  *
  * It says nothing new about MP3 or FLAC, whose bundled encoders report
- * support without reading the bitrate at all, and it cannot answer where the
- * WebCodecs AudioEncoder is missing, when every entry comes back unavailable.
- * A caller that gets nothing available has learnt nothing and should leave
- * the choice open; the registry's declared floor is the claim that holds in
- * all three cases.
+ * support without reading the bitrate at all. Where the WebCodecs
+ * AudioEncoder is missing it cannot answer either, and every entry comes back
+ * unavailable; a caller must ask {@link isOfflineEncodingSupported} first
+ * rather than read that silence as a refusal.
+ *
+ * The channel layout is stated rather than left to mediabunny's own default of
+ * two, because the encoder answers a different question for each: a platform
+ * AAC encoder accepts its own set of rates per layout, and mediabunny builds
+ * the codec string itself from the count, so at 24 kHz and below two channels
+ * ask about HE-AAC v2 while one asks about HE-AAC v1.
  * @param format - Target audio format
  * @param sampleRate - Rate the encoder will write at
+ * @param numberOfChannels - Layout the output will have, from
+ *   {@link channelCountFor}. Stated rather than defaulted: a default here
+ *   would be mediabunny's own, which is what made the probe describe a file
+ *   nobody was recording.
  * @returns One entry per offered bitrate
  */
 export async function listBitrateAvailability(
 	format: string,
-	sampleRate: number = DEFAULT_SAMPLE_RATE,
+	sampleRate: number,
+	numberOfChannels: number,
 ): Promise<BitrateAvailabilityEntry[]> {
 	const entries: BitrateAvailabilityEntry[] = [];
 	for (const bitrate of getSupportedBitrates(format, sampleRate)) {
 		entries.push({
 			bitrate,
 			available: await probeOfflineEncodingSupport(format, {
+				numberOfChannels,
 				sampleRate,
 				bitrate,
 			}),
 		});
 	}
 	return entries;
+}
+
+/**
+ * What this device's own encoder said about a bitrate list. `confirmed`: it
+ * accepted the values listed. `unavailable`: there was no encoder to ask, so
+ * the codec's declared range is offered unverified. `refused`: it was asked
+ * and accepted none of them, which is not a missing answer but a real one -
+ * the format cannot be written at this sample rate and layout here at all,
+ * and it is the format, not the bitrate, that has to change.
+ */
+export type EncoderVerdict = 'confirmed' | 'unavailable' | 'refused';
+
+/**
+ * The bitrates a format can be written at here, and where that answer came
+ * from.
+ */
+export interface BitrateOffer {
+	/** Bitrates to offer, in bps, ascending and never empty. */
+	readonly bitrates: number[];
+	/** What the encoder said about them. */
+	readonly encoder: EncoderVerdict;
+	/**
+	 * The sample rate the answer holds for. Usually the one asked about; the
+	 * reference rate when the encoder refused everything at the asked one and
+	 * was asked again there.
+	 */
+	readonly sampleRate: number;
+}
+
+/**
+ * A sample rate every platform AAC encoder accepts, and the one mediabunny
+ * asks about AAC-LC at rather than HE-AAC. When an encoder refuses every
+ * bitrate at the rate a session asks about, the question is repeated here, so
+ * what it accepts at all still reaches the row: a Windows AAC encoder asked at
+ * 22.05 kHz refused the lot and let 24 kbps stay selectable, and the capture
+ * then silently came out at 96.
+ */
+const ENCODER_REFERENCE_RATE = 48000;
+
+/**
+ * The bitrates to offer for a format: the codec's own range, narrowed to what
+ * this device's encoder accepts when it accepts anything at all.
+ *
+ * An encoder that accepts none of them has not narrowed the list, it has
+ * ruled the format out at this sample rate and layout. Chromium refuses every
+ * AAC rate at 24 kHz and below, because mediabunny asks it about HE-AAC
+ * there and only AAC-LC can be encoded. There is no bitrate to move to, so
+ * the declared range is kept for the row to show and the verdict says the
+ * format itself is what has to change; the format check at recording start
+ * asks the same question and falls back before any audio is captured.
+ * @param format - Target audio format
+ * @param sampleRate - Rate the encoder will write at
+ * @param numberOfChannels - Layout the output will have
+ * @returns The list to offer and whether the encoder confirmed it
+ */
+export async function resolveBitrateOffer(
+	format: string,
+	sampleRate: number,
+	numberOfChannels: number,
+): Promise<BitrateOffer> {
+	const declared = getSupportedBitrates(format, sampleRate);
+	if (!isOfflineEncodingSupported(format)) {
+		return { bitrates: declared, encoder: 'unavailable', sampleRate };
+	}
+	// probeOfflineEncodingSupport is the error boundary: a registration or
+	// probe that throws comes back as "unavailable", so a failed probe reaches
+	// here as an empty list and is answered the same way as a refusal.
+	const accepted = await acceptedBitrates(
+		format,
+		sampleRate,
+		numberOfChannels,
+	);
+	if (accepted.length > 0) {
+		return { bitrates: accepted, encoder: 'confirmed', sampleRate };
+	}
+	// Refused wholesale at this rate. What the encoder accepts at all is still
+	// the answer the row needs, so a rate it refuses cannot stay selected.
+	if (sampleRate !== ENCODER_REFERENCE_RATE) {
+		const atReference = await acceptedBitrates(
+			format,
+			ENCODER_REFERENCE_RATE,
+			numberOfChannels,
+		);
+		if (atReference.length > 0) {
+			return {
+				bitrates: atReference,
+				encoder: 'confirmed',
+				sampleRate: ENCODER_REFERENCE_RATE,
+			};
+		}
+	}
+	return { bitrates: declared, encoder: 'refused', sampleRate };
+}
+
+/**
+ * The offered bitrates this device's encoder accepts for a format.
+ * @param format - Target audio format
+ * @param sampleRate - Rate the encoder is asked about
+ * @param numberOfChannels - Layout the encoder is asked about
+ * @returns Accepted bitrates in bps, ascending, possibly none
+ */
+async function acceptedBitrates(
+	format: string,
+	sampleRate: number,
+	numberOfChannels: number,
+): Promise<number[]> {
+	return (await listBitrateAvailability(format, sampleRate, numberOfChannels))
+		.filter((entry) => entry.available)
+		.map((entry) => entry.bitrate);
+}
+
+/**
+ * The bitrate a recording should really start with: the configured one when
+ * this device's encoder accepts it, otherwise the nearest rate it does.
+ *
+ * {@link effectiveBitrate} settles what the format's own tables allow, which
+ * is all a synchronous caller can know. It cannot settle what a platform AAC
+ * encoder accepts, because only the encoder knows, and a rate it refuses does
+ * not fail until the recording is already over and its audio is being encoded
+ * to the target format. Asking before the first sample is captured is what
+ * turns a lost take into a notice and a slightly different file.
+ * @param format - Format the file will be written in
+ * @param bitrate - The configured bitrate in bps
+ * @param sampleRate - Rate the encoder will write at
+ * @param numberOfChannels - Layout the recording will have
+ * @returns The bitrate to record with, and why it differs when it does
+ */
+export async function resolveEffectiveBitrate(
+	format: string,
+	bitrate: number,
+	sampleRate: number,
+	numberOfChannels: number,
+): Promise<{ bitrate: number; fellBack: boolean; reason: string }> {
+	const requested = effectiveBitrate(format, bitrate, sampleRate);
+	const offer = await resolveBitrateOffer(
+		format,
+		sampleRate,
+		numberOfChannels,
+	);
+	if (offer.encoder !== 'confirmed' || offer.bitrates.includes(requested)) {
+		// Unavailable: nothing to check against. Refused: no rate would help,
+		// and the format check at start has already moved the session off
+		// this format.
+		return { bitrate: requested, fellBack: false, reason: '' };
+	}
+	return {
+		bitrate: closestBitrate(offer.bitrates, requested),
+		fellBack: true,
+		reason: `This device's ${format.toUpperCase()} encoder does not accept ${String(
+			Math.round(requested / 1000),
+		)} kbps at ${String(Math.round(sampleRate / 1000))} kHz.`,
+	};
 }
 
 /**
@@ -387,22 +631,34 @@ export async function listBitrateAvailability(
  */
 export async function resolveEffectiveOutputFormat(
 	requested: string,
+	encoding?: RecordingEncoding,
 ): Promise<{ format: string; fellBack: boolean; reason: string }> {
 	const normalized = requested.toLowerCase();
-	const validation = await validateRecordingCapability(normalized);
+	const validation = await validateRecordingCapability(normalized, encoding);
 	if (validation.valid) {
 		return { format: normalized, fellBack: false, reason: '' };
 	}
+	// The platform's preference order, each candidate held to the same
+	// question the requested format just failed: a fallback that only has
+	// the codec would fail at the end of the recording the same way.
 	const capabilities = await detectCapabilities();
-	const fallback = capabilities.supportedFormats.includes(
+	const candidates = [
 		capabilities.defaultFormat,
-	)
-		? capabilities.defaultFormat
-		: capabilities.supportedFormats[0];
-	if (!fallback) {
-		throw new Error(validation.reason);
+		...capabilities.supportedFormats,
+	].filter((format, index, all) => all.indexOf(format) === index);
+	for (const candidate of candidates) {
+		if (candidate === normalized) {
+			continue;
+		}
+		if ((await validateRecordingCapability(candidate, encoding)).valid) {
+			return {
+				format: candidate,
+				fellBack: true,
+				reason: validation.reason,
+			};
+		}
 	}
-	return { format: fallback, fellBack: true, reason: validation.reason };
+	throw new Error(validation.reason);
 }
 
 /**

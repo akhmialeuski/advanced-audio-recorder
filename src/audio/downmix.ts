@@ -73,6 +73,25 @@ export function isMonoChannelMode(mode: ChannelMode): boolean {
 }
 
 /**
+ * How many channels a capture in this mode hands the encoder.
+ *
+ * An encoder answers a different question per layout - a platform AAC encoder
+ * accepts its own set of rates for each, and the codec string itself is built
+ * from the count - so anything asking what a device will accept has to say
+ * which layout it means.
+ *
+ * The pass-through mode keeps whatever the device provides, which is not known
+ * until the stream is open; two is the assumption there, because a device that
+ * turns out to be mono is the narrower case and its encoder configuration is
+ * the one a mono mode already covers.
+ * @param mode - Channel mode the capture runs in
+ * @returns Channel count to describe the output with
+ */
+export function channelCountFor(mode: ChannelMode): number {
+	return isMonoChannelMode(mode) ? 1 : 2;
+}
+
+/**
  * Resolves which single input channel a picking mode keeps, clamped to
  * the channels that actually exist so a right-channel pick on a mono
  * input degrades to the only available channel instead of silence.

@@ -163,6 +163,33 @@ export async function decodeAudioBlob(
 }
 
 /**
+ * The sample rate an offline encode runs at on this device.
+ *
+ * Nothing encoded after capture is written at the rate the settings ask for.
+ * A merged multi-track file is rendered through an OfflineAudioContext at the
+ * default AudioContext rate, and a single track re-encoded to an offline-only
+ * format is decoded through an AudioContext first, which resamples to the
+ * same default. An encoder question asked at the requested rate therefore
+ * describes a file that is never written: at 22.05 kHz it asked Chromium for
+ * HE-AAC and got a refusal, while the 48 kHz mix it really encodes is AAC-LC
+ * and fine. Answers with the requested rate only where there is no
+ * AudioContext to ask, which is also where no offline encode can run.
+ * @param requested - The sample rate the settings ask for
+ * @returns The rate the encoder will be handed
+ */
+export function offlineEncodeSampleRate(requested: number): number {
+	if (typeof AudioContext === 'undefined') {
+		return requested;
+	}
+	const context = new AudioContext();
+	const rate = context.sampleRate;
+	// Released without waiting: the rate has been read and the promise a
+	// close returns is not something this caller can do anything with.
+	void context.close();
+	return rate;
+}
+
+/**
  * Options controlling blob-to-format conversion behavior.
  */
 export interface BlobConversionOptions {

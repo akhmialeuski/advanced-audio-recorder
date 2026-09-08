@@ -29,7 +29,10 @@ import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
-import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
+import {
+	encodeAudioBuffer,
+	probeOfflineEncodingSupport,
+} from 'src/audio/AudioEncoder';
 import { getAudioSourceName } from 'src/recording/AudioStreamHandler';
 
 // Mock AudioStreamHandler
@@ -72,6 +75,74 @@ describe('RecordingManager', () => {
 			settings: mockSettings,
 			onStatusChange: statusChangeCallback,
 		} = createRecordingSut());
+	});
+
+	describe('the bitrate a session starts with', () => {
+		/**
+		 * Records one session against an encoder that takes 96 kbps upward,
+		 * which is the shape of a platform AAC encoder: a fixed set of rates,
+		 * with everything below the lowest of them refused outright.
+		 * @param bitrate - The rate stored in settings when recording starts
+		 * @returns The rate the recorder was actually constructed with
+		 */
+		async function recordAgainstAPickyEncoder(
+			bitrate: number,
+		): Promise<number | undefined> {
+			useDesktopPlatform();
+			jest.mocked(probeOfflineEncodingSupport).mockImplementation(
+				(_format, quality) =>
+					Promise.resolve((quality?.bitrate ?? 0) >= 96000),
+			);
+			({ manager, settings: mockSettings } = createRecordingSut({
+				settings: { bitrate, recordingFormat: 'webm' },
+			}));
+			const ctor = installMediaRecorder(makeMediaRecorderDouble());
+			stubAudioStreams({ count: 1 });
+
+			await manager.startRecording();
+
+			return at(ctor.mock.calls, 0)[1]?.audioBitsPerSecond;
+		}
+
+		it('asks the encoder about the rate an offline encode runs at, not the requested one', async () => {
+			// The settings ask for 22.05 kHz; the mix and every re-encode run
+			// at the AudioContext's own rate, which the media stubs put at
+			// 44.1 kHz. Asked at the requested rate, the encoder was refusing
+			// an HE-AAC file the session never writes.
+			useDesktopPlatform();
+			({ manager, settings: mockSettings } = createRecordingSut({
+				settings: { sampleRate: 22050, recordingFormat: 'webm' },
+			}));
+			installMediaRecorder(makeMediaRecorderDouble());
+			stubAudioStreams({ count: 1 });
+
+			await manager.startRecording();
+
+			expect(
+				jest.mocked(probeOfflineEncodingSupport),
+			).toHaveBeenCalledWith(
+				'webm',
+				expect.objectContaining({ sampleRate: 44100 }),
+			);
+		});
+
+		it('substitutes a rate this encoder refuses before capture begins', async () => {
+			// The failure this prevents: a platform AAC encoder that takes
+			// only 96 kbps upward accepted the recording, then refused the
+			// stored 24 kbps while the finished audio was being encoded, so
+			// the take was lost at the moment it was meant to be saved.
+			expect(await recordAgainstAPickyEncoder(24000)).toBe(96000);
+			expect(noticeMessages()).toContainEqual(
+				expect.stringContaining('Recording at 96 kbps instead'),
+			);
+		});
+
+		it('leaves a rate the encoder accepts untouched and says nothing', async () => {
+			expect(await recordAgainstAPickyEncoder(128000)).toBe(128000);
+			expect(noticeMessages()).not.toContainEqual(
+				expect.stringContaining('kbps instead'),
+			);
+		});
 	});
 
 	describe('merged output with no audio', () => {

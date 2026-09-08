@@ -60,6 +60,7 @@ import {
 	audioDeviceApi,
 	channelSelectionAvailable,
 	getAudioInputDeviceSnapshot,
+	recordingEncodingFor,
 	type AudioInputDeviceSnapshot,
 } from '../recording/AudioStreamHandler';
 import { getEncoderDescription } from '../ui/formatDescriptions';
@@ -98,8 +99,9 @@ import {
 	type EngineSettingsStore,
 } from '../providers/engineSettings';
 import { ModelIdModal } from '../ui/ModelIdModal';
-import { fillBitrateDropdown } from './settingControls';
+import { fillBitrateDropdown, takesBitrate } from './settingControls';
 import type { SettingsSectionContext } from './settingControls';
+import { BITRATE_ROW_DESC } from './sections/outputFormatSection';
 import { isMultiTrackCaptureSupported } from '../platform/capabilities';
 import { effectiveWordTimestamps } from '../transcription/providers/capabilities';
 
@@ -904,13 +906,39 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	private renderBitrateRow(setting: Setting): void {
 		const settings = this.plugin.settings;
+		// The row itself is hidden for a PCM target by the definition's own
+		// visible predicate; a format that reaches here carries a bitrate.
 		setting.addDropdown((dropdown) => {
-			// Snapping the stored value onto the offered grid is what the
-			// summary row below then reports, so the two never disagree.
-			settings.bitrate = fillBitrateDropdown(dropdown, {
+			// The stored value is left alone: drawing a row is not an edit,
+			// and the summary line below reads the same effectiveBitrate this
+			// selects with, so the two agree without one writing for the other.
+			// The same counter the format probe is guarded by, which hide()
+			// bumps: an answer arriving after the tab was left must not write
+			// into a tree nobody is looking at.
+			const generation = this.formatAvailabilityGeneration;
+			fillBitrateDropdown(dropdown, {
 				format: settings.recordingFormat,
 				sampleRate: settings.sampleRate,
+				// The layout the recording will really have. An encoder answers
+				// per layout, so asking about stereo for a mono capture is
+				// asking about a different file than the one being recorded.
+				numberOfChannels:
+					recordingEncodingFor(settings).numberOfChannels,
 				selected: settings.bitrate,
+				isStale: () => this.formatAvailabilityGeneration !== generation,
+				// The encoder's answer arrives after the row is on screen. A
+				// rate it refuses is one the recording would fail on, so the
+				// move it forces is a real edit and is saved as one.
+				onSettled: (bitrate) => {
+					settings.bitrate = bitrate;
+					void this.commit();
+				},
+				// Which values are on offer changes with the format, the sample
+				// rate and the encoder, so the row says what decided them
+				// rather than leaving a shorter list unexplained.
+				onNote: (note) => {
+					setting.setDesc(`${BITRATE_ROW_DESC} ${note}`);
+				},
 			});
 			dropdown.onChange(async (value) => {
 				settings.bitrate = parseInt(value, 10);
@@ -935,13 +963,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			effectiveBitrate(
 				format,
 				this.plugin.settings.bitrate,
-				this.plugin.settings.sampleRate,
+				recordingEncodingFor(this.plugin.settings).sampleRate,
 			) / 1000,
 		);
 		setting.descEl
 			.createDiv()
 			.setText(
-				`Output: ${format.toUpperCase()}, ${String(kbps)} kbps. ${this.getCompressionDescription(format)}`,
+				`Output: ${format.toUpperCase()}${
+					takesBitrate(format) ? `, ${String(kbps)} kbps` : ''
+				}. ${this.getCompressionDescription(format)}`,
 			);
 	}
 
@@ -996,9 +1026,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		descEl: HTMLElement,
 	): Promise<void> {
 		const generation = ++this.formatAvailabilityGeneration;
+		// Asked about the audio these settings will produce, not the codec
+		// alone: a merged multi-track MP4 is encoded by mediabunny after the
+		// mix, and at 22.05 kHz that asks Chromium for HE-AAC, which it does
+		// not have. The codec alone said yes and the recording failed at its
+		// end.
+		const encoding = recordingEncodingFor(this.plugin.settings);
 		let entries: FormatAvailabilityEntry[];
 		try {
-			entries = await listFormatAvailability();
+			entries = await listFormatAvailability(encoding);
 		} catch {
 			// Probing failed entirely: leave the options selectable, the
 			// recording-start validation still guards the session
@@ -1033,10 +1069,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// appendChild adopts the detached node into descEl's document.
 		const note = createDiv({ cls: 'aar-format-fallback-note' });
 		try {
-			const effective = await resolveEffectiveOutputFormat(stored);
-			note.textContent = `This device cannot record ${stored.toUpperCase()}; recordings are saved as ${effective.format.toUpperCase()} instead.`;
+			const effective = await resolveEffectiveOutputFormat(
+				stored,
+				encoding,
+			);
+			note.textContent = `${storedEntry.reason} Recordings are saved as ${effective.format.toUpperCase()} instead.`;
 		} catch {
-			note.textContent = `This device cannot record ${stored.toUpperCase()}. Select a different format.`;
+			note.textContent = `${storedEntry.reason} Select a different format.`;
 		}
 		if (generation !== this.formatAvailabilityGeneration) {
 			return;
