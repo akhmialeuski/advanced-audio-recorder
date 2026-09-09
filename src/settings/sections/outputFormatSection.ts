@@ -11,7 +11,7 @@
  */
 
 import { CONVERSION_LINK_ACTION_LABELS } from '../labels';
-import { takesBitrate } from '../../audio/formatRegistry';
+import { recordingBitrateFormat } from '../../audio/AudioFormatConverter';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import { type OutputFormatRows, SETTINGS_SECTION_CLASS } from './context';
 import type { Setting, SettingDefinitionItem } from 'obsidian';
@@ -53,12 +53,17 @@ export function outputFormatGroup(
 				name: 'Audio bitrate',
 				aliases: ['quality', 'kbps'],
 				desc: BITRATE_ROW_DESC,
-				// WAV is uncompressed PCM and carries no bitrate at all, so
-				// the row described something the file does not have. Stated
-				// as a predicate rather than hidden from inside the render
+				// WAV captured as raw PCM carries no bitrate at all, so the
+				// row described something the file does not have. Asked of
+				// the capture rather than of the container: FLAC, and WAV on
+				// a platform without PCM capture, are recorded through a
+				// compressed intermediate, so the value still decides what
+				// the finished file holds and the row has to stay. Stated as
+				// a predicate rather than hidden from inside the render
 				// callback, because the renderer re-applies this after every
 				// change and would put the row back.
-				visible: (): boolean => takesBitrate(settings.recordingFormat),
+				visible: (): boolean =>
+					recordingBitrateFormat(settings.recordingFormat) !== null,
 				render: (setting: Setting): void => {
 					rows.renderBitrateRow(setting);
 				},

@@ -56,7 +56,11 @@ import {
 	type ProfileCatalogue,
 	type SettingsDefinitionContext,
 } from 'src/settings/settingsDefinitions';
-import { setPlatform } from '../helpers/platform';
+import {
+	setPlatform,
+	useDesktopPlatform,
+	useMobilePlatform,
+} from '../helpers/platform';
 import { maybeEl } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
@@ -1794,6 +1798,57 @@ describe('settings definitions', () => {
 
 			expect(row.control).toBeUndefined();
 			expect(renderBitrateRow).toHaveBeenCalledWith(host);
+		});
+
+		describe('whether the bitrate row applies to the chosen format', () => {
+			beforeEach(() => {
+				// The only container this browser records, so a lossless
+				// target goes through it rather than being written directly.
+				(global as Record<string, unknown>).MediaRecorder = {
+					isTypeSupported: (mime: string): boolean =>
+						mime === 'audio/webm',
+				};
+			});
+
+			afterEach(() => {
+				delete (global as Record<string, unknown>).MediaRecorder;
+			});
+
+			/** Whether the bitrate row's own predicate holds right now. */
+			const bitrateRowVisible = (): boolean => {
+				const { visible } = rowOf(
+					build(),
+					'Output format',
+					'Audio bitrate',
+				);
+				return typeof visible === 'function'
+					? visible()
+					: visible !== false;
+			};
+
+			it.each([
+				// Its own rate, spent on its own encoder.
+				['mp3', false, true],
+				// Captured as Opus at this rate and wrapped losslessly after
+				// the stop, so the value still decides what the file holds.
+				['flac', false, true],
+				// Mobile has no direct PCM capture, so WAV goes the same way.
+				['wav', true, true],
+				// Desktop WAV is raw PCM: nothing is encoded at any rate.
+				['wav', false, false],
+			])(
+				'recording %s with mobile=%s shows the row: %s',
+				(format, mobile, expected) => {
+					if (mobile) {
+						useMobilePlatform();
+					} else {
+						useDesktopPlatform();
+					}
+					settings.recordingFormat = format;
+
+					expect(bitrateRowVisible()).toBe(expected);
+				},
+			);
 		});
 	});
 

@@ -101,8 +101,15 @@ describe('AudioEncoder', () => {
 			});
 
 			expect(Mp3OutputFormat).toHaveBeenCalledTimes(1);
+			// Asked through Quality, the same way probeOfflineEncodingSupport
+			// asks: mediabunny deprecated the bare bitrate field, and an
+			// encode phrased differently from the probe that predicts it is
+			// the pair that drifts.
 			expect(AudioBufferSource).toHaveBeenCalledWith(
-				expect.objectContaining({ codec: 'mp3', bitrate: 128000 }),
+				expect.objectContaining({
+					codec: 'mp3',
+					quality: { options: { bitrate: 128000 } },
+				}),
 			);
 			expect(result).toBeInstanceOf(Blob);
 			expect(result.type).toBe('audio/mp3');
@@ -161,7 +168,7 @@ describe('AudioEncoder', () => {
 			expect(AudioBufferSource).toHaveBeenCalledWith(
 				expect.objectContaining({
 					codec: 'opus',
-					bitrate: 128000,
+					quality: { options: { bitrate: 128000 } },
 				}),
 			);
 			expect(Output).toHaveBeenCalledTimes(1);

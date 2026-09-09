@@ -29,7 +29,11 @@ import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
 import { at } from '../helpers/assertions';
 import { asMockVault } from '../helpers/obsidianMock';
-import { setPlatform, useDesktopPlatform } from '../helpers/platform';
+import {
+	setPlatform,
+	useDesktopPlatform,
+	useMobilePlatform,
+} from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { allEls, el, maybeEl, textsOf } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
@@ -2276,6 +2280,22 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		);
 	}
 
+	/**
+	 * Narrows what this browser claims to record. The suite's default accepts
+	 * every type, which no real browser does and which decides whether a
+	 * lossless target is captured through an intermediate or written itself.
+	 * @param mimeType - The only MIME type MediaRecorder answers yes to
+	 */
+	function recordsOnly(mimeType: string): void {
+		(
+			(global as Record<string, unknown>).MediaRecorder as {
+				isTypeSupported: jest.Mock;
+			}
+		).isTypeSupported.mockImplementation(
+			(candidate: string) => candidate === mimeType,
+		);
+	}
+
 	/** The text the output summary row rendered. */
 	function summaryText(): string {
 		tab.display();
@@ -2533,25 +2553,47 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		).toEqual([]);
 	});
 
-	it('hides itself for FLAC, whose bitrate is a result and not a choice', async () => {
-		// A 6-second FLAC recording reported 607 kbps beside a row set to 24:
-		// the encoder writes whatever the signal compresses to and never
-		// reads the setting, so the row was describing nothing.
+	it('keeps itself for FLAC, which is captured lossily whatever the file is', async () => {
+		// A FLAC recording is Opus at this rate wrapped losslessly once the
+		// session stops, because no MediaRecorder writes FLAC. Hiding the row
+		// on the strength of the container left a user who had picked 24 kbps
+		// for speech with a lossless file of 24 kbps audio, no control over
+		// it, and nothing on screen that said so.
+		useDesktopPlatform();
+		recordsOnly('audio/webm');
 		mockSettings.recordingFormat = 'flac';
+		mockSettings.bitrate = 24000;
 
 		tab.display();
 		await tick();
 
 		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
-			'none',
+			'',
 		);
-		expect(summaryText()).not.toContain('kbps');
+		expect(summaryText()).toContain('24 kbps captured as WEBM');
 	});
 
-	it('hides itself for a format that carries no bitrate', async () => {
-		// WAV is uncompressed PCM, so the row described something the file
-		// does not carry: it offered "24 kbps" beside an uncompressed
-		// recording, and the summary line beneath repeated it.
+	it('keeps itself for WAV where the platform cannot capture PCM', async () => {
+		// Mobile records WAV through the same compressed intermediate and
+		// decodes it at the stop, so the rate decides what the samples hold.
+		useMobilePlatform();
+		recordsOnly('audio/webm');
+		mockSettings.recordingFormat = 'wav';
+
+		tab.display();
+		await tick();
+
+		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
+			'',
+		);
+		expect(summaryText()).toContain('kbps captured as WEBM');
+	});
+
+	it('hides itself for WAV captured as raw PCM', async () => {
+		// Direct PCM capture encodes nothing, so the row described something
+		// the file does not carry: it offered "24 kbps" beside an
+		// uncompressed recording, and the summary line beneath repeated it.
+		useDesktopPlatform();
 		mockSettings.recordingFormat = 'wav';
 
 		tab.display();
@@ -2561,6 +2603,22 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 			'none',
 		);
 		expect(summaryText()).toContain('Output: WAV.');
+		expect(summaryText()).not.toContain('kbps');
+	});
+
+	it('hides itself for a lossless container the browser records directly', async () => {
+		// A browser that wrote FLAC itself would ignore the rate the way its
+		// encoder does, so there would be nothing for the row to offer.
+		useDesktopPlatform();
+		recordsOnly('audio/flac');
+		mockSettings.recordingFormat = 'flac';
+
+		tab.display();
+		await tick();
+
+		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
+			'none',
+		);
 		expect(summaryText()).not.toContain('kbps');
 	});
 

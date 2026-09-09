@@ -13,13 +13,20 @@ import {
 	type ChannelMode,
 } from './downmix';
 import { autoClosing } from '../utils/disposables';
-import { isDecodableSize, tooLargeMessage } from '../platform/capabilities';
+import {
+	isDecodableSize,
+	isPcmWavCaptureSupported,
+	tooLargeMessage,
+} from '../platform/capabilities';
 import {
 	MIME_TYPE_AUDIO_PREFIX,
 	PLUGIN_LOG_PREFIX,
 	FORMAT_WAV,
 } from '../constants';
-import { COMPRESSED_INTERMEDIATE_FORMATS } from './formatRegistry';
+import {
+	COMPRESSED_INTERMEDIATE_FORMATS,
+	takesBitrate,
+} from './formatRegistry';
 import {
 	buildMimeType,
 	directRecordingMimeType,
@@ -72,6 +79,59 @@ export function resolveRecorderFormat(format: string): {
 			', ',
 		)} is supported in this browser.`,
 	);
+}
+
+/**
+ * The format whose codec a recording's bitrate is really spent on, or null
+ * when the recording carries no bitrate at all.
+ *
+ * A lossless target is not recorded losslessly. No MediaRecorder writes FLAC,
+ * and WAV is captured as raw PCM only where {@link isPcmWavCaptureSupported}
+ * allows it, so both are recorded into a compressed intermediate first and
+ * re-encoded once the session stops. The stored bitrate is what that
+ * intermediate is encoded at, which makes it a real choice about the audio the
+ * file ends up holding: a FLAC recorded at 24 kbps is a lossless container
+ * around 24 kbps Opus. The row offering that value therefore has to stay, and
+ * has to name the codec the value reaches rather than the container the file
+ * ends up in.
+ *
+ * A lossy target answers with itself. Its bitrate binds twice, on the
+ * intermediate and again on the offline re-encode, and the tighter floor is
+ * its own: MP3 at 48 kHz starts at 32 kbps where the Opus intermediate below
+ * it would have reached 6.
+ *
+ * Null has three causes and one meaning - nothing here encodes at a rate the
+ * settings choose. Direct PCM capture writes samples rather than encoding
+ * them; a device with no MediaRecorder and a device that supports none of the
+ * intermediate containers cannot record such a format at all, which the
+ * recording-format row reports on its own.
+ * @param outputFormat - Format the recording is saved in
+ * @returns The format whose bitrate rules apply, or null when none do
+ */
+export function recordingBitrateFormat(outputFormat: string): string | null {
+	const format = outputFormat.toLowerCase();
+	if (format === FORMAT_WAV && isPcmWavCaptureSupported()) {
+		return null;
+	}
+	if (takesBitrate(format)) {
+		return format;
+	}
+	if (typeof MediaRecorder === 'undefined') {
+		return null;
+	}
+	try {
+		const { recorderFormat } = resolveRecorderFormat(format);
+		// A device that recorded a lossless container directly would ignore
+		// the rate the way its encoder does, so there would be nothing to
+		// offer. No browser does today; the question is asked rather than
+		// assumed because the answer is what the row shows.
+		return takesBitrate(recorderFormat) ? recorderFormat : null;
+	} catch {
+		// resolveRecorderFormat throws when this device supports none of the
+		// intermediate containers, which is the same answer: nothing is
+		// encoded here, so there is no bitrate to offer.
+		return null;
+	}
 }
 
 /**

@@ -53,7 +53,8 @@ import {
 	resolveEffectiveOutputFormat,
 	type FormatAvailabilityEntry,
 } from '../audio/AudioCapabilityDetector';
-import { AUDIO_FORMAT_IDS, takesBitrate } from '../audio/formatRegistry';
+import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
+import { recordingBitrateFormat } from '../audio/AudioFormatConverter';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
 import {
@@ -906,13 +907,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	private renderBitrateRow(setting: Setting): void {
 		const settings = this.plugin.settings;
-		// The definition's visible predicate hides this row for a lossless
-		// target, but the renderer draws every row before applying it, so the
-		// predicate alone still left a WAV or FLAC install running ten encoder
-		// probes and holding a live callback able to write settings.bitrate
-		// for a row nobody can see. A format that takes no bitrate gets no
-		// control at all; picking one that does redraws the tab.
-		if (!takesBitrate(settings.recordingFormat)) {
+		// The format the stored bitrate is really spent on, which for a
+		// lossless target is the intermediate the recorder writes rather than
+		// the container the file ends up in - a FLAC recording is captured as
+		// Opus at this rate and losslessly wrapped afterwards, so the values
+		// on offer are the ones that codec reaches and the note names it.
+		//
+		// Null means the capture is raw PCM, or that nothing can be recorded
+		// in this format here at all. The definition's visible predicate hides
+		// the row in that case, but the renderer draws every row before
+		// applying it, so the predicate alone still left a desktop WAV install
+		// running ten encoder probes and holding a live callback able to write
+		// settings.bitrate for a row nobody can see.
+		const encodedAt = recordingBitrateFormat(settings.recordingFormat);
+		if (encodedAt === null) {
 			return;
 		}
 		setting.addDropdown((dropdown) => {
@@ -932,7 +940,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// the line beneath it said 32.
 			const encoding = recordingEncodingFor(settings);
 			fillBitrateDropdown(dropdown, {
-				format: settings.recordingFormat,
+				format: encodedAt,
 				sampleRate: encoding.sampleRate,
 				numberOfChannels: encoding.numberOfChannels,
 				selected: settings.bitrate,
@@ -974,23 +982,38 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @param setting - The row to fill
 	 */
 	private renderSummaryRow(setting: Setting): void {
-		const format = this.plugin.settings.recordingFormat;
-		// The bitrate encoding will really use, not the one on file: a value
-		// left behind by a format change is lifted to that format's floor
-		// before it reaches an encoder, silently, so the line has to say so.
-		const kbps = Math.round(
-			effectiveBitrate(
-				format,
-				this.plugin.settings.bitrate,
-				recordingEncodingFor(this.plugin.settings).sampleRate,
-			) / 1000,
-		);
+		const settings = this.plugin.settings;
+		const format = settings.recordingFormat;
+		// Read through the same function the row above offers from, so one
+		// stored value cannot be shown here as a different rate.
+		const encodedAt = recordingBitrateFormat(format);
+		let rate = '';
+		if (encodedAt !== null) {
+			// The bitrate encoding will really use, not the one on file: a
+			// value left behind by a format change is lifted to that format's
+			// floor before it reaches an encoder, silently, so the line has
+			// to say so.
+			const kbps = Math.round(
+				effectiveBitrate(
+					encodedAt,
+					settings.bitrate,
+					recordingEncodingFor(settings).sampleRate,
+				) / 1000,
+			);
+			// A lossless target is not captured losslessly, so the rate alone
+			// would read as the bitrate of the finished file, which is not a
+			// choice anyone made. The codec it is really spent on is named
+			// instead, which is the only place a FLAC recording says that its
+			// audio went through Opus first.
+			rate =
+				encodedAt === format
+					? `, ${String(kbps)} kbps`
+					: `, ${String(kbps)} kbps captured as ${encodedAt.toUpperCase()}`;
+		}
 		setting.descEl
 			.createDiv()
 			.setText(
-				`Output: ${format.toUpperCase()}${
-					takesBitrate(format) ? `, ${String(kbps)} kbps` : ''
-				}. ${this.getCompressionDescription(format)}`,
+				`Output: ${format.toUpperCase()}${rate}. ${this.getCompressionDescription(format)}`,
 			);
 	}
 

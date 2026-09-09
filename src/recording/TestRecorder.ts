@@ -6,7 +6,6 @@
  * @module recording/TestRecorder
  */
 
-import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
 import { effectiveBitrate } from '../audio/AudioCapabilityDetector';
 import { isMonoChannelMode, normalizeChannelMode } from '../audio/downmix';
@@ -59,10 +58,9 @@ export class TestRecorder {
 			// Resolve the capture container exactly like a real session
 			// (native format, or the platform's intermediate), so the test
 			// exercises the same recorder path recording would use.
-			let recorderFormat: string;
 			let mimeType: string;
 			try {
-				({ recorderFormat, mimeType } = resolveRecorderFormat(
+				({ mimeType } = resolveRecorderFormat(
 					settings.recordingFormat,
 				));
 			} catch {
@@ -150,9 +148,13 @@ export class TestRecorder {
 
 			return {
 				kind: 'recorded',
-				blob: new Blob(chunks, {
-					type: `${MIME_TYPE_AUDIO_PREFIX}${recorderFormat}`,
-				}),
+				// The type the platform agreed to record, which is also the
+				// type of the bytes it produced, rather than one rebuilt from
+				// the container name: an M4A file is an MP4 container and the
+				// recorder only accepts it as audio/mp4, so labelling the
+				// blob audio/m4a handed the preview element a type it has no
+				// decoder for while the recording itself was fine.
+				blob: new Blob(chunks, { type: mimeType }),
 			};
 		} finally {
 			monoBridge?.release();

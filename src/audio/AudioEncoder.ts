@@ -114,9 +114,14 @@ async function encodeWithMediabunny(
 		const target = new BufferTarget();
 		const output = new Output({ format: outputFormat, target });
 
-		// PCM is uncompressed: passing a bitrate is invalid for it
+		// PCM is uncompressed: passing a bitrate is invalid for it. The rest
+		// ask through Quality, the field mediabunny still supports - its bare
+		// `bitrate` is deprecated, and phrasing the encode differently from
+		// the probe in probeOfflineEncodingSupport is what lets the two drift.
 		const audioSource = new AudioBufferSource(
-			descriptor.isPcm ? { codec } : { codec, bitrate },
+			descriptor.isPcm
+				? { codec }
+				: { codec, quality: new Quality({ bitrate }) },
 		);
 		output.addAudioTrack(audioSource);
 

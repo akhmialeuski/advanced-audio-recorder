@@ -120,6 +120,26 @@ describe('TestRecorder', () => {
 		);
 	});
 
+	it('tags the clip with the type the platform agreed to record', async () => {
+		// An M4A file is an MP4 container and the recorder only accepts it as
+		// audio/mp4. Rebuilding the type from the container name handed the
+		// preview element audio/m4a, which it has no decoder for, so the clip
+		// would not play back while the recording itself was fine.
+		MockMediaRecorder.isTypeSupported.mockImplementation(
+			(mime: string) => mime === 'audio/mp4',
+		);
+		settings.recordingFormat = 'm4a';
+
+		const result = await new TestRecorder().record(settings, 0);
+
+		expect(at(MockMediaRecorder.instances, 0).options).toEqual(
+			expect.objectContaining({ mimeType: 'audio/mp4' }),
+		);
+		expect(result.kind === 'recorded' && result.blob.type).toBe(
+			'audio/mp4',
+		);
+	});
+
 	it('records the raw stream in the source mode', async () => {
 		const result = await new TestRecorder().record(settings, 0);
 

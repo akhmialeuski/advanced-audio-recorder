@@ -59,13 +59,13 @@ _Figure: a completed test recording with the inline audio player ready to play t
 
 The snapshot contains the following groups:
 
-| Group                       | What it includes                                                                                                                                                                                                          |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Plugin settings**         | Recording format, bitrate, sample rate, save folder, save-near-active-file, active-file subfolder, file prefix, multi-track on/off, max tracks, output mode, per-track sources, selected input device id, and debug flag. |
-| **Environment**             | Obsidian (API) version, Electron, Chromium and Node versions, platform, architecture, and user agent.                                                                                                                                       |
-| **Audio devices**           | Every detected audio input and output device, with id, label, group id, and kind.                                                                                                                                         |
-| **Audio capabilities**      | Supported formats, sample rates, and bitrates; per-codec support; and whether `MediaRecorder` and `getUserMedia` are available.                                                                                           |
-| **Active recording config** | The format actually handed to the recorder, the resolved MIME type, the expected codec, whether that MIME type is supported, and the pre-recording validation result.                                                     |
+| Group                       | What it includes                                                                                                                                                                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Plugin settings**         | Recording format, bitrate, sample rate, save folder, save-near-active-file, active-file subfolder, file prefix, multi-track on/off, max tracks, output mode, per-track sources, selected input device id, and debug flag.                                    |
+| **Environment**             | Obsidian (API) version, Electron, Chromium and Node versions, platform, architecture, and user agent.                                                                                                                                                        |
+| **Audio devices**           | Every detected audio input and output device, with id, label, group id, and kind.                                                                                                                                                                            |
+| **Audio capabilities**      | Supported formats, sample rates and bitrates, the bitrates each compressed format's encoder really accepts on this device at the rate an offline encode runs at, the per-codec support matrix, and whether `MediaRecorder` and `getUserMedia` are available. |
+| **Active recording config** | The format actually handed to the recorder, the resolved MIME type, the expected codec, whether that MIME type is supported, and the pre-recording validation result.                                                                                        |
 
 The snapshot never contains your API keys, transcripts, or note contents - only the technical configuration listed above. It is safe to share in a public issue.
 

@@ -245,9 +245,10 @@ export const stubAudioStreams = (
 		const track = partial<MediaStreamTrack>({
 			stop: stopTrack ?? jest.fn(),
 			readyState: trackState,
-			// The manager reads the rate a stream really runs at before it
-			// asks the encoder anything; a double that does not say leaves
-			// it on the requested rate, the way a device with no answer does.
+			// The PCM recorder and the mono bridge read the negotiated
+			// channel count off the track. An empty answer is what a device
+			// that reports none gives, which sends both to their own
+			// sourceNode fallback.
 			getSettings: () => ({}),
 		});
 		return partial<MediaStream>({
