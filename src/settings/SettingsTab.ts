@@ -940,6 +940,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				// The encoder's answer arrives after the row is on screen. A
 				// rate it refuses is one the recording would fail on, so the
 				// move it forces is a real edit and is saved as one.
+				//
+				// Saved through commit, which redraws the tab, rather than
+				// through saveSettings alone: the summary line beneath reads
+				// this value, and patching it in place would put its wording
+				// in a second place able to drift from renderSummaryRow. The
+				// redraw is paid at most once per configuration, because the
+				// value it writes is one the encoder accepts and the next
+				// fill has nothing left to move.
 				onSettled: (bitrate) => {
 					settings.bitrate = bitrate;
 					void this.commit();

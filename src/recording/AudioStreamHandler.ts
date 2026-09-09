@@ -325,9 +325,12 @@ export async function getAudioStreams(
  * as the settings can say: the requested sample rate, and the layout the
  * finished file will have. A single track has the layout its channel mode
  * gives it; a merged multi-track file takes the widest of its tracks and goes
- * stereo for a panned one, which is the rule the mixer applies. The rate is
- * the one an offline encode runs at here, which is the device's own rather
- * than the requested one (see {@link offlineEncodeSampleRate}).
+ * stereo for a panned one, which is the rule the mixer applies. A session
+ * writing its tracks separately is described by its widest track too, which
+ * is an upper bound rather than a description of any one file; why that is
+ * enough is on {@link RecordingEncoding}. The rate is the one an offline
+ * encode runs at here, which is the device's own rather than the requested
+ * one (see {@link offlineEncodeSampleRate}).
  * @param settings - Plugin settings
  * @param tracks - The session's tracks. A manager passes the ones it opened
  *   streams for, captured before permission was asked, so an edit made while

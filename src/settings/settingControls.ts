@@ -635,16 +635,28 @@ export interface BitrateRow {
  * than only its value: a target the source format rules out, or one that
  * takes no bitrate at all, changes what the row must show.
  *
- * The rates are cut at the rate a conversion really encodes at, which is the
- * device's own: both dialogs decode their source through an AudioContext,
- * which resamples to that rate, so the source file's own rate never reaches
- * the encoder and a dialog has no reason to read the container for it. Asking
- * at the plugin's default instead described a file neither dialog writes, and
- * on a device whose encoder answers differently at the two rates the row
- * offered rates the conversion then refused. The default stands in only where
- * there is no AudioContext, which is also where no conversion can run; either
- * way the rate is above 32 kHz on any real device, so MP3 stays held to the
- * MPEG-1 table and no rate is offered that the file turns out not to reach.
+ * The rates are cut at the device's own rate, which is where a conversion
+ * ends up rather than where it starts. Neither dialog states a sample rate,
+ * so the streaming Conversion keeps the source track's own; mediabunny falls
+ * back to 48 kHz stereo when the codec cannot be encoded at that rate, and
+ * the last rung of the ladder decodes through an AudioContext, which
+ * resamples to the device's rate. A row cut at the device's rate therefore
+ * describes the rate every path that had to change the source's own converges
+ * on, and the one path that keeps the source rate keeps a rate the encoder
+ * already accepts.
+ *
+ * The plugin's default stands in only where there is no AudioContext, which is
+ * also where no conversion can run. Either way the rate is above 32 kHz on any
+ * real device, so MP3 stays held to the MPEG-1 table, and what the assumption
+ * costs is a value withheld rather than one wrongly offered: a 22.05 kHz MP3
+ * source is re-encoded at its own rate, where the MPEG-2 table reaches 24 kbps
+ * that the row does not list.
+ *
+ * What it does not settle is the AAC probe, which is asked here about a rate
+ * the source may not carry. Closing that means reading the container through
+ * `probeAudioMetadata` and letting {@link BitrateRow.rebuild} take a rate as
+ * well, which puts an asynchronous read in front of the first draw of the row.
+ * That trade is still open.
  * @param containerEl - Container to render the setting into
  * @param options - Labels, target format, initial value, and change callback
  * @returns The row, carrying its effective value and a way to re-offer it
@@ -685,44 +697,54 @@ export function addBitrateSetting(
 	const describe = (note: string): void => {
 		setting.setDesc(`${options.desc} ${note}`);
 	};
-	setting.addDropdown((component) => {
-		dropdown = component;
-		current = fillBitrateDropdown(component, {
-			format: options.format,
+
+	/**
+	 * Offers the rates one target format reaches, or hides the row when that
+	 * target carries no bitrate at all.
+	 *
+	 * The first draw and every later target go through here, because whether
+	 * the row applies and what it offers are one decision. Applied after the
+	 * fill, as the first draw once did, a hidden row had already registered an
+	 * encoder and probed it once per candidate rate, and the answer could
+	 * still write the dialog's bitrate through the callback it left live.
+	 * @param format - The target format to offer
+	 * @param numberOfChannels - Layout that target will be written with
+	 * @returns The bitrate now on offer, or the current one when it does not
+	 *   apply
+	 */
+	const offer = (format: string, numberOfChannels?: number): number => {
+		const applies = takesBitrate(format);
+		setting.settingEl.toggle(applies);
+		if (!dropdown || !applies) {
+			return current;
+		}
+		return fillBitrateDropdown(dropdown, {
+			format,
 			sampleRate,
-			numberOfChannels: options.numberOfChannels,
+			numberOfChannels: numberOfChannels ?? options.numberOfChannels,
 			selected: current,
 			onSettled: settle,
 			onNote: describe,
 		});
+	};
+
+	setting.addDropdown((component) => {
+		dropdown = component;
+		// Adopted rather than settled: the dialog reads the value back off
+		// the row it just built, so there is nobody to report a change to yet.
+		current = offer(options.format);
 		component.onChange((value) => {
 			current = parseInt(value, 10);
 			options.onChange(current);
 		});
 	});
-	setting.settingEl.toggle(takesBitrate(options.format));
 
 	return {
 		get value(): number {
 			return current;
 		},
 		rebuild(format: string, numberOfChannels?: number): void {
-			const applies = takesBitrate(format);
-			setting.settingEl.toggle(applies);
-			if (!dropdown || !applies) {
-				return;
-			}
-			settle(
-				fillBitrateDropdown(dropdown, {
-					format,
-					sampleRate,
-					numberOfChannels:
-						numberOfChannels ?? options.numberOfChannels,
-					selected: current,
-					onSettled: settle,
-					onNote: describe,
-				}),
-			);
+			settle(offer(format, numberOfChannels));
 		},
 	};
 }

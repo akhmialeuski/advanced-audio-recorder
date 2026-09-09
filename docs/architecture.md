@@ -155,7 +155,9 @@ Notes on the lifecycle:
 
 ## Recording pipeline
 
-A recording is driven by `RecordingManager`. When you start, it snapshots the session-scoped settings (format, mode, bitrate, auto-split config), acquires the input streams, and chooses one of two capture paths. When you stop, it drains buffers, finalizes the files, writes them, inserts the embed links, and fires the optional transcribe-on-save hook.
+A recording is driven by `RecordingManager`. When you start, it acquires the input streams first, then resolves the format and the bitrate against the audio those streams will really produce, and finally snapshots the session-scoped settings (format, mode, bitrate, auto-split config) and chooses one of two capture paths. When you stop, it drains buffers, finalizes the files, writes them, inserts the embed links, and fires the optional transcribe-on-save hook.
+
+The streams come before the format and bitrate checks because both are questions about a file, not about a codec. What the encoder accepts depends on the sample rate and the channel layout it is handed, and the layout is only settled once the tracks are open - a settings edit made while the microphone permission dialog was still up would otherwise describe a different session than the one being recorded. Both checks probe the real encoder, so a format or a bitrate that would only fail after the recording is over is replaced, with a notice, before the first sample is captured. See [Bitrate guidance](formats.md#bitrate-guidance) for what each check can substitute and why.
 
 ```mermaid
 sequenceDiagram
@@ -169,9 +171,10 @@ sequenceDiagram
     participant Hook as onRecordingSaved
 
     User->>RM: Start/stop recording
-    RM->>RM: snapshot session settings
     RM->>Stream: getAudioStreams(settings)
     Stream-->>RM: streams + track order
+    RM->>RM: resolve format and bitrate against the encoder
+    RM->>RM: snapshot session settings
     RM->>Cap: init capture
 
     alt WAV on desktop
@@ -396,7 +399,7 @@ One thing the tree carries for the stylesheet rather than for the framework is a
 
 None of those three shapes exists below 1.13, so the legacy renderer builds each from what does. A page flattens into its groups, since a tab with no sub-pages has nowhere to send the user. A list keeps its rows and gains three of its own, because that Obsidian has no group header to hang them on: the filter, the empty-state note, and the add button. Each list's filter narrows that list alone, which matters here in a way it does not on 1.13: with no sub-pages every list is on screen at once, so the renderer holds a query per list rather than one for the tab. Those three are the only rows the stylesheet has to dress - a filter with no label beside it takes the whole row, an empty-state note reads muted so it is not mistaken for a setting whose control failed to render, and the add row drops the divider between itself and the list it closes. A declared text area is stacked under its name for the same reason: from 1.13 the framework does that itself, while the older stylesheets put every control in a narrow right-hand column that a multi-sentence prompt cannot use.
 
-A handful of rows keep a render callback, because no control type covers them: the documentation callout, the recording format (whose options are blocked one by one by an asynchronous encoder probe), the output summary (derived from the format and bitrate rows rather than stored), the diagnostics test capture (which reports into its own row and owns a cleanup), each account's API key, which is a password input the declarative control set has no type for, and the local engine's binary and model paths, which are file pickers. There is one key block per account rather than one per job now, and it sits on the page of the engine it credentials, so nothing about it changes with what is selected elsewhere. Those password fields still follow Obsidian rather than invent: the reveal button beside them is the eye toggle from the app's own keychain dialog, icon and all. Everything else is a control, an action, a group, a list, or the page.
+A handful of rows keep a render callback, because no control type covers them: the documentation callout, the recording format (whose options are blocked one by one by an asynchronous encoder probe), the audio bitrate (whose options depend on that format, on the sample rate, and on the same probe, so the list is rebuilt whenever one of them moves, and the row disappears altogether for a lossless format that carries no bitrate), the output summary (derived from the format and bitrate rows rather than stored), the diagnostics test capture (which reports into its own row and owns a cleanup), each account's API key, which is a password input the declarative control set has no type for, and the local engine's binary and model paths, which are file pickers. There is one key block per account rather than one per job now, and it sits on the page of the engine it credentials, so nothing about it changes with what is selected elsewhere. Those password fields still follow Obsidian rather than invent: the reveal button beside them is the eye toggle from the app's own keychain dialog, icon and all. Everything else is a control, an action, a group, a list, or the page.
 
 Obsidian 1.13 does offer somewhere else to put a secret - `app.secretStorage`, encrypted through Electron's `safeStorage` and surfaced by `SecretComponent`. The tab does not use it. A secret there is stored per device and outside `data.json`, so adopting it would migrate every saved API key out of the plugin's own data and stop it syncing between a user's machines. That is a product decision about where credentials live, not a rendering one, and it is deliberately left for its own change.
 

@@ -20,7 +20,7 @@ import {
 	resolveEffectiveOutputFormat,
 	validateRecordingCapability,
 } from '../audio/AudioCapabilityDetector';
-import { AUDIO_FORMAT_IDS, getFormatDescriptor } from '../audio/formatRegistry';
+import { AUDIO_FORMAT_IDS, takesBitrate } from '../audio/formatRegistry';
 import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
 import {
@@ -295,9 +295,10 @@ export class SystemDiagnostics {
 			typeof audioDeviceApi()?.getUserMedia === 'function';
 
 		// A lossless format takes no bitrate, so there is nothing to measure.
-		const measured = AUDIO_FORMAT_IDS.filter(
-			(format) => getFormatDescriptor(format)?.lossless === false,
-		);
+		// Asked through the registry's own test rather than by reading the
+		// descriptor flag here, so the report cannot come to measure a
+		// different set of formats than the rows it is meant to explain.
+		const measured = AUDIO_FORMAT_IDS.filter(takesBitrate);
 		// Concurrently because the probes share no state and there are two per
 		// bitrate per format; run in sequence they would put a visible pause in
 		// front of the System info report.

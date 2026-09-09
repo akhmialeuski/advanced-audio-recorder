@@ -97,6 +97,17 @@ export interface EncodingDimensions {
 /**
  * What a recording session will hand the encoder, for validating a format
  * against it before the first sample is captured.
+ *
+ * One session is described by one encoding, which is exact for the single
+ * file a merged session writes and an upper bound for a session writing its
+ * tracks separately: there `numberOfChannels` is the widest track's layout,
+ * while each file is encoded with its own. The two answers can only differ
+ * for AAC at 24 kHz and below, where mediabunny asks about HE-AAC v2 for a
+ * stereo layout and v1 for a mono one, and no encode this plugin runs reaches
+ * that rate - `offlineEncodeSampleRate` reports the device's own, which is
+ * 44.1 or 48 kHz on real hardware. Describing each file separately would mean
+ * one validation and one bitrate resolution per track for a distinction
+ * nothing can currently observe.
  */
 export interface RecordingEncoding extends EncodingDimensions {
 	/**

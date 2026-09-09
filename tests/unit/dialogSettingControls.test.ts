@@ -192,6 +192,22 @@ describe('dialog setting builders', () => {
 			expect(row().el.style.display).toBe('none');
 		});
 
+		it('asks the encoder nothing for the target it hides the row for', async () => {
+			// Hiding the row was decided after it had been filled, so a dialog
+			// opening on a lossless target still registered an encoder and
+			// probed it once per candidate rate for a control nobody could
+			// see - and the answer arrived holding a callback able to move the
+			// dialog's bitrate on the strength of it.
+			const onChange = jest.fn();
+			encoderOffers([96000]);
+
+			bitrateRowFor(FORMAT_FLAC, 128000, onChange);
+			await tick();
+
+			expect(jest.mocked(resolveBitrateOffer)).not.toHaveBeenCalled();
+			expect(onChange).not.toHaveBeenCalled();
+		});
+
 		it('offers only the bitrates this device can encode', async () => {
 			// Narrowed, not dimmed. A native select keeps showing a disabled
 			// option it already sits on, so dimming left the row displaying a
