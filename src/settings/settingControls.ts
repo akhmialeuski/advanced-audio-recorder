@@ -23,10 +23,12 @@ import {
 	closestBitrate,
 	effectiveBitrate,
 	getSupportedBitrates,
+	kilohertz,
 	resolveBitrateOffer,
 	type BitrateOffer,
 } from '../audio/AudioCapabilityDetector';
-import { DEFAULT_SAMPLE_RATE } from '../constants';
+import { offlineEncodeSampleRate } from '../audio/AudioFormatConverter';
+import { DEFAULT_SAMPLE_RATE, PLUGIN_LOG_PREFIX } from '../constants';
 import { getFormatDescriptor, takesBitrate } from '../audio/formatRegistry';
 import type { ConversionLinkAction } from './settingsSchema';
 
@@ -407,16 +409,6 @@ function renderBitrateOptions(
 }
 
 /**
- * A sample rate as the row names it: kilohertz, without trailing zeros, so
- * 44100 reads as 44.1 and 48000 as 48.
- * @param sampleRate - Rate in hertz
- * @returns The rate in kHz, as text
- */
-function kilohertz(sampleRate: number): string {
-	return String(sampleRate / 1000);
-}
-
-/**
  * Where a rate the current format's encoder refuses is still to be had. Opus
  * encodes from 6 kbps by specification, at every sample rate, on every device
  * with a WebCodecs encoder, so a user after a small speech file is sent there
@@ -451,10 +443,7 @@ export function bitrateOfferNote(
 	const codec = (
 		getFormatDescriptor(format)?.codecLabel ?? format
 	).toUpperCase();
-	// The rate the answer holds for, which is the one asked about unless the
-	// encoder refused everything there and answered at its reference rate.
-	const answeredAt = offer?.sampleRate ?? sampleRate;
-	const range = `${codec} at ${kilohertz(answeredAt)} kHz reaches ${String(
+	const range = `${codec} at ${kilohertz(sampleRate)} kHz reaches ${String(
 		Math.round(lowest / 1000),
 	)}-${String(Math.round(highest / 1000))} kbps.`;
 	if (!offer) {
@@ -465,10 +454,10 @@ export function bitrateOfferNote(
 			return `${range} There is no encoder on this device to confirm them.`;
 		case 'refused':
 			return `${range} The encoder on this device cannot write ${codec} at ${kilohertz(
-				answeredAt,
+				sampleRate,
 			)} kHz. ${LOW_RATES_ELSEWHERE}`;
 		case 'confirmed': {
-			const declared = getSupportedBitrates(format, answeredAt);
+			const declared = getSupportedBitrates(format, sampleRate);
 			if (declared.length === bitrates.length) {
 				return `${range} The encoder on this device accepts all of them.`;
 			}
@@ -490,11 +479,18 @@ export function bitrateOfferNote(
  * row showing a rate the encoder had just refused, and a row where every
  * option was dimmed said nothing a user could act on. Removing them leaves
  * only values that work, and the note says what removed the rest.
+ *
+ * What the answer is reconciled against is the rate the dropdown is showing
+ * now, read back from it, not the one the fill started from. The probe takes
+ * as long as registering a bundled encoder, and a value picked while it was in
+ * flight is as much a choice as the one the row opened with: snapping the old
+ * value back left the select displaying one rate while the dialog converted at
+ * another.
  * @param dropdown - The dropdown whose list is narrowed
- * @param options - Target, layout, current selection, and the fill this
- *   answer belongs to
- * @returns The selection and note after narrowing, or null when the answer no
- *   longer applies
+ * @param options - Target, layout, the value the fill started from, and the
+ *   fill this answer belongs to
+ * @returns The selection after narrowing, whether narrowing moved it, and the
+ *   note explaining the list, or null when the answer no longer applies
  */
 async function narrowToOfferedBitrates(
 	dropdown: DropdownComponent,
@@ -506,7 +502,7 @@ async function narrowToOfferedBitrates(
 		generation: number;
 		isStale: () => boolean;
 	},
-): Promise<{ bitrate: number; note: string } | null> {
+): Promise<{ bitrate: number; moved: boolean; note: string } | null> {
 	const offer = await resolveBitrateOffer(
 		options.format,
 		options.sampleRate,
@@ -518,12 +514,19 @@ async function narrowToOfferedBitrates(
 	) {
 		return null;
 	}
-	const settled = closestBitrate(offer.bitrates, options.selected);
+	const shown = parseInt(dropdown.getValue(), 10);
+	const selected = Number.isFinite(shown) ? shown : options.selected;
+	const note = bitrateOfferNote(options.format, options.sampleRate, offer);
+	// Only a confirmed answer narrows anything. The other two verdicts hand
+	// back the codec's own range, which is already on offer, so re-rendering
+	// it would move the selection on the strength of an answer that measured
+	// nothing.
+	if (offer.encoder !== 'confirmed') {
+		return { bitrate: selected, moved: false, note };
+	}
+	const settled = closestBitrate(offer.bitrates, selected);
 	renderBitrateOptions(dropdown, offer.bitrates, settled);
-	return {
-		bitrate: settled,
-		note: bitrateOfferNote(options.format, options.sampleRate, offer),
-	};
+	return { bitrate: settled, moved: settled !== selected, note };
 }
 
 /**
@@ -584,15 +587,26 @@ export function fillBitrateDropdown(
 		selected,
 		generation,
 		isStale: options.isStale ?? ((): boolean => false),
-	}).then((narrowed) => {
-		if (!narrowed) {
-			return;
-		}
-		options.onNote?.(narrowed.note);
-		if (narrowed.bitrate !== selected) {
-			options.onSettled?.(narrowed.bitrate);
-		}
-	});
+	})
+		.then((narrowed) => {
+			if (!narrowed) {
+				return;
+			}
+			options.onNote?.(narrowed.note);
+			if (narrowed.moved) {
+				options.onSettled?.(narrowed.bitrate);
+			}
+		})
+		.catch((error: unknown) => {
+			// The probe answers rather than throws, so what reaches here is the
+			// DOM work on a row being torn down. Reported, because an install
+			// where this happens has no console to read an unhandled rejection
+			// from and the row simply stops explaining itself.
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Could not re-offer the bitrates this device accepts:`,
+				error,
+			);
+		});
 
 	return selected;
 }
@@ -621,11 +635,16 @@ export interface BitrateRow {
  * than only its value: a target the source format rules out, or one that
  * takes no bitrate at all, changes what the row must show.
  *
- * The rates are cut at the plugin's default sample rate rather than the
- * source file's own, which a dialog would have to read the container to
- * learn. That is the conservative direction for the one format whose floor
- * moves with the rate: MP3 is held to the MPEG-1 table, so a rate is never
- * offered that the file turns out not to reach.
+ * The rates are cut at the rate a conversion really encodes at, which is the
+ * device's own: both dialogs decode their source through an AudioContext,
+ * which resamples to that rate, so the source file's own rate never reaches
+ * the encoder and a dialog has no reason to read the container for it. Asking
+ * at the plugin's default instead described a file neither dialog writes, and
+ * on a device whose encoder answers differently at the two rates the row
+ * offered rates the conversion then refused. The default stands in only where
+ * there is no AudioContext, which is also where no conversion can run; either
+ * way the rate is above 32 kHz on any real device, so MP3 stays held to the
+ * MPEG-1 table and no rate is offered that the file turns out not to reach.
  * @param containerEl - Container to render the setting into
  * @param options - Labels, target format, initial value, and change callback
  * @returns The row, carrying its effective value and a way to re-offer it
@@ -640,7 +659,7 @@ export function addBitrateSetting(
 		onChange: (bitrate: number) => void;
 	},
 ): BitrateRow {
-	const sampleRate = DEFAULT_SAMPLE_RATE;
+	const sampleRate = offlineEncodeSampleRate(DEFAULT_SAMPLE_RATE);
 	let current = options.initialBitrate;
 	let dropdown: DropdownComponent | null = null;
 

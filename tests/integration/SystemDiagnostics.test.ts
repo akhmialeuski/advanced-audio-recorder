@@ -17,6 +17,7 @@ import {
 } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { createMockApp } from '../helpers/createApp';
+import { installAudioContextRate } from '../helpers/mediaMocks';
 import type { App } from 'obsidian';
 
 // Deterministic encoder probing: this suite exercises the diagnostics
@@ -85,6 +86,9 @@ function withUserAgent(value: string): void {
 
 /** The layout the diagnostics cases ask the encoder about. */
 const STEREO_CHANNELS = 2;
+
+/** The rate the stubbed device's AudioContext runs at. */
+const DEVICE_RATE = 48000;
 
 /**
  * Collects the audio capabilities the way the diagnostics report does, for the
@@ -644,5 +648,38 @@ describe('SystemDiagnostics.collect', () => {
 		expect(result.activeRecordingConfig.outputFormat).toBe(FORMAT_WEBM);
 		expect(result.activeRecordingConfig.mimeType).toBe('audio/webm');
 		expect(result.activeRecordingConfig.mimeTypeSupported).toBe(true);
+	});
+
+	it('measures the bitrates at the rate an encode runs at, not the one asked for', async () => {
+		// Taking the layout from the encoding and the rate from the settings
+		// had the report describe a file nobody writes: at 22.05 kHz on a
+		// 48 kHz device the AAC probe answers for HE-AAC and reports nothing
+		// reachable, while the recording encodes the 48 kHz mix and the
+		// bitrate row lists what that accepts.
+		const device = installAudioContextRate(DEVICE_RATE);
+		const { probeOfflineEncodingSupport } = jest.requireMock(
+			'src/audio/AudioEncoder',
+		);
+		const asked = probeOfflineEncodingSupport as jest.Mock;
+		asked.mockClear();
+		try {
+			await SystemDiagnostics.collect(
+				makeSettings({ sampleRate: 22050 }),
+				makeApp(),
+			);
+		} finally {
+			device.restore();
+		}
+
+		const rates = asked.mock.calls
+			.map(
+				([, quality]: [string, { sampleRate?: number } | undefined]) =>
+					quality?.sampleRate === undefined
+						? null
+						: quality.sampleRate,
+			)
+			.filter((rate: number | null): rate is number => rate !== null);
+		expect(rates.length).toBeGreaterThan(0);
+		expect([...new Set(rates)]).toEqual([DEVICE_RATE]);
 	});
 });

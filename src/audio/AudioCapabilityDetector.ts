@@ -130,6 +130,21 @@ export function buildMimeType(format: string): string {
 }
 
 /**
+ * A sample rate as a reader names it: kilohertz without trailing zeros, so
+ * 44100 reads as 44.1 and 48000 as 48.
+ *
+ * Shared because the same rate is named in three sentences a user can see one
+ * after the other - the format refusal, the bitrate refusal, and the note
+ * under the bitrate row - and rounding it in one of them had 22050 appear as
+ * both 22.05 and 22 kHz for one setting.
+ * @param sampleRate - Rate in hertz
+ * @returns The rate in kHz, as text
+ */
+export function kilohertz(sampleRate: number): string {
+	return String(sampleRate / 1000);
+}
+
+/**
  * The MIME type MediaRecorder accepts for recording this format
  * directly, or null when it cannot. Probes the plain `audio/<ext>`
  * MIME first (certain Chromium builds require it), then the registry's
@@ -364,8 +379,8 @@ export async function validateRecordingCapability(
 	return {
 		valid: false,
 		reason: encoding
-			? `The format "${format}" cannot be encoded at ${String(
-					encoding.sampleRate / 1000,
+			? `The format "${format}" cannot be encoded at ${kilohertz(
+					encoding.sampleRate,
 				)} kHz with ${String(encoding.numberOfChannels)} channel${
 					encoding.numberOfChannels === 1 ? '' : 's'
 				} on this device.`
@@ -395,6 +410,9 @@ export interface FormatAvailabilityEntry {
  * blocks the unavailable ones, so users see the full format list with
  * the subset their platform supports enabled. Async because encoder
  * support is probed for real.
+ * @param encoding - What a session under the current settings will hand the
+ *   encoder. Without it every entry answers about the codec alone, which is
+ *   what a report describing the device rather than a session asks for.
  * @returns One availability entry per registry format
  */
 export async function listFormatAvailability(
@@ -486,27 +504,20 @@ export interface BitrateOffer {
 	readonly bitrates: number[];
 	/** What the encoder said about them. */
 	readonly encoder: EncoderVerdict;
-	/**
-	 * The sample rate the answer holds for. Usually the one asked about; the
-	 * reference rate when the encoder refused everything at the asked one and
-	 * was asked again there.
-	 */
-	readonly sampleRate: number;
 }
-
-/**
- * A sample rate every platform AAC encoder accepts, and the one mediabunny
- * asks about AAC-LC at rather than HE-AAC. When an encoder refuses every
- * bitrate at the rate a session asks about, the question is repeated here, so
- * what it accepts at all still reaches the row: a Windows AAC encoder asked at
- * 22.05 kHz refused the lot and let 24 kbps stay selectable, and the capture
- * then silently came out at 96.
- */
-const ENCODER_REFERENCE_RATE = 48000;
 
 /**
  * The bitrates to offer for a format: the codec's own range, narrowed to what
  * this device's encoder accepts when it accepts anything at all.
+ *
+ * The answer holds for the sample rate and layout it was asked about, and for
+ * no others. Asking a second time at a rate nobody is recording at was how
+ * one answer came to mean two things: the bitrate row narrowed its list to
+ * what a 48 kHz encode would accept while the recording path, reading the
+ * same offer, refused to move a session onto rates measured somewhere else.
+ * Every caller now asks at the rate an offline encode runs at, which
+ * `offlineEncodeSampleRate` reads from the device, so an answer given for
+ * another rate has no reader left.
  *
  * An encoder that accepts none of them has not narrowed the list, it has
  * ruled the format out at this sample rate and layout. Chromium refuses every
@@ -527,7 +538,7 @@ export async function resolveBitrateOffer(
 ): Promise<BitrateOffer> {
 	const declared = getSupportedBitrates(format, sampleRate);
 	if (!isOfflineEncodingSupported(format)) {
-		return { bitrates: declared, encoder: 'unavailable', sampleRate };
+		return { bitrates: declared, encoder: 'unavailable' };
 	}
 	// probeOfflineEncodingSupport is the error boundary: a registration or
 	// probe that throws comes back as "unavailable", so a failed probe reaches
@@ -537,36 +548,24 @@ export async function resolveBitrateOffer(
 		sampleRate,
 		numberOfChannels,
 	);
-	if (accepted.length > 0) {
-		return { bitrates: accepted, encoder: 'confirmed', sampleRate };
+	if (accepted.length === 0) {
+		return { bitrates: declared, encoder: 'refused' };
 	}
-	// Refused wholesale at this rate. What the encoder accepts at all is still
-	// the answer the row needs, so a rate it refuses cannot stay selected.
-	if (sampleRate !== ENCODER_REFERENCE_RATE) {
-		const atReference = await acceptedBitrates(
-			format,
-			ENCODER_REFERENCE_RATE,
-			numberOfChannels,
-		);
-		if (atReference.length > 0) {
-			return {
-				bitrates: atReference,
-				encoder: 'confirmed',
-				sampleRate: ENCODER_REFERENCE_RATE,
-			};
-		}
-	}
-	return { bitrates: declared, encoder: 'refused', sampleRate };
+	return { bitrates: accepted, encoder: 'confirmed' };
 }
 
 /**
  * The offered bitrates this device's encoder accepts for a format.
+ *
+ * Exported because the System info report asks the same question of every
+ * compressed format, and a second filter over {@link listBitrateAvailability}
+ * written there is the same rule kept in two places.
  * @param format - Target audio format
  * @param sampleRate - Rate the encoder is asked about
  * @param numberOfChannels - Layout the encoder is asked about
  * @returns Accepted bitrates in bps, ascending, possibly none
  */
-async function acceptedBitrates(
+export async function acceptedBitrates(
 	format: string,
 	sampleRate: number,
 	numberOfChannels: number,
@@ -618,14 +617,7 @@ export async function resolveEffectiveBitrate(
 		encoding.sampleRate,
 		encoding.numberOfChannels,
 	);
-	if (
-		offer.encoder !== 'confirmed' ||
-		// Answered at the reference rate because the encoder refused every
-		// rate at the one asked about. No bitrate rescues that: it is the
-		// format that cannot be written here, which the format check reports.
-		offer.sampleRate !== encoding.sampleRate ||
-		offer.bitrates.includes(requested)
-	) {
+	if (offer.encoder !== 'confirmed' || offer.bitrates.includes(requested)) {
 		// Unavailable: nothing to check against. Refused: no rate would help,
 		// and the format check at start has already moved the session off
 		// this format.
@@ -636,7 +628,7 @@ export async function resolveEffectiveBitrate(
 		fellBack: true,
 		reason: `This device's ${format.toUpperCase()} encoder does not accept ${String(
 			Math.round(requested / 1000),
-		)} kbps at ${String(Math.round(encoding.sampleRate / 1000))} kHz.`,
+		)} kbps at ${kilohertz(encoding.sampleRate)} kHz.`,
 	};
 }
 
@@ -648,6 +640,9 @@ export async function resolveEffectiveBitrate(
  * recording: the session records something that genuinely works here
  * and the caller tells the user about the substitution.
  * @param requested - The stored output format preference
+ * @param encoding - What the session will hand the encoder. Every candidate
+ *   is held to it as well, so a fallback cannot be one that would fail at the
+ *   end of the recording the way the requested format just did.
  * @returns The effective format and whether it is a fallback
  * @throws Error when this device cannot record any format at all
  */

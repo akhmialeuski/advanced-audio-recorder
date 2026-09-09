@@ -190,7 +190,13 @@ const deviceSampleRates = new WeakMap<typeof AudioContext, number>();
  * describes a file that is never written: at 22.05 kHz it asked Chromium for
  * HE-AAC and got a refusal, while the 48 kHz mix it really encodes is AAC-LC
  * and fine. Answers with the requested rate only where there is no
- * AudioContext to ask, which is also where no offline encode can run.
+ * AudioContext to ask, which is also where no offline encode can run, and
+ * where the cap this reading is memoised against has already been reached:
+ * the constructor refuses once a document holds its maximum of live hardware
+ * contexts, and that refusal reaches the settings tab, whose renderer runs a
+ * row's callback unguarded, so an unhandled throw takes down every setting
+ * rather than one row. The refusal is not memoised, so the next call reads
+ * the device again once a slot frees.
  * @param requested - The sample rate the settings ask for
  * @returns The rate the encoder will be handed
  */
@@ -202,7 +208,16 @@ export function offlineEncodeSampleRate(requested: number): number {
 	if (known !== undefined) {
 		return known;
 	}
-	const context = new AudioContext();
+	let context: AudioContext;
+	try {
+		context = new AudioContext();
+	} catch (error) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Could not open an AudioContext to read the device sample rate:`,
+			error,
+		);
+		return requested;
+	}
 	const rate = context.sampleRate;
 	deviceSampleRates.set(AudioContext, rate);
 	// Released without waiting: the rate has been read, and a close that

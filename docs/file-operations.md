@@ -106,7 +106,7 @@ The dialog header shows the source file name. Below it are these controls:
 | ------------------------- | ------------------------------------------------------------------------------ | -------------------------------------- |
 | **Target format**         | The output format (every offline-encodable format except the source).          | First format in list                   |
 | **Channels**              | Keep the source channel layout, or downmix to mono.                            | Keep source channels                   |
-| **Bitrate**               | Bitrate for compressed targets. Hidden for a WAV target, which has no bitrate. | Your **Audio bitrate** setting (`128`) |
+| **Bitrate**               | Bitrate for lossy targets. Hidden for a WAV or FLAC target, which carry none.  | Your **Audio bitrate** setting (`128`) |
 | **Delete source file**    | Move the original to the system trash after a successful conversion.           | From settings                          |
 | **Update links in notes** | How to rewrite links to the source file in your notes.                         | From settings                          |
 
@@ -114,7 +114,7 @@ Details on the controls:
 
 - **Target format** lists each format with its encoder, e.g. `MP3 (Mediabunny MP3 Encoder)`, `FLAC (Mediabunny FLAC Encoder)`, `OGG (…)`. The source's own format is excluded for channel-preserving conversions, so you always pick a different one; selecting a mono **Channels** option adds the source's own format back to the list (see below).
 - **Channels** offers `Keep source channels`, `Mono (mix all channels)` (the average of every channel - the standard downmix), `Mono (left channel)`, and `Mono (right channel)` (exactly one channel, at full level). The left/right options rescue stereo files where only one channel carries audio - the typical result of recording one microphone through an audio interface whose two mono inputs appear as a single stereo device. See [Recording in mono](recording.md#recording-in-mono) for the capture-time equivalent.
-- **Bitrate** offers `24`, `32`, `48`, `64`, `96`, `128`, `160`, `192`, `256`, and `320` kbps, cut to what the chosen target format and this device's encoder can write: picking `MP3` drops everything below `32`, and selecting `WAV` hides the row entirely. The values below `64` are a mono speech mode - see [Bitrate guidance](formats.md#bitrate-guidance).
+- **Bitrate** offers `24`, `32`, `48`, `64`, `96`, `128`, `160`, `192`, `256`, and `320` kbps, cut to what the chosen target format and this device's encoder can write: picking `MP3` drops everything below `32`, and selecting `WAV` or `FLAC` hides the row entirely, because neither carries a bitrate. The values below `64` are a mono speech mode - see [Bitrate guidance](formats.md#bitrate-guidance).
 - **Update links in notes** offers `Do nothing`, `Replace source link`, and `Insert after source link` (see [Link updates and source deletion](#link-updates-and-source-deletion) below).
 
 The **Delete source file** and **Update links in notes** defaults come from **Settings > Advanced Audio Recorder > Output format** (the **Delete source after conversion** and **Update links after conversion** settings). You can override them for a single conversion in the dialog. See [Settings reference](settings-reference.md#output-format) for those settings.

@@ -106,34 +106,43 @@ describe('which bitrates a recording can really use', () => {
 			expect(mono.encoder).toBe('refused');
 		});
 
-		it('asks again at the reference rate when everything is refused at the asked one', async () => {
-			// The report from the field, third round: 22.05 kHz in the
-			// settings, where Chromium is asked about HE-AAC and refuses the
-			// lot. Treating that as "nothing to offer" left 24 kbps selectable
-			// for M4A, and the capture then came out at 96 without a word.
-			// What the encoder accepts at all is the answer the row needs.
-			installWindowsAacEncoder();
+		// An encoder that takes nothing anywhere and one that takes plenty at
+		// another rate are the same answer here, and that is the point: an
+		// offer holds for the rate it was asked about and for no other. The
+		// report from the field, third round, is the second row - 22.05 kHz in
+		// the settings, where Chromium is asked about HE-AAC and refuses the
+		// lot. Answering it with what a 48 kHz encode would take made one
+		// offer mean two things: the row narrowed its list to rates measured
+		// elsewhere while the recording path refused to move a session onto
+		// them. What keeps 22.05 kHz away from the encoder now is that no
+		// caller asks at it - every one asks at the rate an offline encode
+		// runs at, which this machine's own AudioContext settles.
+		it.each([
+			[
+				'no encoder for the codec at all',
+				(): void => encoderAccepting([]),
+			],
+			[
+				'an encoder that takes only rates this one is not',
+				(): void => installWindowsAacEncoder(),
+			],
+		])(
+			'reports a refusal at the asked rate as the format being unwritable: %s',
+			async (_case, installEncoder) => {
+				installEncoder();
 
-			const offer = await resolveBitrateOffer(FORMAT_M4A, 22050, MONO);
+				const offer = await resolveBitrateOffer(
+					FORMAT_M4A,
+					22050,
+					MONO,
+				);
 
-			expect(offer.bitrates).toEqual(MEDIA_FOUNDATION_AAC_BITRATES);
-			expect(offer.encoder).toBe('confirmed');
-			expect(offer.sampleRate).toBe(48000);
-		});
-
-		it('reports a refusal at every rate as the format being unwritable', async () => {
-			// No AAC encoder at all: refused at the asked rate and at the
-			// reference rate alike. No bitrate will help, so the row keeps the
-			// codec range to show and says the format is what has to change.
-			encoderAccepting([]);
-
-			const offer = await resolveBitrateOffer(FORMAT_M4A, 22050, MONO);
-
-			expect(offer.bitrates).toEqual(
-				getSupportedBitrates(FORMAT_M4A, 22050),
-			);
-			expect(offer.encoder).toBe('refused');
-		});
+				expect(offer.bitrates).toEqual(
+					getSupportedBitrates(FORMAT_M4A, 22050),
+				);
+				expect(offer.encoder).toBe('refused');
+			},
+		);
 
 		it('keeps the codec range where there is no encoder to ask', async () => {
 			delete (global as Record<string, unknown>).AudioEncoder;
@@ -204,6 +213,21 @@ describe('which bitrates a recording can really use', () => {
 			expect(resolved.bitrate).toBe(96000);
 			expect(resolved.fellBack).toBe(true);
 			expect(resolved.reason).toContain('24 kbps');
+		});
+
+		it('names the rate the way every other sentence about it does', async () => {
+			// Two notices can be raised by one startRecording, and rounding
+			// the rate in this one had a 22.05 kHz setting appear as both
+			// 22.05 and 22 kHz in the same session.
+			encoderAccepting(MEDIA_FOUNDATION_AAC_BITRATES);
+
+			const resolved = await resolveEffectiveBitrate(
+				FORMAT_M4A,
+				24000,
+				mergedSession({ sampleRate: 22050 }),
+			);
+
+			expect(resolved.reason).toContain('at 22.05 kHz');
 		});
 
 		it('keeps a rate the encoder takes and reports no substitution', async () => {

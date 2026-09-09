@@ -54,14 +54,21 @@ export const resolveBitrateOffer = jest.fn(
 	): Promise<{
 		bitrates: number[];
 		encoder: 'confirmed' | 'unavailable' | 'refused';
-		sampleRate: number;
 	}> =>
 		Promise.resolve({
 			bitrates: getSupportedBitrates(format, sampleRate),
 			encoder: 'unavailable',
-			sampleRate: sampleRate ?? 44100,
 		}),
 );
+
+/**
+ * The real rate label. It reads a number and nothing else, so a stub could
+ * only disagree with the sentences the row is asserted on.
+ * @param sampleRate - Rate in hertz
+ * @returns The rate in kHz, as text
+ */
+export const kilohertz = (sampleRate: number): string =>
+	String(sampleRate / 1000);
 
 /**
  * The real snapping rule, which the row and the session both depend on.

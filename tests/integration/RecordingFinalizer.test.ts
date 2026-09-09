@@ -176,6 +176,31 @@ describe('RecordingFinalizer', () => {
 			expect(jest.mocked(convertBlobToWavBuffer)).toHaveBeenCalled();
 		});
 
+		it('tags the concatenated segments with the container the recorder wrote', async () => {
+			// An M4A file is an MP4 container, and the recorder only accepts
+			// it as audio/mp4, so the session carries that type. Rebuilding it
+			// from the format name here was a second answer to the question
+			// the session already settles, and it labelled those bytes
+			// audio/m4a.
+			buildFinalizer(
+				createSession({
+					outputFormat: 'mp3',
+					recorderFormat: 'm4a',
+					recorderMimeType: 'audio/mp4',
+				}),
+			);
+
+			await finalizer.finalizeSegmentsToFile(['seg1.tmp'], 'final.mp3');
+
+			expect(jest.mocked(convertBlobToFormatBuffer)).toHaveBeenCalledWith(
+				expect.objectContaining({ type: 'audio/mp4' }),
+				'mp3',
+				expect.any(Number),
+				expect.any(Function),
+				expect.anything(),
+			);
+		});
+
 		it('res-encode offline-only formats with remux allowed and mapped progress', async () => {
 			buildFinalizer(createSession({ outputFormat: 'mp3' }));
 

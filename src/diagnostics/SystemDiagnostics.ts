@@ -16,7 +16,7 @@ import {
 	detectCodecSupport,
 	getExpectedCodec,
 	buildMimeType,
-	listBitrateAvailability,
+	acceptedBitrates,
 	resolveEffectiveOutputFormat,
 	validateRecordingCapability,
 } from '../audio/AudioCapabilityDetector';
@@ -115,9 +115,10 @@ export interface DiagnosticsAudioCapabilities {
 	supportedBitrates: number[];
 	/**
 	 * Bitrates each compressed format's encoder really accepts here, in bps,
-	 * at the configured sample rate. AAC is what this measures: WebCodecs
-	 * hands the decision to the platform encoder, so the answer differs
-	 * between Windows, macOS and iOS and no declaration can stand in for it.
+	 * at the rate an offline encode runs at rather than the rate the settings
+	 * ask for. AAC is what this measures: WebCodecs hands the decision to the
+	 * platform encoder, so the answer differs between Windows, macOS and iOS
+	 * and no declaration can stand in for it.
 	 */
 	reachableBitrates: Record<string, number[]>;
 	codecSupport: CodecSupportEntry[];
@@ -277,7 +278,9 @@ export class SystemDiagnostics {
 	/**
 	 * Detects audio recording capabilities of the current environment.
 	 * @param sampleRate - Rate the bitrate probe asks about, since what an
-	 *   encoder accepts depends on it
+	 *   encoder accepts depends on it. The rate an offline encode runs at,
+	 *   from {@link recordingEncodingFor}, so the report measures the file a
+	 *   recording writes rather than one the settings only describe.
 	 * @param numberOfChannels - Layout the probe asks about, which an encoder
 	 *   answers separately for
 	 * @returns Audio capabilities descriptor
@@ -304,15 +307,11 @@ export class SystemDiagnostics {
 					async (format) =>
 						[
 							format,
-							(
-								await listBitrateAvailability(
-									format,
-									sampleRate,
-									numberOfChannels,
-								)
-							)
-								.filter((entry) => entry.available)
-								.map((entry) => entry.bitrate),
+							await acceptedBitrates(
+								format,
+								sampleRate,
+								numberOfChannels,
+							),
 						] as const,
 				),
 			),
@@ -403,12 +402,19 @@ export class SystemDiagnostics {
 		settings: AudioRecorderSettings,
 		app: App,
 	): Promise<DiagnosticsData> {
+		// One encoding, read once and asked about in full. Taking the layout
+		// from it and the rate from the settings had the report measure a file
+		// nobody writes: at 22.05 kHz in the settings on a 48 kHz device the
+		// AAC probe answered for HE-AAC and reported no reachable bitrate at
+		// all, while the recording encodes the 48 kHz mix and the bitrate row
+		// lists what it accepts.
+		const encoding = recordingEncodingFor(settings);
 		const [audioDevices, audioCapabilities, activeRecordingConfig] =
 			await Promise.all([
 				SystemDiagnostics.collectAudioDevices(),
 				SystemDiagnostics.collectAudioCapabilities(
-					settings.sampleRate,
-					recordingEncodingFor(settings).numberOfChannels,
+					encoding.sampleRate,
+					encoding.numberOfChannels,
 				),
 				SystemDiagnostics.collectActiveRecordingConfig(settings),
 			]);

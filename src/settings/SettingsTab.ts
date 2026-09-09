@@ -906,8 +906,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	private renderBitrateRow(setting: Setting): void {
 		const settings = this.plugin.settings;
-		// The row itself is hidden for a PCM target by the definition's own
-		// visible predicate; a format that reaches here carries a bitrate.
+		// The definition's visible predicate hides this row for a lossless
+		// target, but the renderer draws every row before applying it, so the
+		// predicate alone still left a WAV or FLAC install running ten encoder
+		// probes and holding a live callback able to write settings.bitrate
+		// for a row nobody can see. A format that takes no bitrate gets no
+		// control at all; picking one that does redraws the tab.
+		if (!takesBitrate(settings.recordingFormat)) {
+			return;
+		}
 		setting.addDropdown((dropdown) => {
 			// The stored value is left alone: drawing a row is not an edit,
 			// and the summary line below reads the same effectiveBitrate this

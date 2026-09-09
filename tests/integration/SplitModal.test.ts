@@ -33,6 +33,7 @@ jest.mock('src/audio/AudioCapabilityDetector', () =>
 
 // Mock the decoder: the compressed path decodes once via this function
 jest.mock('src/audio/AudioFormatConverter', () => ({
+	...require('../mocks/modules/audioFormatConverter'),
 	decodeAudioBlob: jest.fn(),
 }));
 

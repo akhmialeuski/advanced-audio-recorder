@@ -24,6 +24,7 @@ import {
 	type EncoderVerdict,
 } from 'src/audio/AudioCapabilityDetector';
 import { at } from '../helpers/assertions';
+import { installAudioContextRate } from '../helpers/mediaMocks';
 import { tick } from '../helpers/async';
 import { capturedSettings } from '../helpers/captureSettings';
 import type { CapturedSetting } from '../helpers/captureSettings';
@@ -46,6 +47,9 @@ describe('dialog setting builders', () => {
 	/** The bitrates the detector double offers, in the order it offers them. */
 	const OFFERED = [64000, 96000, 128000, 192000];
 
+	/** A device whose AudioContext runs above the plugin's own default. */
+	const DEVICE_RATE = 48000;
+
 	beforeEach(() => {
 		capturedSettings.length = 0;
 		containerEl = document.createElement('div');
@@ -57,7 +61,6 @@ describe('dialog setting builders', () => {
 		jest.mocked(resolveBitrateOffer).mockResolvedValue({
 			bitrates: [...OFFERED],
 			encoder: 'unavailable',
-			sampleRate: DEFAULT_SAMPLE_RATE,
 		});
 	});
 
@@ -81,7 +84,6 @@ describe('dialog setting builders', () => {
 		jest.mocked(resolveBitrateOffer).mockResolvedValue({
 			bitrates,
 			encoder,
-			sampleRate: DEFAULT_SAMPLE_RATE,
 		});
 	}
 
@@ -233,6 +235,42 @@ describe('dialog setting builders', () => {
 			expect(onChange).not.toHaveBeenCalled();
 		});
 
+		it('keeps a rate picked while the encoder was still being asked', async () => {
+			// Registering a bundled encoder takes long enough for a dialog to
+			// be used meanwhile. Snapping the answer onto the value the fill
+			// started from put the old rate back into the select while the
+			// dialog went on converting at the picked one, so the row showed
+			// one bitrate and the file came out at another.
+			const onChange = jest.fn();
+			encoderOffers([64000, 96000, 128000, 192000]);
+
+			const bitrateRow = bitrateRowFor(FORMAT_WEBM, 128000, onChange);
+			row().changes.dropdown?.('192000');
+			await tick();
+
+			expect({
+				shown: row().dropdownValue,
+				used: bitrateRow.value,
+			}).toEqual({ shown: '192000', used: 192000 });
+		});
+
+		it('narrows a rate picked while it was being asked onto what the encoder takes', async () => {
+			// The pick still has to obey the answer: what changes is that it
+			// is the pick being narrowed, not the value the row opened with.
+			const onChange = jest.fn();
+			encoderOffers([64000, 96000]);
+
+			const bitrateRow = bitrateRowFor(FORMAT_WEBM, 64000, onChange);
+			row().changes.dropdown?.('192000');
+			await tick();
+
+			expect({
+				shown: row().dropdownValue,
+				used: bitrateRow.value,
+			}).toEqual({ shown: '96000', used: 96000 });
+			expect(onChange).toHaveBeenLastCalledWith(96000);
+		});
+
 		it('says which values the codec reaches before the encoder answers', () => {
 			bitrateRowFor(FORMAT_MP3);
 
@@ -310,13 +348,53 @@ describe('dialog setting builders', () => {
 			settleWebm({
 				bitrates: [64000],
 				encoder: 'confirmed',
-				sampleRate: DEFAULT_SAMPLE_RATE,
 			});
 			await tick();
 
 			expect(
 				(row().dropdownOptions ?? []).map((option) => option.value),
 			).toEqual(['128000', '192000']);
+		});
+
+		it('asks at the rate a conversion encodes at, not the plugin default', async () => {
+			// Both dialogs decode their source through an AudioContext, which
+			// resamples to the device's rate, so that is the rate the encoder
+			// is handed. Asking at the plugin default described a file neither
+			// dialog writes, and on a device whose encoder answers differently
+			// at the two the row offered rates the conversion then refused.
+			const device = installAudioContextRate(DEVICE_RATE);
+			try {
+				bitrateRowFor(FORMAT_MP3);
+				await tick();
+			} finally {
+				device.restore();
+			}
+
+			expect(jest.mocked(resolveBitrateOffer)).toHaveBeenCalledWith(
+				FORMAT_MP3,
+				DEVICE_RATE,
+				expect.any(Number),
+			);
+		});
+
+		it('reports a failure to re-offer instead of leaving it unhandled', async () => {
+			// The probe answers rather than throws, so what can reach here is
+			// the DOM work on a row being torn down. An install where that
+			// happens has no console to read an unhandled rejection from, and
+			// the row would simply stop explaining itself.
+			const warn = jest
+				.spyOn(console, 'warn')
+				.mockImplementation(() => {});
+			const failure = new Error('offer failed');
+			jest.mocked(resolveBitrateOffer).mockRejectedValueOnce(failure);
+
+			bitrateRowFor();
+			await tick();
+
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining('Could not re-offer the bitrates'),
+				failure,
+			);
 		});
 
 		it('hides itself for a target outside the registry', () => {
@@ -327,6 +405,22 @@ describe('dialog setting builders', () => {
 			bitrateRow.rebuild('aiff');
 
 			expect(row().el.style.display).toBe('none');
+		});
+
+		it('narrows from the value asked for when the row is showing none', async () => {
+			// A codec the plugin knows no rates for renders an empty select,
+			// which shows nothing to read back. The value the row was asked
+			// for is what the encoder's answer then has to be snapped onto:
+			// reading the empty selection as the selection put the row on the
+			// lowest rate the encoder happened to accept.
+			const onChange = jest.fn();
+			jest.mocked(getSupportedBitrates).mockReturnValue([]);
+			encoderOffers([64000, 96000, 128000, 192000]);
+
+			const bitrateRow = bitrateRowFor(FORMAT_WEBM, 190000, onChange);
+			await tick();
+
+			expect(bitrateRow.value).toBe(192000);
 		});
 
 		it('keeps the value asked for when nothing is on offer', () => {
@@ -358,7 +452,6 @@ describe('dialog setting builders', () => {
 				bitrateOfferNote(FORMAT_MP3, 44100, {
 					bitrates: [64000, 96000],
 					encoder: 'confirmed',
-					sampleRate: 44100,
 				}),
 			).not.toContain('use WebM or OGG');
 		});
@@ -368,7 +461,6 @@ describe('dialog setting builders', () => {
 				bitrateOfferNote(FORMAT_MP3, 44100, {
 					bitrates: [],
 					encoder: 'confirmed',
-					sampleRate: 44100,
 				}),
 			).toBe('');
 		});

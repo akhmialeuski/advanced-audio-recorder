@@ -74,7 +74,13 @@ export interface CapturedSetting {
 	toggle: CapturedControl | null;
 	text: CapturedControl | null;
 	dropdownOptions: CapturedDropdownOption[] | null;
-	/** Value the dropdown was rendered with, or null when there is none. */
+	/**
+	 * Value the dropdown is showing, or null when there is none. A select
+	 * holds the new value before its change event fires, so driving
+	 * `changes.dropdown` moves this too: production code that reads the
+	 * selection back would otherwise see the last rendered value and never
+	 * the one a test just picked.
+	 */
 	dropdownValue: string | null;
 	changes: CapturedChanges;
 	buttons: CapturedButton[];
@@ -393,14 +399,31 @@ export class CapturingSetting {
 				return this;
 			},
 			setValue(value: string) {
-				cap.dropdownValue = value;
+				// A select holds only a value one of its options carries, and
+				// drops anything else to the empty string. Recording the value
+				// regardless made an empty list look as though it were showing
+				// the bitrate nobody could pick.
+				cap.dropdownValue = options.some(
+					(option) => option.value === value,
+				)
+					? value
+					: '';
 				return this;
+			},
+			getValue() {
+				return cap.dropdownValue ?? '';
 			},
 			setDisabled() {
 				return this;
 			},
 			onChange(handler: (value: string) => unknown) {
-				cap.changes.dropdown = handler;
+				// Wrapped so the recorded selection moves with the pick, the
+				// way a real select's value is already the new one by the time
+				// its change handler runs.
+				cap.changes.dropdown = (value: string): unknown => {
+					cap.dropdownValue = value;
+					return handler(value);
+				};
 				return this;
 			},
 		};

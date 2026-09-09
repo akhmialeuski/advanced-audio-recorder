@@ -49,6 +49,7 @@ jest.mock('src/utils/LinkUpdater', () => ({
 
 // Mock AudioFormatConverter: conversion pipelines have their own suite
 jest.mock('src/audio/AudioFormatConverter', () => ({
+	...require('../mocks/modules/audioFormatConverter'),
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
 	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
 }));

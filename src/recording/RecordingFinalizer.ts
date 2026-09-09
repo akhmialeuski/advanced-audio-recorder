@@ -40,7 +40,6 @@ import {
 	type MergePlacement,
 } from '../audio/AudioFormatConverter';
 import { INT16_MAX } from '../audio/pcm';
-import { buildMimeType } from '../audio/AudioCapabilityDetector';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { audioMimeForExtension } from '../audio/formatRegistry';
 import { canStreamMix, mixPcmTracksToWav } from './StreamingMixer';
@@ -436,7 +435,7 @@ export class RecordingFinalizer {
 		}
 		const blob = await this.readSegmentsAsBlob(
 			segmentPaths,
-			buildMimeType(session.recorderFormat),
+			session.recorderMimeType,
 		);
 		if (blob.size === 0) {
 			return null;
@@ -726,7 +725,7 @@ export class RecordingFinalizer {
 			return null;
 		}
 
-		const type = buildMimeType(session.recorderFormat);
+		const type = session.recorderMimeType;
 		const blob = await this.readSegmentsAsBlob(target.segmentPaths, type);
 
 		return new Blob([blob, ...target.bufferedChunks], { type });

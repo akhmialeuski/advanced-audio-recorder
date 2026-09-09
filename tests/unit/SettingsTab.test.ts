@@ -2509,6 +2509,30 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		expect(bitrateDescription()).toContain('use WebM or OGG');
 	});
 
+	it('asks the encoder nothing for a format that carries no bitrate', async () => {
+		// The renderer draws every row and applies the visible predicate
+		// afterwards, so hiding the row left a WAV install still running a
+		// probe per candidate rate and still holding a callback able to write
+		// settings.bitrate for a row nobody can see.
+		mockSettings.recordingFormat = 'wav';
+		const { probeOfflineEncodingSupport } = jest.requireMock(
+			'src/audio/AudioEncoder',
+		);
+		const asked = probeOfflineEncodingSupport as jest.Mock;
+
+		tab.display();
+		asked.mockClear();
+		await tick();
+		await tick();
+
+		expect(
+			asked.mock.calls.filter(
+				([, quality]: [string, { bitrate?: number } | undefined]) =>
+					quality?.bitrate !== undefined,
+			),
+		).toEqual([]);
+	});
+
 	it('hides itself for FLAC, whose bitrate is a result and not a choice', async () => {
 		// A 6-second FLAC recording reported 607 kbps beside a row set to 24:
 		// the encoder writes whatever the signal compresses to and never

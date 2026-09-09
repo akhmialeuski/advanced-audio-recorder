@@ -258,14 +258,40 @@ describe('every format on a Windows desktop', () => {
 		(format) => {
 			it('still offers only what the AAC encoder accepts, so 24 kbps cannot be picked', async () => {
 				// The field report: 24 kbps chosen for M4A, capture came out
-				// at 96. Asked at 22.05 kHz the encoder refuses everything,
-				// and the row used to read that as nothing to narrow by.
-				const offer = await resolveBitrateOffer(format, 22050, 1);
+				// at 96. What keeps that rate off the row is the question
+				// being put at the rate the encode really runs at, this
+				// device's own, rather than the one the settings name.
+				const encoding = recordingEncodingFor({
+					...DEFAULT_SETTINGS,
+					sampleRate: 22050,
+				});
+
+				const offer = await resolveBitrateOffer(
+					format,
+					encoding.sampleRate,
+					encoding.numberOfChannels,
+				);
 
 				expect(offer.bitrates).toEqual(WINDOWS_AAC_BITRATES);
 				expect(offer.encoder).toBe('confirmed');
-				expect(bitrateOfferNote(format, 22050, offer)).toContain(
+				expect(
+					bitrateOfferNote(format, encoding.sampleRate, offer),
+				).toContain(
 					'AAC at 48 kHz reaches 96-192 kbps. The encoder on this device accepts only the values listed. For the lower rates use WebM or OGG',
+				);
+			});
+
+			it('names the rate in effect when asked at one the encoder refuses', async () => {
+				// No caller asks at 22.05 kHz any more, and one that did gets
+				// a refusal for 22.05 kHz rather than an answer measured at
+				// 48. One offer standing for two rates is what let the row
+				// narrow onto a list the recording path then declined to move
+				// a session to.
+				const offer = await resolveBitrateOffer(format, 22050, 1);
+
+				expect(offer.encoder).toBe('refused');
+				expect(bitrateOfferNote(format, 22050, offer)).toContain(
+					'AAC at 22.05 kHz reaches 24-320 kbps. The encoder on this device cannot write AAC at 22.05 kHz.',
 				);
 			});
 		},

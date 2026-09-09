@@ -29,6 +29,7 @@ import { at, defined } from '../helpers/assertions';
 // The codec boundary, and only that: decoding and re-encoding audio needs
 // WebAudio and a container writer, neither of which jsdom has.
 jest.mock('src/audio/AudioFormatConverter', () => ({
+	...require('../mocks/modules/audioFormatConverter'),
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
 	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(64)),
 }));
