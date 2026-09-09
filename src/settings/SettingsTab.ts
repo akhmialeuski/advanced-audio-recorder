@@ -48,17 +48,20 @@ import type { AudioRecorderSettings } from './settingsSchema';
 import {
 	getSupportedSampleRates,
 	buildMimeType,
+	effectiveBitrate,
 	listFormatAvailability,
 	resolveEffectiveOutputFormat,
 	type FormatAvailabilityEntry,
 } from '../audio/AudioCapabilityDetector';
 import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
+import { recordingBitrateFormat } from '../audio/AudioFormatConverter';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
 import {
 	audioDeviceApi,
 	channelSelectionAvailable,
 	getAudioInputDeviceSnapshot,
+	recordingEncodingFor,
 	type AudioInputDeviceSnapshot,
 } from '../recording/AudioStreamHandler';
 import { getEncoderDescription } from '../ui/formatDescriptions';
@@ -97,7 +100,9 @@ import {
 	type EngineSettingsStore,
 } from '../providers/engineSettings';
 import { ModelIdModal } from '../ui/ModelIdModal';
+import { fillBitrateDropdown } from './settingControls';
 import type { SettingsSectionContext } from './settingControls';
+import { BITRATE_ROW_DESC } from './sections/outputFormatSection';
 import { isMultiTrackCaptureSupported } from '../platform/capabilities';
 import { effectiveWordTimestamps } from '../transcription/providers/capabilities';
 
@@ -261,6 +266,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			outputFormat: {
 				renderFormatRow: (setting): void => {
 					this.renderFormatRow(setting);
+				},
+				renderBitrateRow: (setting): void => {
+					this.renderBitrateRow(setting);
 				},
 				renderSummaryRow: (setting): void => {
 					this.renderSummaryRow(setting);
@@ -891,17 +899,121 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * Fills the bitrate row. Which bitrates a recording can use depends on the
+	 * format and the sample rate chosen above it, and which of those the
+	 * device's own encoder accepts is settled by an asynchronous probe, so
+	 * neither a fixed option map nor a whole-control disable expresses it.
+	 * @param setting - The row to fill
+	 */
+	private renderBitrateRow(setting: Setting): void {
+		const settings = this.plugin.settings;
+		// The format the stored bitrate is really spent on, which for a
+		// lossless target is the intermediate the recorder writes rather than
+		// the container the file ends up in - a FLAC recording is captured as
+		// Opus at this rate and losslessly wrapped afterwards, so the values
+		// on offer are the ones that codec reaches and the note names it.
+		//
+		// Null means the capture is raw PCM, or that nothing can be recorded
+		// in this format here at all. The definition's visible predicate hides
+		// the row in that case, but the renderer draws every row before
+		// applying it, so the predicate alone still left a desktop WAV install
+		// running ten encoder probes and holding a live callback able to write
+		// settings.bitrate for a row nobody can see.
+		const encodedAt = recordingBitrateFormat(settings.recordingFormat);
+		if (encodedAt === null) {
+			return;
+		}
+		setting.addDropdown((dropdown) => {
+			// The stored value is left alone: drawing a row is not an edit,
+			// and the summary line below reads the same effectiveBitrate this
+			// selects with, so the two agree without one writing for the other.
+			// The same counter the format probe is guarded by, which hide()
+			// bumps: an answer arriving after the tab was left must not write
+			// into a tree nobody is looking at.
+			const generation = this.formatAvailabilityGeneration;
+			// The file the recording will really produce: the rate the
+			// encoder writes at, which is the device's own rather than the
+			// requested one, and the layout the capture has. The summary
+			// line and the session snapshot read the same answer, so a floor
+			// that moves with the rate lands on one value everywhere; asked
+			// at the requested rate, the row offered 24 kbps for MP3 while
+			// the line beneath it said 32.
+			const encoding = recordingEncodingFor(settings);
+			fillBitrateDropdown(dropdown, {
+				format: encodedAt,
+				sampleRate: encoding.sampleRate,
+				numberOfChannels: encoding.numberOfChannels,
+				selected: settings.bitrate,
+				isStale: () => this.formatAvailabilityGeneration !== generation,
+				// The encoder's answer arrives after the row is on screen. A
+				// rate it refuses is one the recording would fail on, so the
+				// move it forces is a real edit and is saved as one.
+				//
+				// Saved through commit, which redraws the tab, rather than
+				// through saveSettings alone: the summary line beneath reads
+				// this value, and patching it in place would put its wording
+				// in a second place able to drift from renderSummaryRow. The
+				// redraw is paid at most once per configuration, because the
+				// value it writes is one the encoder accepts and the next
+				// fill has nothing left to move.
+				onSettled: (bitrate) => {
+					settings.bitrate = bitrate;
+					void this.commit();
+				},
+				// Which values are on offer changes with the format, the sample
+				// rate and the encoder, so the row says what decided them
+				// rather than leaving a shorter list unexplained.
+				onNote: (note) => {
+					setting.setDesc(`${BITRATE_ROW_DESC} ${note}`);
+				},
+			});
+			dropdown.onChange(async (value) => {
+				settings.bitrate = parseInt(value, 10);
+				// The summary row beneath reads this, so the tree is rebuilt
+				// rather than patched.
+				await this.commit();
+			});
+		});
+	}
+
+	/**
 	 * Fills the row that summarises the effective output, which is derived from
 	 * the format and bitrate rows rather than stored.
 	 * @param setting - The row to fill
 	 */
 	private renderSummaryRow(setting: Setting): void {
-		const format = this.plugin.settings.recordingFormat;
-		const kbps = Math.round(this.plugin.settings.bitrate / 1000);
+		const settings = this.plugin.settings;
+		const format = settings.recordingFormat;
+		// Read through the same function the row above offers from, so one
+		// stored value cannot be shown here as a different rate.
+		const encodedAt = recordingBitrateFormat(format);
+		let rate = '';
+		if (encodedAt !== null) {
+			// The bitrate encoding will really use, not the one on file: a
+			// value left behind by a format change is lifted to that format's
+			// floor before it reaches an encoder, silently, so the line has
+			// to say so.
+			const kbps = Math.round(
+				effectiveBitrate(
+					encodedAt,
+					settings.bitrate,
+					recordingEncodingFor(settings).sampleRate,
+				) / 1000,
+			);
+			// A lossless target is not captured losslessly, so the rate alone
+			// would read as the bitrate of the finished file, which is not a
+			// choice anyone made. The codec it is really spent on is named
+			// instead, which is the only place a FLAC recording says that its
+			// audio went through Opus first.
+			rate =
+				encodedAt === format
+					? `, ${String(kbps)} kbps`
+					: `, ${String(kbps)} kbps captured as ${encodedAt.toUpperCase()}`;
+		}
 		setting.descEl
 			.createDiv()
 			.setText(
-				`Output: ${format.toUpperCase()}, ${String(kbps)} kbps. ${this.getCompressionDescription(format)}`,
+				`Output: ${format.toUpperCase()}${rate}. ${this.getCompressionDescription(format)}`,
 			);
 	}
 
@@ -956,9 +1068,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		descEl: HTMLElement,
 	): Promise<void> {
 		const generation = ++this.formatAvailabilityGeneration;
+		// Asked about the audio these settings will produce, not the codec
+		// alone: a merged multi-track MP4 is encoded by mediabunny after the
+		// mix, and at 22.05 kHz that asks Chromium for HE-AAC, which it does
+		// not have. The codec alone said yes and the recording failed at its
+		// end.
+		const encoding = recordingEncodingFor(this.plugin.settings);
 		let entries: FormatAvailabilityEntry[];
 		try {
-			entries = await listFormatAvailability();
+			entries = await listFormatAvailability(encoding);
 		} catch {
 			// Probing failed entirely: leave the options selectable, the
 			// recording-start validation still guards the session
@@ -993,10 +1111,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// appendChild adopts the detached node into descEl's document.
 		const note = createDiv({ cls: 'aar-format-fallback-note' });
 		try {
-			const effective = await resolveEffectiveOutputFormat(stored);
-			note.textContent = `This device cannot record ${stored.toUpperCase()}; recordings are saved as ${effective.format.toUpperCase()} instead.`;
+			const effective = await resolveEffectiveOutputFormat(
+				stored,
+				encoding,
+			);
+			note.textContent = `${storedEntry.reason} Recordings are saved as ${effective.format.toUpperCase()} instead.`;
 		} catch {
-			note.textContent = `This device cannot record ${stored.toUpperCase()}. Select a different format.`;
+			note.textContent = `${storedEntry.reason} Select a different format.`;
 		}
 		if (generation !== this.formatAvailabilityGeneration) {
 			return;

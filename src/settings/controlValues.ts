@@ -53,9 +53,10 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 		// "en", and an untrimmed code reaches the request verbatim.
 		normalize: (value) => value.trim(),
 	},
-	// The only two settings a dropdown edits that are not stored as text; every
-	// other numeric setting uses a number control, which speaks numbers.
-	bitrate: { numeric: true },
+	// The one setting a dropdown edits that is not stored as text. Every other
+	// numeric setting uses a number control, which speaks numbers, and the
+	// bitrate row went imperative once its options started depending on the
+	// format and the rate.
 	sampleRate: { numeric: true },
 	// Picking another transcription engine rewrites the descriptions the
 	// speaker rows carry, which are built from the engine rather than

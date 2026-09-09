@@ -67,6 +67,7 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 			supportedFormats: ['webm'],
 			supportedSampleRates: [44100],
 			supportedBitrates: [128000],
+			reachableBitrates: { webm: [128000] },
 			codecSupport: [
 				{
 					mimeType: 'audio/webm',

@@ -244,7 +244,11 @@ describe('RecordingManager mono channel wiring', () => {
 
 	it('does not reread a changed track mode after stream acquisition', async () => {
 		createDesktopRecorder();
-		const stream = { getTracks: () => [{ stop: jest.fn() }] };
+		const track = { stop: jest.fn(), getSettings: () => ({}) };
+		const stream = {
+			getTracks: () => [track],
+			getAudioTracks: () => [track],
+		};
 		mockSettings.trackAudioSources = new Map([
 			[
 				1,

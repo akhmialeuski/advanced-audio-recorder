@@ -29,7 +29,11 @@ import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
 import { at } from '../helpers/assertions';
 import { asMockVault } from '../helpers/obsidianMock';
-import { setPlatform, useDesktopPlatform } from '../helpers/platform';
+import {
+	setPlatform,
+	useDesktopPlatform,
+	useMobilePlatform,
+} from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { allEls, el, maybeEl, textsOf } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
@@ -41,7 +45,12 @@ import {
 	settingRow,
 } from '../helpers/settingRows';
 import { partial } from '../helpers/doubles';
-import { mediaDevice } from '../helpers/mediaMocks';
+import {
+	installAudioContextRate,
+	mediaDevice,
+	type AudioContextDouble,
+	type InstalledMock,
+} from '../helpers/mediaMocks';
 import { closeSettingsPage } from 'src/obsidian/settingsNavigation';
 import { listFormatAvailability } from 'src/audio/AudioCapabilityDetector';
 
@@ -154,6 +163,26 @@ const testRecordingDefinitionOf = (
 
 /** One stored profile, as the settings hold it. */
 type StoredProfile = AudioRecorderSettings['profiles'][number];
+
+/**
+ * A tab over the given settings, with the plugin surface the tab reads: the
+ * settings, a save that resolves, and the manifest it names itself by.
+ * @param settings - The live settings the tab edits
+ * @returns The tab, on whichever Obsidian the surrounding case models
+ */
+function tabOver(settings: AudioRecorderSettings): AudioRecorderSettingTab {
+	return new AudioRecorderSettingTab(
+		new App(),
+		partial<AudioRecorderPluginInterface>({
+			settings,
+			saveSettings: jest.fn().mockResolvedValue(undefined),
+			manifest: {
+				id: 'advanced-audio-recorder',
+				name: PLUGIN_MANIFEST_NAME,
+			},
+		}),
+	);
+}
 
 /** One stored profile of a kind, as the unified model holds it. */
 function profileOf(
@@ -324,24 +353,17 @@ describe('AudioRecorderSettingTab', () => {
 			expect(tab.getControlValue('debug')).toBe(true);
 		});
 
-		it.each([
-			['bitrate', '192000', 192000],
-			['sampleRate', '44100', 44100],
-		])(
-			'keeps %s a number across a dropdown round trip',
-			async (key, produced, stored) => {
-				// A dropdown speaks the option value, which is a string, while
-				// these two settings are numbers: storing the string put
-				// "192000" where every consumer expects 192000, and reading the
-				// number back matched no option, so the dropdown opened blank.
-				await tab.setControlValue(key, produced);
+		it('keeps the sample rate a number across a dropdown round trip', async () => {
+			// A dropdown speaks the option value, which is a string, while
+			// this setting is a number: storing the string put "44100" where
+			// every consumer expects 44100, and reading the number back
+			// matched no option, so the dropdown opened blank. The bitrate was
+			// the other half of this pair until its row went imperative.
+			await tab.setControlValue('sampleRate', '44100');
 
-				expect(mockSettings[key as 'bitrate' | 'sampleRate']).toBe(
-					stored,
-				);
-				expect(tab.getControlValue(key)).toBe(produced);
-			},
-		);
+			expect(mockSettings.sampleRate).toBe(44100);
+			expect(tab.getControlValue('sampleRate')).toBe('44100');
+		});
 
 		it.each([
 			['llmOpenAiMaxTokens'],
@@ -387,9 +409,9 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('keeps the stored number when a numeric control produces nothing', async () => {
-			await tab.setControlValue('bitrate', '');
+			await tab.setControlValue('sampleRate', '');
 
-			expect(mockSettings.bitrate).toBe(DEFAULT_SETTINGS.bitrate);
+			expect(mockSettings.sampleRate).toBe(DEFAULT_SETTINGS.sampleRate);
 		});
 
 		it('persists a control value through the plugin, not through saveData', async () => {
@@ -1888,8 +1910,12 @@ describe('AudioRecorderSettingTab', () => {
 				rowNamed('Recording format'),
 				SETTING.formatFallbackNote,
 			);
-			expect(note.textContent).toContain('cannot record WEBM');
-			expect(note.textContent).toContain('MP4');
+			// The reason names the audio that was asked about, so a user can
+			// tell a missing encoder from a rate or layout it refuses.
+			expect(note.textContent).toContain(
+				'The format "webm" cannot be encoded at 44.1 kHz with 2 channels on this device.',
+			);
+			expect(note.textContent).toContain('saved as MP4 instead');
 		});
 
 		it('keeps every recordable format selectable on a permissive desktop profile', async () => {
@@ -2129,17 +2155,7 @@ describe('AudioRecorderSettingTab describing the recording formats', () => {
 
 	beforeEach(() => {
 		mockSettings = { ...DEFAULT_SETTINGS };
-		tab = new AudioRecorderSettingTab(
-			new App(),
-			partial<AudioRecorderPluginInterface>({
-				settings: mockSettings,
-				saveSettings: jest.fn().mockResolvedValue(undefined),
-				manifest: {
-					id: 'advanced-audio-recorder',
-					name: PLUGIN_MANIFEST_NAME,
-				},
-			}),
-		);
+		tab = tabOver(mockSettings);
 		(global as Record<string, unknown>).MediaRecorder = {
 			isTypeSupported: jest.fn(() => false),
 		};
@@ -2203,9 +2219,11 @@ describe('AudioRecorderSettingTab offering the vault folders', () => {
 	});
 });
 
-describe('AudioRecorderSettingTab probing the format list', () => {
+describe('AudioRecorderSettingTab probing the output rows', () => {
 	let tab: AudioRecorderSettingTab;
 	let mockSettings: AudioRecorderSettings;
+	/** The device a case is running on, restored after it. */
+	let device: InstalledMock<AudioContextDouble> | null = null;
 
 	/** The dropdown the format row rendered, and the description beside it. */
 	function formatRow(): {
@@ -2218,6 +2236,71 @@ describe('AudioRecorderSettingTab probing the format list', () => {
 			dropdown: rowSelect(row),
 			descEl: el(row, SETTING.description),
 		};
+	}
+
+	/** The dropdown the bitrate row rendered. */
+	function bitrateRow(): HTMLSelectElement {
+		tab.display();
+		return rowSelect(settingRow(tab.containerEl, 'Audio bitrate'));
+	}
+
+	/**
+	 * Renders the bitrate row and lets its encoder probe answer.
+	 * @returns The dropdown, once blocking has been applied
+	 */
+	async function probedBitrateRow(): Promise<HTMLSelectElement> {
+		const dropdown = bitrateRow();
+		await tick();
+		await tick();
+		return dropdown;
+	}
+
+	/** The description the bitrate row is currently showing. */
+	function bitrateDescription(): string {
+		return (
+			el(
+				settingRow(tab.containerEl, 'Audio bitrate'),
+				SETTING.description,
+			).textContent ?? ''
+		);
+	}
+
+	/**
+	 * Scripts a platform encoder that takes everything from one rate upward,
+	 * which is the shape of the AAC encoders that refuse the low end.
+	 * @param lowest - The lowest bitrate the encoder accepts, in bps
+	 */
+	function acceptBitratesFrom(lowest: number): void {
+		const { probeOfflineEncodingSupport } = jest.requireMock(
+			'src/audio/AudioEncoder',
+		);
+		(probeOfflineEncodingSupport as jest.Mock).mockImplementation(
+			(_format: string, quality?: { bitrate?: number }) =>
+				Promise.resolve((quality?.bitrate ?? 0) >= lowest),
+		);
+	}
+
+	/**
+	 * Narrows what this browser claims to record. The suite's default accepts
+	 * every type, which no real browser does and which decides whether a
+	 * lossless target is captured through an intermediate or written itself.
+	 * @param mimeType - The only MIME type MediaRecorder answers yes to
+	 */
+	function recordsOnly(mimeType: string): void {
+		(
+			(global as Record<string, unknown>).MediaRecorder as {
+				isTypeSupported: jest.Mock;
+			}
+		).isTypeSupported.mockImplementation(
+			(candidate: string) => candidate === mimeType,
+		);
+	}
+
+	/** The text the output summary row rendered. */
+	function summaryText(): string {
+		tab.display();
+		const row = settingRow(tab.containerEl, 'Output summary');
+		return el(row, SETTING.description).textContent ?? '';
 	}
 
 	beforeEach(() => {
@@ -2240,20 +2323,30 @@ describe('AudioRecorderSettingTab probing the format list', () => {
 			>
 		).isTypeSupported = jest.fn().mockReturnValue(true);
 		mockSettings = { ...DEFAULT_SETTINGS };
-		tab = withoutDeclarativeSettings(
-			() =>
-				new AudioRecorderSettingTab(
-					new App(),
-					partial<AudioRecorderPluginInterface>({
-						settings: mockSettings,
-						saveSettings: jest.fn().mockResolvedValue(undefined),
-						manifest: {
-							id: 'advanced-audio-recorder',
-							name: PLUGIN_MANIFEST_NAME,
-						},
-					}),
-				),
+		// clearMocks keeps an implementation a test installed, and the probe
+		// answer is what half the cases below set up.
+		(
+			jest.requireMock('src/audio/AudioEncoder')
+				.probeOfflineEncodingSupport as jest.Mock
+		).mockImplementation(() => Promise.resolve(false));
+		// Whether there is an encoder to ask at all is set the same way, by the
+		// one case about an environment that has none.
+		(
+			jest.requireMock('src/audio/AudioEncoder')
+				.isOfflineEncodingSupported as jest.Mock
+		).mockImplementation((format: string) =>
+			['mp3', 'flac', 'wav', 'webm', 'ogg', 'mp4', 'm4a'].includes(
+				format,
+			),
 		);
+		tab = withoutDeclarativeSettings(() => tabOver(mockSettings));
+		device = null;
+	});
+
+	afterEach(() => {
+		// A device rate one case installed must not decide the next one's
+		// list; without the global the rows are cut at the requested rate.
+		device?.restore();
 	});
 
 	it('leaves every format selectable when the probe itself fails', async () => {
@@ -2289,11 +2382,285 @@ describe('AudioRecorderSettingTab probing the format list', () => {
 		).toContain('aiff');
 	});
 
+	it('offers only the bitrates the format and rate reach', () => {
+		// MP3 at 44.1 kHz is MPEG-1 Layer III, whose table starts at 32 kbps.
+		// A row offering 24 would promise a file LAME writes at 32 anyway.
+		mockSettings.recordingFormat = 'mp3';
+		mockSettings.sampleRate = 44100;
+
+		const values = Array.from(bitrateRow().options).map(
+			(option) => option.value,
+		);
+
+		expect(values).not.toContain('24000');
+		expect(values[0]).toBe('32000');
+	});
+
+	it('offers the low rates once the device encodes at a rate that reaches them', () => {
+		// The MPEG-2 tables, which MP3 uses below 32 kHz, start at 8 kbps.
+		// It is the device's own rate that decides, because that is the rate
+		// an offline encode runs at whatever the settings ask for.
+		device = installAudioContextRate(22050);
+		mockSettings.recordingFormat = 'mp3';
+		mockSettings.sampleRate = 22050;
+
+		expect(
+			Array.from(bitrateRow().options).map((option) => option.value),
+		).toContain('24000');
+	});
+
+	it('cuts the row at the rate the encoder writes at, not the one requested', () => {
+		// 22.05 kHz in the settings is a 48 kHz file on this device, where
+		// MP3 is MPEG-1 and starts at 32 kbps. Asked at the requested rate,
+		// the row offered 24 kbps while the summary line beneath it, which
+		// asks at the device rate, said 32: two answers for one stored value.
+		device = installAudioContextRate(48000);
+		mockSettings.recordingFormat = 'mp3';
+		mockSettings.sampleRate = 22050;
+		mockSettings.bitrate = 24000;
+
+		const row = bitrateRow();
+
+		expect(
+			Array.from(row.options).map((option) => option.value),
+		).not.toContain('24000');
+		expect(row.value).toBe('32000');
+		expect(summaryText()).toContain('MP3, 32 kbps');
+	});
+
+	it('lifts a stored bitrate the chosen format cannot write', () => {
+		// What a format change leaves behind: the value is stored apart from
+		// the format, so 24000 survives a move from WebM to MP3. The row shows
+		// the rate MP3 will really write, and the summary line reads the same
+		// function, so drawing the tab does not have to write the value back.
+		mockSettings.recordingFormat = 'mp3';
+		mockSettings.sampleRate = 44100;
+		mockSettings.bitrate = 24000;
+
+		expect(bitrateRow().value).toBe('32000');
+		expect(summaryText()).toContain('MP3, 32 kbps');
+	});
+
+	it('does not rewrite the stored bitrate just by drawing the row', () => {
+		// Rendering is not an edit. Writing the snapped value back left the
+		// object holding a number the user never picked, which the next
+		// unrelated save then put on disk.
+		mockSettings.recordingFormat = 'mp3';
+		mockSettings.sampleRate = 44100;
+		mockSettings.bitrate = 24000;
+
+		bitrateRow();
+
+		expect(mockSettings.bitrate).toBe(24000);
+	});
+
+	it('offers only the bitrates this device can encode', async () => {
+		// The AAC case: WebCodecs hands the limit to the platform encoder, so
+		// only a probe can say where it lies. The values it refuses leave the
+		// list rather than sitting in it dimmed, because a dimmed option a
+		// select is already on stays selected and stays shown.
+		acceptBitratesFrom(64000);
+		mockSettings.recordingFormat = 'm4a';
+
+		const dropdown = await probedBitrateRow();
+
+		expect(
+			Array.from(dropdown.options).map((option) => option.value),
+		).toEqual([
+			'64000',
+			'96000',
+			'128000',
+			'160000',
+			'192000',
+			'256000',
+			'320000',
+		]);
+	});
+
+	it('moves the selection onto a rate the encoder accepts', async () => {
+		acceptBitratesFrom(96000);
+		mockSettings.recordingFormat = 'm4a';
+		mockSettings.bitrate = 24000;
+
+		expect((await probedBitrateRow()).value).toBe('96000');
+		expect(mockSettings.bitrate).toBe(96000);
+	});
+
+	it('says what narrowed the list once the encoder has answered', async () => {
+		// The row is the only place a missing value is accounted for, so it
+		// names what removed it rather than leaving a shorter list unexplained.
+		acceptBitratesFrom(64000);
+		mockSettings.recordingFormat = 'm4a';
+
+		await probedBitrateRow();
+
+		expect(bitrateDescription()).toContain(
+			'The encoder on this device accepts only the values listed.',
+		);
+	});
+
+	it('names the codec range that removed the values below it', async () => {
+		// MP3 at 44.1 kHz is MPEG-1 Layer III, which has no table under
+		// 32 kbps, and the row says so instead of silently starting there.
+		mockSettings.recordingFormat = 'mp3';
+		mockSettings.sampleRate = 44100;
+
+		await probedBitrateRow();
+
+		expect(bitrateDescription()).toContain(
+			'MP3 at 44.1 kHz reaches 32-320 kbps.',
+		);
+	});
+
+	it('sends the user to the format when the encoder accepts none of the rates', async () => {
+		// The state the module-level probe mock produces, and the one a
+		// Windows install reports for AAC at 22.05 kHz. No bitrate would
+		// help, so the row keeps the codec's range to show and says what has
+		// to change; the format row and the session start ask the same
+		// question and answer it by falling back.
+		mockSettings.recordingFormat = 'm4a';
+
+		const dropdown = await probedBitrateRow();
+
+		expect(Array.from(dropdown.options)).toHaveLength(10);
+		expect(bitrateDescription()).toContain(
+			'The encoder on this device cannot write AAC at 44.1 kHz.',
+		);
+		expect(bitrateDescription()).toContain('use WebM or OGG');
+	});
+
+	it('asks the encoder nothing for a format that carries no bitrate', async () => {
+		// The renderer draws every row and applies the visible predicate
+		// afterwards, so hiding the row left a WAV install still running a
+		// probe per candidate rate and still holding a callback able to write
+		// settings.bitrate for a row nobody can see.
+		mockSettings.recordingFormat = 'wav';
+		const { probeOfflineEncodingSupport } = jest.requireMock(
+			'src/audio/AudioEncoder',
+		);
+		const asked = probeOfflineEncodingSupport as jest.Mock;
+
+		tab.display();
+		asked.mockClear();
+		await tick();
+		await tick();
+
+		expect(
+			asked.mock.calls.filter(
+				([, quality]: [string, { bitrate?: number } | undefined]) =>
+					quality?.bitrate !== undefined,
+			),
+		).toEqual([]);
+	});
+
+	it('keeps itself for FLAC, which is captured lossily whatever the file is', async () => {
+		// A FLAC recording is Opus at this rate wrapped losslessly once the
+		// session stops, because no MediaRecorder writes FLAC. Hiding the row
+		// on the strength of the container left a user who had picked 24 kbps
+		// for speech with a lossless file of 24 kbps audio, no control over
+		// it, and nothing on screen that said so.
+		useDesktopPlatform();
+		recordsOnly('audio/webm');
+		mockSettings.recordingFormat = 'flac';
+		mockSettings.bitrate = 24000;
+
+		tab.display();
+		await tick();
+
+		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
+			'',
+		);
+		expect(summaryText()).toContain('24 kbps captured as WEBM');
+	});
+
+	it('keeps itself for WAV where the platform cannot capture PCM', async () => {
+		// Mobile records WAV through the same compressed intermediate and
+		// decodes it at the stop, so the rate decides what the samples hold.
+		useMobilePlatform();
+		recordsOnly('audio/webm');
+		mockSettings.recordingFormat = 'wav';
+
+		tab.display();
+		await tick();
+
+		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
+			'',
+		);
+		expect(summaryText()).toContain('kbps captured as WEBM');
+	});
+
+	it('hides itself for WAV captured as raw PCM', async () => {
+		// Direct PCM capture encodes nothing, so the row described something
+		// the file does not carry: it offered "24 kbps" beside an
+		// uncompressed recording, and the summary line beneath repeated it.
+		useDesktopPlatform();
+		mockSettings.recordingFormat = 'wav';
+
+		tab.display();
+		await tick();
+
+		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
+			'none',
+		);
+		expect(summaryText()).toContain('Output: WAV.');
+		expect(summaryText()).not.toContain('kbps');
+	});
+
+	it('hides itself for a lossless container the browser records directly', async () => {
+		// A browser that wrote FLAC itself would ignore the rate the way its
+		// encoder does, so there would be nothing for the row to offer.
+		useDesktopPlatform();
+		recordsOnly('audio/flac');
+		mockSettings.recordingFormat = 'flac';
+
+		tab.display();
+		await tick();
+
+		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
+			'none',
+		);
+		expect(summaryText()).not.toContain('kbps');
+	});
+
+	it('rewrites the summary as soon as the bitrate changes', async () => {
+		// The bitrate row used to be a declared control with no reshapesTree,
+		// so the line beneath it kept announcing the previous value until
+		// something else rebuilt the tree.
+		const dropdown = bitrateRow();
+
+		dropdown.value = '192000';
+		dropdown.dispatchEvent(new Event('change'));
+		await tick();
+
+		expect(mockSettings.bitrate).toBe(192000);
+		expect(
+			el(
+				settingRow(tab.containerEl, 'Output summary'),
+				SETTING.description,
+			).textContent,
+		).toContain('192 kbps');
+	});
+
+	it('summarises the bitrate encoding will use, not the one on file', () => {
+		// The summary read the stored number, so it kept announcing 24 kbps
+		// for a file LAME had already written at 32.
+		mockSettings.recordingFormat = 'mp3';
+		mockSettings.sampleRate = 44100;
+		mockSettings.bitrate = 24000;
+
+		expect(summaryText()).toContain('MP3, 32 kbps');
+	});
+
 	it('says only that the format is unusable when no fallback can be worked out', async () => {
 		const { listFormatAvailability, resolveEffectiveOutputFormat } =
 			jest.requireMock('src/audio/AudioCapabilityDetector');
 		(listFormatAvailability as jest.Mock).mockResolvedValueOnce([
-			{ format: 'webm', available: false, direct: false },
+			{
+				format: 'webm',
+				available: false,
+				reason: 'This device cannot record WEBM.',
+				direct: false,
+			},
 		]);
 		(resolveEffectiveOutputFormat as jest.Mock).mockRejectedValueOnce(
 			new Error('nothing works here'),

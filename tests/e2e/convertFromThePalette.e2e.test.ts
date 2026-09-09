@@ -29,6 +29,7 @@ import { at, defined } from '../helpers/assertions';
 // The codec boundary, and only that: decoding and re-encoding audio needs
 // WebAudio and a container writer, neither of which jsdom has.
 jest.mock('src/audio/AudioFormatConverter', () => ({
+	...require('../mocks/modules/audioFormatConverter'),
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
 	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(64)),
 }));
@@ -38,10 +39,9 @@ jest.mock('src/audio/AudioEncoder', () => ({
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/mp3' })),
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
 }));
-jest.mock('src/audio/AudioCapabilityDetector', () => ({
-	getSupportedBitrates: jest.fn().mockReturnValue([128000, 192000]),
-	getSupportedSampleRates: jest.fn().mockReturnValue([44100, 48000]),
-}));
+jest.mock('src/audio/AudioCapabilityDetector', () =>
+	require('../mocks/modules/audioCapabilityDetector'),
+);
 
 const AUDIO = 'Recordings/meeting.wav';
 const NOTE = 'Notes/meeting.md';

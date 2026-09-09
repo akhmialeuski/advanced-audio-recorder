@@ -12,6 +12,7 @@ import {
 	getOrderedTrackSources,
 	isMultiTrackSessionEnabled,
 	missingCaptureIndexes,
+	recordingEncodingFor,
 	resolveCaptureDeviceId,
 	validateSelectedDevices,
 	watchStreamEndings,
@@ -19,6 +20,7 @@ import {
 import { AudioStreamError } from 'src/errors';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import type { OutputMode } from 'src/types';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { partial } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
@@ -901,5 +903,133 @@ describe('missingCaptureIndexes', () => {
 		await expect(missingCaptureIndexes([streamFrom('')])).resolves.toEqual(
 			[],
 		);
+	});
+});
+
+describe('recordingEncodingFor', () => {
+	// What the encoder is asked about has to be the file the session writes:
+	// a merged multi-track MP4 was checked as a stereo file at the codec's
+	// default rate, passed, and then failed while the mono 22.05 kHz mix it
+	// really was got encoded.
+	beforeEach(() => {
+		useDesktopPlatform();
+	});
+
+	/**
+	 * Settings with two tracks whose modes and placements are given.
+	 * @param tracks - Mode and pan per track
+	 * @param outputMode - Whether the tracks are mixed into one file
+	 * @returns The settings
+	 */
+	function twoTracks(
+		tracks: { channelMode: 'source' | 'mono-mix'; pan: number }[],
+		outputMode: OutputMode = 'single',
+	): AudioRecorderSettings {
+		return {
+			...DEFAULT_SETTINGS,
+			enableMultiTrack: true,
+			maxTracks: 2,
+			outputMode,
+			sampleRate: 22050,
+			trackAudioSources: new Map(
+				tracks.map((track, index) => [
+					index + 1,
+					{ deviceId: `device-${String(index + 1)}`, ...track },
+				]),
+			),
+		};
+	}
+
+	it('describes a single mono track as one channel at the requested rate', () => {
+		expect(
+			recordingEncodingFor({
+				...DEFAULT_SETTINGS,
+				sampleRate: 22050,
+				recordingChannels: 'mono-mix',
+			}),
+		).toEqual({
+			sampleRate: 22050,
+			numberOfChannels: 1,
+			mergesTracks: false,
+		});
+	});
+
+	it('assumes stereo for a single pass-through track', () => {
+		expect(
+			recordingEncodingFor({
+				...DEFAULT_SETTINGS,
+				recordingChannels: 'source',
+			}).numberOfChannels,
+		).toBe(2);
+	});
+
+	it('takes the widest track of a merged session', () => {
+		const encoding = recordingEncodingFor(
+			twoTracks([
+				{ channelMode: 'mono-mix', pan: 0 },
+				{ channelMode: 'source', pan: 0 },
+			]),
+		);
+
+		expect(encoding).toEqual({
+			sampleRate: 22050,
+			numberOfChannels: 2,
+			mergesTracks: true,
+		});
+	});
+
+	it('describes two centred mono tracks mixed together as mono', () => {
+		expect(
+			recordingEncodingFor(
+				twoTracks([
+					{ channelMode: 'mono-mix', pan: 0 },
+					{ channelMode: 'mono-mix', pan: 0 },
+				]),
+			).numberOfChannels,
+		).toBe(1);
+	});
+
+	it('goes stereo for a panned mono track, the way the mixer does', () => {
+		expect(
+			recordingEncodingFor(
+				twoTracks([
+					{ channelMode: 'mono-mix', pan: -1 },
+					{ channelMode: 'mono-mix', pan: 1 },
+				]),
+			).numberOfChannels,
+		).toBe(2);
+	});
+
+	it('does not merge tracks written to separate files', () => {
+		const encoding = recordingEncodingFor(
+			twoTracks(
+				[
+					{ channelMode: 'mono-mix', pan: -1 },
+					{ channelMode: 'mono-mix', pan: 1 },
+				],
+				'multiple',
+			),
+		);
+
+		expect(encoding.mergesTracks).toBe(false);
+		expect(encoding.numberOfChannels).toBe(1);
+	});
+
+	it('describes the tracks it is handed rather than the settings', () => {
+		// The manager captured its tracks before asking for permission; an
+		// edit made while that was pending must not describe another session.
+		const encoding = recordingEncodingFor(
+			twoTracks([
+				{ channelMode: 'source', pan: 0 },
+				{ channelMode: 'source', pan: 0 },
+			]),
+			[{ trackNumber: 1, deviceId: 'device-1', channelMode: 'mono-mix' }],
+		);
+
+		expect(encoding).toEqual({
+			sampleRate: 22050,
+			numberOfChannels: 1,
+			mergesTracks: false,
+		});
 	});
 });

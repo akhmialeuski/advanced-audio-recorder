@@ -144,6 +144,18 @@ export interface RecordingSessionConfig {
 	isWavPcm: boolean;
 	/** Container format produced by the MediaRecorders. */
 	recorderFormat: string;
+	/**
+	 * The MIME type the MediaRecorders are constructed with: the one this
+	 * platform agreed to record, which is not always `audio/<recorderFormat>`.
+	 * An M4A file is an MP4 container, and the recorder only accepts it as
+	 * `audio/mp4`; rebuilding the type from the format name refused to start.
+	 *
+	 * It is therefore also the type of the bytes those recorders produce, so
+	 * every segment and every concatenated blob of them is tagged from here.
+	 * Rebuilding it per call site was two answers to one question, and the
+	 * segments of an M4A session came out labelled `audio/m4a`.
+	 */
+	recorderMimeType: string;
 	/** Output format of the final files. */
 	outputFormat: string;
 	/** Output mode: 'single' merges multi-track sessions at stop. */

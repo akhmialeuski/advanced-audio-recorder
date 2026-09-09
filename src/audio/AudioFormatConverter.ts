@@ -13,13 +13,20 @@ import {
 	type ChannelMode,
 } from './downmix';
 import { autoClosing } from '../utils/disposables';
-import { isDecodableSize, tooLargeMessage } from '../platform/capabilities';
+import {
+	isDecodableSize,
+	isPcmWavCaptureSupported,
+	tooLargeMessage,
+} from '../platform/capabilities';
 import {
 	MIME_TYPE_AUDIO_PREFIX,
 	PLUGIN_LOG_PREFIX,
 	FORMAT_WAV,
 } from '../constants';
-import { COMPRESSED_INTERMEDIATE_FORMATS } from './formatRegistry';
+import {
+	COMPRESSED_INTERMEDIATE_FORMATS,
+	takesBitrate,
+} from './formatRegistry';
 import {
 	buildMimeType,
 	directRecordingMimeType,
@@ -72,6 +79,59 @@ export function resolveRecorderFormat(format: string): {
 			', ',
 		)} is supported in this browser.`,
 	);
+}
+
+/**
+ * The format whose codec a recording's bitrate is really spent on, or null
+ * when the recording carries no bitrate at all.
+ *
+ * A lossless target is not recorded losslessly. No MediaRecorder writes FLAC,
+ * and WAV is captured as raw PCM only where {@link isPcmWavCaptureSupported}
+ * allows it, so both are recorded into a compressed intermediate first and
+ * re-encoded once the session stops. The stored bitrate is what that
+ * intermediate is encoded at, which makes it a real choice about the audio the
+ * file ends up holding: a FLAC recorded at 24 kbps is a lossless container
+ * around 24 kbps Opus. The row offering that value therefore has to stay, and
+ * has to name the codec the value reaches rather than the container the file
+ * ends up in.
+ *
+ * A lossy target answers with itself. Its bitrate binds twice, on the
+ * intermediate and again on the offline re-encode, and the tighter floor is
+ * its own: MP3 at 48 kHz starts at 32 kbps where the Opus intermediate below
+ * it would have reached 6.
+ *
+ * Null has three causes and one meaning - nothing here encodes at a rate the
+ * settings choose. Direct PCM capture writes samples rather than encoding
+ * them; a device with no MediaRecorder and a device that supports none of the
+ * intermediate containers cannot record such a format at all, which the
+ * recording-format row reports on its own.
+ * @param outputFormat - Format the recording is saved in
+ * @returns The format whose bitrate rules apply, or null when none do
+ */
+export function recordingBitrateFormat(outputFormat: string): string | null {
+	const format = outputFormat.toLowerCase();
+	if (format === FORMAT_WAV && isPcmWavCaptureSupported()) {
+		return null;
+	}
+	if (takesBitrate(format)) {
+		return format;
+	}
+	if (typeof MediaRecorder === 'undefined') {
+		return null;
+	}
+	try {
+		const { recorderFormat } = resolveRecorderFormat(format);
+		// A device that recorded a lossless container directly would ignore
+		// the rate the way its encoder does, so there would be nothing to
+		// offer. No browser does today; the question is asked rather than
+		// assumed because the answer is what the row shows.
+		return takesBitrate(recorderFormat) ? recorderFormat : null;
+	} catch {
+		// resolveRecorderFormat throws when this device supports none of the
+		// intermediate containers, which is the same answer: nothing is
+		// encoded here, so there is no bitrate to offer.
+		return null;
+	}
 }
 
 /**
@@ -160,6 +220,75 @@ export async function decodeAudioBlob(
 	// otherwise the AudioContext leaks
 	await using audioContext = autoClosing(new AudioContext());
 	return await audioContext.decodeAudioData(arrayBuffer);
+}
+
+/**
+ * The rate this device's AudioContext runs at, read once per implementation.
+ *
+ * The rate is a property of the device, not of the call, and the only way to
+ * learn it is to construct a context. The settings tab asks several times
+ * per render and again after every save, and Chromium caps the number of
+ * live hardware contexts while close() frees a slot only asynchronously, so
+ * a context per call is a burst of renders away from a refused constructor.
+ * Keyed on the constructor rather than held in a plain variable so the
+ * reading belongs to the audio implementation that produced it: a test that
+ * installs another one gets a fresh read instead of the previous test's
+ * answer.
+ */
+const deviceSampleRates = new WeakMap<typeof AudioContext, number>();
+
+/**
+ * The sample rate an offline encode runs at on this device.
+ *
+ * Nothing encoded after capture is written at the rate the settings ask for.
+ * A merged multi-track file is rendered through an OfflineAudioContext at the
+ * default AudioContext rate, and a single track re-encoded to an offline-only
+ * format arrives from a recorder whose container already carries the rate it
+ * encoded at, 48 kHz for Opus whatever was requested, or is decoded through an
+ * AudioContext on the last rung of the conversion ladder, which resamples to
+ * the same default. An encoder question asked at the requested rate therefore
+ * describes a file that is never written: at 22.05 kHz it asked Chromium for
+ * HE-AAC and got a refusal, while the 48 kHz mix it really encodes is AAC-LC
+ * and fine. Answers with the requested rate only where there is no
+ * AudioContext to ask, which is also where no offline encode can run, and
+ * where the cap this reading is memoised against has already been reached:
+ * the constructor refuses once a document holds its maximum of live hardware
+ * contexts, and that refusal reaches the settings tab, whose renderer runs a
+ * row's callback unguarded, so an unhandled throw takes down every setting
+ * rather than one row. The refusal is not memoised, so the next call reads
+ * the device again once a slot frees.
+ * @param requested - The sample rate the settings ask for
+ * @returns The rate the encoder will be handed
+ */
+export function offlineEncodeSampleRate(requested: number): number {
+	if (typeof AudioContext === 'undefined') {
+		return requested;
+	}
+	const known = deviceSampleRates.get(AudioContext);
+	if (known !== undefined) {
+		return known;
+	}
+	let context: AudioContext;
+	try {
+		context = new AudioContext();
+	} catch (error) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Could not open an AudioContext to read the device sample rate:`,
+			error,
+		);
+		return requested;
+	}
+	const rate = context.sampleRate;
+	deviceSampleRates.set(AudioContext, rate);
+	// Released without waiting: the rate has been read, and a close that
+	// fails leaves nothing for this caller to do but say so.
+	context.close().catch((error: unknown) => {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Failed to close the AudioContext opened to read its sample rate:`,
+			error,
+		);
+	});
+	return rate;
 }
 
 /**

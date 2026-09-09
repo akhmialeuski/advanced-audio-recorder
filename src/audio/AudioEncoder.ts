@@ -10,6 +10,7 @@ import {
 	BufferTarget,
 	AudioBufferSource,
 	canEncodeAudio,
+	Quality,
 } from 'mediabunny';
 import type { OutputFormat } from 'mediabunny';
 import { EncodingError } from '../errors';
@@ -113,9 +114,14 @@ async function encodeWithMediabunny(
 		const target = new BufferTarget();
 		const output = new Output({ format: outputFormat, target });
 
-		// PCM is uncompressed: passing a bitrate is invalid for it
+		// PCM is uncompressed: passing a bitrate is invalid for it. The rest
+		// ask through Quality, the field mediabunny still supports - its bare
+		// `bitrate` is deprecated, and phrasing the encode differently from
+		// the probe in probeOfflineEncodingSupport is what lets the two drift.
 		const audioSource = new AudioBufferSource(
-			descriptor.isPcm ? { codec } : { codec, bitrate },
+			descriptor.isPcm
+				? { codec }
+				: { codec, quality: new Quality({ bitrate }) },
 		);
 		output.addAudioTrack(audioSource);
 
@@ -178,11 +184,23 @@ export function isOfflineEncodingSupported(format: string): boolean {
  * WebView that ships the AudioEncoder global without an AAC or Opus
  * encoder is reported honestly. This is the source of truth behind
  * every recordability claim.
+ *
+ * The encoding parameters are optional because the codec question comes
+ * first: a caller asking whether a format is recordable at all leaves them
+ * out and gets the same answer it always did. A caller asking whether one
+ * bitrate is reachable passes them, which is the only way to learn what a
+ * platform AAC encoder accepts.
  * @param format - Audio format to check
+ * @param quality - Encoding parameters to ask about, codec alone when absent
  * @returns Whether offline encoding to this format will actually work
  */
 export async function probeOfflineEncodingSupport(
 	format: string,
+	quality?: {
+		numberOfChannels?: number;
+		sampleRate?: number;
+		bitrate?: number;
+	},
 ): Promise<boolean> {
 	const descriptor = getFormatDescriptor(format);
 	if (!descriptor) {
@@ -190,7 +208,15 @@ export async function probeOfflineEncodingSupport(
 	}
 	try {
 		await ensureEncoderRegistered(format);
-		return await canEncodeAudio(descriptor.codec);
+		const { bitrate, ...dimensions } = quality ?? {};
+		return await canEncodeAudio(descriptor.codec, {
+			...dimensions,
+			// PCM is uncompressed, so nothing is asked about its bitrate,
+			// the same veto encodeAudioBuffer applies.
+			...(descriptor.isPcm || bitrate === undefined
+				? {}
+				: { quality: new Quality({ bitrate }) }),
+		});
 	} catch {
 		// A failed registration or probe means encoding cannot work
 		return false;

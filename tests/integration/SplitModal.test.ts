@@ -27,14 +27,13 @@ jest.mock('src/audio/AudioEncoder', () => ({
 }));
 
 // Mock AudioCapabilityDetector
-jest.mock('src/audio/AudioCapabilityDetector', () => ({
-	getSupportedBitrates: jest
-		.fn()
-		.mockReturnValue([64000, 96000, 128000, 192000, 256000, 320000]),
-}));
+jest.mock('src/audio/AudioCapabilityDetector', () =>
+	require('../mocks/modules/audioCapabilityDetector'),
+);
 
 // Mock the decoder: the compressed path decodes once via this function
 jest.mock('src/audio/AudioFormatConverter', () => ({
+	...require('../mocks/modules/audioFormatConverter'),
 	decodeAudioBlob: jest.fn(),
 }));
 

@@ -52,7 +52,25 @@ export function installMediaRecorderFactory(
 	create: () => unknown,
 	isTypeSupported: (mimeType: string) => boolean = () => true,
 ): MediaRecorderCtorMock {
-	const ctor = jest.fn(create) as MediaRecorderCtorMock;
+	// Refuses a MIME type it does not support the way Chromium does, by
+	// throwing from the constructor. A double that accepted anything let the
+	// manager hand the recorder a container name it had only derived, while
+	// the type the platform had actually agreed to was thrown away - and M4A
+	// recording failed at start on every Windows install.
+	const ctor = jest.fn(
+		(_stream: unknown, options?: { mimeType?: string }) => {
+			if (
+				options?.mimeType !== undefined &&
+				!isTypeSupported(options.mimeType)
+			) {
+				throw new DOMException(
+					`Failed to construct 'MediaRecorder': Failed to initialize native MediaRecorder the type provided (${options.mimeType}) is not supported.`,
+					'NotSupportedError',
+				);
+			}
+			return create();
+		},
+	) as MediaRecorderCtorMock;
 	ctor.isTypeSupported = jest.fn(isTypeSupported);
 	global.MediaRecorder = ctor;
 	return ctor;
@@ -223,16 +241,21 @@ export const stubAudioStreams = (
 	const { getAudioStreams } = jest.requireMock<{
 		getAudioStreams: jest.Mock;
 	}>('src/recording/AudioStreamHandler');
-	const streams = Array.from({ length: count }, () =>
-		partial<MediaStream>({
-			getTracks: () => [
-				partial<MediaStreamTrack>({
-					stop: stopTrack ?? jest.fn(),
-					readyState: trackState,
-				}),
-			],
-		}),
-	);
+	const streams = Array.from({ length: count }, () => {
+		const track = partial<MediaStreamTrack>({
+			stop: stopTrack ?? jest.fn(),
+			readyState: trackState,
+			// The PCM recorder and the mono bridge read the negotiated
+			// channel count off the track. An empty answer is what a device
+			// that reports none gives, which sends both to their own
+			// sourceNode fallback.
+			getSettings: () => ({}),
+		});
+		return partial<MediaStream>({
+			getTracks: () => [track],
+			getAudioTracks: () => [track],
+		});
+	});
 	getAudioStreams.mockResolvedValue({ streams, trackOrder });
 	return streams;
 };
@@ -465,9 +488,10 @@ export const installMultiTrackRecorders = (
 		'src/recording/AudioStreamHandler',
 	);
 	streams.getAudioStreams.mockResolvedValue({
-		streams: recorders.map(() => ({
-			getTracks: () => [{ stop: jest.fn() }],
-		})),
+		streams: recorders.map(() => {
+			const track = { stop: jest.fn(), getSettings: () => ({}) };
+			return { getTracks: () => [track], getAudioTracks: () => [track] };
+		}),
 		trackOrder: [],
 	});
 	return recorders;

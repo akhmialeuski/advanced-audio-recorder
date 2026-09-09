@@ -16,12 +16,17 @@ import {
 	detectCodecSupport,
 	getExpectedCodec,
 	buildMimeType,
+	acceptedBitrates,
 	resolveEffectiveOutputFormat,
 	validateRecordingCapability,
 } from '../audio/AudioCapabilityDetector';
+import { AUDIO_FORMAT_IDS, takesBitrate } from '../audio/formatRegistry';
 import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
-import { audioDeviceApi } from '../recording/AudioStreamHandler';
+import {
+	audioDeviceApi,
+	recordingEncodingFor,
+} from '../recording/AudioStreamHandler';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
@@ -108,6 +113,14 @@ export interface DiagnosticsAudioCapabilities {
 	supportedFormats: string[];
 	supportedSampleRates: number[];
 	supportedBitrates: number[];
+	/**
+	 * Bitrates each compressed format's encoder really accepts here, in bps,
+	 * at the rate an offline encode runs at rather than the rate the settings
+	 * ask for. AAC is what this measures: WebCodecs hands the decision to the
+	 * platform encoder, so the answer differs between Windows, macOS and iOS
+	 * and no declaration can stand in for it.
+	 */
+	reachableBitrates: Record<string, number[]>;
 	codecSupport: CodecSupportEntry[];
 	mediaRecorderAvailable: boolean;
 	getUserMediaAvailable: boolean;
@@ -264,18 +277,52 @@ export class SystemDiagnostics {
 
 	/**
 	 * Detects audio recording capabilities of the current environment.
+	 * @param sampleRate - Rate the bitrate probe asks about, since what an
+	 *   encoder accepts depends on it. The rate an offline encode runs at,
+	 *   from {@link recordingEncodingFor}, so the report measures the file a
+	 *   recording writes rather than one the settings only describe.
+	 * @param numberOfChannels - Layout the probe asks about, which an encoder
+	 *   answers separately for
 	 * @returns Audio capabilities descriptor
 	 */
-	static async collectAudioCapabilities(): Promise<DiagnosticsAudioCapabilities> {
+	static async collectAudioCapabilities(
+		sampleRate: number,
+		numberOfChannels: number,
+	): Promise<DiagnosticsAudioCapabilities> {
 		const capabilities = await detectCapabilities();
 		const mediaRecorderAvailable = typeof MediaRecorder !== 'undefined';
 		const getUserMediaAvailable =
 			typeof audioDeviceApi()?.getUserMedia === 'function';
 
+		// A lossless format takes no bitrate, so there is nothing to measure.
+		// Asked through the registry's own test rather than by reading the
+		// descriptor flag here, so the report cannot come to measure a
+		// different set of formats than the rows it is meant to explain.
+		const measured = AUDIO_FORMAT_IDS.filter(takesBitrate);
+		// Concurrently because the probes share no state and there are two per
+		// bitrate per format; run in sequence they would put a visible pause in
+		// front of the System info report.
+		const reachableBitrates = Object.fromEntries(
+			await Promise.all(
+				measured.map(
+					async (format) =>
+						[
+							format,
+							await acceptedBitrates(
+								format,
+								sampleRate,
+								numberOfChannels,
+							),
+						] as const,
+				),
+			),
+		);
+
 		return {
 			supportedFormats: capabilities.supportedFormats,
 			supportedSampleRates: capabilities.supportedSampleRates,
 			supportedBitrates: capabilities.supportedBitrates,
+			reachableBitrates,
 			codecSupport: detectCodecSupport(),
 			mediaRecorderAvailable,
 			getUserMediaAvailable,
@@ -297,18 +344,24 @@ export class SystemDiagnostics {
 		settings: AudioRecorderSettings,
 	): Promise<ActiveRecordingConfig> {
 		const requestedFormat = settings.recordingFormat.toLowerCase();
+		// Asked about the audio these settings produce, the way a session
+		// start asks, so the report shows the fallback a recording would take.
+		const encoding = recordingEncodingFor(settings);
 		// Validate the stored preference so a fallback's cause (why the
 		// requested format is unrecordable here) stays in the report.
-		const validationResult =
-			await validateRecordingCapability(requestedFormat);
+		const validationResult = await validateRecordingCapability(
+			requestedFormat,
+			encoding,
+		);
 
 		// Resolve the format recording will actually use: the request when
 		// recordable, else the platform fallback. Diagnostics then mirror
 		// the effective session instead of an unrecordable preference.
 		let outputFormat = requestedFormat;
 		try {
-			outputFormat = (await resolveEffectiveOutputFormat(requestedFormat))
-				.format;
+			outputFormat = (
+				await resolveEffectiveOutputFormat(requestedFormat, encoding)
+			).format;
 		} catch {
 			// Nothing is recordable here; keep the requested format so the
 			// unsupported branch below reports it honestly.
@@ -350,10 +403,20 @@ export class SystemDiagnostics {
 		settings: AudioRecorderSettings,
 		app: App,
 	): Promise<DiagnosticsData> {
+		// One encoding, read once and asked about in full. Taking the layout
+		// from it and the rate from the settings had the report measure a file
+		// nobody writes: at 22.05 kHz in the settings on a 48 kHz device the
+		// AAC probe answered for HE-AAC and reported no reachable bitrate at
+		// all, while the recording encodes the 48 kHz mix and the bitrate row
+		// lists what it accepts.
+		const encoding = recordingEncodingFor(settings);
 		const [audioDevices, audioCapabilities, activeRecordingConfig] =
 			await Promise.all([
 				SystemDiagnostics.collectAudioDevices(),
-				SystemDiagnostics.collectAudioCapabilities(),
+				SystemDiagnostics.collectAudioCapabilities(
+					encoding.sampleRate,
+					encoding.numberOfChannels,
+				),
 				SystemDiagnostics.collectActiveRecordingConfig(settings),
 			]);
 

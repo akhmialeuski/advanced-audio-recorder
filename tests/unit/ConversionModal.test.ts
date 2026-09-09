@@ -21,6 +21,10 @@ import { MODAL } from '../helpers/selectors';
 import { createMockApp } from '../helpers/createApp';
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { convertBlobToFormatBuffer } from 'src/audio/AudioFormatConverter';
+import {
+	getSupportedBitrates,
+	resolveBitrateOffer,
+} from 'src/audio/AudioCapabilityDetector';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { defined } from '../helpers/assertions';
 
@@ -45,6 +49,7 @@ jest.mock('src/utils/LinkUpdater', () => ({
 
 // Mock AudioFormatConverter: conversion pipelines have their own suite
 jest.mock('src/audio/AudioFormatConverter', () => ({
+	...require('../mocks/modules/audioFormatConverter'),
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
 	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
 }));
@@ -58,14 +63,9 @@ jest.mock('src/audio/AudioEncoder', () => ({
 }));
 
 // Mock AudioCapabilityDetector
-jest.mock('src/audio/AudioCapabilityDetector', () => ({
-	getSupportedBitrates: jest
-		.fn()
-		.mockReturnValue([64000, 96000, 128000, 192000, 256000, 320000]),
-	getSupportedSampleRates: jest
-		.fn()
-		.mockReturnValue([8000, 16000, 22050, 44100, 48000]),
-}));
+jest.mock('src/audio/AudioCapabilityDetector', () =>
+	require('../mocks/modules/audioCapabilityDetector'),
+);
 
 // Real settings rather than a two-field cast: the dialog seeds format,
 // bitrate, and link action from them, so a partial fixture only type-checks
@@ -552,6 +552,59 @@ describe('ConversionModal', () => {
 			// wav is the source format: refused while the channels are kept,
 			// offered again the moment they are not.
 			expect(offered()).toContain('wav');
+		});
+
+		it('re-offers the bitrates the new target format reaches', () => {
+			// The bitrate row is built before a target is picked, so a target
+			// chosen later leaves it offering rates that target cannot write.
+			openDialog();
+			jest.mocked(getSupportedBitrates).mockReturnValue([32000, 64000]);
+
+			changeSetting('Target format', 'dropdown', 'mp3');
+
+			expect(jest.mocked(getSupportedBitrates)).toHaveBeenCalledWith(
+				'mp3',
+				expect.any(Number),
+			);
+			expect(
+				(settingRow('Bitrate').dropdownOptions ?? []).map(
+					(option) => option.value,
+				),
+			).toEqual(['32000', '64000']);
+		});
+
+		it('asks the encoder about the layout the conversion writes, not the one it opened with', async () => {
+			// The encoder accepts its own set of rates per layout, and
+			// mediabunny builds the codec string from the channel count, so a
+			// mono conversion is a different question than a stereo one. A
+			// format picked after the channels were changed re-stated only the
+			// format, and the row was then probed as the stereo file the
+			// dialog had opened with.
+			openDialog();
+
+			changeSetting('Channels', 'dropdown', 'mono-mix');
+			changeSetting('Target format', 'dropdown', 'm4a');
+			await tick();
+
+			expect(jest.mocked(resolveBitrateOffer)).toHaveBeenLastCalledWith(
+				'm4a',
+				expect.any(Number),
+				1,
+			);
+		});
+
+		it('hides the bitrate row for a WAV target, which discards it', () => {
+			// The bitrate reaches the encoder and is thrown away for PCM, so
+			// a live dropdown here describes a file it cannot describe.
+			openDialog();
+			expect(settingRow('Bitrate').el.style.display).not.toBe('none');
+
+			// wav is the source format, offered again only once the channels
+			// stop being kept.
+			changeSetting('Channels', 'dropdown', 'mono-mix');
+			changeSetting('Target format', 'dropdown', 'wav');
+
+			expect(settingRow('Bitrate').el.style.display).toBe('none');
 		});
 
 		it('locks the button for the length of the conversion', async () => {

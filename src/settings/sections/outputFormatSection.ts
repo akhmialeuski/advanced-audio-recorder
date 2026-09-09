@@ -2,25 +2,39 @@
  * The recording's output format, its bitrate, and the summary derived from
  * both.
  *
- * The format list itself is drawn by hand: which options an install can encode
- * is settled by an asynchronous probe, so the row cannot be declared.
+ * Neither list is declared. Which formats an install can encode is settled by
+ * an asynchronous probe, and which bitrates one of them reaches depends on the
+ * chosen format, the sample rate and the same probe, so the list is rebuilt
+ * each time one of those moves. A declared dropdown carries a fixed option map
+ * and a fixed description, so both rows are drawn by hand.
  * @module settings/sections/outputFormatSection
  */
 
 import { CONVERSION_LINK_ACTION_LABELS } from '../labels';
+import { recordingBitrateFormat } from '../../audio/AudioFormatConverter';
+import type { AudioRecorderSettings } from '../settingsSchema';
 import { type OutputFormatRows, SETTINGS_SECTION_CLASS } from './context';
 import type { Setting, SettingDefinitionItem } from 'obsidian';
 
-/** Bitrates the output-format section offers, in kbps. */
-const BITRATE_OPTIONS_KBPS = [64, 96, 128, 160, 192, 256, 320];
+/**
+ * What the bitrate row says before the format, the sample rate and the encoder
+ * have narrowed the list. The tab re-describes the row as those answers land,
+ * appending a sentence naming what decided the values on offer, and it needs
+ * this half back to put in front of it.
+ */
+export const BITRATE_ROW_DESC =
+	'Compression quality and resulting file size. The lowest values are a mono speech mode, small enough to send an hour as one transcription request, and they cost real quality on music or stereo.';
 
 /**
  * The recorded file's format, its bitrate, and what a conversion does with the
  * source file it replaces.
- * @param rows - The two rows that cannot be expressed as controls
+ * @param rows - The three rows that cannot be expressed as controls
+ * @param settings - Live settings, read by the bitrate row's own predicate
+ * @returns The group definition
  */
 export function outputFormatGroup(
 	rows: OutputFormatRows,
+	settings: AudioRecorderSettings,
 ): SettingDefinitionItem {
 	return {
 		type: 'group',
@@ -38,16 +52,20 @@ export function outputFormatGroup(
 			{
 				name: 'Audio bitrate',
 				aliases: ['quality', 'kbps'],
-				desc: 'Compression quality and resulting file size.',
-				control: {
-					type: 'dropdown',
-					key: 'bitrate',
-					options: Object.fromEntries(
-						BITRATE_OPTIONS_KBPS.map((kbps) => [
-							String(kbps * 1000),
-							`${String(kbps)} kbps`,
-						]),
-					),
+				desc: BITRATE_ROW_DESC,
+				// WAV captured as raw PCM carries no bitrate at all, so the
+				// row described something the file does not have. Asked of
+				// the capture rather than of the container: FLAC, and WAV on
+				// a platform without PCM capture, are recorded through a
+				// compressed intermediate, so the value still decides what
+				// the finished file holds and the row has to stay. Stated as
+				// a predicate rather than hidden from inside the render
+				// callback, because the renderer re-applies this after every
+				// change and would put the row back.
+				visible: (): boolean =>
+					recordingBitrateFormat(settings.recordingFormat) !== null,
+				render: (setting: Setting): void => {
+					rows.renderBitrateRow(setting);
 				},
 			},
 			{

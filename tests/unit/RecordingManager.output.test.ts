@@ -29,7 +29,10 @@ import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
-import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
+import {
+	encodeAudioBuffer,
+	probeOfflineEncodingSupport,
+} from 'src/audio/AudioEncoder';
 import { getAudioSourceName } from 'src/recording/AudioStreamHandler';
 
 // Mock AudioStreamHandler
@@ -72,6 +75,118 @@ describe('RecordingManager', () => {
 			settings: mockSettings,
 			onStatusChange: statusChangeCallback,
 		} = createRecordingSut());
+	});
+
+	describe('the bitrate a session starts with', () => {
+		/**
+		 * Scripts an encoder that takes 96 kbps upward. A question with no
+		 * bitrate in it is about the codec, which this device has, so it is
+		 * answered the way a real encoder answers it: yes.
+		 */
+		function installPickyEncoder(): void {
+			jest.mocked(probeOfflineEncodingSupport).mockImplementation(
+				(_format, quality) =>
+					Promise.resolve(
+						quality?.bitrate === undefined ||
+							quality.bitrate >= 96000,
+					),
+			);
+		}
+
+		/**
+		 * Records one session whose tracks are mixed into a single file, so
+		 * mediabunny encodes the result and the encoder's own limits apply,
+		 * against an encoder that takes 96 kbps upward - the shape of a
+		 * platform AAC encoder, which refuses everything below the lowest
+		 * rate it has.
+		 * @param settings - The rate and layout stored when recording starts
+		 * @returns The rate the recorders were actually constructed with
+		 */
+		async function recordAgainstAPickyEncoder(
+			settings: Partial<AudioRecorderSettings> = {},
+		): Promise<number | undefined> {
+			useDesktopPlatform();
+			installPickyEncoder();
+			({ manager, settings: mockSettings } = createRecordingSut({
+				settings: {
+					recordingFormat: 'webm',
+					enableMultiTrack: true,
+					outputMode: 'single',
+					...settings,
+				},
+			}));
+			const ctor = installMediaRecorder(makeMediaRecorderDouble());
+			stubAudioStreams({
+				count: 2,
+				trackOrder: [
+					{ trackNumber: 1, deviceId: 'a', channelMode: 'source' },
+					{ trackNumber: 2, deviceId: 'b', channelMode: 'source' },
+				],
+			});
+
+			await manager.startRecording();
+
+			return at(ctor.mock.calls, 0)[1]?.audioBitsPerSecond;
+		}
+
+		it('asks the encoder about the rate an offline encode runs at, not the requested one', async () => {
+			// The settings ask for 22.05 kHz; the mix and every re-encode run
+			// at the AudioContext's own rate, which the media stubs put at
+			// 44.1 kHz. Asked at the requested rate, the encoder was refusing
+			// an HE-AAC file the session never writes.
+			await recordAgainstAPickyEncoder({ sampleRate: 22050 });
+
+			expect(
+				jest.mocked(probeOfflineEncodingSupport),
+			).toHaveBeenCalledWith(
+				'webm',
+				expect.objectContaining({ sampleRate: 44100 }),
+			);
+		});
+
+		it('substitutes a rate this encoder refuses before capture begins', async () => {
+			// The failure this prevents: a platform AAC encoder that takes
+			// only 96 kbps upward accepted the recording, then refused the
+			// stored 24 kbps while the finished audio was being encoded, so
+			// the take was lost at the moment it was meant to be saved.
+			expect(await recordAgainstAPickyEncoder({ bitrate: 24000 })).toBe(
+				96000,
+			);
+			expect(noticeMessages()).toContainEqual(
+				expect.stringContaining('Recording at 96 kbps instead'),
+			);
+		});
+
+		it('leaves a rate the encoder accepts untouched and says nothing', async () => {
+			expect(await recordAgainstAPickyEncoder({ bitrate: 128000 })).toBe(
+				128000,
+			);
+			expect(noticeMessages()).not.toContainEqual(
+				expect.stringContaining('kbps instead'),
+			);
+		});
+
+		it('records a directly captured track at the rate it was given', async () => {
+			// One WebM track is written by MediaRecorder itself, which takes
+			// the bitrate it is handed; mediabunny never encodes it. Asking
+			// the WebCodecs encoder about such a session moved the recording
+			// off a rate it could have used, and named an encoder that was
+			// never going to run.
+			useDesktopPlatform();
+			installPickyEncoder();
+			({ manager, settings: mockSettings } = createRecordingSut({
+				settings: { bitrate: 24000, recordingFormat: 'webm' },
+			}));
+			const ctor = installMediaRecorder(makeMediaRecorderDouble());
+			stubAudioStreams({ count: 1 });
+
+			await manager.startRecording();
+
+			expect(at(ctor.mock.calls, 0)[1]?.audioBitsPerSecond).toBe(24000);
+			expect(noticeMessages()).not.toContainEqual(
+				expect.stringContaining('kbps instead'),
+			);
+		});
 	});
 
 	describe('merged output with no audio', () => {

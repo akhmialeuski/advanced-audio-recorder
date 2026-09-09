@@ -45,6 +45,38 @@ export const BufferTarget = jest.fn().mockImplementation(() => ({
 export const ALL_FORMATS: unknown[] = [];
 
 /**
+ * The container writers the format registry builds, one per registered format.
+ * Nothing here is called by a test: the registry only needs the constructors
+ * to exist, and a suite that pulls the registry in gets them for free rather
+ * than repeating the list.
+ */
+export const Mp4OutputFormat = jest.fn();
+export const WebMOutputFormat = jest.fn();
+export const OggOutputFormat = jest.fn();
+export const FlacOutputFormat = jest.fn();
+export const Mp3OutputFormat = jest.fn();
+export const WavOutputFormat = jest.fn();
+
+/**
+ * The encoding quality mediabunny is asked about, holding the options it was
+ * built from so a suite can read back the bitrate a probe enquired about.
+ * Mediabunny keeps them private and exposes them only to its own encoder, so
+ * the double is what makes the question visible.
+ */
+export const Quality = jest
+	.fn()
+	.mockImplementation((options: unknown) => ({ options }));
+
+/**
+ * `canEncodeAudio`, the browser's own encoder question. It answers no by
+ * default, which is what jsdom really reports, and a suite about which
+ * parameters an encoder accepts scripts it.
+ */
+export const canEncodeAudio = jest.fn(
+	(): Promise<boolean> => Promise.resolve(false),
+);
+
+/**
  * Stand-in for mediabunny's sample wrapper: the streaming path only ever
  * constructs one and reads back the fields it passed in.
  */

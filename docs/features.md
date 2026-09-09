@@ -81,13 +81,13 @@ Learn more: [Formats](formats.md)
 
 ## Format conversion
 
-Right-click any audio file (in the File Explorer, on an embed link, or on an embedded player) and choose **Convert audio format** to transcode it to a different format. The dialog offers a **Target format** (with encoder description), a **Bitrate** selection (64-320 kbps), a **Delete source file** toggle, and an **Update links in notes** choice (`Do nothing`, `Replace source link`, `Insert after source link`). Conversion runs through the streaming Mediabunny pipeline in chunks and re-encodes at the chosen bitrate; converting to WAV always performs a full decode.
+Right-click any audio file (in the File Explorer, on an embed link, or on an embedded player) and choose **Convert audio format** to transcode it to a different format. The dialog offers a **Target format** (with encoder description), a **Bitrate** selection (24-320 kbps, cut to what the target format can write), a **Delete source file** toggle, and an **Update links in notes** choice (`Do nothing`, `Replace source link`, `Insert after source link`). Conversion runs through the streaming Mediabunny pipeline in chunks and re-encodes at the chosen bitrate; converting to WAV always performs a full decode.
 
 Learn more: [File operations](file-operations.md#convert-audio-format)
 
 ## Manual splitting
 
-Right-click an audio file and choose **Split audio into parts** to break an existing recording into fixed-duration parts. The dialog offers a **Part duration** (1-180 minutes), a **Part name suffix**, a re-encode **Bitrate** (hidden for WAV sources), a **Delete source file** toggle, and **Update links in notes**. WAV files are split losslessly at the byte level (so even multi-gigabyte files are handled); compressed formats are decoded once and re-encoded per part. Link updates apply across the whole vault and cover both wikilinks and Markdown links.
+Right-click an audio file and choose **Split audio into parts** to break an existing recording into fixed-duration parts. The dialog offers a **Part duration** (1-180 minutes), a **Part name suffix**, a re-encode **Bitrate** (24-320 kbps, hidden for WAV and FLAC sources), a **Delete source file** toggle, and **Update links in notes**. WAV files are split losslessly at the byte level (so even multi-gigabyte files are handled); compressed formats are decoded once and re-encoded per part. Link updates apply across the whole vault and cover both wikilinks and Markdown links.
 
 Learn more: [Splitting](splitting.md#manual-splitting-existing-file)
 

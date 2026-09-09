@@ -33,3 +33,10 @@ export const watchStreamEndings = jest.fn(() => jest.fn());
 export const audioDeviceApi = jest.fn(
 	() => (navigator.mediaDevices as MediaDevices | undefined) ?? null,
 );
+
+// Derived from settings alone and read by the manager before it asks the
+// encoder anything, so the real one runs: a double here would have to restate
+// the mixer's layout rule, and a suite about that rule tests the real function.
+export const recordingEncodingFor = jest.requireActual<
+	typeof import('../../../src/recording/AudioStreamHandler')
+>('../../../src/recording/AudioStreamHandler').recordingEncodingFor;

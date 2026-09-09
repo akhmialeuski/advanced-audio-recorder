@@ -20,6 +20,7 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	getAudioStreams,
 	getAudioSourceName,
+	recordingEncodingFor,
 	stopAllStreams,
 	validateSelectedDevices,
 } from './AudioStreamHandler';
@@ -38,6 +39,7 @@ import {
 import { DebugLogger } from '../utils/DebugLogger';
 import {
 	buildMimeType,
+	resolveEffectiveBitrate,
 	resolveEffectiveOutputFormat,
 } from '../audio/AudioCapabilityDetector';
 import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
@@ -312,17 +314,29 @@ export class RecordingManager {
 	 */
 	async startRecording(): Promise<string | null> {
 		try {
+			// The streams come first so the layout the encoder is asked about
+			// is the one the tracks were captured with, not one a settings
+			// edit made while permission was pending could describe.
+			await validateSelectedDevices(this.settings);
+			const { streams, trackOrder } = await getAudioStreams(
+				this.settings,
+			);
+			this.streams = streams;
+			this.trackOrder = trackOrder;
+			const encoding = recordingEncodingFor(this.settings, trackOrder);
+
 			// Resolve the format this session actually records in: the
-			// stored preference when this device can record it, otherwise
-			// the platform's best recordable format. Probes real encoder
-			// support, so a format that would only fail at save time is
-			// never silently accepted.
+			// stored preference when this device can write it at this rate
+			// and layout, otherwise the platform's best format that can.
+			// Probes the real encoder, so a format that would only fail at
+			// save time is never silently accepted.
 			const effectiveFormat = await resolveEffectiveOutputFormat(
 				this.settings.recordingFormat,
+				encoding,
 			);
 			if (effectiveFormat.fellBack) {
 				new Notice(
-					`The format "${this.settings.recordingFormat.toUpperCase()}" cannot be recorded on this device. Recording in ${effectiveFormat.format.toUpperCase()} instead.`,
+					`${effectiveFormat.reason} Recording in ${effectiveFormat.format.toUpperCase()} instead.`,
 				);
 				this.debugLogger.log('Recording format fallback', {
 					requested: this.settings.recordingFormat,
@@ -335,9 +349,14 @@ export class RecordingManager {
 				outputFormat === FORMAT_WAV && isPcmWavCaptureSupported();
 
 			let recorderFormat = FORMAT_WEBM;
+			let recorderMimeType = buildMimeType(FORMAT_WEBM);
 			if (!isWavPcm) {
 				const resolved = resolveRecorderFormat(outputFormat);
 				recorderFormat = resolved.recorderFormat;
+				// The type the platform said yes to, kept for the recorder
+				// rather than only logged: audio/m4a is refused where
+				// audio/mp4, the same container, is accepted.
+				recorderMimeType = resolved.mimeType;
 				this.debugLogger.logMimeType(resolved.mimeType);
 				this.debugLogger.log('Recording format configuration', {
 					outputFormat,
@@ -350,12 +369,28 @@ export class RecordingManager {
 				});
 			}
 
-			await validateSelectedDevices(this.settings);
-			const { streams, trackOrder } = await getAudioStreams(
-				this.settings,
+			// The format probe answers about the codec at this rate and
+			// layout, never about the bitrate, and a rate the platform
+			// encoder refuses does not fail until the finished recording is
+			// being encoded - too late to keep the audio. Asking now costs
+			// one probe and turns a lost take into a notice.
+			const resolvedBitrate = await resolveEffectiveBitrate(
+				outputFormat,
+				this.settings.bitrate,
+				encoding,
 			);
-			this.streams = streams;
-			this.trackOrder = trackOrder;
+			if (resolvedBitrate.fellBack) {
+				new Notice(
+					`${resolvedBitrate.reason} Recording at ${String(
+						Math.round(resolvedBitrate.bitrate / 1000),
+					)} kbps instead.`,
+				);
+				this.debugLogger.log('Recording bitrate fallback', {
+					requested: this.settings.bitrate,
+					effective: resolvedBitrate.bitrate,
+					reason: resolvedBitrate.reason,
+				});
+			}
 
 			const plan = createCaptureSession({
 				settings: this.settings,
@@ -363,7 +398,9 @@ export class RecordingManager {
 				trackOrder,
 				outputFormat,
 				recorderFormat,
+				recorderMimeType,
 				isWavPcm,
+				bitrate: resolvedBitrate.bitrate,
 			});
 			this.session = plan.session;
 			if (plan.autoSplitSkipped) {
@@ -601,9 +638,7 @@ export class RecordingManager {
 								CHANNEL_MODE_SOURCE,
 							this.settings.sampleRate,
 							{
-								mimeType: buildMimeType(
-									this.session.recorderFormat,
-								),
+								mimeType: this.session.recorderMimeType,
 								bitrate: this.session.bitrate,
 							},
 							{

@@ -2,9 +2,11 @@
  * Default double for `src/audio/AudioEncoder`, as the recording suites need it.
  *
  * Offline encoding is a mediabunny concern with a TextDecoder requirement jsdom
- * only half satisfies, so the recording suites stub it out. The async probe
- * answers false on purpose: those suites exercise recording, where a format is
- * recordable only when MediaRecorder supports it.
+ * only half satisfies, so the recording suites stub it out. The probe answers
+ * for the same formats the synchronous check does, which is the desktop these
+ * suites model: a session that mixes its tracks asks the encoder before it
+ * starts, and one that answered no to everything would send every such
+ * session to WAV before a single case ran.
  *
  * Other suites mock this module differently - a conversion test cares which
  * format came back, a capability test cares which formats are supported - and
@@ -39,5 +41,6 @@ export const isOfflineEncodingSupported = jest.fn((format: string): boolean =>
 );
 
 export const probeOfflineEncodingSupport = jest.fn(
-	(): Promise<boolean> => Promise.resolve(false),
+	(format: string): Promise<boolean> =>
+		Promise.resolve(OFFLINE_ENCODABLE.includes(format)),
 );

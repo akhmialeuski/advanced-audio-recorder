@@ -1442,6 +1442,16 @@ export class DropdownComponent {
 		return this;
 	}
 
+	/**
+	 * Read from the element rather than the mirrored field, as Obsidian's own
+	 * getValue is: a selection made through the DOM never passes setValue, and
+	 * code asking what the dropdown is showing has to see it.
+	 * @returns The selected option's value
+	 */
+	getValue(): string {
+		return this.selectEl.value;
+	}
+
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
 		// Mirrored onto the element like real Obsidian, so DOM-level

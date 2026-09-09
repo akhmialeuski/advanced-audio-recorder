@@ -56,6 +56,7 @@ export function createSession(
 		chunkRotationBytes: null,
 		isWavPcm: false,
 		recorderFormat: 'webm',
+		recorderMimeType: 'audio/webm',
 		outputFormat: 'webm',
 		outputMode: 'multiple',
 		bitrate: 128000,

@@ -15,7 +15,6 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { concatArrayBuffers } from '../utils/buffers';
 import { resolveUniquePath } from '../audio/RecordingFileManager';
-import { buildMimeType } from '../audio/AudioCapabilityDetector';
 import { SessionJournal } from './SessionJournal';
 
 /**
@@ -148,7 +147,7 @@ export class TrackWriteQueue {
 			this.settings,
 		);
 		const combined = new Blob(target.bufferedChunks, {
-			type: buildMimeType(session.recorderFormat),
+			type: session.recorderMimeType,
 		});
 		// Temporary segment: a plain adapter write skips
 		// createBinary's synchronous vault-index update and event

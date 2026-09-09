@@ -16,11 +16,28 @@
  */
 
 import { Setting } from 'obsidian';
-import type { TextComponent } from 'obsidian';
+import type { DropdownComponent, TextComponent } from 'obsidian';
 import type { AudioRecorderSettings } from './settingsSchema';
 import { CONVERSION_LINK_ACTION_OPTIONS, type LabeledOption } from './labels';
-import { getSupportedBitrates } from '../audio/AudioCapabilityDetector';
+import {
+	closestBitrate,
+	effectiveBitrate,
+	getSupportedBitrates,
+	kilohertz,
+	resolveBitrateOffer,
+	type BitrateOffer,
+} from '../audio/AudioCapabilityDetector';
+import { offlineEncodeSampleRate } from '../audio/AudioFormatConverter';
+import { DEFAULT_SAMPLE_RATE, PLUGIN_LOG_PREFIX } from '../constants';
+import { getFormatDescriptor, takesBitrate } from '../audio/formatRegistry';
 import type { ConversionLinkAction } from './settingsSchema';
+
+/**
+ * Channel layout assumed when a caller does not state one. Two is what
+ * mediabunny itself assumes, and it is what a conversion keeping the source's
+ * layout most often produces.
+ */
+const STEREO_CHANNEL_COUNT = 2;
 
 /** Class applied to a setting row that is rendered disabled (dimmed). */
 export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
@@ -359,47 +376,377 @@ export function addStageRowTo(
 }
 
 /**
- * Adds a bitrate dropdown listing the supported bitrates. The initial
- * value is snapped to the closest supported entry so the dropdown
- * always shows the bitrate actually used for encoding.
+ * The fill each bitrate dropdown is currently showing, keyed by its own select
+ * element. A row re-offered for another format starts a second probe while the
+ * first is still in flight, and the answers can arrive in either order, so the
+ * later fill wins and the earlier answer is dropped. The settings tab keeps
+ * the same guard as a counter on itself; this list has three owners, so the
+ * count belongs to the dropdown.
+ *
+ * The guard is per element by design. A whole tab re-render builds a fresh
+ * dropdown that runs its own probe, and the superseded answer then lands on an
+ * element no longer in the document, where writing it changes nothing.
+ */
+const bitrateFillGeneration = new WeakMap<object, number>();
+
+/**
+ * Puts one list of bitrates into a dropdown and selects one of them.
+ * @param dropdown - The dropdown to fill
+ * @param bitrates - Bitrates to offer, in bps and ascending
+ * @param selected - The bitrate to show, which must be one of them
+ */
+function renderBitrateOptions(
+	dropdown: DropdownComponent,
+	bitrates: readonly number[],
+	selected: number,
+): void {
+	dropdown.selectEl.empty();
+	bitrates.forEach((bps) => {
+		const kbps = Math.round(bps / 1000);
+		dropdown.addOption(String(bps), `${String(kbps)} kbps`);
+	});
+	dropdown.setValue(String(selected));
+}
+
+/**
+ * Where a rate the current format's encoder refuses is still to be had. Opus
+ * encodes from 6 kbps by specification, at every sample rate, on every device
+ * with a WebCodecs encoder, so a user after a small speech file is sent there
+ * rather than left with a refusal.
+ */
+const LOW_RATES_ELSEWHERE =
+	'For the lower rates use WebM or OGG, whose Opus encoder writes all of them.';
+
+/**
+ * One sentence saying which bitrates the row is offering and what decided
+ * them, which is the only way a missing value is accounted for: a rate the
+ * codec has no table for at this sample rate never appears, and neither does
+ * one the encoder on this device refuses.
+ * @param format - Target audio format
+ * @param sampleRate - Rate the encoder will write at
+ * @param offer - The list and where it came from, or null before the encoder
+ *   has been asked
+ * @returns The note, to append to the row's own description
+ */
+export function bitrateOfferNote(
+	format: string,
+	sampleRate: number,
+	offer: BitrateOffer | null,
+): string {
+	const bitrates =
+		offer?.bitrates ?? getSupportedBitrates(format, sampleRate);
+	const lowest = bitrates[0];
+	const highest = bitrates[bitrates.length - 1];
+	if (lowest === undefined || highest === undefined) {
+		return '';
+	}
+	const codec = (
+		getFormatDescriptor(format)?.codecLabel ?? format
+	).toUpperCase();
+	const range = `${codec} at ${kilohertz(sampleRate)} kHz reaches ${String(
+		Math.round(lowest / 1000),
+	)}-${String(Math.round(highest / 1000))} kbps.`;
+	if (!offer) {
+		return range;
+	}
+	switch (offer.encoder) {
+		case 'unavailable':
+			return `${range} There is no encoder on this device to confirm them.`;
+		case 'refused':
+			return `${range} The encoder on this device cannot write ${codec} at ${kilohertz(
+				sampleRate,
+			)} kHz. ${LOW_RATES_ELSEWHERE}`;
+		case 'confirmed': {
+			const declared = getSupportedBitrates(format, sampleRate);
+			if (declared.length === bitrates.length) {
+				return `${range} The encoder on this device accepts all of them.`;
+			}
+			// A narrowed list that lost its low end is the case the low rates
+			// exist for, so the note says where they are still to be had.
+			const lostLowEnd = declared.some((bps) => bps < lowest);
+			return `${range} The encoder on this device accepts only the values listed.${
+				lostLowEnd ? ` ${LOW_RATES_ELSEWHERE}` : ''
+			}`;
+		}
+	}
+}
+
+/**
+ * Re-offers the bitrates this device's encoder accepts, once it answers.
+ *
+ * The list is narrowed rather than dimmed. A blocked option a native select is
+ * already sitting on stays displayed and stays selected, so dimming left the
+ * row showing a rate the encoder had just refused, and a row where every
+ * option was dimmed said nothing a user could act on. Removing them leaves
+ * only values that work, and the note says what removed the rest.
+ *
+ * What the answer is reconciled against is the rate the dropdown is showing
+ * now, read back from it, not the one the fill started from. The probe takes
+ * as long as registering a bundled encoder, and a value picked while it was in
+ * flight is as much a choice as the one the row opened with: snapping the old
+ * value back left the select displaying one rate while the dialog converted at
+ * another.
+ * @param dropdown - The dropdown whose list is narrowed
+ * @param options - Target, layout, the value the fill started from, and the
+ *   fill this answer belongs to
+ * @returns The selection after narrowing, whether narrowing moved it, and the
+ *   note explaining the list, or null when the answer no longer applies
+ */
+async function narrowToOfferedBitrates(
+	dropdown: DropdownComponent,
+	options: {
+		format: string;
+		sampleRate: number;
+		numberOfChannels: number;
+		selected: number;
+		generation: number;
+		isStale: () => boolean;
+	},
+): Promise<{ bitrate: number; moved: boolean; note: string } | null> {
+	const offer = await resolveBitrateOffer(
+		options.format,
+		options.sampleRate,
+		options.numberOfChannels,
+	);
+	if (
+		bitrateFillGeneration.get(dropdown.selectEl) !== options.generation ||
+		options.isStale()
+	) {
+		return null;
+	}
+	const shown = parseInt(dropdown.getValue(), 10);
+	const selected = Number.isFinite(shown) ? shown : options.selected;
+	const note = bitrateOfferNote(options.format, options.sampleRate, offer);
+	// Only a confirmed answer narrows anything. The other two verdicts hand
+	// back the codec's own range, which is already on offer, so re-rendering
+	// it would move the selection on the strength of an answer that measured
+	// nothing.
+	if (offer.encoder !== 'confirmed') {
+		return { bitrate: selected, moved: false, note };
+	}
+	const settled = closestBitrate(offer.bitrates, selected);
+	renderBitrateOptions(dropdown, offer.bitrates, settled);
+	return { bitrate: settled, moved: settled !== selected, note };
+}
+
+/**
+ * Fills a bitrate dropdown with the rates the target format reaches at the
+ * given sample rate, selects the closest one to the value asked for, and then
+ * narrows the list to what this device's encoder accepts.
+ *
+ * Selecting the closest offered value rather than the stored one is what
+ * keeps the dropdown showing the bitrate encoding will really use: a value
+ * left behind by a format change is otherwise held by a control that has no
+ * option for it. It is `effectiveBitrate` that decides which value that is,
+ * the same function the session snapshot and the output summary read, so no
+ * two of them can name a different rate for one stored number.
+ *
+ * The encoder's own answer arrives later and can shorten the list and move the
+ * selection with it, which is what `onSettled` and `onNote` report.
+ * @param dropdown - The dropdown to fill
+ * @param options - Target format, sample rate, channel layout, the bitrate
+ *   asked for, where to report a value the encoder's answer moved, where to
+ *   report the note explaining the list, and whether the owner has since
+ *   dropped the row
+ * @returns The effective (possibly snapped) bitrate
+ */
+export function fillBitrateDropdown(
+	dropdown: DropdownComponent,
+	options: {
+		format: string;
+		sampleRate: number;
+		numberOfChannels?: number | undefined;
+		selected: number;
+		onSettled?: (bitrate: number) => void;
+		onNote?: (note: string) => void;
+		isStale?: () => boolean;
+	},
+): number {
+	const selected = effectiveBitrate(
+		options.format,
+		options.selected,
+		options.sampleRate,
+	);
+	renderBitrateOptions(
+		dropdown,
+		getSupportedBitrates(options.format, options.sampleRate),
+		selected,
+	);
+	// Before the encoder has been asked the note carries what the codec alone
+	// settles, which is already the whole answer for every format but AAC.
+	options.onNote?.(
+		bitrateOfferNote(options.format, options.sampleRate, null),
+	);
+
+	const generation = (bitrateFillGeneration.get(dropdown.selectEl) ?? 0) + 1;
+	bitrateFillGeneration.set(dropdown.selectEl, generation);
+	void narrowToOfferedBitrates(dropdown, {
+		format: options.format,
+		sampleRate: options.sampleRate,
+		numberOfChannels: options.numberOfChannels ?? STEREO_CHANNEL_COUNT,
+		selected,
+		generation,
+		isStale: options.isStale ?? ((): boolean => false),
+	})
+		.then((narrowed) => {
+			if (!narrowed) {
+				return;
+			}
+			options.onNote?.(narrowed.note);
+			if (narrowed.moved) {
+				options.onSettled?.(narrowed.bitrate);
+			}
+		})
+		.catch((error: unknown) => {
+			// The probe answers rather than throws, so what reaches here is the
+			// DOM work on a row being torn down. Reported, because an install
+			// where this happens has no console to read an unhandled rejection
+			// from and the row simply stops explaining itself.
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Could not re-offer the bitrates this device accepts:`,
+				error,
+			);
+		});
+
+	return selected;
+}
+
+/** A bitrate row a dialog can re-offer when its target format changes. */
+export interface BitrateRow {
+	/** The bitrate currently offered and selected. */
+	readonly value: number;
+	/**
+	 * Re-offers the bitrates a target format reaches, hiding the row for a
+	 * target that takes no bitrate at all, and reports a value the new list
+	 * moved through the builder's own onChange.
+	 *
+	 * The layout is re-stated because it moves with the target: a dialog that
+	 * switches to a mono conversion is asking the encoder a different question
+	 * than the one the row was built with.
+	 * @param format - The new target format
+	 * @param numberOfChannels - Layout the new target will have
+	 */
+	rebuild(format: string, numberOfChannels?: number): void;
+}
+
+/**
+ * Adds a bitrate dropdown listing the bitrates a target format reaches. The
+ * dialogs pick a target after the row is drawn, so the row is returned rather
+ * than only its value: a target the source format rules out, or one that
+ * takes no bitrate at all, changes what the row must show.
+ *
+ * The rates are cut at the device's own rate, which is where a conversion
+ * ends up rather than where it starts. Neither dialog states a sample rate,
+ * so the streaming Conversion keeps the source track's own; mediabunny falls
+ * back to 48 kHz stereo when the codec cannot be encoded at that rate, and
+ * the last rung of the ladder decodes through an AudioContext, which
+ * resamples to the device's rate. A row cut at the device's rate therefore
+ * describes the rate every path that had to change the source's own converges
+ * on, and the one path that keeps the source rate keeps a rate the encoder
+ * already accepts.
+ *
+ * The plugin's default stands in only where there is no AudioContext, which is
+ * also where no conversion can run. Either way the rate is above 32 kHz on any
+ * real device, so MP3 stays held to the MPEG-1 table, and what the assumption
+ * costs is a value withheld rather than one wrongly offered: a 22.05 kHz MP3
+ * source is re-encoded at its own rate, where the MPEG-2 table reaches 24 kbps
+ * that the row does not list.
+ *
+ * What it does not settle is the AAC probe, which is asked here about a rate
+ * the source may not carry. Closing that means reading the container through
+ * `probeAudioMetadata` and letting {@link BitrateRow.rebuild} take a rate as
+ * well, which puts an asynchronous read in front of the first draw of the row.
+ * That trade is still open.
  * @param containerEl - Container to render the setting into
- * @param options - Labels, initial value, and change callback
- * @returns The effective (possibly snapped) initial bitrate
+ * @param options - Labels, target format, initial value, and change callback
+ * @returns The row, carrying its effective value and a way to re-offer it
  */
 export function addBitrateSetting(
 	containerEl: HTMLElement,
 	options: {
 		desc: string;
+		format: string;
+		numberOfChannels?: number | undefined;
 		initialBitrate: number;
 		onChange: (bitrate: number) => void;
 	},
-): number {
-	const bitrates = getSupportedBitrates();
-	let effectiveBitrate = options.initialBitrate;
-	if (bitrates.length > 0 && !bitrates.includes(effectiveBitrate)) {
-		effectiveBitrate = bitrates.reduce((closest, bps) =>
-			Math.abs(bps - options.initialBitrate) <
-			Math.abs(closest - options.initialBitrate)
-				? bps
-				: closest,
-		);
-	}
+): BitrateRow {
+	const sampleRate = offlineEncodeSampleRate(DEFAULT_SAMPLE_RATE);
+	let current = options.initialBitrate;
+	let dropdown: DropdownComponent | null = null;
 
-	new Setting(containerEl)
+	/**
+	 * Adopts a bitrate the row settled on and tells the dialog about it.
+	 * @param bitrate - The value the row now shows
+	 */
+	const settle = (bitrate: number): void => {
+		if (bitrate === current) {
+			return;
+		}
+		current = bitrate;
+		options.onChange(bitrate);
+	};
+
+	const setting = new Setting(containerEl)
 		.setName('Bitrate')
-		.setDesc(options.desc)
-		.addDropdown((dropdown) => {
-			bitrates.forEach((bps) => {
-				const kbps = Math.round(bps / 1000);
-				dropdown.addOption(String(bps), `${String(kbps)} kbps`);
-			});
-			dropdown.setValue(String(effectiveBitrate));
-			dropdown.onChange((value) => {
-				options.onChange(parseInt(value, 10));
-			});
-		});
+		.setDesc(options.desc);
+	/**
+	 * Puts the row's own description back with the current note after it.
+	 * @param note - What decided the list on offer
+	 */
+	const describe = (note: string): void => {
+		setting.setDesc(`${options.desc} ${note}`);
+	};
 
-	return effectiveBitrate;
+	/**
+	 * Offers the rates one target format reaches, or hides the row when that
+	 * target carries no bitrate at all.
+	 *
+	 * The first draw and every later target go through here, because whether
+	 * the row applies and what it offers are one decision. Applied after the
+	 * fill, as the first draw once did, a hidden row had already registered an
+	 * encoder and probed it once per candidate rate, and the answer could
+	 * still write the dialog's bitrate through the callback it left live.
+	 * @param format - The target format to offer
+	 * @param numberOfChannels - Layout that target will be written with
+	 * @returns The bitrate now on offer, or the current one when it does not
+	 *   apply
+	 */
+	const offer = (format: string, numberOfChannels?: number): number => {
+		const applies = takesBitrate(format);
+		setting.settingEl.toggle(applies);
+		if (!dropdown || !applies) {
+			return current;
+		}
+		return fillBitrateDropdown(dropdown, {
+			format,
+			sampleRate,
+			numberOfChannels: numberOfChannels ?? options.numberOfChannels,
+			selected: current,
+			onSettled: settle,
+			onNote: describe,
+		});
+	};
+
+	setting.addDropdown((component) => {
+		dropdown = component;
+		// Adopted rather than settled: the dialog reads the value back off
+		// the row it just built, so there is nobody to report a change to yet.
+		current = offer(options.format);
+		component.onChange((value) => {
+			current = parseInt(value, 10);
+			options.onChange(current);
+		});
+	});
+
+	return {
+		get value(): number {
+			return current;
+		},
+		rebuild(format: string, numberOfChannels?: number): void {
+			settle(offer(format, numberOfChannels));
+		},
+	};
 }
 
 /**

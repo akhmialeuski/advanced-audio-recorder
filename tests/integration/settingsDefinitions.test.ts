@@ -56,7 +56,11 @@ import {
 	type ProfileCatalogue,
 	type SettingsDefinitionContext,
 } from 'src/settings/settingsDefinitions';
-import { setPlatform } from '../helpers/platform';
+import {
+	setPlatform,
+	useDesktopPlatform,
+	useMobilePlatform,
+} from '../helpers/platform';
 import { maybeEl } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
@@ -65,6 +69,7 @@ describe('settings definitions', () => {
 	let settings: AudioRecorderSettings;
 	let renderDocs: jest.Mock;
 	let renderFormatRow: jest.Mock;
+	let renderBitrateRow: jest.Mock;
 	let addModel: jest.Mock;
 	let addProfile: jest.Mock;
 	let renameProfile: jest.Mock;
@@ -87,6 +92,7 @@ describe('settings definitions', () => {
 			host.createDiv({ cls: 'aar-doc-callout' });
 		});
 		renderFormatRow = jest.fn();
+		renderBitrateRow = jest.fn();
 		addModel = jest.fn();
 		addProfile = jest.fn();
 		renameProfile = jest.fn();
@@ -116,6 +122,7 @@ describe('settings definitions', () => {
 		sampleRates: [44100, 48000],
 		outputFormat: {
 			renderFormatRow: renderFormatRow as (setting: Setting) => void,
+			renderBitrateRow: renderBitrateRow as (setting: Setting) => void,
 			renderSummaryRow: renderSummaryRow as (setting: Setting) => void,
 		},
 		renderDocumentationLink: renderDocs as (host: HTMLElement) => void,
@@ -1775,6 +1782,73 @@ describe('settings definitions', () => {
 			const keys = collectDebouncedControlKeys(build());
 
 			expect(keys.has('debug')).toBe(false);
+		});
+	});
+
+	describe('the output format section', () => {
+		it('draws the bitrate row by hand rather than declaring its options', () => {
+			// The list depends on the format and the sample rate chosen above
+			// it, and its options are blocked one by one against the device's
+			// encoder. A declared dropdown carries a fixed option map and
+			// disables only as a whole, so neither is expressible.
+			const row = rowOf(build(), 'Output format', 'Audio bitrate');
+			const host = {} as Setting;
+
+			row.render?.(host);
+
+			expect(row.control).toBeUndefined();
+			expect(renderBitrateRow).toHaveBeenCalledWith(host);
+		});
+
+		describe('whether the bitrate row applies to the chosen format', () => {
+			beforeEach(() => {
+				// The only container this browser records, so a lossless
+				// target goes through it rather than being written directly.
+				(global as Record<string, unknown>).MediaRecorder = {
+					isTypeSupported: (mime: string): boolean =>
+						mime === 'audio/webm',
+				};
+			});
+
+			afterEach(() => {
+				delete (global as Record<string, unknown>).MediaRecorder;
+			});
+
+			/** Whether the bitrate row's own predicate holds right now. */
+			const bitrateRowVisible = (): boolean => {
+				const { visible } = rowOf(
+					build(),
+					'Output format',
+					'Audio bitrate',
+				);
+				return typeof visible === 'function'
+					? visible()
+					: visible !== false;
+			};
+
+			it.each([
+				// Its own rate, spent on its own encoder.
+				['mp3', false, true],
+				// Captured as Opus at this rate and wrapped losslessly after
+				// the stop, so the value still decides what the file holds.
+				['flac', false, true],
+				// Mobile has no direct PCM capture, so WAV goes the same way.
+				['wav', true, true],
+				// Desktop WAV is raw PCM: nothing is encoded at any rate.
+				['wav', false, false],
+			])(
+				'recording %s with mobile=%s shows the row: %s',
+				(format, mobile, expected) => {
+					if (mobile) {
+						useMobilePlatform();
+					} else {
+						useDesktopPlatform();
+					}
+					settings.recordingFormat = format;
+
+					expect(bitrateRowVisible()).toBe(expected);
+				},
+			);
 		});
 	});
 

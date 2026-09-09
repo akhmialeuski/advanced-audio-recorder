@@ -108,6 +108,7 @@ const createMockAudioBuffer = (
 };
 
 import {
+	recordingBitrateFormat,
 	resolveRecorderFormat,
 	isOfflineOnlyFormat,
 	convertBlobToWav,
@@ -249,6 +250,83 @@ describe('AudioFormatConverter', () => {
 		it('returns false when format is not offline-encoding-supported', () => {
 			jest.mocked(isOfflineEncodingSupported).mockReturnValueOnce(false);
 			expect(isOfflineOnlyFormat('unknownformat', 'webm')).toBe(false);
+		});
+	});
+
+	describe('recordingBitrateFormat', () => {
+		it.each([
+			['webm', 'webm'],
+			['ogg', 'ogg'],
+			// Its own floor binds tighter than the intermediate's: the rate
+			// reaches the Opus capture and the MP3 re-encode alike.
+			['mp3', 'mp3'],
+			['m4a', 'm4a'],
+			['MP3', 'mp3'],
+		])('spends a %s recording rate on %s itself', (format, expected) => {
+			useDesktopPlatform();
+
+			expect(recordingBitrateFormat(format)).toBe(expected);
+		});
+
+		it('spends a FLAC recording rate on the intermediate it is captured as', () => {
+			// Nothing writes FLAC through MediaRecorder, so a FLAC recording
+			// is Opus at the chosen rate wrapped losslessly afterwards. Asking
+			// the container instead hid the row that chooses that rate, and a
+			// user who had picked 24 kbps for speech got a lossless file of
+			// 24 kbps audio with nothing on screen saying so.
+			useDesktopPlatform();
+
+			expect(recordingBitrateFormat('flac')).toBe('webm');
+		});
+
+		it('spends a WAV recording rate on the intermediate where PCM capture is unavailable', () => {
+			// Mobile has no direct PCM capture, so WAV is recorded through the
+			// same compressed intermediate and decoded to PCM at the stop.
+			useMobilePlatform();
+
+			expect(recordingBitrateFormat('wav')).toBe('webm');
+		});
+
+		it('has no rate to offer for WAV captured as raw PCM', () => {
+			useDesktopPlatform();
+
+			expect(recordingBitrateFormat('wav')).toBeNull();
+		});
+
+		it('has no rate to offer where no intermediate container is recordable', () => {
+			// The recording-format row already reports that such a format
+			// cannot be recorded here at all; there is no bitrate beside it.
+			useDesktopPlatform();
+			jest.mocked(MediaRecorder.isTypeSupported).mockReturnValue(false);
+
+			expect(recordingBitrateFormat('flac')).toBeNull();
+		});
+
+		it('has no rate to offer where the environment has no MediaRecorder', () => {
+			// Obsidian opens its settings on platforms that ship no
+			// MediaRecorder at all, and the row is drawn there like any
+			// other. Nothing can be captured, so there is no rate to choose,
+			// and reading the recorder format unguarded would have thrown a
+			// ReferenceError out of a predicate the renderer runs per row.
+			useDesktopPlatform();
+			const previous = (global as Record<string, unknown>).MediaRecorder;
+			delete (global as Record<string, unknown>).MediaRecorder;
+			try {
+				expect(recordingBitrateFormat('flac')).toBeNull();
+			} finally {
+				(global as Record<string, unknown>).MediaRecorder = previous;
+			}
+		});
+
+		it('has no rate to offer for a lossless container recorded directly', () => {
+			// A browser that recorded FLAC itself would ignore the rate the
+			// way its encoder does, so the row would describe nothing.
+			useDesktopPlatform();
+			jest.mocked(MediaRecorder.isTypeSupported).mockImplementation(
+				(mime: string) => mime === 'audio/flac',
+			);
+
+			expect(recordingBitrateFormat('flac')).toBeNull();
 		});
 	});
 

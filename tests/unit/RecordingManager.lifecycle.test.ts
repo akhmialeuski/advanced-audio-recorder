@@ -6,6 +6,7 @@
  */
 
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { probeOfflineEncodingSupport } from 'src/audio/AudioEncoder';
 import { RecordingStatus } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
@@ -606,6 +607,30 @@ describe('RecordingManager', () => {
 			);
 		});
 
+		it('records M4A through the container type the platform agreed to', async () => {
+			// Windows profile: MediaRecorder answers no to audio/m4a and yes
+			// to audio/mp4, and an M4A file is an MP4 container by another
+			// name. The resolver knew that; the manager rebuilt the type from
+			// the format name and the constructor refused it.
+			const mockMediaRecorder = makeMediaRecorderDouble();
+			const ctor = installMediaRecorder(
+				mockMediaRecorder,
+				(type) => type === 'audio/mp4' || type === 'audio/webm',
+			);
+			mockSettings.recordingFormat = 'm4a';
+			stubAudioStreams();
+
+			const failure = await manager.startRecording();
+
+			expect(failure).toBeNull();
+			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+			expect(ctor).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({ mimeType: 'audio/mp4' }),
+			);
+			await manager.stopRecording();
+		});
+
 		it('falls back to a recordable format when the configured one is unsupported', async () => {
 			// iOS profile: only audio/mp4 is recordable and no offline
 			// encoder works - the configured webm cannot be produced, so
@@ -615,6 +640,7 @@ describe('RecordingManager', () => {
 				mockMediaRecorder,
 				(type) => type === 'audio/mp4',
 			);
+			jest.mocked(probeOfflineEncodingSupport).mockResolvedValue(false);
 			stubAudioStreams();
 
 			await manager.startRecording();
