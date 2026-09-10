@@ -36,11 +36,12 @@ import {
 	buildCostEstimate,
 	costEstimateNeedsDuration,
 	effectiveDiarize,
-	languageNote,
 	effectiveWordTimestamps,
 	effectiveTranscriptDestination,
 	formatUsd,
 	isProviderAvailableOnPlatform,
+	languageNote,
+	providerReadsLanguageHint,
 	providerSupportsDiarization,
 	wordTimestampsNote,
 	wordTimestampsSelectable,
@@ -354,6 +355,10 @@ export class TranscriptionModal extends PluginModal {
 			desc: languageNote(s.transcriptionProvider),
 			get: () => s.transcriptionLanguage,
 			set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
+			// Greyed out on an engine that detects the language itself, the same
+			// way the diarization toggle below is on an engine that cannot
+			// diarize, so the two surfaces treat one discarded value alike.
+			disabled: !providerReadsLanguageHint(s.transcriptionProvider),
 		});
 		const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
 		// Whether speaker labels will actually be produced for this run; gates the

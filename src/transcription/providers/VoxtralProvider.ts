@@ -5,14 +5,16 @@
  *
  * Two properties of the endpoint decide what the request carries. Segments come
  * back only when a timestamp granularity is asked for, so the segment level is
- * sent on every run whatever the word-level switch says. And Mistral documents
- * that granularity as incompatible with a language hint, so the hint is never
- * sent and the engine detects the language itself, which the capability
- * `readsLanguageHint` states and the settings row repeats to the user.
+ * sent on every run - and only that level, because the answer models no
+ * per-word shape at all. And Mistral documents that granularity as incompatible
+ * with a language hint, so the hint is never sent and the engine detects the
+ * language itself, which the capability `readsLanguageHint` states and the
+ * settings row repeats to the user.
  * @module transcription/providers/VoxtralProvider
  */
 
 import {
+	MIME_TYPE_AUDIO_PREFIX,
 	TRANSCRIBE_SAMPLE_RATE,
 	TRANSCRIPTION_PROVIDER_IDS,
 	VOXTRAL_AUDIO_MIME_TYPES,
@@ -41,8 +43,28 @@ import type {
 /** Operation that writes the speech down in the language it was spoken in. */
 const VOXTRAL_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
 
+/**
+ * The only timestamp level asked for. Without one the response carries no
+ * segments; the word level is not asked for because nothing in the answer
+ * carries words (see {@link VOXTRAL_CAPABILITIES}).
+ */
+const SEGMENT_GRANULARITY = 'segment';
+
+/** Container a decoded upload takes, named once so its type and its extension agree. */
+const WAV_EXTENSION = 'wav';
+
 /** MIME type used when a container is decoded before upload. */
-const WAV_MIME = 'audio/wav';
+const WAV_MIME = `${MIME_TYPE_AUDIO_PREFIX}${WAV_EXTENSION}`;
+
+/** Trailing extension of a file name, including its dot. */
+const EXTENSION_PATTERN = /\.[^./\\]+$/;
+
+/** One multipart file part: the bytes and the two things that describe them. */
+interface UploadPart {
+	data: ArrayBuffer;
+	contentType: string;
+	filename: string;
+}
 
 /** Configuration for the Voxtral provider. */
 export interface VoxtralConfig {
@@ -76,20 +98,21 @@ export class VoxtralProvider implements TranscriptionProvider {
 			{
 				type: 'file',
 				name: 'file',
-				filename: payload.filename,
+				filename: audio.filename,
 				contentType: audio.contentType,
 				data: audio.data,
 			},
 			{ type: 'text', name: 'model', value: this.config.model },
 			// Sent on every run: without a granularity the response carries an
 			// empty `segments` array and only the flat transcript text, which
-			// would cost this engine every timing the plugin is built on. The
-			// word level is added on top when the run asks for it.
-			...this.granularities(options).map((value) => ({
-				type: 'text' as const,
+			// would cost this engine every timing the plugin is built on. Only
+			// the segment level is asked for, because the answer has no shape a
+			// word could arrive in (see VOXTRAL_CAPABILITIES.wordTimestamps).
+			{
+				type: 'text',
 				name: 'timestamp_granularities',
-				value,
-			})),
+				value: SEGMENT_GRANULARITY,
+			},
 		];
 		if (options.diarize) {
 			fields.push({ type: 'text', name: 'diarize', value: 'true' });
@@ -121,9 +144,17 @@ export class VoxtralProvider implements TranscriptionProvider {
 	}
 
 	/**
-	 * The bytes to upload and the type to declare them as: the original
-	 * container where the endpoint takes it, a decoded 16 kHz mono WAV
-	 * otherwise.
+	 * The whole upload part: the bytes, the type declared for them, and the
+	 * name they are sent under. The original container where the endpoint takes
+	 * it, a decoded 16 kHz mono WAV otherwise.
+	 *
+	 * The name travels with the other two rather than being taken from the
+	 * payload at the call site, because all three describe the same bytes and a
+	 * decode changes all three at once. Sending decoded WAV under the recording's
+	 * own `.webm` name announced one container in the part's header and another
+	 * in its filename, and Mistral's own client derives a part's type from that
+	 * filename - so the engine's most common input, this plugin's default
+	 * recording format, was the one that contradicted itself.
 	 *
 	 * The size is checked before the decode rather than after, because the
 	 * decode is the allocation: it expands the file to full PCM in memory, and
@@ -132,13 +163,15 @@ export class VoxtralProvider implements TranscriptionProvider {
 	 * since it declares no per-request duration cap and so is handed whole
 	 * recordings of any length.
 	 * @param payload - The audio bytes and their metadata
-	 * @returns The bytes to send and their content type
+	 * @returns The bytes to send, their content type, and their filename
 	 */
-	private async uploadBody(
-		payload: AudioPayload,
-	): Promise<{ data: ArrayBuffer; contentType: string }> {
+	private async uploadBody(payload: AudioPayload): Promise<UploadPart> {
 		if (VOXTRAL_AUDIO_MIME_TYPES.has(payload.contentType)) {
-			return { data: payload.data, contentType: payload.contentType };
+			return {
+				data: payload.data,
+				contentType: payload.contentType,
+				filename: payload.filename,
+			};
 		}
 		if (!isDecodableSize(payload.data.byteLength)) {
 			throw new Error(
@@ -154,16 +187,8 @@ export class VoxtralProvider implements TranscriptionProvider {
 				TRANSCRIBE_SAMPLE_RATE,
 			),
 			contentType: WAV_MIME,
+			filename: `${payload.filename.replace(EXTENSION_PATTERN, '')}.${WAV_EXTENSION}`,
 		};
-	}
-
-	/**
-	 * The timestamp levels this run asks for.
-	 * @param options - Transcription options
-	 * @returns The granularities to send, segment level always among them
-	 */
-	private granularities(options: TranscribeOptions): string[] {
-		return options.wordTimestamps ? ['segment', 'word'] : ['segment'];
 	}
 
 	/**

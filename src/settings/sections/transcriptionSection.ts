@@ -14,6 +14,7 @@ import {
 import {
 	isProviderAvailableOnPlatform,
 	languageNote,
+	providerReadsLanguageHint,
 	providerSupportsDiarization,
 	providerSupportsSpeechTranslation,
 	wordTimestampsNote,
@@ -84,6 +85,8 @@ export function transcriptionGroup(
 		providerSupportsDiarization(settings.transcriptionProvider);
 	const canTranslateSpeech = (): boolean =>
 		providerSupportsSpeechTranslation(settings.transcriptionProvider);
+	const readsLanguage = (): boolean =>
+		providerReadsLanguageHint(settings.transcriptionProvider);
 	return {
 		type: 'group',
 		cls: SETTINGS_SECTION_CLASS,
@@ -127,9 +130,12 @@ export function transcriptionGroup(
 					type: 'text',
 					key: 'transcriptionLanguage',
 					placeholder: 'auto',
-					// Kept visible and editable on an engine that detects the
-					// language itself: the field is shared by every engine, and
-					// the note above says which of them reads it.
+					// Kept visible but not editable on an engine that detects
+					// the language itself, the same way the two rows below are
+					// treated when their engine cannot honour them: a control
+					// whose value is discarded reads as unavailable rather than
+					// as applied, and the note above says why.
+					disabled: (): boolean => !readsLanguage(),
 					validate: (value: string): string | undefined =>
 						LANGUAGE_CODE_PATTERN.test(value.trim())
 							? undefined

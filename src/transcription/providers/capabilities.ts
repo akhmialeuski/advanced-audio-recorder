@@ -119,8 +119,15 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	// Voxtral biases through context_bias, a flat list of terms bounded by an
 	// entry count, which is the keyterm shape rather than the prompt one.
 	supportsDictionary: true,
-	// The endpoint reads timestamp_granularities and adds the word level to it.
-	wordTimestamps: 'requested',
+	// The request takes a `word` granularity, but nothing in the answer carries
+	// words. Both of Mistral's generated clients model a batch transcription as
+	// {model, text, usage, language, segments} and a segment as
+	// {text, start, end, score, speaker_id} with `type` fixed to the constant
+	// "transcription_segment", so there is no per-word field for mapWhisperResponse
+	// to read and no second chunk type words could arrive as. Offering the switch
+	// would promise timing this engine has no way to return, so it is declined
+	// here until a live run shows a per-word field to map.
+	wordTimestamps: 'none',
 	biasChannel: 'keyterm',
 	// There is no translations operation, so English-only output cannot be
 	// asked for.
@@ -269,14 +276,32 @@ export function providerReadsLanguageHint(
 }
 
 /**
+ * The language field's own rule, wherever that field is read: an empty value
+ * and "auto" both mean "let the service decide", so both resolve to no hint.
+ *
+ * The comparison is case-insensitive because the field's validator is: its
+ * pattern carries the `i` flag, so `Auto` and `AUTO` are accepted and stored
+ * exactly as typed. Matching only the lowercase spelling passed `Auto` on as
+ * though it were an ISO code, which no service resolves.
+ *
+ * Shared with auto-chapter generation, which needs the same answer about the
+ * same field for a different reason - it names the language to the LLM rather
+ * than to a transcription engine - so the rule lives once here instead of in
+ * a copy per reader that can drift out of step.
+ * @param language - The configured language code, as the field stores it
+ * @returns The code, or undefined when the field asks for detection
+ */
+export function configuredLanguageHint(language: string): string | undefined {
+	const trimmed = language.trim();
+	return trimmed && trimmed.toLowerCase() !== 'auto' ? trimmed : undefined;
+}
+
+/**
  * The language hint actually sent for a run: the user's code AND the engine's
  * capability, gated in one place exactly as {@link effectiveDiarize} is. A code
  * stored while a hint-reading engine was selected stops travelling the moment
  * an engine that detects the language itself is chosen, so the request the
  * service builds and the note the row shows cannot disagree.
- *
- * "auto" and an empty field mean the same thing - let the engine decide - so
- * both resolve to no hint, which is what every provider already expects.
  * @param id - Selected transcription engine id
  * @param language - The configured language code
  * @returns The code to send, or undefined when none should be
@@ -285,11 +310,9 @@ export function effectiveLanguage(
 	id: TranscriptionProviderId,
 	language: string,
 ): string | undefined {
-	if (!providerReadsLanguageHint(id)) {
-		return undefined;
-	}
-	const trimmed = language.trim();
-	return trimmed && trimmed !== 'auto' ? trimmed : undefined;
+	return providerReadsLanguageHint(id)
+		? configuredLanguageHint(language)
+		: undefined;
 }
 
 /**
@@ -302,7 +325,7 @@ export function effectiveLanguage(
 export function languageNote(id: TranscriptionProviderId): string {
 	return providerReadsLanguageHint(id)
 		? 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it.'
-		: 'This engine detects the spoken language itself and ignores a code set here, because it cannot be asked for timed segments and a language at the same time.';
+		: 'This engine detects the spoken language itself and does not read this field, because it cannot be asked for timed segments and a language at the same time.';
 }
 
 /**

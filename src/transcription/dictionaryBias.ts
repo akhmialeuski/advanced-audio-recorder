@@ -45,6 +45,9 @@ export const DEEPGRAM_KEYWORDS_LIMIT = 100;
  */
 export const VOXTRAL_CONTEXT_BIAS_LIMIT = 100;
 
+/** An encoded entry left with nothing but the separators it was made of. */
+const ONLY_UNDERSCORES = /^_+$/;
+
 /**
  * Whisper (the OpenAI API and local whisper.cpp) only considers the last ~224
  * tokens of the prompt, so terms beyond that window are silently ignored. The
@@ -249,16 +252,14 @@ export function termsWithinDeepgramKeyterm(terms: string[]): string[] {
  */
 export function voxtralContextBiasTerms(terms: string[]): string[] {
 	const encoded = terms
-		.map((term) =>
-			term
-				.trim()
-				.replace(/[,\s]+/g, '_')
-				// A term that was only separators would otherwise reach the
-				// endpoint as a bare underscore, which biases nothing and
-				// spends one of the hundred entries.
-				.replace(/^_+|_+$/g, ''),
-		)
-		.filter((term) => term.length > 0);
+		.map((term) => term.trim().replace(/[,\s]+/g, '_'))
+		// A term made only of separators encodes to underscores alone, which
+		// biases nothing and spends one of the hundred entries. Only that term
+		// is dropped: trimming the underscores off every entry instead would
+		// rewrite one that carries them on purpose, turning a glossary's
+		// `__init__` into `init` while the notice still shows the user the
+		// spelling they typed.
+		.filter((term) => term.length > 0 && !ONLY_UNDERSCORES.test(term));
 	return dedupeTerms(encoded).slice(0, VOXTRAL_CONTEXT_BIAS_LIMIT);
 }
 

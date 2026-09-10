@@ -54,7 +54,11 @@ describe('transcription provider capabilities', () => {
 		expect(DEEPGRAM_CAPABILITIES.wordTimestamps).toBe('always');
 		expect(GEMINI_CAPABILITIES.wordTimestamps).toBe('none');
 		expect(LOCAL_WHISPER_CAPABILITIES.wordTimestamps).toBe('none');
-		expect(VOXTRAL_CAPABILITIES.wordTimestamps).toBe('requested');
+		// Voxtral's request takes a `word` granularity, but its answer models
+		// no per-word shape - a segment is {text, start, end, score,
+		// speaker_id} and there is no second chunk type - so the switch is not
+		// offered rather than promising timing the mapper cannot read.
+		expect(VOXTRAL_CAPABILITIES.wordTimestamps).toBe('none');
 	});
 
 	it('caps only Gemini by per-request duration; others are unbounded', () => {
@@ -224,6 +228,15 @@ describe('the language hint gate', () => {
 			name: 'reads "auto" as no hint',
 			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 			language: 'auto',
+			expected: undefined,
+		},
+		{
+			// The field's validator carries the `i` flag, so "Auto" is accepted
+			// and stored exactly as typed; matching only the lowercase spelling
+			// sent it on to the endpoint as though it were an ISO code.
+			name: 'reads "Auto" as no hint, the way its validator accepts it',
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			language: 'Auto',
 			expected: undefined,
 		},
 		{

@@ -278,6 +278,17 @@ describe('voxtralContextBiasTerms', () => {
 		expect(voxtralContextBiasTerms(['  ', ','])).toEqual([]);
 	});
 
+	it('keeps the underscores a term carries on purpose', () => {
+		// Only an entry that is nothing but separators is dropped. Trimming
+		// them off every entry instead rewrote a glossary term that spells
+		// itself with them, while the notice still showed the user the
+		// spelling they typed.
+		expect(voxtralContextBiasTerms(['__init__', '_id'])).toEqual([
+			'__init__',
+			'_id',
+		]);
+	});
+
 	it('changes nothing on a list it has already encoded', () => {
 		// Applied once by the provider and possibly again on a list the
 		// service already bounded, so it has to be idempotent.

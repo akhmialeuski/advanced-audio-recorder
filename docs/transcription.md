@@ -8,6 +8,7 @@
     - [Whisper API (OpenAI-compatible)](#whisper-api-openai-compatible)
     - [Deepgram](#deepgram)
     - [Google Gemini](#google-gemini)
+    - [Mistral Voxtral](#mistral-voxtral)
     - [Local whisper.cpp (desktop)](#local-whispercpp-desktop)
 - [Model picker and language](#model-picker-and-language)
 - [Speakers and diarization](#speakers-and-diarization)
@@ -37,7 +38,7 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 3. **Language** - `auto` to detect, or an ISO code.
 4. **Speaker diarization** - request speaker labels (only some engines).
 5. **Translate speech to English** - write the recording down in English whatever was spoken, using the engine's own translating operation (only some engines).
-6. **Word-level timestamps** - per-word timing in JSON output, selectable on Whisper API and decided by the engine on the other three.
+6. **Word-level timestamps** - per-word timing in JSON output, selectable on Whisper API and decided by the engine on the other four.
 7. **Request timeout** - the per-request network deadline (cloud engines only), replaced by **Local run timeout** on local whisper.cpp.
 8. **Transcript output** - destination, file format, and in-note formatting.
 9. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
@@ -164,10 +165,11 @@ Settings to fill:
 
 Behavior and limits:
 
-- **Up to three hours in one request**, so a whole meeting is transcribed in one piece and speaker numbering stays consistent from start to finish. Files are sent whole up to **1 GB**; a recording past the three-hour mark is refused by the endpoint with its own message.
+- **Up to three hours in one request**, so a whole meeting is transcribed in one piece and speaker numbering stays consistent from start to finish. Files are sent whole up to **1 GB**, and a recording past the three-hour mark is refused by the endpoint with its own message.
 - **Container conversion.** MP3, WAV, M4A, FLAC, and OGG are uploaded untouched. Any other container, including the `webm` this plugin records by default, is decoded to **16 kHz mono WAV** first, which costs time and memory on a long recording. Choosing MP3 or M4A as the [recording format](recording.md) avoids the decode entirely.
-- **Diarization supported.** Turn on **Speaker diarization** to request speaker labels; they arrive as `speaker_1`, `speaker_2` and can be renamed like any other engine's.
-- **The engine detects the language itself.** Mistral refuses a language hint alongside the timestamp granularity that makes the response carry timed segments at all, so the granularity is sent and the hint is not. Whatever is typed in **Language** is ignored on this engine, and the row says so.
+- **Diarization supported.** Turn on **Speaker diarization** to request speaker labels, and whatever the endpoint names them they can be renamed like any other engine's.
+- **The engine detects the language itself.** Mistral refuses a language hint alongside the timestamp granularity that makes the response carry timed segments at all, so the granularity is sent and the hint is not. **Language** is therefore shown greyed out while this engine is selected, with the reason under it, and the code stays saved for the engines that do read it.
+- **Segment-level timing only.** The endpoint accepts a request for per-word timing but returns nothing that carries words, so **Word-level timestamps** is shown disabled here and the JSON file output holds segment times.
 - **Biasing through a term list.** The dictionary is sent as `context_bias`, at most **100 terms** per request. The endpoint takes no spaces inside a term, so a multi-word entry is joined with underscores the way Mistral's own examples write them: `affordable health care` is sent as `affordable_health_care`. Terms past the hundredth are reported in a notice rather than dropped silently.
 - **No speech translation.** The endpoint has no translating operation, so **Translate speech to English** is disabled for this engine. Use the [translation task](llm-post-processing.md) of LLM post-processing on the finished transcript instead.
 
@@ -508,9 +510,9 @@ All transcription settings live under **Settings > Advanced Audio Recorder > Tra
 | **Enable transcription**            | Master toggle that reveals the rest of the section.                                                     | Off                            |
 | **Transcribe after recording**      | Auto-transcribe each saved recording (first file only).                                                 | Off                            |
 | **Transcription engine**            | Whisper API / Deepgram / Google Gemini / Mistral Voxtral / Local whisper.cpp.                           | Whisper API                    |
-| **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`). Ignored on Voxtral, which detects it itself.       | `auto`                         |
+| **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`). Disabled on Voxtral, which detects it itself.      | `auto`                         |
 | **Speaker diarization**             | Request speaker labels (Deepgram, Gemini, and Voxtral only).                                            | Off                            |
-| **Word-level timestamps**           | Per-word timing in JSON file output. Selectable on Whisper API and Voxtral; the rest decide themselves. | Off                            |
+| **Word-level timestamps**           | Per-word timing in JSON file output. Selectable on Whisper API, the one engine that reads the request.  | Off                            |
 | **Request timeout**                 | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.                    | 10                             |
 | **Local run timeout**               | Minutes before the local whisper.cpp process is stopped (that engine only). Range 1-720.                | 120                            |
 | **Advanced settings**               | Master switch revealing the dictionary and the two-pass mode; off keeps one plain pass with no biasing. | Off                            |

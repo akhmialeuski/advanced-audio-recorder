@@ -1,9 +1,11 @@
 /**
  * Tests for the VoxtralProvider request: the timestamp granularity that is
- * unconditional because the response carries no segments without it, the
- * language hint that is never sent because Mistral refuses it alongside that
- * granularity, the context_bias encoding that has to survive the endpoint's
- * no-whitespace rule, and the decode branch for a container it does not take.
+ * unconditional because the response carries no segments without it and never
+ * asks for words the answer has no shape for, the language hint that is never
+ * sent because Mistral refuses it alongside that granularity, the context_bias
+ * encoding that has to survive the endpoint's no-whitespace rule, and the
+ * decode branch for a container it does not take - which has to rename the
+ * part it decodes as well as retype it.
  */
 
 import { VoxtralProvider } from 'src/transcription/providers/VoxtralProvider';
@@ -29,16 +31,43 @@ jest.mock('src/transcription/audioChunks', () => ({
 	encodeMonoWav: jest.fn().mockReturnValue(new ArrayBuffer(16)),
 }));
 
+// The platform ceiling is a real byte count no fixture can reach, so the one
+// answer this suite needs is stubbed while the refusal wording stays real.
+jest.mock('src/platform/capabilities', () => {
+	const actual = jest.requireActual<
+		typeof import('src/platform/capabilities')
+	>('src/platform/capabilities');
+	return { ...actual, isDecodableSize: jest.fn(() => true) };
+});
+
 const BASE_URL = 'https://mistral.example/v1';
 const MODEL = 'voxtral-mini-latest';
 
-function payload(contentType = 'audio/wav'): AudioPayload {
+/** The containers under test, each with the extension it is stored under. */
+const CONTAINERS = {
+	wav: 'audio/wav',
+	mp3: 'audio/mpeg',
+	webm: 'audio/webm',
+} as const;
+
+/**
+ * A payload as a vault file arrives: the container's own MIME type and a name
+ * carrying the matching extension. Both come from one argument on purpose, so
+ * no fixture can quietly hold a name and a type that disagree - which is the
+ * very thing the upload part has to keep true after a decode.
+ */
+function payload(extension: keyof typeof CONTAINERS = 'wav'): AudioPayload {
 	return {
 		data: new ArrayBuffer(8),
-		contentType,
-		filename: 'rec.wav',
+		contentType: CONTAINERS[extension],
+		filename: `rec.${extension}`,
 		offsetSeconds: 0,
 	};
+}
+
+/** The filename the single file part was sent under. */
+function uploadFilename(body: string): string | undefined {
+	return /name="file"; filename="([^"]*)"/.exec(body)?.[1];
 }
 
 /** Records every request and returns a minimal transcript. */
@@ -96,26 +125,23 @@ describe('VoxtralProvider request fields', () => {
 		expect(fieldValues(bodyText(calls), 'model')).toEqual([MODEL]);
 	});
 
-	it.each([
-		{
-			name: 'segment alone when per-word timing is off',
-			wordTimestamps: false,
-			expected: ['segment'],
-		},
-		{
-			name: 'segment and word when per-word timing is on',
-			wordTimestamps: true,
-			expected: ['segment', 'word'],
-		},
-	])('asks for $name', async ({ wordTimestamps, expected }) => {
-		const calls = capture();
+	it.each([{ wordTimestamps: false }, { wordTimestamps: true }])(
+		'asks for the segment level alone, with per-word timing $wordTimestamps',
+		async ({ wordTimestamps }) => {
+			// Mistral's answer models no per-word shape: a response is
+			// {model, text, usage, language, segments} and a segment is
+			// {text, start, end, score, speaker_id} with a fixed type. Asking
+			// for the word level would either be refused or come back as
+			// one-word segments, so the request never asks whatever is stored.
+			const calls = capture();
 
-		await provider().transcribe(payload(), options({ wordTimestamps }));
+			await provider().transcribe(payload(), options({ wordTimestamps }));
 
-		expect(fieldValues(bodyText(calls), 'timestamp_granularities')).toEqual(
-			expected,
-		);
-	});
+			expect(
+				fieldValues(bodyText(calls), 'timestamp_granularities'),
+			).toEqual(['segment']);
+		},
+	);
 
 	it.each([
 		{ name: 'a code is configured', language: 'ru' },
@@ -240,21 +266,44 @@ describe('VoxtralProvider context bias', () => {
 });
 
 describe('VoxtralProvider container handling', () => {
-	it('uploads an accepted container untouched', async () => {
+	it('uploads an accepted container untouched, under its own name', async () => {
 		const calls = capture();
 
-		await provider().transcribe(payload('audio/mpeg'), options());
+		await provider().transcribe(payload('mp3'), options());
 
-		expect(bodyText(calls)).toContain('Content-Type: audio/mpeg');
+		const body = bodyText(calls);
+		expect(body).toContain('Content-Type: audio/mpeg');
+		expect(uploadFilename(body)).toBe('rec.mp3');
 	});
 
-	it('decodes a container the endpoint does not take', async () => {
+	it('renames the part it decodes to match the bytes it now holds', async () => {
 		// webm is what this plugin records by default and is absent from the
 		// endpoint's list, so it is decoded to 16 kHz mono WAV before upload.
+		// Mistral's own client reads a part's type from its filename, so a WAV
+		// body still called `.webm` announces one container in the header and
+		// another in the name - on this engine's most common input.
 		const calls = capture();
 
-		await provider().transcribe(payload('audio/webm'), options());
+		await provider().transcribe(payload('webm'), options());
 
-		expect(bodyText(calls)).toContain('Content-Type: audio/wav');
+		const body = bodyText(calls);
+		expect(body).toContain('Content-Type: audio/wav');
+		expect(uploadFilename(body)).toBe('rec.wav');
+	});
+
+	it('refuses a container it would have to decode past the memory ceiling', async () => {
+		// The decode expands the whole recording to PCM, and this engine
+		// declares no duration cap, so it is handed whole recordings of any
+		// length; on a phone that allocation is not a catchable error.
+		const { isDecodableSize } = jest.requireMock<{
+			isDecodableSize: jest.Mock;
+		}>('src/platform/capabilities');
+		isDecodableSize.mockReturnValueOnce(false);
+		const calls = capture();
+
+		await expect(
+			provider().transcribe(payload('webm'), options()),
+		).rejects.toThrow(/too large to transcribe with Mistral Voxtral/);
+		expect(calls).toHaveLength(0);
 	});
 });

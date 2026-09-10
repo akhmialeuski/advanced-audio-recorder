@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.67,
-			"branches": 94.16,
+			"statements": 98.68,
+			"branches": 94.18,
 			"functions": 98.63,
-			"lines": 98.68
+			"lines": 98.69
 		},
 		"files": {
 			"src/constants.ts": {
@@ -134,10 +134,10 @@
 				"lines": 100
 			},
 			"src/chapters/AutoChapterService.ts": {
-				"statements": 98.61,
-				"branches": 89.36,
-				"functions": 90.9,
-				"lines": 98.59
+				"statements": 98.59,
+				"branches": 88.37,
+				"functions": 90,
+				"lines": 98.57
 			},
 			"src/chapters/chapterExport.ts": {
 				"statements": 100,
@@ -1016,10 +1016,10 @@
 				"lines": 100
 			},
 			"src/transcription/providers/VoxtralProvider.ts": {
-				"statements": 97.05,
-				"branches": 92.85,
+				"statements": 100,
+				"branches": 100,
 				"functions": 100,
-				"lines": 97.05
+				"lines": 100
 			},
 			"src/transcription/providers/WhisperApiProvider.ts": {
 				"statements": 100,
@@ -1325,9 +1325,9 @@
 	},
 	"suite": {
 		"suites": 235,
-		"tests": 5538,
-		"passed": 5524,
-		"failed": 14,
+		"tests": 5571,
+		"passed": 5571,
+		"failed": 0,
 		"todo": 0
 	}
 }

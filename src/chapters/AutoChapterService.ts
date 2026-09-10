@@ -23,6 +23,7 @@ import { createLlmProvider } from '../transcription/factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { probeMediaDurationSeconds } from '../utils/mediaDuration';
 import { jobVendorId } from '../transcription/llm/vendors';
+import { configuredLanguageHint } from '../transcription/providers/capabilities';
 import type { LlmProvider } from '../transcription/llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from '../transcription/llm/llmStep';
 import type { Transcript } from '../transcription/TranscriptTypes';
@@ -62,20 +63,6 @@ export interface AutoChapterServiceDeps {
 interface ResolvedLines {
 	lines: TimedLine[];
 	language?: string;
-}
-
-/**
- * The configured transcription language as an explicit prompt hint, or
- * undefined when set to auto-detect. Used as a last resort so on-demand
- * chapter generation still names the language for the model when neither the
- * transcript object nor the sidecar carried a detected one.
- * @param settings - Current plugin settings
- */
-function languageHintFromSettings(
-	settings: AudioRecorderSettings,
-): string | undefined {
-	const hint = settings.transcriptionLanguage.trim();
-	return hint && hint.toLowerCase() !== 'auto' ? hint : undefined;
 }
 
 /**
@@ -206,9 +193,13 @@ export class AutoChapterService {
 			// When neither carries one (note-derived lines, or a subtitle/text
 			// sidecar), fall back to the configured transcription language so
 			// generation still names the language instead of letting the model
-			// guess it, which otherwise produced wrong-language titles.
+			// guess it, which otherwise produced wrong-language titles. What the
+			// field means by "auto" is read from the one place that owns that
+			// rule, so this hint and the one a transcription request carries
+			// can never disagree about the same typed value.
 			const language =
-				resolved.language ?? languageHintFromSettings(settings);
+				resolved.language ??
+				configuredLanguageHint(settings.transcriptionLanguage);
 			// The selected chapter profile steers how the recording is split;
 			// an empty selection appends no guidance and keeps the base prompt.
 			const guidance = resolveChapterGuidance(settings);
