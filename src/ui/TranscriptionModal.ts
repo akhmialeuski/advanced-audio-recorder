@@ -36,6 +36,7 @@ import {
 	buildCostEstimate,
 	costEstimateNeedsDuration,
 	effectiveDiarize,
+	languageNote,
 	effectiveWordTimestamps,
 	effectiveTranscriptDestination,
 	formatUsd,
@@ -347,7 +348,10 @@ export class TranscriptionModal extends PluginModal {
 		});
 		addText(ctx, {
 			name: 'Language',
-			desc: 'ISO code (e.g. en, ru, es) or "auto" to detect.',
+			// The same sentence the settings tab shows, so one engine cannot be
+			// described two ways: it names the engines that detect the language
+			// themselves and ignore whatever is typed here.
+			desc: languageNote(s.transcriptionProvider),
 			get: () => s.transcriptionLanguage,
 			set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
 		});

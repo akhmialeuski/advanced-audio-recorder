@@ -33,6 +33,7 @@ export const UNLIMITED_CAPABILITIES: ProviderCapabilities = {
 	wordTimestamps: 'requested',
 	biasChannel: 'prompt',
 	supportsSpeechTranslation: false,
+	readsLanguageHint: true,
 };
 
 /** What a suite varies about the provider it transcribes through. */

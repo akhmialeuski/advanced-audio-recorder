@@ -1097,6 +1097,8 @@ describe('settings definitions', () => {
 				'Deepgram',
 				'Google Gemini',
 				'Anthropic (Claude)',
+				'Mistral Voxtral',
+				'Mistral',
 				'Local whisper.cpp (desktop)',
 			]);
 			// A provider that both transcribes and answers prompts keeps one
@@ -1107,6 +1109,22 @@ describe('settings definitions', () => {
 			expect(pageEntryNames('Google Gemini')).toEqual([
 				'Base URL',
 				'Google Gemini API key',
+				'Model',
+				'Model catalogue',
+				'Max output tokens',
+			]);
+			// Two catalogues over one account, because the voxtral-* ids
+			// transcribe and the mistral-* ids write: each engine gets its own
+			// page, and both pages carry the same endpoint and key.
+			expect(pageEntryNames('Mistral Voxtral')).toEqual([
+				'Base URL',
+				'Mistral API key',
+				'Model',
+				'Model catalogue',
+			]);
+			expect(pageEntryNames('Mistral')).toEqual([
+				'Base URL',
+				'Mistral API key',
 				'Model',
 				'Model catalogue',
 				'Max output tokens',

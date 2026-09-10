@@ -22,8 +22,7 @@ export interface WhisperResult {
 }
 
 /**
- * Reads the billed audio duration a `verbose_json` response carries at
- * the top level, when present and finite.
+ * Reads a billed audio duration a response carries, when present and finite.
  */
 function billedSeconds(value: unknown): TranscriptionUsage | undefined {
 	if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
@@ -58,9 +57,9 @@ function mapWords(value: unknown): TranscriptWord[] | undefined {
 }
 
 /**
- * Maps a Whisper `verbose_json` response (or a compatible shape) to a
- * WhisperResult. Falls back to a single segment built from the top-level
- * `text` when no segment array is present.
+ * Maps a Whisper `verbose_json` response, or a compatible shape such as the one
+ * Mistral Voxtral answers with, to a WhisperResult. Falls back to a single
+ * segment built from the top-level `text` when no segment array is present.
  * @param body - Parsed JSON response body
  */
 export function mapWhisperResponse(body: unknown): WhisperResult {
@@ -69,9 +68,15 @@ export function mapWhisperResponse(body: unknown): WhisperResult {
 	}
 	const language =
 		typeof body.language === 'string' ? body.language : undefined;
-	// OpenAI's verbose_json reports the billed audio duration in seconds;
-	// carry it out so the run's actual cost can be computed.
-	const usage = billedSeconds(body.duration);
+	// Billed audio duration, carried out so the run's actual cost can be
+	// computed. OpenAI's verbose_json reports it as a top-level `duration`,
+	// Mistral Voxtral as `usage.prompt_audio_seconds`. Both name the same
+	// number, so both are read here rather than in a near-copy of this mapper.
+	const usage =
+		billedSeconds(body.duration) ??
+		billedSeconds(
+			isRecord(body.usage) ? body.usage.prompt_audio_seconds : undefined,
+		);
 
 	const rawSegments = body.segments;
 	if (Array.isArray(rawSegments) && rawSegments.length > 0) {
@@ -85,8 +90,11 @@ export function mapWhisperResponse(body: unknown): WhisperResult {
 			if (text === '') {
 				continue;
 			}
+			// Speaker label: OpenAI-compatible endpoints use `speaker`, Mistral
+			// Voxtral uses `speaker_id`. Both name the same thing.
+			const speakerValue = entry.speaker ?? entry.speaker_id;
 			const speaker =
-				typeof entry.speaker === 'string' ? entry.speaker : undefined;
+				typeof speakerValue === 'string' ? speakerValue : undefined;
 			const words = mapWords(entry.words);
 			segments.push({
 				start: num(entry.start),

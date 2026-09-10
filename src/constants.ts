@@ -396,6 +396,7 @@ export const TRANSCRIPTION_PROVIDER_IDS = {
 	LOCAL_WHISPER: 'local-whisper',
 	DEEPGRAM: 'deepgram',
 	GEMINI: 'gemini',
+	VOXTRAL: 'voxtral',
 } as const;
 
 /**
@@ -540,6 +541,51 @@ export const DEEPGRAM_MODELS_DOC_URL =
  * numbering, so files under this are sent in one piece instead of chunked.
  */
 export const DEEPGRAM_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
+
+/**
+ * Default Mistral API base URL. One account serves both jobs: the Voxtral
+ * speech models behind `/audio/transcriptions` and the Mistral chat models
+ * behind `/chat/completions`, which is why the version segment is part of the
+ * value rather than of each path.
+ */
+export const DEFAULT_MISTRAL_BASE_URL = 'https://api.mistral.ai/v1';
+
+/** Default Mistral Voxtral transcription model id. */
+export const DEFAULT_VOXTRAL_MODEL = 'voxtral-mini-latest';
+
+/**
+ * Seed Voxtral model ids for the model picker on first run; the list is
+ * user-editable. Only the batch transcription catalogue is seeded: the
+ * realtime model takes a streaming connection and refuses `diarize`, so it
+ * belongs to live transcription rather than to this engine. See
+ * {@link VOXTRAL_MODELS_DOC_URL} for the authoritative, current list.
+ */
+export const VOXTRAL_MODEL_SUGGESTIONS = ['voxtral-mini-latest'];
+
+/** Authoritative, current list of Mistral audio models. */
+export const VOXTRAL_MODELS_DOC_URL =
+	'https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription';
+
+/**
+ * Hard per-request upload ceiling for Voxtral, in bytes (1 GB, the size
+ * Mistral documents per audio file). Voxtral transcribes about three hours in
+ * one request with consistent speaker numbering, so a recording under this is
+ * sent in one piece instead of chunked.
+ */
+export const VOXTRAL_MAX_REQUEST_BYTES = 1024 * 1024 * 1024;
+
+/**
+ * Container MIME types the Voxtral transcription endpoint accepts directly
+ * (mp3, wav, m4a, flac, ogg). Any other container, notably the `audio/webm`
+ * this plugin records by default, is decoded to 16 kHz mono WAV before upload.
+ */
+export const VOXTRAL_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
+	`${MIME_TYPE_AUDIO_PREFIX}mpeg`,
+	`${MIME_TYPE_AUDIO_PREFIX}wav`,
+	`${MIME_TYPE_AUDIO_PREFIX}mp4`,
+	`${MIME_TYPE_AUDIO_PREFIX}flac`,
+	`${MIME_TYPE_AUDIO_PREFIX}ogg`,
+]);
 
 /**
  * Default Gemini API base URL. The provider appends `/v1beta/...` for model
@@ -723,6 +769,7 @@ export const LLM_PROVIDER_IDS = {
 	OPENAI_COMPATIBLE: 'openai-compatible',
 	ANTHROPIC: 'anthropic',
 	GEMINI: 'gemini',
+	MISTRAL: 'mistral',
 } as const;
 
 /**
@@ -747,6 +794,13 @@ export const ANTHROPIC_API_VERSION = '2023-06-01';
  * it is priced for the most demanding work rather than everyday cleanup.
  */
 export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
+
+/**
+ * Default Mistral chat model for transcript post-processing. Mistral Medium is
+ * the vendor's balanced tier and the one its own documentation reaches for
+ * first, so it leads rather than the cheaper Small or the Large above it.
+ */
+export const DEFAULT_LLM_MISTRAL_MODEL = 'mistral-medium-latest';
 
 /** Minimum configurable transcription chunk size in megabytes. */
 export const MIN_TRANSCRIBE_CHUNK_MB = 1;
@@ -824,6 +878,18 @@ export const LLM_ANTHROPIC_MODEL_SUGGESTIONS = [
 	'claude-fable-5',
 ];
 
+/**
+ * Seed Mistral chat model ids for the LLM model picker on first run; the list
+ * is user-editable. The three `-latest` aliases track the current generation
+ * of each tier, so a catalog refresh at the vendor reaches the user without a
+ * plugin release. See {@link MISTRAL_MODELS_DOC_URL} for the current list.
+ */
+export const LLM_MISTRAL_MODEL_SUGGESTIONS = [
+	'mistral-medium-latest',
+	'mistral-small-latest',
+	'mistral-large-latest',
+];
+
 /** Where to find the OpenAI model catalog. */
 export const OPENAI_MODELS_DOC_URL =
 	'https://developers.openai.com/api/docs/models';
@@ -831,6 +897,10 @@ export const OPENAI_MODELS_DOC_URL =
 /** Where to find the Anthropic (Claude) model catalog. */
 export const ANTHROPIC_MODELS_DOC_URL =
 	'https://platform.claude.com/docs/en/about-claude/models/overview';
+
+/** Where to find the Mistral chat model catalog. */
+export const MISTRAL_MODELS_DOC_URL =
+	'https://docs.mistral.ai/getting-started/models/models_overview';
 
 /**
  * Default editable system prompt for the cleanup task. The language clause is

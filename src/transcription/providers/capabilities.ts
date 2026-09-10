@@ -13,6 +13,7 @@ import {
 	GEMINI_MAX_REQUEST_BYTES,
 	GEMINI_MAX_WHOLE_FILE_SECONDS,
 	TRANSCRIPTION_PROVIDER_IDS,
+	VOXTRAL_MAX_REQUEST_BYTES,
 	WHISPER_API_MAX_REQUEST_BYTES,
 } from '../../constants';
 import { isLocalTranscriptionSupported } from '../../platform/capabilities';
@@ -40,6 +41,7 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	// The endpoint has an /audio/translations operation taking the same
 	// fields as transcription and answering in the same shape.
 	supportsSpeechTranslation: true,
+	readsLanguageHint: true,
 };
 
 /** Deepgram pre-recorded API: diarizes a whole request with stable labels. */
@@ -55,6 +57,7 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	wordTimestamps: 'always',
 	biasChannel: 'keyterm',
 	supportsSpeechTranslation: false,
+	readsLanguageHint: true,
 };
 
 /** Local whisper.cpp: no upload limit, needs decoded WAV, no diarization. */
@@ -69,6 +72,7 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	wordTimestamps: 'none',
 	biasChannel: 'prompt',
 	supportsSpeechTranslation: false,
+	readsLanguageHint: true,
 };
 
 /**
@@ -92,6 +96,38 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	wordTimestamps: 'none',
 	biasChannel: 'prompt',
 	supportsSpeechTranslation: false,
+	readsLanguageHint: true,
+};
+
+/**
+ * Mistral Voxtral Mini Transcribe 2: one request carries about three hours of
+ * audio, so a recording is sent whole and speaker numbering stays consistent.
+ *
+ * The duration cap is deliberately left unbounded. The cheap proof in
+ * `audioPrep` reads bytes rather than seconds, so a three-hour cap would only
+ * clear files under about 10.8 MB and would decode every longer recording into
+ * a 16 kHz mono WAV several times its size - which is exactly the whole-file
+ * upload this engine is chosen for. The byte ceiling still bounds the request,
+ * and a recording past three hours is refused by the endpoint in Mistral's own
+ * words rather than by a guess made here.
+ */
+export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
+	maxRequestBytes: VOXTRAL_MAX_REQUEST_BYTES,
+	maxRequestSeconds: Number.POSITIVE_INFINITY,
+	acceptsOriginalContainer: true,
+	supportsDiarization: true,
+	// Voxtral biases through context_bias, a flat list of terms bounded by an
+	// entry count, which is the keyterm shape rather than the prompt one.
+	supportsDictionary: true,
+	// The endpoint reads timestamp_granularities and adds the word level to it.
+	wordTimestamps: 'requested',
+	biasChannel: 'keyterm',
+	// There is no translations operation, so English-only output cannot be
+	// asked for.
+	supportsSpeechTranslation: false,
+	// timestamp_granularities is documented as incompatible with language, and
+	// the granularity is always sent, so the engine detects the language itself.
+	readsLanguageHint: false,
 };
 
 /** Capabilities for every engine, keyed by its settings id. */
@@ -103,6 +139,7 @@ export const TRANSCRIPTION_PROVIDER_CAPABILITIES: Record<
 	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: LOCAL_WHISPER_CAPABILITIES,
 	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: DEEPGRAM_CAPABILITIES,
 	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]: GEMINI_CAPABILITIES,
+	[TRANSCRIPTION_PROVIDER_IDS.VOXTRAL]: VOXTRAL_CAPABILITIES,
 };
 
 /**
@@ -218,6 +255,54 @@ export function wordTimestampsNote(id: TranscriptionProviderId): string {
 		default:
 			return 'This engine returns segment-level timing only, so the JSON file output carries segment times and no words.';
 	}
+}
+
+/**
+ * Whether the engine reads the configured language hint at all.
+ * @param id - Selected transcription engine id
+ * @returns True when a language code reaches the request
+ */
+export function providerReadsLanguageHint(
+	id: TranscriptionProviderId,
+): boolean {
+	return TRANSCRIPTION_PROVIDER_CAPABILITIES[id].readsLanguageHint;
+}
+
+/**
+ * The language hint actually sent for a run: the user's code AND the engine's
+ * capability, gated in one place exactly as {@link effectiveDiarize} is. A code
+ * stored while a hint-reading engine was selected stops travelling the moment
+ * an engine that detects the language itself is chosen, so the request the
+ * service builds and the note the row shows cannot disagree.
+ *
+ * "auto" and an empty field mean the same thing - let the engine decide - so
+ * both resolve to no hint, which is what every provider already expects.
+ * @param id - Selected transcription engine id
+ * @param language - The configured language code
+ * @returns The code to send, or undefined when none should be
+ */
+export function effectiveLanguage(
+	id: TranscriptionProviderId,
+	language: string,
+): string | undefined {
+	if (!providerReadsLanguageHint(id)) {
+		return undefined;
+	}
+	const trimmed = language.trim();
+	return trimmed && trimmed !== 'auto' ? trimmed : undefined;
+}
+
+/**
+ * What to tell the user about the language hint on this engine. Kept beside the
+ * capability rather than at each surface, so the settings tab and the per-run
+ * dialog cannot describe the same engine differently.
+ * @param id - Selected transcription engine id
+ * @returns The sentence for the language row's description
+ */
+export function languageNote(id: TranscriptionProviderId): string {
+	return providerReadsLanguageHint(id)
+		? 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it.'
+		: 'This engine detects the spoken language itself and ignores a code set here, because it cannot be asked for timed segments and a language at the same time.';
 }
 
 /**

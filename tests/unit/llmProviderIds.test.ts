@@ -22,15 +22,28 @@ describe('LLM_PROVIDER_IDS as single source of truth', () => {
 			OPENAI_COMPATIBLE: 'openai-compatible',
 			ANTHROPIC: 'anthropic',
 			GEMINI: 'gemini',
+			MISTRAL: 'mistral',
 		});
 	});
 
 	it.each([
 		{
-			name: 'OpenAI-compatible',
+			name: 'OpenAI',
 			build: (): { id: string } =>
-				new OpenAiCompatibleLlmProvider(CONFIG),
+				new OpenAiCompatibleLlmProvider(CONFIG, {
+					id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+					label: 'OpenAI',
+				}),
 			id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+		},
+		{
+			name: 'Mistral',
+			build: (): { id: string } =>
+				new OpenAiCompatibleLlmProvider(CONFIG, {
+					id: LLM_PROVIDER_IDS.MISTRAL,
+					label: 'Mistral',
+				}),
+			id: LLM_PROVIDER_IDS.MISTRAL,
 		},
 		{
 			name: 'Anthropic',
@@ -43,8 +56,11 @@ describe('LLM_PROVIDER_IDS as single source of truth', () => {
 			id: LLM_PROVIDER_IDS.GEMINI,
 		},
 	])('the $name provider answers to its own constant', ({ build, id }) => {
-		// The id is what the settings store and the factory match on; a class
-		// that hand-typed it would silently become unreachable.
+		// The id is what the settings store matches on and what the cost model
+		// and the session counter charge against. Two vendors share the
+		// OpenAI-compatible client, so each is built with the identity it
+		// answers as: a hand-typed one would have priced Mistral calls at
+		// OpenAI rates and billed them to the OpenAI account.
 		expect(build().id).toBe(id);
 	});
 

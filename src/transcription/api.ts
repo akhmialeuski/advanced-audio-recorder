@@ -12,6 +12,7 @@ export {
 	effectiveDiarize,
 	effectiveWordTimestamps,
 	isProviderAvailableOnPlatform,
+	languageNote,
 	providerSupportsDiarization,
 	providerSupportsDictionary,
 	wordTimestampsNote,

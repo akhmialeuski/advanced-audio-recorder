@@ -45,14 +45,16 @@ describe('the id types', () => {
 			| 'deepgram'
 			| 'gemini'
 			| 'anthropic'
+			| 'voxtral'
+			| 'mistral-llm'
 			| 'local-whisper'
 		>();
 		expectTypeOf<AccountId>().toEqualTypeOf<
-			'openai' | 'deepgram' | 'gemini' | 'anthropic'
+			'openai' | 'deepgram' | 'gemini' | 'anthropic' | 'mistral'
 		>();
 
-		expect(Object.values(ENGINE_IDS)).toHaveLength(6);
-		expect(Object.values(ACCOUNT_IDS)).toHaveLength(4);
+		expect(Object.values(ENGINE_IDS)).toHaveLength(8);
+		expect(Object.values(ACCOUNT_IDS)).toHaveLength(5);
 	});
 
 	it('key the registries exhaustively, so no engine can be half-added', () => {

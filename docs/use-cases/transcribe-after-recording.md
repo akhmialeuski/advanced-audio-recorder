@@ -41,7 +41,7 @@ Before automatic transcription can do anything useful, you need a transcription 
 
 3. (Optional) **Decide on output formatting.** Destination, file format, diarization, and the in-note template all come from your settings. Set them now so the automatic transcript looks the way you want - see [Transcription](../transcription.md) for the full output options and [LLM post-processing](../llm-post-processing.md) if you also want an automatic clean-up or summary.
 
-> If you have not chosen an engine yet, read [Transcription](../transcription.md) first - it compares all four engines (cost, file-size limits, diarization, offline) so you can pick the right one for voice notes, meetings, or long lectures.
+> If you have not chosen an engine yet, read [Transcription](../transcription.md) first - it compares all five engines (cost, file-size limits, diarization, offline) so you can pick the right one for voice notes, meetings, or long lectures.
 
 ---
 
@@ -63,7 +63,7 @@ Automatic runs use your saved settings with no prompt, so set them before you re
 
 | Setting                 | Where                                  | Notes                                                                                                      |
 | ----------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Transcription engine** | Transcription section                 | Whisper API, Deepgram, Google Gemini, or local `whisper.cpp`. Default: Whisper API.                        |
+| **Transcription engine** | Transcription section                 | Whisper API, Deepgram, Google Gemini, Mistral Voxtral, or local `whisper.cpp`. Default: Whisper API.       |
 | **Language**            | Transcription section                  | `auto` to detect, or an ISO code such as `en`, `ru`, `es`. Default: `auto`.                                |
 | **Speaker diarization** | Transcription section                  | Speaker labels. Only available on Deepgram and Gemini; greyed out for Whisper API and local `whisper.cpp`. |
 | **Destination**         | Transcript output                      | Insert into note, Save to file, Note and file, or Save to file and link it. Default: Insert into note.     |

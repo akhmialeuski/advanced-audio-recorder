@@ -93,5 +93,5 @@ Device-bound settings (the input device and channel layouts) are stored **per pl
 - [Recording on mobile](recording.md#recording-on-mobile) - the recording section's mobile notes in full.
 - [Record a voice memo or lecture on your phone](use-cases/record-on-mobile.md) - an end-to-end mobile walkthrough.
 - [Audio player](audio-player.md) - the enhanced waveform player, markers, chapters, and timecode links.
-- [Transcription](transcription.md) - the four engines, diarization, and output formats.
+- [Transcription](transcription.md) - the five engines, diarization, and output formats.
 - [Getting started](getting-started.md) - install the plugin and make your first recording.

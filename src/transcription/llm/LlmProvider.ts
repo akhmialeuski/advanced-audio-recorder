@@ -157,13 +157,28 @@ function rejectedTokenParam(error: unknown, param: OutputTokenParam): boolean {
 }
 
 /**
- * OpenAI chat-completions provider, using the OpenAI Chat Completions API.
- * The implementation stays OpenAI-compatible, but only OpenAI is offered as a
- * configured vendor.
+ * Which vendor a provider instance answers as.
+ *
+ * The OpenAI Chat Completions wire format is spoken by more than one service,
+ * and the client is the same for all of them, so the identity is a fact about
+ * the vendor being called rather than about the class. It is required rather
+ * than defaulted on purpose: a default would let a second vendor built on this
+ * client be priced and accounted as OpenAI, which is precisely the mistake the
+ * parameter exists to make impossible.
+ */
+export interface LlmVendorIdentity {
+	readonly id: LlmProviderId;
+	readonly label: string;
+}
+
+/**
+ * Chat-completions provider speaking the OpenAI Chat Completions API, used for
+ * every vendor that serves that wire format - OpenAI itself, Mistral, and any
+ * compatible endpoint a Base URL is pointed at.
  */
 export class OpenAiCompatibleLlmProvider implements LlmProvider {
-	readonly id = LLM_PROVIDER_IDS.OPENAI_COMPATIBLE;
-	readonly label = 'OpenAI';
+	readonly id: LlmProviderId;
+	readonly label: string;
 
 	/**
 	 * The name this endpoint took, once it has answered.
@@ -175,7 +190,13 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 	 */
 	private acceptedParam: OutputTokenParam | null = null;
 
-	constructor(private readonly config: LlmConfig) {}
+	constructor(
+		private readonly config: LlmConfig,
+		vendor: LlmVendorIdentity,
+	) {
+		this.id = vendor.id;
+		this.label = vendor.label;
+	}
 
 	async complete(
 		prompt: LlmPrompt,

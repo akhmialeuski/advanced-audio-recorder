@@ -26,6 +26,7 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { withRequestUrl } from '../helpers/network';
+import { OPENAI_IDENTITY } from '../helpers/llmDoubles';
 
 const PROMPT: LlmPrompt = { system: 'You write chapters.', user: 'transcript' };
 
@@ -52,11 +53,14 @@ const REFUSES_NEW_NAME = JSON.stringify({
 
 /** A provider pointed at a stub endpoint. */
 function provider(): OpenAiCompatibleLlmProvider {
-	return new OpenAiCompatibleLlmProvider({
-		baseUrl: 'https://api.example.com/v1',
-		apiKey: 'sk-test',
-		model: 'gpt-5.6-sol',
-	});
+	return new OpenAiCompatibleLlmProvider(
+		{
+			baseUrl: 'https://api.example.com/v1',
+			apiKey: 'sk-test',
+			model: 'gpt-5.6-sol',
+		},
+		OPENAI_IDENTITY,
+	);
 }
 
 /**

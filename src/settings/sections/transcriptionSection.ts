@@ -13,6 +13,7 @@ import {
 } from '../../constants';
 import {
 	isProviderAvailableOnPlatform,
+	languageNote,
 	providerSupportsDiarization,
 	providerSupportsSpeechTranslation,
 	wordTimestampsNote,
@@ -117,12 +118,18 @@ export function transcriptionGroup(
 			{
 				name: 'Language',
 				aliases: ['locale', 'spoken language'],
-				desc: 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it.',
+				// Read at build time rather than per render, which is enough:
+				// picking another engine reshapes the tree (see
+				// CONTROL_WRITE_EFFECTS), so this row is built again with it.
+				desc: languageNote(settings.transcriptionProvider),
 				visible: enabled,
 				control: {
 					type: 'text',
 					key: 'transcriptionLanguage',
 					placeholder: 'auto',
+					// Kept visible and editable on an engine that detects the
+					// language itself: the field is shared by every engine, and
+					// the note above says which of them reads it.
 					validate: (value: string): string | undefined =>
 						LANGUAGE_CODE_PATTERN.test(value.trim())
 							? undefined

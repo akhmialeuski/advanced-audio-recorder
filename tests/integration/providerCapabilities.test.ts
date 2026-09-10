@@ -13,6 +13,10 @@ import {
 	effectiveDiarize,
 	effectiveDictionary,
 	GEMINI_CAPABILITIES,
+	VOXTRAL_CAPABILITIES,
+	effectiveLanguage,
+	languageNote,
+	providerReadsLanguageHint,
 	isProviderAvailableOnPlatform,
 	LOCAL_WHISPER_CAPABILITIES,
 	effectiveWordTimestamps,
@@ -38,6 +42,7 @@ describe('transcription provider capabilities', () => {
 		expect(LOCAL_WHISPER_CAPABILITIES.supportsDiarization).toBe(false);
 		expect(DEEPGRAM_CAPABILITIES.supportsDiarization).toBe(true);
 		expect(GEMINI_CAPABILITIES.supportsDiarization).toBe(true);
+		expect(VOXTRAL_CAPABILITIES.supportsDiarization).toBe(true);
 	});
 
 	// Three answers, one per behaviour actually observed: Whisper API adds the
@@ -49,6 +54,7 @@ describe('transcription provider capabilities', () => {
 		expect(DEEPGRAM_CAPABILITIES.wordTimestamps).toBe('always');
 		expect(GEMINI_CAPABILITIES.wordTimestamps).toBe('none');
 		expect(LOCAL_WHISPER_CAPABILITIES.wordTimestamps).toBe('none');
+		expect(VOXTRAL_CAPABILITIES.wordTimestamps).toBe('requested');
 	});
 
 	it('caps only Gemini by per-request duration; others are unbounded', () => {
@@ -62,6 +68,13 @@ describe('transcription provider capabilities', () => {
 			Number.POSITIVE_INFINITY,
 		);
 		expect(LOCAL_WHISPER_CAPABILITIES.maxRequestSeconds).toBe(
+			Number.POSITIVE_INFINITY,
+		);
+		// Voxtral takes about three hours per request, but the cheap
+		// whole-file proof reads bytes rather than seconds, so a cap here
+		// would decode every recording past roughly ten megabytes instead of
+		// uploading the container it already accepts.
+		expect(VOXTRAL_CAPABILITIES.maxRequestSeconds).toBe(
 			Number.POSITIVE_INFINITY,
 		);
 	});
@@ -79,6 +92,9 @@ describe('transcription provider capabilities', () => {
 		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES.gemini).toBe(
 			GEMINI_CAPABILITIES,
 		);
+		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES.voxtral).toBe(
+			VOXTRAL_CAPABILITIES,
+		);
 	});
 
 	it('exposes diarization support through the UI helper', () => {
@@ -86,6 +102,7 @@ describe('transcription provider capabilities', () => {
 		expect(providerSupportsDiarization('local-whisper')).toBe(false);
 		expect(providerSupportsDiarization('deepgram')).toBe(true);
 		expect(providerSupportsDiarization('gemini')).toBe(true);
+		expect(providerSupportsDiarization('voxtral')).toBe(true);
 	});
 
 	it('advertises dictionary biasing for every current engine', () => {
@@ -175,6 +192,53 @@ describe('per-word timing gates', () => {
 		expect(providerWordTimestamps('deepgram')).toBe(
 			DEEPGRAM_CAPABILITIES.wordTimestamps,
 		);
+	});
+});
+
+describe('the language hint gate', () => {
+	it('records which engines read a language hint at all', () => {
+		// Voxtral is the one that does not: Mistral documents `language` as
+		// incompatible with `timestamp_granularities`, and the granularity is
+		// what makes the response carry segments, so the hint gives way.
+		expect(providerReadsLanguageHint('whisper-api')).toBe(true);
+		expect(providerReadsLanguageHint('deepgram')).toBe(true);
+		expect(providerReadsLanguageHint('gemini')).toBe(true);
+		expect(providerReadsLanguageHint('local-whisper')).toBe(true);
+		expect(providerReadsLanguageHint('voxtral')).toBe(false);
+	});
+
+	it.each([
+		{
+			name: 'passes a configured code to an engine that reads it',
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			language: 'ru',
+			expected: 'ru',
+		},
+		{
+			name: 'reads an empty field as no hint',
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			language: '   ',
+			expected: undefined,
+		},
+		{
+			name: 'reads "auto" as no hint',
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			language: 'auto',
+			expected: undefined,
+		},
+		{
+			name: 'drops a code stored while another engine was selected',
+			id: TRANSCRIPTION_PROVIDER_IDS.VOXTRAL,
+			language: 'ru',
+			expected: undefined,
+		},
+	])('$name', ({ id, language, expected }) => {
+		expect(effectiveLanguage(id, language)).toBe(expected);
+	});
+
+	it('names the engine behaviour in the note the row shows', () => {
+		expect(languageNote('whisper-api')).toMatch(/ISO code/);
+		expect(languageNote('voxtral')).toMatch(/detects the spoken language/);
 	});
 });
 
