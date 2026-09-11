@@ -122,15 +122,21 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	// Voxtral biases through context_bias, a flat list of terms bounded by an
 	// entry count, which is the keyterm shape rather than the prompt one.
 	supportsDictionary: true,
-	// The request takes a `word` granularity, but nothing in the answer carries
-	// words. Both of Mistral's generated clients model a batch transcription as
-	// {model, text, usage, language, segments} and a segment as
-	// {text, start, end, score, speaker_id} with `type` fixed to the constant
-	// "transcription_segment", so there is no per-word field for mapWhisperResponse
-	// to read and no second chunk type words could arrive as. Offering the switch
-	// would promise timing this engine has no way to return, so it is declined
-	// here until a live run shows a per-word field to map.
-	wordTimestamps: 'none',
+	// The request takes a `word` granularity and Mistral lists word-level
+	// timestamps among Voxtral Mini Transcribe 2's features, so the switch
+	// steers the request exactly as it does on Whisper API.
+	//
+	// This read "none" first, on the grounds that the generated client models a
+	// segment as {text, start, end, score, speaker_id} and nothing finer. That
+	// was the wrong conclusion from the right observation: both that schema and
+	// the response around it are declared with a `catchall`, so a `words` field
+	// the client does not name would pass through it unremarked, and the silence
+	// proved nothing. Mistral publishes no response schema for the word level,
+	// so the field this arrives in is unconfirmed - `mapWhisperResponse` already
+	// reads a `words` array of {word|text, start, end} on a segment, which is
+	// where the OpenAI-compatible shape puts it and therefore the first place
+	// worth checking against a live key.
+	wordTimestamps: 'requested',
 	biasChannel: 'keyterm',
 	// There is no translations operation, so English-only output cannot be
 	// asked for.

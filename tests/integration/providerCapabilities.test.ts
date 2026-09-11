@@ -46,20 +46,20 @@ describe('transcription provider capabilities', () => {
 		expect(VOXTRAL_CAPABILITIES.supportsDiarization).toBe(true);
 	});
 
-	// Three answers, one per behaviour actually observed: Whisper API adds the
-	// `word` granularity when asked, Deepgram's mapping keeps the words of
-	// every response whether asked or not, and the other two return segment
-	// offsets and nothing finer.
+	// Three answers, one per behaviour actually observed: Whisper API and
+	// Voxtral add the `word` granularity when asked, Deepgram's mapping keeps
+	// the words of every response whether asked or not, and the other two
+	// return segment offsets and nothing finer.
 	it('records what each engine does with a request for per-word timing', () => {
 		expect(WHISPER_API_CAPABILITIES.wordTimestamps).toBe('requested');
 		expect(DEEPGRAM_CAPABILITIES.wordTimestamps).toBe('always');
 		expect(GEMINI_CAPABILITIES.wordTimestamps).toBe('none');
 		expect(LOCAL_WHISPER_CAPABILITIES.wordTimestamps).toBe('none');
-		// Voxtral's request takes a `word` granularity, but its answer models
-		// no per-word shape - a segment is {text, start, end, score,
-		// speaker_id} and there is no second chunk type - so the switch is not
-		// offered rather than promising timing the mapper cannot read.
-		expect(VOXTRAL_CAPABILITIES.wordTimestamps).toBe('none');
+		// Voxtral takes the `word` granularity and Mistral lists word-level
+		// timestamps among the model's features. The generated client naming no
+		// per-word field is not evidence against it: its schemas carry a
+		// catchall, so an unnamed one passes through unremarked.
+		expect(VOXTRAL_CAPABILITIES.wordTimestamps).toBe('requested');
 	});
 
 	it('caps only Gemini by per-request duration; others are unbounded', () => {

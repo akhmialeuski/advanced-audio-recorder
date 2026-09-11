@@ -5,11 +5,11 @@
  *
  * Two properties of the endpoint decide what the request carries. Segments come
  * back only when a timestamp granularity is asked for, so the segment level is
- * sent on every run - and only that level, because the answer models no
- * per-word shape at all. And Mistral documents that granularity as incompatible
- * with a language hint, so the hint is never sent and the engine detects the
- * language itself, which the capability `readsLanguageHint` states and the
- * settings row repeats to the user.
+ * sent on every run and the word level joins it when the run asks for per-word
+ * timing. And Mistral documents that granularity as incompatible with a
+ * language hint, so the hint is never sent and the engine detects the language
+ * itself, which the capability `readsLanguageHint` states and the settings row
+ * repeats to the user.
  * @module transcription/providers/VoxtralProvider
  */
 
@@ -43,11 +43,17 @@ import type {
 const VOXTRAL_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
 
 /**
- * The only timestamp level asked for. Without one the response carries no
- * segments; the word level is not asked for because nothing in the answer
- * carries words (see {@link VOXTRAL_CAPABILITIES}).
+ * The timestamp level every run asks for. Without one the response carries no
+ * segments at all, only the flat transcript text.
  */
 const SEGMENT_GRANULARITY = 'segment';
+
+/**
+ * The level added when the run asks for per-word timing. Mistral lists
+ * word-level timestamps among this model's features and its API takes `word`
+ * here, so the switch steers the request (see {@link VOXTRAL_CAPABILITIES}).
+ */
+const WORD_GRANULARITY = 'word';
 
 /**
  * The containers the endpoint reads, in the refusal's own words, so a user
@@ -102,6 +108,9 @@ export class VoxtralProvider implements TranscriptionProvider {
 			// gigabyte holds were uploaded before Mistral declined them.
 			maxRequestSeconds: VOXTRAL_MAX_REQUEST_SECONDS,
 		});
+		const granularities = options.wordTimestamps
+			? [SEGMENT_GRANULARITY, WORD_GRANULARITY]
+			: [SEGMENT_GRANULARITY];
 		const fields: MultipartField[] = [
 			{
 				type: 'file',
@@ -111,16 +120,19 @@ export class VoxtralProvider implements TranscriptionProvider {
 				data: audio.data,
 			},
 			{ type: 'text', name: 'model', value: this.config.model },
-			// Sent on every run: without a granularity the response carries an
-			// empty `segments` array and only the flat transcript text, which
-			// would cost this engine every timing the plugin is built on. Only
-			// the segment level is asked for, because the answer has no shape a
-			// word could arrive in (see VOXTRAL_CAPABILITIES.wordTimestamps).
-			{
-				type: 'text',
+			// The segment level goes on every run: without a granularity the
+			// response carries an empty `segments` array and only the flat
+			// transcript text, which would cost this engine every timing the
+			// plugin is built on. The word level is added alongside it rather
+			// than instead of it, because the segments are what the transcript
+			// is assembled from and words only annotate them. One repeated
+			// field per level, which is how Mistral's own client sends the
+			// array, and unbracketed unlike the OpenAI spelling.
+			...granularities.map((value) => ({
+				type: 'text' as const,
 				name: 'timestamp_granularities',
-				value: SEGMENT_GRANULARITY,
-			},
+				value,
+			})),
 		];
 		if (options.diarize) {
 			fields.push({ type: 'text', name: 'diarize', value: 'true' });
