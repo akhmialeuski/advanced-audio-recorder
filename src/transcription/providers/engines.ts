@@ -40,9 +40,9 @@ import { ProviderConfigError } from '../providerConfigError';
 import {
 	DEEPGRAM_KEYTERM_LIMIT,
 	DEEPGRAM_KEYWORDS_LIMIT,
-	VOXTRAL_CONTEXT_BIAS_LIMIT,
 	deepgramBiasMechanism,
 	termsWithinDeepgramKeyterm,
+	termsWithinVoxtralContextBias,
 	termsWithinWhisperPrompt,
 	type DictionaryBiasPlan,
 } from '../dictionaryBias';
@@ -357,16 +357,20 @@ export const TRANSCRIPTION_ENGINES: Record<
 		// Deepgram's keyterm mechanism has, and the same for every model in the
 		// catalogue - so the model argument is deliberately unread: the service
 		// passes the configured Deepgram model id into it, which is only ever
-		// the right answer for Deepgram.
+		// the right answer for Deepgram. The cap counts entries on the wire
+		// rather than terms in the list, because the encoding decides how many
+		// entries a list becomes, and a notice built on any other count reports
+		// a number the request never carried.
 		planDictionary: (_model, terms) => {
-			if (terms.length > VOXTRAL_CONTEXT_BIAS_LIMIT) {
+			const applied = termsWithinVoxtralContextBias(terms);
+			if (applied.length < terms.length) {
 				return {
-					applied: terms.slice(0, VOXTRAL_CONTEXT_BIAS_LIMIT),
-					omitted: terms.slice(VOXTRAL_CONTEXT_BIAS_LIMIT),
+					applied,
+					omitted: terms.slice(applied.length),
 					reason: 'context-bias-limit',
 				};
 			}
-			return { applied: terms, omitted: [] };
+			return { applied, omitted: [] };
 		},
 		biasUnsupportedReason: () => null,
 		create: cloudEngineFactory(

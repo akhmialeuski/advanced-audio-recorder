@@ -121,6 +121,17 @@ export const DESKTOP_FLUSH_THRESHOLD_BYTES = 50 * 1024 * 1024;
 /** Common MIME type prefix for audio formats. */
 export const MIME_TYPE_AUDIO_PREFIX = 'audio/';
 
+/**
+ * Container every path that decodes audio before sending it produces: 16 kHz
+ * mono WAV. Built from {@link FORMAT_WAV} rather than spelled out, because the
+ * type declared for those bytes, the extension they are renamed to, and the
+ * entries that say an endpoint takes them all have to agree, and a second
+ * spelling is where they stop agreeing. The format keys are already the
+ * extensions a recording is written under, so the registry key is that one
+ * spelling and no separate extension constant is needed.
+ */
+export const WAV_MIME = `${MIME_TYPE_AUDIO_PREFIX}${FORMAT_WAV}`;
+
 /** Default audio sample rate in Hz. */
 export const DEFAULT_SAMPLE_RATE = 44100;
 
@@ -567,24 +578,79 @@ export const VOXTRAL_MODELS_DOC_URL =
 	'https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription';
 
 /**
- * Hard per-request upload ceiling for Voxtral, in bytes (1 GB, the size
- * Mistral documents per audio file). Voxtral transcribes about three hours in
- * one request with consistent speaker numbering, so a recording under this is
- * sent in one piece instead of chunked.
+ * Hard per-request upload ceiling for Voxtral, in bytes (1 GB, the size the
+ * Mistral audio guide documents per audio file). Voxtral transcribes about
+ * three hours in one request with consistent speaker numbering, so a recording
+ * under this is sent in one piece instead of chunked.
+ *
+ * Mistral's general "Known limitations" page still says 500 MB and 60 minutes.
+ * That page describes the endpoint before Voxtral Transcribe 2, which is the
+ * model this engine runs and whose own page states three hours per request, so
+ * the smaller pair is read as the stale one rather than as a second limit.
+ * Worth re-checking against a live key: being wrong here costs a full upload
+ * before the endpoint refuses it.
  */
 export const VOXTRAL_MAX_REQUEST_BYTES = 1024 * 1024 * 1024;
 
 /**
- * Container MIME types the Voxtral transcription endpoint accepts directly
- * (mp3, wav, m4a, flac, ogg). Any other container, notably the `audio/webm`
- * this plugin records by default, is decoded to 16 kHz mono WAV before upload.
+ * Hard per-request duration ceiling for Voxtral, in seconds: three hours, the
+ * length the Voxtral Transcribe 2 announcement documents for one request.
+ *
+ * Deliberately separate from `VOXTRAL_CAPABILITIES.maxRequestSeconds`, which is
+ * the cap `audioPrep` splits on and has to stay unbounded. That cap is proven
+ * through a byte proxy ({@link MIN_AUDIO_BYTES_PER_SEC}), so stating three
+ * hours there would clear only files under about 10.8 MB and send every longer
+ * recording down the decode path, which is the whole-file upload this engine is
+ * chosen for. This ceiling is proven exactly instead, against the decoded
+ * sample count, which is the first moment the real duration is known and still
+ * early enough to refuse locally rather than after uploading several hundred
+ * megabytes the endpoint then declines.
  */
-export const VOXTRAL_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
-	`${MIME_TYPE_AUDIO_PREFIX}mpeg`,
-	`${MIME_TYPE_AUDIO_PREFIX}wav`,
-	`${MIME_TYPE_AUDIO_PREFIX}mp4`,
-	`${MIME_TYPE_AUDIO_PREFIX}flac`,
-	`${MIME_TYPE_AUDIO_PREFIX}ogg`,
+export const VOXTRAL_MAX_REQUEST_SECONDS = 3 * 60 * 60;
+
+/**
+ * Floor for the Voxtral transcription request timeout, in milliseconds.
+ *
+ * The same reason Gemini has one ({@link GEMINI_GENERATE_MIN_TIMEOUT_MS}) and a
+ * stronger one: the size-scaled budget funds the transfer, so whatever is left
+ * for the engine to think is the floor underneath it, and this is the engine
+ * that sends a whole recording of up to {@link VOXTRAL_MAX_REQUEST_SECONDS} in
+ * a single request. On the bare {@link TRANSCRIBE_REQUEST_TIMEOUT_MS} floor a
+ * three-hour mp3 - uploaded untouched, so its byte count says nothing about its
+ * length - was given three and a half minutes in total and a healthy request
+ * was aborted while the endpoint was still transcribing. The user's request
+ * timeout still caps this, so the floor only stops the deadline falling below
+ * it.
+ */
+export const VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS = 20 * 60_000;
+
+/**
+ * File extensions the Voxtral transcription endpoint reads directly. Any other
+ * container, notably the `webm` this plugin records by default, is decoded to
+ * 16 kHz mono WAV before upload.
+ *
+ * Extensions rather than MIME types, because that is the unit Mistral publishes
+ * the list in and a MIME set cannot express it. This plugin's format registry
+ * maps both `m4a` and `mp4` onto one `audio/mp4`, and `mp4` is absent from
+ * Mistral's list while being the container iOS falls back to recording in, so a
+ * MIME gate sent every mobile recording untouched as a container the endpoint
+ * never claimed to read. Mistral's own client derives a part's container from
+ * its filename, so the name is what the endpoint is told either way.
+ *
+ * Taken from the Voxtral Transcribe 2 announcement, which is the model this
+ * engine runs and which lists exactly these five alongside the 1 GB ceiling
+ * above. Mistral's older "Known limitations" page lists a different five,
+ * dropping m4a and adding webm. Worth settling with one request against a live
+ * key, because webm is what this plugin records by default: if the endpoint does
+ * read it, every default recording stops paying a full decode and the WAV
+ * expansion that goes with it.
+ */
+export const VOXTRAL_AUDIO_EXTENSIONS: ReadonlySet<string> = new Set([
+	FORMAT_MP3,
+	FORMAT_WAV,
+	FORMAT_M4A,
+	FORMAT_FLAC,
+	FORMAT_OGG,
 ]);
 
 /**
@@ -640,7 +706,7 @@ export const GEMINI_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
  * can record) is decoded to 16 kHz mono WAV before upload.
  */
 export const GEMINI_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
-	`${MIME_TYPE_AUDIO_PREFIX}wav`,
+	WAV_MIME,
 	`${MIME_TYPE_AUDIO_PREFIX}mpeg`,
 	`${MIME_TYPE_AUDIO_PREFIX}aac`,
 	`${MIME_TYPE_AUDIO_PREFIX}ogg`,

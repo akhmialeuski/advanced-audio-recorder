@@ -1,6 +1,6 @@
 # Get a Google Gemini API key
 
-Google Gemini is a multimodal model that transcribes audio directly. In Advanced Audio Recorder it is one of the four [transcription](../transcription.md) engines, and the **same key** also powers the [Gemini LLM post-processing](../llm-post-processing.md) provider - set it once and both features work. Gemini uploads the whole recording in one piece (up to 2 GB via the File API), supports speaker [diarization](../transcription.md#speakers-and-diarization), and Google's [AI Studio](https://aistudio.google.com/apikey) hands out a key with a free tier in a couple of clicks. This guide walks you from a blank settings tab to a working transcript.
+Google Gemini is a multimodal model that transcribes audio directly. In Advanced Audio Recorder it is one of the five [transcription](../transcription.md) engines, and the **same key** also powers the [Gemini LLM post-processing](../llm-post-processing.md) provider - set it once and both features work. Gemini uploads the whole recording in one piece (up to 2 GB via the File API), supports speaker [diarization](../transcription.md#speakers-and-diarization), and Google's [AI Studio](https://aistudio.google.com/apikey) hands out a key with a free tier in a couple of clicks. This guide walks you from a blank settings tab to a working transcript.
 
 - [Why Gemini](#why-gemini)
 - [Step 1: Create the API key in Google AI Studio](#step-1-create-the-api-key-in-google-ai-studio)
@@ -16,7 +16,7 @@ Google Gemini is a multimodal model that transcribes audio directly. In Advanced
 Gemini reads the audio itself rather than running a dedicated speech model, which makes it a strong all-rounder for the plugin:
 
 - **Whole-file uploads.** Recordings up to **2 GB** are uploaded in one piece through Google's File API, so speaker numbering stays consistent across the file (subject to the splitting rule below).
-- **Speaker diarization.** Gemini can label distinct speakers (`Speaker 1`, `Speaker 2`, and real names when clearly stated) - useful for meetings and interviews. Diarization is off by default and is only available on Gemini and Deepgram.
+- **Speaker diarization.** Gemini can label distinct speakers (`Speaker 1`, `Speaker 2`, and real names when clearly stated) - useful for meetings and interviews. Diarization is off by default and is only available on Gemini, Deepgram, and Mistral Voxtral.
 - **Free tier.** Google AI Studio includes a free quota to get started; heavier use moves to paid billing.
 - **One key, two features.** The same Gemini key transcribes audio **and** drives Gemini-based [LLM post-processing](../llm-post-processing.md) (clean up, summarize, or a custom instruction).
 - **Sensible default model.** The plugin ships with **`gemini-3.5-flash`** selected - fast and cheap enough for transcription, with `gemini-2.5-pro` available for difficult audio.
@@ -59,7 +59,7 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 4. Paste your key into **Gemini API key**.
 5. Under **Gemini model**, pick `gemini-3.5-flash` (default) or `gemini-2.5-pro` for harder audio. Use the add button on the model list below to enter any other model id, the button on a row to drop one, or the **Gemini model list** link to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
 6. (Optional) Set **Language** to `auto` (default) or an ISO code such as `en`, `ru`, or `es`. Gemini transcribes each segment in the language actually spoken regardless, but a hint can help.
-7. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is only enabled for Gemini and Deepgram.
+7. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is only enabled for Gemini, Deepgram, and Mistral Voxtral.
 8. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
 
 ![Gemini model picker showing gemini-2.5-flash selected, with the saved model list and a catalogue link](../images/settings-gemini-model-picker.png)
@@ -94,7 +94,7 @@ A few behaviors are specific to Gemini and worth knowing before you transcribe a
 
 ## Reuse the same key for LLM post-processing
 
-Gemini is also one of the three [LLM post-processing](../llm-post-processing.md) engines, alongside OpenAI and Anthropic. Because one Gemini page serves both jobs, the key you entered for transcription is the key post-processing reads, and you do not need a second one.
+Gemini is also one of the four [LLM post-processing](../llm-post-processing.md) engines, alongside OpenAI, Anthropic, and Mistral. Because one Gemini page serves both jobs, the key you entered for transcription is the key post-processing reads, and you do not need a second one.
 
 To enable it:
 
@@ -141,7 +141,7 @@ If a transcript appears with speaker labels (when diarization is on) and clickab
 ## Related guides
 
 - [Transcription](../transcription.md) - engines, diarization, output formats, and destinations.
-- [LLM post-processing](../llm-post-processing.md) - clean up, summarize, or apply a custom instruction with Gemini, OpenAI, or Anthropic.
+- [LLM post-processing](../llm-post-processing.md) - clean up, summarize, or apply a custom instruction with Gemini, OpenAI, Anthropic, or Mistral.
 - [Deepgram API key](deepgram-api-key.md) - whole-file diarization with consistent speaker numbering on long files.
 - [Anthropic / Claude API key](anthropic-api-key.md) - for Claude-based LLM post-processing.
 - [Local whisper.cpp (offline)](local-whisper-cpp.md) - private, offline transcription with no API key.

@@ -13,7 +13,6 @@ export {
 	effectiveWordTimestamps,
 	isProviderAvailableOnPlatform,
 	languageNote,
-	providerReadsLanguageHint,
 	providerSupportsDiarization,
 	providerSupportsDictionary,
 	wordTimestampsNote,

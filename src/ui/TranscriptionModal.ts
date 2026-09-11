@@ -41,7 +41,6 @@ import {
 	formatUsd,
 	isProviderAvailableOnPlatform,
 	languageNote,
-	providerReadsLanguageHint,
 	providerSupportsDiarization,
 	wordTimestampsNote,
 	wordTimestampsSelectable,
@@ -350,15 +349,12 @@ export class TranscriptionModal extends PluginModal {
 		addText(ctx, {
 			name: 'Language',
 			// The same sentence the settings tab shows, so one engine cannot be
-			// described two ways: it names the engines that detect the language
-			// themselves and ignore whatever is typed here.
+			// described two ways: on an engine that detects the language itself
+			// it says the request drops the code and that auto chapters still
+			// read it, which is also why the row is not disabled there.
 			desc: languageNote(s.transcriptionProvider),
 			get: () => s.transcriptionLanguage,
 			set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
-			// Greyed out on an engine that detects the language itself, the same
-			// way the diarization toggle below is on an engine that cannot
-			// diarize, so the two surfaces treat one discarded value alike.
-			disabled: !providerReadsLanguageHint(s.transcriptionProvider),
 		});
 		const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
 		// Whether speaker labels will actually be produced for this run; gates the

@@ -14,6 +14,7 @@ import {
 	effectiveDictionary,
 	GEMINI_CAPABILITIES,
 	VOXTRAL_CAPABILITIES,
+	configuredLanguageHint,
 	effectiveLanguage,
 	languageNote,
 	providerReadsLanguageHint,
@@ -110,13 +111,15 @@ describe('transcription provider capabilities', () => {
 	});
 
 	it('advertises dictionary biasing for every current engine', () => {
-		// All four engines accept a bias hint (Deepgram keyterm/keywords,
-		// Whisper prompt, Gemini instruction text), so the field is offered
-		// for each; the gate exists for a future engine that cannot bias.
+		// Every engine accepts a bias hint (Deepgram keyterm/keywords, Voxtral
+		// context_bias, Whisper prompt, Gemini instruction text), so the field
+		// is offered for each; the gate exists for a future engine that cannot
+		// bias.
 		expect(WHISPER_API_CAPABILITIES.supportsDictionary).toBe(true);
 		expect(LOCAL_WHISPER_CAPABILITIES.supportsDictionary).toBe(true);
 		expect(DEEPGRAM_CAPABILITIES.supportsDictionary).toBe(true);
 		expect(GEMINI_CAPABILITIES.supportsDictionary).toBe(true);
+		expect(VOXTRAL_CAPABILITIES.supportsDictionary).toBe(true);
 	});
 
 	it('exposes dictionary support through the UI helper', () => {
@@ -124,6 +127,18 @@ describe('transcription provider capabilities', () => {
 		expect(providerSupportsDictionary('local-whisper')).toBe(true);
 		expect(providerSupportsDictionary('deepgram')).toBe(true);
 		expect(providerSupportsDictionary('gemini')).toBe(true);
+		expect(providerSupportsDictionary('voxtral')).toBe(true);
+	});
+
+	it('records the channel each engine carries a generated bias through', () => {
+		// The two-pass mode builds only the representation the channel needs
+		// and routes on this value alone, so an engine that takes discrete
+		// terms must say so or it is handed a prompt sentence it cannot use.
+		expect(DEEPGRAM_CAPABILITIES.biasChannel).toBe('keyterm');
+		expect(VOXTRAL_CAPABILITIES.biasChannel).toBe('keyterm');
+		expect(WHISPER_API_CAPABILITIES.biasChannel).toBe('prompt');
+		expect(LOCAL_WHISPER_CAPABILITIES.biasChannel).toBe('prompt');
+		expect(GEMINI_CAPABILITIES.biasChannel).toBe('prompt');
 	});
 });
 
@@ -252,6 +267,19 @@ describe('the language hint gate', () => {
 	it('names the engine behaviour in the note the row shows', () => {
 		expect(languageNote('whisper-api')).toMatch(/ISO code/);
 		expect(languageNote('voxtral')).toMatch(/detects the spoken language/);
+	});
+
+	it('keeps the field readable for chapters on an engine that drops it', () => {
+		// The two gates answer the same typed value differently, which is why
+		// the row stays editable on such an engine: the request drops the code
+		// and auto chapters still name the language to the model with it. A
+		// note claiming the field is simply unread would be wrong about the
+		// second reader, and a disabled row would leave it unreachable.
+		expect(
+			effectiveLanguage(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL, 'ru'),
+		).toBeUndefined();
+		expect(configuredLanguageHint('ru')).toBe('ru');
+		expect(languageNote('voxtral')).toMatch(/Auto chapters still read it/);
 	});
 });
 

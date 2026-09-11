@@ -103,13 +103,16 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
  * Mistral Voxtral Mini Transcribe 2: one request carries about three hours of
  * audio, so a recording is sent whole and speaker numbering stays consistent.
  *
- * The duration cap is deliberately left unbounded. The cheap proof in
+ * The duration cap is deliberately left unbounded *here*. The cheap proof in
  * `audioPrep` reads bytes rather than seconds, so a three-hour cap would only
  * clear files under about 10.8 MB and would decode every longer recording into
  * a 16 kHz mono WAV several times its size - which is exactly the whole-file
- * upload this engine is chosen for. The byte ceiling still bounds the request,
- * and a recording past three hours is refused by the endpoint in Mistral's own
- * words rather than by a guess made here.
+ * upload this engine is chosen for. The endpoint's real three-hour limit is
+ * proven where the duration is known exactly instead, against the decoded
+ * samples in `uploadContainer`; see `VOXTRAL_MAX_REQUEST_SECONDS` for why
+ * the two live apart. Leaving it to the endpoint was not enough: the byte
+ * ceiling alone holds about nine hours of this WAV, so hours of audio were
+ * uploaded only to be declined on arrival.
  */
 export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: VOXTRAL_MAX_REQUEST_BYTES,
@@ -319,13 +322,22 @@ export function effectiveLanguage(
  * What to tell the user about the language hint on this engine. Kept beside the
  * capability rather than at each surface, so the settings tab and the per-run
  * dialog cannot describe the same engine differently.
+ *
+ * The row stays editable on an engine that reads nothing here, unlike the
+ * diarization and translation rows it otherwise resembles. Those two are the
+ * only readers of their own settings, so greying them out strands no value;
+ * this field has a second reader that no engine gates - auto chapters fall
+ * back to it through {@link configuredLanguageHint} whenever the transcript
+ * carries no detected language - and a disabled row was the only way to set
+ * that fallback, so it left the value unreachable. The sentence carries the
+ * distinction instead.
  * @param id - Selected transcription engine id
  * @returns The sentence for the language row's description
  */
 export function languageNote(id: TranscriptionProviderId): string {
 	return providerReadsLanguageHint(id)
 		? 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it.'
-		: 'This engine detects the spoken language itself and does not read this field, because it cannot be asked for timed segments and a language at the same time.';
+		: 'This engine detects the spoken language itself, because it cannot be asked for timed segments and a language at the same time, so a code here does not reach its request. Auto chapters still read it when the transcript carries no detected language.';
 }
 
 /**

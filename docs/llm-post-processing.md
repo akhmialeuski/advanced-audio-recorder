@@ -167,6 +167,7 @@ Need a key? Follow the matching use-case guide:
 - [Anthropic (Claude) API key](use-cases/anthropic-api-key.md)
 - [OpenAI / Whisper API key](use-cases/openai-whisper-api-key.md)
 - [Google Gemini API key](use-cases/gemini-api-key.md)
+- [Mistral API key](use-cases/mistral-api-key.md)
 
 > **API keys** are stored in the plugin's `data.json` on this device and are never written to diagnostics output. Avoid syncing `data.json` to untrusted locations.
 

@@ -14,24 +14,23 @@
  */
 
 import {
-	MIME_TYPE_AUDIO_PREFIX,
-	TRANSCRIBE_SAMPLE_RATE,
 	TRANSCRIPTION_PROVIDER_IDS,
-	VOXTRAL_AUDIO_MIME_TYPES,
+	VOXTRAL_AUDIO_EXTENSIONS,
+	VOXTRAL_MAX_REQUEST_SECONDS,
+	VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS,
 } from '../../constants';
-import { isDecodableSize, tooLargeMessage } from '../../platform/capabilities';
-import { decodeToMono16k, encodeMonoWav } from '../audioChunks';
 import { dedupeTerms } from '../dictionary';
 import { voxtralContextBiasTerms } from '../dictionaryBias';
 import {
 	authHeader,
 	buildMultipart,
+	inferenceTimeoutMs,
 	requestJson,
 	trimTrailingSlash,
-	uploadTimeoutMs,
 	type MultipartField,
 } from '../httpClient';
 import { VOXTRAL_CAPABILITIES } from './capabilities';
+import { uploadContainer } from './uploadContainer';
 import { mapWhisperResponse, type WhisperResult } from './whisperResponse';
 import type {
 	AudioPayload,
@@ -50,21 +49,11 @@ const VOXTRAL_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
  */
 const SEGMENT_GRANULARITY = 'segment';
 
-/** Container a decoded upload takes, named once so its type and its extension agree. */
-const WAV_EXTENSION = 'wav';
-
-/** MIME type used when a container is decoded before upload. */
-const WAV_MIME = `${MIME_TYPE_AUDIO_PREFIX}${WAV_EXTENSION}`;
-
-/** Trailing extension of a file name, including its dot. */
-const EXTENSION_PATTERN = /\.[^./\\]+$/;
-
-/** One multipart file part: the bytes and the two things that describe them. */
-interface UploadPart {
-	data: ArrayBuffer;
-	contentType: string;
-	filename: string;
-}
+/**
+ * The containers the endpoint reads, in the refusal's own words, so a user
+ * told to convert is told what to convert to.
+ */
+const VOXTRAL_ACCEPTED_CONTAINERS = 'mp3, m4a, ogg, flac or wav';
 
 /** Configuration for the Voxtral provider. */
 export interface VoxtralConfig {
@@ -93,7 +82,26 @@ export class VoxtralProvider implements TranscriptionProvider {
 		payload: AudioPayload,
 		options: TranscribeOptions,
 	): Promise<WhisperResult> {
-		const audio = await this.uploadBody(payload);
+		const audio = await uploadContainer(payload, {
+			// Asked by extension, the unit Mistral publishes its list in. A MIME
+			// gate could not tell the `m4a` the endpoint reads from the `mp4`
+			// it does not, because the format registry gives both `audio/mp4`,
+			// and `mp4` is what iOS falls back to recording in.
+			accepts: ({ extension }) => VOXTRAL_AUDIO_EXTENSIONS.has(extension),
+			engineLabel: this.label,
+			acceptedContainers: VOXTRAL_ACCEPTED_CONTAINERS,
+			// Read from the engine's own declaration rather than named again
+			// here, so the ceiling the service proves the source against and
+			// the one a decoded upload is proven against are one number.
+			maxRequestBytes: this.capabilities.maxRequestBytes,
+			// Not the capability's duration cap, which stays unbounded so the
+			// service keeps uploading whole containers (see
+			// VOXTRAL_MAX_REQUEST_SECONDS). The endpoint's real limit binds well
+			// before the byte ceiling does - three hours is about 346 MB of this
+			// WAV against a 1 GB request - so without it the nine hours that
+			// gigabyte holds were uploaded before Mistral declined them.
+			maxRequestSeconds: VOXTRAL_MAX_REQUEST_SECONDS,
+		});
 		const fields: MultipartField[] = [
 			{
 				type: 'file',
@@ -134,61 +142,18 @@ export class VoxtralProvider implements TranscriptionProvider {
 			headers: authHeader('Authorization', this.config.apiKey, 'Bearer'),
 			contentType,
 			body,
-			timeoutMs: uploadTimeoutMs(
+			// The size-scaled budget funds the transfer and nothing else, and
+			// this engine hands the endpoint up to three hours of audio to work
+			// through in one request, so the floor underneath it is what the
+			// inference actually gets (see VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS).
+			timeoutMs: inferenceTimeoutMs(
 				body.byteLength,
+				VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS,
 				this.config.requestTimeoutMs,
 			),
 			signal: options.signal,
 		});
 		return mapWhisperResponse(json);
-	}
-
-	/**
-	 * The whole upload part: the bytes, the type declared for them, and the
-	 * name they are sent under. The original container where the endpoint takes
-	 * it, a decoded 16 kHz mono WAV otherwise.
-	 *
-	 * The name travels with the other two rather than being taken from the
-	 * payload at the call site, because all three describe the same bytes and a
-	 * decode changes all three at once. Sending decoded WAV under the recording's
-	 * own `.webm` name announced one container in the part's header and another
-	 * in its filename, and Mistral's own client derives a part's type from that
-	 * filename - so the engine's most common input, this plugin's default
-	 * recording format, was the one that contradicted itself.
-	 *
-	 * The size is checked before the decode rather than after, because the
-	 * decode is the allocation: it expands the file to full PCM in memory, and
-	 * on a phone exceeding the ceiling is not a catchable error but the OS
-	 * killing the WebView. This engine needs the check more than the others do,
-	 * since it declares no per-request duration cap and so is handed whole
-	 * recordings of any length.
-	 * @param payload - The audio bytes and their metadata
-	 * @returns The bytes to send, their content type, and their filename
-	 */
-	private async uploadBody(payload: AudioPayload): Promise<UploadPart> {
-		if (VOXTRAL_AUDIO_MIME_TYPES.has(payload.contentType)) {
-			return {
-				data: payload.data,
-				contentType: payload.contentType,
-				filename: payload.filename,
-			};
-		}
-		if (!isDecodableSize(payload.data.byteLength)) {
-			throw new Error(
-				tooLargeMessage('transcribe with Mistral Voxtral', {
-					desktopAdvice:
-						'Record or convert it to mp3, m4a, ogg, flac or wav, which this engine uploads without decoding.',
-				}),
-			);
-		}
-		return {
-			data: await encodeMonoWav(
-				await decodeToMono16k(payload.data),
-				TRANSCRIBE_SAMPLE_RATE,
-			),
-			contentType: WAV_MIME,
-			filename: `${payload.filename.replace(EXTENSION_PATTERN, '')}.${WAV_EXTENSION}`,
-		};
 	}
 
 	/**

@@ -9,10 +9,13 @@
 import { TRANSCRIBE_BYTES_PER_SEC, TRANSCRIBE_SAMPLE_RATE } from '../constants';
 import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
 import { floatToInt16 } from '../audio/pcm';
+import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 
 /** Channel count of the mono WAV uploads produced for transcription. */
 const WAV_MONO_CHANNEL_COUNT = 1;
-import { decodeAudioBlob } from '../audio/AudioFormatConverter';
+
+/** Width of one sample in the 16-bit PCM these uploads carry. */
+const BYTES_PER_PCM_SAMPLE = 2;
 
 /**
  * Frames converted per synchronous slice of {@link encodeMonoWav} before
@@ -29,6 +32,20 @@ function yieldToEventLoop(): Promise<void> {
 }
 
 /**
+ * How many bytes {@link encodeMonoWav} will return for this many samples.
+ *
+ * Answering it without encoding is what lets a caller refuse an upload before
+ * it allocates one: the decoded samples are already in memory at that point,
+ * and the WAV would add half as much again on top of them. Shared with the
+ * encoder itself so the answer and the allocation cannot drift apart.
+ * @param sampleCount - Number of mono samples
+ * @returns Byte length of the WAV those samples encode to
+ */
+export function monoWavByteLength(sampleCount: number): number {
+	return WAV_HEADER_SIZE + sampleCount * BYTES_PER_PCM_SAMPLE;
+}
+
+/**
  * Encodes mono Float32 samples (range -1..1) into a 16-bit PCM WAV blob.
  * The float-to-int16 conversion runs in slices with an event-loop yield
  * between them, so encoding a large upload chunk does not jank the UI.
@@ -40,7 +57,7 @@ export async function encodeMonoWav(
 	samples: Float32Array,
 	sampleRate: number,
 ): Promise<ArrayBuffer> {
-	const pcmByteLength = samples.length * 2;
+	const pcmByteLength = samples.length * BYTES_PER_PCM_SAMPLE;
 	const out = createWavFileBuffer(
 		WAV_MONO_CHANNEL_COUNT,
 		sampleRate,
@@ -50,7 +67,11 @@ export async function encodeMonoWav(
 	for (let start = 0; start < samples.length; start += ENCODE_YIELD_FRAMES) {
 		const end = Math.min(samples.length, start + ENCODE_YIELD_FRAMES);
 		for (let i = start; i < end; i++) {
-			view.setInt16(i * 2, floatToInt16(samples[i] ?? 0), true);
+			view.setInt16(
+				i * BYTES_PER_PCM_SAMPLE,
+				floatToInt16(samples[i] ?? 0),
+				true,
+			);
 		}
 		if (end < samples.length) {
 			await yieldToEventLoop();

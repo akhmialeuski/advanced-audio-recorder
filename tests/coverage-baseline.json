@@ -2,7 +2,7 @@
 	"coverage": {
 		"total": {
 			"statements": 98.68,
-			"branches": 94.18,
+			"branches": 94.19,
 			"functions": 98.63,
 			"lines": 98.69
 		},
@@ -891,7 +891,7 @@
 			},
 			"src/transcription/httpClient.ts": {
 				"statements": 100,
-				"branches": 99.07,
+				"branches": 99.08,
 				"functions": 100,
 				"lines": 100
 			},
@@ -951,15 +951,15 @@
 			},
 			"src/transcription/advanced/AdvancedTwoPassRunner.ts": {
 				"statements": 100,
-				"branches": 96.29,
+				"branches": 96.66,
 				"functions": 100,
 				"lines": 100
 			},
 			"src/transcription/advanced/advancedBias.ts": {
-				"statements": 94.73,
-				"branches": 80,
+				"statements": 96,
+				"branches": 84.21,
 				"functions": 100,
-				"lines": 94.73
+				"lines": 96
 			},
 			"src/transcription/advanced/contextPipeline.ts": {
 				"statements": 100,
@@ -1070,6 +1070,12 @@
 				"lines": 100
 			},
 			"src/transcription/providers/responseUtils.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/transcription/providers/uploadContainer.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -1324,9 +1330,9 @@
 		}
 	},
 	"suite": {
-		"suites": 235,
-		"tests": 5571,
-		"passed": 5571,
+		"suites": 236,
+		"tests": 5608,
+		"passed": 5608,
 		"failed": 0,
 		"todo": 0
 	}

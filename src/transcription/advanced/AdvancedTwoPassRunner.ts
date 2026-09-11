@@ -3,9 +3,9 @@
  *
  * The mode is a sequence of its own: mine the first pass's draft for domain
  * context, turn that context into a bias the engine can carry, decode the same
- * audio again with the bias applied and the language pinned, then decide
- * whether the result is good enough to adopt. Every step can decline, and each
- * declining for its own reason.
+ * audio again with the bias applied and the first pass's language asked for,
+ * then decide whether the result is good enough to adopt. Every step can
+ * decline, and each declining for its own reason.
  *
  * Those reasons used to be nested conditions inside a four-hundred-line method,
  * which made them impossible to check one at a time and made the safety rule -
@@ -32,6 +32,7 @@ import type { CancellationToken } from '../../utils/cancellation';
 import type { PartFailure } from '../partFailure';
 import {
 	advancedBiasChannel,
+	keepsDetectedLanguage,
 	meetsLengthSafeguard,
 	planAdvancedBias,
 } from './advancedBias';
@@ -43,6 +44,7 @@ export type AdvancedSkipReason =
 	| 'no-context'
 	| 'incomplete-second-pass'
 	| 'too-short'
+	| 'language-drift'
 	| 'failed';
 
 /**
@@ -153,6 +155,11 @@ export function advancedSkipNotice(outcome: {
 				'Advanced second pass came back too short; keeping the ' +
 				'first-pass transcript.'
 			);
+		case 'language-drift':
+			return (
+				'Advanced second pass came back in a different language; ' +
+				'keeping the first-pass transcript.'
+			);
 		case 'failed':
 			return (
 				'Advanced two-pass transcription failed; keeping the ' +
@@ -235,10 +242,12 @@ export class AdvancedTwoPassRunner {
 			return { status: 'skipped', reason: 'no-context' };
 		}
 
-		// Pin the second pass's language to the first pass's: the bias is dense
-		// with English tokens, and left to auto-detect it can flip a Russian
-		// recording into English - the documented failure mode this guards
-		// against.
+		// Ask the second pass for the first pass's language: the bias is dense
+		// with English tokens, and left to auto-detect a decode can flip a
+		// Russian recording into English - the documented failure mode this
+		// guards against. Asking is all this can do, since an engine that reads
+		// no language hint discards the field, so what the pass actually
+		// answered is checked below rather than assumed here.
 		const secondPassOptions: TranscribeOptions = {
 			...transcribeOptions,
 			language: transcribeOptions.language ?? baseline.language,
@@ -276,6 +285,13 @@ export class AdvancedTwoPassRunner {
 			// The over-correction guard from the paper: a biased decode that
 			// lost this much text is discarded in favour of the baseline.
 			return { status: 'skipped', reason: 'too-short' };
+		}
+		if (!keepsDetectedLanguage(baseline.language, secondPass.language)) {
+			// The same guard on the other axis: a pass that answered in another
+			// language transcribed something the first pass did not, however
+			// long it came out, and the field asking for the language cannot
+			// prevent it on an engine that never reads one.
+			return { status: 'skipped', reason: 'language-drift' };
 		}
 		// Reached only with `secondFailed` empty, because the guard above turns
 		// any part this pass lost into a skip. So the adopted pass succeeded on

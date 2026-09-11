@@ -14,7 +14,6 @@ import {
 import {
 	isProviderAvailableOnPlatform,
 	languageNote,
-	providerReadsLanguageHint,
 	providerSupportsDiarization,
 	providerSupportsSpeechTranslation,
 	wordTimestampsNote,
@@ -85,8 +84,6 @@ export function transcriptionGroup(
 		providerSupportsDiarization(settings.transcriptionProvider);
 	const canTranslateSpeech = (): boolean =>
 		providerSupportsSpeechTranslation(settings.transcriptionProvider);
-	const readsLanguage = (): boolean =>
-		providerReadsLanguageHint(settings.transcriptionProvider);
 	return {
 		type: 'group',
 		cls: SETTINGS_SECTION_CLASS,
@@ -130,12 +127,14 @@ export function transcriptionGroup(
 					type: 'text',
 					key: 'transcriptionLanguage',
 					placeholder: 'auto',
-					// Kept visible but not editable on an engine that detects
-					// the language itself, the same way the two rows below are
-					// treated when their engine cannot honour them: a control
-					// whose value is discarded reads as unavailable rather than
-					// as applied, and the note above says why.
-					disabled: (): boolean => !readsLanguage(),
+					// Editable on every engine, unlike the two rows below.
+					// Those gate a setting only they read, so an engine that
+					// cannot honour one may disable it; this field is also the
+					// fallback auto chapters name the language to the model
+					// with, and no engine gates that reader. Disabling the row
+					// left that fallback with no way to be set at all, so the
+					// note above says the field is ignored for transcription
+					// instead of the control pretending it is unavailable.
 					validate: (value: string): string | undefined =>
 						LANGUAGE_CODE_PATTERN.test(value.trim())
 							? undefined

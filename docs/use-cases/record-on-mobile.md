@@ -57,7 +57,7 @@ The inserted embed plays your recording in the note. Turn on the **Enhanced audi
 To turn the recording into text on the phone:
 
 1. Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable transcription**.
-2. Choose a **cloud** engine - **Whisper API**, **Deepgram**, or **Google Gemini** - and confirm its API key is set. Deepgram and Gemini also add speaker diarization for meetings and interviews.
+2. Choose a **cloud** engine - **Whisper API**, **Deepgram**, **Google Gemini**, or **Mistral Voxtral** - and confirm its API key is set. Deepgram, Gemini, and Voxtral also add speaker diarization for meetings and interviews.
 3. Long-press the recording (in the File Explorer, on its embed link, or on the player) and choose **Transcribe audio**, or run the **Transcribe audio** command with the audio file active. The transcription dialog opens, runs, and writes the transcript to your configured destination.
 
 To have every recording transcribed automatically the moment it is saved, turn on **Transcribe after recording** as well - see [Transcribe automatically after every recording](transcribe-after-recording.md). Make sure a cloud engine is selected, because a synced desktop configuration that selects the local engine is skipped on mobile with a notice.

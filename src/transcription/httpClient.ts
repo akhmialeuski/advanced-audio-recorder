@@ -132,6 +132,36 @@ export function uploadTimeoutMs(
 	});
 }
 
+/**
+ * The deadline for a request whose answer costs the endpoint real work, not
+ * just the transfer.
+ *
+ * Inference time tracks audio duration, not byte size, and a compressed
+ * container carries far fewer bytes than its duration implies, so
+ * {@link uploadTimeoutMs} alone leaves the engine only its floor to think in -
+ * two minutes, whatever the length of the recording. Every engine that sends a
+ * whole recording in one request needs the same answer, and it lived in only
+ * one of them until the second was added with its own, so the rule is here:
+ * take the larger of the size-scaled budget and the engine's own floor, then
+ * cap by the user-configured per-request limit so the floor can never exceed
+ * what the user allowed.
+ * @param byteLength - Size of the request body in bytes
+ * @param floorMs - Lowest deadline this engine's inference may be given
+ * @param maxMs - Hard cap (the user-configured per-request limit); defaults to
+ *   {@link TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS}
+ * @returns Timeout in milliseconds
+ */
+export function inferenceTimeoutMs(
+	byteLength: number,
+	floorMs: number,
+	maxMs: number = TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
+): number {
+	return Math.min(
+		Math.max(uploadTimeoutMs(byteLength, maxMs), floorMs),
+		maxMs,
+	);
+}
+
 /** Status used for errors that never reached an HTTP response (transport/timeout). */
 const NO_HTTP_STATUS = 0;
 

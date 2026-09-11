@@ -13,7 +13,7 @@ import {
 	MIN_AUDIO_BYTES_PER_SEC,
 	MIN_SUBDIVIDE_SECONDS,
 	TRANSCRIBE_SAMPLE_RATE,
-	MIME_TYPE_AUDIO_PREFIX,
+	WAV_MIME,
 } from '../constants';
 import { audioMimeForExtension } from '../audio/formatRegistry';
 import {
@@ -215,7 +215,7 @@ export async function prepareAudio(
 		plan: ChunkPlan,
 		filename: string,
 	): PreparedPayload => ({
-		contentType: `${MIME_TYPE_AUDIO_PREFIX}wav`,
+		contentType: WAV_MIME,
 		filename,
 		offsetSeconds: plan.startSeconds,
 		endSeconds: plan.endSeconds,

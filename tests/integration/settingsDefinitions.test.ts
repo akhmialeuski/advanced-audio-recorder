@@ -624,6 +624,22 @@ describe('settings definitions', () => {
 			);
 		});
 
+		it('keeps the language row editable on an engine that ignores it', () => {
+			// Unlike the diarization and word-timestamp rows below, this field
+			// has a reader no engine gates: auto chapters fall back to it when
+			// a transcript carries no detected language. Disabling the row on
+			// the engine that does not send it left that fallback with no way
+			// to be set at all, so the note carries the distinction instead.
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider = TRANSCRIPTION_PROVIDER_IDS.VOXTRAL;
+			const row = rowOf(build(), TRANSCRIPTION, 'Language');
+
+			expect(isVisible('Language')).toBe(true);
+			expect(disabledOf(row.control)).toBe(false);
+			expect(row.desc).toMatch(/does not reach its request/);
+			expect(row.desc).toMatch(/Auto chapters still read it/);
+		});
+
 		it('keeps diarization visible but disabled on an engine without it', () => {
 			settings.transcriptionEnabled = true;
 			settings.transcriptionProvider =

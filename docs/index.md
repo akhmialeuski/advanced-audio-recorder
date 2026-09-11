@@ -86,11 +86,11 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 
 ### Transcription
 
-| Page                                          | What it covers                                                                                          |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| [Transcription](transcription.md)             | Speech-to-text with five engines, diarization, output destinations and formats, and the progress flow.  |
-| [LLM post-processing](llm-post-processing.md) | Clean up, summarize, or run a custom instruction over the transcript with OpenAI, Anthropic, or Gemini. |
-| [Use cases](use-cases/index.md)               | Step-by-step guides for API keys and end-to-end workflows (see Use cases below).                        |
+| Page                                          | What it covers                                                                                                   |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| [Transcription](transcription.md)             | Speech-to-text with five engines, diarization, output destinations and formats, and the progress flow.           |
+| [LLM post-processing](llm-post-processing.md) | Clean up, summarize, or run a custom instruction over the transcript with OpenAI, Anthropic, Gemini, or Mistral. |
+| [Use cases](use-cases/index.md)               | Step-by-step guides for API keys and end-to-end workflows (see Use cases below).                                 |
 
 ### Reference
 
@@ -110,6 +110,7 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 | [Groq Whisper setup](use-cases/groq-whisper-setup.md)                 | Use Groq's fast, OpenAI-compatible Whisper endpoint.                       |
 | [Deepgram API key](use-cases/deepgram-api-key.md)                     | Sign up for Deepgram and enable diarization.                               |
 | [Gemini API key](use-cases/gemini-api-key.md)                         | Get a Google AI Studio key for the Gemini engine.                          |
+| [Mistral API key](use-cases/mistral-api-key.md)                       | Get a Mistral key for the Voxtral engine and Mistral post-processing.      |
 | [Anthropic API key](use-cases/anthropic-api-key.md)                   | Get a Claude key for LLM post-processing.                                  |
 | [Local whisper.cpp](use-cases/local-whisper-cpp.md)                   | Run transcription fully offline with a local whisper.cpp binary and model. |
 | [Transcribe after recording](use-cases/transcribe-after-recording.md) | Transcribe every recording automatically as soon as it stops.              |

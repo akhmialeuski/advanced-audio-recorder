@@ -16,7 +16,7 @@
 
 ## Why Deepgram
 
-Deepgram is one of four transcription engines in the plugin (alongside the [Whisper API](../use-cases/openai-whisper-api-key.md), [Google Gemini](../use-cases/gemini-api-key.md), and offline [local whisper.cpp](../use-cases/local-whisper-cpp.md)). It stands out for multi-speaker audio:
+Deepgram is one of five transcription engines in the plugin (alongside the [Whisper API](../use-cases/openai-whisper-api-key.md), [Google Gemini](../use-cases/gemini-api-key.md), [Mistral Voxtral](../use-cases/mistral-api-key.md), and offline [local whisper.cpp](../use-cases/local-whisper-cpp.md)). It stands out for multi-speaker audio:
 
 - **Whole-file requests up to 2 GB.** Deepgram accepts the original audio container and sends it in **one piece**, with no chunking. The 2 GB ceiling comfortably covers hours of recording.
 - **Consistent speaker diarization.** Because the whole file is transcribed in a single request, speaker numbering stays **stable across the entire recording** - speaker 1 in the first minute is still speaker 1 in the last. This is the property that makes Deepgram a strong choice for meetings and interviews.

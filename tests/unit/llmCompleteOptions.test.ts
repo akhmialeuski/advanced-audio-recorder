@@ -43,6 +43,24 @@ function capture(responseText: string): {
 	};
 }
 
+/**
+ * The client under test, built as every case here builds it.
+ *
+ * What these tests vary is the call, not the vendor, so the endpoint, the key,
+ * the model, and the identity the client answers as are settled once.
+ * @returns A provider pointed at the stub endpoint
+ */
+function openAiProvider(): OpenAiCompatibleLlmProvider {
+	return new OpenAiCompatibleLlmProvider(
+		{
+			baseUrl: 'https://openai.example',
+			apiKey: 'k',
+			model: 'gpt-4o-mini',
+		},
+		OPENAI_IDENTITY,
+	);
+}
+
 const OPENAI_RESPONSE = JSON.stringify({
 	choices: [{ message: { content: 'ok' } }],
 });
@@ -63,15 +81,7 @@ const GEMINI_RESPONSE = JSON.stringify({
 const VENDORS = [
 	{
 		name: 'OpenAI',
-		build: (): LlmProvider =>
-			new OpenAiCompatibleLlmProvider(
-				{
-					baseUrl: 'https://openai.example',
-					apiKey: 'k',
-					model: 'gpt-4o-mini',
-				},
-				OPENAI_IDENTITY,
-			),
+		build: (): LlmProvider => openAiProvider(),
 		response: OPENAI_RESPONSE,
 		withUsage: JSON.stringify({
 			choices: [{ message: { content: 'ok' } }],
@@ -118,14 +128,7 @@ const VENDORS = [
 
 describe('LlmProvider.complete temperature option', () => {
 	it('sends and omits temperature on the OpenAI provider', async () => {
-		const provider = new OpenAiCompatibleLlmProvider(
-			{
-				baseUrl: 'https://openai.example',
-				apiKey: 'k',
-				model: 'gpt-4o-mini',
-			},
-			OPENAI_IDENTITY,
-		);
+		const provider = openAiProvider();
 
 		let captured = capture(OPENAI_RESPONSE);
 		await provider.complete(PROMPT, 256, { temperature: 0 });
@@ -243,14 +246,7 @@ describe('LlmProvider.complete cancellation', () => {
 						}),
 		);
 		const controller = new AbortController();
-		const provider = new OpenAiCompatibleLlmProvider(
-			{
-				baseUrl: 'https://openai.example',
-				apiKey: 'k',
-				model: 'gpt-4o-mini',
-			},
-			OPENAI_IDENTITY,
-		);
+		const provider = openAiProvider();
 
 		const settled = outcomeOf(
 			provider.complete(PROMPT, 256, { signal: controller.signal }),
@@ -270,14 +266,7 @@ describe('LlmProvider.complete cancellation', () => {
 		captureFetch(OPENAI_RESPONSE);
 		capture(OPENAI_RESPONSE);
 
-		await new OpenAiCompatibleLlmProvider(
-			{
-				baseUrl: 'https://openai.example',
-				apiKey: 'k',
-				model: 'gpt-4o-mini',
-			},
-			OPENAI_IDENTITY,
-		).complete(PROMPT, 256);
+		await openAiProvider().complete(PROMPT, 256);
 
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});

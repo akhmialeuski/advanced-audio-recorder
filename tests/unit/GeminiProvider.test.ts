@@ -5,17 +5,10 @@
  * branch, the thinking-off generationConfig, and the truncation/block guards.
  */
 
-import {
-	GeminiProvider,
-	geminiGenerateTimeoutMs,
-} from 'src/transcription/providers/GeminiProvider';
+import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';
 import { at, jsonBody } from '../helpers/assertions';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
-import { uploadTimeoutMs } from 'src/transcription/httpClient';
-import {
-	DEFAULT_GEMINI_MODEL,
-	GEMINI_GENERATE_MIN_TIMEOUT_MS,
-} from 'src/constants';
+import { DEFAULT_GEMINI_MODEL } from 'src/constants';
 // Mock-only surface: these exist on the test double, not on Obsidian's
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
@@ -27,10 +20,9 @@ import { withRequestUrl } from '../helpers/network';
 
 // Decoding an unsupported container needs OfflineAudioContext, which jsdom
 // lacks; mock the audio helpers so the decode branch is testable by eye.
-jest.mock('src/transcription/audioChunks', () => ({
-	decodeToMono16k: jest.fn().mockResolvedValue(new Float32Array(4)),
-	encodeMonoWav: jest.fn().mockReturnValue(new ArrayBuffer(16)),
-}));
+jest.mock('src/transcription/audioChunks', () =>
+	require('../mocks/modules/audioChunks'),
+);
 
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
@@ -341,28 +333,5 @@ describe('GeminiProvider.transcribe', () => {
 				wordTimestamps: false,
 			}),
 		).rejects.toThrow(/shorter recording/i);
-	});
-});
-
-describe('geminiGenerateTimeoutMs', () => {
-	it('floors a small upload at the generous inference minimum', () => {
-		// A few bytes (e.g. a tiny clip) must not inherit the short upload
-		// proxy; the inference floor applies so long audio is not cut off.
-		expect(geminiGenerateTimeoutMs(8)).toBe(GEMINI_GENERATE_MIN_TIMEOUT_MS);
-	});
-
-	it('uses the size-scaled upload budget once it exceeds the floor', () => {
-		const bigBytes = 600 * 1024 * 1024;
-		const scaled = uploadTimeoutMs(bigBytes);
-		expect(scaled).toBeGreaterThan(GEMINI_GENERATE_MIN_TIMEOUT_MS);
-		expect(geminiGenerateTimeoutMs(bigBytes)).toBe(scaled);
-	});
-
-	it('clamps to the configured cap even below the inference floor', () => {
-		// A user who sets a 5-minute limit overrides the 10-minute floor: the
-		// per-request cap wins so the run cannot wait longer than configured.
-		const cap = 5 * 60_000;
-		expect(geminiGenerateTimeoutMs(8, cap)).toBe(cap);
-		expect(geminiGenerateTimeoutMs(600 * 1024 * 1024, cap)).toBe(cap);
 	});
 });

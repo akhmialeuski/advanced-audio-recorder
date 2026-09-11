@@ -1,21 +1,26 @@
 /**
  * Tests for what a failed request carries out of the HTTP client - the
  * human-readable guidance and whether the run may send it again, both read off
- * the HttpError the client throws - and for uploadTimeoutMs, the
- * payload-scaled request deadline that keeps a large but healthy upload from
- * being aborted prematurely.
+ * the HttpError the client throws - and for the two request deadlines:
+ * uploadTimeoutMs, the payload-scaled budget that keeps a large but healthy
+ * upload from being aborted prematurely, and inferenceTimeoutMs, which raises it
+ * to an engine's own floor because the byte count of a compressed container says
+ * nothing about how long the endpoint needs to transcribe it.
  */
 
 import {
 	HttpError,
+	inferenceTimeoutMs,
 	providerMessage,
 	requestJson,
 	requestRaw,
 	uploadTimeoutMs,
 } from 'src/transcription/httpClient';
 import {
+	GEMINI_GENERATE_MIN_TIMEOUT_MS,
 	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
+	VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS,
 } from 'src/constants';
 import { captureRequests, withRequestUrl } from '../helpers/network';
 import { flushMicrotasks } from '../helpers/async';
@@ -285,6 +290,60 @@ describe('uploadTimeoutMs', () => {
 			uploadTimeoutMs(20 * 1024 * 1024),
 		);
 	});
+});
+
+describe('inferenceTimeoutMs', () => {
+	/** A floor standing in for whichever engine declares one. */
+	const FLOOR_MS = 10 * 60_000;
+
+	it('gives a small upload the floor rather than the upload proxy', () => {
+		// A few bytes must not inherit the short transfer budget: the endpoint
+		// still has a whole recording to work through, and the byte count of a
+		// compressed container says nothing about how long that takes.
+		expect(inferenceTimeoutMs(8, FLOOR_MS)).toBe(FLOOR_MS);
+	});
+
+	it('uses the size-scaled budget once it exceeds the floor', () => {
+		const bigBytes = 600 * 1024 * 1024;
+		const scaled = uploadTimeoutMs(bigBytes);
+
+		expect(scaled).toBeGreaterThan(FLOOR_MS);
+		expect(inferenceTimeoutMs(bigBytes, FLOOR_MS)).toBe(scaled);
+	});
+
+	it('clamps to the configured cap even below the floor', () => {
+		// A user who allows five minutes overrides a ten-minute floor: the
+		// per-request cap wins, so a run never waits longer than configured.
+		const cap = 5 * 60_000;
+
+		expect(inferenceTimeoutMs(8, FLOOR_MS, cap)).toBe(cap);
+		expect(inferenceTimeoutMs(600 * 1024 * 1024, FLOOR_MS, cap)).toBe(cap);
+	});
+
+	it.each([
+		{
+			name: 'Gemini, whose parts are at most fifteen minutes of audio',
+			floorMs: GEMINI_GENERATE_MIN_TIMEOUT_MS,
+		},
+		{
+			name: 'Voxtral, which sends up to three hours in one request',
+			floorMs: VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS,
+		},
+	])(
+		'keeps a long compressed upload off the two-minute floor for $name',
+		({ floorMs }) => {
+			// The case the floors exist for. A three-hour recording in a
+			// compressed container the endpoint reads untouched is about 86 MB
+			// at 64 kbps, which the transfer budget alone answers with three and
+			// a half minutes - a healthy request aborted mid-transcription.
+			const threeHoursCompressed = 86 * 1024 * 1024;
+
+			expect(uploadTimeoutMs(threeHoursCompressed)).toBeLessThan(floorMs);
+			expect(inferenceTimeoutMs(threeHoursCompressed, floorMs)).toBe(
+				floorMs,
+			);
+		},
+	);
 });
 
 describe('requestRaw abort support', () => {
