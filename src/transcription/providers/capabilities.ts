@@ -122,21 +122,23 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	// Voxtral biases through context_bias, a flat list of terms bounded by an
 	// entry count, which is the keyterm shape rather than the prompt one.
 	supportsDictionary: true,
-	// The request takes a `word` granularity and Mistral lists word-level
-	// timestamps among Voxtral Mini Transcribe 2's features, so the switch
-	// steers the request exactly as it does on Whisper API.
+	// Declined because the request cannot carry the word level, not because the
+	// engine lacks it. The endpoint's enum takes `word` and Mistral lists
+	// word-level timestamps among this model's features, but the segment level
+	// has to travel too - it is what the transcript is assembled from, and a
+	// request without a granularity answers with no segments at all - and a live
+	// run proved the two cannot be sent together:
 	//
-	// This read "none" first, on the grounds that the generated client models a
-	// segment as {text, start, end, score, speaker_id} and nothing finer. That
-	// was the wrong conclusion from the right observation: both that schema and
-	// the response around it are declared with a `catchall`, so a `words` field
-	// the client does not name would pass through it unremarked, and the silence
-	// proved nothing. Mistral publishes no response schema for the word level,
-	// so the field this arrives in is unconfirmed - `mapWhisperResponse` already
-	// reads a `words` array of {word|text, start, end} on a segment, which is
-	// where the OpenAI-compatible shape puts it and therefore the first place
-	// worth checking against a live key.
-	wordTimestamps: 'requested',
+	//     422 {"type":"enum","loc":["timestamp_granularities",0],
+	//          "msg":"Input should be 'segment' or 'word'","input":"segmentword"}
+	//
+	// The endpoint concatenated the two form fields into one value. The bytes
+	// leaving here were a well-formed multipart carrying two separate parts, and
+	// Mistral's own generated client serialises the array the same way, so this
+	// is the endpoint's own parsing and nothing a caller can spell around.
+	// Offering the switch would promise timing that costs the run its segments,
+	// so it stays off until the endpoint reads the array as an array.
+	wordTimestamps: 'none',
 	biasChannel: 'keyterm',
 	// There is no translations operation, so English-only output cannot be
 	// asked for.

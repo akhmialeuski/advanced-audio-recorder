@@ -5,11 +5,11 @@
  *
  * Two properties of the endpoint decide what the request carries. Segments come
  * back only when a timestamp granularity is asked for, so the segment level is
- * sent on every run and the word level joins it when the run asks for per-word
- * timing. And Mistral documents that granularity as incompatible with a
- * language hint, so the hint is never sent and the engine detects the language
- * itself, which the capability `readsLanguageHint` states and the settings row
- * repeats to the user.
+ * sent on every run, and it is the only level sent because the endpoint cannot
+ * receive a second one (see {@link SEGMENT_GRANULARITY}). And Mistral documents
+ * that granularity as incompatible with a language hint, so the hint is never
+ * sent and the engine detects the language itself, which the capability
+ * `readsLanguageHint` states and the settings row repeats to the user.
  * @module transcription/providers/VoxtralProvider
  */
 
@@ -43,17 +43,24 @@ import type {
 const VOXTRAL_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
 
 /**
- * The timestamp level every run asks for. Without one the response carries no
- * segments at all, only the flat transcript text.
+ * The one timestamp level a request can carry. Without a granularity the
+ * response holds no segments at all, only the flat transcript text.
+ *
+ * The endpoint's own enum takes `word` as well, and Mistral lists word-level
+ * timestamps among this model's features, but a request cannot ask for both
+ * levels: sending the array as two form fields of this name - which is how
+ * Mistral's own generated client serialises it - has the endpoint concatenate
+ * them and refuse the result. A live run against api.mistral.ai answered:
+ *
+ *     422 {"type":"enum","loc":["timestamp_granularities",0],
+ *          "msg":"Input should be 'segment' or 'word'","input":"segmentword"}
+ *
+ * The two values arrived as the single element `segmentword`, so the array
+ * never reaches the server as an array. Since the segment level is the one the
+ * transcript is assembled from, it is the level that stays, and the word level
+ * is declined rather than traded for it (see {@link VOXTRAL_CAPABILITIES}).
  */
 const SEGMENT_GRANULARITY = 'segment';
-
-/**
- * The level added when the run asks for per-word timing. Mistral lists
- * word-level timestamps among this model's features and its API takes `word`
- * here, so the switch steers the request (see {@link VOXTRAL_CAPABILITIES}).
- */
-const WORD_GRANULARITY = 'word';
 
 /**
  * The containers the endpoint reads, in the refusal's own words, so a user
@@ -108,9 +115,6 @@ export class VoxtralProvider implements TranscriptionProvider {
 			// gigabyte holds were uploaded before Mistral declined them.
 			maxRequestSeconds: VOXTRAL_MAX_REQUEST_SECONDS,
 		});
-		const granularities = options.wordTimestamps
-			? [SEGMENT_GRANULARITY, WORD_GRANULARITY]
-			: [SEGMENT_GRANULARITY];
 		const fields: MultipartField[] = [
 			{
 				type: 'file',
@@ -120,19 +124,18 @@ export class VoxtralProvider implements TranscriptionProvider {
 				data: audio.data,
 			},
 			{ type: 'text', name: 'model', value: this.config.model },
-			// The segment level goes on every run: without a granularity the
-			// response carries an empty `segments` array and only the flat
-			// transcript text, which would cost this engine every timing the
-			// plugin is built on. The word level is added alongside it rather
-			// than instead of it, because the segments are what the transcript
-			// is assembled from and words only annotate them. One repeated
-			// field per level, which is how Mistral's own client sends the
-			// array, and unbracketed unlike the OpenAI spelling.
-			...granularities.map((value) => ({
-				type: 'text' as const,
+			// Sent on every run and never joined by a second level: without a
+			// granularity the response carries an empty `segments` array and
+			// only the flat transcript text, and a request naming two of them
+			// is refused outright (see SEGMENT_GRANULARITY). The run's
+			// wordTimestamps preference is deliberately unread here, so a
+			// caller constructing this provider directly cannot build the
+			// request that fails.
+			{
+				type: 'text',
 				name: 'timestamp_granularities',
-				value,
-			})),
+				value: SEGMENT_GRANULARITY,
+			},
 		];
 		if (options.diarize) {
 			fields.push({ type: 'text', name: 'diarize', value: 'true' });

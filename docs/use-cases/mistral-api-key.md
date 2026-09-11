@@ -29,7 +29,7 @@ Voxtral is the engine to reach for when a long recording has several speakers in
 | Max file size           | 1 GB per request (uploaded whole)                                   |
 | Diarization             | Supported (off by default)                                          |
 | Language hint           | Not sent, because the engine detects the spoken language itself     |
-| Word-level timestamps   | Offered: the endpoint takes the `word` granularity                  |
+| Word-level timestamps   | Not available: one request cannot name two levels                   |
 | Cost                    | About $0.003 per audio minute                                       |
 | Reused for              | Mistral [LLM post-processing](../llm-post-processing.md) (same key) |
 
@@ -80,7 +80,7 @@ A few behaviors are specific to this engine and worth knowing before you transcr
 
 - **The engine detects the language itself.** Mistral refuses a language hint alongside the timestamp granularity that makes the response carry timed segments, and the plugin needs those segments for timecodes, so the granularity is sent and the hint is not. **Language** stays editable with that reason under it, because auto chapters fall back to the same field when a transcript carries no detected language, and whatever you had typed there is left alone for the engines that do read it.
 - **Container conversion.** `mp3`, `wav`, `m4a`, `flac`, and `ogg` are uploaded untouched. Any other container, including the **WebM** this plugin records by default, is decoded to **16 kHz mono WAV** first, which costs time and memory on a long recording. Recording in MP3 or M4A skips that step.
-- **Word-level timestamps.** Mistral lists them among this model's features and the endpoint takes the `word` granularity, so the switch is offered here just as it is on the Whisper API. Mistral publishes no response schema for that level, so if a run comes back without words, turn the switch off and report it.
+- **Segment-level timing only.** Mistral lists word-level timestamps among this model's features and the endpoint does accept `word`, but a request cannot name both levels at once, and the segment level is the one the transcript is assembled from. **Word-level timestamps** is therefore shown disabled here and the JSON file output holds segment times.
 - **No speech translation.** There is no translating operation on this endpoint, so **Translate speech to English** is disabled. Use the [translation task](../llm-post-processing.md) of LLM post-processing on the finished transcript instead.
 - **Term biasing is capped at 100 entries.** The endpoint takes no spaces inside a term, so a multi-word entry is joined with underscores the way Mistral's own examples write them (`affordable_health_care`). Terms beyond the cap are reported in a notice rather than dropped silently.
 - **Request timeout.** Each request honors the **Request timeout** setting (default 10 minutes, range 1-60). A three-hour recording is one request, so raise it if a long job is aborted.
@@ -124,7 +124,7 @@ If a transcript appears with clickable timecodes, and with speaker labels when d
 | `429` / rate-limit error                            | You hit the free-mode rate limits. Wait and retry, or raise your limits in the Mistral console.                                                                                              |
 | `404` / model not found                             | The model id is unknown to your account. Pick `voxtral-mini-latest` or another id from the [Mistral audio guide](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription). |
 | A language code has no effect on the transcript     | Expected on this engine, which detects the spoken language itself. Pick another engine if you need to force a language code.                                                                 |
-| **Word-level timestamps** returns no words          | Mistral lists the feature but publishes no schema for it. Turn the switch off and report it; segment times still work.                                                                       |
+| **Word-level timestamps** cannot be turned on       | Expected: the endpoint refuses a request naming both the segment and the word level, and segments are what the transcript needs.                                                             |
 | A WebM recording takes a long time before uploading | It is being decoded to WAV first, because the endpoint does not read that container. Record in MP3 or M4A to skip the decode.                                                                |
 | The file is refused as too large                    | The decode expands the recording in memory, and this device has a ceiling. Convert it to one of the accepted containers, or [split it](../splitting.md) into parts.                          |
 | Recording is refused as too long for one request    | Longer than the three hours one request carries. The length is measured once the recording is decoded, before anything is uploaded. [Split it](../splitting.md) into parts first.            |

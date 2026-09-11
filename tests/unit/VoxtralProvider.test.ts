@@ -1,7 +1,7 @@
 /**
  * Tests for the VoxtralProvider request: the segment granularity that is
- * unconditional because the response carries no segments without it, the word
- * granularity that joins it on request, the language hint that is never
+ * unconditional because the response carries no segments without it and is
+ * never joined by a second the endpoint refuses, the language hint that is never
  * sent because Mistral refuses it alongside that granularity, the context_bias
  * encoding that has to survive the endpoint's no-whitespace rule, and the
  * decode branch for a container it does not take - which has to rename the
@@ -137,33 +137,27 @@ describe('VoxtralProvider request fields', () => {
 		expect(fieldValues(requestBodyText(calls), 'model')).toEqual([MODEL]);
 	});
 
-	it.each([
-		{
-			name: 'the segment level alone when no per-word timing is asked for',
-			wordTimestamps: false,
-			expected: ['segment'],
-		},
-		{
-			name: 'the word level alongside it when the run asks for one',
-			wordTimestamps: true,
-			expected: ['segment', 'word'],
-		},
-	])('asks for $name', async ({ wordTimestamps, expected }) => {
-		// The segment level is unconditional, because without a granularity the
-		// response carries no segments at all and the transcript is assembled
-		// from them. The word level only annotates those segments, so it is
-		// added alongside rather than in place of it.
-		const calls = capture();
+	it.each([{ wordTimestamps: false }, { wordTimestamps: true }])(
+		'asks for the segment level alone, with per-word timing $wordTimestamps',
+		async ({ wordTimestamps }) => {
+			// The endpoint's enum takes `word`, but the two levels cannot both
+			// travel: a live run answered 422 with the form fields
+			// concatenated into the single value `segmentword`. The segment
+			// level is the one that stays, because the transcript is assembled
+			// from segments and a request without a granularity answers with
+			// none, so this field never grows whatever the switch stores.
+			const calls = capture();
 
-		await provider().transcribe(
-			payload(),
-			transcribeOptions({ wordTimestamps }),
-		);
+			await provider().transcribe(
+				payload(),
+				transcribeOptions({ wordTimestamps }),
+			);
 
-		expect(
-			fieldValues(requestBodyText(calls), 'timestamp_granularities'),
-		).toEqual(expected);
-	});
+			expect(
+				fieldValues(requestBodyText(calls), 'timestamp_granularities'),
+			).toEqual(['segment']);
+		},
+	);
 
 	it.each([
 		{ name: 'a code is configured', language: 'ru' },
