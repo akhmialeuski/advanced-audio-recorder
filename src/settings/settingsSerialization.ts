@@ -37,6 +37,7 @@ import {
 import {
 	DEFAULT_SETTINGS,
 	createPlatformScopedDefaults,
+	normalizeTrackProcessingMode,
 	type AudioRecorderSettings,
 	type PrimitiveSettingKey,
 	type AudioRecorderSettingsInput,
@@ -109,21 +110,29 @@ function normalizeTrackAudioSources(
 				channelMode: normalizeChannelMode(undefined),
 				gainDb: 0,
 				pan: 0,
+				processing: 'global',
 			});
 			continue;
 		}
 		if (value && typeof value === 'object' && 'deviceId' in value) {
 			const { deviceId, channelMode } = value;
-			const placement = value as { gainDb?: unknown; pan?: unknown };
+			// Read off a widened view rather than destructured: this entry is
+			// also the pre-placement shape, which carries none of these keys.
+			const extras = value as {
+				gainDb?: unknown;
+				pan?: unknown;
+				processing?: unknown;
+			};
 			sources.set(trackNumber, {
 				deviceId: typeof deviceId === 'string' ? deviceId : '',
 				channelMode: normalizeChannelMode(channelMode),
 				gainDb: clampNumber(
-					placement.gainDb,
+					extras.gainDb,
 					MIN_TRACK_GAIN_DB,
 					MAX_TRACK_GAIN_DB,
 				),
-				pan: clampNumber(placement.pan, -1, 1),
+				pan: clampNumber(extras.pan, -1, 1),
+				processing: normalizeTrackProcessingMode(extras.processing),
 			});
 		}
 	}
@@ -143,6 +152,7 @@ export function serializeTrackAudioSources(
 			channelMode: source.channelMode,
 			gainDb: source.gainDb ?? 0,
 			pan: source.pan ?? 0,
+			processing: source.processing ?? 'global',
 		};
 	}
 	return serialized;

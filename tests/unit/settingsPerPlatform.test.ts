@@ -49,6 +49,7 @@ describe('normalizePlatformScopedSettings', () => {
 					channelMode: 'source',
 					gainDb: 400,
 					pan: 'hard left',
+					processing: 'sideways',
 				},
 			},
 		});
@@ -59,14 +60,16 @@ describe('normalizePlatformScopedSettings', () => {
 			channelMode: 'source',
 			gainDb: 0,
 			pan: 0,
+			processing: 'global',
 		});
-		// A level that would multiply the track by a thousand, and a position
-		// that is not a number at all
+		// A level that would multiply the track by a thousand, a position that
+		// is not a number at all, and a processing profile nothing offers
 		expect(branch.trackAudioSources.get(2)).toEqual({
 			deviceId: 'dev',
 			channelMode: 'source',
 			gainDb: 24,
 			pan: 0,
+			processing: 'global',
 		});
 	});
 });
@@ -233,12 +236,14 @@ describe('serializeSettings platform separation', () => {
 				channelMode: 'source',
 				gainDb: 0,
 				pan: 0,
+				processing: 'global',
 			},
 			2: {
 				deviceId: 'desktop-dev-2-bare-id',
 				channelMode: 'source',
 				gainDb: 0,
 				pan: 0,
+				processing: 'global',
 			},
 		});
 		expect(serialized.perPlatform.mobile.trackAudioSources).toEqual({});

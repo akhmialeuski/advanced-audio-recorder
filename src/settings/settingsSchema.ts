@@ -73,6 +73,38 @@ export type { OutputMode } from '../types';
 export type { ConversionLinkAction } from '../types';
 
 /**
+ * Browser input processing applied to one track's capture, in the order the
+ * dropdown offers them. Stored in data.json, so a value is renamed only with
+ * a migration.
+ */
+export const TRACK_PROCESSING_MODES = ['global', 'voice', 'raw'] as const;
+
+/**
+ * How one track's capture is filtered by the browser.
+ *
+ * `global` follows the three session-wide toggles, which is what every track
+ * did before this existed. `voice` turns all three on, the profile a
+ * microphone in a room wants. `raw` turns all three off, the profile a
+ * loopback input, a line input or an already-processed headset wants: echo
+ * cancellation on a loopback input suppresses the far end of a call, because
+ * to the filter it looks like this machine's own speaker output coming back.
+ */
+export type TrackProcessingMode = (typeof TRACK_PROCESSING_MODES)[number];
+
+/**
+ * Coerces an untrusted value (a settings file loaded from disk, a hand edit)
+ * to a processing mode, falling back to the one that changes nothing.
+ * @param value - Candidate value
+ */
+export function normalizeTrackProcessingMode(
+	value: unknown,
+): TrackProcessingMode {
+	// Matched rather than asserted, so the narrowing comes from the list
+	// itself and no cast can outlive a mode being renamed.
+	return TRACK_PROCESSING_MODES.find((mode) => mode === value) ?? 'global';
+}
+
+/**
  * Track audio sources mapping (track number -> device ID).
  */
 export interface AudioSource {
@@ -101,6 +133,14 @@ export interface AudioSource {
 	 * track.
 	 */
 	pan?: number;
+	/**
+	 * Browser input processing for this track's capture. Bound to the track
+	 * for the reason its channel layout is: a loopback input needs none of
+	 * it and the microphone beside it needs all of it, and one session
+	 * carries both. Absent in every settings file written before the choice
+	 * existed, which reads as `global` and so as the previous behaviour.
+	 */
+	processing?: TrackProcessingMode;
 }
 
 /**
@@ -122,6 +162,7 @@ export type TrackAudioSourcesRecord = Record<
 			channelMode?: unknown;
 			gainDb?: unknown;
 			pan?: unknown;
+			processing?: unknown;
 	  }
 >;
 
@@ -651,6 +692,7 @@ export interface SerializedAudioSource {
 	channelMode: ChannelMode;
 	gainDb: number;
 	pan: number;
+	processing: TrackProcessingMode;
 }
 
 /**

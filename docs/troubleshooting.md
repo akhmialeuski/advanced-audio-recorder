@@ -107,6 +107,8 @@ The recording finishes but the file is silent, or **Test recording** plays back 
 5. With **Input level meter** enabled (**Settings > Audio processing & feedback**), watch the meter move when you speak - a flat meter means no signal is reaching the plugin.
 6. If a `Test recording failed:` message mentions a denied permission, grant access and restart Obsidian.
 
+If the recording holds your own voice but not the other participants of a call, nothing is broken: the plugin records input devices, and the remote side of a Zoom or Teams call goes to an output device the plugin never reads. Route that output back in as an input and record it on a second track. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
+
 See also: [Recording](recording.md), [Settings reference](settings-reference.md#audio-input).
 
 ### Voice only in one channel (hard-panned left or right)

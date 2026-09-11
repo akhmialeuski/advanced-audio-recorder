@@ -6,7 +6,10 @@
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioStreamError } from '../errors';
 import { delay } from '../utils/TimeUtils';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	TrackProcessingMode,
+} from '../settings/settingsSchema';
 import {
 	channelCountFor,
 	normalizeChannelMode,
@@ -32,6 +35,12 @@ export interface TrackAudioSource {
 	gainDb?: number;
 	/** Where this track sits in the mix, from -1 (left) to 1 (right). */
 	pan?: number;
+	/**
+	 * Browser input processing this track is captured with. Absent means the
+	 * session-wide toggles, which is what every track used before the choice
+	 * was made per track.
+	 */
+	processing?: TrackProcessingMode;
 }
 
 /**
@@ -112,6 +121,55 @@ export function deviceMaxChannels(
 }
 
 /**
+ * Name fragments that identify an input carrying this machine's own output,
+ * lowercased and matched as substrings.
+ *
+ * Windows publishes such an input as a driver feature (Stereo Mix) or through
+ * an installed virtual cable; macOS only ever through one; PulseAudio and
+ * PipeWire publish a monitor source for every output without anything being
+ * installed. Each fragment below is the distinctive part of a name one of
+ * those actually produces, kept long enough not to catch a real microphone:
+ * "monitor of " is the PulseAudio prefix, where the bare word "monitor" would
+ * also match a display's built-in input.
+ *
+ * The list is not, and cannot be, exhaustive. Windows translates these names,
+ * and a virtual cable can be renamed by whoever installed it, so this answers
+ * "worth pointing at" rather than "is a loopback". Nothing is decided from it:
+ * see {@link module:settings/sections/multiTrackSection}, where the user still
+ * picks the device and its processing.
+ */
+const LOOPBACK_LABEL_FRAGMENTS: readonly string[] = [
+	'stereo mix',
+	'what u hear',
+	'wave out mix',
+	'cable output',
+	'voicemeeter out',
+	'blackhole',
+	'soundflower',
+	'loopback audio',
+	'monitor of ',
+];
+
+/**
+ * Whether an enumerated input looks like it carries the system's own output.
+ *
+ * Answered from the label, which is the only thing the platforms agree on: a
+ * loopback input is an ordinary `audioinput` in every respect the device API
+ * reports, so nothing else about it distinguishes it from a microphone. An
+ * empty label is therefore a real answer of "unknown" rather than a missing
+ * one, and it is what every device reports until microphone permission has
+ * been granted once.
+ * @param label - The enumerated device's label, possibly empty
+ * @returns True when the name matches a known loopback input
+ */
+export function isLoopbackInputLabel(label: string): boolean {
+	const normalized = label.toLowerCase();
+	return LOOPBACK_LABEL_FRAGMENTS.some((fragment) =>
+		normalized.includes(fragment),
+	);
+}
+
+/**
  * Enumerates audio inputs once and derives every channel limit from that
  * exact device list. The explicit success flag lets consumers distinguish
  * an unplugged device from an enumeration failure.
@@ -184,6 +242,47 @@ export function getProcessingConstraints(
 		echoCancellation: settings.inputEchoCancellation,
 		autoGainControl: settings.inputAutoGainControl,
 	};
+}
+
+/** Every browser filter on: what a microphone in a room wants. */
+const VOICE_PROCESSING: AudioProcessingConstraints = {
+	noiseSuppression: true,
+	echoCancellation: true,
+	autoGainControl: true,
+};
+
+/** Every browser filter off: what a loopback or line input wants. */
+const RAW_PROCESSING: AudioProcessingConstraints = {
+	noiseSuppression: false,
+	echoCancellation: false,
+	autoGainControl: false,
+};
+
+/**
+ * The processing one track is captured with.
+ *
+ * A session can hold a microphone and a system-loopback input at once, and
+ * the two want opposite treatment: echo cancellation is what makes a room
+ * microphone usable, and it is also what suppresses the far end of a call on
+ * a loopback input, because to the filter that audio looks like this
+ * machine's own speaker output coming back in. One set of constraints for the
+ * whole session could only ever be right for one of them.
+ * @param mode - The track's own choice, absent for the session-wide toggles
+ * @param sessionWide - What those toggles say, from
+ *   {@link getProcessingConstraints}
+ * @returns The constraints this track's capture is opened with
+ */
+export function trackProcessingConstraints(
+	mode: TrackProcessingMode | undefined,
+	sessionWide: AudioProcessingConstraints,
+): AudioProcessingConstraints {
+	if (mode === 'voice') {
+		return VOICE_PROCESSING;
+	}
+	if (mode === 'raw') {
+		return RAW_PROCESSING;
+	}
+	return sessionWide;
 }
 
 /**
@@ -289,7 +388,11 @@ export async function getAudioStreams(
 	if (isMultiTrackSessionEnabled(settings)) {
 		const trackOrder = getOrderedTrackSources(settings);
 		const streamPromises = trackOrder.map((source) =>
-			getAudioStream(source.deviceId, settings.sampleRate, processing),
+			getAudioStream(
+				source.deviceId,
+				settings.sampleRate,
+				trackProcessingConstraints(source.processing, processing),
+			),
 		);
 		// Settle every request before failing: with Promise.all a single
 		// rejected track would abandon the microphones that already opened,
@@ -379,6 +482,7 @@ export function getOrderedTrackSources(
 				channelMode: normalizeChannelMode(source.channelMode),
 				gainDb: source.gainDb ?? 0,
 				pan: source.pan ?? 0,
+				processing: source.processing ?? 'global',
 			});
 		}
 	}

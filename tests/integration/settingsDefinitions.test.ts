@@ -785,6 +785,32 @@ describe('settings definitions', () => {
 			});
 		});
 
+		// The three global filters suit a microphone in a room and ruin a
+		// system-loopback input, and one session can hold both.
+		it('offers a processing profile per track and disables it without a device', () => {
+			settings.enableMultiTrack = true;
+			const control = rowOf(build(), MULTI, 'Track 1 processing').control;
+
+			expect(control?.key).toBe('track.1.processing');
+			expect(control?.options).toEqual({
+				global: 'Same as global settings',
+				voice: 'Voice (microphone in a room)',
+				raw: 'Raw (system audio or line input)',
+			});
+			expect(
+				typeof control?.disabled === 'function' && control.disabled(),
+			).toBe(true);
+
+			settings.trackAudioSources.set(1, {
+				deviceId: 'mic-1',
+				channelMode: 'source',
+			});
+			const assigned = rowOf(build(), MULTI, 'Track 1 processing').control
+				?.disabled;
+
+			expect(typeof assigned === 'function' && assigned()).toBe(false);
+		});
+
 		it('disables the channel layout of a track whose device has one channel', () => {
 			settings.enableMultiTrack = true;
 			settings.trackAudioSources.set(1, {

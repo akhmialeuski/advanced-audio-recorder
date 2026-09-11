@@ -712,6 +712,34 @@ describe('AudioRecorderSettingTab', () => {
 		it('reads an unconfigured track as empty', () => {
 			expect(tab.getControlValue('track.4.deviceId')).toBe('');
 		});
+
+		// The dropdown hands back a named value, and the branch that stores
+		// every other non-device field coerces with Number(), which would
+		// write NaN over the profile.
+		it('stores a processing profile as the name the dropdown gave', async () => {
+			await tab.setControlValue('track.1.deviceId', 'mic-1');
+
+			await tab.setControlValue('track.1.processing', 'raw');
+
+			expect(sourceOf(1)).toEqual({
+				deviceId: 'mic-1',
+				channelMode: 'source',
+				processing: 'raw',
+			});
+			expect(tab.getControlValue('track.1.processing')).toBe('raw');
+		});
+
+		it('stores a profile no dropdown offers as the one that changes nothing', async () => {
+			await tab.setControlValue('track.1.deviceId', 'mic-1');
+
+			await tab.setControlValue('track.1.processing', 'sideways');
+
+			expect(tab.getControlValue('track.1.processing')).toBe('global');
+		});
+
+		it('reads a track that never chose a profile as following the global toggles', () => {
+			expect(tab.getControlValue('track.4.processing')).toBe('global');
+		});
 	});
 
 	describe('Obsidian before 1.13 (imperative display path)', () => {
@@ -740,6 +768,27 @@ describe('AudioRecorderSettingTab', () => {
 			expect(textsOf(legacyTab.containerEl, 'option')).toContain(
 				'Desk microphone',
 			);
+		});
+
+		// The input that carries the far side of a call is the one a user has
+		// to find, and its own name rarely says what it does.
+		it('marks an input that carries the system output', async () => {
+			(
+				navigator.mediaDevices.enumerateDevices as jest.Mock
+			).mockResolvedValue([
+				mediaDevice('mix-1', 'Stereo Mix (Realtek(R) Audio)'),
+				mediaDevice('mic-1', 'Desk microphone'),
+			]);
+
+			legacyTab.display();
+			await tick();
+
+			const options = textsOf(legacyTab.containerEl, 'option');
+
+			expect(options).toContain(
+				'Stereo Mix (Realtek(R) Audio) (system audio)',
+			);
+			expect(options).toContain('Desk microphone');
 		});
 
 		it('drops an enumeration that lands after the tab was left', async () => {

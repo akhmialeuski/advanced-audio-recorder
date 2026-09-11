@@ -44,7 +44,10 @@ import {
 	type ProfileCatalogue,
 } from './settingsDefinitions';
 import { LegacySettingsRenderer } from './legacySettingsRenderer';
-import type { AudioRecorderSettings } from './settingsSchema';
+import {
+	normalizeTrackProcessingMode,
+	type AudioRecorderSettings,
+} from './settingsSchema';
 import {
 	getSupportedSampleRates,
 	buildMimeType,
@@ -61,6 +64,7 @@ import {
 	audioDeviceApi,
 	channelSelectionAvailable,
 	getAudioInputDeviceSnapshot,
+	isLoopbackInputLabel,
 	recordingEncodingFor,
 	type AudioInputDeviceSnapshot,
 } from '../recording/AudioStreamHandler';
@@ -125,6 +129,27 @@ const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
 	devices: [],
 	channelLimits: new Map(),
 };
+
+/** Suffix marking an input that carries this machine's own output. */
+const LOOPBACK_LABEL_SUFFIX = ' (system audio)';
+
+/**
+ * How one enumerated input is named in the device dropdowns.
+ *
+ * A device with no label has not been through a permission grant yet, and is
+ * named by the leading characters of its id so the rows stay distinguishable.
+ * A loopback input is marked, because it is the one a user recording a call
+ * has to find and its own name rarely says what it does.
+ * @param device - One enumerated input
+ * @returns The label shown in the input dropdowns
+ */
+function deviceOptionLabel(device: MediaDeviceInfo): string {
+	const named =
+		device.label || `Audio device ${device.deviceId.substring(0, 8)}`;
+	return isLoopbackInputLabel(device.label)
+		? `${named}${LOOPBACK_LABEL_SUFFIX}`
+		: named;
+}
 
 /**
  * Settings tab for the Audio Recorder plugin.
@@ -294,8 +319,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				inputs: Object.fromEntries(
 					this.deviceSnapshot.devices.map((device) => [
 						device.deviceId,
-						device.label ||
-							`Audio device ${device.deviceId.substring(0, 8)}`,
+						deviceOptionLabel(device),
 					]),
 				),
 				channelSelectable: (deviceId): boolean => {
@@ -406,6 +430,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 			if (track.field === 'channelMode') {
 				return source?.channelMode ?? CHANNEL_MODE_SOURCE;
+			}
+			if (track.field === 'processing') {
+				return source?.processing ?? 'global';
 			}
 			// A track placed nowhere in particular sits at the centre, at the
 			// level it was captured at.
@@ -622,9 +649,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 			sources.set(track, {
 				...current,
+				// Every remaining field but one holds a number; the two that
+				// hold a named value are coerced by their own normalizer, so
+				// a hand-edited or stale value cannot reach the capture.
 				...(field === 'channelMode'
 					? { channelMode: normalizeChannelMode(value) }
-					: { [field]: Number(value) }),
+					: field === 'processing'
+						? { processing: normalizeTrackProcessingMode(value) }
+						: { [field]: Number(value) }),
 			});
 			return;
 		}

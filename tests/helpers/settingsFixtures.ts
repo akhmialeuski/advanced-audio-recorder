@@ -46,6 +46,7 @@ export function fullyPopulatedSettings(): Omit<
 					channelMode: 'source' as const,
 					gainDb: 0,
 					pan: 0,
+					processing: 'voice' as const,
 				},
 			],
 			[
@@ -55,6 +56,7 @@ export function fullyPopulatedSettings(): Omit<
 					channelMode: 'mono-left' as const,
 					gainDb: 0,
 					pan: 0,
+					processing: 'raw' as const,
 				},
 			],
 		]),

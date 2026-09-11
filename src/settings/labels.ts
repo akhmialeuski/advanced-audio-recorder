@@ -18,6 +18,7 @@ import type { LlmTask } from '../transcription/llmPostProcess';
 import type {
 	ConversionLinkAction,
 	LlmProviderId,
+	TrackProcessingMode,
 	TranscriptionProviderId,
 } from './settingsSchema';
 
@@ -173,4 +174,15 @@ export const CHANNEL_MODE_LABELS: Record<ChannelMode, string> = {
 	'mono-mix': 'Mono (mix all channels)',
 	'mono-left': 'Mono (left channel)',
 	'mono-right': 'Mono (right channel)',
+};
+
+/**
+ * Input-processing labels, keyed by mode. Named for the source each profile
+ * suits rather than for the three filters it sets, because the choice a user
+ * makes is about what the track is plugged into.
+ */
+export const TRACK_PROCESSING_LABELS: Record<TrackProcessingMode, string> = {
+	global: 'Same as global settings',
+	voice: 'Voice (microphone in a room)',
+	raw: 'Raw (system audio or line input)',
 };

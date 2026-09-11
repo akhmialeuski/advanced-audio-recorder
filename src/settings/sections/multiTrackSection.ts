@@ -9,7 +9,7 @@ import {
 	isMultiTrackCaptureSupported,
 } from '../../platform/capabilities';
 import { MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB } from '../../constants';
-import { CHANNEL_MODE_LABELS } from '../labels';
+import { CHANNEL_MODE_LABELS, TRACK_PROCESSING_LABELS } from '../labels';
 import { multiTrackStatus, type PageStatus } from '../settingsAttention';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import { type DeviceOptions, TRACK_ROWS_CLASS } from './context';
@@ -81,6 +81,24 @@ export function multiTrackPage(
 								settings.trackAudioSources.get(track)
 									?.deviceId ?? '',
 							),
+					},
+				},
+				{
+					name: `Track ${String(track)} processing`,
+					aliases: [
+						'noise suppression',
+						'echo cancellation',
+						'automatic gain control',
+						'loopback',
+						'system audio',
+					],
+					desc: `Browser filtering applied to track ${String(track)} as it is captured. A system-loopback input wants Raw: echo cancellation treats the far end of a call as this machine's own output and suppresses it.`,
+					visible: offered,
+					control: {
+						type: 'dropdown',
+						key: trackControlKey(track, 'processing'),
+						options: TRACK_PROCESSING_LABELS,
+						disabled: unassigned,
 					},
 				},
 				{

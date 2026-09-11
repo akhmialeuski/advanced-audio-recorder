@@ -25,8 +25,10 @@ import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
 import {
 	audioDeviceApi,
+	isLoopbackInputLabel,
 	recordingEncodingFor,
 } from '../recording/AudioStreamHandler';
+import { isSystemAudioLoopbackAvailable } from '../recording/systemAudioSupport';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
@@ -104,6 +106,12 @@ export interface DiagnosticsAudioDevices {
 	enumerated: boolean;
 	/** The devices listed, empty when the list could not be read. */
 	devices: DiagnosticsAudioDevice[];
+	/**
+	 * Labels of the enumerated inputs that carry this machine's own output.
+	 * Named rather than counted, because a user reading this report is
+	 * looking for which input to pick for the far side of a call.
+	 */
+	loopbackInputs: string[];
 }
 
 /**
@@ -124,6 +132,12 @@ export interface DiagnosticsAudioCapabilities {
 	codecSupport: CodecSupportEntry[];
 	mediaRecorderAvailable: boolean;
 	getUserMediaAvailable: boolean;
+	/**
+	 * Whether this build could be granted the machine's own output as a
+	 * stream. False everywhere but Windows, and false on a Windows build
+	 * that exposes no way to register a display-media handler.
+	 */
+	systemAudioLoopbackAvailable: boolean;
 }
 
 /**
@@ -248,7 +262,7 @@ export class SystemDiagnostics {
 	static async collectAudioDevices(): Promise<DiagnosticsAudioDevices> {
 		const api = audioDeviceApi();
 		if (!api) {
-			return { enumerated: false, devices: [] };
+			return { enumerated: false, devices: [], loopbackInputs: [] };
 		}
 		try {
 			const devices = await api.enumerateDevices();
@@ -265,13 +279,20 @@ export class SystemDiagnostics {
 						groupId: d.groupId,
 						kind: d.kind,
 					})),
+				loopbackInputs: devices
+					.filter(
+						(d) =>
+							d.kind === 'audioinput' &&
+							isLoopbackInputLabel(d.label),
+					)
+					.map((d) => d.label),
 			};
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Audio devices could not be listed for the diagnostics report:`,
 				error,
 			);
-			return { enumerated: false, devices: [] };
+			return { enumerated: false, devices: [], loopbackInputs: [] };
 		}
 	}
 
@@ -326,6 +347,7 @@ export class SystemDiagnostics {
 			codecSupport: detectCodecSupport(),
 			mediaRecorderAvailable,
 			getUserMediaAvailable,
+			systemAudioLoopbackAvailable: isSystemAudioLoopbackAvailable(),
 		};
 	}
 

@@ -10,10 +10,12 @@ import {
 	getAudioStreams,
 	getAudioSourceName,
 	getOrderedTrackSources,
+	isLoopbackInputLabel,
 	isMultiTrackSessionEnabled,
 	missingCaptureIndexes,
 	recordingEncodingFor,
 	resolveCaptureDeviceId,
+	trackProcessingConstraints,
 	validateSelectedDevices,
 	watchStreamEndings,
 } from 'src/recording/AudioStreamHandler';
@@ -127,6 +129,7 @@ describe('AudioStreamHandler', () => {
 					channelMode: 'mono-left',
 					gainDb: -6,
 					pan: -1,
+					processing: 'global',
 				},
 			]);
 			expect(getUserMedia).toHaveBeenCalledWith(
@@ -159,6 +162,82 @@ describe('AudioStreamHandler', () => {
 			// old Promise.all the stream never reached the caller and stayed
 			// captured until app restart.
 			expect(opened.stop).toHaveBeenCalledTimes(1);
+		});
+
+		// A session holding a microphone and a system-loopback input wants
+		// opposite treatment on the two: echo cancellation is what makes the
+		// room microphone usable and what silences the far end of the call.
+		it('opens each track with the processing that track asked for', async () => {
+			getUserMedia.mockResolvedValue(fakeStream().stream);
+
+			await getAudioStreams({
+				...multiTrackSettings,
+				inputNoiseSuppression: true,
+				inputEchoCancellation: true,
+				inputAutoGainControl: true,
+				trackAudioSources: new Map([
+					[
+						1,
+						{
+							deviceId: 'device-1',
+							channelMode: 'source' as const,
+							processing: 'voice' as const,
+						},
+					],
+					[
+						2,
+						{
+							deviceId: 'device-2',
+							channelMode: 'source' as const,
+							processing: 'raw' as const,
+						},
+					],
+				]),
+			});
+
+			expect(getUserMedia).toHaveBeenNthCalledWith(1, {
+				audio: {
+					deviceId: { exact: 'device-1' },
+					sampleRate: multiTrackSettings.sampleRate,
+					noiseSuppression: true,
+					echoCancellation: true,
+					autoGainControl: true,
+				},
+			});
+			expect(getUserMedia).toHaveBeenNthCalledWith(2, {
+				audio: {
+					deviceId: { exact: 'device-2' },
+					sampleRate: multiTrackSettings.sampleRate,
+					noiseSuppression: false,
+					echoCancellation: false,
+					autoGainControl: false,
+				},
+			});
+		});
+
+		it('opens a track that asked for nothing with the session-wide toggles', async () => {
+			getUserMedia.mockResolvedValue(fakeStream().stream);
+
+			await getAudioStreams({
+				...multiTrackSettings,
+				maxTracks: 1,
+				inputNoiseSuppression: false,
+				inputEchoCancellation: true,
+				inputAutoGainControl: false,
+				trackAudioSources: new Map([
+					[1, { deviceId: 'device-1', channelMode: 'source' }],
+				]),
+			});
+
+			expect(getUserMedia).toHaveBeenCalledWith({
+				audio: {
+					deviceId: { exact: 'device-1' },
+					sampleRate: multiTrackSettings.sampleRate,
+					noiseSuppression: false,
+					echoCancellation: true,
+					autoGainControl: false,
+				},
+			});
 		});
 	});
 
@@ -718,6 +797,66 @@ describe('AudioStreamHandler', () => {
 				getAudioSourceName('abcdefghijklmnopqrstuvwxyz'),
 			).resolves.toBe('Deviceabcdefgh');
 		});
+	});
+});
+
+describe('trackProcessingConstraints', () => {
+	const sessionWide = {
+		noiseSuppression: true,
+		echoCancellation: false,
+		autoGainControl: true,
+	};
+
+	it.each([
+		{
+			mode: 'voice' as const,
+			expected: {
+				noiseSuppression: true,
+				echoCancellation: true,
+				autoGainControl: true,
+			},
+		},
+		{
+			mode: 'raw' as const,
+			expected: {
+				noiseSuppression: false,
+				echoCancellation: false,
+				autoGainControl: false,
+			},
+		},
+		{ mode: 'global' as const, expected: sessionWide },
+		{ mode: undefined, expected: sessionWide },
+	])('resolves $mode to its own set of filters', ({ mode, expected }) => {
+		expect(trackProcessingConstraints(mode, sessionWide)).toEqual(expected);
+	});
+});
+
+// A loopback input is an ordinary audioinput in everything the device API
+// reports, so its name is the only thing that sets it apart, and the name is
+// also the thing a user recording a call has to find in the list.
+describe('isLoopbackInputLabel', () => {
+	it.each([
+		{ label: 'Stereo Mix (Realtek(R) Audio)' },
+		{ label: 'CABLE Output (VB-Audio Virtual Cable)' },
+		{ label: 'VoiceMeeter Out B1 (VB-Audio VoiceMeeter VAIO)' },
+		{ label: 'BlackHole 2ch' },
+		{ label: 'Monitor of Built-in Audio Analog Stereo' },
+	])('recognises $label', ({ label }) => {
+		expect(isLoopbackInputLabel(label)).toBe(true);
+	});
+
+	it.each([
+		{ label: 'Microphone (Realtek(R) Audio)' },
+		{ label: 'Default - Headset Microphone' },
+		{ label: 'Studio Display Microphone' },
+	])('leaves $label alone', ({ label }) => {
+		expect(isLoopbackInputLabel(label)).toBe(false);
+	});
+
+	// Every device reports an empty label until microphone permission has
+	// been granted once, and the settings tab reads the list before that.
+	it('answers false for a device that has not been named yet', () => {
+		expect(isLoopbackInputLabel('')).toBe(false);
 	});
 });
 
