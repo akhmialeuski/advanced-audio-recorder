@@ -111,6 +111,20 @@ describe('resolveEnginePricing', () => {
 				usdPerMillionOutput: 2.5,
 			},
 		},
+		{
+			name: 'the Voxtral batch model, per audio minute',
+			engine: TRANSCRIPTION_PROVIDER_IDS.VOXTRAL,
+			model: 'voxtral-mini-latest',
+			expected: { kind: 'perMinute', usdPerMinute: 0.003 },
+		},
+		{
+			// The longest matching fragment wins, or the realtime model would
+			// be priced at the cheaper batch rate its name contains.
+			name: 'the Voxtral realtime model, not the batch rate its name contains',
+			engine: TRANSCRIPTION_PROVIDER_IDS.VOXTRAL,
+			model: 'voxtral-mini-transcribe-realtime-2602',
+			expected: { kind: 'perMinute', usdPerMinute: 0.006 },
+		},
 	])('prices $name', ({ engine, model, expected }) => {
 		expect(resolveEnginePricing(engine, model)).toEqual(expected);
 	});
@@ -225,6 +239,7 @@ describe('selectedEngineModel', () => {
 			whisperApiModel: 'whisper-1',
 			deepgramModel: 'nova-3',
 			geminiModel: 'gemini-2.5-flash',
+			voxtralModel: 'voxtral-mini-latest',
 		});
 		expect(
 			selectedEngineModel(
@@ -238,6 +253,9 @@ describe('selectedEngineModel', () => {
 		expect(
 			selectedEngineModel(settings, TRANSCRIPTION_PROVIDER_IDS.GEMINI),
 		).toBe('gemini-2.5-flash');
+		expect(
+			selectedEngineModel(settings, TRANSCRIPTION_PROVIDER_IDS.VOXTRAL),
+		).toBe('voxtral-mini-latest');
 		expect(
 			selectedEngineModel(
 				settings,

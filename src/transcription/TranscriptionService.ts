@@ -91,6 +91,7 @@ import { vendorMaxTokens } from '../providers/providers';
 import { jobVendorId } from './llm/vendors';
 import {
 	effectiveDiarize,
+	effectiveLanguage,
 	effectiveSpeechTranslation,
 	effectiveWordTimestamps,
 } from './providers/capabilities';
@@ -498,11 +499,13 @@ export class TranscriptionService {
 			new Notice(dictionaryNotice);
 		}
 		const transcribeOptions = {
-			language:
-				settings.transcriptionLanguage &&
-				settings.transcriptionLanguage !== 'auto'
-					? settings.transcriptionLanguage
-					: undefined,
+			// Gated like diarize below: an engine that detects the language
+			// itself never sees a hint it would have to refuse, and a code
+			// stored while another engine was selected stops travelling.
+			language: effectiveLanguage(
+				settings.transcriptionProvider,
+				settings.transcriptionLanguage,
+			),
 			diarize,
 			// Gated like diarize above: an engine that returns segment-level
 			// timing only never sees a request it would drop, and a stored "on"

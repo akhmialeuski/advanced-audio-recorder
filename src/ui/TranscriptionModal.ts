@@ -40,6 +40,7 @@ import {
 	effectiveTranscriptDestination,
 	formatUsd,
 	isProviderAvailableOnPlatform,
+	languageNote,
 	providerSupportsDiarization,
 	wordTimestampsNote,
 	wordTimestampsSelectable,
@@ -347,7 +348,11 @@ export class TranscriptionModal extends PluginModal {
 		});
 		addText(ctx, {
 			name: 'Language',
-			desc: 'ISO code (e.g. en, ru, es) or "auto" to detect.',
+			// The same sentence the settings tab shows, so one engine cannot be
+			// described two ways: on an engine that detects the language itself
+			// it says the request drops the code and that auto chapters still
+			// read it, which is also why the row is not disabled there.
+			desc: languageNote(s.transcriptionProvider),
 			get: () => s.transcriptionLanguage,
 			set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
 		});

@@ -6,8 +6,25 @@
  * @module tests/helpers/llmDoubles
  */
 
-import type { LlmCompletion } from 'src/transcription/llm/LlmProvider';
+import { LLM_PROVIDER_IDS } from 'src/constants';
+import type {
+	LlmCompletion,
+	LlmVendorIdentity,
+} from 'src/transcription/llm/LlmProvider';
 import type { LlmUsage } from 'src/transcription/llm/llmResponse';
+
+/**
+ * The identity a test gives the OpenAI-compatible client when it builds one
+ * directly.
+ *
+ * Two vendors share that client, so it is told which one it answers as, and a
+ * test about the wire format rather than about the vendor says OpenAI here
+ * instead of repeating the pair.
+ */
+export const OPENAI_IDENTITY: LlmVendorIdentity = {
+	id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+	label: 'OpenAI',
+};
 
 /**
  * A completion carrying text alone, as a vendor that reports no usage sends

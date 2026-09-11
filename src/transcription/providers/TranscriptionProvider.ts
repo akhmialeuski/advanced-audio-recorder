@@ -163,6 +163,16 @@ export interface ProviderCapabilities {
 	 * no such operation must not be asked for one.
 	 */
 	supportsSpeechTranslation: boolean;
+	/**
+	 * Whether the engine reads the configured language hint. Every engine did
+	 * until Voxtral, whose `timestamp_granularities` is documented as
+	 * incompatible with `language` - and since the granularity is what makes the
+	 * response carry segments at all, it is the hint that has to go. Gates the
+	 * language row the way {@link supportsDiarization} gates the diarization
+	 * toggle: a value that cannot reach the request is never sent, and the row
+	 * says so rather than looking as though it applied.
+	 */
+	readsLanguageHint: boolean;
 }
 
 /** A provider that transcribes a single audio payload. */

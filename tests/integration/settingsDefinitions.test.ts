@@ -624,6 +624,22 @@ describe('settings definitions', () => {
 			);
 		});
 
+		it('keeps the language row editable on an engine that ignores it', () => {
+			// Unlike the diarization and word-timestamp rows below, this field
+			// has a reader no engine gates: auto chapters fall back to it when
+			// a transcript carries no detected language. Disabling the row on
+			// the engine that does not send it left that fallback with no way
+			// to be set at all, so the note carries the distinction instead.
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider = TRANSCRIPTION_PROVIDER_IDS.VOXTRAL;
+			const row = rowOf(build(), TRANSCRIPTION, 'Language');
+
+			expect(isVisible('Language')).toBe(true);
+			expect(disabledOf(row.control)).toBe(false);
+			expect(row.desc).toMatch(/does not reach its request/);
+			expect(row.desc).toMatch(/Auto chapters still read it/);
+		});
+
 		it('keeps diarization visible but disabled on an engine without it', () => {
 			settings.transcriptionEnabled = true;
 			settings.transcriptionProvider =
@@ -1097,6 +1113,8 @@ describe('settings definitions', () => {
 				'Deepgram',
 				'Google Gemini',
 				'Anthropic (Claude)',
+				'Mistral Voxtral',
+				'Mistral',
 				'Local whisper.cpp (desktop)',
 			]);
 			// A provider that both transcribes and answers prompts keeps one
@@ -1107,6 +1125,22 @@ describe('settings definitions', () => {
 			expect(pageEntryNames('Google Gemini')).toEqual([
 				'Base URL',
 				'Google Gemini API key',
+				'Model',
+				'Model catalogue',
+				'Max output tokens',
+			]);
+			// Two catalogues over one account, because the voxtral-* ids
+			// transcribe and the mistral-* ids write: each engine gets its own
+			// page, and both pages carry the same endpoint and key.
+			expect(pageEntryNames('Mistral Voxtral')).toEqual([
+				'Base URL',
+				'Mistral API key',
+				'Model',
+				'Model catalogue',
+			]);
+			expect(pageEntryNames('Mistral')).toEqual([
+				'Base URL',
+				'Mistral API key',
 				'Model',
 				'Model catalogue',
 				'Max output tokens',

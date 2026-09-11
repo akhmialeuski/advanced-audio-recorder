@@ -1,12 +1,13 @@
 /**
  * Routes the generated context of the advanced two-pass mode into the biasing
  * channel each transcription engine actually supports: a Whisper-style prompt
- * sentence for the Whisper API, local whisper.cpp, and Gemini (which folds it
- * into its instruction text), or a flat keyterm list for Deepgram. The support
- * check is separate from the routing so the service can skip the LLM context
- * generation entirely - and tell the user - when the selected engine or model
- * cannot carry any bias, instead of paying for agents whose output would be
- * dropped.
+ * sentence for an engine with one free-text slot, or a flat list of terms for
+ * one that takes them as discrete entries. Which engine reads which is the
+ * capability table's answer, not this module's, so an engine added there
+ * arrives here already routed. The support check is separate from the routing
+ * so the service can skip the LLM context generation entirely - and tell the
+ * user - when the selected engine or model cannot carry any bias, instead of
+ * paying for agents whose output would be dropped.
  * @module transcription/advanced/advancedBias
  */
 
@@ -29,9 +30,9 @@ import type { GeneratedContext } from './contextPipeline';
 
 /** The bias fields to add to the second pass's transcription options. */
 export interface AdvancedBiasPlan {
-	/** Prompt sentence for prompt-biased engines (Whisper, Gemini). */
+	/** Prompt sentence for engines with one free-text bias slot. */
 	biasPrompt?: string;
-	/** Keyterm list for keyword-biased engines (Deepgram). */
+	/** Flat term list for engines that bias by discrete entries. */
 	keyterms?: string[];
 }
 
@@ -46,8 +47,7 @@ import type { AdvancedBiasChannel } from '../providers/TranscriptionProvider';
  * The biasing channel an engine reads. The single source of truth shared by the
  * context pipeline - which only builds the representation the channel needs, so
  * a keyword-biased engine does not pay for a prompt sentence it would discard -
- * and the routing in {@link planAdvancedBias}. Deepgram biases by keyword list;
- * every other biasing engine reads a prompt sentence.
+ * and the routing in {@link planAdvancedBias}.
  * @param engineId - Selected transcription engine id
  * @returns The channel the engine biases through
  */
@@ -106,11 +106,11 @@ export function advancedTwoPassWillRun(
 }
 
 /**
- * Maps the generated context onto the engine's biasing channel. Deepgram
- * biases by keyword list, so it gets the flat keyterms; every other biasing
- * engine gets the prompt sentence. A plan with neither field set (e.g. the
- * pipeline produced only a topic and the engine needs keyterms) means there
- * is nothing to bias and the second pass should be skipped.
+ * Maps the generated context onto the engine's biasing channel: an engine that
+ * takes discrete terms gets the flat keyterms, one that reads free text gets
+ * the prompt sentence. A plan with neither field set (e.g. the pipeline
+ * produced only a topic and the engine needs keyterms) means there is nothing
+ * to bias and the second pass should be skipped.
  * @param engineId - Selected transcription engine id
  * @param context - The generated context from the first pass
  * @returns The bias fields for the second pass
@@ -151,4 +151,38 @@ export function meetsLengthSafeguard(
 			? minRatio
 			: DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO;
 	return secondPassText.length >= baselineText.length * ratio;
+}
+
+/**
+ * The other half of the over-correction guard: whether the biased second pass
+ * came back in the language the first pass detected.
+ *
+ * The run asks for that language on the second pass's options, because the bias
+ * is dense with English tokens and a decode left to auto-detect can flip a
+ * Russian recording into English. Asking is not the same as getting it: an
+ * engine that does not read a language hint at all (Voxtral cannot be sent one
+ * alongside the timestamp granularity that makes its response carry segments)
+ * detects the language again, and one that does read it can still answer in
+ * another. A request field is therefore a preference, and only the answer is
+ * evidence, so the adoption decision reads the answer.
+ *
+ * Both passes run on the same engine, so the two codes are spelled the same
+ * way and compare directly; trimming and case are normalized so a cosmetic
+ * difference never costs a good pass. A pass whose language is unknown on
+ * either side is not judged here - there is nothing to compare - and is left to
+ * the length safeguard.
+ * @param baselineLanguage - Language the first pass reported, when it did
+ * @param secondPassLanguage - Language the second pass reported, when it did
+ * @returns True when the second pass may be adopted on this evidence
+ */
+export function keepsDetectedLanguage(
+	baselineLanguage: string | undefined,
+	secondPassLanguage: string | undefined,
+): boolean {
+	const baseline = baselineLanguage?.trim().toLowerCase();
+	const secondPass = secondPassLanguage?.trim().toLowerCase();
+	if (!baseline || !secondPass) {
+		return true;
+	}
+	return baseline === secondPass;
 }

@@ -20,6 +20,9 @@ import {
 	DEFAULT_GEMINI_BASE_URL,
 	DEFAULT_GEMINI_MODEL,
 	GEMINI_MODEL_SUGGESTIONS,
+	DEFAULT_MISTRAL_BASE_URL,
+	DEFAULT_VOXTRAL_MODEL,
+	VOXTRAL_MODEL_SUGGESTIONS,
 	DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -31,6 +34,8 @@ import {
 	DEFAULT_LLM_MAX_TOKENS,
 	LLM_OPENAI_MODEL_SUGGESTIONS,
 	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
+	DEFAULT_LLM_MISTRAL_MODEL,
+	LLM_MISTRAL_MODEL_SUGGESTIONS,
 	DEFAULT_LLM_CLEANUP_PROMPT,
 	DEFAULT_LLM_SUMMARY_PROMPT,
 	DEFAULT_LLM_CUSTOM_INSTRUCTION,
@@ -368,6 +373,17 @@ export interface AudioRecorderSettings {
 	geminiModel: string;
 	/** Known Gemini model ids offered in the picker (user-editable) */
 	geminiModels: string[];
+	/**
+	 * Mistral endpoint and key. One account serves two catalogues: the Voxtral
+	 * speech models and the Mistral chat models, so the pair is entered once
+	 * and read by both.
+	 */
+	mistralBaseUrl: string;
+	mistralApiKey: string;
+	/** Voxtral transcription model id (the selected one) */
+	voxtralModel: string;
+	/** Known Voxtral model ids offered in the picker (user-editable) */
+	voxtralModels: string[];
 	/** Path to the local whisper.cpp binary */
 	localWhisperBinaryPath: string;
 	/** Path to the local whisper model file */
@@ -439,6 +455,10 @@ export interface AudioRecorderSettings {
 	llmAnthropicModel: string;
 	/** Known Anthropic LLM model ids offered in the picker (user-editable) */
 	llmAnthropicModels: string[];
+	/** Selected Mistral LLM model id */
+	llmMistralModel: string;
+	/** Known Mistral LLM model ids offered in the picker (user-editable) */
+	llmMistralModels: string[];
 	/**
 	 * Longest answer each engine is allowed to write. A ceiling belongs to the
 	 * engine that has to honour it, not to one of the jobs that calls it, so
@@ -447,6 +467,7 @@ export interface AudioRecorderSettings {
 	llmOpenAiMaxTokens: number;
 	llmAnthropicMaxTokens: number;
 	geminiMaxTokens: number;
+	llmMistralMaxTokens: number;
 	/**
 	 * Generation of the shipped model catalogues the saved lists were last
 	 * topped up from. A list is the user's to edit, so new ids are merged in
@@ -744,6 +765,10 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	geminiApiKey: '',
 	geminiModel: DEFAULT_GEMINI_MODEL,
 	geminiModels: [...GEMINI_MODEL_SUGGESTIONS],
+	mistralBaseUrl: DEFAULT_MISTRAL_BASE_URL,
+	mistralApiKey: '',
+	voxtralModel: DEFAULT_VOXTRAL_MODEL,
+	voxtralModels: [...VOXTRAL_MODEL_SUGGESTIONS],
 	localWhisperBinaryPath: '',
 	localWhisperModelPath: '',
 	localWhisperExtraArgs: '',
@@ -778,9 +803,12 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmOpenAiModels: [...LLM_OPENAI_MODEL_SUGGESTIONS],
 	llmAnthropicModel: DEFAULT_LLM_ANTHROPIC_MODEL,
 	llmAnthropicModels: [...LLM_ANTHROPIC_MODEL_SUGGESTIONS],
+	llmMistralModel: DEFAULT_LLM_MISTRAL_MODEL,
+	llmMistralModels: [...LLM_MISTRAL_MODEL_SUGGESTIONS],
 	llmOpenAiMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 	llmAnthropicMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 	geminiMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	llmMistralMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 	modelSeedGeneration: MODEL_SEED_GENERATION,
 	inputNoiseSuppression: true,
 	inputEchoCancellation: true,

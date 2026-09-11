@@ -25,6 +25,7 @@ describe('LLM provider options (single source of truth)', () => {
 			'openai-compatible',
 			'anthropic',
 			'gemini',
+			'mistral',
 		]);
 		for (const option of LLM_PROVIDER_OPTIONS) {
 			expect(option.label.length).toBeGreaterThan(0);
@@ -38,10 +39,12 @@ describe('LLM provider options (single source of truth)', () => {
 			const settings = mergeSettings({
 				llmProvider: option.value as LlmProviderId,
 				// Each provider reads its own vendor key (OpenAI reuses the
-				// Whisper key, Gemini its transcription key, Anthropic its own).
+				// Whisper key, Gemini its transcription key, Anthropic and
+				// Mistral their own).
 				whisperApiKey: 'sk-test',
 				anthropicApiKey: 'ak-test',
 				geminiApiKey: 'gm-test',
+				mistralApiKey: 'ml-test',
 			});
 			expect(() => createLlmProvider(settings)).not.toThrow();
 		}

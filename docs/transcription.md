@@ -8,6 +8,7 @@
     - [Whisper API (OpenAI-compatible)](#whisper-api-openai-compatible)
     - [Deepgram](#deepgram)
     - [Google Gemini](#google-gemini)
+    - [Mistral Voxtral](#mistral-voxtral)
     - [Local whisper.cpp (desktop)](#local-whispercpp-desktop)
 - [Model picker and language](#model-picker-and-language)
 - [Speakers and diarization](#speakers-and-diarization)
@@ -37,7 +38,7 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 3. **Language** - `auto` to detect, or an ISO code.
 4. **Speaker diarization** - request speaker labels (only some engines).
 5. **Translate speech to English** - write the recording down in English whatever was spoken, using the engine's own translating operation (only some engines).
-6. **Word-level timestamps** - per-word timing in JSON output, selectable on Whisper API and decided by the engine on the other three.
+6. **Word-level timestamps** - per-word timing in JSON output, selectable on Whisper API and decided by the engine on the other four.
 7. **Request timeout** - the per-request network deadline (cloud engines only), replaced by **Local run timeout** on local whisper.cpp.
 8. **Transcript output** - destination, file format, and in-note formatting.
 9. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
@@ -63,13 +64,14 @@ The first two open the **Transcribe audio** dialog, where you can override the e
 
 ## Engines
 
-Choose the **Transcription engine** from the dropdown. Four engines are available:
+Choose the **Transcription engine** from the dropdown. Five engines are available:
 
 | Engine                              | Type                        | Size limit per request | Diarization | Network  |
 | ----------------------------------- | --------------------------- | ---------------------- | ----------- | -------- |
 | **Whisper API (OpenAI-compatible)** | Cloud (OpenAI, Groq, …)     | 25 MB (hard)           | No          | Required |
 | **Deepgram**                        | Cloud (pre-recorded API)    | 2 GB                   | Yes         | Required |
 | **Google Gemini**                   | Cloud (multimodal)          | 2 GB                   | Yes         | Required |
+| **Mistral Voxtral**                 | Cloud (batch transcription) | 1 GB                   | Yes         | Required |
 | **Local whisper.cpp (desktop)**     | Local binary, fully offline | None (local)           | No          | None     |
 
 Audio preparation (decoding and chunking, when a provider needs it) happens **in memory**. Whenever a provider accepts the original container and the file fits the limit, the file is sent untouched, which keeps memory low and avoids re-encoding. Nothing is written to disk during preparation, except that the local whisper.cpp engine hands each request to the binary as a temporary WAV and deletes it afterward.
@@ -148,6 +150,31 @@ Getting a key: [Gemini API key](use-cases/gemini-api-key.md). The catalogue link
 
 ![Google Gemini engine settings: base URL, API key, and the Gemini model picker](images/settings-transcription-gemini.png)
 _Figure: the Google Gemini engine fields with the Flash and Pro models in the picker._
+
+### Mistral Voxtral
+
+Mistral's batch transcription endpoint, running the Voxtral Mini Transcribe models. One Mistral account serves both this engine and the [Mistral chat models](llm-post-processing.md) used for post-processing, so the endpoint and the key are entered once.
+
+Settings to fill:
+
+| Setting             | Description                                                                                      | Default                     |
+| ------------------- | ------------------------------------------------------------------------------------------------ | --------------------------- |
+| **Base URL**        | Mistral API base, shared with the Mistral chat engine.                                           | `https://api.mistral.ai/v1` |
+| **Mistral API key** | Your Mistral key. Stored in plugin data on this device.                                          | -                           |
+| **Model**           | Model id in use; the entry opens the saved ids, where it is picked (e.g. `voxtral-mini-latest`). | `voxtral-mini-latest`       |
+
+Behavior and limits:
+
+- **Up to three hours in one request**, so a whole meeting is transcribed in one piece and speaker numbering stays consistent from start to finish. Files are sent whole up to **1 GB**. A recording past the three-hour mark is refused before anything is uploaded, with a message pointing at the [splitter](splitting.md), whenever the plugin can measure its length: that is every recording it decodes, which includes the `webm` it records by default. An already-accepted container longer than three hours is measured only by the endpoint, which refuses it in Mistral's own words.
+- **Container conversion.** MP3, WAV, M4A, FLAC, and OGG are uploaded untouched. Any other container, including the `webm` this plugin records by default, is decoded to **16 kHz mono WAV** first, which costs time and memory on a long recording. Choosing MP3 or M4A as the [recording format](recording.md) avoids the decode entirely.
+- **Diarization supported.** Turn on **Speaker diarization** to request speaker labels, and whatever the endpoint names them they can be renamed like any other engine's.
+- **The engine detects the language itself.** Mistral refuses a language hint alongside the timestamp granularity that makes the response carry timed segments at all, so the granularity is sent and the hint is not. **Language** stays editable while this engine is selected, because auto chapters fall back to that same field when a transcript carries no detected language, and the note under the row says the transcription request ignores it.
+- **Segment-level timing only.** Mistral lists word-level timestamps among this model's features and the endpoint does accept `word`, but it has no way to return words and sentences together. Asking for both levels is refused outright, and asking for words alone returns the same list of segments with one word in each, which would leave the transcript a column of single words with no sentences, no usable timecode links and nothing for chapters to work from. **Word-level timestamps** is therefore shown disabled here and the JSON file output holds segment times.
+- **Biasing through a term list.** The dictionary is sent as `context_bias`, at most **100 terms** per request. A multi-word entry is joined with underscores the way Mistral's own examples write them, so `affordable health care` is sent as `affordable_health_care`. Terms past the hundredth are reported in a notice rather than dropped silently.
+- **A generous request deadline.** The whole recording travels in one request, and the endpoint needs far longer to transcribe three hours of it than the upload itself takes, so the deadline never falls below 20 minutes. **Request timeout** still caps it, so raise that setting above its 10-minute default before transcribing a recording of more than about an hour.
+- **No speech translation.** The endpoint has no translating operation, so **Translate speech to English** is disabled for this engine. Use the [translation task](llm-post-processing.md) of LLM post-processing on the finished transcript instead.
+
+Getting a key: [Mistral API key](use-cases/mistral-api-key.md). The catalogue link points at the [Mistral offline transcription guide](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription).
 
 ### Local whisper.cpp (desktop)
 
@@ -274,7 +301,7 @@ Deepgram's biasing depends on the selected **Deepgram model**, which is worth re
 
 **Advanced two-pass transcription (experimental)** is a sub-toggle of the **Advanced settings** master switch (**Settings > Advanced Audio Recorder > Transcription > Advanced settings**), sitting just below the dictionary profiles it reuses. It applies the method from *Whisper: Courtside Edition* (arXiv:2602.18966) inside the plugin: instead of one recognition pass, the recording is transcribed twice. Between the passes a team of LLM agents mines the first (draft) transcript for the meeting's domain context - the topic, proper names, domain jargon, and especially English technical terms and acronyms spoken inside another language - and assembles it into a compact hint that the second pass receives as a decoding bias. The second pass re-decodes the same audio leaning toward the right names and spellings while still checking against the acoustics; unlike an LLM edit of the text, it actually re-listens to the recording.
 
-The mode targets the words a single pass gets wrong most stubbornly in, for example, Russian technical meetings: Russian proper names (rare, inflected, easily invented), professional jargon, and English terms and acronyms that a single pass transliterates ("кубернетис", "си ай си ди") or spells out. The agents put the canonical spellings (`Kubernetes`, `CI/CD`) into the second pass's hint, and the second pass's language is always pinned to the language detected on the first pass, so an English-heavy hint can never flip a Russian recording into English.
+The mode targets the words a single pass gets wrong most stubbornly in, for example, Russian technical meetings: Russian proper names (rare, inflected, easily invented), professional jargon, and English terms and acronyms that a single pass transliterates ("кубернетис", "си ай си ди") or spells out. The agents put the canonical spellings (`Kubernetes`, `CI/CD`) into the second pass's hint, and the second pass asks for the language the first pass detected, so an English-heavy hint does not flip a Russian recording into English. Asking is not always enough: Mistral Voxtral reads no language hint at all, and any engine may detect afresh, so the language the second pass actually came back in is compared against the first pass's and a pass that drifted is discarded in favor of the baseline.
 
 **It is off by default and costs real money and time when on:** every file runs two engine passes (roughly 2x the engine cost and duration) plus four to six sequential LLM calls on the engine its own **Context agents engine** row names, which sits beside the two-pass toggle so this mode can run on a different service from post-processing, and because a keyword-biased engine such as Deepgram reads only a keyterm list it runs two fewer of them, skipping the topic and sentence agents it does not need. On a cheap LLM model the money is small, but the sequential calls add latency. Turn it on for the recordings where names and terminology matter, and leave the normal single pass for everything else. The regular LLM post-processing still runs afterwards, on top of whichever pass won. Because that choice is usually made per recording, the **Transcribe audio** dialog carries its own **Advanced two-pass transcription** toggle that overrides this saved setting for a single run: enable the pricier pass for one important meeting, or skip it for a routine file, without changing the default. The toggle defaults from your saved setting, and the length safeguard stays in the settings tab.
 
@@ -284,9 +311,9 @@ The advanced mode is the two-pass form of the same dictionary biasing, not a sep
 
 One sub-setting appears while the mode is on:
 
-- **Second-pass length safeguard** - the biased pass is kept only when its text is at least this fraction (default 0.8) of the first pass's. Over-correction - a biased decode dropping content - is the method's main failure mode, and a suspiciously short second pass is discarded in favor of the baseline.
+- **Second-pass length safeguard** - the biased pass is kept only when its text is at least this fraction (default 0.8) of the first pass's. Over-correction - a biased decode dropping content - is the method's main failure mode, and a suspiciously short second pass is discarded in favor of the baseline. The language check needs no setting of its own and always applies.
 
-The whole mode is best-effort by construction: a failed agent, a failed second pass, or a too-short result all keep the first pass's transcript, so it can never lose a completed (and paid) transcription. Diarization, speaker grouping, and `#t=` timecode links work on top of whichever transcript is kept.
+The whole mode is best-effort by construction: a failed agent, a failed second pass, a too-short result, and a pass that came back in another language all keep the first pass's transcript, so it can never lose a completed (and paid) transcription. Diarization, speaker grouping, and `#t=` timecode links work on top of whichever transcript is kept.
 
 ---
 
@@ -428,7 +455,7 @@ The action is offered on every recording, because whether anything is missing ca
 
 Cloud transcription is a paid API call, and nobody likes a surprise bill. With **Show cost estimates** on (the default, under **Settings > Advanced Audio Recorder > Transcription**), the **Transcribe audio** dialog makes the spending visible:
 
-- **Before the run**, the dialog shows an **Estimated cost** breakdown priced from the recording's duration. That duration is read from the container headers, which costs almost nothing; a file whose headers carry no duration, as a recording written live often does, is decoded instead, so the estimate appears either way. It lists one line per billed step of the run, assembled automatically from the features you have enabled: the transcription pass itself, a second transcription pass when the **Advanced two-pass** mode is on (so the transcription roughly doubles), the LLM **context agents** that run between those passes, the [LLM post-processing](llm-post-processing.md) pass, and the **auto chapters** generation, each shown only when it will actually run. The priced lines are summed into an estimated total, so the number reflects the whole run rather than one stage, and toggling a feature changes it. Deepgram and the Whisper API are priced per audio minute; Gemini is priced from its audio-token rate (about 32 tokens per second of audio); the LLM steps are priced from the transcript's token size and the selected model. Switching the engine, model, or an enabled feature in the dialog re-prices the estimate immediately.
+- **Before the run**, the dialog shows an **Estimated cost** breakdown priced from the recording's duration. That duration is read from the container headers, which costs almost nothing; a file whose headers carry no duration, as a recording written live often does, is decoded instead, so the estimate appears either way. It lists one line per billed step of the run, assembled automatically from the features you have enabled: the transcription pass itself, a second transcription pass when the **Advanced two-pass** mode is on (so the transcription roughly doubles), the LLM **context agents** that run between those passes, the [LLM post-processing](llm-post-processing.md) pass, and the **auto chapters** generation, each shown only when it will actually run. The priced lines are summed into an estimated total, so the number reflects the whole run rather than one stage, and toggling a feature changes it. Deepgram, the Whisper API, and Voxtral are priced per audio minute; Gemini is priced from its audio-token rate (about 32 tokens per second of audio); the LLM steps are priced from the transcript's token size and the selected model. Switching the engine, model, or an enabled feature in the dialog re-prices the estimate immediately.
 - **During a long multi-part run**, a live "Cost so far" line accumulates what the completed transcription parts actually billed.
 - **After the run**, a notice reports the transcription cost together with the running session total, and the dialog shows **"Spent this session"** - a per-session counter of everything transcribed since Obsidian started, kept per engine. The line names what the total is made of: runs that could not be priced at all, and steps whose figure is an estimate rather than a count the vendor reported.
 
@@ -483,10 +510,10 @@ All transcription settings live under **Settings > Advanced Audio Recorder > Tra
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | **Enable transcription**            | Master toggle that reveals the rest of the section.                                                     | Off                            |
 | **Transcribe after recording**      | Auto-transcribe each saved recording (first file only).                                                 | Off                            |
-| **Transcription engine**            | Whisper API / Deepgram / Google Gemini / Local whisper.cpp.                                             | Whisper API                    |
-| **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`).                                                    | `auto`                         |
-| **Speaker diarization**             | Request speaker labels (Deepgram and Gemini only).                                                      | Off                            |
-| **Word-level timestamps**           | Per-word timing in JSON file output. Selectable on Whisper API; the other engines decide it themselves. | Off                            |
+| **Transcription engine**            | Whisper API / Deepgram / Google Gemini / Mistral Voxtral / Local whisper.cpp.                           | Whisper API                    |
+| **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`). Ignored by Voxtral, which detects it itself.       | `auto`                         |
+| **Speaker diarization**             | Request speaker labels (Deepgram, Gemini, and Voxtral only).                                            | Off                            |
+| **Word-level timestamps**           | Per-word timing in JSON file output. Selectable on Whisper API, the one engine that reads the request.  | Off                            |
 | **Request timeout**                 | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.                    | 10                             |
 | **Local run timeout**               | Minutes before the local whisper.cpp process is stopped (that engine only). Range 1-720.                | 120                            |
 | **Advanced settings**               | Master switch revealing the dictionary and the two-pass mode; off keeps one plain pass with no biasing. | Off                            |
@@ -520,7 +547,7 @@ Per-engine fields (base URL, key, model picker, upload chunk size) are documente
 
 - **"Transcribe audio" is missing from the menu** - enable **Enable transcription** in settings first.
 - **The Transcribe audio palette command does nothing** - it runs only when the active file is an audio file and transcription is enabled. Open the audio file (or its note) and try again.
-- **Speaker labels never appear** - only Deepgram and Gemini diarize; the toggle is disabled for Whisper API and local whisper.cpp. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
+- **Speaker labels never appear** - only Deepgram, Gemini, and Mistral Voxtral diarize, so the toggle is disabled for Whisper API and local whisper.cpp. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
 - **Speaker numbers change partway through a Gemini transcript** - a recording longer than 15 minutes is split into parts and Gemini renumbers speakers per part. Use **Deepgram** (sends the whole file) or split the recording for consistent speakers. A recording of exactly 15 minutes is not split and shows no such warning.
 - **"Could not insert the transcript into the note"** - the note was not open in editing mode. The transcript is saved as a sidecar file as a fallback; the notice shows its path. Open the note in editing mode to insert there.
 - **A request times out** - raise **Request timeout** (up to 60 minutes) for slow connections or very large uploads, or split the file first.

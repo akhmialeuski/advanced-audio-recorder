@@ -124,13 +124,14 @@ These ship with the plugin as the **Default** profile of each task, and are used
 
 ## Providers and models
 
-LLM post-processing supports three providers, chosen from its own **Post-processing engine** dropdown. That row settles only which service does the work; where the service is reached and which models it serves are configured once on its page under **Engines**, so a key that also transcribes is entered in one place. The other two LLM jobs, auto chapters and the advanced two-pass agents, each carry a **Chapters engine** and a **Context agents engine** row of their own beside their own switch, so a run can summarize with one service and title its chapters with another. Each provider has its own default model and its own user-editable model list.
+LLM post-processing supports four providers, chosen from its own **Post-processing engine** dropdown. That row settles only which service does the work; where the service is reached and which models it serves are configured once on its page under **Engines**, so a key that also transcribes is entered in one place. The other two LLM jobs, auto chapters and the advanced two-pass agents, each carry a **Chapters engine** and a **Context agents engine** row of their own beside their own switch, so a run can summarize with one service and title its chapters with another. Each provider has its own default model and its own user-editable model list.
 
-| Provider               | Dropdown label       | Default model      | Model catalogue                                                                      |
-| ---------------------- | -------------------- | ------------------ | ------------------------------------------------------------------------------------ |
-| **OpenAI**             | `OpenAI`             | `gpt-5.6-sol`      | [OpenAI models](https://developers.openai.com/api/docs/models)                       |
-| **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-4-8`  | [Anthropic models](https://platform.claude.com/docs/en/about-claude/models/overview) |
-| **Google Gemini**      | `Google Gemini`      | `gemini-3.5-flash` | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                        |
+| Provider               | Dropdown label       | Default model           | Model catalogue                                                                      |
+| ---------------------- | -------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
+| **OpenAI**             | `OpenAI`             | `gpt-5.6-sol`           | [OpenAI models](https://developers.openai.com/api/docs/models)                       |
+| **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-4-8`       | [Anthropic models](https://platform.claude.com/docs/en/about-claude/models/overview) |
+| **Google Gemini**      | `Google Gemini`      | `gemini-3.5-flash`      | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                        |
+| **Mistral**            | `Mistral`            | `mistral-medium-latest` | [Mistral models](https://docs.mistral.ai/getting-started/models/models_overview)     |
 
 The **Model** picker on the engine's page is the same control used for transcription models: pick one from the saved list, add an id with the button on the catalogue that entry opens, delete one with the button on its row, and follow the catalogue link in that page's description to the provider's model list. The list is seeded with common models for the provider:
 
@@ -139,8 +140,9 @@ The **Model** picker on the engine's page is the same control used for transcrip
 | **OpenAI**    | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`                                                                                 |
 | **Anthropic** | `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`, `claude-fable-5`                                                     |
 | **Gemini**    | `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite` |
+| **Mistral**   | `mistral-medium-latest`, `mistral-small-latest`, `mistral-large-latest`                                                        |
 
-The model list belongs to the provider rather than to the job, so each provider's page keeps its own picker contents and its own selected model, and your OpenAI choice is remembered separately from your Anthropic and Gemini choices whichever job calls them.
+The model list belongs to the provider rather than to the job, so each provider's page keeps its own picker contents and its own selected model, and your OpenAI choice is remembered separately from your Anthropic, Gemini, and Mistral choices whichever job calls them.
 
 ![LLM provider dropdown and model picker showing the per-provider catalogue link](images/settings-llm-provider-model.png)
 _Figure: the LLM provider dropdown and the per-provider model picker with its saved-model list and a catalogue link._
@@ -156,14 +158,16 @@ You only enter a vendor's API token **once**, because a key belongs to the accou
 | **OpenAI**             | **OpenAI API key**        | The [Whisper API](transcription.md#engines) engine and the OpenAI engine.    |
 | **Google Gemini**      | **Google Gemini API key** | The [Gemini](transcription.md#engines) engine, which transcribes and writes. |
 | **Anthropic (Claude)** | **Anthropic API key**     | The Anthropic engine, which only writes and so keeps a key of its own.       |
+| **Mistral**            | **Mistral API key**       | The [Voxtral](transcription.md#engines) engine and the Mistral engine.       |
 
-So a key set on the OpenAI page serves OpenAI-compatible transcription and OpenAI post-processing alike, and the same holds for Gemini. Anthropic is not offered as a transcription engine, so its page is where its key lives and nothing else reads it.
+So a key set on the OpenAI page serves OpenAI-compatible transcription and OpenAI post-processing alike, and the same holds for Gemini and for Mistral, whose account serves the Voxtral speech models and the Mistral chat models through two pages that share one endpoint and one key. Anthropic is not offered as a transcription engine, so its page is where its key lives and nothing else reads it.
 
 Need a key? Follow the matching use-case guide:
 
 - [Anthropic (Claude) API key](use-cases/anthropic-api-key.md)
 - [OpenAI / Whisper API key](use-cases/openai-whisper-api-key.md)
 - [Google Gemini API key](use-cases/gemini-api-key.md)
+- [Mistral API key](use-cases/mistral-api-key.md)
 
 > **API keys** are stored in the plugin's `data.json` on this device and are never written to diagnostics output. Avoid syncing `data.json` to untrusted locations.
 
@@ -178,6 +182,7 @@ The **Base URL** on a provider's page is the API endpoint its requests are sent 
 | **OpenAI**        | `https://api.openai.com/v1`                 |
 | **Anthropic**     | `https://api.anthropic.com/v1`              |
 | **Google Gemini** | `https://generativelanguage.googleapis.com` |
+| **Mistral**       | `https://api.mistral.ai/v1`                 |
 
 Leave it at the default unless you are routing requests through an OpenAI-compatible gateway or proxy.
 

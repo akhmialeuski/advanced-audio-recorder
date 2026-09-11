@@ -13,6 +13,7 @@ import {
 } from '../../constants';
 import {
 	isProviderAvailableOnPlatform,
+	languageNote,
 	providerSupportsDiarization,
 	providerSupportsSpeechTranslation,
 	wordTimestampsNote,
@@ -117,12 +118,23 @@ export function transcriptionGroup(
 			{
 				name: 'Language',
 				aliases: ['locale', 'spoken language'],
-				desc: 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it.',
+				// Read at build time rather than per render, which is enough:
+				// picking another engine reshapes the tree (see
+				// CONTROL_WRITE_EFFECTS), so this row is built again with it.
+				desc: languageNote(settings.transcriptionProvider),
 				visible: enabled,
 				control: {
 					type: 'text',
 					key: 'transcriptionLanguage',
 					placeholder: 'auto',
+					// Editable on every engine, unlike the two rows below.
+					// Those gate a setting only they read, so an engine that
+					// cannot honour one may disable it; this field is also the
+					// fallback auto chapters name the language to the model
+					// with, and no engine gates that reader. Disabling the row
+					// left that fallback with no way to be set at all, so the
+					// note above says the field is ignored for transcription
+					// instead of the control pretending it is unavailable.
 					validate: (value: string): string | undefined =>
 						LANGUAGE_CODE_PATTERN.test(value.trim())
 							? undefined

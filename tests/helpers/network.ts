@@ -13,6 +13,7 @@
  * @module tests/helpers/network
  */
 
+import { at } from './assertions';
 import {
 	__setRequestUrlHandler,
 	type MockRequestUrlParam,
@@ -68,4 +69,21 @@ export function queueResponses(
 		return { status: 200, headers: {}, text: '', ...next };
 	});
 	return sent;
+}
+
+/**
+ * The body of a captured request, decoded as text.
+ *
+ * Every multipart provider suite asserts against the parts it put on the wire,
+ * and each of them had its own copy of this line. The index defaults to the
+ * first request because a run under test usually makes exactly one.
+ * @param sent - The requests a capture recorded
+ * @param index - Which of them to read, when a run made several
+ * @returns The request body as UTF-8 text
+ */
+export function requestBodyText(
+	sent: MockRequestUrlParam[],
+	index = 0,
+): string {
+	return new TextDecoder().decode(at(sent, index).body as ArrayBuffer);
 }

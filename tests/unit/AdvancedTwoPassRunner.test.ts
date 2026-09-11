@@ -25,10 +25,14 @@ jest.mock('src/transcription/advanced/contextPipeline', () => ({
 
 const mockGenerateContext = jest.mocked(generateContext);
 
-/** A transcript of the given text as one segment, which is all the run compares. */
-function transcriptOf(text: string): Transcript {
+/**
+ * A transcript of the given text as one segment, in the language it was
+ * detected as. The run compares both: the length against the baseline, and the
+ * language the pass answered in.
+ */
+function transcriptOf(text: string, language = 'ru'): Transcript {
 	return {
-		language: 'ru',
+		language,
 		segments: [{ start: 0, end: 10, text }],
 		speakers: [],
 	};
@@ -152,6 +156,30 @@ describe('a second pass that is declined', () => {
 		expect(outcome).toEqual({ status: 'skipped', reason: 'too-short' });
 	});
 
+	it('declines when the second pass answered in another language', async () => {
+		// The bias is dense with English tokens, and a decode left to detect
+		// the language again can flip a Russian recording into English. The
+		// options carry the first pass's language, but an engine that reads no
+		// language hint discards that field, so the answer is what decides.
+		mockGenerateContext.mockResolvedValue(usableContext());
+		const { runner } = createSut({}, async (_o, passResults) => {
+			passResults.push({
+				offsetSeconds: 0,
+				transcript: transcriptOf(
+					'a second pass of comparable length here',
+					'en',
+				),
+			});
+		});
+
+		const outcome = await runner.run();
+
+		expect(outcome).toEqual({
+			status: 'skipped',
+			reason: 'language-drift',
+		});
+	});
+
 	it('declines when the scenario threw part way through', async () => {
 		mockGenerateContext.mockRejectedValue(new Error('agent exploded'));
 		const { runner } = createSut();
@@ -233,6 +261,10 @@ describe('the sentence a declined pass carries', () => {
 			fragment: 'second pass failed',
 		},
 		{ reason: 'too-short' as const, fragment: 'came back too short' },
+		{
+			reason: 'language-drift' as const,
+			fragment: 'came back in a different language',
+		},
 		{ reason: 'failed' as const, fragment: 'transcription failed' },
 	])(
 		'names $reason and says the transcript is kept',

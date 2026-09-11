@@ -12,10 +12,8 @@
 
 import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvider';
 import { at } from '../helpers/assertions';
-import type {
-	AudioPayload,
-	TranscribeOptions,
-} from 'src/transcription/providers/TranscriptionProvider';
+import { transcribeOptions } from '../helpers/providerFixtures';
+import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
 // Mock-only surface: these exist on the test double, not on Obsidian's
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
@@ -23,7 +21,7 @@ import {
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
-import { withRequestUrl } from '../helpers/network';
+import { requestBodyText, withRequestUrl } from '../helpers/network';
 import { WHISPER_PROMPT_TOKEN_LIMIT } from 'src/transcription/dictionaryBias';
 
 const BASE_URL = 'https://whisper.example';
@@ -51,23 +49,12 @@ function capture(): MockRequestUrlParam[] {
 	return calls;
 }
 
-function bodyText(calls: MockRequestUrlParam[]): string {
-	return new TextDecoder().decode(at(calls, 0).body as ArrayBuffer);
-}
-
 function provider(): WhisperApiProvider {
 	return new WhisperApiProvider({
 		baseUrl: BASE_URL,
 		apiKey: 'k',
 		model: 'whisper-1',
 	});
-}
-
-/** The options a run carries, with only what a test cares about differing. */
-function options(
-	overrides: Partial<TranscribeOptions> = {},
-): TranscribeOptions {
-	return { diarize: false, wordTimestamps: false, ...overrides };
 }
 
 // An empty key used to be sent anyway, as a bare `Bearer ` with nothing after
@@ -77,7 +64,7 @@ describe('the authorization header', () => {
 	it('carries the key when one is configured', async () => {
 		const calls = capture();
 
-		await provider().transcribe(payload(), options());
+		await provider().transcribe(payload(), transcribeOptions());
 
 		expect(at(calls, 0).headers?.Authorization).toBe('Bearer k');
 	});
@@ -89,7 +76,7 @@ describe('the authorization header', () => {
 			baseUrl: BASE_URL,
 			apiKey: '',
 			model: 'whisper-1',
-		}).transcribe(payload(), options());
+		}).transcribe(payload(), transcribeOptions());
 
 		expect(at(calls, 0).headers).not.toHaveProperty('Authorization');
 	});
@@ -105,7 +92,7 @@ describe('WhisperApiProvider request fields', () => {
 			dictionary: ['Kubernetes', 'gRPC'],
 		});
 
-		const decoded = bodyText(calls);
+		const decoded = requestBodyText(calls);
 		expect(decoded).toContain('name="prompt"');
 		expect(decoded).toContain('Kubernetes, gRPC');
 	});
@@ -118,7 +105,7 @@ describe('WhisperApiProvider request fields', () => {
 			wordTimestamps: false,
 		});
 
-		expect(bodyText(calls)).not.toContain('name="prompt"');
+		expect(requestBodyText(calls)).not.toContain('name="prompt"');
 	});
 
 	// The service bounds the dictionary and warns about what it dropped, but
@@ -129,12 +116,12 @@ describe('WhisperApiProvider request fields', () => {
 
 		await provider().transcribe(
 			payload(),
-			options({
+			transcribeOptions({
 				dictionary: ['x'.repeat(WHISPER_PROMPT_TOKEN_LIMIT + 1)],
 			}),
 		);
 
-		expect(bodyText(calls)).not.toContain('name="prompt"');
+		expect(requestBodyText(calls)).not.toContain('name="prompt"');
 	});
 
 	it('asks for word timings only when the run wants them', async () => {
@@ -144,18 +131,18 @@ describe('WhisperApiProvider request fields', () => {
 
 		await provider().transcribe(
 			payload(),
-			options({ wordTimestamps: true }),
+			transcribeOptions({ wordTimestamps: true }),
 		);
 
-		expect(bodyText(calls)).toContain('word');
+		expect(requestBodyText(calls)).toContain('word');
 	});
 
 	it('asks for segment timings alone by default', async () => {
 		const calls = capture();
 
-		await provider().transcribe(payload(), options());
+		await provider().transcribe(payload(), transcribeOptions());
 
-		expect(bodyText(calls)).not.toContain(
+		expect(requestBodyText(calls)).not.toContain(
 			'name="timestamp_granularities[]"\r\n\r\nword',
 		);
 	});
@@ -163,9 +150,12 @@ describe('WhisperApiProvider request fields', () => {
 	it('names the language when the run declares one', async () => {
 		const calls = capture();
 
-		await provider().transcribe(payload(), options({ language: 'ru' }));
+		await provider().transcribe(
+			payload(),
+			transcribeOptions({ language: 'ru' }),
+		);
 
-		expect(bodyText(calls)).toContain('ru');
+		expect(requestBodyText(calls)).toContain('ru');
 	});
 
 	it('lets the service detect the language when the run declares none', async () => {
@@ -173,9 +163,9 @@ describe('WhisperApiProvider request fields', () => {
 		// code would be rejected by the service.
 		const calls = capture();
 
-		await provider().transcribe(payload(), options());
+		await provider().transcribe(payload(), transcribeOptions());
 
-		expect(bodyText(calls)).not.toContain('name="language"');
+		expect(requestBodyText(calls)).not.toContain('name="language"');
 	});
 });
 
@@ -189,7 +179,7 @@ describe('asking the endpoint to translate the speech', () => {
 
 		await provider().transcribe(
 			payload(),
-			options({ translateToEnglish: true }),
+			transcribeOptions({ translateToEnglish: true }),
 		);
 
 		expect(at(calls, 0).url).toBe(`${BASE_URL}/audio/translations`);
@@ -198,7 +188,7 @@ describe('asking the endpoint to translate the speech', () => {
 	it('posts to transcriptions when the run asked for no translation', async () => {
 		const calls = capture();
 
-		await provider().transcribe(payload(), options());
+		await provider().transcribe(payload(), transcribeOptions());
 
 		expect(at(calls, 0).url).toBe(`${BASE_URL}/audio/transcriptions`);
 	});
@@ -208,18 +198,21 @@ describe('asking the endpoint to translate the speech', () => {
 
 		await provider().transcribe(
 			payload(),
-			options({ language: 'ru', translateToEnglish: true }),
+			transcribeOptions({ language: 'ru', translateToEnglish: true }),
 		);
 
-		expect(bodyText(calls)).not.toContain('name="language"');
+		expect(requestBodyText(calls)).not.toContain('name="language"');
 	});
 
 	it('keeps the language hint for a plain transcription', async () => {
 		const calls = capture();
 
-		await provider().transcribe(payload(), options({ language: 'ru' }));
+		await provider().transcribe(
+			payload(),
+			transcribeOptions({ language: 'ru' }),
+		);
 
-		expect(bodyText(calls)).toContain('name="language"');
+		expect(requestBodyText(calls)).toContain('name="language"');
 	});
 
 	// A timestamp granularity is not one of the translation operation's
@@ -231,18 +224,21 @@ describe('asking the endpoint to translate the speech', () => {
 
 		await provider().transcribe(
 			payload(),
-			options({ translateToEnglish: true, wordTimestamps: true }),
+			transcribeOptions({
+				translateToEnglish: true,
+				wordTimestamps: true,
+			}),
 		);
 
-		expect(bodyText(calls)).not.toContain('timestamp_granularities');
+		expect(requestBodyText(calls)).not.toContain('timestamp_granularities');
 	});
 
 	it('keeps asking for one on a plain transcription', async () => {
 		const calls = capture();
 
-		await provider().transcribe(payload(), options());
+		await provider().transcribe(payload(), transcribeOptions());
 
-		expect(bodyText(calls)).toContain('timestamp_granularities');
+		expect(requestBodyText(calls)).toContain('timestamp_granularities');
 	});
 
 	it('sends the same model, format, and bias fields either way', async () => {
@@ -250,10 +246,13 @@ describe('asking the endpoint to translate the speech', () => {
 
 		await provider().transcribe(
 			payload(),
-			options({ translateToEnglish: true, dictionary: ['Kubernetes'] }),
+			transcribeOptions({
+				translateToEnglish: true,
+				dictionary: ['Kubernetes'],
+			}),
 		);
 
-		const body = bodyText(calls);
+		const body = requestBodyText(calls);
 		expect(body).toContain('whisper-1');
 		expect(body).toContain('verbose_json');
 		expect(body).toContain('Kubernetes');

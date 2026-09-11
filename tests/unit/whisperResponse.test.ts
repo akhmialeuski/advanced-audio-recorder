@@ -57,6 +57,35 @@ describe('mapWhisperResponse', () => {
 			]);
 		});
 
+		it.each([
+			{
+				name: 'the OpenAI-compatible `speaker`',
+				segment: { start: 0, end: 1, text: 'hi', speaker: 'Speaker 1' },
+				expected: 'Speaker 1',
+			},
+			{
+				name: 'the Mistral Voxtral `speaker_id`',
+				segment: {
+					start: 0,
+					end: 1,
+					text: 'hi',
+					speaker_id: 'speaker_1',
+				},
+				expected: 'speaker_1',
+			},
+			{
+				name: 'neither spelling',
+				segment: { start: 0, end: 1, text: 'hi' },
+				expected: undefined,
+			},
+		])('reads the speaker label from $name', ({ segment, expected }) => {
+			// Both spellings name the same thing, so the one mapper reads both
+			// rather than a near-copy of it existing per endpoint.
+			const result = mapWhisperResponse({ segments: [segment] });
+
+			expect(at(result.segments, 0).speaker).toBe(expected);
+		});
+
 		it('ends a segment at its own start when no end is reported', () => {
 			const result = mapWhisperResponse({
 				segments: [{ start: 4, text: 'no end' }],
@@ -231,6 +260,40 @@ describe('mapWhisperResponse', () => {
 			).toEqual({
 				audioSeconds: 0,
 			});
+		});
+
+		it('reads the duration Mistral Voxtral reports inside usage', () => {
+			// The cost model needs one number, and the two endpoints spell it
+			// differently: OpenAI at the top level, Mistral inside `usage`.
+			expect(
+				mapWhisperResponse({
+					text: 'hi',
+					usage: { prompt_audio_seconds: 203, prompt_tokens: 7 },
+				}).usage,
+			).toEqual({ audioSeconds: 203 });
+		});
+
+		it('prefers the top-level duration when a body carries both', () => {
+			expect(
+				mapWhisperResponse({
+					text: 'hi',
+					duration: 12,
+					usage: { prompt_audio_seconds: 203 },
+				}).usage,
+			).toEqual({ audioSeconds: 12 });
+		});
+
+		it.each([
+			{ name: 'not an object', usage: 'nope' },
+			{ name: 'without the audio duration', usage: { prompt_tokens: 7 } },
+			{
+				name: 'reporting a negative duration',
+				usage: { prompt_audio_seconds: -1 },
+			},
+		])('reports no usage for a usage block $name', ({ usage }) => {
+			expect(
+				mapWhisperResponse({ text: 'hi', usage }),
+			).not.toHaveProperty('usage');
 		});
 	});
 });

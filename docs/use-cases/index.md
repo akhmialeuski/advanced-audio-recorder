@@ -23,13 +23,14 @@ This is the hub for the step-by-step guides. The reference docs describe _what_ 
 
 Cloud transcription engines (and the LLM post-processing providers) authenticate with an **API key** you generate on the provider's website. Each guide walks you through creating an account, generating the key, and pasting it into the correct field in **Settings > Advanced Audio Recorder > Transcription**. Keys are stored only in the plugin's `data.json` on this device and are never written to diagnostics.
 
-| Guide                                             | Provider                 | Use it for                                                |
-| ------------------------------------------------- | ------------------------ | --------------------------------------------------------- |
-| [OpenAI / Whisper API](openai-whisper-api-key.md) | OpenAI                   | The default **Whisper API** engine, paid per minute.      |
-| [Groq (free tier)](groq-whisper-setup.md)         | Groq (OpenAI-compatible) | The **Whisper API** engine via Groq's fast, free host.    |
-| [Deepgram](deepgram-api-key.md)                   | Deepgram                 | The **Deepgram** engine with diarization, free credit.    |
-| [Google Gemini](gemini-api-key.md)                | Google AI Studio         | The **Gemini** engine for long files and LLM reuse.       |
-| [Anthropic / Claude](anthropic-api-key.md)        | Anthropic                | **LLM post-processing** with Claude (clean up/summarize). |
+| Guide                                             | Provider                 | Use it for                                                  |
+| ------------------------------------------------- | ------------------------ | ----------------------------------------------------------- |
+| [OpenAI / Whisper API](openai-whisper-api-key.md) | OpenAI                   | The default **Whisper API** engine, paid per minute.        |
+| [Groq (free tier)](groq-whisper-setup.md)         | Groq (OpenAI-compatible) | The **Whisper API** engine via Groq's fast, free host.      |
+| [Deepgram](deepgram-api-key.md)                   | Deepgram                 | The **Deepgram** engine with diarization, free credit.      |
+| [Google Gemini](gemini-api-key.md)                | Google AI Studio         | The **Gemini** engine for long files and LLM reuse.         |
+| [Mistral](mistral-api-key.md)                     | Mistral                  | The **Mistral Voxtral** engine and Mistral post-processing. |
+| [Anthropic / Claude](anthropic-api-key.md)        | Anthropic                | **LLM post-processing** with Claude (clean up/summarize).   |
 
 Every API-key guide follows the same shape: generate the key on the provider's site, then paste it into the matching field in the Transcription settings.
 

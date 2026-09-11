@@ -13,6 +13,11 @@ import {
 	effectiveDiarize,
 	effectiveDictionary,
 	GEMINI_CAPABILITIES,
+	VOXTRAL_CAPABILITIES,
+	configuredLanguageHint,
+	effectiveLanguage,
+	languageNote,
+	providerReadsLanguageHint,
 	isProviderAvailableOnPlatform,
 	LOCAL_WHISPER_CAPABILITIES,
 	effectiveWordTimestamps,
@@ -38,17 +43,23 @@ describe('transcription provider capabilities', () => {
 		expect(LOCAL_WHISPER_CAPABILITIES.supportsDiarization).toBe(false);
 		expect(DEEPGRAM_CAPABILITIES.supportsDiarization).toBe(true);
 		expect(GEMINI_CAPABILITIES.supportsDiarization).toBe(true);
+		expect(VOXTRAL_CAPABILITIES.supportsDiarization).toBe(true);
 	});
 
 	// Three answers, one per behaviour actually observed: Whisper API adds the
 	// `word` granularity when asked, Deepgram's mapping keeps the words of
-	// every response whether asked or not, and the other two return segment
-	// offsets and nothing finer.
+	// every response whether asked or not, and the other three answer with
+	// segment offsets and nothing finer.
 	it('records what each engine does with a request for per-word timing', () => {
 		expect(WHISPER_API_CAPABILITIES.wordTimestamps).toBe('requested');
 		expect(DEEPGRAM_CAPABILITIES.wordTimestamps).toBe('always');
 		expect(GEMINI_CAPABILITIES.wordTimestamps).toBe('none');
 		expect(LOCAL_WHISPER_CAPABILITIES.wordTimestamps).toBe('none');
+		// Voxtral's enum takes `word`, but the engine has no shape carrying
+		// words and sentences at once: asking for both is refused, and asking
+		// for words alone answers in the same `segments` array with one segment
+		// per word, which would cost the transcript its sentences.
+		expect(VOXTRAL_CAPABILITIES.wordTimestamps).toBe('none');
 	});
 
 	it('caps only Gemini by per-request duration; others are unbounded', () => {
@@ -62,6 +73,13 @@ describe('transcription provider capabilities', () => {
 			Number.POSITIVE_INFINITY,
 		);
 		expect(LOCAL_WHISPER_CAPABILITIES.maxRequestSeconds).toBe(
+			Number.POSITIVE_INFINITY,
+		);
+		// Voxtral takes about three hours per request, but the cheap
+		// whole-file proof reads bytes rather than seconds, so a cap here
+		// would decode every recording past roughly ten megabytes instead of
+		// uploading the container it already accepts.
+		expect(VOXTRAL_CAPABILITIES.maxRequestSeconds).toBe(
 			Number.POSITIVE_INFINITY,
 		);
 	});
@@ -79,6 +97,9 @@ describe('transcription provider capabilities', () => {
 		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES.gemini).toBe(
 			GEMINI_CAPABILITIES,
 		);
+		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES.voxtral).toBe(
+			VOXTRAL_CAPABILITIES,
+		);
 	});
 
 	it('exposes diarization support through the UI helper', () => {
@@ -86,16 +107,19 @@ describe('transcription provider capabilities', () => {
 		expect(providerSupportsDiarization('local-whisper')).toBe(false);
 		expect(providerSupportsDiarization('deepgram')).toBe(true);
 		expect(providerSupportsDiarization('gemini')).toBe(true);
+		expect(providerSupportsDiarization('voxtral')).toBe(true);
 	});
 
 	it('advertises dictionary biasing for every current engine', () => {
-		// All four engines accept a bias hint (Deepgram keyterm/keywords,
-		// Whisper prompt, Gemini instruction text), so the field is offered
-		// for each; the gate exists for a future engine that cannot bias.
+		// Every engine accepts a bias hint (Deepgram keyterm/keywords, Voxtral
+		// context_bias, Whisper prompt, Gemini instruction text), so the field
+		// is offered for each; the gate exists for a future engine that cannot
+		// bias.
 		expect(WHISPER_API_CAPABILITIES.supportsDictionary).toBe(true);
 		expect(LOCAL_WHISPER_CAPABILITIES.supportsDictionary).toBe(true);
 		expect(DEEPGRAM_CAPABILITIES.supportsDictionary).toBe(true);
 		expect(GEMINI_CAPABILITIES.supportsDictionary).toBe(true);
+		expect(VOXTRAL_CAPABILITIES.supportsDictionary).toBe(true);
 	});
 
 	it('exposes dictionary support through the UI helper', () => {
@@ -103,6 +127,18 @@ describe('transcription provider capabilities', () => {
 		expect(providerSupportsDictionary('local-whisper')).toBe(true);
 		expect(providerSupportsDictionary('deepgram')).toBe(true);
 		expect(providerSupportsDictionary('gemini')).toBe(true);
+		expect(providerSupportsDictionary('voxtral')).toBe(true);
+	});
+
+	it('records the channel each engine carries a generated bias through', () => {
+		// The two-pass mode builds only the representation the channel needs
+		// and routes on this value alone, so an engine that takes discrete
+		// terms must say so or it is handed a prompt sentence it cannot use.
+		expect(DEEPGRAM_CAPABILITIES.biasChannel).toBe('keyterm');
+		expect(VOXTRAL_CAPABILITIES.biasChannel).toBe('keyterm');
+		expect(WHISPER_API_CAPABILITIES.biasChannel).toBe('prompt');
+		expect(LOCAL_WHISPER_CAPABILITIES.biasChannel).toBe('prompt');
+		expect(GEMINI_CAPABILITIES.biasChannel).toBe('prompt');
 	});
 });
 
@@ -175,6 +211,75 @@ describe('per-word timing gates', () => {
 		expect(providerWordTimestamps('deepgram')).toBe(
 			DEEPGRAM_CAPABILITIES.wordTimestamps,
 		);
+	});
+});
+
+describe('the language hint gate', () => {
+	it('records which engines read a language hint at all', () => {
+		// Voxtral is the one that does not: Mistral documents `language` as
+		// incompatible with `timestamp_granularities`, and the granularity is
+		// what makes the response carry segments, so the hint gives way.
+		expect(providerReadsLanguageHint('whisper-api')).toBe(true);
+		expect(providerReadsLanguageHint('deepgram')).toBe(true);
+		expect(providerReadsLanguageHint('gemini')).toBe(true);
+		expect(providerReadsLanguageHint('local-whisper')).toBe(true);
+		expect(providerReadsLanguageHint('voxtral')).toBe(false);
+	});
+
+	it.each([
+		{
+			name: 'passes a configured code to an engine that reads it',
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			language: 'ru',
+			expected: 'ru',
+		},
+		{
+			name: 'reads an empty field as no hint',
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			language: '   ',
+			expected: undefined,
+		},
+		{
+			name: 'reads "auto" as no hint',
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			language: 'auto',
+			expected: undefined,
+		},
+		{
+			// The field's validator carries the `i` flag, so "Auto" is accepted
+			// and stored exactly as typed; matching only the lowercase spelling
+			// sent it on to the endpoint as though it were an ISO code.
+			name: 'reads "Auto" as no hint, the way its validator accepts it',
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			language: 'Auto',
+			expected: undefined,
+		},
+		{
+			name: 'drops a code stored while another engine was selected',
+			id: TRANSCRIPTION_PROVIDER_IDS.VOXTRAL,
+			language: 'ru',
+			expected: undefined,
+		},
+	])('$name', ({ id, language, expected }) => {
+		expect(effectiveLanguage(id, language)).toBe(expected);
+	});
+
+	it('names the engine behaviour in the note the row shows', () => {
+		expect(languageNote('whisper-api')).toMatch(/ISO code/);
+		expect(languageNote('voxtral')).toMatch(/detects the spoken language/);
+	});
+
+	it('keeps the field readable for chapters on an engine that drops it', () => {
+		// The two gates answer the same typed value differently, which is why
+		// the row stays editable on such an engine: the request drops the code
+		// and auto chapters still name the language to the model with it. A
+		// note claiming the field is simply unread would be wrong about the
+		// second reader, and a disabled row would leave it unreachable.
+		expect(
+			effectiveLanguage(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL, 'ru'),
+		).toBeUndefined();
+		expect(configuredLanguageHint('ru')).toBe('ru');
+		expect(languageNote('voxtral')).toMatch(/Auto chapters still read it/);
 	});
 });
 

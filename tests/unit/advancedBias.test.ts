@@ -1,14 +1,16 @@
 /**
  * Tests for the advanced two-pass bias helpers: the length safeguard (which
  * must reject a ratio outside the settings range so a synced or hand-edited
- * value cannot weaken the over-correction guard) and the capability-gated
- * "will the second pass run" predicate the cost surfaces read.
+ * value cannot weaken the over-correction guard), the language guard that
+ * reads what a pass answered rather than what it was asked for, and the
+ * capability-gated "will the second pass run" predicate the cost surfaces read.
  * @module tests/unit/advancedBias.test
  */
 
 import {
 	advancedBiasUnsupportedReason,
 	advancedTwoPassWillRun,
+	keepsDetectedLanguage,
 	meetsLengthSafeguard,
 } from 'src/transcription/advanced/advancedBias';
 import {
@@ -50,6 +52,48 @@ describe('meetsLengthSafeguard', () => {
 			false,
 		);
 	});
+});
+
+describe('keepsDetectedLanguage', () => {
+	it('adopts a pass that answered in the language the first one detected', () => {
+		expect(keepsDetectedLanguage('ru', 'ru')).toBe(true);
+	});
+
+	it('declines a pass that answered in another language', () => {
+		// The request field asking for the first pass's language is a
+		// preference: an engine that reads no language hint discards it and
+		// detects again, so a flipped decode reaches this check unopposed.
+		expect(keepsDetectedLanguage('ru', 'en')).toBe(false);
+	});
+
+	it('ignores a cosmetic difference in how the same code is written', () => {
+		// Both passes run on one engine, so the codes are spelled the same
+		// way; normalizing anyway keeps a stray case or space from costing a
+		// good pass.
+		expect(keepsDetectedLanguage('RU', ' ru ')).toBe(true);
+	});
+
+	it.each([
+		{
+			name: 'the first pass reported none',
+			first: undefined,
+			second: 'en',
+		},
+		{
+			name: 'the second pass reported none',
+			first: 'ru',
+			second: undefined,
+		},
+		{ name: 'neither reported one', first: undefined, second: undefined },
+		{ name: 'a reported code is blank', first: 'ru', second: '  ' },
+	])(
+		'leaves the judgement to the length guard when $name',
+		({ first, second }) => {
+			// There is nothing to compare, and refusing on an absent value would
+			// disable the mode on every engine that does not report a language.
+			expect(keepsDetectedLanguage(first, second)).toBe(true);
+		},
+	);
 });
 
 describe('advancedTwoPassWillRun', () => {

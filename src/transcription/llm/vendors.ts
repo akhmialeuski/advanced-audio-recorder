@@ -36,6 +36,7 @@ import {
 	OpenAiCompatibleLlmProvider,
 	type LlmConfig,
 	type LlmProvider,
+	type LlmVendorIdentity,
 } from './LlmProvider';
 import { GEMINI_TEXT_TOKEN_RATES } from '../providers/geminiRates';
 
@@ -133,6 +134,17 @@ const ANTHROPIC_RATES: readonly [string, LlmRate][] = [
 ];
 
 /**
+ * Approximate Mistral chat rates, USD per million tokens. The tiers are priced
+ * independently of each other at this vendor, so Large is cheaper than Medium
+ * rather than the other way round.
+ */
+const MISTRAL_RATES: readonly [string, LlmRate][] = [
+	['mistral-medium', { input: 1.5, output: 7.5 }],
+	['mistral-small', { input: 0.15, output: 0.6 }],
+	['mistral-large', { input: 0.5, output: 1.5 }],
+];
+
+/**
  * The half of a vendor that belongs to the service rather than to this job: how
  * it is named, how it is reached, and the catalogue its models come from. Read
  * from the provider registry, so a service that also transcribes declares them
@@ -165,14 +177,38 @@ function fromRegistry(
 }
 
 /**
+ * How a vendor names itself to the client that calls it, taken from the halves
+ * the registry already declared so a vendor cannot be labelled one way in the
+ * dropdown and accounted another way in the cost model.
+ * @param vendor - The registry half of a vendor descriptor
+ * @returns Its identity
+ */
+function vendorIdentity(
+	vendor: Omit<LlmVendorDescriptor, 'rates' | 'create'>,
+): LlmVendorIdentity {
+	return { id: vendor.id, label: vendor.label };
+}
+
+/**
+ * The two vendors that share the OpenAI-compatible client, resolved once so
+ * each can hand that client the identity it answers as.
+ */
+const OPENAI_VENDOR = fromRegistry(ENGINE_IDS.OPENAI_LLM);
+const MISTRAL_VENDOR = fromRegistry(ENGINE_IDS.MISTRAL_LLM);
+
+/**
  * Every LLM vendor, keyed by its settings id. Insertion order is the order the
  * provider dropdown offers them.
  */
 export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: {
-		...fromRegistry(ENGINE_IDS.OPENAI_LLM),
+		...OPENAI_VENDOR,
 		rates: OPENAI_RATES,
-		create: (config) => new OpenAiCompatibleLlmProvider(config),
+		create: (config) =>
+			new OpenAiCompatibleLlmProvider(
+				config,
+				vendorIdentity(OPENAI_VENDOR),
+			),
 	},
 	[LLM_PROVIDER_IDS.ANTHROPIC]: {
 		...fromRegistry(ENGINE_IDS.ANTHROPIC),
@@ -183,6 +219,19 @@ export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 		...fromRegistry(ENGINE_IDS.GEMINI),
 		rates: GEMINI_TEXT_TOKEN_RATES,
 		create: (config) => new GeminiLlmProvider(config),
+	},
+	[LLM_PROVIDER_IDS.MISTRAL]: {
+		...MISTRAL_VENDOR,
+		rates: MISTRAL_RATES,
+		// The chat endpoint is OpenAI-compatible, so the same client speaks it;
+		// only the identity it answers as differs, and on that identity hang the
+		// rate table the call is priced with and the account the session counter
+		// charges it to.
+		create: (config) =>
+			new OpenAiCompatibleLlmProvider(
+				config,
+				vendorIdentity(MISTRAL_VENDOR),
+			),
 	},
 };
 

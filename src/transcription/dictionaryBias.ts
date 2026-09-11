@@ -16,6 +16,8 @@
  * @module transcription/dictionaryBias
  */
 
+import { dedupeTerms } from './dictionary';
+
 /**
  * Deepgram accepts at most this many keyterms in a single pre-recorded request
  * (Nova-3 keyterm prompting). Entries beyond it make the request invalid.
@@ -35,6 +37,16 @@ export const DEEPGRAM_KEYTERM_TOKEN_LIMIT = 500;
  * is a distinct provider limit, so it is named separately.
  */
 export const DEEPGRAM_KEYWORDS_LIMIT = 100;
+
+/**
+ * Voxtral accepts at most this many context_bias entries in a single request.
+ * Entries beyond it are dropped by the endpoint rather than merely ignored, so
+ * the list is trimmed before it is sent.
+ */
+export const VOXTRAL_CONTEXT_BIAS_LIMIT = 100;
+
+/** An encoded entry left with nothing but the separators it was made of. */
+const ONLY_UNDERSCORES = /^_+$/;
 
 /**
  * Whisper (the OpenAI API and local whisper.cpp) only considers the last ~224
@@ -65,6 +77,7 @@ export type DictionaryOmissionReason =
 	| 'keyterm-limit'
 	| 'keywords-limit'
 	| 'keyterm-token-budget'
+	| 'context-bias-limit'
 	| 'prompt-window';
 
 /** The terms actually applied for a run and any that were left out. */
@@ -221,6 +234,85 @@ export function termsWithinDeepgramKeyterm(terms: string[]): string[] {
 }
 
 /**
+ * One dictionary term as `context_bias` takes it, or '' when it carries nothing
+ * the endpoint could bias toward.
+ *
+ * Mistral's own examples write every multi-word entry with the words joined by
+ * underscores (`affordable_health_care`, `work_of_citizenship`), which is what
+ * happens here. Whether a space or a comma could survive inside one entry is
+ * unsettled: the guide calls the parameter "up to 100 words or phrases" and
+ * documents no pattern, and the generated client types it as a plain
+ * `Array<string>`, so the vendor's example formatting is the only evidence there
+ * is. Worth one request against a live key, because sending a phrase as the user
+ * typed it would bias better if the endpoint takes it.
+ *
+ * A term made only of separators encodes to underscores alone, which biases
+ * nothing and would spend one of the hundred entries; it alone is dropped.
+ * Trimming the underscores off every entry instead would rewrite one that
+ * carries them on purpose, turning a glossary's `__init__` into `init` while
+ * the notice still shows the user the spelling they typed.
+ * @param term - One parsed dictionary term
+ * @returns The entry to send, or '' when the term encodes to nothing usable
+ */
+function contextBiasEntry(term: string): string {
+	const encoded = term.trim().replace(/[,\s]+/g, '_');
+	return encoded && !ONLY_UNDERSCORES.test(encoded) ? encoded : '';
+}
+
+/**
+ * The dictionary terms Voxtral's `context_bias` can carry, in the form it takes
+ * them.
+ *
+ * De-duplication runs after the encoding because two terms that differed only
+ * in spacing become the same entry once joined.
+ *
+ * The encoding lives at the wire rather than in the plan, so the notice keeps
+ * showing the user the spelling they typed. Idempotent, so a provider can
+ * re-apply it defensively on an already bounded list without changing it.
+ * @param terms - Parsed dictionary terms, in priority order
+ * @returns The entries to send, within the request limit
+ */
+export function voxtralContextBiasTerms(terms: string[]): string[] {
+	const encoded = terms
+		.map(contextBiasEntry)
+		.filter((entry) => entry.length > 0);
+	return dedupeTerms(encoded).slice(0, VOXTRAL_CONTEXT_BIAS_LIMIT);
+}
+
+/**
+ * The leading dictionary terms whose entries fit Voxtral's `context_bias` cap,
+ * in the spelling the user typed.
+ *
+ * The cap counts entries on the wire, and the encoding is what decides how many
+ * entries a list of terms becomes: two terms differing only in spacing or
+ * punctuation collapse into one, and a term of separators alone becomes none.
+ * Counting raw terms instead reported a number the request never carried, so
+ * the plan measures what {@link voxtralContextBiasTerms} will actually send
+ * while still handing back the spellings the notice shows.
+ *
+ * A term that costs no new entry is kept rather than dropped: the entry already
+ * on the list biases recognition toward it too. Idempotent, so re-applying it
+ * to an already bounded list changes nothing.
+ * @param terms - Parsed dictionary terms, in priority order
+ * @returns The prefix of terms whose entries fit the request limit
+ */
+export function termsWithinVoxtralContextBias(terms: string[]): string[] {
+	const entries = new Set<string>();
+	const applied: string[] = [];
+	for (const term of terms) {
+		const entry = contextBiasEntry(term).toLowerCase();
+		if (entry && !entries.has(entry)) {
+			if (entries.size === VOXTRAL_CONTEXT_BIAS_LIMIT) {
+				break;
+			}
+			entries.add(entry);
+		}
+		applied.push(term);
+	}
+	return applied;
+}
+
+/**
  * A user-facing explanation of the dropped terms, or null when every term was
  * applied. Kept next to the plan so the message and the cap can never diverge.
  * @param plan - The biasing plan produced by {@link planDictionaryBias}
@@ -254,6 +346,11 @@ export function describeDictionaryOmission(
 				`Custom dictionary: only the first ${plan.applied.length} of ${total} ` +
 				`terms were sent (Deepgram limits keyterms to ${DEEPGRAM_KEYTERM_TOKEN_LIMIT} tokens in total). ` +
 				'Shorten or remove long multi-word terms.'
+			);
+		case 'context-bias-limit':
+			return (
+				`Custom dictionary: only the first ${plan.applied.length} of ${total} ` +
+				`terms were sent (Voxtral accepts at most ${VOXTRAL_CONTEXT_BIAS_LIMIT} context bias terms per request).`
 			);
 		case 'prompt-window':
 			return (

@@ -12,12 +12,16 @@ import {
 	DEEPGRAM_KEYTERM_LIMIT,
 	DEEPGRAM_KEYTERM_TOKEN_LIMIT,
 	DEEPGRAM_KEYWORDS_LIMIT,
+	VOXTRAL_CONTEXT_BIAS_LIMIT,
 	WHISPER_PROMPT_TOKEN_LIMIT,
 	deepgramBiasMechanism,
 	describeDictionaryOmission,
 	termsWithinWhisperPrompt,
 	tokenUpperBound,
+	termsWithinVoxtralContextBias,
+	voxtralContextBiasTerms,
 } from 'src/transcription/dictionaryBias';
+import type { DictionaryBiasPlan } from 'src/transcription/dictionaryBias';
 import { planDictionaryBias } from 'src/transcription/providers/engines';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
@@ -224,6 +228,61 @@ describe('planDictionaryBias', () => {
 		);
 	});
 
+	/**
+	 * The Voxtral plan for a term list.
+	 *
+	 * The model argument is the configured Deepgram model, because that is what
+	 * the service hands every engine: a Voxtral plan that read it would be
+	 * reading another engine's setting, and this one does not.
+	 * @param terms - The dictionary as the user typed it
+	 * @returns What the run would send and what it would leave out
+	 */
+	const voxtralPlan = (terms: string[]): DictionaryBiasPlan =>
+		planDictionaryBias(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL, 'nova-3', terms);
+
+	it('caps Voxtral at the context bias entry limit', () => {
+		const overBy = 12;
+		const input = shortTerms(VOXTRAL_CONTEXT_BIAS_LIMIT + overBy);
+
+		const plan = voxtralPlan(input);
+
+		expect(plan.applied).toHaveLength(VOXTRAL_CONTEXT_BIAS_LIMIT);
+		expect(plan.omitted).toHaveLength(overBy);
+		expect(plan.reason).toBe('context-bias-limit');
+	});
+
+	it('counts Voxtral entries on the wire, not terms in the list', () => {
+		// Two terms differing only in spacing become one context_bias entry,
+		// so a list one over the cap still fits. Counting raw terms reported
+		// an omission the request never made, and named a number of terms
+		// sent that was never the number of entries carried.
+		const collapsing = ['health care', 'health  care'];
+		const input = [
+			...collapsing,
+			...shortTerms(VOXTRAL_CONTEXT_BIAS_LIMIT - 1),
+		];
+		expect(input).toHaveLength(VOXTRAL_CONTEXT_BIAS_LIMIT + 1);
+
+		const plan = voxtralPlan(input);
+
+		expect(plan.applied).toEqual(input);
+		expect(plan.omitted).toEqual([]);
+		expect(plan.reason).toBeUndefined();
+		expect(voxtralContextBiasTerms(plan.applied)).toHaveLength(
+			VOXTRAL_CONTEXT_BIAS_LIMIT,
+		);
+	});
+
+	it('sends every Voxtral term that fits the entry limit', () => {
+		const input = shortTerms(VOXTRAL_CONTEXT_BIAS_LIMIT);
+
+		const plan = voxtralPlan(input);
+
+		expect(plan.applied).toEqual(input);
+		expect(plan.omitted).toEqual([]);
+		expect(plan.reason).toBeUndefined();
+	});
+
 	it('sends every term for Gemini (no hard cap)', () => {
 		const input = manyTerms(400);
 		const plan = planDictionaryBias(
@@ -233,6 +292,76 @@ describe('planDictionaryBias', () => {
 		);
 		expect(plan.applied).toEqual(input);
 		expect(plan.omitted).toEqual([]);
+	});
+});
+
+describe('voxtralContextBiasTerms', () => {
+	it('collapses two terms that differ only in spacing', () => {
+		// Joining the words is what makes them the same entry, so the
+		// de-duplication has to run after the encoding rather than before it.
+		expect(
+			voxtralContextBiasTerms(['health  care', 'health care', 'gRPC']),
+		).toEqual(['health_care', 'gRPC']);
+	});
+
+	it('drops a term that encodes to nothing', () => {
+		expect(voxtralContextBiasTerms(['  ', ','])).toEqual([]);
+	});
+
+	it('keeps the underscores a term carries on purpose', () => {
+		// Only an entry that is nothing but separators is dropped. Trimming
+		// them off every entry instead rewrote a glossary term that spells
+		// itself with them, while the notice still showed the user the
+		// spelling they typed.
+		expect(voxtralContextBiasTerms(['__init__', '_id'])).toEqual([
+			'__init__',
+			'_id',
+		]);
+	});
+
+	it('changes nothing on a list it has already encoded', () => {
+		// Applied once by the provider and possibly again on a list the
+		// service already bounded, so it has to be idempotent.
+		const once = voxtralContextBiasTerms(['affordable health care']);
+
+		expect(voxtralContextBiasTerms(once)).toEqual(once);
+	});
+});
+
+describe('termsWithinVoxtralContextBias', () => {
+	it('keeps a term that costs no new entry', () => {
+		// The entry already on the list biases recognition toward the second
+		// spelling too, so dropping it would report a loss that did not happen.
+		expect(
+			termsWithinVoxtralContextBias(['health care', 'health  care']),
+		).toEqual(['health care', 'health  care']);
+	});
+
+	it('keeps a term that encodes to no entry at all', () => {
+		// It spends none of the hundred, so the cap is not what left it out
+		// and the omission notice must not claim it was.
+		expect(termsWithinVoxtralContextBias([',', 'gRPC'])).toEqual([
+			',',
+			'gRPC',
+		]);
+	});
+
+	it('stops at the term that would need entry one over the cap', () => {
+		const input = shortTerms(VOXTRAL_CONTEXT_BIAS_LIMIT + 3);
+
+		expect(termsWithinVoxtralContextBias(input)).toEqual(
+			input.slice(0, VOXTRAL_CONTEXT_BIAS_LIMIT),
+		);
+	});
+
+	it('changes nothing on a list it has already bounded', () => {
+		// The service bounds the dictionary and the provider re-applies the
+		// wire encoding to it, so a second pass over the result has to agree.
+		const once = termsWithinVoxtralContextBias(
+			shortTerms(VOXTRAL_CONTEXT_BIAS_LIMIT + 3),
+		);
+
+		expect(termsWithinVoxtralContextBias(once)).toEqual(once);
 	});
 });
 
@@ -275,6 +404,20 @@ describe('describeDictionaryOmission', () => {
 		expect(message).toContain(String(DEEPGRAM_KEYWORDS_LIMIT));
 		expect(message).toContain(String(DEEPGRAM_KEYWORDS_LIMIT + 5));
 		expect(message).toContain('keywords');
+	});
+
+	it('names the Voxtral cap rather than a Deepgram one', () => {
+		// Reusing the keyterm reason would have shown a sentence naming
+		// Deepgram to a user whose run went to Mistral.
+		const message = describeDictionaryOmission({
+			applied: shortTerms(VOXTRAL_CONTEXT_BIAS_LIMIT),
+			omitted: shortTerms(5),
+			reason: 'context-bias-limit',
+		});
+		expect(message).toContain('Voxtral');
+		expect(message).not.toContain('Deepgram');
+		expect(message).toContain(String(VOXTRAL_CONTEXT_BIAS_LIMIT));
+		expect(message).toContain(String(VOXTRAL_CONTEXT_BIAS_LIMIT + 5));
 	});
 
 	it('names the keyterm token budget when long terms did not fit', () => {
