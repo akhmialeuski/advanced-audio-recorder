@@ -122,22 +122,30 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	// Voxtral biases through context_bias, a flat list of terms bounded by an
 	// entry count, which is the keyterm shape rather than the prompt one.
 	supportsDictionary: true,
-	// Declined because the request cannot carry the word level, not because the
-	// engine lacks it. The endpoint's enum takes `word` and Mistral lists
-	// word-level timestamps among this model's features, but the segment level
-	// has to travel too - it is what the transcript is assembled from, and a
-	// request without a granularity answers with no segments at all - and a live
-	// run proved the two cannot be sent together:
+	// Declined because the engine has no shape that carries words and sentences
+	// at once, not because it lacks per-word timing. Two live runs against
+	// api.mistral.ai settled it, and neither answer is in the published docs.
+	//
+	// Asking for both levels fails outright. The endpoint concatenates the two
+	// form fields of that name into one value and refuses it:
 	//
 	//     422 {"type":"enum","loc":["timestamp_granularities",0],
 	//          "msg":"Input should be 'segment' or 'word'","input":"segmentword"}
 	//
-	// The endpoint concatenated the two form fields into one value. The bytes
-	// leaving here were a well-formed multipart carrying two separate parts, and
-	// Mistral's own generated client serialises the array the same way, so this
-	// is the endpoint's own parsing and nothing a caller can spell around.
-	// Offering the switch would promise timing that costs the run its segments,
-	// so it stays off until the endpoint reads the array as an array.
+	// The bytes leaving here were a well-formed multipart carrying two separate
+	// parts, and Mistral's own generated client serialises the array the same
+	// way, so this is the endpoint's own parsing of repeated fields.
+	//
+	// Asking for `word` alone succeeds, and that is the answer that decides it:
+	// the words come back as `segments`, one segment per word, in the very array
+	// the sentences would have occupied. An 11-second sample answered with one
+	// segment of 100 characters at the segment level and 18 segments of one word
+	// each at the word level, every segment carrying the same
+	// {start, end, text, speaker_id, type} and no `words` field anywhere. So the
+	// word level replaces the segmentation rather than annotating it, and taking
+	// it would cost the transcript its sentences, its timecode links and its
+	// chapters. Both levels would need two requests, which on this engine means
+	// uploading a multi-hour recording twice.
 	wordTimestamps: 'none',
 	biasChannel: 'keyterm',
 	// There is no translations operation, so English-only output cannot be

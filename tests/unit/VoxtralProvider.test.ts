@@ -140,12 +140,13 @@ describe('VoxtralProvider request fields', () => {
 	it.each([{ wordTimestamps: false }, { wordTimestamps: true }])(
 		'asks for the segment level alone, with per-word timing $wordTimestamps',
 		async ({ wordTimestamps }) => {
-			// The endpoint's enum takes `word`, but the two levels cannot both
-			// travel: a live run answered 422 with the form fields
-			// concatenated into the single value `segmentword`. The segment
-			// level is the one that stays, because the transcript is assembled
-			// from segments and a request without a granularity answers with
-			// none, so this field never grows whatever the switch stores.
+			// The endpoint's enum takes `word`, but neither way of asking for
+			// it is usable: naming both levels is refused with a 422 that
+			// concatenated the fields into `segmentword`, and naming `word`
+			// alone answers in the same `segments` array with one segment per
+			// word, replacing the sentences the transcript is assembled from.
+			// So this field carries the segment level whatever the switch
+			// stores, and never grows a second value.
 			const calls = capture();
 
 			await provider().transcribe(

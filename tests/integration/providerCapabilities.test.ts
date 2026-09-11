@@ -55,9 +55,10 @@ describe('transcription provider capabilities', () => {
 		expect(DEEPGRAM_CAPABILITIES.wordTimestamps).toBe('always');
 		expect(GEMINI_CAPABILITIES.wordTimestamps).toBe('none');
 		expect(LOCAL_WHISPER_CAPABILITIES.wordTimestamps).toBe('none');
-		// Voxtral's enum takes `word`, but a request cannot carry it alongside
-		// the segment level the transcript needs: a live run came back 422 with
-		// the two form fields concatenated into the single value `segmentword`.
+		// Voxtral's enum takes `word`, but the engine has no shape carrying
+		// words and sentences at once: asking for both is refused, and asking
+		// for words alone answers in the same `segments` array with one segment
+		// per word, which would cost the transcript its sentences.
 		expect(VOXTRAL_CAPABILITIES.wordTimestamps).toBe('none');
 	});
 

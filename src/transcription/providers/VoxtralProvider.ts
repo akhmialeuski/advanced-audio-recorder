@@ -47,18 +47,17 @@ const VOXTRAL_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
  * response holds no segments at all, only the flat transcript text.
  *
  * The endpoint's own enum takes `word` as well, and Mistral lists word-level
- * timestamps among this model's features, but a request cannot ask for both
- * levels: sending the array as two form fields of this name - which is how
- * Mistral's own generated client serialises it - has the endpoint concatenate
- * them and refuse the result. A live run against api.mistral.ai answered:
+ * timestamps among this model's features, but neither way of asking for them is
+ * usable here. Naming both levels is refused, because the endpoint concatenates
+ * the two form fields of this name into one value:
  *
  *     422 {"type":"enum","loc":["timestamp_granularities",0],
  *          "msg":"Input should be 'segment' or 'word'","input":"segmentword"}
  *
- * The two values arrived as the single element `segmentword`, so the array
- * never reaches the server as an array. Since the segment level is the one the
- * transcript is assembled from, it is the level that stays, and the word level
- * is declined rather than traded for it (see {@link VOXTRAL_CAPABILITIES}).
+ * And naming `word` alone succeeds while answering in the same `segments`
+ * array, one segment per word, so it replaces the sentences instead of
+ * annotating them. The transcript is assembled from those sentences, so the
+ * segment level is the one that stays (see {@link VOXTRAL_CAPABILITIES}).
  */
 const SEGMENT_GRANULARITY = 'segment';
 
