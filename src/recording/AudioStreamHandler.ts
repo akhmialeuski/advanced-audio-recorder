@@ -13,6 +13,7 @@ import type {
 } from '../settings/settingsSchema';
 import { captureSystemAudioStream } from './systemAudioSupport';
 import {
+	CHANNEL_MODE_SOURCE,
 	channelCountFor,
 	normalizeChannelMode,
 	type ChannelMode,
@@ -174,6 +175,35 @@ export function isLoopbackInputLabel(label: string): boolean {
 	return LOOPBACK_LABEL_FRAGMENTS.some((fragment) =>
 		normalized.includes(fragment),
 	);
+}
+
+/** Suffix marking an input that carries this machine's own output. */
+const LOOPBACK_LABEL_SUFFIX = ' (system audio)';
+
+/** Characters of a device id that stand in for a name it has not got. */
+const UNNAMED_DEVICE_ID_CHARS = 8;
+
+/**
+ * How one enumerated input is named wherever a user picks one.
+ *
+ * A device with no label has not been through a permission grant yet, and is
+ * named by the leading characters of its id so the rows stay distinguishable.
+ * A loopback input is marked, because it is the one a user recording a call
+ * has to find and its own name rarely says what it does.
+ *
+ * Answered here rather than at each dropdown: the plugin offers the input
+ * list in two places, and a marker that appears in one of them is worse than
+ * none, since its absence then reads as "this one is not a loopback".
+ * @param device - One enumerated input
+ * @returns The label shown for that device
+ */
+export function deviceOptionLabel(device: MediaDeviceInfo): string {
+	const named =
+		device.label ||
+		`Audio device ${device.deviceId.substring(0, UNNAMED_DEVICE_ID_CHARS)}`;
+	return isLoopbackInputLabel(device.label)
+		? `${named}${LOOPBACK_LABEL_SUFFIX}`
+		: named;
 }
 
 /**
@@ -394,6 +424,20 @@ export async function getAudioStreams(
 	const processing = getProcessingConstraints(settings);
 	if (isMultiTrackSessionEnabled(settings)) {
 		const trackOrder = getOrderedTrackSources(settings);
+		const surplus = surplusSystemAudioTracks(trackOrder);
+		if (surplus.length > 0) {
+			// Refused before anything is opened rather than left to fail
+			// halfway: the two grants would ask the host at the same time and
+			// take each other's handler back down, so one of them is answered
+			// with a refusal and the session dies seconds in. Even when the
+			// timing spares them, the reward is the same audio twice, at twice
+			// its level against the microphone beside it.
+			throw new Error(
+				`Track(s) ${surplus.join(', ')} also record the system audio, ` +
+					'which one session can capture only once. Set them to an ' +
+					'input device, or lower the track count.',
+			);
+		}
 		const streamPromises = trackOrder.map((source) =>
 			source.kind === 'system-audio'
 				? captureSystemAudioStream()
@@ -491,10 +535,18 @@ export function getOrderedTrackSources(
 		// A device track is configured by naming a device; a system-audio
 		// track is configured by being one, and never carries an id.
 		if (source && (kind === 'system-audio' || source.deviceId)) {
+			const systemAudio = kind === 'system-audio';
 			sources.push({
 				trackNumber: i,
-				deviceId: kind === 'system-audio' ? '' : source.deviceId,
-				channelMode: normalizeChannelMode(source.channelMode),
+				deviceId: systemAudio ? '' : source.deviceId,
+				// A system-audio track shows no channel row, because it names
+				// no device whose layout there would be to describe. It must
+				// carry no layout either: a mono pick stored while the track
+				// was a device track would otherwise keep reducing a capture
+				// no visible setting still accounts for.
+				channelMode: systemAudio
+					? CHANNEL_MODE_SOURCE
+					: normalizeChannelMode(source.channelMode),
 				gainDb: source.gainDb ?? 0,
 				pan: source.pan ?? 0,
 				processing: source.processing ?? 'global',
@@ -503,6 +555,29 @@ export function getOrderedTrackSources(
 		}
 	}
 	return sources;
+}
+
+/**
+ * Track numbers asking for the system output beyond the first one that does.
+ *
+ * A session can capture the machine's own output once. The grant is answered
+ * by a handler installed on the Electron session, and that session holds one
+ * handler at a time, so two tracks asking together overwrite and then clear
+ * each other's. Reported as track numbers rather than as a count, because
+ * both readers say which tracks to go and change: the capture refuses the
+ * session with them named, and the settings entry carries a warning while any
+ * of them is configured.
+ * @param tracks - The session's tracks, as {@link getOrderedTrackSources}
+ *   ordered them
+ * @returns The surplus track numbers, empty when at most one asks
+ */
+export function surplusSystemAudioTracks(
+	tracks: readonly TrackAudioSource[],
+): number[] {
+	return tracks
+		.filter((source) => source.kind === 'system-audio')
+		.slice(1)
+		.map((source) => source.trackNumber);
 }
 
 /**

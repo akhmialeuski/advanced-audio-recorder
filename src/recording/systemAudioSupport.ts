@@ -15,6 +15,7 @@
  */
 
 import { AudioStreamError } from '../errors';
+import { hostProcess } from '../platform/hostProcess';
 
 /** One grant handed back to a display-media request. */
 interface DisplayMediaGrant {
@@ -22,18 +23,24 @@ interface DisplayMediaGrant {
 	audio?: string;
 }
 
+/** What Electron calls to ask who may capture what. */
+type DisplayMediaRequestHandler = (
+	request: unknown,
+	callback: (streams: DisplayMediaGrant) => void,
+) => void;
+
 /** The part of an Electron session this plugin reaches for. */
 interface DisplayMediaSession {
 	setDisplayMediaRequestHandler?: (
-		handler:
-			| ((
-					request: unknown,
-					callback: (streams: DisplayMediaGrant) => void,
-			  ) => void)
-			| null,
+		handler: DisplayMediaRequestHandler | null,
 		options?: { useSystemPicker: boolean },
 	) => void;
 }
+
+/** Installs, or takes back down, the handler for one display-media request. */
+type InstallDisplayMediaHandler = NonNullable<
+	DisplayMediaSession['setDisplayMediaRequestHandler']
+>;
 
 /** One screen or window Electron offers as a capture source. */
 interface DesktopCapturerSource {
@@ -62,6 +69,21 @@ const LOOPBACK_GRANT_PLATFORM = 'win32';
 
 /** The grant that asks Electron for the machine's own output. */
 const LOOPBACK_GRANT = 'loopback';
+
+/** Everything a display-media grant needs from the host, once all of it is found. */
+interface LoopbackHost {
+	/** The session the handler is installed on and taken back off. */
+	readonly session: DisplayMediaSession;
+	/** The handler slot, read off the session so it can be called on it. */
+	readonly install: InstallDisplayMediaHandler;
+	/** The source list the grant's video half is named from. */
+	readonly capturer: DesktopCapturer;
+}
+
+/** Why the system output cannot be granted here, in the user's words. */
+interface LoopbackRefusal {
+	readonly refusal: string;
+}
 
 /**
  * The Electron session this window runs in, or null where the host exposes
@@ -131,25 +153,57 @@ function desktopCapturer(): DesktopCapturer | null {
 }
 
 /**
+ * What a grant needs from this host, or the sentence saying why it cannot be
+ * had here.
+ *
+ * Three facts decide it, and both callers need the same three: the platform,
+ * because Electron offers the loopback grant on Windows alone; the handler,
+ * because Obsidian installs none of its own; and the source list, because a
+ * grant names a video source even when only audio is wanted, so a host that
+ * answers the handler and hides the capturer cannot complete a request.
+ * Answered once here so the report and the capture can never disagree about
+ * what this build can do, and so the refusal a user reads is the reason that
+ * actually stopped it.
+ * @returns The three halves of a grant, or the reason there are not three
+ */
+function loopbackHost(): LoopbackHost | LoopbackRefusal {
+	if (hostProcess()?.platform !== LOOPBACK_GRANT_PLATFORM) {
+		return {
+			refusal:
+				'Recording the system output directly is granted on Windows only. ' +
+				'Record a loopback input device instead, such as Stereo Mix, ' +
+				'VB-CABLE or a PipeWire monitor.',
+		};
+	}
+	const session = currentElectronSession();
+	const install = session?.setDisplayMediaRequestHandler;
+	if (!session || !install) {
+		return {
+			refusal:
+				'This Obsidian build exposes no way to capture the system output. ' +
+				'Record a loopback input device instead.',
+		};
+	}
+	const capturer = desktopCapturer();
+	if (!capturer) {
+		return {
+			refusal:
+				'This Obsidian build exposes no screen source list, which a system ' +
+				'audio grant needs. Record a loopback input device instead.',
+		};
+	}
+	return { session, install, capturer };
+}
+
+/**
  * Whether a system-audio stream can be granted on this build and platform.
  *
  * Reported in the System info snapshot so a user can say what their install
  * is capable of without being walked through a developer console.
- * @returns True when both the handler and the platform grant are available
+ * @returns True when a grant has everything it needs here
  */
 export function isSystemAudioLoopbackAvailable(): boolean {
-	if (process?.platform !== LOOPBACK_GRANT_PLATFORM) {
-		return false;
-	}
-	const session = currentElectronSession();
-	// Both halves are needed. A grant names a video source even when only
-	// audio is wanted, so a host that answers the handler but hides the
-	// capturer cannot complete a request, and reporting it as available
-	// would promise a capture that fails at the start of a recording.
-	return (
-		typeof session?.setDisplayMediaRequestHandler === 'function' &&
-		desktopCapturer() !== null
-	);
+	return !('refusal' in loopbackHost());
 }
 
 /**
@@ -163,7 +217,14 @@ export function isSystemAudioLoopbackAvailable(): boolean {
  * - `audio: true` does not oblige the user agent to return an audio track,
  *   so an answer carrying none is a case to report rather than to assume.
  * - Electron grants system audio through `audio: 'loopback'` on Windows
- *   alone, which is why {@link isSystemAudioLoopbackAvailable} gates this.
+ *   alone, which is why {@link loopbackHost} is asked first and its refusal
+ *   thrown as it stands.
+ *
+ * That refusal comes before any host call on purpose. Asking anyway on a
+ * platform without the grant would raise the operating system's own
+ * screen-share prompt, and answer it with a stream carrying no audio: a user
+ * who chose the system output would be shown a screen picker and then told
+ * their screen had no sound in it.
  *
  * The handler is installed for the length of this one request and taken back
  * down in `finally`, so the plugin never leaves the host application with a
@@ -173,25 +234,11 @@ export function isSystemAudioLoopbackAvailable(): boolean {
  *   provide one
  */
 export async function captureSystemAudioStream(): Promise<MediaStream> {
-	const session = currentElectronSession();
-	const install = session?.setDisplayMediaRequestHandler;
-	if (!install) {
-		throw new AudioStreamError(
-			new Error(
-				'This Obsidian build exposes no way to capture the system output. ' +
-					'Record a loopback input device instead.',
-			),
-		);
+	const host = loopbackHost();
+	if ('refusal' in host) {
+		throw new AudioStreamError(new Error(host.refusal));
 	}
-	const capturer = desktopCapturer();
-	if (!capturer) {
-		throw new AudioStreamError(
-			new Error(
-				'This Obsidian build exposes no screen source list, which a system ' +
-					'audio grant needs. Record a loopback input device instead.',
-			),
-		);
-	}
+	const { session, install, capturer } = host;
 	let installed = false;
 	try {
 		// Listed before the request rather than inside the handler: the

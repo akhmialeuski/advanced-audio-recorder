@@ -166,7 +166,7 @@ With the routing in place, configure the session under **Settings > Advanced Aud
 1. Turn on **Enable multi-track recording** and set **Maximum tracks** to 2.
 2. Leave **Track 1 source** on **Input device** and set **Track 1 input** to your microphone.
 3. For track 2, either set **Track 2 source** to **System audio (this computer)** on Windows, or leave it on **Input device** and set **Track 2 input** to the loopback input.
-4. Set **Track 2 processing** to **Raw**. This is the step that decides whether the recording is usable: the browser's echo cancellation treats the far end of a call as this machine's own speaker output and suppresses it, so a loopback track captured with the default filtering fades in and out or goes quiet altogether. Leave **Track 1 processing** on **Same as global settings** or set it to **Voice**, since your own microphone does want that filtering.
+4. On the loopback-input route, set **Track 2 processing** to **Raw**. This is the step that decides whether the recording is usable: the browser's echo cancellation treats the far end of a call as this machine's own speaker output and suppresses it, so a loopback track captured with the default filtering fades in and out or goes quiet altogether. Leave **Track 1 processing** on **Same as global settings** or set it to **Voice**, since your own microphone does want that filtering.
 5. Leave **Output mode** on **Single file**, so both sides land on one timeline and the transcription engine can diarize across everyone.
 6. If the remote side comes in louder or quieter than your own voice, correct it with **Track 2 level** rather than at the operating system.
 

@@ -29,6 +29,7 @@ import {
 	recordingEncodingFor,
 } from '../recording/AudioStreamHandler';
 import { isSystemAudioLoopbackAvailable } from '../recording/systemAudioSupport';
+import { hostProcess } from '../platform/hostProcess';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
@@ -214,16 +215,7 @@ export class SystemDiagnostics {
 	static collectEnvironment(_app: App): DiagnosticsEnvironment {
 		// The API version ships as a module-level export; the old cast read a
 		// non-existent app property and always fell back to 'unknown'.
-		const proc = (typeof process !== 'undefined' ? process : null) as {
-			type?: string;
-			versions?: {
-				electron?: string;
-				node?: string;
-				chrome?: string;
-			};
-			platform?: string;
-			arch?: string;
-		} | null;
+		const proc = hostProcess();
 
 		const electronVersion = proc?.versions?.electron ?? 'unknown';
 		const chromeVersion = proc?.versions?.chrome ?? 'unknown';

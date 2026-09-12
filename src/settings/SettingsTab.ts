@@ -64,8 +64,8 @@ import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
 import {
 	audioDeviceApi,
 	channelSelectionAvailable,
+	deviceOptionLabel,
 	getAudioInputDeviceSnapshot,
-	isLoopbackInputLabel,
 	recordingEncodingFor,
 	type AudioInputDeviceSnapshot,
 } from '../recording/AudioStreamHandler';
@@ -130,27 +130,6 @@ const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
 	devices: [],
 	channelLimits: new Map(),
 };
-
-/** Suffix marking an input that carries this machine's own output. */
-const LOOPBACK_LABEL_SUFFIX = ' (system audio)';
-
-/**
- * How one enumerated input is named in the device dropdowns.
- *
- * A device with no label has not been through a permission grant yet, and is
- * named by the leading characters of its id so the rows stay distinguishable.
- * A loopback input is marked, because it is the one a user recording a call
- * has to find and its own name rarely says what it does.
- * @param device - One enumerated input
- * @returns The label shown in the input dropdowns
- */
-function deviceOptionLabel(device: MediaDeviceInfo): string {
-	const named =
-		device.label || `Audio device ${device.deviceId.substring(0, 8)}`;
-	return isLoopbackInputLabel(device.label)
-		? `${named}${LOOPBACK_LABEL_SUFFIX}`
-		: named;
-}
 
 /**
  * Settings tab for the Audio Recorder plugin.

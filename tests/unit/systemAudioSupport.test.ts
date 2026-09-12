@@ -13,6 +13,8 @@ import {
 	installDisplayMediaHost,
 	useElectron,
 	usePlatform,
+	withoutProcess,
+	type DisplayMediaHostOptions,
 } from '../helpers/displayMediaHost';
 
 /**
@@ -88,6 +90,18 @@ describe('isSystemAudioLoopbackAvailable', () => {
 		},
 	);
 
+	// Obsidian mobile is a WebView that declares no `process` at all, and an
+	// undeclared name throws on the way to `?.` rather than answering
+	// undefined. This is asked while the settings tree is built, which the
+	// framework does once at plugin load, so throwing here took the whole
+	// plugin down on mobile rather than hiding one row.
+	it('refuses the grant where the runtime declares no process', () => {
+		restore.push(withoutProcess());
+		expose(electronWithHandler());
+
+		expect(isSystemAudioLoopbackAvailable()).toBe(false);
+	});
+
 	// Every way the host can fail to offer the handler reads the same to a
 	// caller: the grant is simply not available here.
 	it.each([
@@ -162,13 +176,15 @@ describe('captureSystemAudioStream', () => {
 	/**
 	 * Installs a host that can grant the system output, plus the display
 	 * media call the capture makes against it.
+	 * @param options - Which half of the host to leave missing, and the
+	 *   platform to run it on
 	 * @returns The handlers it recorded and the call to answer
 	 */
-	function withSession(): {
+	function withSession(options: DisplayMediaHostOptions = {}): {
 		handlers: (unknown | null)[];
 		getDisplayMedia: jest.Mock;
 	} {
-		const host = installDisplayMediaHost();
+		const host = installDisplayMediaHost(options);
 		restore.push(host.restore);
 		const getDisplayMedia = jest.fn();
 		Object.defineProperty(navigator, 'mediaDevices', {
@@ -291,8 +307,29 @@ describe('captureSystemAudioStream', () => {
 	});
 
 	it('refuses where the host exposes no handler at all', async () => {
+		const host = installDisplayMediaHost({ withoutHandler: true });
+		restore.push(host.restore);
+
 		await expect(captureSystemAudioStream()).rejects.toThrow(
 			'no way to capture the system output',
 		);
+	});
+
+	// Asked anyway on a platform Electron grants no loopback on, the request
+	// still reaches getDisplayMedia, which raises the operating system's own
+	// screen-share prompt and then answers with a stream carrying no audio.
+	// A user who chose the system output would be shown a screen picker and
+	// then told their screen had no sound in it.
+	it('refuses a platform without the grant before it asks the host', async () => {
+		const { handlers, getDisplayMedia } = withSession({
+			platform: 'linux',
+		});
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			'granted on Windows only',
+		);
+
+		expect(getDisplayMedia).not.toHaveBeenCalled();
+		expect(handlers).toHaveLength(0);
 	});
 });

@@ -842,13 +842,29 @@ describe('settings definitions', () => {
 
 		// Without a device there is nothing to place in the mix, unless the
 		// track is the system output, which is configured by its kind alone.
-		it('unblocks the placement rows of a system-audio track', () => {
+		it.each([{ row: 'Track 1 level' }, { row: 'Track 1 position' }])(
+			'unblocks $row on a system-audio track',
+			({ row }) => {
+				settings.enableMultiTrack = true;
+				settings.outputMode = 'single';
+				settings.trackAudioSources = systemAudioOnTrackOne();
+				const disabled = rowOf(build(), MULTI, row).control?.disabled;
+
+				expect(typeof disabled === 'function' && disabled()).toBe(
+					false,
+				);
+			},
+		);
+
+		// The three filters are constraints of getUserMedia, and a
+		// system-audio track is granted by the host instead. Offered anyway,
+		// the row took an edit that reached nothing and then reported a
+		// choice the capture had never made.
+		it('hides the processing row of a track that records the system output', () => {
 			settings.enableMultiTrack = true;
 			settings.trackAudioSources = systemAudioOnTrackOne();
-			const disabled = rowOf(build(), MULTI, 'Track 1 processing').control
-				?.disabled;
 
-			expect(typeof disabled === 'function' && disabled()).toBe(false);
+			expect(isVisible('Track 1 processing')).toBe(false);
 		});
 
 		// The three global filters suit a microphone in a room and ruin a

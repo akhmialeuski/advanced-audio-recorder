@@ -28,6 +28,7 @@ import {
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import { setPlatform } from '../helpers/platform';
+import { systemAudioTrack } from '../helpers/settingsFixtures';
 
 /**
  * Settings for one case, over the shipped defaults.
@@ -390,6 +391,46 @@ describe('multiTrackStatus', () => {
 				}),
 			),
 		).toBe('warning');
+	});
+
+	// One session captures the machine's own output once: the handler that
+	// answers the grant lives on the Electron session, which holds one at a
+	// time. Capture refuses such a session outright, so the entry has to say
+	// so while there is still a settings row in front of the user.
+	it('warns where two tracks both record the system output', () => {
+		expect(
+			multiTrackStatus(
+				makeSettings({
+					enableMultiTrack: true,
+					maxTracks: 2,
+					trackAudioSources: new Map([
+						[1, systemAudioTrack()],
+						[2, systemAudioTrack()],
+					]),
+				}),
+			),
+		).toBe('warning');
+	});
+
+	it('stays quiet where one track records the system output', () => {
+		expect(
+			multiTrackStatus(
+				makeSettings({
+					enableMultiTrack: true,
+					maxTracks: 2,
+					trackAudioSources: new Map([
+						[
+							1,
+							{
+								deviceId: 'mic-1',
+								channelMode: 'source' as const,
+							},
+						],
+						[2, systemAudioTrack()],
+					]),
+				}),
+			),
+		).toBeNull();
 	});
 
 	// Capture opens the tracks that have an input and skips the rest, so a

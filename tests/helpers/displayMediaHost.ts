@@ -10,20 +10,41 @@
 
 /**
  * Points the runtime at one platform for the length of a test.
- *
- * Replaces the whole process object, which is what the diagnostics suite
- * does too: `platform` is read-only on the real one, so neither an
- * assignment nor jest.replaceProperty can move it.
  * @param platform - What process.platform should answer
  * @returns Puts the real process back
  */
 export function usePlatform(platform: string): () => void {
+	return useProcess({ platform });
+}
+
+/**
+ * Takes the process object away for the length of a test, which is what the
+ * mobile WebView offers: a runtime where the name is not declared at all, so
+ * reading it without a `typeof` guard throws rather than answering undefined.
+ * @returns Puts the real process back
+ */
+export function withoutProcess(): () => void {
+	return useProcess(undefined);
+}
+
+/**
+ * Swaps the whole process object, which is the only way to move it: `platform`
+ * is read-only on the real one, so neither an assignment nor
+ * jest.replaceProperty reaches it. The diagnostics suite does the same.
+ * @param replacement - What `process` should be, or undefined to remove it
+ * @returns Puts the real process back
+ */
+function useProcess(replacement: { platform: string } | undefined): () => void {
 	const real = process;
-	Object.defineProperty(global, 'process', {
-		value: { platform },
-		configurable: true,
-		writable: true,
-	});
+	if (replacement === undefined) {
+		Reflect.deleteProperty(global, 'process');
+	} else {
+		Object.defineProperty(global, 'process', {
+			value: replacement,
+			configurable: true,
+			writable: true,
+		});
+	}
 	return (): void => {
 		Object.defineProperty(global, 'process', {
 			value: real,
@@ -67,7 +88,16 @@ export interface DisplayMediaHostOptions {
 	readonly withoutCapturer?: boolean;
 	/** Answer the source list with nothing. */
 	readonly withoutScreens?: boolean;
+	/**
+	 * Run the host on this platform instead of the one Electron grants the
+	 * loopback on. Swapped here rather than by a second call, so a test never
+	 * nests two process swaps and undoes them in the wrong order.
+	 */
+	readonly platform?: string;
 }
+
+/** Platform Electron grants a system-audio loopback stream on. */
+const LOOPBACK_GRANT_PLATFORM = 'win32';
 
 /**
  * Installs a Windows host that can grant the system output.
@@ -86,7 +116,9 @@ export function installDisplayMediaHost(
 	const sources = options.withoutScreens
 		? []
 		: [{ id: 'screen:0:0', name: 'Entire screen' }];
-	const restorePlatform = usePlatform('win32');
+	const restorePlatform = usePlatform(
+		options.platform ?? LOOPBACK_GRANT_PLATFORM,
+	);
 	const restoreElectron = useElectron({
 		remote: {
 			getCurrentWebContents: () => ({

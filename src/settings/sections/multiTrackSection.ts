@@ -132,7 +132,12 @@ export function multiTrackPage(
 						'system audio',
 					],
 					desc: `Browser filtering applied to track ${String(track)} as it is captured. A system-loopback input wants Raw: echo cancellation treats the far end of a call as this machine's own output and suppresses it.`,
-					visible: offered,
+					// Hidden on a system-audio track for the same reason the
+					// device rows are. These filters are constraints of
+					// getUserMedia, and such a track is granted by the host
+					// instead, so the row would take an edit that reaches
+					// nothing and report a choice the capture never made.
+					visible: (): boolean => offered() && !systemAudio(),
 					control: {
 						type: 'dropdown',
 						key: trackControlKey(track, 'processing'),

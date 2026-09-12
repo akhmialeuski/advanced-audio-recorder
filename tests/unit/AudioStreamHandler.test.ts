@@ -15,18 +15,24 @@ import {
 	missingCaptureIndexes,
 	recordingEncodingFor,
 	resolveCaptureDeviceId,
+	surplusSystemAudioTracks,
 	trackProcessingConstraints,
 	validateSelectedDevices,
 	watchStreamEndings,
+	type TrackAudioSource,
 } from 'src/recording/AudioStreamHandler';
 import { AudioStreamError } from 'src/errors';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
-import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	TrackSourceKind,
+} from 'src/settings/settingsSchema';
 import type { OutputMode } from 'src/types';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { partial } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
 import { withMediaDevices } from '../helpers/mediaMocks';
+import { systemAudioTrack } from '../helpers/settingsFixtures';
 import { captureSystemAudioStream } from 'src/recording/systemAudioSupport';
 
 // The capture asks the host for a grant, which no test environment can give.
@@ -873,6 +879,95 @@ describe('a system-audio track', () => {
 		expect(captureSystemAudioStream).toHaveBeenCalledTimes(1);
 		expect(getUserMedia).toHaveBeenCalledTimes(1);
 		expect(result.streams).toEqual([fromMicrophone, granted]);
+	});
+
+	// Such a track shows no channel row, because it names no device whose
+	// layout there would be to describe. A layout stored while it was a
+	// device track would otherwise keep reducing the capture to one channel
+	// with no visible setting left that accounts for it.
+	it('carries no channel layout a hidden row could still be holding', () => {
+		const order = getOrderedTrackSources({
+			...settings,
+			trackAudioSources: new Map([
+				[
+					1,
+					{
+						...systemAudioTrack(),
+						channelMode: 'mono-left' as const,
+					},
+				],
+			]),
+		});
+
+		expect(at(order, 0).channelMode).toBe('source');
+	});
+
+	// One session holds one grant: the handler answering it lives on the
+	// Electron session, which keeps one at a time, so two tracks asking
+	// together overwrite and then clear each other's.
+	it('refuses a second one without opening any capture', async () => {
+		const getUserMedia = jest.fn();
+		Object.defineProperty(navigator, 'mediaDevices', {
+			value: { getUserMedia, enumerateDevices: jest.fn() },
+			configurable: true,
+		});
+		const twoGrants = {
+			...settings,
+			trackAudioSources: new Map([
+				[1, systemAudioTrack()],
+				[2, systemAudioTrack()],
+			]),
+		};
+
+		await expect(getAudioStreams(twoGrants)).rejects.toThrow(
+			'Track(s) 2 also record the system audio',
+		);
+
+		expect(captureSystemAudioStream).not.toHaveBeenCalled();
+		expect(getUserMedia).not.toHaveBeenCalled();
+	});
+});
+
+// The rule the capture refuses on and the settings entry warns about, asked
+// in one place so the two can never disagree about which session is valid.
+describe('surplusSystemAudioTracks', () => {
+	/**
+	 * One track of the given kind, with everything else at its default.
+	 * @param trackNumber - Which track this is
+	 * @param kind - What it records from
+	 * @returns The track as an ordered session carries it
+	 */
+	function track(
+		trackNumber: number,
+		kind: TrackSourceKind,
+	): TrackAudioSource {
+		return {
+			trackNumber,
+			deviceId:
+				kind === 'system-audio' ? '' : `dev-${String(trackNumber)}`,
+			channelMode: 'source',
+			kind,
+		};
+	}
+
+	it('names nothing where one track asks for the system output', () => {
+		expect(
+			surplusSystemAudioTracks([
+				track(1, 'input-device'),
+				track(2, 'system-audio'),
+			]),
+		).toEqual([]);
+	});
+
+	it('names every track asking beyond the first', () => {
+		expect(
+			surplusSystemAudioTracks([
+				track(1, 'system-audio'),
+				track(2, 'input-device'),
+				track(3, 'system-audio'),
+				track(4, 'system-audio'),
+			]),
+		).toEqual([3, 4]);
 	});
 });
 
