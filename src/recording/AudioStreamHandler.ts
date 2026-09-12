@@ -9,7 +9,9 @@ import { delay } from '../utils/TimeUtils';
 import type {
 	AudioRecorderSettings,
 	TrackProcessingMode,
+	TrackSourceKind,
 } from '../settings/settingsSchema';
+import { captureSystemAudioStream } from './systemAudioSupport';
 import {
 	channelCountFor,
 	normalizeChannelMode,
@@ -41,6 +43,11 @@ export interface TrackAudioSource {
 	 * was made per track.
 	 */
 	processing?: TrackProcessingMode;
+	/**
+	 * What this track captures from. A system-audio track carries no device
+	 * id, so every question asked of the device list has to skip it.
+	 */
+	kind?: TrackSourceKind;
 }
 
 /**
@@ -388,11 +395,16 @@ export async function getAudioStreams(
 	if (isMultiTrackSessionEnabled(settings)) {
 		const trackOrder = getOrderedTrackSources(settings);
 		const streamPromises = trackOrder.map((source) =>
-			getAudioStream(
-				source.deviceId,
-				settings.sampleRate,
-				trackProcessingConstraints(source.processing, processing),
-			),
+			source.kind === 'system-audio'
+				? captureSystemAudioStream()
+				: getAudioStream(
+						source.deviceId,
+						settings.sampleRate,
+						trackProcessingConstraints(
+							source.processing,
+							processing,
+						),
+					),
 		);
 		// Settle every request before failing: with Promise.all a single
 		// rejected track would abandon the microphones that already opened,
@@ -475,14 +487,18 @@ export function getOrderedTrackSources(
 	}
 	for (let i = 1; i <= settings.maxTracks; i++) {
 		const source = settings.trackAudioSources.get(i);
-		if (source?.deviceId) {
+		const kind = source?.kind ?? 'input-device';
+		// A device track is configured by naming a device; a system-audio
+		// track is configured by being one, and never carries an id.
+		if (source && (kind === 'system-audio' || source.deviceId)) {
 			sources.push({
 				trackNumber: i,
-				deviceId: source.deviceId,
+				deviceId: kind === 'system-audio' ? '' : source.deviceId,
 				channelMode: normalizeChannelMode(source.channelMode),
 				gainDb: source.gainDb ?? 0,
 				pan: source.pan ?? 0,
 				processing: source.processing ?? 'global',
+				kind,
 			});
 		}
 	}
@@ -543,11 +559,19 @@ function captureDeviceGone(
  * in. A session on the system default input has no stored id to look for, so
  * the settings could say nothing about it at all; its track names the device
  * it actually opened like any other.
+ * A capture that is not an enumerated input device at all is exempt, named by
+ * index for the same reason the answer is. The system output is granted by the
+ * host rather than opened from the device list, and such a stream may still
+ * report an id of its own: matched against the inputs it is absent from by
+ * construction, so the first `devicechange` would retire a track that is
+ * recording perfectly well, and a single-track session with it.
  * @param streams - The session's capture streams, in track order
+ * @param notFromInputDevice - Indexes the device list cannot answer for
  * @returns Stream indexes whose device is gone, in stream order
  */
 export async function missingCaptureIndexes(
 	streams: readonly MediaStream[],
+	notFromInputDevice: ReadonlySet<number> = new Set(),
 ): Promise<number[]> {
 	const available = await availableInputIds();
 	// A list that came back empty is a platform declining to answer, not
@@ -556,7 +580,9 @@ export async function missingCaptureIndexes(
 		return [];
 	}
 	return streams.flatMap((stream, index) =>
-		captureDeviceGone(stream, available) ? [index] : [],
+		!notFromInputDevice.has(index) && captureDeviceGone(stream, available)
+			? [index]
+			: [],
 	);
 }
 
@@ -586,7 +612,13 @@ export async function validateSelectedDevices(
 	const available = await availableInputIds();
 	if (isMultiTrackSessionEnabled(settings)) {
 		const missingTracks = getOrderedTrackSources(settings)
-			.filter((source) => !available.has(source.deviceId))
+			// A system-audio track names no device, so the device list has
+			// nothing to say about it; asked anyway, it refuses every start.
+			.filter(
+				(source) =>
+					source.kind !== 'system-audio' &&
+					!available.has(source.deviceId),
+			)
 			.map((source) => source.trackNumber);
 		if (missingTracks.length > 0) {
 			throw new Error(

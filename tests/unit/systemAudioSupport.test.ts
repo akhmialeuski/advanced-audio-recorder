@@ -3,21 +3,17 @@
  * @module tests/unit/systemAudioSupport.test
  */
 
-import { isSystemAudioLoopbackAvailable } from 'src/recording/systemAudioSupport';
-
-/** Installs a desktop `require` answering with the given electron module. */
-function withElectron(electron: unknown): void {
-	Object.defineProperty(window, 'require', {
-		value: (id: string) => {
-			if (id !== 'electron') {
-				throw new Error(`unexpected require of ${id}`);
-			}
-			return electron;
-		},
-		configurable: true,
-		writable: true,
-	});
-}
+import {
+	captureSystemAudioStream,
+	isSystemAudioLoopbackAvailable,
+} from 'src/recording/systemAudioSupport';
+import { AudioStreamError } from 'src/errors';
+import { partial } from '../helpers/doubles';
+import {
+	installDisplayMediaHost,
+	useElectron,
+	usePlatform,
+} from '../helpers/displayMediaHost';
 
 /** An electron module whose session exposes the display-media handler. */
 function electronWithHandler(): unknown {
@@ -31,34 +27,35 @@ function electronWithHandler(): unknown {
 }
 
 describe('isSystemAudioLoopbackAvailable', () => {
-	const realProcess = process;
+	let restore: (() => void)[] = [];
 
 	afterEach(() => {
-		Reflect.deleteProperty(window, 'require');
-		Object.defineProperty(global, 'process', {
-			value: realProcess,
-			configurable: true,
-			writable: true,
+		restore.forEach((undo) => {
+			undo();
 		});
+		restore = [];
 	});
 
 	/**
-	 * Points the runtime at one platform. Replaces the whole process object
-	 * the way the diagnostics suite does, because `platform` is read-only on
-	 * the real one.
+	 * Points the runtime at one platform for this test.
 	 * @param platform - What process.platform should answer
 	 */
 	function onPlatform(platform: string): void {
-		Object.defineProperty(global, 'process', {
-			value: { platform },
-			configurable: true,
-			writable: true,
-		});
+		restore.push(usePlatform(platform));
+	}
+
+	/**
+	 * Exposes an electron module and undoes it after the test, so a case
+	 * that installs nothing really finds nothing.
+	 * @param electron - What require('electron') should answer with
+	 */
+	function expose(electron: unknown): void {
+		restore.push(useElectron(electron));
 	}
 
 	it('reports the grant on a Windows build that exposes the handler', () => {
 		onPlatform('win32');
-		withElectron(electronWithHandler());
+		expose(electronWithHandler());
 
 		expect(isSystemAudioLoopbackAvailable()).toBe(true);
 	});
@@ -69,7 +66,7 @@ describe('isSystemAudioLoopbackAvailable', () => {
 		'refuses the grant on $platform',
 		({ platform }) => {
 			onPlatform(platform);
-			withElectron(electronWithHandler());
+			expose(electronWithHandler());
 
 			expect(isSystemAudioLoopbackAvailable()).toBe(false);
 		},
@@ -85,13 +82,13 @@ describe('isSystemAudioLoopbackAvailable', () => {
 		{
 			absent: 'the remote module',
 			install: (): void => {
-				withElectron({});
+				expose({});
 			},
 		},
 		{
 			absent: 'a display-media handler on the session',
 			install: (): void => {
-				withElectron({
+				expose({
 					remote: {
 						getCurrentWebContents: () => ({ session: {} }),
 					},
@@ -103,13 +100,18 @@ describe('isSystemAudioLoopbackAvailable', () => {
 			// available" rather than take the settings tab down with it.
 			absent: 'a lookup that answers at all',
 			install: (): void => {
-				Object.defineProperty(window, 'require', {
-					value: (): never => {
-						throw new Error('blocked');
-					},
-					configurable: true,
-					writable: true,
-				});
+				restore.push(
+					useElectron(
+						new Proxy(
+							{},
+							{
+								get: (): never => {
+									throw new Error('blocked');
+								},
+							},
+						),
+					),
+				);
 			},
 		},
 	])('refuses the grant on Windows without $absent', ({ install }) => {
@@ -117,5 +119,134 @@ describe('isSystemAudioLoopbackAvailable', () => {
 		install();
 
 		expect(isSystemAudioLoopbackAvailable()).toBe(false);
+	});
+});
+
+describe('captureSystemAudioStream', () => {
+	const realMediaDevices = navigator.mediaDevices;
+	let restore: (() => void)[] = [];
+
+	/** A track that records whether it was stopped. */
+	function fakeTrack(kind: 'audio' | 'video'): MediaStreamTrack {
+		return partial<MediaStreamTrack>({ kind, stop: jest.fn() });
+	}
+
+	/** A granted stream carrying the given tracks. */
+	function grantedStream(tracks: MediaStreamTrack[]): MediaStream {
+		const held = [...tracks];
+		return partial<MediaStream>({
+			getVideoTracks: () => held.filter((t) => t.kind === 'video'),
+			getAudioTracks: () => held.filter((t) => t.kind === 'audio'),
+			removeTrack: (track: MediaStreamTrack) => {
+				held.splice(held.indexOf(track), 1);
+			},
+		});
+	}
+
+	/**
+	 * Installs a host that can grant the system output, plus the display
+	 * media call the capture makes against it.
+	 * @returns The handlers it recorded and the call to answer
+	 */
+	function withSession(): {
+		handlers: (unknown | null)[];
+		getDisplayMedia: jest.Mock;
+	} {
+		const host = installDisplayMediaHost();
+		restore.push(host.restore);
+		const getDisplayMedia = jest.fn();
+		Object.defineProperty(navigator, 'mediaDevices', {
+			value: { getDisplayMedia },
+			configurable: true,
+		});
+		return { handlers: host.handlers, getDisplayMedia };
+	}
+
+	afterEach(() => {
+		restore.forEach((undo) => {
+			undo();
+		});
+		restore = [];
+		Object.defineProperty(navigator, 'mediaDevices', {
+			value: realMediaDevices,
+			configurable: true,
+		});
+	});
+
+	it('asks for video it does not want, then hands back audio alone', async () => {
+		const { getDisplayMedia } = withSession();
+		const video = fakeTrack('video');
+		getDisplayMedia.mockResolvedValue(
+			grantedStream([video, fakeTrack('audio')]),
+		);
+
+		const stream = await captureSystemAudioStream();
+
+		// The specification rejects a request whose video is false, so the
+		// track has to be asked for and then let go of.
+		expect(getDisplayMedia).toHaveBeenCalledWith({
+			video: true,
+			audio: true,
+		});
+		expect(stream.getVideoTracks()).toHaveLength(0);
+		expect(stream.getAudioTracks()).toHaveLength(1);
+		expect(video.stop).toHaveBeenCalledTimes(1);
+	});
+
+	// The handler is where the grant is actually asked for. Electron reads
+	// the string 'loopback' as "give this page the machine's own output".
+	it('answers the host request with the loopback grant', async () => {
+		const { handlers, getDisplayMedia } = withSession();
+		getDisplayMedia.mockResolvedValue(grantedStream([fakeTrack('audio')]));
+		await captureSystemAudioStream();
+		const handler = handlers[0] as (
+			request: unknown,
+			callback: (grant: { audio?: string }) => void,
+		) => void;
+		const granted: { audio?: string }[] = [];
+
+		handler({}, (grant) => granted.push(grant));
+
+		expect(granted).toEqual([{ audio: 'loopback' }]);
+	});
+
+	// Left installed, the handler would decide every later display-media
+	// request the host makes, including ones no plugin asked for.
+	it('takes its handler back down after the request', async () => {
+		const { handlers, getDisplayMedia } = withSession();
+		getDisplayMedia.mockResolvedValue(grantedStream([fakeTrack('audio')]));
+
+		await captureSystemAudioStream();
+
+		expect(handlers).toHaveLength(2);
+		expect(handlers[1]).toBeNull();
+	});
+
+	it('takes its handler back down when the request fails', async () => {
+		const { handlers, getDisplayMedia } = withSession();
+		getDisplayMedia.mockRejectedValue(new Error('refused'));
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			AudioStreamError,
+		);
+
+		expect(handlers[1]).toBeNull();
+	});
+
+	// The specification lets a user agent answer a request for audio with
+	// video alone, so an answer carrying no audio is a case to report.
+	it('refuses an answer that carries no audio', async () => {
+		const { getDisplayMedia } = withSession();
+		getDisplayMedia.mockResolvedValue(grantedStream([fakeTrack('video')]));
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			'not granted as audio',
+		);
+	});
+
+	it('refuses where the host exposes no handler at all', async () => {
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			'no way to capture the system output',
+		);
 	});
 });

@@ -47,6 +47,7 @@ export function fullyPopulatedSettings(): Omit<
 					gainDb: 0,
 					pan: 0,
 					processing: 'voice' as const,
+					kind: 'input-device' as const,
 				},
 			],
 			[
@@ -57,6 +58,7 @@ export function fullyPopulatedSettings(): Omit<
 					gainDb: 0,
 					pan: 0,
 					processing: 'raw' as const,
+					kind: 'system-audio' as const,
 				},
 			],
 		]),

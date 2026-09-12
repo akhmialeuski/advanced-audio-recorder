@@ -38,6 +38,7 @@ import {
 	DEFAULT_SETTINGS,
 	createPlatformScopedDefaults,
 	normalizeTrackProcessingMode,
+	normalizeTrackSourceKind,
 	type AudioRecorderSettings,
 	type PrimitiveSettingKey,
 	type AudioRecorderSettingsInput,
@@ -111,6 +112,7 @@ function normalizeTrackAudioSources(
 				gainDb: 0,
 				pan: 0,
 				processing: 'global',
+				kind: 'input-device',
 			});
 			continue;
 		}
@@ -122,6 +124,7 @@ function normalizeTrackAudioSources(
 				gainDb?: unknown;
 				pan?: unknown;
 				processing?: unknown;
+				kind?: unknown;
 			};
 			sources.set(trackNumber, {
 				deviceId: typeof deviceId === 'string' ? deviceId : '',
@@ -133,6 +136,7 @@ function normalizeTrackAudioSources(
 				),
 				pan: clampNumber(extras.pan, -1, 1),
 				processing: normalizeTrackProcessingMode(extras.processing),
+				kind: normalizeTrackSourceKind(extras.kind),
 			});
 		}
 	}
@@ -153,6 +157,7 @@ export function serializeTrackAudioSources(
 			gainDb: source.gainDb ?? 0,
 			pan: source.pan ?? 0,
 			processing: source.processing ?? 'global',
+			kind: source.kind ?? 'input-device',
 		};
 	}
 	return serialized;

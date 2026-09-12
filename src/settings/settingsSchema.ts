@@ -105,6 +105,31 @@ export function normalizeTrackProcessingMode(
 }
 
 /**
+ * What a track captures from, in the order the dropdown offers them. Stored
+ * in data.json, so a value is renamed only with a migration.
+ */
+export const TRACK_SOURCE_KINDS = ['input-device', 'system-audio'] as const;
+
+/**
+ * Where one track's audio comes from.
+ *
+ * `input-device` is an enumerated microphone or line input, which is what
+ * every track was before this existed. `system-audio` is this machine's own
+ * output, granted by the host rather than opened from the device list, so
+ * such a track carries no device id and is never checked against one.
+ */
+export type TrackSourceKind = (typeof TRACK_SOURCE_KINDS)[number];
+
+/**
+ * Coerces an untrusted value to a source kind, falling back to the input
+ * device every stored track was before the choice existed.
+ * @param value - Candidate value
+ */
+export function normalizeTrackSourceKind(value: unknown): TrackSourceKind {
+	return TRACK_SOURCE_KINDS.find((kind) => kind === value) ?? 'input-device';
+}
+
+/**
  * Track audio sources mapping (track number -> device ID).
  */
 export interface AudioSource {
@@ -141,6 +166,12 @@ export interface AudioSource {
 	 * existed, which reads as `global` and so as the previous behaviour.
 	 */
 	processing?: TrackProcessingMode;
+	/**
+	 * What this track captures from. Absent in every settings file written
+	 * before the system output could be recorded, which reads as the
+	 * enumerated input device every track was then.
+	 */
+	kind?: TrackSourceKind;
 }
 
 /**
@@ -163,6 +194,7 @@ export type TrackAudioSourcesRecord = Record<
 			gainDb?: unknown;
 			pan?: unknown;
 			processing?: unknown;
+			kind?: unknown;
 	  }
 >;
 
@@ -693,6 +725,7 @@ export interface SerializedAudioSource {
 	gainDb: number;
 	pan: number;
 	processing: TrackProcessingMode;
+	kind: TrackSourceKind;
 }
 
 /**

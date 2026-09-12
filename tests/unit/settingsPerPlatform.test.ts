@@ -61,6 +61,7 @@ describe('normalizePlatformScopedSettings', () => {
 			gainDb: 0,
 			pan: 0,
 			processing: 'global',
+			kind: 'input-device',
 		});
 		// A level that would multiply the track by a thousand, a position that
 		// is not a number at all, and a processing profile nothing offers
@@ -70,6 +71,7 @@ describe('normalizePlatformScopedSettings', () => {
 			gainDb: 24,
 			pan: 0,
 			processing: 'global',
+			kind: 'input-device',
 		});
 	});
 });
@@ -237,6 +239,7 @@ describe('serializeSettings platform separation', () => {
 				gainDb: 0,
 				pan: 0,
 				processing: 'global',
+				kind: 'input-device',
 			},
 			2: {
 				deviceId: 'desktop-dev-2-bare-id',
@@ -244,6 +247,7 @@ describe('serializeSettings platform separation', () => {
 				gainDb: 0,
 				pan: 0,
 				processing: 'global',
+				kind: 'input-device',
 			},
 		});
 		expect(serialized.perPlatform.mobile.trackAudioSources).toEqual({});

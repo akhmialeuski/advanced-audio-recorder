@@ -952,6 +952,35 @@ describe('an input device that disappears mid-session', () => {
 		);
 	});
 
+	// A granted capture of this machine's own output is revoked or switched
+	// off. Calling that a disconnected device sends the user to their cables.
+	it('says what ended when the system audio capture is the track that went', async () => {
+		makeMediaRecorderDouble();
+		stubAudioStreams({
+			count: 1,
+			trackOrder: [
+				{
+					trackNumber: 1,
+					deviceId: '',
+					channelMode: 'source',
+					kind: 'system-audio',
+				},
+			],
+		});
+		const sut = createRecordingSut({
+			settings: { enableMultiTrack: true },
+		});
+		await sut.manager.startRecording();
+
+		endStream(0);
+		await untilSaved(sut);
+
+		const said = noticeMessages().join(' ');
+
+		expect(said).toContain('the system audio capture');
+		expect(said).not.toContain('was disconnected');
+	});
+
 	// The name is read out of the session's targets by the stream's index, and
 	// the compiler will not take that read as certain. What the fallback is
 	// for is a sentence rather than "undefined" if the watcher ever names a

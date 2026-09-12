@@ -61,18 +61,29 @@ export class CaptureLossWatcher {
 	private streams: readonly MediaStream[] = [];
 
 	/**
+	 * Indexes the device list cannot answer for, in the same index space as
+	 * {@link streams}. A system-audio capture is granted by the host rather
+	 * than opened from the device list, so matching it against the inputs
+	 * can only ever report it missing.
+	 */
+	private notFromInputDevice: ReadonlySet<number> = new Set();
+
+	/**
 	 * Starts watching one session. Releases any previous subscription first,
 	 * so a second session never inherits the first one's bookkeeping.
 	 * @param streams - The session's capture streams, in track order
 	 * @param onStreamEnded - Where losses are reported
+	 * @param notFromInputDevice - Indexes the device re-check must skip
 	 */
 	start(
 		streams: readonly MediaStream[],
 		onStreamEnded: CaptureLossHandler,
+		notFromInputDevice: ReadonlySet<number> = new Set(),
 	): void {
 		this.release();
 		this.onStreamEnded = onStreamEnded;
 		this.streams = streams;
+		this.notFromInputDevice = notFromInputDevice;
 		this.detachTracks = watchStreamEndings(streams, (index) => {
 			this.reportStreamEnded(index);
 		});
@@ -108,6 +119,7 @@ export class CaptureLossWatcher {
 		this.onStreamEnded = null;
 		this.lost.clear();
 		this.streams = [];
+		this.notFromInputDevice = new Set();
 	}
 
 	/**
@@ -132,7 +144,10 @@ export class CaptureLossWatcher {
 		const watched = this.streams;
 		let missing: number[];
 		try {
-			missing = await missingCaptureIndexes(watched);
+			missing = await missingCaptureIndexes(
+				watched,
+				this.notFromInputDevice,
+			);
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Could not re-check the capture devices:`,

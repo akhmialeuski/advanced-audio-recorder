@@ -740,6 +740,37 @@ describe('AudioRecorderSettingTab', () => {
 		it('reads a track that never chose a profile as following the global toggles', () => {
 			expect(tab.getControlValue('track.4.processing')).toBe('global');
 		});
+
+		// Every other field needs a device to bind to. Choosing the system
+		// output is the whole configuration of such a track, so this one
+		// creates the entry rather than being dropped for want of a device.
+		it('creates a track source from the system-audio choice alone', async () => {
+			await tab.setControlValue('track.1.kind', 'system-audio');
+
+			expect(sourceOf(1)).toEqual({
+				deviceId: '',
+				channelMode: 'source',
+				kind: 'system-audio',
+			});
+			expect(tab.getControlValue('track.1.kind')).toBe('system-audio');
+		});
+
+		it('keeps the device when a track is switched back to an input', async () => {
+			await tab.setControlValue('track.1.deviceId', 'mic-1');
+			await tab.setControlValue('track.1.kind', 'system-audio');
+
+			await tab.setControlValue('track.1.kind', 'input-device');
+
+			expect(sourceOf(1)).toEqual({
+				deviceId: 'mic-1',
+				channelMode: 'source',
+				kind: 'input-device',
+			});
+		});
+
+		it('reads a track that never chose a source as an input device', () => {
+			expect(tab.getControlValue('track.4.kind')).toBe('input-device');
+		});
 	});
 
 	describe('Obsidian before 1.13 (imperative display path)', () => {

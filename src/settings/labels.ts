@@ -19,6 +19,7 @@ import type {
 	ConversionLinkAction,
 	LlmProviderId,
 	TrackProcessingMode,
+	TrackSourceKind,
 	TranscriptionProviderId,
 } from './settingsSchema';
 
@@ -185,4 +186,14 @@ export const TRACK_PROCESSING_LABELS: Record<TrackProcessingMode, string> = {
 	global: 'Same as global settings',
 	voice: 'Voice (microphone in a room)',
 	raw: 'Raw (system audio or line input)',
+};
+
+/**
+ * Source labels, keyed by kind. Named for what the track records rather than
+ * for the mechanism, because the mechanism differs per platform and the user
+ * is choosing what goes into the file.
+ */
+export const TRACK_SOURCE_KIND_LABELS: Record<TrackSourceKind, string> = {
+	'input-device': 'Input device',
+	'system-audio': 'System audio (this computer)',
 };

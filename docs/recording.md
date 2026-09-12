@@ -67,7 +67,7 @@ You do not have to open the settings tab to change which microphone records. Run
 
 This is the quickest way to switch mics between recordings - for example, moving from a laptop's built-in microphone to a headset before a meeting. The same choice is also available, alongside the sample rate, under [Audio input settings](settings-reference.md#audio-input).
 
-Inputs that carry this machine's own output are marked `(system audio)` in both dropdowns. Such an input exists only where the operating system or an installed virtual cable publishes one, and it is how a call's remote participants reach a recording. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
+A multi-track track can record this machine's own output directly, through **Track N source**, which Electron grants on Windows only. Everywhere else, inputs that carry that output are marked `(system audio)` in both dropdowns. Such an input exists only where the operating system or an installed virtual cable publishes one, and it is how a call's remote participants reach a recording. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
 
 ---
 

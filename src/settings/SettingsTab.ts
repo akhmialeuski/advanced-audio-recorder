@@ -46,6 +46,7 @@ import {
 import { LegacySettingsRenderer } from './legacySettingsRenderer';
 import {
 	normalizeTrackProcessingMode,
+	normalizeTrackSourceKind,
 	type AudioRecorderSettings,
 } from './settingsSchema';
 import {
@@ -434,6 +435,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			if (track.field === 'processing') {
 				return source?.processing ?? 'global';
 			}
+			if (track.field === 'kind') {
+				return source?.kind ?? 'input-device';
+			}
 			// A track placed nowhere in particular sits at the centre, at the
 			// level it was captured at.
 			return source?.[track.field] ?? 0;
@@ -641,6 +645,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	): void {
 		const sources = this.plugin.settings.trackAudioSources;
 		const current = sources.get(track);
+		if (field === 'kind') {
+			// The one field that configures a track by itself: choosing the
+			// system output is the whole configuration of such a track, and
+			// there is no device to bind it to.
+			const kind = normalizeTrackSourceKind(value);
+			sources.set(track, {
+				deviceId: current?.deviceId ?? '',
+				channelMode: current?.channelMode ?? CHANNEL_MODE_SOURCE,
+				...current,
+				kind,
+			});
+			return;
+		}
 		if (field !== 'deviceId') {
 			if (!current) {
 				// No device on this track: there is nothing to bind a layout

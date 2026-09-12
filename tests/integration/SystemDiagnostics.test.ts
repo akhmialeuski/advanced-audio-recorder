@@ -134,6 +134,7 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 				gainDb: 0,
 				pan: 0,
 				processing: 'global',
+				kind: 'input-device',
 			},
 			2: {
 				deviceId: 'dev-b',
@@ -141,6 +142,7 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 				gainDb: 0,
 				pan: 0,
 				processing: 'global',
+				kind: 'input-device',
 			},
 		});
 	});

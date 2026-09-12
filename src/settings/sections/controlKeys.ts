@@ -19,7 +19,8 @@ export type TrackControlField =
 	| 'channelMode'
 	| 'gainDb'
 	| 'pan'
-	| 'processing';
+	| 'processing'
+	| 'kind';
 
 /** Control key for one field of one track's audio source. */
 export const trackControlKey = (
@@ -36,7 +37,7 @@ export function parseTrackControlKey(
 	key: string,
 ): { track: number; field: TrackControlField } | undefined {
 	const match =
-		/^track\.(\d+)\.(deviceId|channelMode|gainDb|pan|processing)$/.exec(
+		/^track\.(\d+)\.(deviceId|channelMode|gainDb|pan|processing|kind)$/.exec(
 			key,
 		);
 	if (!match) {

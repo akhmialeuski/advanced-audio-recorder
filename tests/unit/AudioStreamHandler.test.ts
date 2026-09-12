@@ -27,6 +27,13 @@ import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { partial } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
 import { withMediaDevices } from '../helpers/mediaMocks';
+import { captureSystemAudioStream } from 'src/recording/systemAudioSupport';
+
+// The capture asks the host for a grant, which no test environment can give.
+// Mocked here so the dispatch in getAudioStreams can be observed on its own.
+jest.mock('src/recording/systemAudioSupport', () => ({
+	captureSystemAudioStream: jest.fn(),
+}));
 
 /** Builds a MediaStream stub whose tracks record stop() calls. */
 function fakeStream(): { stream: MediaStream; stop: jest.Mock } {
@@ -130,6 +137,7 @@ describe('AudioStreamHandler', () => {
 					gainDb: -6,
 					pan: -1,
 					processing: 'global',
+					kind: 'input-device',
 				},
 			]);
 			expect(getUserMedia).toHaveBeenCalledWith(
@@ -800,6 +808,74 @@ describe('AudioStreamHandler', () => {
 	});
 });
 
+describe('a system-audio track', () => {
+	const devices = withMediaDevices(() => ({
+		enumerateDevices: jest.fn().mockResolvedValue([]),
+	}));
+
+	const settings = {
+		...DEFAULT_SETTINGS,
+		enableMultiTrack: true,
+		maxTracks: 2,
+		trackAudioSources: new Map([
+			[1, { deviceId: 'mic-1', channelMode: 'source' as const }],
+			[
+				2,
+				{
+					deviceId: '',
+					channelMode: 'source' as const,
+					kind: 'system-audio' as const,
+				},
+			],
+		]),
+	};
+
+	beforeEach(() => {
+		useDesktopPlatform();
+		devices().enumerateDevices.mockResolvedValue([
+			{ kind: 'audioinput', deviceId: 'mic-1', label: 'Mic' },
+		]);
+	});
+
+	// getOrderedTrackSources drops a track with no device id, which is how a
+	// half-configured device track is ignored. A system-audio track has no
+	// id to give and would be dropped with them.
+	it('reaches the session without naming a device', () => {
+		const order = getOrderedTrackSources(settings);
+
+		expect(order.map((source) => source.trackNumber)).toEqual([1, 2]);
+		expect(at(order, 1).kind).toBe('system-audio');
+		expect(at(order, 1).deviceId).toBe('');
+	});
+
+	// Checked against the input list it is absent from by construction, so
+	// asking would refuse every start of a session that holds one.
+	it('does not make the session refuse to start', async () => {
+		await expect(
+			validateSelectedDevices(settings),
+		).resolves.toBeUndefined();
+	});
+
+	// getAudioStreams is the only place a capture is opened, so the choice
+	// between asking the host and asking the device list is made there.
+	it('is opened by asking the host rather than the device list', async () => {
+		const granted = partial<MediaStream>({ getTracks: () => [] });
+		const fromMicrophone = partial<MediaStream>({ getTracks: () => [] });
+		jest.mocked(captureSystemAudioStream).mockResolvedValue(granted);
+		const getUserMedia = jest.fn().mockResolvedValue(fromMicrophone);
+		Object.defineProperty(navigator, 'mediaDevices', {
+			value: { getUserMedia, enumerateDevices: jest.fn() },
+			configurable: true,
+		});
+
+		const result = await getAudioStreams(settings);
+
+		expect(captureSystemAudioStream).toHaveBeenCalledTimes(1);
+		expect(getUserMedia).toHaveBeenCalledTimes(1);
+		expect(result.streams).toEqual([fromMicrophone, granted]);
+	});
+});
+
 describe('trackProcessingConstraints', () => {
 	const sessionWide = {
 		noiseSuppression: true,
@@ -1014,6 +1090,33 @@ describe('missingCaptureIndexes', () => {
 				streamFrom('gone-b'),
 			]),
 		).resolves.toEqual([0, 2]);
+	});
+
+	// The sharpest edge of recording the system output. Such a capture is
+	// granted by the host rather than opened from the device list, and the
+	// stream may still report an id of its own. Matched against the inputs
+	// it is absent from by construction, so the first devicechange would
+	// retire a track that is recording perfectly well.
+	it('leaves a capture the device list cannot answer for alone', async () => {
+		listInputs('mic');
+
+		await expect(
+			missingCaptureIndexes(
+				[streamFrom('mic'), streamFrom('loopback-grant')],
+				new Set([1]),
+			),
+		).resolves.toEqual([]);
+	});
+
+	it('still names a device track beside an exempt one', async () => {
+		listInputs('kept');
+
+		await expect(
+			missingCaptureIndexes(
+				[streamFrom('gone'), streamFrom('loopback-grant')],
+				new Set([1]),
+			),
+		).resolves.toEqual([0]);
 	});
 
 	it('leaves a session whose inputs are all listed alone', async () => {
