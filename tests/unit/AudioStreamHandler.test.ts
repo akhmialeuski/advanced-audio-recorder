@@ -1000,6 +1000,19 @@ describe('trackProcessingConstraints', () => {
 	])('resolves $mode to its own set of filters', ({ mode, expected }) => {
 		expect(trackProcessingConstraints(mode, sessionWide)).toEqual(expected);
 	});
+
+	// A named profile is handed to the caller rather than copied for it, the
+	// way getProcessingConstraints builds one per call. Editable, one track's
+	// capture would rewrite the profile every later track in the process is
+	// opened with, and nothing short of restarting Obsidian would put it back.
+	it.each([{ mode: 'voice' as const }, { mode: 'raw' as const }])(
+		'hands back a $mode profile no caller can edit',
+		({ mode }) => {
+			const profile = trackProcessingConstraints(mode, sessionWide);
+
+			expect(Object.isFrozen(profile)).toBe(true);
+		},
+	);
 });
 
 // A loopback input is an ordinary audioinput in everything the device API

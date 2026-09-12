@@ -977,8 +977,12 @@ describe('an input device that disappears mid-session', () => {
 
 		const said = noticeMessages().join(' ');
 
-		expect(said).toContain('the system audio capture');
+		expect(said).toContain("the capture of this computer's output ended");
 		expect(said).not.toContain('was disconnected');
+		// The name standing in for the device such a track has not got is
+		// either "SystemAudio" or "TrackN", and quoting either of them said
+		// nothing the sentence had not already said.
+		expect(said).not.toContain('"SystemAudio"');
 	});
 
 	// The name is read out of the session's targets by the stream's index, and

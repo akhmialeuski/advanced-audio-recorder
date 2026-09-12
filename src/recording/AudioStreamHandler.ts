@@ -281,19 +281,26 @@ export function getProcessingConstraints(
 	};
 }
 
-/** Every browser filter on: what a microphone in a room wants. */
-const VOICE_PROCESSING: AudioProcessingConstraints = {
+/**
+ * Every browser filter on: what a microphone in a room wants.
+ *
+ * Frozen because it is handed to the caller rather than copied for it, as
+ * {@link getProcessingConstraints} builds one per call. A profile is the
+ * capture policy of every later track in the process, so an edit made to a
+ * returned object would follow the plugin to the end of the session.
+ */
+const VOICE_PROCESSING: Readonly<AudioProcessingConstraints> = Object.freeze({
 	noiseSuppression: true,
 	echoCancellation: true,
 	autoGainControl: true,
-};
+});
 
 /** Every browser filter off: what a loopback or line input wants. */
-const RAW_PROCESSING: AudioProcessingConstraints = {
+const RAW_PROCESSING: Readonly<AudioProcessingConstraints> = Object.freeze({
 	noiseSuppression: false,
 	echoCancellation: false,
 	autoGainControl: false,
-};
+});
 
 /**
  * The processing one track is captured with.
@@ -307,12 +314,13 @@ const RAW_PROCESSING: AudioProcessingConstraints = {
  * @param mode - The track's own choice, absent for the session-wide toggles
  * @param sessionWide - What those toggles say, from
  *   {@link getProcessingConstraints}
- * @returns The constraints this track's capture is opened with
+ * @returns The constraints this track's capture is opened with, which for a
+ *   named profile is the shared frozen one rather than a copy of it
  */
 export function trackProcessingConstraints(
 	mode: TrackProcessingMode | undefined,
 	sessionWide: AudioProcessingConstraints,
-): AudioProcessingConstraints {
+): Readonly<AudioProcessingConstraints> {
 	if (mode === 'voice') {
 		return VOICE_PROCESSING;
 	}
@@ -420,8 +428,10 @@ export function resolveCaptureDeviceId(
  *   they were opened for, in the same order
  * @throws Error naming the tracks to change, where the session asks for the
  *   system output more than once. A configuration the user fixes in
- *   settings, reported the way validateSelectedDevices reports one: the
- *   message is the whole sentence shown, unwrapped
+ *   settings, reported the way validateSelectedDevices reports one: thrown
+ *   plain, so describeRecordingError prints the message unchanged after its
+ *   own "Error starting recording:" head rather than replacing that head
+ *   with a device failure
  * @throws AudioStreamError where opening a track's capture failed
  */
 export async function getAudioStreams(

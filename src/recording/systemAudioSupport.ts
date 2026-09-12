@@ -229,11 +229,13 @@ export function isSystemAudioLoopbackAvailable(): boolean {
  * down in `finally`, so the plugin never leaves the host application with a
  * display-media policy of its own.
  * @returns A stream carrying one audio track of the system output
- * @throws Error whose message is the whole sentence the user reads, whether
- *   the refusal came before the request or from it. Plain, the way
- *   validateSelectedDevices refuses a session: an AudioStreamError would
- *   head every one of them with "Failed to access audio device", naming a
- *   microphone for a track that has none and a capture that is not one.
+ * @throws Error whose message is the sentence the user reads, whether the
+ *   refusal came before the request or from it. Plain, the way
+ *   validateSelectedDevices refuses a session: {@link describeRecordingError}
+ *   heads a plain Error with "Error starting recording:" and prints the rest
+ *   of it unchanged, where an AudioStreamError would replace that head with
+ *   "Failed to access audio device", naming a microphone for a track that has
+ *   none and a capture that is not one.
  */
 export async function captureSystemAudioStream(): Promise<MediaStream> {
 	const host = loopbackHost();
@@ -243,22 +245,7 @@ export async function captureSystemAudioStream(): Promise<MediaStream> {
 	const { session, install, capturer } = host;
 	let installed = false;
 	try {
-		// Listed before the request rather than inside the handler: the
-		// handler is synchronous from Electron's point of view, and a grant
-		// that arrives late is a grant that never arrived.
-		const [screen] = await capturer.getSources({
-			types: ['screen'],
-			// No thumbnails: the frames would be captured, decoded and then
-			// thrown away with the video track.
-			thumbnailSize: { width: 0, height: 0 },
-		});
-		if (!screen) {
-			throw new Error(
-				'This machine offered no screen to capture from, and the ' +
-					'system output is granted alongside one. Record a loopback ' +
-					'input device instead.',
-			);
-		}
+		const screen = await screenForGrant(capturer);
 		install.call(session, (_request, callback) => {
 			// The video source is required even though only audio is kept:
 			// a request that asked for video and is granted none is refused
@@ -280,6 +267,62 @@ export async function captureSystemAudioStream(): Promise<MediaStream> {
 }
 
 /**
+ * The screen a grant names as its video source.
+ *
+ * Listed before the request rather than from inside the handler, which
+ * Electron documents as free to answer asynchronously and which its own
+ * example does that way. Two things are bought by asking first, and neither
+ * is available from inside the handler. A source list that fails, or comes
+ * back empty, is said as a sentence about this machine; denied from the
+ * handler it would reach the renderer as the bare `NotAllowedError` an empty
+ * grant produces, indistinguishable from a user cancelling the share. And a
+ * handler that never reaches its callback leaves `getDisplayMedia` pending
+ * for good, which is what the documented example's own missing `catch` would
+ * produce the first time the source list rejected.
+ *
+ * What that costs is one remote-module round trip inside the transient
+ * activation `getDisplayMedia` requires and consumes. Screens alone, with no
+ * thumbnails, is a read of the display list rather than a sweep of every
+ * window, so the cost is milliseconds against a five-second budget.
+ * @param capturer - Electron's desktopCapturer, as this host exposes it
+ * @returns The screen the grant names as its video source
+ * @throws Error saying why this machine has no source to name
+ */
+async function screenForGrant(
+	capturer: DesktopCapturer,
+): Promise<DesktopCapturerSource> {
+	let offered: DesktopCapturerSource[];
+	try {
+		offered = await capturer.getSources({
+			types: ['screen'],
+			// No thumbnails: the frames would be captured, decoded and then
+			// thrown away with the video track.
+			thumbnailSize: { width: 0, height: 0 },
+		});
+	} catch (error) {
+		// Finished here like every other refusal in this module. Left to
+		// propagate, a failure of the remote module reached the notice as
+		// whatever internal sentence it carries, alone and with nothing in
+		// it a user could act on.
+		const reason = error instanceof Error ? error.message : String(error);
+		throw new Error(
+			`The screens this machine offers could not be listed: ${reason}. ` +
+				'Record a loopback input device instead, such as Stereo Mix or ' +
+				'VB-CABLE.',
+		);
+	}
+	const [screen] = offered;
+	if (!screen) {
+		throw new Error(
+			'This machine offered no screen to capture from, and the system ' +
+				'output is granted alongside one. Record a loopback input ' +
+				'device instead.',
+		);
+	}
+	return screen;
+}
+
+/**
  * The display-media answer, with a refusal said in terms of what was refused.
  *
  * The request asked for the screen, so a refusal is about the screen-capture
@@ -287,8 +330,9 @@ export async function captureSystemAudioStream(): Promise<MediaStream> {
  * that: `AudioStreamError` heads every failure with "Failed to access audio
  * device", and {@link describeRecordingError} reads a bare `NotAllowedError`
  * as a denied microphone and sends the user to the microphone permission,
- * which has no bearing on this. The message is therefore finished here, and
- * thrown plain so it reaches the notice as it stands.
+ * which has no bearing on this. The message is therefore finished here and
+ * thrown plain, which is the form describeRecordingError prints unchanged
+ * after its own "Error starting recording:" head.
  * @returns What getDisplayMedia answered with, video track included
  * @throws Error saying why the system output was not granted
  */
@@ -310,6 +354,27 @@ async function grantedDisplayMedia(): Promise<MediaStream> {
 					'Stereo Mix or VB-CABLE.',
 			);
 		}
+		// The specification makes getDisplayMedia consume a transient
+		// activation, so it refuses a call that no user action led to and one
+		// made from a window that is not focused. The plugin reaches it both
+		// ways: the ribbon icon, the palette and a hotkey all carry an
+		// activation, and the CLI `record` command carries none. Left to the
+		// branch below, the sentence a user read was the internal wording of
+		// that refusal followed by advice about virtual cables, which is not
+		// what stopped them.
+		if (
+			error instanceof DOMException &&
+			error.name === 'InvalidStateError'
+		) {
+			throw new Error(
+				"Capturing this computer's output is granted only in answer " +
+					'to a user action in a focused Obsidian window, so a ' +
+					'session started from the command line, or while the ' +
+					'window is in the background, cannot ask for it. Start ' +
+					'the recording from Obsidian, or record a loopback input ' +
+					'device, which a session started any way at all can use.',
+			);
+		}
 		const reason = error instanceof Error ? error.message : String(error);
 		throw new Error(
 			`This computer's output could not be captured: ${reason}. ` +
@@ -325,18 +390,47 @@ async function grantedDisplayMedia(): Promise<MediaStream> {
  * Leaving the video track running holds the screen capture open for the whole
  * recording, which on Windows keeps the capture indicator up and costs frames
  * nobody reads.
+ *
+ * Two things can be wrong with what is left afterwards, and the second is the
+ * reason the first is no longer the only check. The specification lets a user
+ * agent answer a request for audio with video alone, so there may be no audio
+ * track at all. And Chromium ends a display capture through its video track,
+ * while whether Electron's loopback audio hangs off that same capture is a
+ * property of the build rather than something either API states: where it
+ * does, the stop above hands back a stream whose only track is already dead,
+ * and the session ends seconds in announcing a capture that stopped for no
+ * reason the user can see. Named here where that ending is immediate; one
+ * that arrives as an event instead is answered by
+ * {@link module:recording/CaptureLossWatcher}, like the loss of any other
+ * track.
  * @param granted - What getDisplayMedia answered with
  * @returns The same stream carrying audio alone
+ * @throws Error saying why the answer carries no audio to record
  */
 function audioOnly(granted: MediaStream): MediaStream {
+	// Stopped before the answer is judged, not after: a video track nobody
+	// goes on to stop holds the screen capture open for good, and every
+	// refusal below leaves this stream with no owner to stop it later.
 	for (const video of granted.getVideoTracks()) {
 		video.stop();
 		granted.removeTrack(video);
 	}
-	if (granted.getAudioTracks().length === 0) {
+	const [audio] = granted.getAudioTracks();
+	if (!audio) {
 		throw new Error(
 			'The system output was not granted as audio. On Windows, check that ' +
 				'screen capture is permitted; elsewhere, record a loopback input device.',
+		);
+	}
+	// Compared against 'ended' rather than against 'live': a host that
+	// reports no readyState at all is saying nothing about the track, and
+	// nothing is not a reason to refuse a grant it has just made.
+	if (audio.readyState === 'ended') {
+		throw new Error(
+			"This computer's output ended together with the screen capture it " +
+				'was granted alongside, which this build holds open as one. ' +
+				'Record a loopback input device instead, such as Stereo Mix or ' +
+				'VB-CABLE.',
 		);
 	}
 	return granted;

@@ -746,8 +746,14 @@ export class RecordingManager {
 		const trackCause = systemAudio
 			? 'its system audio capture ended'
 			: 'its input device was disconnected';
+		// The device half names which device went, because a session holds
+		// several and the user has to know which one to go and look at. The
+		// system-audio half names none: a session captures this machine's
+		// output once, and the name standing in for the device it has not got
+		// is either the constant below or "TrackN", neither of which says
+		// anything the sentence has not already said.
 		const sessionCause = systemAudio
-			? `the system audio capture "${name}" ended`
+			? "the capture of this computer's output ended"
 			: `the input device "${name}" was disconnected`;
 		if (remaining > 0) {
 			// A track recorded straight off its capture stream stops by

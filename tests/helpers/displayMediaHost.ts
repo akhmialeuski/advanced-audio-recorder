@@ -68,6 +68,12 @@ export interface DisplayMediaHostOptions {
 	/** Answer the source list with nothing. */
 	readonly withoutScreens?: boolean;
 	/**
+	 * Refuse the source list outright, with this as the reason. A remote
+	 * module that answers the lookup and then fails the call is the one host
+	 * failure that reaches the capture as an error rather than as an absence.
+	 */
+	readonly sourceListFailure?: string;
+	/**
 	 * Run the host on this platform instead of the one Electron grants the
 	 * loopback on. Swapped here rather than by a second call, so a test
 	 * never states the platform twice and has them disagree.
@@ -116,7 +122,13 @@ export function installDisplayMediaHost(
 					: {
 							desktopCapturer: {
 								getSources: (): Promise<typeof sources> =>
-									Promise.resolve(sources),
+									options.sourceListFailure === undefined
+										? Promise.resolve(sources)
+										: Promise.reject(
+												new Error(
+													options.sourceListFailure,
+												),
+											),
 							},
 						}),
 			},

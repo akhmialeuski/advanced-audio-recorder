@@ -59,6 +59,8 @@ Each command answers with one line: the state it left behind, or why it did noth
 
 Transcription is a paid job, so the command opens the transcribe dialog in Obsidian and starts it there, where it reports progress and can be cancelled - the same thing [transcribe on save](transcription.md) does. The answer says the run was started, not that it finished.
 
+One session the command cannot start is a multi-track one holding a track whose **Track N source** is **System audio (this computer)**. The host grants that capture only in answer to a user action in a focused Obsidian window, and a command typed in a terminal is neither, so `advanced-audio-recorder:record` answers with the reason and starts nothing. Start such a recording from the ribbon icon, the command palette or a hotkey. A track recording a loopback **input device** has no such restriction and records from the command line like any microphone - see [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
+
 ---
 
 ## Switching the input device

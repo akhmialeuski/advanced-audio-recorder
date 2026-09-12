@@ -147,9 +147,13 @@ describe('captureSystemAudioStream', () => {
 	const realMediaDevices = navigator.mediaDevices;
 	let restore: (() => void)[] = [];
 
-	/** A track that records whether it was stopped. */
+	/** A live track that records whether it was stopped. */
 	function fakeTrack(kind: 'audio' | 'video'): MediaStreamTrack {
-		return partial<MediaStreamTrack>({ kind, stop: jest.fn() });
+		return partial<MediaStreamTrack>({
+			kind,
+			readyState: 'live',
+			stop: jest.fn(),
+		});
 	}
 
 	/** A granted stream carrying the given tracks. */
@@ -309,6 +313,51 @@ describe('captureSystemAudioStream', () => {
 		);
 	});
 
+	// An answer nobody goes on to own still holds the screen capture open
+	// through its video track, and the capture indicator with it, until
+	// Obsidian is restarted.
+	it('lets go of the video of an answer it refuses', async () => {
+		const { getDisplayMedia } = withSession();
+		const video = fakeTrack('video');
+		getDisplayMedia.mockResolvedValue(grantedStream([video]));
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			'not granted as audio',
+		);
+
+		expect(video.stop).toHaveBeenCalledTimes(1);
+	});
+
+	// Chromium ends a display capture through its video track, and whether
+	// Electron's loopback audio hangs off that same capture is a property of
+	// the build. Where it does, dropping the video hands back a stream whose
+	// only track is already dead: the recorders are built on it, and the
+	// session ends seconds in announcing a capture that stopped for no reason
+	// the user can see.
+	it('refuses a grant whose audio ends with the video it came with', async () => {
+		const { getDisplayMedia } = withSession();
+		let audioState: MediaStreamTrackState = 'live';
+		const audio = partial<MediaStreamTrack>({
+			kind: 'audio',
+			stop: jest.fn(),
+		});
+		Object.defineProperty(audio, 'readyState', {
+			get: () => audioState,
+		});
+		const video = partial<MediaStreamTrack>({
+			kind: 'video',
+			readyState: 'live',
+			stop: jest.fn(() => {
+				audioState = 'ended';
+			}),
+		});
+		getDisplayMedia.mockResolvedValue(grantedStream([video, audio]));
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			"This computer's output ended together with the screen capture",
+		);
+	});
+
 	// The capturer is the half that was missed, and missing it produced a
 	// request Chromium refused rather than a sentence anyone could act on.
 	it('refuses where the host offers no screen source list', async () => {
@@ -326,6 +375,55 @@ describe('captureSystemAudioStream', () => {
 
 		await expect(captureSystemAudioStream()).rejects.toThrow(
 			'no screen to capture from',
+		);
+	});
+
+	// The one host failure that arrives as an error rather than as an
+	// absence. Left to propagate it reached the notice as the internal
+	// wording of a remote-module failure, alone: every other refusal in this
+	// module ends by saying what to record instead, and this one said
+	// nothing a user could act on.
+	it('says what to do instead when the source list refuses the call', async () => {
+		const host = installDisplayMediaHost({
+			sourceListFailure: 'An object could not be cloned',
+		});
+		restore.push(host.restore);
+
+		const refusal = await captureSystemAudioStream().catch(
+			(error: unknown) => error,
+		);
+
+		expect((refusal as Error).message).toBe(
+			'The screens this machine offers could not be listed: An object ' +
+				'could not be cloned. Record a loopback input device instead, ' +
+				'such as Stereo Mix or VB-CABLE.',
+		);
+	});
+
+	// getDisplayMedia consumes a transient activation, so it refuses a call
+	// no user action led to. The plugin reaches it both ways: the ribbon
+	// icon, the palette and a hotkey all carry one, and the CLI record
+	// command carries none. Read as an unexplained failure, the sentence a
+	// user got was the internal wording of that refusal followed by advice
+	// about virtual cables, which is not what stopped them.
+	it('names the missing user action rather than blaming the capture', async () => {
+		const { getDisplayMedia } = withSession();
+		getDisplayMedia.mockRejectedValue(
+			new DOMException(
+				'getDisplayMedia() requires transient activation',
+				'InvalidStateError',
+			),
+		);
+
+		const refusal = await captureSystemAudioStream().catch(
+			(error: unknown) => error,
+		);
+
+		expect((refusal as Error).message).toContain(
+			'granted only in answer to a user action in a focused Obsidian window',
+		);
+		expect((refusal as Error).message).not.toContain(
+			'could not be captured:',
 		);
 	});
 

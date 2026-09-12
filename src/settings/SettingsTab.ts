@@ -640,10 +640,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				sources.delete(track);
 				return;
 			}
+			// The track it already was, or the empty one the source row is
+			// allowed to bring into being on its own. Said as one fallback
+			// rather than as a field-by-field default ahead of a spread,
+			// which reads as two assignments the spread then discards.
 			sources.set(track, {
-				deviceId: current?.deviceId ?? '',
-				channelMode: current?.channelMode ?? CHANNEL_MODE_SOURCE,
-				...current,
+				...(current ?? {
+					deviceId: '',
+					channelMode: CHANNEL_MODE_SOURCE,
+				}),
 				kind,
 			});
 			return;

@@ -41,8 +41,9 @@ function systemAudioSourceDesc(): string {
 
 /**
  * Multi-track capture: the switch, how many tracks to offer, how they are
- * exported, and one input plus channel layout per track. Behind an entry of its
- * own, since two tracks alone are four device rows nobody configures twice. The
+ * exported, and per track what it records, which input, its channel layout and
+ * the processing it is captured with. Behind an entry of its own, since two
+ * tracks alone are several device rows nobody configures twice. The
  * per-track rows are declared for every track the section can offer and
  * revealed by predicate, so changing the track count reveals rows instead of
  * rebuilding the tab.
