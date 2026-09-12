@@ -35,9 +35,26 @@ interface DisplayMediaSession {
 	) => void;
 }
 
+/** One screen or window Electron offers as a capture source. */
+interface DesktopCapturerSource {
+	id: string;
+	name: string;
+}
+
+/** The part of Electron's desktopCapturer this plugin reaches for. */
+interface DesktopCapturer {
+	getSources: (options: {
+		types: string[];
+		thumbnailSize?: { width: number; height: number };
+	}) => Promise<DesktopCapturerSource[]>;
+}
+
 /** The part of Electron's remote module this plugin reaches for. */
 interface ElectronRemote {
 	getCurrentWebContents?: () => { session?: DisplayMediaSession } | undefined;
+	getBuiltin?: (name: string) => unknown;
+	desktopCapturer?: unknown;
+	require?: (id: string) => { desktopCapturer?: unknown };
 }
 
 /** Platform Electron grants a system-audio loopback stream on. */
@@ -53,18 +70,64 @@ const LOOPBACK_GRANT = 'loopback';
  * rather than throwing.
  * @returns The session, or null
  */
-function currentElectronSession(): DisplayMediaSession | null {
+function electronModule(): { remote?: ElectronRemote } | null {
 	const req = (window as { require?: (id: string) => unknown }).require;
 	if (typeof req !== 'function') {
 		return null;
 	}
 	try {
-		const remote = (req('electron') as { remote?: ElectronRemote }).remote;
-		return remote?.getCurrentWebContents?.()?.session ?? null;
+		return req('electron') as { remote?: ElectronRemote };
 	} catch {
-		// A host without the remote module, or one that refuses the lookup.
+		// A host without the module, or one that refuses the lookup.
 		return null;
 	}
+}
+
+/**
+ * The Electron session this window runs in, or null where the host exposes
+ * no way to reach it.
+ * @returns The session, or null
+ */
+function currentElectronSession(): DisplayMediaSession | null {
+	try {
+		const remote = electronModule()?.remote;
+		return remote?.getCurrentWebContents?.()?.session ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Electron's desktopCapturer, or null where it cannot be reached.
+ *
+ * A grant has to name a video source even when only audio is wanted, and
+ * only desktopCapturer produces one. It is a main-process module, so a
+ * renderer reaches it through the remote module, which exposes it under
+ * several names depending on the Electron version. Each is tried in turn
+ * rather than picked, because which one answers is a property of the host.
+ * @returns The capturer, or null
+ */
+function desktopCapturer(): DesktopCapturer | null {
+	const electron = electronModule();
+	const remote = electron?.remote;
+	const candidates = [
+		(): unknown => remote?.getBuiltin?.('desktopCapturer'),
+		(): unknown => remote?.desktopCapturer,
+		(): unknown => remote?.require?.('electron').desktopCapturer,
+		(): unknown =>
+			(electron as { desktopCapturer?: unknown } | null)?.desktopCapturer,
+	];
+	for (const read of candidates) {
+		try {
+			const found = read() as DesktopCapturer | undefined;
+			if (typeof found?.getSources === 'function') {
+				return found;
+			}
+		} catch {
+			// This route is closed on this host; the next one may not be.
+		}
+	}
+	return null;
 }
 
 /**
@@ -79,7 +142,14 @@ export function isSystemAudioLoopbackAvailable(): boolean {
 		return false;
 	}
 	const session = currentElectronSession();
-	return typeof session?.setDisplayMediaRequestHandler === 'function';
+	// Both halves are needed. A grant names a video source even when only
+	// audio is wanted, so a host that answers the handler but hides the
+	// capturer cannot complete a request, and reporting it as available
+	// would promise a capture that fails at the start of a recording.
+	return (
+		typeof session?.setDisplayMediaRequestHandler === 'function' &&
+		desktopCapturer() !== null
+	);
 }
 
 /**
@@ -113,10 +183,38 @@ export async function captureSystemAudioStream(): Promise<MediaStream> {
 			),
 		);
 	}
+	const capturer = desktopCapturer();
+	if (!capturer) {
+		throw new AudioStreamError(
+			new Error(
+				'This Obsidian build exposes no screen source list, which a system ' +
+					'audio grant needs. Record a loopback input device instead.',
+			),
+		);
+	}
+	let installed = false;
 	try {
-		install.call(session, (_request, callback) => {
-			callback({ audio: LOOPBACK_GRANT });
+		// Listed before the request rather than inside the handler: the
+		// handler is synchronous from Electron's point of view, and a grant
+		// that arrives late is a grant that never arrived.
+		const [screen] = await capturer.getSources({
+			types: ['screen'],
+			// No thumbnails: the frames would be captured, decoded and then
+			// thrown away with the video track.
+			thumbnailSize: { width: 0, height: 0 },
 		});
+		if (!screen) {
+			throw new AudioStreamError(
+				new Error('This machine offered no screen to capture from.'),
+			);
+		}
+		install.call(session, (_request, callback) => {
+			// The video source is required even though only audio is kept:
+			// a request that asked for video and is granted none is refused
+			// by Chromium as an invalid set of capture constraints.
+			callback({ video: screen, audio: LOOPBACK_GRANT });
+		});
+		installed = true;
 		const granted = await navigator.mediaDevices.getDisplayMedia({
 			// Asked for and dropped below: a request without it is refused.
 			video: true,
@@ -130,7 +228,12 @@ export async function captureSystemAudioStream(): Promise<MediaStream> {
 					error instanceof Error ? error : new Error(String(error)),
 				);
 	} finally {
-		install.call(session, null);
+		// Only ours is taken back down. Clearing unconditionally would also
+		// clear a handler this plugin never installed, which on a failure
+		// before installation is somebody else's.
+		if (installed) {
+			install.call(session, null);
+		}
 	}
 }
 

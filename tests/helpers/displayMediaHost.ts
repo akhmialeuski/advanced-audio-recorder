@@ -53,33 +53,66 @@ export function useElectron(electron: unknown): () => void {
 export interface DisplayMediaHost {
 	/** The handlers the code under test installed, newest last. */
 	readonly handlers: (unknown | null)[];
+	/** The screen sources the host offers, as desktopCapturer answers. */
+	readonly sources: { id: string; name: string }[];
 	/** Puts back the real process and removes the desktop require. */
 	restore(): void;
 }
 
+/** How much of a granting host a test wants to be missing. */
+export interface DisplayMediaHostOptions {
+	/** Leave the session without a display-media handler. */
+	readonly withoutHandler?: boolean;
+	/** Leave the remote module without a desktopCapturer. */
+	readonly withoutCapturer?: boolean;
+	/** Answer the source list with nothing. */
+	readonly withoutScreens?: boolean;
+}
+
 /**
- * Installs a Windows host whose session exposes the display-media handler,
- * which is the one arrangement in which a system-audio grant is possible.
+ * Installs a Windows host that can grant the system output.
+ *
+ * Both halves are here because a grant needs both: the handler answers the
+ * request, and desktopCapturer supplies the video source the request is
+ * refused without. Each can be left out, which is how the refusals are
+ * tested.
+ * @param options - Which half to leave missing
  * @returns The installed host, with its own teardown
  */
-export function installDisplayMediaHost(): DisplayMediaHost {
+export function installDisplayMediaHost(
+	options: DisplayMediaHostOptions = {},
+): DisplayMediaHost {
 	const handlers: (unknown | null)[] = [];
+	const sources = options.withoutScreens
+		? []
+		: [{ id: 'screen:0:0', name: 'Entire screen' }];
 	const restorePlatform = usePlatform('win32');
 	const restoreElectron = useElectron({
 		remote: {
 			getCurrentWebContents: () => ({
-				session: {
-					setDisplayMediaRequestHandler: (
-						handler: unknown | null,
-					): void => {
-						handlers.push(handler);
-					},
-				},
+				session: options.withoutHandler
+					? {}
+					: {
+							setDisplayMediaRequestHandler: (
+								handler: unknown | null,
+							): void => {
+								handlers.push(handler);
+							},
+						},
 			}),
+			...(options.withoutCapturer
+				? {}
+				: {
+						desktopCapturer: {
+							getSources: (): Promise<typeof sources> =>
+								Promise.resolve(sources),
+						},
+					}),
 		},
 	});
 	return {
 		handlers,
+		sources,
 		restore: (): void => {
 			restoreElectron();
 			restorePlatform();

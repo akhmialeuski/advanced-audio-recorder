@@ -15,13 +15,19 @@ import {
 	usePlatform,
 } from '../helpers/displayMediaHost';
 
-/** An electron module whose session exposes the display-media handler. */
+/**
+ * An electron module with both halves a grant needs: the display-media
+ * handler on the session, and a desktopCapturer to name a video source.
+ */
 function electronWithHandler(): unknown {
 	return {
 		remote: {
 			getCurrentWebContents: () => ({
 				session: { setDisplayMediaRequestHandler: (): void => {} },
 			}),
+			desktopCapturer: {
+				getSources: (): Promise<never[]> => Promise.resolve([]),
+			},
 		},
 	};
 }
@@ -62,6 +68,16 @@ describe('isSystemAudioLoopbackAvailable', () => {
 
 	// Electron documents the loopback grant as Windows-only, so the other
 	// platforms are refused before the host is even asked.
+	// The capturer is the other half of the answer: a host that answers the
+	// handler but hides it cannot complete a request, so reporting the
+	// grant as available would promise a capture that fails.
+	it('refuses the grant where the screen source list is out of reach', () => {
+		const host = installDisplayMediaHost({ withoutCapturer: true });
+		restore.push(host.restore);
+
+		expect(isSystemAudioLoopbackAvailable()).toBe(false);
+	});
+
 	it.each([{ platform: 'darwin' }, { platform: 'linux' }])(
 		'refuses the grant on $platform',
 		({ platform }) => {
@@ -195,19 +211,29 @@ describe('captureSystemAudioStream', () => {
 
 	// The handler is where the grant is actually asked for. Electron reads
 	// the string 'loopback' as "give this page the machine's own output".
-	it('answers the host request with the loopback grant', async () => {
-		const { handlers, getDisplayMedia } = withSession();
-		getDisplayMedia.mockResolvedValue(grantedStream([fakeTrack('audio')]));
+	// A request that asked for video and is granted none is refused by
+	// Chromium as an invalid set of capture constraints, which is what a
+	// grant of audio alone produced.
+	it('answers the host request with a video source beside the loopback grant', async () => {
+		const host = withSession();
+		host.getDisplayMedia.mockResolvedValue(
+			grantedStream([fakeTrack('audio')]),
+		);
 		await captureSystemAudioStream();
-		const handler = handlers[0] as (
+		const handler = host.handlers[0] as (
 			request: unknown,
-			callback: (grant: { audio?: string }) => void,
+			callback: (grant: { video?: unknown; audio?: string }) => void,
 		) => void;
-		const granted: { audio?: string }[] = [];
+		const granted: { video?: unknown; audio?: string }[] = [];
 
 		handler({}, (grant) => granted.push(grant));
 
-		expect(granted).toEqual([{ audio: 'loopback' }]);
+		expect(granted).toEqual([
+			{
+				video: { id: 'screen:0:0', name: 'Entire screen' },
+				audio: 'loopback',
+			},
+		]);
 	});
 
 	// Left installed, the handler would decide every later display-media
@@ -241,6 +267,26 @@ describe('captureSystemAudioStream', () => {
 
 		await expect(captureSystemAudioStream()).rejects.toThrow(
 			'not granted as audio',
+		);
+	});
+
+	// The capturer is the half that was missed, and missing it produced a
+	// request Chromium refused rather than a sentence anyone could act on.
+	it('refuses where the host offers no screen source list', async () => {
+		const host = installDisplayMediaHost({ withoutCapturer: true });
+		restore.push(host.restore);
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			'no screen source list',
+		);
+	});
+
+	it('refuses where the machine offers no screen', async () => {
+		const host = installDisplayMediaHost({ withoutScreens: true });
+		restore.push(host.restore);
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			'no screen to capture from',
 		);
 	});
 
