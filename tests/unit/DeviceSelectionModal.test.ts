@@ -69,7 +69,27 @@ describe('DeviceSelectionModal', () => {
 	it('falls back to a truncated device id when the label is empty', () => {
 		const { modal } = openModal([makeDevice('abcdefgh-1234-5678', '')]);
 
-		expect(at(dropdownOf(modal).options, 0).text).toBe('Device abcdefgh');
+		expect(at(dropdownOf(modal).options, 0).text).toBe(
+			'Audio device abcdefgh',
+		);
+	});
+
+	// The plugin offers the input list here and in the settings tab, and the
+	// marker reached only the settings tab. A marker present in one list and
+	// absent from the other is worse than none, because its absence then
+	// reads as "this one is not a loopback".
+	it('marks an input that carries the system output', () => {
+		const { modal } = openModal([
+			makeDevice('mix-1', 'Stereo Mix (Realtek(R) Audio)'),
+			makeDevice('mic-1', 'Desk microphone'),
+		]);
+
+		expect(
+			Array.from(dropdownOf(modal).options).map((option) => option.text),
+		).toEqual([
+			'Stereo Mix (Realtek(R) Audio) (system audio)',
+			'Desk microphone',
+		]);
 	});
 
 	it('invokes the callback with the selected device and closes on success', async () => {
@@ -86,6 +106,21 @@ describe('DeviceSelectionModal', () => {
 		expect(onSelected).toHaveBeenCalledWith('mic-2', 'Headset');
 		expect(Notice).toHaveBeenCalledWith('Selected audio device: Headset');
 		expect(close).toHaveBeenCalled();
+	});
+
+	// The dropdown can hold no selection at all, which is what a list that
+	// came back empty leaves behind. Confirming then still has to report a
+	// name, because the callback and the notice are both given one.
+	it('names an absent selection rather than reading through it', async () => {
+		const { modal, onSelected } = openModal([]);
+
+		selectButtonOf(modal).click();
+		await tick();
+
+		expect(onSelected).toHaveBeenCalledWith('', 'Unknown device');
+		expect(Notice).toHaveBeenCalledWith(
+			'Selected audio device: Unknown device',
+		);
 	});
 
 	it('empties the content on close', () => {

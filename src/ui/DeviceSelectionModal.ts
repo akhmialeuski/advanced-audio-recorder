@@ -6,7 +6,10 @@
 import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import { getAudioInputDevices } from '../recording/AudioStreamHandler';
+import {
+	deviceOptionLabel,
+	getAudioInputDevices,
+} from '../recording/AudioStreamHandler';
 import { PluginModal } from './PluginModal';
 
 /**
@@ -54,8 +57,7 @@ export class DeviceSelectionModal extends PluginModal {
 		for (const device of this.devices) {
 			const option = dropdown.createEl('option');
 			option.value = device.deviceId;
-			option.text =
-				device.label || `Device ${device.deviceId.substring(0, 8)}`;
+			option.text = deviceOptionLabel(device);
 		}
 
 		this.renderActions({

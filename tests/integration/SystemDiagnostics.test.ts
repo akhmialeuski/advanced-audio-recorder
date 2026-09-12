@@ -18,6 +18,7 @@ import {
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { createMockApp } from '../helpers/createApp';
 import { installAudioContextRate } from '../helpers/mediaMocks';
+import { useHostProcess } from '../helpers/hostProcess';
 import type { App } from 'obsidian';
 
 // Deterministic encoder probing: this suite exercises the diagnostics
@@ -128,12 +129,21 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 		const result = SystemDiagnostics.collectPluginSettings(settings);
 
 		expect(result.trackAudioSources).toEqual({
-			1: { deviceId: 'dev-a', channelMode: 'source', gainDb: 0, pan: 0 },
+			1: {
+				deviceId: 'dev-a',
+				channelMode: 'source',
+				gainDb: 0,
+				pan: 0,
+				processing: 'global',
+				kind: 'input-device',
+			},
 			2: {
 				deviceId: 'dev-b',
 				channelMode: 'mono-left',
 				gainDb: 0,
 				pan: 0,
+				processing: 'global',
+				kind: 'input-device',
 			},
 		});
 	});
@@ -149,7 +159,6 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 // collectEnvironment
 
 describe('SystemDiagnostics.collectEnvironment', () => {
-	const originalProcess = global.process;
 	const originalUserAgent = Object.getOwnPropertyDescriptor(
 		global.navigator,
 		'userAgent',
@@ -160,8 +169,6 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	);
 
 	afterEach(() => {
-		(global as unknown as { process: NodeJS.Process }).process =
-			originalProcess;
 		if (originalNavigator) {
 			Object.defineProperty(global, 'navigator', originalNavigator);
 		}
@@ -181,7 +188,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 
 	it('reads electron, chrome and node versions from process.versions', () => {
-		const proc = {
+		useHostProcess({
 			versions: {
 				electron: '28.0.0',
 				node: '20.11.0',
@@ -189,8 +196,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 			},
 			platform: 'win32',
 			arch: 'x64',
-		};
-		(global as unknown as { process: typeof proc }).process = proc;
+		});
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -202,8 +208,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 
 	it('uses "unknown" when process.platform is absent', () => {
-		const proc = { versions: { electron: '28.0.0', node: '20.11.0' } };
-		(global as unknown as { process: typeof proc }).process = proc;
+		useHostProcess({ versions: { electron: '28.0.0', node: '20.11.0' } });
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -211,7 +216,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 
 	it('returns "unknown" for electronVersion when process is undefined', () => {
-		(global as unknown as { process: undefined }).process = undefined;
+		useHostProcess(undefined);
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -224,7 +229,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	// The mobile shape: no process at all, so the WebView's own
 	// identification is the only version the report can carry.
 	it('reports the user agent when process is undefined', () => {
-		(global as unknown as { process: undefined }).process = undefined;
+		useHostProcess(undefined);
 		withUserAgent('Mozilla/5.0 (Linux; Android 14) obsidian/1.13.1');
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
@@ -257,6 +262,13 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 });
 
 // collectAudioDevices
+
+/** What the collector answers when the device list could not be read. */
+const UNREADABLE_DEVICE_LIST = {
+	enumerated: false,
+	devices: [],
+	loopbackInputs: [],
+};
 
 describe('SystemDiagnostics.collectAudioDevices', () => {
 	const mockEnumerate = jest.fn();
@@ -308,6 +320,40 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 		});
 	});
 
+	// The report exists so a user can say what their machine offers without
+	// being walked through a device list, and the input carrying the far side
+	// of a call is the one that question is usually about.
+	it('names the inputs that carry the system output', async () => {
+		mockEnumerate.mockResolvedValueOnce([
+			{
+				deviceId: 'in-1',
+				label: 'Desk microphone',
+				groupId: 'grp-1',
+				kind: 'audioinput',
+			},
+			{
+				deviceId: 'in-2',
+				label: 'CABLE Output (VB-Audio Virtual Cable)',
+				groupId: 'grp-2',
+				kind: 'audioinput',
+			},
+			{
+				deviceId: 'out-1',
+				label: 'BlackHole 2ch',
+				groupId: 'grp-3',
+				kind: 'audiooutput',
+			},
+		]);
+
+		const result = await SystemDiagnostics.collectAudioDevices();
+
+		// The output side is left out: it is never something the plugin can
+		// be pointed at, whatever it is called.
+		expect(result.loopbackInputs).toEqual([
+			'CABLE Output (VB-Audio Virtual Cable)',
+		]);
+	});
+
 	// A machine with no audio hardware and a list that could not be read both
 	// end with nothing to show, and only the first of them is what an empty
 	// list is normally taken to mean.
@@ -316,7 +362,11 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 
 		const result = await SystemDiagnostics.collectAudioDevices();
 
-		expect(result).toEqual({ enumerated: true, devices: [] });
+		expect(result).toEqual({
+			enumerated: true,
+			devices: [],
+			loopbackInputs: [],
+		});
 	});
 
 	// Absent outside a secure context and in some embedded WebViews, which is
@@ -330,7 +380,7 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 
 		const result = await SystemDiagnostics.collectAudioDevices();
 
-		expect(result).toEqual({ enumerated: false, devices: [] });
+		expect(result).toEqual(UNREADABLE_DEVICE_LIST);
 	});
 
 	// Blocked microphone access is one of the situations a user is asked for
@@ -345,7 +395,7 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 
 		const result = await SystemDiagnostics.collectAudioDevices();
 
-		expect(result).toEqual({ enumerated: false, devices: [] });
+		expect(result).toEqual(UNREADABLE_DEVICE_LIST);
 		expect(reported).toHaveBeenCalled();
 	});
 

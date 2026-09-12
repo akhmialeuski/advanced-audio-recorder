@@ -59,6 +59,8 @@ Each command answers with one line: the state it left behind, or why it did noth
 
 Transcription is a paid job, so the command opens the transcribe dialog in Obsidian and starts it there, where it reports progress and can be cancelled - the same thing [transcribe on save](transcription.md) does. The answer says the run was started, not that it finished.
 
+One session the command cannot start is a multi-track one holding a track whose **Track N source** is **System audio (this computer)**. The host grants that capture only in answer to a user action in a focused Obsidian window, and a command typed in a terminal is neither, so `advanced-audio-recorder:record` answers with the reason and starts nothing. Start such a recording from the ribbon icon, the command palette or a hotkey. A track recording a loopback **input device** has no such restriction and records from the command line like any microphone - see [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
+
 ---
 
 ## Switching the input device
@@ -66,6 +68,8 @@ Transcription is a paid job, so the command opens the transcribe dialog in Obsid
 You do not have to open the settings tab to change which microphone records. Run the **Select audio input device** command from the command palette (`Ctrl/Cmd + P`) and a quick-pick modal opens, listing every input the plugin detected. Choose one and it is saved to your settings **immediately** - a confirmation notice reports the device that is now selected, and the next recording uses it.
 
 This is the quickest way to switch mics between recordings - for example, moving from a laptop's built-in microphone to a headset before a meeting. The same choice is also available, alongside the sample rate, under [Audio input settings](settings-reference.md#audio-input).
+
+A multi-track track can record this machine's own output directly, through **Track N source**, which Electron grants on Windows only. Everywhere else, inputs that carry that output are marked `(system audio)` in both dropdowns. Such an input exists only where the operating system or an installed virtual cable publishes one, and it is how a call's remote participants reach a recording. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
 
 ---
 

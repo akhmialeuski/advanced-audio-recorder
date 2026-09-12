@@ -62,6 +62,7 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 					kind: 'audioinput',
 				},
 			],
+			loopbackInputs: [],
 		},
 		audioCapabilities: {
 			supportedFormats: ['webm'],
@@ -83,6 +84,7 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 			],
 			mediaRecorderAvailable: true,
 			getUserMediaAvailable: true,
+			systemAudioLoopbackAvailable: false,
 		},
 		...overrides,
 	};

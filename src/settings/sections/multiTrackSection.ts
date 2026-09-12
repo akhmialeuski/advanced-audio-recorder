@@ -9,7 +9,12 @@ import {
 	isMultiTrackCaptureSupported,
 } from '../../platform/capabilities';
 import { MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB } from '../../constants';
-import { CHANNEL_MODE_LABELS } from '../labels';
+import { isSystemAudioLoopbackAvailable } from '../../recording/systemAudioSupport';
+import {
+	CHANNEL_MODE_LABELS,
+	TRACK_PROCESSING_LABELS,
+	TRACK_SOURCE_KIND_LABELS,
+} from '../labels';
 import { multiTrackStatus, type PageStatus } from '../settingsAttention';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import { type DeviceOptions, TRACK_ROWS_CLASS } from './context';
@@ -18,9 +23,27 @@ import { deviceRowDesc, sectionItems } from './rowHelpers';
 import type { SettingGroupItem } from 'obsidian';
 
 /**
+ * What the source row says about recording this computer's own output.
+ *
+ * Whether the host can grant it is a fact of the installed build and of the
+ * platform, so the row says which of the two answers applies here rather than
+ * offering a choice that would fail at the start of a recording. The option
+ * stays selectable either way: a configuration synced from a machine that can
+ * do it must survive a visit to a machine that cannot.
+ * @returns The row's description
+ */
+function systemAudioSourceDesc(): string {
+	const base = 'What this track records.';
+	return isSystemAudioLoopbackAvailable()
+		? `${base} System audio captures this computer's own output, so the other participants of a call reach the recording.`
+		: `${base} System audio is unavailable on this build, which grants it on Windows only. Record a loopback input device instead, such as Stereo Mix, VB-CABLE or a PipeWire monitor.`;
+}
+
+/**
  * Multi-track capture: the switch, how many tracks to offer, how they are
- * exported, and one input plus channel layout per track. Behind an entry of its
- * own, since two tracks alone are four device rows nobody configures twice. The
+ * exported, and per track what it records, which input, its channel layout and
+ * the processing it is captured with. Behind an entry of its own, since two
+ * tracks alone are several device rows nobody configures twice. The
  * per-track rows are declared for every track the section can offer and
  * revealed by predicate, so changing the track count reveals rows instead of
  * rebuilding the tab.
@@ -33,6 +56,12 @@ export function multiTrackPage(
 ): SettingGroupItem {
 	const available = isMultiTrackCaptureSupported();
 	const active = (): boolean => settings.enableMultiTrack && available;
+	// Read once for the whole section, as the capture support beside it is.
+	// The answer is a fact of the platform and the installed build, identical
+	// on all eight rows, and asking it costs a synchronous trip through the
+	// remote module - which the framework would then pay per track, on every
+	// rebuild of the settings tree.
+	const sourceDesc = systemAudioSourceDesc();
 	const trackRows = (): SettingGroupItem[] => {
 		const rows: SettingGroupItem[] = [];
 		for (let track = 1; track <= MAX_TRACK_COUNT; track++) {
@@ -48,7 +77,24 @@ export function multiTrackPage(
 			// and then showed the old one back.
 			const unassigned = (): boolean =>
 				!settings.trackAudioSources.get(track)?.deviceId;
+			// A system-audio track is configured by being one, so it has no
+			// device row and its placement rows are never blocked for want
+			// of a device.
+			const systemAudio = (): boolean =>
+				settings.trackAudioSources.get(track)?.kind === 'system-audio';
+			const unconfigured = (): boolean => !systemAudio() && unassigned();
 			rows.push(
+				{
+					name: `Track ${String(track)} source`,
+					aliases: ['system audio', 'loopback', 'desktop audio'],
+					desc: sourceDesc,
+					visible: offered,
+					control: {
+						type: 'dropdown',
+						key: trackControlKey(track, 'kind'),
+						options: TRACK_SOURCE_KIND_LABELS,
+					},
+				},
 				{
 					name: `Track ${String(track)} input`,
 					aliases: ['audio source', 'device'],
@@ -57,7 +103,7 @@ export function multiTrackPage(
 						`Input device recorded into track ${String(track)}.`,
 						true,
 					),
-					visible: offered,
+					visible: (): boolean => offered() && !systemAudio(),
 					control: {
 						type: 'dropdown',
 						key: trackControlKey(track, 'deviceId'),
@@ -68,7 +114,7 @@ export function multiTrackPage(
 					name: `Track ${String(track)} channels`,
 					aliases: ['channel layout', 'mono'],
 					desc: `Channel layout recorded into track ${String(track)}: keep the device layout, or reduce it to mono.`,
-					visible: offered,
+					visible: (): boolean => offered() && !systemAudio(),
 					control: {
 						type: 'dropdown',
 						key: trackControlKey(track, 'channelMode'),
@@ -84,6 +130,29 @@ export function multiTrackPage(
 					},
 				},
 				{
+					name: `Track ${String(track)} processing`,
+					aliases: [
+						'noise suppression',
+						'echo cancellation',
+						'automatic gain control',
+						'loopback',
+						'system audio',
+					],
+					desc: `Browser filtering applied to track ${String(track)} as it is captured. A system-loopback input wants Raw: echo cancellation treats the far end of a call as this machine's own output and suppresses it.`,
+					// Hidden on a system-audio track for the same reason the
+					// device rows are. These filters are constraints of
+					// getUserMedia, and such a track is granted by the host
+					// instead, so the row would take an edit that reaches
+					// nothing and report a choice the capture never made.
+					visible: (): boolean => offered() && !systemAudio(),
+					control: {
+						type: 'dropdown',
+						key: trackControlKey(track, 'processing'),
+						options: TRACK_PROCESSING_LABELS,
+						disabled: unconfigured,
+					},
+				},
+				{
 					name: `Track ${String(track)} level`,
 					aliases: ['gain', 'volume', 'decibels'],
 					desc: `Level applied to track ${String(track)} in the combined file, in decibels. A laptop microphone beside an interface is many decibels quieter, and the correction belongs to the track.`,
@@ -94,7 +163,7 @@ export function multiTrackPage(
 						min: MIN_TRACK_GAIN_DB,
 						max: MAX_TRACK_GAIN_DB,
 						step: 1,
-						disabled: unassigned,
+						disabled: unconfigured,
 					},
 				},
 				{
@@ -108,7 +177,7 @@ export function multiTrackPage(
 						min: -1,
 						max: 1,
 						step: 0.25,
-						disabled: unassigned,
+						disabled: unconfigured,
 					},
 				},
 			);

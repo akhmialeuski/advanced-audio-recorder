@@ -62,6 +62,13 @@ import {
 	useMobilePlatform,
 } from '../helpers/platform';
 import { maybeEl } from '../helpers/dom';
+import {
+	installDisplayMediaHost,
+	type DisplayMediaHost,
+	type DisplayMediaHostOptions,
+} from '../helpers/displayMediaHost';
+import { MAX_TRACK_COUNT } from 'src/settings/sections/controlKeys';
+import type { AudioSource } from 'src/settings/settingsSchema';
 import { SETTING } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
 
@@ -745,6 +752,51 @@ describe('settings definitions', () => {
 	describe('the multi-track section', () => {
 		const MULTI = 'Multi-track recording';
 
+		/**
+		 * The granting hosts a case installed, taken back down whatever the
+		 * case did. Drained here rather than at the end of a test body: an
+		 * assertion that fails first would otherwise leave the desktop
+		 * require in place for every later case, and the suite is randomized.
+		 */
+		let hosts: (() => void)[] = [];
+
+		afterEach(() => {
+			hosts.forEach((undo) => {
+				undo();
+			});
+			hosts = [];
+		});
+
+		/**
+		 * Installs a host that can grant the system output for this case.
+		 * @param options - Which half of the host to leave missing
+		 * @returns The installed host
+		 */
+		const withGrantingHost = (
+			options: DisplayMediaHostOptions = {},
+		): DisplayMediaHost => {
+			const host = installDisplayMediaHost(options);
+			hosts.push(host.restore);
+			return host;
+		};
+
+		/**
+		 * A track map whose only track records the system output. Its own
+		 * map every time: the one on DEFAULT_SETTINGS is shared by every
+		 * test through the shallow copy in beforeEach.
+		 */
+		const systemAudioOnTrackOne = (): Map<number, AudioSource> =>
+			new Map([
+				[
+					1,
+					{
+						deviceId: '',
+						channelMode: 'source' as const,
+						kind: 'system-audio' as const,
+					},
+				],
+			]);
+
 		/** Whether a row's visible predicate holds for the current settings. */
 		const isVisible = (name: string): boolean => {
 			const visible = rowOf(build(), MULTI, name).visible;
@@ -783,6 +835,114 @@ describe('settings definitions', () => {
 				'mic-1': 'Built-in microphone',
 				'iface-1': 'Audio interface',
 			});
+		});
+
+		// A system-audio track is configured by being one: it names no
+		// device, so the rows that describe a device have nothing to say.
+		it('hides the device rows of a track that records the system output', () => {
+			settings.enableMultiTrack = true;
+			settings.trackAudioSources = systemAudioOnTrackOne();
+
+			expect(isVisible('Track 1 source')).toBe(true);
+			expect(isVisible('Track 1 input')).toBe(false);
+			expect(isVisible('Track 1 channels')).toBe(false);
+		});
+
+		// The row states which of the two answers applies here rather than
+		// offering a choice that would fail at the start of a recording.
+		it('says the system output is available where the host can grant it', () => {
+			withGrantingHost();
+			settings.enableMultiTrack = true;
+
+			const desc = rowOf(build(), MULTI, 'Track 1 source').desc;
+
+			expect(desc).toMatch(/this computer's own output/);
+			expect(desc).not.toMatch(/unavailable on this build/);
+		});
+
+		// Whether the host can grant the output is a fact of the platform
+		// and the installed build, identical on all eight source rows, and
+		// reading it costs a synchronous trip through the remote module.
+		// Asked inside the row loop it was paid once per track, on every
+		// rebuild of the settings tree - and the framework rebuilds the tree
+		// whenever the device list changes.
+		it('asks the host once for the section, not once per track', () => {
+			const host = withGrantingHost();
+			settings.enableMultiTrack = true;
+			settings.maxTracks = MAX_TRACK_COUNT;
+
+			build();
+
+			// Two lookups make one answer: the session carrying the handler,
+			// and the capturer naming a video source for the grant.
+			expect(host.probeCount()).toBe(2);
+		});
+
+		it('offers the source row for every track it offers an input for', () => {
+			settings.enableMultiTrack = true;
+			const control = rowOf(build(), MULTI, 'Track 1 source').control;
+
+			expect(control?.key).toBe('track.1.kind');
+			expect(control?.options).toEqual({
+				'input-device': 'Input device',
+				'system-audio': 'System audio (this computer)',
+			});
+		});
+
+		// Without a device there is nothing to place in the mix, unless the
+		// track is the system output, which is configured by its kind alone.
+		it.each([{ row: 'Track 1 level' }, { row: 'Track 1 position' }])(
+			'unblocks $row on a system-audio track',
+			({ row }) => {
+				settings.enableMultiTrack = true;
+				settings.outputMode = 'single';
+				settings.trackAudioSources = systemAudioOnTrackOne();
+				const disabled = rowOf(build(), MULTI, row).control?.disabled;
+
+				expect(typeof disabled === 'function' && disabled()).toBe(
+					false,
+				);
+			},
+		);
+
+		// The three filters are constraints of getUserMedia, and a
+		// system-audio track is granted by the host instead. Offered anyway,
+		// the row took an edit that reached nothing and then reported a
+		// choice the capture had never made.
+		it('hides the processing row of a track that records the system output', () => {
+			settings.enableMultiTrack = true;
+			settings.trackAudioSources = systemAudioOnTrackOne();
+
+			expect(isVisible('Track 1 processing')).toBe(false);
+		});
+
+		// The three global filters suit a microphone in a room and ruin a
+		// system-loopback input, and one session can hold both.
+		it('offers a processing profile per track and disables it without a device', () => {
+			settings.enableMultiTrack = true;
+			// Its own map: the one on DEFAULT_SETTINGS is shared by every
+			// test through the shallow copy in beforeEach.
+			settings.trackAudioSources = new Map();
+			const control = rowOf(build(), MULTI, 'Track 1 processing').control;
+
+			expect(control?.key).toBe('track.1.processing');
+			expect(control?.options).toEqual({
+				global: 'Same as global settings',
+				voice: 'Voice (microphone in a room)',
+				raw: 'Raw (system audio or line input)',
+			});
+			expect(
+				typeof control?.disabled === 'function' && control.disabled(),
+			).toBe(true);
+
+			settings.trackAudioSources.set(1, {
+				deviceId: 'mic-1',
+				channelMode: 'source',
+			});
+			const assigned = rowOf(build(), MULTI, 'Track 1 processing').control
+				?.disabled;
+
+			expect(typeof assigned === 'function' && assigned()).toBe(false);
 		});
 
 		it('disables the channel layout of a track whose device has one channel', () => {

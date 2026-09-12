@@ -44,7 +44,11 @@ import {
 	type ProfileCatalogue,
 } from './settingsDefinitions';
 import { LegacySettingsRenderer } from './legacySettingsRenderer';
-import type { AudioRecorderSettings } from './settingsSchema';
+import {
+	normalizeTrackProcessingMode,
+	normalizeTrackSourceKind,
+	type AudioRecorderSettings,
+} from './settingsSchema';
 import {
 	getSupportedSampleRates,
 	buildMimeType,
@@ -60,6 +64,7 @@ import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
 import {
 	audioDeviceApi,
 	channelSelectionAvailable,
+	deviceOptionLabel,
 	getAudioInputDeviceSnapshot,
 	recordingEncodingFor,
 	type AudioInputDeviceSnapshot,
@@ -294,8 +299,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				inputs: Object.fromEntries(
 					this.deviceSnapshot.devices.map((device) => [
 						device.deviceId,
-						device.label ||
-							`Audio device ${device.deviceId.substring(0, 8)}`,
+						deviceOptionLabel(device),
 					]),
 				),
 				channelSelectable: (deviceId): boolean => {
@@ -406,6 +410,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 			if (track.field === 'channelMode') {
 				return source?.channelMode ?? CHANNEL_MODE_SOURCE;
+			}
+			if (track.field === 'processing') {
+				return source?.processing ?? 'global';
+			}
+			if (track.field === 'kind') {
+				return source?.kind ?? 'input-device';
 			}
 			// A track placed nowhere in particular sits at the centre, at the
 			// level it was captured at.
@@ -602,7 +612,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	/**
 	 * Writes one field of a track's audio source. The sources live in a Map
 	 * keyed by track number, so a control key addresses an entry rather than a
-	 * settings property; clearing the device drops the entry entirely.
+	 * settings property; a device track left without a device drops the entry
+	 * entirely, whether the device was cleared or the source kind moved off
+	 * the system output.
 	 * @param track - The track number the control belongs to
 	 * @param field - Which half of the source the control writes
 	 * @param value - The value the control produced
@@ -614,6 +626,33 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	): void {
 		const sources = this.plugin.settings.trackAudioSources;
 		const current = sources.get(track);
+		if (field === 'kind') {
+			// The one field that configures a track by itself: choosing the
+			// system output is the whole configuration of such a track, and
+			// there is no device to bind it to.
+			const kind = normalizeTrackSourceKind(value);
+			if (kind === 'input-device' && !current?.deviceId) {
+				// A device track without a device is the unconfigured state,
+				// and an unconfigured track has no entry - the same rule the
+				// device dropdown applies when it is cleared. Written anyway,
+				// the entry is one capture skips, the settings validator
+				// refuses, and data.json carries for good.
+				sources.delete(track);
+				return;
+			}
+			// The track it already was, or the empty one the source row is
+			// allowed to bring into being on its own. Said as one fallback
+			// rather than as a field-by-field default ahead of a spread,
+			// which reads as two assignments the spread then discards.
+			sources.set(track, {
+				...(current ?? {
+					deviceId: '',
+					channelMode: CHANNEL_MODE_SOURCE,
+				}),
+				kind,
+			});
+			return;
+		}
 		if (field !== 'deviceId') {
 			if (!current) {
 				// No device on this track: there is nothing to bind a layout
@@ -622,9 +661,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 			sources.set(track, {
 				...current,
+				// Every remaining field but one holds a number; the two that
+				// hold a named value are coerced by their own normalizer, so
+				// a hand-edited or stale value cannot reach the capture.
 				...(field === 'channelMode'
 					? { channelMode: normalizeChannelMode(value) }
-					: { [field]: Number(value) }),
+					: field === 'processing'
+						? { processing: normalizeTrackProcessingMode(value) }
+						: { [field]: Number(value) }),
 			});
 			return;
 		}

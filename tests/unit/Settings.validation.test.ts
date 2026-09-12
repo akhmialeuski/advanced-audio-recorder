@@ -224,6 +224,28 @@ describe('validateSettings acceptances', () => {
 				]),
 			},
 		},
+		{
+			// A system-audio track is configured by being one and never
+			// carries a device id, so an empty id is its finished state
+			// rather than a choice the user has yet to make. Read as a
+			// missing choice, it refused the very session the source row
+			// exists to make.
+			name: 'multi-track with a track recording the system output',
+			patch: {
+				enableMultiTrack: true,
+				trackAudioSources: new Map([
+					[1, { deviceId: 'device-1', channelMode: 'source' }],
+					[
+						2,
+						{
+							deviceId: '',
+							channelMode: 'source',
+							kind: 'system-audio',
+						},
+					],
+				]),
+			},
+		},
 	] satisfies { name: string; patch: Partial<AudioRecorderSettings> }[])(
 		'accepts $name',
 		({ patch }) => {

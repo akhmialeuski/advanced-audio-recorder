@@ -6,8 +6,14 @@
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioStreamError } from '../errors';
 import { delay } from '../utils/TimeUtils';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	TrackProcessingMode,
+	TrackSourceKind,
+} from '../settings/settingsSchema';
+import { captureSystemAudioStream } from './systemAudioSupport';
 import {
+	CHANNEL_MODE_SOURCE,
 	channelCountFor,
 	normalizeChannelMode,
 	type ChannelMode,
@@ -32,6 +38,17 @@ export interface TrackAudioSource {
 	gainDb?: number;
 	/** Where this track sits in the mix, from -1 (left) to 1 (right). */
 	pan?: number;
+	/**
+	 * Browser input processing this track is captured with. Absent means the
+	 * session-wide toggles, which is what every track used before the choice
+	 * was made per track.
+	 */
+	processing?: TrackProcessingMode;
+	/**
+	 * What this track captures from. A system-audio track carries no device
+	 * id, so every question asked of the device list has to skip it.
+	 */
+	kind?: TrackSourceKind;
 }
 
 /**
@@ -112,6 +129,84 @@ export function deviceMaxChannels(
 }
 
 /**
+ * Name fragments that identify an input carrying this machine's own output,
+ * lowercased and matched as substrings.
+ *
+ * Windows publishes such an input as a driver feature (Stereo Mix) or through
+ * an installed virtual cable; macOS only ever through one; PulseAudio and
+ * PipeWire publish a monitor source for every output without anything being
+ * installed. Each fragment below is the distinctive part of a name one of
+ * those actually produces, kept long enough not to catch a real microphone:
+ * "monitor of " is the PulseAudio prefix, where the bare word "monitor" would
+ * also match a display's built-in input.
+ *
+ * The list is not, and cannot be, exhaustive. Windows translates these names,
+ * and a virtual cable can be renamed by whoever installed it, so this answers
+ * "worth pointing at" rather than "is a loopback". Nothing is decided from it:
+ * see {@link module:settings/sections/multiTrackSection}, where the user still
+ * picks the device and its processing.
+ */
+const LOOPBACK_LABEL_FRAGMENTS: readonly string[] = [
+	'stereo mix',
+	'what u hear',
+	'wave out mix',
+	'cable output',
+	'voicemeeter out',
+	'blackhole',
+	'soundflower',
+	'loopback audio',
+	'monitor of ',
+];
+
+/**
+ * Whether an enumerated input looks like it carries the system's own output.
+ *
+ * Answered from the label, which is the only thing the platforms agree on: a
+ * loopback input is an ordinary `audioinput` in every respect the device API
+ * reports, so nothing else about it distinguishes it from a microphone. An
+ * empty label is therefore a real answer of "unknown" rather than a missing
+ * one, and it is what every device reports until microphone permission has
+ * been granted once.
+ * @param label - The enumerated device's label, possibly empty
+ * @returns True when the name matches a known loopback input
+ */
+export function isLoopbackInputLabel(label: string): boolean {
+	const normalized = label.toLowerCase();
+	return LOOPBACK_LABEL_FRAGMENTS.some((fragment) =>
+		normalized.includes(fragment),
+	);
+}
+
+/** Suffix marking an input that carries this machine's own output. */
+const LOOPBACK_LABEL_SUFFIX = ' (system audio)';
+
+/** Characters of a device id that stand in for a name it has not got. */
+const UNNAMED_DEVICE_ID_CHARS = 8;
+
+/**
+ * How one enumerated input is named wherever a user picks one.
+ *
+ * A device with no label has not been through a permission grant yet, and is
+ * named by the leading characters of its id so the rows stay distinguishable.
+ * A loopback input is marked, because it is the one a user recording a call
+ * has to find and its own name rarely says what it does.
+ *
+ * Answered here rather than at each dropdown: the plugin offers the input
+ * list in two places, and a marker that appears in one of them is worse than
+ * none, since its absence then reads as "this one is not a loopback".
+ * @param device - One enumerated input
+ * @returns The label shown for that device
+ */
+export function deviceOptionLabel(device: MediaDeviceInfo): string {
+	const named =
+		device.label ||
+		`Audio device ${device.deviceId.substring(0, UNNAMED_DEVICE_ID_CHARS)}`;
+	return isLoopbackInputLabel(device.label)
+		? `${named}${LOOPBACK_LABEL_SUFFIX}`
+		: named;
+}
+
+/**
  * Enumerates audio inputs once and derives every channel limit from that
  * exact device list. The explicit success flag lets consumers distinguish
  * an unplugged device from an enumeration failure.
@@ -184,6 +279,55 @@ export function getProcessingConstraints(
 		echoCancellation: settings.inputEchoCancellation,
 		autoGainControl: settings.inputAutoGainControl,
 	};
+}
+
+/**
+ * Every browser filter on: what a microphone in a room wants.
+ *
+ * Frozen because it is handed to the caller rather than copied for it, as
+ * {@link getProcessingConstraints} builds one per call. A profile is the
+ * capture policy of every later track in the process, so an edit made to a
+ * returned object would follow the plugin to the end of the session.
+ */
+const VOICE_PROCESSING: Readonly<AudioProcessingConstraints> = Object.freeze({
+	noiseSuppression: true,
+	echoCancellation: true,
+	autoGainControl: true,
+});
+
+/** Every browser filter off: what a loopback or line input wants. */
+const RAW_PROCESSING: Readonly<AudioProcessingConstraints> = Object.freeze({
+	noiseSuppression: false,
+	echoCancellation: false,
+	autoGainControl: false,
+});
+
+/**
+ * The processing one track is captured with.
+ *
+ * A session can hold a microphone and a system-loopback input at once, and
+ * the two want opposite treatment: echo cancellation is what makes a room
+ * microphone usable, and it is also what suppresses the far end of a call on
+ * a loopback input, because to the filter that audio looks like this
+ * machine's own speaker output coming back in. One set of constraints for the
+ * whole session could only ever be right for one of them.
+ * @param mode - The track's own choice, absent for the session-wide toggles
+ * @param sessionWide - What those toggles say, from
+ *   {@link getProcessingConstraints}
+ * @returns The constraints this track's capture is opened with, which for a
+ *   named profile is the shared frozen one rather than a copy of it
+ */
+export function trackProcessingConstraints(
+	mode: TrackProcessingMode | undefined,
+	sessionWide: AudioProcessingConstraints,
+): Readonly<AudioProcessingConstraints> {
+	if (mode === 'voice') {
+		return VOICE_PROCESSING;
+	}
+	if (mode === 'raw') {
+		return RAW_PROCESSING;
+	}
+	return sessionWide;
 }
 
 /**
@@ -280,7 +424,15 @@ export function resolveCaptureDeviceId(
 /**
  * Gets audio streams based on settings configuration.
  * @param settings - Plugin settings
- * @returns Promise resolving to array of MediaStreams
+ * @returns The opened streams and, for a multi-track session, the tracks
+ *   they were opened for, in the same order
+ * @throws Error naming the tracks to change, where the session asks for the
+ *   system output more than once. A configuration the user fixes in
+ *   settings, reported the way validateSelectedDevices reports one: thrown
+ *   plain, so describeRecordingError prints the message unchanged after its
+ *   own "Error starting recording:" head rather than replacing that head
+ *   with a device failure
+ * @throws AudioStreamError where opening a track's capture failed
  */
 export async function getAudioStreams(
 	settings: AudioRecorderSettings,
@@ -288,8 +440,31 @@ export async function getAudioStreams(
 	const processing = getProcessingConstraints(settings);
 	if (isMultiTrackSessionEnabled(settings)) {
 		const trackOrder = getOrderedTrackSources(settings);
+		const surplus = surplusSystemAudioTracks(trackOrder);
+		if (surplus.length > 0) {
+			// Refused before anything is opened rather than left to fail
+			// halfway: the two grants would ask the host at the same time and
+			// take each other's handler back down, so one of them is answered
+			// with a refusal and the session dies seconds in. Even when the
+			// timing spares them, the reward is the same audio twice, at twice
+			// its level against the microphone beside it.
+			throw new Error(
+				`Track(s) ${surplus.join(', ')} also record the system audio, ` +
+					'which one session can capture only once. Set them to an ' +
+					'input device, or lower the track count.',
+			);
+		}
 		const streamPromises = trackOrder.map((source) =>
-			getAudioStream(source.deviceId, settings.sampleRate, processing),
+			source.kind === 'system-audio'
+				? captureSystemAudioStream()
+				: getAudioStream(
+						source.deviceId,
+						settings.sampleRate,
+						trackProcessingConstraints(
+							source.processing,
+							processing,
+						),
+					),
 		);
 		// Settle every request before failing: with Promise.all a single
 		// rejected track would abandon the microphones that already opened,
@@ -372,17 +547,53 @@ export function getOrderedTrackSources(
 	}
 	for (let i = 1; i <= settings.maxTracks; i++) {
 		const source = settings.trackAudioSources.get(i);
-		if (source?.deviceId) {
+		const kind = source?.kind ?? 'input-device';
+		// A device track is configured by naming a device; a system-audio
+		// track is configured by being one, and never carries an id.
+		if (source && (kind === 'system-audio' || source.deviceId)) {
+			const systemAudio = kind === 'system-audio';
 			sources.push({
 				trackNumber: i,
-				deviceId: source.deviceId,
-				channelMode: normalizeChannelMode(source.channelMode),
+				deviceId: systemAudio ? '' : source.deviceId,
+				// A system-audio track shows no channel row, because it names
+				// no device whose layout there would be to describe. It must
+				// carry no layout either: a mono pick stored while the track
+				// was a device track would otherwise keep reducing a capture
+				// no visible setting still accounts for.
+				channelMode: systemAudio
+					? CHANNEL_MODE_SOURCE
+					: normalizeChannelMode(source.channelMode),
 				gainDb: source.gainDb ?? 0,
 				pan: source.pan ?? 0,
+				processing: source.processing ?? 'global',
+				kind,
 			});
 		}
 	}
 	return sources;
+}
+
+/**
+ * Track numbers asking for the system output beyond the first one that does.
+ *
+ * A session can capture the machine's own output once. The grant is answered
+ * by a handler installed on the Electron session, and that session holds one
+ * handler at a time, so two tracks asking together overwrite and then clear
+ * each other's. Reported as track numbers rather than as a count, because
+ * both readers say which tracks to go and change: the capture refuses the
+ * session with them named, and the settings entry carries a warning while any
+ * of them is configured.
+ * @param tracks - The session's tracks, as {@link getOrderedTrackSources}
+ *   ordered them
+ * @returns The surplus track numbers, empty when at most one asks
+ */
+export function surplusSystemAudioTracks(
+	tracks: readonly TrackAudioSource[],
+): number[] {
+	return tracks
+		.filter((source) => source.kind === 'system-audio')
+		.slice(1)
+		.map((source) => source.trackNumber);
 }
 
 /**
@@ -439,11 +650,19 @@ function captureDeviceGone(
  * in. A session on the system default input has no stored id to look for, so
  * the settings could say nothing about it at all; its track names the device
  * it actually opened like any other.
+ * A capture that is not an enumerated input device at all is exempt, named by
+ * index for the same reason the answer is. The system output is granted by the
+ * host rather than opened from the device list, and such a stream may still
+ * report an id of its own: matched against the inputs it is absent from by
+ * construction, so the first `devicechange` would retire a track that is
+ * recording perfectly well, and a single-track session with it.
  * @param streams - The session's capture streams, in track order
+ * @param notFromInputDevice - Indexes the device list cannot answer for
  * @returns Stream indexes whose device is gone, in stream order
  */
 export async function missingCaptureIndexes(
 	streams: readonly MediaStream[],
+	notFromInputDevice: ReadonlySet<number> = new Set(),
 ): Promise<number[]> {
 	const available = await availableInputIds();
 	// A list that came back empty is a platform declining to answer, not
@@ -452,7 +671,9 @@ export async function missingCaptureIndexes(
 		return [];
 	}
 	return streams.flatMap((stream, index) =>
-		captureDeviceGone(stream, available) ? [index] : [],
+		!notFromInputDevice.has(index) && captureDeviceGone(stream, available)
+			? [index]
+			: [],
 	);
 }
 
@@ -482,7 +703,13 @@ export async function validateSelectedDevices(
 	const available = await availableInputIds();
 	if (isMultiTrackSessionEnabled(settings)) {
 		const missingTracks = getOrderedTrackSources(settings)
-			.filter((source) => !available.has(source.deviceId))
+			// A system-audio track names no device, so the device list has
+			// nothing to say about it; asked anyway, it refuses every start.
+			.filter(
+				(source) =>
+					source.kind !== 'system-audio' &&
+					!available.has(source.deviceId),
+			)
 			.map((source) => source.trackNumber);
 		if (missingTracks.length > 0) {
 			throw new Error(

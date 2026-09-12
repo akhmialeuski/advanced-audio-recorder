@@ -9,6 +9,7 @@ This is an end-to-end workflow that ties several features together: you record a
     - [3. Choose where the transcript goes](#3-choose-where-the-transcript-goes)
     - [4. Turn on LLM post-processing with the Summarize task](#4-turn-on-llm-post-processing-with-the-summarize-task)
     - [5. (Optional) Multiple microphones](#5-optional-multiple-microphones)
+- [Recording a call with its remote participants](#recording-a-call-with-its-remote-participants)
 - [Steps: run the workflow](#steps-run-the-workflow)
 - [Cleanup tips for noisy rooms and large files](#cleanup-tips-for-noisy-rooms-and-large-files)
 - [End-to-end checklist](#end-to-end-checklist)
@@ -143,6 +144,33 @@ If everyone in the room has their own microphone, or you want a clean track per 
 For a transcribe-and-diarize workflow, **Single file** is usually the right choice: the engine sees one timeline and can diarize across it. Multi-file output gives you per-speaker isolation but you would transcribe each file separately. See [Multi-track recording](../multi-track-recording.md) for the details.
 
 > Multi-track is optional. A single good room or lapel microphone, plus diarization, already produces a per-speaker transcript.
+
+---
+
+## Recording a call with its remote participants
+
+Everything above assumes the meeting is in the room with you. A Zoom, Teams or Meet call is different: your microphone carries your voice, and every other participant arrives as **playback**, on an output device. The plugin records input devices, so a call recorded with nothing else configured holds one side of the conversation.
+
+On **Windows** the plugin can capture the system output directly. Set **Track N source** to **System audio (this computer)** and there is nothing to install: the track records the machine's own output, and the device dropdown disappears because such a track names no device. The row says so itself when the build cannot grant it, which is every platform but Windows.
+
+Everywhere else, and on Windows if you prefer it, route that output back into the machine as an **input** and record it on a second track. Any such input appears in the device dropdowns like a microphone, marked `(system audio)`.
+
+**Windows.** Some Realtek drivers already publish **Stereo Mix**. It is disabled by default: open **Sound settings > More sound settings > Recording**, right-click in the list, choose **Show Disabled Devices**, then enable it. Many newer laptops do not ship it at all, in which case install [VB-CABLE](https://vb-audio.com/Cable/) or VoiceMeeter, both free. Note the naming: with VB-CABLE, applications play into **CABLE Input** and the recorder captures **CABLE Output**. Plain VB-CABLE also takes the audio away from your speakers while it is routed, so you stop hearing the call; VoiceMeeter exists precisely to route and monitor at the same time and is worth the extra ten minutes for a call you have to take part in.
+
+**macOS.** Install [BlackHole](https://existential.audio/blackhole/) (free). To hear the call while recording it, open **Audio MIDI Setup**, create a **Multi-Output Device** containing both your normal output and BlackHole, and select that as the system output. Record from **BlackHole 2ch**. Loopback by Rogue Amoeba does the same with a friendlier interface.
+
+**Linux.** Nothing to install. PipeWire and PulseAudio publish a `Monitor of ...` source for every output, and it is already in the device list.
+
+With the routing in place, configure the session under **Settings > Advanced Audio Recorder > Multi-track recording**:
+
+1. Turn on **Enable multi-track recording** and set **Maximum tracks** to 2.
+2. Leave **Track 1 source** on **Input device** and set **Track 1 input** to your microphone.
+3. For track 2, either set **Track 2 source** to **System audio (this computer)** on Windows, or leave it on **Input device** and set **Track 2 input** to the loopback input.
+4. On the loopback-input route, set **Track 2 processing** to **Raw**. This is the step that decides whether the recording is usable: the browser's echo cancellation treats the far end of a call as this machine's own speaker output and suppresses it, so a loopback track captured with the default filtering fades in and out or goes quiet altogether. Leave **Track 1 processing** on **Same as global settings** or set it to **Voice**, since your own microphone does want that filtering.
+5. Leave **Output mode** on **Single file**, so both sides land on one timeline and the transcription engine can diarize across everyone.
+6. If the remote side comes in louder or quieter than your own voice, correct it with **Track 2 level** rather than at the operating system.
+
+From there the workflow is the one above: record, and the diarized transcript plus the LLM summary cover both sides of the call. The **System info** report (**Settings > Diagnostics**) lists any loopback input it found, which is the quickest way to confirm the routing before a meeting rather than after it.
 
 ---
 

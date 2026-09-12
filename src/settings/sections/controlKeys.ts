@@ -14,7 +14,13 @@
 export const MAX_TRACK_COUNT = 8;
 
 /** One field of a track's audio source that a settings row addresses. */
-export type TrackControlField = 'deviceId' | 'channelMode' | 'gainDb' | 'pan';
+export type TrackControlField =
+	| 'deviceId'
+	| 'channelMode'
+	| 'gainDb'
+	| 'pan'
+	| 'processing'
+	| 'kind';
 
 /** Control key for one field of one track's audio source. */
 export const trackControlKey = (
@@ -30,7 +36,10 @@ export const trackControlKey = (
 export function parseTrackControlKey(
 	key: string,
 ): { track: number; field: TrackControlField } | undefined {
-	const match = /^track\.(\d+)\.(deviceId|channelMode|gainDb|pan)$/.exec(key);
+	const match =
+		/^track\.(\d+)\.(deviceId|channelMode|gainDb|pan|processing|kind)$/.exec(
+			key,
+		);
 	if (!match) {
 		return undefined;
 	}

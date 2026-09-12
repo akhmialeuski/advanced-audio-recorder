@@ -188,7 +188,9 @@ describe('CaptureLossWatcher', () => {
 
 		await announceDeviceChange();
 
-		expect(missingCaptureIndexes).toHaveBeenCalledWith(streams);
+		// The second argument names the captures the device list cannot
+		// answer for; a session of plain input devices exempts none.
+		expect(missingCaptureIndexes).toHaveBeenCalledWith(streams, new Set());
 	});
 
 	it('reports every stream a single device change lost', async () => {

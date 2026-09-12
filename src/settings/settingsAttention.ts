@@ -32,6 +32,7 @@ import { isProviderAvailableOnPlatform } from '../transcription/providers/capabi
 import {
 	getOrderedTrackSources,
 	isMultiTrackSessionEnabled,
+	surplusSystemAudioTracks,
 } from '../recording/AudioStreamHandler';
 import type { AudioRecorderSettings, LlmProviderId } from './settingsSchema';
 
@@ -170,7 +171,8 @@ export function enginesStatus(settings: AudioRecorderSettings): PageStatus {
 /**
  * The status of the multi-track page: set where the capture is switched on and
  * no track has an input, which is a session that would open no microphone and
- * record nothing.
+ * record nothing, or where more than one track asks for the system output,
+ * which is a session the capture refuses outright.
  *
  * A track left unassigned below that is not reported. Capture asks
  * {@link getOrderedTrackSources} which tracks to open and it skips the empty
@@ -187,7 +189,13 @@ export function multiTrackStatus(settings: AudioRecorderSettings): PageStatus {
 	if (!isMultiTrackSessionEnabled(settings)) {
 		return null;
 	}
-	return getOrderedTrackSources(settings).length === 0 ? 'warning' : null;
+	const tracks = getOrderedTrackSources(settings);
+	// The second reason is asked through the same function the capture asks,
+	// so the entry cannot warn about a session that would record, or stay
+	// quiet in front of one that would be refused.
+	return tracks.length === 0 || surplusSystemAudioTracks(tracks).length > 0
+		? 'warning'
+		: null;
 }
 
 /**

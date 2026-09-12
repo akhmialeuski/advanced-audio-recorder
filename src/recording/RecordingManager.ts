@@ -69,6 +69,9 @@ import {
 	PcmCaptureTrack,
 } from './CaptureTrack';
 
+/** File-name part standing in for a device on a system-audio track. */
+const SYSTEM_AUDIO_SOURCE_NAME = 'SystemAudio';
+
 /**
  * Manages the audio recording lifecycle.
  */
@@ -474,9 +477,13 @@ export class RecordingManager {
 			// on with a dead input. Nothing that happened while the recorders
 			// were being built is missed: the watcher reads the state of the
 			// tracks as well as subscribing to their events.
-			this.captureLoss.start(this.streams, (index, remaining) => {
-				this.handleStreamEnded(index, remaining);
-			});
+			this.captureLoss.start(
+				this.streams,
+				(index, remaining) => {
+					this.handleStreamEnded(index, remaining);
+				},
+				this.systemAudioIndexes(),
+			);
 			return null;
 		} catch (error) {
 			this.releasePartialSession();
@@ -568,14 +575,24 @@ export class RecordingManager {
 			return {
 				trackNumber: trackInfo?.trackNumber ?? index + 1,
 				deviceId: trackInfo?.deviceId,
+				systemAudio: trackInfo?.kind === 'system-audio',
 			};
 		});
 		const sourceNames = await Promise.all(
-			trackInfos.map(({ trackNumber, deviceId }) =>
-				this.settings.useSourceNamesForTracks && deviceId
+			trackInfos.map(({ trackNumber, deviceId, systemAudio }) => {
+				if (!this.settings.useSourceNamesForTracks) {
+					return Promise.resolve(`Track${String(trackNumber)}`);
+				}
+				// A system-audio track names no device, and asking the device
+				// list about it would both answer "UnknownDevice" and throw
+				// where there is no device API at all.
+				if (systemAudio) {
+					return Promise.resolve(SYSTEM_AUDIO_SOURCE_NAME);
+				}
+				return deviceId
 					? getAudioSourceName(deviceId)
-					: Promise.resolve(`Track${String(trackNumber)}`),
-			),
+					: Promise.resolve(`Track${String(trackNumber)}`);
+			}),
 		);
 		const nameCounts = new Map<string, number>();
 		for (const name of sourceNames) {
@@ -686,6 +703,23 @@ export class RecordingManager {
 	}
 
 	/**
+	 * Stream indexes whose capture did not come from an enumerated input
+	 * device, for the loss watcher's device re-check.
+	 *
+	 * A single-track session holds no track order, and a session on the
+	 * default microphone holds one without a device id. Neither has a
+	 * system-audio track, so both answer with the empty set.
+	 * @returns The indexes the device list cannot answer for
+	 */
+	private systemAudioIndexes(): ReadonlySet<number> {
+		return new Set(
+			this.trackOrder.flatMap((source, index) =>
+				source.kind === 'system-audio' ? [index] : [],
+			),
+		);
+	}
+
+	/**
 	 * Answers one capture stream ending.
 	 *
 	 * A multi-track session keeps whatever is still capturing: pulling one
@@ -705,6 +739,22 @@ export class RecordingManager {
 	 */
 	private handleStreamEnded(index: number, remaining: number): void {
 		const name = this.chunkTargets[index]?.sourceName ?? 'the input device';
+		// What ended decides the sentence: a granted capture of this
+		// machine's output is revoked or switched off, and calling that a
+		// disconnected device sends the user looking at their cables.
+		const systemAudio = this.trackOrder[index]?.kind === 'system-audio';
+		const trackCause = systemAudio
+			? 'its system audio capture ended'
+			: 'its input device was disconnected';
+		// The device half names which device went, because a session holds
+		// several and the user has to know which one to go and look at. The
+		// system-audio half names none: a session captures this machine's
+		// output once, and the name standing in for the device it has not got
+		// is either the constant below or "TrackN", neither of which says
+		// anything the sentence has not already said.
+		const sessionCause = systemAudio
+			? "the capture of this computer's output ended"
+			: `the input device "${name}" was disconnected`;
 		if (remaining > 0) {
 			// A track recorded straight off its capture stream stops by
 			// itself, because a recorder whose stream has gone inactive is
@@ -717,7 +767,7 @@ export class RecordingManager {
 			// too, which is the same thing the direct path does.
 			this.captureTracks[index]?.detachFromDevice();
 			new Notice(
-				`Track "${name}" stopped: its input device was disconnected. ` +
+				`Track "${name}" stopped: ${trackCause}. ` +
 					'The other tracks are still recording.',
 			);
 			return;
@@ -730,7 +780,7 @@ export class RecordingManager {
 		}
 		this.setStatus(RecordingStatus.Interrupted);
 		new Notice(
-			`Recording stopped: the input device "${name}" was disconnected. ` +
+			`Recording stopped: ${sessionCause}. ` +
 				'Saving what was recorded so far.',
 		);
 		void this.stopRecording();

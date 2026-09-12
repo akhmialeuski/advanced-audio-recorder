@@ -9,7 +9,22 @@
  */
 
 import { MODEL_SEED_GENERATION } from 'src/constants';
-import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	AudioSource,
+} from 'src/settings/settingsSchema';
+
+/**
+ * One track recording this machine's own output, as the settings hold it.
+ *
+ * Such a track is configured by its kind alone and carries no device id, and
+ * the suites that cover it need two of them side by side often enough that
+ * writing the literal out each time was its own small duplication.
+ * @returns The stored source of a system-audio track
+ */
+export function systemAudioTrack(): AudioSource {
+	return { deviceId: '', channelMode: 'source', kind: 'system-audio' };
+}
 
 /**
  * Every setting set to something other than its default, so a merge that drops
@@ -46,6 +61,8 @@ export function fullyPopulatedSettings(): Omit<
 					channelMode: 'source' as const,
 					gainDb: 0,
 					pan: 0,
+					processing: 'voice' as const,
+					kind: 'input-device' as const,
 				},
 			],
 			[
@@ -55,6 +72,8 @@ export function fullyPopulatedSettings(): Omit<
 					channelMode: 'mono-left' as const,
 					gainDb: 0,
 					pan: 0,
+					processing: 'raw' as const,
+					kind: 'system-audio' as const,
 				},
 			],
 		]),
