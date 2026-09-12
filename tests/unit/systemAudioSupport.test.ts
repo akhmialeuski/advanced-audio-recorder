@@ -12,10 +12,9 @@ import { partial } from '../helpers/doubles';
 import {
 	installDisplayMediaHost,
 	useElectron,
-	usePlatform,
-	withoutProcess,
 	type DisplayMediaHostOptions,
 } from '../helpers/displayMediaHost';
+import { usePlatform, withoutProcess } from '../helpers/hostProcess';
 
 /**
  * An electron module with both halves a grant needs: the display-media
@@ -45,14 +44,6 @@ describe('isSystemAudioLoopbackAvailable', () => {
 	});
 
 	/**
-	 * Points the runtime at one platform for this test.
-	 * @param platform - What process.platform should answer
-	 */
-	function onPlatform(platform: string): void {
-		restore.push(usePlatform(platform));
-	}
-
-	/**
 	 * Exposes an electron module and undoes it after the test, so a case
 	 * that installs nothing really finds nothing.
 	 * @param electron - What require('electron') should answer with
@@ -62,7 +53,7 @@ describe('isSystemAudioLoopbackAvailable', () => {
 	}
 
 	it('reports the grant on a Windows build that exposes the handler', () => {
-		onPlatform('win32');
+		usePlatform('win32');
 		expose(electronWithHandler());
 
 		expect(isSystemAudioLoopbackAvailable()).toBe(true);
@@ -83,7 +74,7 @@ describe('isSystemAudioLoopbackAvailable', () => {
 	it.each([{ platform: 'darwin' }, { platform: 'linux' }])(
 		'refuses the grant on $platform',
 		({ platform }) => {
-			onPlatform(platform);
+			usePlatform(platform);
 			expose(electronWithHandler());
 
 			expect(isSystemAudioLoopbackAvailable()).toBe(false);
@@ -96,7 +87,7 @@ describe('isSystemAudioLoopbackAvailable', () => {
 	// framework does once at plugin load, so throwing here took the whole
 	// plugin down on mobile rather than hiding one row.
 	it('refuses the grant where the runtime declares no process', () => {
-		restore.push(withoutProcess());
+		withoutProcess();
 		expose(electronWithHandler());
 
 		expect(isSystemAudioLoopbackAvailable()).toBe(false);
@@ -145,7 +136,7 @@ describe('isSystemAudioLoopbackAvailable', () => {
 			},
 		},
 	])('refuses the grant on Windows without $absent', ({ install }) => {
-		onPlatform('win32');
+		usePlatform('win32');
 		install();
 
 		expect(isSystemAudioLoopbackAvailable()).toBe(false);
@@ -268,11 +259,43 @@ describe('captureSystemAudioStream', () => {
 		const { handlers, getDisplayMedia } = withSession();
 		getDisplayMedia.mockRejectedValue(new Error('refused'));
 
-		await expect(captureSystemAudioStream()).rejects.toThrow(
-			AudioStreamError,
-		);
+		await expect(captureSystemAudioStream()).rejects.toThrow('refused');
 
 		expect(handlers[1]).toBeNull();
+	});
+
+	// A refused screen capture is not a refused microphone, and the two are
+	// granted separately. Wrapped in an AudioStreamError the sentence began
+	// "Failed to access audio device"; thrown bare, describeRecordingError
+	// reads the NotAllowedError as a denied microphone and sends the user to
+	// the microphone permission. Both name the wrong thing to go and fix.
+	it('names the screen-capture permission when the grant is denied', async () => {
+		const { getDisplayMedia } = withSession();
+		getDisplayMedia.mockRejectedValue(
+			new DOMException('Permission denied', 'NotAllowedError'),
+		);
+
+		const refusal = await captureSystemAudioStream().catch(
+			(error: unknown) => error,
+		);
+
+		expect((refusal as Error).message).toContain(
+			'the screen-capture permission rather than the microphone one',
+		);
+		expect((refusal as Error).message).not.toContain(
+			'Failed to access audio device',
+		);
+	});
+
+	// Everything else the host can answer with keeps its own reason, said
+	// as something about this computer's output rather than about a device.
+	it('keeps the reason a grant failed for anything but a refusal', async () => {
+		const { getDisplayMedia } = withSession();
+		getDisplayMedia.mockRejectedValue(new Error('capture pipeline died'));
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			"This computer's output could not be captured: capture pipeline died",
+		);
 	});
 
 	// The specification lets a user agent answer a request for audio with
@@ -331,5 +354,25 @@ describe('captureSystemAudioStream', () => {
 
 		expect(getDisplayMedia).not.toHaveBeenCalled();
 		expect(handlers).toHaveLength(0);
+	});
+
+	// A refusal is the reason a capture was never attempted, and the user
+	// reads it through describeRecordingError, which prints the message as
+	// it stands. Wrapped in an AudioStreamError it arrived headed "Failed to
+	// access audio device", naming a device a system-audio track has not
+	// got, ahead of the sentence that says what to do instead.
+	it('refuses with the reason alone, not as a device access failure', async () => {
+		withSession({ platform: 'darwin' });
+
+		const refusal = await captureSystemAudioStream().catch(
+			(error: unknown) => error,
+		);
+
+		expect(refusal).not.toBeInstanceOf(AudioStreamError);
+		expect((refusal as Error).message).toBe(
+			'Recording the system output directly is granted on Windows only. ' +
+				'Record a loopback input device instead, such as Stereo Mix, ' +
+				'VB-CABLE or a PipeWire monitor.',
+		);
 	});
 });

@@ -416,7 +416,13 @@ export function resolveCaptureDeviceId(
 /**
  * Gets audio streams based on settings configuration.
  * @param settings - Plugin settings
- * @returns Promise resolving to array of MediaStreams
+ * @returns The opened streams and, for a multi-track session, the tracks
+ *   they were opened for, in the same order
+ * @throws Error naming the tracks to change, where the session asks for the
+ *   system output more than once. A configuration the user fixes in
+ *   settings, reported the way validateSelectedDevices reports one: the
+ *   message is the whole sentence shown, unwrapped
+ * @throws AudioStreamError where opening a track's capture failed
  */
 export async function getAudioStreams(
 	settings: AudioRecorderSettings,

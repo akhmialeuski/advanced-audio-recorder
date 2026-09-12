@@ -2,66 +2,36 @@
  * Standing in for the Electron host a system-audio capture asks for a grant.
  *
  * Two suites need the same arrangement: a platform Electron grants loopback
- * on, and a session exposing the display-media handler. Both are described
- * once here, because `process.platform` is read-only and has to be swapped
- * wholesale rather than assigned, which is the fiddly half.
+ * on, and a session exposing the display-media handler. The platform half is
+ * {@link module:tests/helpers/hostProcess}, which every suite that swaps the
+ * process shares; what is described here is the electron module reached
+ * through the desktop `require`.
  * @module tests/helpers/displayMediaHost
  */
 
-/**
- * Points the runtime at one platform for the length of a test.
- * @param platform - What process.platform should answer
- * @returns Puts the real process back
- */
-export function usePlatform(platform: string): () => void {
-	return useProcess({ platform });
-}
-
-/**
- * Takes the process object away for the length of a test, which is what the
- * mobile WebView offers: a runtime where the name is not declared at all, so
- * reading it without a `typeof` guard throws rather than answering undefined.
- * @returns Puts the real process back
- */
-export function withoutProcess(): () => void {
-	return useProcess(undefined);
-}
-
-/**
- * Swaps the whole process object, which is the only way to move it: `platform`
- * is read-only on the real one, so neither an assignment nor
- * jest.replaceProperty reaches it. The diagnostics suite does the same.
- * @param replacement - What `process` should be, or undefined to remove it
- * @returns Puts the real process back
- */
-function useProcess(replacement: { platform: string } | undefined): () => void {
-	const real = process;
-	if (replacement === undefined) {
-		Reflect.deleteProperty(global, 'process');
-	} else {
-		Object.defineProperty(global, 'process', {
-			value: replacement,
-			configurable: true,
-			writable: true,
-		});
-	}
-	return (): void => {
-		Object.defineProperty(global, 'process', {
-			value: real,
-			configurable: true,
-			writable: true,
-		});
-	};
-}
+import { usePlatform } from './hostProcess';
 
 /**
  * Exposes an electron module through the desktop `require` the plugin reads.
+ *
+ * Removed by the returned teardown rather than by `jest.replaceProperty`:
+ * `require` is not a property of the test global at all, and replaceProperty
+ * only replaces one that already exists. A leaked one is inert anyway, since
+ * the platform it would be read on is restored structurally.
  * @param electron - What require('electron') should answer with
+ * @param onRequire - Called on every lookup, for a test that cares how many
+ *   times the code under test reached for the host
  * @returns Removes the require again
  */
-export function useElectron(electron: unknown): () => void {
+export function useElectron(
+	electron: unknown,
+	onRequire: () => void = () => undefined,
+): () => void {
 	Object.defineProperty(window, 'require', {
-		value: () => electron,
+		value: () => {
+			onRequire();
+			return electron;
+		},
 		configurable: true,
 		writable: true,
 	});
@@ -76,7 +46,16 @@ export interface DisplayMediaHost {
 	readonly handlers: (unknown | null)[];
 	/** The screen sources the host offers, as desktopCapturer answers. */
 	readonly sources: { id: string; name: string }[];
-	/** Puts back the real process and removes the desktop require. */
+	/**
+	 * How many times the code under test reached for the electron module.
+	 *
+	 * Every read of the host costs a trip through the remote module on a
+	 * real install, so a caller asking once per row of a settings page
+	 * rather than once for the page is a defect the count can name.
+	 * @returns Calls to the desktop require so far
+	 */
+	probeCount(): number;
+	/** Removes the desktop require; the platform restores itself. */
 	restore(): void;
 }
 
@@ -90,8 +69,8 @@ export interface DisplayMediaHostOptions {
 	readonly withoutScreens?: boolean;
 	/**
 	 * Run the host on this platform instead of the one Electron grants the
-	 * loopback on. Swapped here rather than by a second call, so a test never
-	 * nests two process swaps and undoes them in the wrong order.
+	 * loopback on. Swapped here rather than by a second call, so a test
+	 * never states the platform twice and has them disagree.
 	 */
 	readonly platform?: string;
 }
@@ -116,38 +95,40 @@ export function installDisplayMediaHost(
 	const sources = options.withoutScreens
 		? []
 		: [{ id: 'screen:0:0', name: 'Entire screen' }];
-	const restorePlatform = usePlatform(
-		options.platform ?? LOOPBACK_GRANT_PLATFORM,
-	);
-	const restoreElectron = useElectron({
-		remote: {
-			getCurrentWebContents: () => ({
-				session: options.withoutHandler
+	let probes = 0;
+	usePlatform(options.platform ?? LOOPBACK_GRANT_PLATFORM);
+	const restoreElectron = useElectron(
+		{
+			remote: {
+				getCurrentWebContents: () => ({
+					session: options.withoutHandler
+						? {}
+						: {
+								setDisplayMediaRequestHandler: (
+									handler: unknown | null,
+								): void => {
+									handlers.push(handler);
+								},
+							},
+				}),
+				...(options.withoutCapturer
 					? {}
 					: {
-							setDisplayMediaRequestHandler: (
-								handler: unknown | null,
-							): void => {
-								handlers.push(handler);
+							desktopCapturer: {
+								getSources: (): Promise<typeof sources> =>
+									Promise.resolve(sources),
 							},
-						},
-			}),
-			...(options.withoutCapturer
-				? {}
-				: {
-						desktopCapturer: {
-							getSources: (): Promise<typeof sources> =>
-								Promise.resolve(sources),
-						},
-					}),
+						}),
+			},
 		},
-	});
+		() => {
+			probes += 1;
+		},
+	);
 	return {
 		handlers,
 		sources,
-		restore: (): void => {
-			restoreElectron();
-			restorePlatform();
-		},
+		probeCount: (): number => probes,
+		restore: restoreElectron,
 	};
 }

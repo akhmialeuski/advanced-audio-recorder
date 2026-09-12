@@ -18,6 +18,7 @@ import {
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { createMockApp } from '../helpers/createApp';
 import { installAudioContextRate } from '../helpers/mediaMocks';
+import { useHostProcess } from '../helpers/hostProcess';
 import type { App } from 'obsidian';
 
 // Deterministic encoder probing: this suite exercises the diagnostics
@@ -158,7 +159,6 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 // collectEnvironment
 
 describe('SystemDiagnostics.collectEnvironment', () => {
-	const originalProcess = global.process;
 	const originalUserAgent = Object.getOwnPropertyDescriptor(
 		global.navigator,
 		'userAgent',
@@ -169,8 +169,6 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	);
 
 	afterEach(() => {
-		(global as unknown as { process: NodeJS.Process }).process =
-			originalProcess;
 		if (originalNavigator) {
 			Object.defineProperty(global, 'navigator', originalNavigator);
 		}
@@ -190,7 +188,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 
 	it('reads electron, chrome and node versions from process.versions', () => {
-		const proc = {
+		useHostProcess({
 			versions: {
 				electron: '28.0.0',
 				node: '20.11.0',
@@ -198,8 +196,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 			},
 			platform: 'win32',
 			arch: 'x64',
-		};
-		(global as unknown as { process: typeof proc }).process = proc;
+		});
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -211,8 +208,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 
 	it('uses "unknown" when process.platform is absent', () => {
-		const proc = { versions: { electron: '28.0.0', node: '20.11.0' } };
-		(global as unknown as { process: typeof proc }).process = proc;
+		useHostProcess({ versions: { electron: '28.0.0', node: '20.11.0' } });
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -220,7 +216,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 
 	it('returns "unknown" for electronVersion when process is undefined', () => {
-		(global as unknown as { process: undefined }).process = undefined;
+		useHostProcess(undefined);
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -233,7 +229,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	// The mobile shape: no process at all, so the WebView's own
 	// identification is the only version the report can carry.
 	it('reports the user agent when process is undefined', () => {
-		(global as unknown as { process: undefined }).process = undefined;
+		useHostProcess(undefined);
 		withUserAgent('Mozilla/5.0 (Linux; Android 14) obsidian/1.13.1');
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());

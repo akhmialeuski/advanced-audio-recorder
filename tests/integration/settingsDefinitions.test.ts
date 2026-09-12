@@ -62,7 +62,12 @@ import {
 	useMobilePlatform,
 } from '../helpers/platform';
 import { maybeEl } from '../helpers/dom';
-import { installDisplayMediaHost } from '../helpers/displayMediaHost';
+import {
+	installDisplayMediaHost,
+	type DisplayMediaHost,
+	type DisplayMediaHostOptions,
+} from '../helpers/displayMediaHost';
+import { MAX_TRACK_COUNT } from 'src/settings/sections/controlKeys';
 import type { AudioSource } from 'src/settings/settingsSchema';
 import { SETTING } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
@@ -748,6 +753,34 @@ describe('settings definitions', () => {
 		const MULTI = 'Multi-track recording';
 
 		/**
+		 * The granting hosts a case installed, taken back down whatever the
+		 * case did. Drained here rather than at the end of a test body: an
+		 * assertion that fails first would otherwise leave the desktop
+		 * require in place for every later case, and the suite is randomized.
+		 */
+		let hosts: (() => void)[] = [];
+
+		afterEach(() => {
+			hosts.forEach((undo) => {
+				undo();
+			});
+			hosts = [];
+		});
+
+		/**
+		 * Installs a host that can grant the system output for this case.
+		 * @param options - Which half of the host to leave missing
+		 * @returns The installed host
+		 */
+		const withGrantingHost = (
+			options: DisplayMediaHostOptions = {},
+		): DisplayMediaHost => {
+			const host = installDisplayMediaHost(options);
+			hosts.push(host.restore);
+			return host;
+		};
+
+		/**
 		 * A track map whose only track records the system output. Its own
 		 * map every time: the one on DEFAULT_SETTINGS is shared by every
 		 * test through the shallow copy in beforeEach.
@@ -818,15 +851,31 @@ describe('settings definitions', () => {
 		// The row states which of the two answers applies here rather than
 		// offering a choice that would fail at the start of a recording.
 		it('says the system output is available where the host can grant it', () => {
-			const host = installDisplayMediaHost();
+			withGrantingHost();
 			settings.enableMultiTrack = true;
 
 			const desc = rowOf(build(), MULTI, 'Track 1 source').desc;
 
 			expect(desc).toMatch(/this computer's own output/);
 			expect(desc).not.toMatch(/unavailable on this build/);
+		});
 
-			host.restore();
+		// Whether the host can grant the output is a fact of the platform
+		// and the installed build, identical on all eight source rows, and
+		// reading it costs a synchronous trip through the remote module.
+		// Asked inside the row loop it was paid once per track, on every
+		// rebuild of the settings tree - and the framework rebuilds the tree
+		// whenever the device list changes.
+		it('asks the host once for the section, not once per track', () => {
+			const host = withGrantingHost();
+			settings.enableMultiTrack = true;
+			settings.maxTracks = MAX_TRACK_COUNT;
+
+			build();
+
+			// Two lookups make one answer: the session carrying the handler,
+			// and the capturer naming a video source for the grant.
+			expect(host.probeCount()).toBe(2);
 		});
 
 		it('offers the source row for every track it offers an input for', () => {

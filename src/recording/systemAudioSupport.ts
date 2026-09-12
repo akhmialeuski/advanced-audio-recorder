@@ -14,7 +14,6 @@
  * @module recording/systemAudioSupport
  */
 
-import { AudioStreamError } from '../errors';
 import { hostProcess } from '../platform/hostProcess';
 
 /** One grant handed back to a display-media request. */
@@ -230,13 +229,16 @@ export function isSystemAudioLoopbackAvailable(): boolean {
  * down in `finally`, so the plugin never leaves the host application with a
  * display-media policy of its own.
  * @returns A stream carrying one audio track of the system output
- * @throws AudioStreamError when the host, the platform, or the answer cannot
- *   provide one
+ * @throws Error whose message is the whole sentence the user reads, whether
+ *   the refusal came before the request or from it. Plain, the way
+ *   validateSelectedDevices refuses a session: an AudioStreamError would
+ *   head every one of them with "Failed to access audio device", naming a
+ *   microphone for a track that has none and a capture that is not one.
  */
 export async function captureSystemAudioStream(): Promise<MediaStream> {
 	const host = loopbackHost();
 	if ('refusal' in host) {
-		throw new AudioStreamError(new Error(host.refusal));
+		throw new Error(host.refusal);
 	}
 	const { session, install, capturer } = host;
 	let installed = false;
@@ -251,8 +253,10 @@ export async function captureSystemAudioStream(): Promise<MediaStream> {
 			thumbnailSize: { width: 0, height: 0 },
 		});
 		if (!screen) {
-			throw new AudioStreamError(
-				new Error('This machine offered no screen to capture from.'),
+			throw new Error(
+				'This machine offered no screen to capture from, and the ' +
+					'system output is granted alongside one. Record a loopback ' +
+					'input device instead.',
 			);
 		}
 		install.call(session, (_request, callback) => {
@@ -262,25 +266,56 @@ export async function captureSystemAudioStream(): Promise<MediaStream> {
 			callback({ video: screen, audio: LOOPBACK_GRANT });
 		});
 		installed = true;
-		const granted = await navigator.mediaDevices.getDisplayMedia({
-			// Asked for and dropped below: a request without it is refused.
-			video: true,
-			audio: true,
-		});
-		return audioOnly(granted);
-	} catch (error) {
-		throw error instanceof AudioStreamError
-			? error
-			: new AudioStreamError(
-					error instanceof Error ? error : new Error(String(error)),
-				);
+		return audioOnly(await grantedDisplayMedia());
 	} finally {
-		// Only ours is taken back down. Clearing unconditionally would also
-		// clear a handler this plugin never installed, which on a failure
-		// before installation is somebody else's.
+		// Cleared only where this call installed something. Electron offers
+		// no way to read the current handler back, and passing null resets
+		// it to the default rather than to whatever was there, so a host
+		// policy this plugin overwrote cannot be restored - all the guard
+		// can do is not destroy one on a failure that never overwrote it.
 		if (installed) {
 			install.call(session, null);
 		}
+	}
+}
+
+/**
+ * The display-media answer, with a refusal said in terms of what was refused.
+ *
+ * The request asked for the screen, so a refusal is about the screen-capture
+ * permission. Neither of the two sentences a user would otherwise read says
+ * that: `AudioStreamError` heads every failure with "Failed to access audio
+ * device", and {@link describeRecordingError} reads a bare `NotAllowedError`
+ * as a denied microphone and sends the user to the microphone permission,
+ * which has no bearing on this. The message is therefore finished here, and
+ * thrown plain so it reaches the notice as it stands.
+ * @returns What getDisplayMedia answered with, video track included
+ * @throws Error saying why the system output was not granted
+ */
+async function grantedDisplayMedia(): Promise<MediaStream> {
+	try {
+		return await navigator.mediaDevices.getDisplayMedia({
+			// Asked for and dropped by audioOnly: a request whose video is
+			// false is rejected by the specification with a TypeError.
+			video: true,
+			audio: true,
+		});
+	} catch (error) {
+		if (error instanceof DOMException && error.name === 'NotAllowedError') {
+			throw new Error(
+				"Permission to capture this computer's output was refused. " +
+					'That is the screen-capture permission rather than the ' +
+					'microphone one, so granting microphone access does not ' +
+					'change it. Record a loopback input device instead, such as ' +
+					'Stereo Mix or VB-CABLE.',
+			);
+		}
+		const reason = error instanceof Error ? error.message : String(error);
+		throw new Error(
+			`This computer's output could not be captured: ${reason}. ` +
+				'Record a loopback input device instead, such as Stereo Mix or ' +
+				'VB-CABLE.',
+		);
 	}
 }
 
@@ -299,11 +334,9 @@ function audioOnly(granted: MediaStream): MediaStream {
 		granted.removeTrack(video);
 	}
 	if (granted.getAudioTracks().length === 0) {
-		throw new AudioStreamError(
-			new Error(
-				'The system output was not granted as audio. On Windows, check that ' +
-					'screen capture is permitted; elsewhere, record a loopback input device.',
-			),
+		throw new Error(
+			'The system output was not granted as audio. On Windows, check that ' +
+				'screen capture is permitted; elsewhere, record a loopback input device.',
 		);
 	}
 	return granted;

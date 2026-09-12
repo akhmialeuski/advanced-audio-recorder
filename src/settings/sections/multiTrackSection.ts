@@ -55,6 +55,12 @@ export function multiTrackPage(
 ): SettingGroupItem {
 	const available = isMultiTrackCaptureSupported();
 	const active = (): boolean => settings.enableMultiTrack && available;
+	// Read once for the whole section, as the capture support beside it is.
+	// The answer is a fact of the platform and the installed build, identical
+	// on all eight rows, and asking it costs a synchronous trip through the
+	// remote module - which the framework would then pay per track, on every
+	// rebuild of the settings tree.
+	const sourceDesc = systemAudioSourceDesc();
 	const trackRows = (): SettingGroupItem[] => {
 		const rows: SettingGroupItem[] = [];
 		for (let track = 1; track <= MAX_TRACK_COUNT; track++) {
@@ -80,7 +86,7 @@ export function multiTrackPage(
 				{
 					name: `Track ${String(track)} source`,
 					aliases: ['system audio', 'loopback', 'desktop audio'],
-					desc: systemAudioSourceDesc(),
+					desc: sourceDesc,
 					visible: offered,
 					control: {
 						type: 'dropdown',

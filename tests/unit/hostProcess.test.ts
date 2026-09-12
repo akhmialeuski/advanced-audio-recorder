@@ -4,20 +4,11 @@
  */
 
 import { hostProcess } from 'src/platform/hostProcess';
-import { usePlatform, withoutProcess } from '../helpers/displayMediaHost';
+import { usePlatform, withoutProcess } from '../helpers/hostProcess';
 
 describe('hostProcess', () => {
-	let restore: (() => void)[] = [];
-
-	afterEach(() => {
-		restore.forEach((undo) => {
-			undo();
-		});
-		restore = [];
-	});
-
 	it('answers with the process where the runtime declares one', () => {
-		restore.push(usePlatform('win32'));
+		usePlatform('win32');
 
 		expect(hostProcess()?.platform).toBe('win32');
 	});
@@ -27,7 +18,7 @@ describe('hostProcess', () => {
 	// to `?.` rather than answering undefined, so the read has to be guarded
 	// by `typeof` and every caller has to come through here to get that.
 	it('answers null where the runtime declares no process', () => {
-		restore.push(withoutProcess());
+		withoutProcess();
 
 		expect(hostProcess()).toBeNull();
 	});

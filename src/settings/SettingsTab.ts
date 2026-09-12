@@ -612,7 +612,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	/**
 	 * Writes one field of a track's audio source. The sources live in a Map
 	 * keyed by track number, so a control key addresses an entry rather than a
-	 * settings property; clearing the device drops the entry entirely.
+	 * settings property; a device track left without a device drops the entry
+	 * entirely, whether the device was cleared or the source kind moved off
+	 * the system output.
 	 * @param track - The track number the control belongs to
 	 * @param field - Which half of the source the control writes
 	 * @param value - The value the control produced
@@ -629,6 +631,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// system output is the whole configuration of such a track, and
 			// there is no device to bind it to.
 			const kind = normalizeTrackSourceKind(value);
+			if (kind === 'input-device' && !current?.deviceId) {
+				// A device track without a device is the unconfigured state,
+				// and an unconfigured track has no entry - the same rule the
+				// device dropdown applies when it is cleared. Written anyway,
+				// the entry is one capture skips, the settings validator
+				// refuses, and data.json carries for good.
+				sources.delete(track);
+				return;
+			}
 			sources.set(track, {
 				deviceId: current?.deviceId ?? '',
 				channelMode: current?.channelMode ?? CHANNEL_MODE_SOURCE,

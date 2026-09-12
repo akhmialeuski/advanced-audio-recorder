@@ -86,23 +86,6 @@ export class RecordingManager {
 	private chunkTargets: RecordingTarget[] = [];
 	private streams: MediaStream[] = [];
 	private trackOrder: TrackAudioSource[] = [];
-
-	/**
-	 * Stream indexes whose capture did not come from an enumerated input
-	 * device, for the loss watcher's device re-check.
-	 *
-	 * A single-track session holds no track order, and a session on the
-	 * default microphone holds one without a device id. Neither has a
-	 * system-audio track, so both answer with the empty set.
-	 * @returns The indexes the device list cannot answer for
-	 */
-	private systemAudioIndexes(): ReadonlySet<number> {
-		return new Set(
-			this.trackOrder.flatMap((source, index) =>
-				source.kind === 'system-audio' ? [index] : [],
-			),
-		);
-	}
 	private status: RecordingStatus = RecordingStatus.Idle;
 	private onStatusChange: (
 		status: RecordingStatus,
@@ -717,6 +700,23 @@ export class RecordingManager {
 		for (const track of this.captureTracks) {
 			track.begin();
 		}
+	}
+
+	/**
+	 * Stream indexes whose capture did not come from an enumerated input
+	 * device, for the loss watcher's device re-check.
+	 *
+	 * A single-track session holds no track order, and a session on the
+	 * default microphone holds one without a device id. Neither has a
+	 * system-audio track, so both answer with the empty set.
+	 * @returns The indexes the device list cannot answer for
+	 */
+	private systemAudioIndexes(): ReadonlySet<number> {
+		return new Set(
+			this.trackOrder.flatMap((source, index) =>
+				source.kind === 'system-audio' ? [index] : [],
+			),
+		);
 	}
 
 	/**

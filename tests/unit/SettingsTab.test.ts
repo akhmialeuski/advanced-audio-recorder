@@ -768,6 +768,19 @@ describe('AudioRecorderSettingTab', () => {
 			});
 		});
 
+		// The mirror of the case above, and the one that has no device to
+		// keep. A device track without a device is the unconfigured state,
+		// which the device dropdown expresses by dropping the entry; a
+		// source row that wrote one anyway left a track behind that capture
+		// skips and validateSettings refuses, in data.json for good.
+		it('drops a track switched back to an input it never had', async () => {
+			await tab.setControlValue('track.1.kind', 'system-audio');
+
+			await tab.setControlValue('track.1.kind', 'input-device');
+
+			expect(sourceOf(1)).toBeUndefined();
+		});
+
 		it('reads a track that never chose a source as an input device', () => {
 			expect(tab.getControlValue('track.4.kind')).toBe('input-device');
 		});
