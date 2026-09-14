@@ -86,6 +86,7 @@ import {
 	resolveRunParticipants,
 } from '../settings/profileResolution';
 import { selectedProfileId } from '../settings/profiles';
+import { lostProfileSourceNotice } from '../settings/ProfileNoteStore';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { jobVendorId } from './llm/vendors';
@@ -497,6 +498,17 @@ export class TranscriptionService {
 			// Tell the user which terms will not bias this run instead of
 			// implying every configured term was applied.
 			new Notice(dictionaryNotice);
+		}
+		// The glossary, the roster, and the post-processing prompt of this run
+		// may be read from notes, and a note that went missing leaves its
+		// profile on the text last read from it rather than on nothing.
+		const lostSourceNotice = lostProfileSourceNotice(
+			this.app.vault,
+			settings,
+			['transcription', 'advanced', 'llm'],
+		);
+		if (lostSourceNotice) {
+			new Notice(lostSourceNotice);
 		}
 		const transcribeOptions = {
 			// Gated like diarize below: an engine that detects the language

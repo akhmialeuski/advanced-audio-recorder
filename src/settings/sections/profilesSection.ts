@@ -23,6 +23,13 @@ import type { SettingGroupItem } from 'obsidian';
 /** Visible lines a profile body field opens with. */
 const PROFILE_BODY_ROWS = 8;
 
+/** Description of the row that names the note a profile's body is read from. */
+const PROFILE_SOURCE_DESC =
+	'A note to read the body from, followed as it is edited, renamed, or moved. Its frontmatter is ignored. Leave empty to type the body on this page.';
+
+/** Placeholder of that row, showing the shape of a vault path. */
+const PROFILE_SOURCE_PLACEHOLDER = 'Glossaries/Standup.md';
+
 /**
  * One saved profile, as a page of its own.
  *
@@ -64,10 +71,42 @@ function profilePage(
 				],
 			},
 			{
+				type: 'group',
+				cls: SETTINGS_SECTION_CLASS,
+				items: [
+					{
+						name: 'Source note',
+						desc: PROFILE_SOURCE_DESC,
+						control: {
+							type: 'file',
+							key: profileControlKey(
+								catalogue.sourceKey,
+								entry.id,
+							),
+							placeholder: PROFILE_SOURCE_PLACEHOLDER,
+							filter: (file) => file.extension === 'md',
+							// Only a path naming a note is stored, so a path typed
+							// a letter at a time writes nothing until it is whole.
+							validate: (path) => catalogue.sourceRejection(path),
+						},
+					},
+					{
+						name: 'Open note',
+						desc: 'Opens the note this body is read from, where it is edited.',
+						visible: () => catalogue.sourcePath(entry.id) !== '',
+						action: (): void => {
+							catalogue.openSource(entry.id);
+						},
+					},
+				],
+			},
+			{
 				// The body is a multi-line editor, which is laid out across the
-				// whole row and therefore in a block of its own.
+				// whole row and therefore in a block of its own. A body read from
+				// a note is edited in the note, so the editor steps aside.
 				type: 'group',
 				cls: `${SETTINGS_SECTION_CLASS} ${STACKED_TEXT_CLASS}`,
+				visible: () => catalogue.sourcePath(entry.id) === '',
 				items: [
 					{
 						name: catalogue.bodyName,

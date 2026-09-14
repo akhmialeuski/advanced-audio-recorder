@@ -32,6 +32,7 @@ describe.each(PROFILE_KINDS.map((kind) => [kind.heading, kind] as const))(
 		it('derives its control keys from its id, so two kinds cannot collide', () => {
 			expect(kind.selectionKey).toBe(`profile.${kind.id}.selection`);
 			expect(kind.bodyKey).toBe(`profile.${kind.id}.body`);
+			expect(kind.sourceKey).toBe(`profile.${kind.id}.source`);
 		});
 
 		it('says what a profile holds, and says so when it holds nothing', () => {
@@ -101,6 +102,26 @@ describe('the profile kinds together', () => {
 			expect(two).toMatch(/^2 /);
 		},
 	);
+
+	describe('a list-shaped body kept in a note', () => {
+		const noteBody = '# Team\n- Alex\n- Bob\n\n1. Cleo';
+
+		it.each([
+			['dictionary', '3 terms'],
+			['participants', '3 names'],
+		] as const)(
+			'counts the %s entries the run would use, not the markup',
+			(kindId, summary) => {
+				const kind = PROFILE_KINDS.find(
+					(candidate) => candidate.id === kindId,
+				);
+
+				expect(
+					kind?.summary(createProfile(kindId, 'Note', noteBody)),
+				).toBe(summary);
+			},
+		);
+	});
 
 	it('gives each post-processing task a catalogue of its own', () => {
 		const promptKinds = PROFILE_KINDS.filter(

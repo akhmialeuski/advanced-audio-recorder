@@ -56,6 +56,7 @@ import { RecordingMarkerModal } from './ui/MarkerModal';
 import { isAudioFile } from './utils/audioFile';
 import { openPluginSettings } from './obsidian/settingsNavigation';
 import { transcriptionRefusal } from './settings/settingsAttention';
+import { ProfileNoteStore } from './settings/ProfileNoteStore';
 import { registerCliCommands, type CliHost } from './obsidian/cliCommands';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
@@ -170,6 +171,16 @@ export default class AudioRecorderPlugin extends Plugin {
 	private readonly transcriptionCostTracker = new SessionCostTracker();
 
 	/**
+	 * Keeps the bodies of note-backed profiles in step with their notes. Built
+	 * with the plugin, so every path into saveSettings finds it there.
+	 */
+	private readonly profileNotes = new ProfileNoteStore(
+		this.app,
+		() => this.settings,
+		() => this.saveSettings(),
+	);
+
+	/**
 	 * The queue of recordings to transcribe. Built on load so a queue a
 	 * previous session left can be offered back, and so the folder menu has
 	 * something to queue into.
@@ -211,6 +222,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 */
 	override async onload(): Promise<void> {
 		await this.loadSettings();
+		this.profileNotes.register(this);
 
 		// Offload streaming conversions to a Web Worker when the build
 		// injected its source; everything falls back to the main thread
@@ -600,6 +612,9 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * Saves plugin settings to storage.
 	 */
 	async saveSettings(): Promise<void> {
+		// A note just picked for a profile is read before anything is written
+		// or redrawn, so the save carries its text and the tab shows it.
+		await this.profileNotes.reconcile();
 		if (this.settingsLoadFailed) {
 			// Never overwrite a possibly intact data.json with the
 			// in-memory fallback that replaced the unreadable settings
@@ -631,6 +646,10 @@ export default class AudioRecorderPlugin extends Plugin {
 	 */
 	override async onExternalSettingsChange(): Promise<void> {
 		await this.loadSettings();
+		// The bodies that arrived were cached on another device and may be
+		// older than the notes here. Read again, and not written back: writing
+		// would send data.json straight back to the device it came from.
+		await this.profileNotes.reconcile();
 		this.recordingManager.updateSettings(this.settings);
 	}
 

@@ -28,6 +28,8 @@ export interface SettingsModal {
 	closePage?(): void;
 	/** Opens the settings dialog itself. */
 	open?(): void;
+	/** Closes the settings dialog. */
+	close?(): void;
 	/** Shows one tab of it, by the id the plugin is registered under. */
 	openTabById?(id: string): void;
 }
@@ -55,6 +57,23 @@ export function closeSettingsPage(app: App): boolean {
 	// Called on the modal rather than through a captured reference: it is the
 	// modal that owns the page stack the close operates on.
 	modal.closePage();
+	return true;
+}
+
+/**
+ * Closes the settings dialog.
+ *
+ * Used where a row hands the user something to look at outside the dialog, a
+ * note opened from a profile's page, which the dialog would otherwise cover.
+ * @param app - The Obsidian App instance
+ * @returns Whether the close could be requested
+ */
+export function closeSettings(app: App): boolean {
+	const modal = app.setting;
+	if (!modal || typeof modal.close !== 'function') {
+		return false;
+	}
+	modal.close();
 	return true;
 }
 

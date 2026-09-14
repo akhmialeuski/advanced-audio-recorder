@@ -651,6 +651,11 @@ export class Workspace extends Events {
 
 	getLeavesOfType = jest.fn((_type: string): unknown[] => []);
 
+	openLinkText = jest.fn(
+		(_linktext: string, _sourcePath: string, _newLeaf?: unknown) =>
+			Promise.resolve(),
+	);
+
 	iterateAllLeaves = jest.fn((_callback: (leaf: unknown) => void): void => {
 		// No leaves unless a test seeds them
 	});
@@ -1724,6 +1729,40 @@ export function normalizePath(path: string): string {
 export const setIcon = jest.fn((el: HTMLElement, iconId: string): void => {
 	el.setAttribute('data-icon', iconId);
 });
+
+/**
+ * Mock getFrontMatterInfo: locates the frontmatter block a note opens with the
+ * way Obsidian's does, so a note read by the plugin loses it in tests too.
+ */
+export function getFrontMatterInfo(content: string): {
+	exists: boolean;
+	frontmatter: string;
+	from: number;
+	to: number;
+	contentStart: number;
+} {
+	const match = /^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(
+		content,
+	);
+	if (!match) {
+		return {
+			exists: false,
+			frontmatter: '',
+			from: 0,
+			to: 0,
+			contentStart: 0,
+		};
+	}
+	const frontmatter = match[1] ?? '';
+	const from = content.indexOf('\n') + 1;
+	return {
+		exists: true,
+		frontmatter,
+		from,
+		to: from + frontmatter.length,
+		contentStart: match[0].length,
+	};
+}
 
 /**
  * Mock getLinkpath function: strips the subpath (heading/block

@@ -12,6 +12,8 @@
  * @module speakers/participantRoster
  */
 
+import { listEntries } from '../utils/listLines';
+
 /**
  * Trims, drops blanks, and de-duplicates (first occurrence wins) a list of
  * participant names, preserving order. Non-string entries are dropped, so a
@@ -60,12 +62,13 @@ export function mergeParticipantNames(
  * A participant profile stores its roster the way every profile stores its
  * body - as the text the user edits - so this is the single place that turns
  * that text into names, and the normalization it applies is the same one a
- * sidecar and a rename dialog get.
+ * sidecar and a rename dialog get. The text is read as a list, so a roster kept
+ * in a note as bullets under a heading yields the names and not the markup.
  * @param body - The roster as edited, one name per line
  * @returns A clean, order-preserving list of names
  */
 export function parseParticipantBody(body: string): string[] {
-	return normalizeParticipantNames(body.split(/\r?\n/));
+	return normalizeParticipantNames(listEntries(body));
 }
 
 /**

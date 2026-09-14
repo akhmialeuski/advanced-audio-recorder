@@ -18,6 +18,7 @@
 import {
 	App,
 	DropdownComponent,
+	Notice,
 	PluginSettingTab,
 	Setting,
 	TFolder,
@@ -26,7 +27,7 @@ import {
 	requireApiVersion,
 	setIcon,
 } from 'obsidian';
-import type { Plugin } from 'obsidian';
+import type { Plugin, TFile } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
 import {
 	createSettingsRenderMode,
@@ -96,7 +97,10 @@ import {
 } from './profiles';
 import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
-import { closeSettingsPage } from '../obsidian/settingsNavigation';
+import {
+	closeSettings,
+	closeSettingsPage,
+} from '../obsidian/settingsNavigation';
 import { ENGINES, type EngineId } from '../providers/providers';
 import {
 	applyEngineSettingsField,
@@ -203,6 +207,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				this.getFolderOptions(),
 			);
 		},
+		// The same for the file control, narrowed by the filter it declares.
+		attachFileSuggest: (
+			inputEl: HTMLInputElement,
+			filter?: (file: TFile) => boolean,
+		): void => {
+			new TextInputSuggest(this.app, inputEl, () =>
+				this.app.vault
+					.getFiles()
+					.filter((file) => filter?.(file) ?? true)
+					.map((file) => file.path),
+			);
+		},
 	});
 
 	/**
@@ -218,6 +234,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * carries names the field here and the profile by id.
 	 */
 	private readonly profileAccess = new Map<string, ProfileKindId>();
+
+	/**
+	 * Base control keys addressing the note a profile's body is read from,
+	 * resolved to the profile the same way a body key is.
+	 */
+	private readonly profileSources = new Map<string, ProfileKindId>();
 
 	/**
 	 * Base control keys addressing whether a profile is the selected one. The
@@ -379,12 +401,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @returns The stored value
 	 */
 	override getControlValue(key: string): unknown {
-		const field = this.profileFieldFor(key);
+		const field = this.profileFieldFor(key, this.profileAccess);
 		if (field) {
 			// A profile deleted while its page was open leaves the controls of
 			// that page standing until the page is torn down; an empty body is
 			// what they read then.
 			return field.profile?.body ?? '';
+		}
+		const source = this.profileFieldFor(key, this.profileSources);
+		if (source) {
+			return source.profile?.sourcePath ?? '';
 		}
 		const selection = this.profileSelectionFor(key);
 		if (selection) {
@@ -466,7 +492,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		key: string,
 		value: unknown,
 	): void | Promise<void> {
-		const field = this.profileFieldFor(key);
+		const field = this.profileFieldFor(key, this.profileAccess);
 		if (field) {
 			if (field.profile) {
 				field.profile.body = String(value);
@@ -475,6 +501,21 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// is live in memory either way, only the write to disk waits.
 			this.saveTextSettingDebounced();
 			return;
+		}
+		const source = this.profileFieldFor(key, this.profileSources);
+		if (source) {
+			const path = String(value);
+			if (source.profile && path === '') {
+				// Detached: the text last read from the note stays as the
+				// body, editable on the page again.
+				delete source.profile.sourcePath;
+			} else if (source.profile) {
+				source.profile.sourcePath = path;
+			}
+			// The save reads the note into the body, and the tree is read again
+			// because the page trades its editor for the note and the entry
+			// counts what the note holds.
+			return this.commit();
 		}
 		const selection = this.profileSelectionFor(key);
 		if (selection) {
@@ -573,18 +614,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * The profile whose body a control key addresses. The key names the kind
+	 * The profile whose field a control key addresses. The key names the kind
 	 * the field belongs to and the profile it belongs to, so a row on one
 	 * profile's page can never write to another's.
 	 * @param key - The control key to resolve
+	 * @param access - Base keys of the field being asked about, by kind
 	 * @returns The profile, or undefined for any other key. The `profile` is
 	 * undefined when the key addresses a kind that no longer holds this id.
 	 */
 	private profileFieldFor(
 		key: string,
+		access: ReadonlyMap<string, ProfileKindId>,
 	): { profile: Profile | undefined } | undefined {
 		const parsed = parseProfileControlKey(key);
-		const kind = parsed && this.profileAccess.get(parsed.base);
+		const kind = parsed && access.get(parsed.base);
 		if (!parsed || !kind) {
 			return undefined;
 		}
@@ -735,6 +778,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const ofKind = (): Profile[] =>
 			profilesOfKind(this.plugin.settings.profiles, kindId);
 		this.profileAccess.set(kind.bodyKey, kindId);
+		this.profileSources.set(kind.sourceKey, kindId);
 		this.profileSelections.set(kind.selectionKey, kindId);
 		const rejection = (id: string, name: string): string | undefined =>
 			profileNameRejection(
@@ -754,15 +798,49 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			selectedId: (settings) => selectedProfileId(settings, kindId),
 			selectionKey: kind.selectionKey,
 			bodyKey: kind.bodyKey,
+			sourceKey: kind.sourceKey,
+			sourcePath: (id) => findProfile(ofKind(), id)?.sourcePath ?? '',
+			sourceRejection: (path) =>
+				path === '' ||
+				this.app.vault.getFileByPath(path)?.extension === 'md'
+					? undefined
+					: 'No note at this path.',
+			openSource: (id): void => {
+				const path = findProfile(ofKind(), id)?.sourcePath;
+				if (path === undefined) {
+					return;
+				}
+				// Opened only when it exists: a link to a missing note creates
+				// an empty one, and reading that would empty the body.
+				const note = this.app.vault.getFileByPath(path);
+				if (!note) {
+					new Notice(`The note ${path} is missing.`);
+					return;
+				}
+				closeSettings(this.app);
+				void this.app.workspace.openLinkText(note.path, '', 'tab');
+			},
 			entries: (settings) =>
-				profilesOfKind(settings.profiles, kindId).map((profile) => ({
-					id: profile.id,
-					name: profile.name,
-					summary:
-						profile.id === selectedProfileId(settings, kindId)
-							? `In use, ${kind.summary(profile)}`
-							: kind.summary(profile),
-				})),
+				profilesOfKind(settings.profiles, kindId).map((profile) => {
+					// A note gone from the vault leaves the body it was last read
+					// into, and the entry says which text that is.
+					const lost =
+						profile.sourcePath !== undefined &&
+						this.app.vault.getFileByPath(profile.sourcePath) ===
+							null;
+					const parts = [
+						...(profile.id === selectedProfileId(settings, kindId)
+							? ['In use']
+							: []),
+						...(lost ? ['Note missing'] : []),
+						kind.summary(profile),
+					];
+					return {
+						id: profile.id,
+						name: profile.name,
+						summary: parts.join(', '),
+					};
+				}),
 			visible: kind.visible,
 			add: (): void => {
 				const settings = this.plugin.settings;

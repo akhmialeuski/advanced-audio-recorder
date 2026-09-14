@@ -33,6 +33,33 @@ describe('parseDictionary', () => {
 		).toEqual(['Deepgram', 'Whisper']);
 	});
 
+	it('reads a glossary written as a Markdown list under a heading', () => {
+		// A glossary kept in a note: the heading is a section title and each
+		// marker is list markup, so neither may reach the engine as a term.
+		expect(
+			parseDictionary(
+				'# Glossary\n- Kubernetes\n* gRPC\n+ CI/CD\n1. Deepgram\n2) Whisper\n- [ ] Voxtral\n- [x] Nova',
+			),
+		).toEqual([
+			'Kubernetes',
+			'gRPC',
+			'CI/CD',
+			'Deepgram',
+			'Whisper',
+			'Voxtral',
+			'Nova',
+		]);
+	});
+
+	it('keeps terms that only start with a marker character', () => {
+		expect(parseDictionary('*nix\n1.5x\n#hashtag\nC#')).toEqual([
+			'*nix',
+			'1.5x',
+			'#hashtag',
+			'C#',
+		]);
+	});
+
 	it('returns an empty array for empty or whitespace-only input', () => {
 		expect(parseDictionary('')).toEqual([]);
 		expect(parseDictionary('   \n\t\n')).toEqual([]);

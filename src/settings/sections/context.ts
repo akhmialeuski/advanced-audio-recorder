@@ -187,6 +187,14 @@ export interface ProfileCatalogue {
 	readonly selectionKey: string;
 	/** Control key of a profile's body. */
 	readonly bodyKey: string;
+	/** Control key of the note a profile's body is read from. */
+	readonly sourceKey: string;
+	/** The note a profile's body is read from, read live; '' when typed in. */
+	sourcePath(id: string): string;
+	/** Why a path cannot name a profile's note, or undefined when it can. */
+	sourceRejection(path: string): string | undefined;
+	/** Opens a profile's note in a tab of its own, leaving the settings. */
+	openSource(id: string): void;
 	/** The stored profiles, in the order they are shown. */
 	entries(settings: AudioRecorderSettings): readonly ProfileEntry[];
 	/** Whether this catalogue is on screen at all. */
