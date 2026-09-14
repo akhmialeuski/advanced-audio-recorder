@@ -83,11 +83,15 @@ function jumpAction(kind: MarkerKind): string {
 export interface MarkerListHost {
 	/** Registers a cleanup callback that runs on the player's unload. */
 	register(cleanup: () => void): void;
-	/** Registers an auto-cleaned DOM listener. */
+	/**
+	 * Registers an auto-cleaned DOM listener on an element or a document,
+	 * with the options addEventListener takes, capture included.
+	 */
 	registerDomEvent<K extends keyof HTMLElementEventMap>(
-		el: HTMLElement,
+		el: HTMLElement | Document,
 		type: K,
 		callback: (event: HTMLElementEventMap[K]) => void,
+		options?: boolean | AddEventListenerOptions,
 	): void;
 }
 
@@ -317,9 +321,7 @@ export class MarkerListView {
 		// That click or key release can happen outside the list, as a Tab out
 		// of it does, so it is heard on the list's own document, which is a
 		// pop-out window's when the note is shown in one. Captured, so a
-		// handler that stops the event on its way cannot keep a row open. The
-		// host registers element listeners only, so these are paired with a
-		// cleanup of their own.
+		// handler that stops the event on its way cannot keep a row open.
 		const doc = this.listEl.ownerDocument;
 		const closeRowsFocusLeft = (): void => {
 			for (const rowEl of this.rowEls) {
@@ -329,10 +331,7 @@ export class MarkerListView {
 			}
 		};
 		for (const type of ['click', 'keyup'] as const) {
-			doc.addEventListener(type, closeRowsFocusLeft, true);
-			this.host.register(() => {
-				doc.removeEventListener(type, closeRowsFocusLeft, true);
-			});
+			this.host.registerDomEvent(doc, type, closeRowsFocusLeft, true);
 		}
 		this.host.register(() => {
 			for (const pending of this.pendingEdits.values()) {

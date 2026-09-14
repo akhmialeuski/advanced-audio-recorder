@@ -27,8 +27,10 @@ function extendedEl(): HTMLElement {
 }
 
 /**
- * A host that attaches listeners directly, mirroring registerDomEvent, and
- * collects the teardown callbacks Obsidian would run on unload.
+ * A host that attaches listeners directly, mirroring the player's
+ * registerRenderDomEvent, and collects the teardown callbacks the player runs
+ * on unload: every cleanup registered, and the removal of every listener with
+ * the options it was added with.
  * @param teardowns - Collector the host pushes its cleanups into
  * @returns The host
  */
@@ -37,8 +39,16 @@ function makeHost(teardowns: (() => void)[] = []): MarkerListHost {
 		register: (cleanup) => {
 			teardowns.push(cleanup);
 		},
-		registerDomEvent: (el, type, callback) => {
-			el.addEventListener(type, callback as EventListener);
+		registerDomEvent: (el, type, callback, options) => {
+			const target: EventTarget = el;
+			target.addEventListener(type, callback as EventListener, options);
+			teardowns.push(() => {
+				target.removeEventListener(
+					type,
+					callback as EventListener,
+					options,
+				);
+			});
 		},
 	};
 }

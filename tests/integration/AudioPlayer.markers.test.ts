@@ -185,6 +185,30 @@ describe('the marker list', () => {
 		expect(store.getMarkers).not.toHaveBeenCalled();
 	});
 
+	it('takes the list document listeners away when the player unloads', async () => {
+		// A marker row is closed by click and keyup listeners on the document,
+		// which outlives the player. A capture listener is removed only by a
+		// call that names capture as well, so an unload has to hand back
+		// exactly what the list added, or every later click in the window
+		// still walks the rows of a player nobody shows.
+		const added = jest.spyOn(document, 'addEventListener');
+		const removed = jest.spyOn(document, 'removeEventListener');
+		const { player } = await openWithMarkers();
+		// Other capture listeners can be added on the first render in a run,
+		// once for the whole document, so only the list's two are picked out
+		const captured = added.mock.calls.filter(
+			([type, , options]) =>
+				(type === 'click' || type === 'keyup') && options === true,
+		);
+		expect(captured.map(([type]) => type)).toEqual(['click', 'keyup']);
+
+		player.unload();
+
+		for (const [type, listener] of captured) {
+			expect(removed).toHaveBeenCalledWith(type, listener, true);
+		}
+	});
+
 	it('reads no markers while the marker window is off', async () => {
 		const { player, store } = await openWithMarkers();
 		player.applySettings({
