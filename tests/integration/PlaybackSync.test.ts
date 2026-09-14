@@ -15,8 +15,9 @@ import { App, Modal } from 'obsidian';
 import { menuInstances } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
 import { allEls, clickControl, control, el } from '../helpers/dom';
-import { MARKER, PLAYER } from '../helpers/selectors';
+import { MARKER, PLAYBACK, PLAYER } from '../helpers/selectors';
 import { PLAYBACK_ACTIONS } from 'src/actions/playbackActions';
+import { renderPlaybackStatusBar } from 'src/ui/StatusBar';
 import { registerActionCommands } from 'src/actions/registerActionCommands';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import {
@@ -306,6 +307,36 @@ describe('timecode seek stays in sync with the embedded player', () => {
 		} finally {
 			shared.restore();
 		}
+	});
+});
+
+describe('the volume set in the embed', () => {
+	// The status bar draws its volume track filled up to the thumb, from the
+	// snapshot the registry publishes. A volume moved in the embed reaches the
+	// status bar only through that snapshot, so the fill has to follow it
+	// there, or the strip shows the old level beside a thumb at the new one.
+	it('fills the status-bar volume track up to the level set in the embed', async () => {
+		const shared = sharedAudio();
+		const registry = new AudioPlayerRegistry();
+		const statusBarItem = makeContainer();
+		registry.subscribePlayback((state) => {
+			if (state) {
+				renderPlaybackStatusBar(statusBarItem, state);
+			}
+		});
+		const container = mountPlayer(registry);
+		await tick();
+		startPlaybackAt(registry, shared.audio, 30);
+		const embedVolume = el<HTMLInputElement>(container, PLAYER.volume);
+
+		embedVolume.value = '0.3';
+		embedVolume.dispatchEvent(new Event('input', { bubbles: true }));
+
+		const barVolume = el<HTMLInputElement>(statusBarItem, PLAYBACK.volume);
+		expect(barVolume.value).toBe('0.3');
+		expect(barVolume.style.getPropertyValue('--slider-fill-ratio')).toBe(
+			'0.3',
+		);
 	});
 });
 

@@ -116,6 +116,8 @@ export class PlayerControlsView {
 				this.callbacks.onTogglePlay();
 			},
 		);
+		// The primary action of the player, drawn larger than the rest.
+		this.playButton.addClass('aar-player-play');
 		// Reflect the shared audio's current state, so a player rendered while
 		// playback is already running (e.g. after a mode switch) shows the
 		// pause icon and reports it, rather than a stale play icon. Through
@@ -165,7 +167,7 @@ export class PlayerControlsView {
 		this.setMuted(state.muted);
 
 		const volume = controls.createEl('input', {
-			cls: 'aar-player-volume',
+			cls: 'aar-player-volume slider',
 			attr: {
 				type: 'range',
 				min: '0',
@@ -176,7 +178,11 @@ export class PlayerControlsView {
 				'aria-label': 'Volume',
 			},
 		});
+		// The app's own slider fill: its class draws the track in the accent
+		// up to this ratio, and the range runs 0 to 1, so the value is the ratio.
+		volume.setCssProps({ '--slider-fill-ratio': volume.value });
 		this.host.registerDomEvent(volume, 'input', () => {
+			volume.setCssProps({ '--slider-fill-ratio': volume.value });
 			this.callbacks.onVolumeInput(Number(volume.value));
 		});
 

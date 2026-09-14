@@ -228,11 +228,11 @@ _Figure: bookmark ticks and chapter boundaries rendered on the seek bar._
 
 The list below the player shows every marker and chapter in time order. From it you can:
 
-- **Jump** to an entry by clicking its time (or the whole row in Reading view).
+- **Jump** to an entry with its play button (or by clicking the whole row in Reading view).
 - **Rename** an entry by editing its label inline (saved shortly after you stop typing).
 - **Move** an entry to another time by typing into its time field, in any of the forms a timecode link accepts (`90`, `1:30`, `0:01:30`). A time that means nothing is refused and the field goes back to what it showed.
-- **Move** an entry to wherever playback currently is with the crosshair button beside its time. A marker is almost always pressed a beat after the thing worth marking, so this is the quickest way to correct one.
-- **Note** an entry in the field under its row, for the reason a short label cannot hold.
+- **Move** an entry to wherever playback currently is with the crosshair button beside its play button. A marker is almost always pressed a beat after the thing worth marking, so this is the quickest way to correct one.
+- **Note** an entry in the field under its title, for the reason a short label cannot hold. An empty note field stays hidden until you click into the entry's time or title or tab into its row. A note that has text is always shown.
 - **Colour** an entry from its colour picker, to tell apart what different markers are for.
 - **Delete** an entry with its trash button.
 
@@ -240,7 +240,7 @@ A time outside the recording is refused with a notice and the marker stays where
 
 A marker's colour shows as an edge on its row and as the colour of its tick on the seek bar, so a long recording's markers can be told apart at a glance. A marker with no colour looks exactly as it always did. In Reading view the note is shown under the row and is part of the row's accessible name, so it reaches a screen reader as well as the eye.
 
-The currently playing segment is highlighted as playback crosses chapter boundaries. The read-only list also shows each segment's length.
+The currently playing segment is highlighted as playback crosses chapter boundaries. Each row shows its segment's length at the right, while editing as well as in Reading view.
 
 **Chapter navigation**
 

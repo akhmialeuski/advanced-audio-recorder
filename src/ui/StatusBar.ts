@@ -361,7 +361,7 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 		},
 	).addClass(PLAYBACK_MUTE_CLASS);
 	const volume = audioControls.createEl('input', {
-		cls: PLAYBACK_VOLUME_CLASS,
+		cls: `${PLAYBACK_VOLUME_CLASS} slider`,
 		attr: {
 			type: 'range',
 			min: '0',
@@ -371,7 +371,11 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 			'aria-label': 'Volume',
 		},
 	});
+	// The app's own slider fill: its class draws the track in the accent up
+	// to this ratio, and the range runs 0 to 1, so the value is the ratio.
+	volume.setCssProps({ '--slider-fill-ratio': volume.value });
 	volume.addEventListener('input', () => {
+		volume.setCssProps({ '--slider-fill-ratio': volume.value });
 		playbackStates.get(statusBarItem)?.onVolumeInput(Number(volume.value));
 	});
 
@@ -463,8 +467,13 @@ function updatePlaybackControls(
 	const volume = container.querySelector<HTMLInputElement>(
 		`.${PLAYBACK_VOLUME_CLASS}`,
 	);
-	if (volume && activeDocument.activeElement !== volume) {
-		volume.value = String(state.volume);
+	if (volume) {
+		if (activeDocument.activeElement !== volume) {
+			volume.value = String(state.volume);
+		}
+		// The fill follows what the slider shows, whether the value came from
+		// the playback or from the drag still in progress
+		volume.setCssProps({ '--slider-fill-ratio': volume.value });
 	}
 
 	const markerControls = container.querySelector<HTMLElement>(

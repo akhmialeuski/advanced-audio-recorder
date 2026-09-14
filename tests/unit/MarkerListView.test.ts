@@ -27,8 +27,10 @@ function extendedEl(): HTMLElement {
 }
 
 /**
- * A host that attaches listeners directly, mirroring registerDomEvent, and
- * collects the teardown callbacks Obsidian would run on unload.
+ * A host that attaches listeners directly, mirroring the player's
+ * registerRenderDomEvent, and collects the teardown callbacks the player runs
+ * on unload: every cleanup registered, and the removal of every listener with
+ * the options it was added with.
  * @param teardowns - Collector the host pushes its cleanups into
  * @returns The host
  */
@@ -37,8 +39,16 @@ function makeHost(teardowns: (() => void)[] = []): MarkerListHost {
 		register: (cleanup) => {
 			teardowns.push(cleanup);
 		},
-		registerDomEvent: (el, type, callback) => {
-			el.addEventListener(type, callback as EventListener);
+		registerDomEvent: (el, type, callback, options) => {
+			const target: EventTarget = el;
+			target.addEventListener(type, callback as EventListener, options);
+			teardowns.push(() => {
+				target.removeEventListener(
+					type,
+					callback as EventListener,
+					options,
+				);
+			});
 		},
 	};
 }
@@ -115,6 +125,18 @@ describe('MarkerListView rendering', () => {
 		expect(allEls(listContainer, MARKER.delete)).toHaveLength(2);
 	});
 
+	// A timestamp a digit shorter than the next one pulled its icon and title
+	// left of the rows around it, so the list states the longest length.
+	it('sizes every row to the longest timestamp in the recording', () => {
+		const { listContainer } = setup(false, { duration: 1700 });
+
+		expect(
+			el(listContainer, MARKER.list).style.getPropertyValue(
+				'--aar-marker-time-chars',
+			),
+		).toBe(String('28:20'.length));
+	});
+
 	it('renders read-only rows as clickable jump targets without inputs', () => {
 		const { listContainer } = setup(false);
 		expect(allEls(listContainer, MARKER.labelInput)).toHaveLength(0);
@@ -125,6 +147,20 @@ describe('MarkerListView rendering', () => {
 		const { seekEl } = setup(true);
 		expect(seekEl).toHaveMarkerAt(10, 'Intro');
 		expect(seekEl).toHaveMarkerAt(30, 'Note');
+	});
+
+	// The time field opens an editable row, so the length it runs for and a
+	// play button to reach it take the right-hand side.
+	it('shows how long each entry runs in an editable row, beside its jump', () => {
+		const { listContainer } = setup(true);
+
+		// Intro runs from 10s to the next marker at 30s
+		expect(at(allEls(listContainer, MARKER.segment), 0).textContent).toBe(
+			'0:20',
+		);
+		expect(
+			at(allEls(listContainer, MARKER.jump), 0).dataset['action'],
+		).toBe('jump');
 	});
 });
 
@@ -149,10 +185,7 @@ describe('MarkerListView interaction', () => {
 
 	it('renames a marker immediately on a change event', () => {
 		const { listContainer, callbacks } = setup(true);
-		const input = el<HTMLInputElement>(
-			listContainer,
-			'input[data-marker-id="b"]',
-		);
+		const input = el<HTMLInputElement>(listContainer, MARKER.labelOf('b'));
 		input.value = 'Renamed';
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 		expect(callbacks.onRename).toHaveBeenCalledWith('b', 'Renamed');
@@ -436,7 +469,8 @@ describe('MarkerListView renaming while typing', () => {
 
 	/** Types into a row's rename input without committing it. */
 	function type(listContainer: HTMLElement, id: string, value: string): void {
-		typeInto(listContainer, 'input', id, value);
+		// By class: the time field is an input in the same row, and it comes first
+		typeInto(listContainer, MARKER.labelInput, id, value);
 	}
 
 	// The name and the note shared one timer, so a keystroke in either
@@ -492,10 +526,7 @@ describe('MarkerListView renaming while typing', () => {
 
 	it('does not save twice when the field is committed as well', () => {
 		const { listContainer, callbacks } = setup(true);
-		const input = el<HTMLInputElement>(
-			listContainer,
-			'input[data-marker-id="b"]',
-		);
+		const input = el<HTMLInputElement>(listContainer, MARKER.labelOf('b'));
 
 		type(listContainer, 'b', 'Renamed');
 		input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -602,10 +633,7 @@ describe('MarkerListView teardown', () => {
 		// The debounce would otherwise fire against a player that is gone,
 		// writing to a file the user has closed.
 		const { listContainer, callbacks, teardowns } = setup(true);
-		const input = el<HTMLInputElement>(
-			listContainer,
-			'input[data-marker-id="b"]',
-		);
+		const input = el<HTMLInputElement>(listContainer, MARKER.labelOf('b'));
 		input.value = 'Half-typed';
 		input.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -615,6 +643,124 @@ describe('MarkerListView teardown', () => {
 		jest.advanceTimersByTime(400);
 
 		expect(callbacks.onRename).not.toHaveBeenCalled();
+	});
+});
+
+describe('the note line of a row being worked in', () => {
+	/** The list under test, attached so focus can move inside it. */
+	let mounted: Setup;
+
+	beforeEach(() => {
+		mounted = setup(true);
+		document.body.appendChild(mounted.listContainer);
+	});
+
+	afterEach(() => {
+		mounted.listContainer.remove();
+	});
+
+	// A press moves focus on mousedown, well before its click. A row that
+	// closed right then moved every row below it up before the release, so
+	// the click meant for a lower row's jump landed on another element.
+	it('keeps a row open until the click that took focus from it has landed', () => {
+		const { listContainer, callbacks } = mounted;
+		const upper = at(allEls(listContainer, MARKER.editableRow), 0);
+		const jump = at(allEls(listContainer, MARKER.jump), 1);
+
+		el(listContainer, MARKER.labelOf('a')).focus();
+		jump.focus();
+
+		expect(upper.matches(MARKER.openRow)).toBe(true);
+
+		jump.click();
+
+		expect(callbacks.onJump).toHaveBeenCalledWith(30);
+		expect(upper.matches(MARKER.openRow)).toBe(false);
+	});
+
+	// Tab has no click to wait for, and releasing the key ends it, so a row
+	// left from the keyboard closes as soon as focus has settled elsewhere.
+	it('closes a row once the key that moved focus out of it is released', () => {
+		const { listContainer } = mounted;
+		const rows = allEls(listContainer, MARKER.editableRow);
+		const nextTime = at(allEls(listContainer, MARKER.timeEdit), 1);
+
+		el(listContainer, MARKER.labelOf('a')).focus();
+		nextTime.focus();
+		nextTime.dispatchEvent(
+			new KeyboardEvent('keyup', { key: 'Tab', bubbles: true }),
+		);
+
+		expect(at(rows, 0).matches(MARKER.openRow)).toBe(false);
+		expect(at(rows, 1).matches(MARKER.openRow)).toBe(true);
+	});
+
+	// A note of only spaces is kept as none, but the field kept its spaces,
+	// which :placeholder-shown does not match, so the line never closed.
+	it('empties a note committed blank, so its line can close', () => {
+		const { listContainer, callbacks } = mounted;
+		const note = at(
+			allEls<HTMLTextAreaElement>(listContainer, MARKER.note),
+			0,
+		);
+
+		note.value = '   ';
+		note.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(note.value).toBe('');
+		expect(callbacks.onEditNote).toHaveBeenCalledWith('a', '');
+	});
+
+	// The listeners sit on the document, which outlives the player, so they
+	// have to leave with it rather than keep closing rows nobody renders.
+	it('stops listening to the document once the player unloads', () => {
+		const { listContainer, teardowns } = mounted;
+		const upper = at(allEls(listContainer, MARKER.editableRow), 0);
+		el(listContainer, MARKER.labelOf('a')).focus();
+
+		for (const teardown of teardowns) {
+			teardown();
+		}
+		at(allEls(listContainer, MARKER.timeEdit), 1).focus();
+		document.body.click();
+
+		expect(upper.matches(MARKER.openRow)).toBe(true);
+	});
+
+	// A pointer focuses a button or the colour select on the press itself,
+	// well before its click, and a narrow row keeps those controls under the
+	// note line. Opening the row then moved the pressed control down before
+	// the release, so the click did nothing.
+	it.each([
+		['jump', MARKER.jump],
+		['move', MARKER.here],
+		['colour', MARKER.color],
+		['delete', MARKER.delete],
+	])(
+		'leaves a row closed when its %s control takes focus',
+		(_name, selector) => {
+			const { listContainer } = mounted;
+			const row = at(allEls(listContainer, MARKER.editableRow), 1);
+
+			at(allEls(listContainer, selector), 1).focus();
+
+			expect(row.matches(MARKER.openRow)).toBe(false);
+		},
+	);
+
+	// The note of a closed row stays in the tab order, so Shift+Tab from the
+	// row's buttons reaches it and has to open the row as it arrives.
+	it.each([
+		['time', MARKER.timeEdit],
+		['title', MARKER.labelInput],
+		['note', MARKER.note],
+	])('opens a row when its %s field takes focus', (_name, selector) => {
+		const { listContainer } = mounted;
+		const row = at(allEls(listContainer, MARKER.editableRow), 1);
+
+		at(allEls(listContainer, selector), 1).focus();
+
+		expect(row.matches(MARKER.openRow)).toBe(true);
 	});
 });
 
@@ -779,10 +925,13 @@ describe('a marker note and colour in the list', () => {
 			],
 		});
 
+		// The closed control is a dot drawn from the row's colour property
 		expect(
-			allEls(listContainer, MARKER.colorSwatch('purple')),
-			// The control itself, plus the one option that names the colour
-		).toHaveLength(2);
+			el(listContainer, MARKER.row).style.getPropertyValue(
+				'--aar-marker-color',
+			),
+		).toBe('var(--aar-marker-purple)');
+		expect(allEls(listContainer, MARKER.swatch)).toHaveLength(1);
 	});
 
 	it('marks a coloured row so the stylesheet can draw its edge', () => {

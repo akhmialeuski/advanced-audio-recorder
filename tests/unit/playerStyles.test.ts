@@ -16,12 +16,18 @@ function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Returns the declaration bodies of every CSS rule a selector ends. */
+function ruleBodies(selector: string): string[] {
+	const pattern = new RegExp(
+		`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`,
+		'g',
+	);
+	return [...css.matchAll(pattern)].map((match) => match[1] ?? '');
+}
+
 /** Returns the declaration body of a CSS rule, or null when absent. */
 function ruleBody(selector: string): string | null {
-	const match = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`).exec(
-		css,
-	);
-	return match?.[1] ?? null;
+	return ruleBodies(selector)[0] ?? null;
 }
 
 describe('read-only player styles', () => {
@@ -105,11 +111,27 @@ describe('read-only player styles', () => {
 		expect(reset).toMatch(/white-space:\s*normal/);
 	});
 
-	it('gives the note a line of its own under the row it belongs to', () => {
+	// A note spanning the whole row read as a caption on the controls as much
+	// as on the marker, so an edit-mode row places it under the title.
+	it('puts the edit-mode note under the title it annotates', () => {
 		const note = ruleBody(MARKER.noteRule);
 		expect(note).not.toBeNull();
-		expect(note).toMatch(/flex-basis:\s*100%/);
+		expect(note).toMatch(/grid-area:\s*note/);
 
+		const editable = ruleBody(MARKER.editableRow);
+		expect(editable).not.toBeNull();
+		expect(editable).toMatch(/display:\s*grid/);
+		const areas = /grid-template-areas:\s*'([^']*)'\s*'([^']*)'/.exec(
+			editable ?? '',
+		);
+		expect(areas).not.toBeNull();
+		const [titleLine, noteLine] = [areas?.[1], areas?.[2]].map((line) =>
+			(line ?? '').split(/\s+/),
+		);
+		expect(noteLine?.indexOf('note')).toBe(titleLine?.indexOf('label'));
+	});
+
+	it('still wraps a reading-view row, whose note takes a line of its own', () => {
 		const row = ruleBody(MARKER.row);
 		expect(row).toMatch(/flex-wrap:\s*wrap/);
 	});
@@ -122,12 +144,63 @@ describe('read-only player styles', () => {
 		expect(line).toMatch(/flex-basis:\s*100%/);
 		expect(line).toMatch(/display:\s*flex/);
 
+		// The note follows the indent by the gap the icon follows the timecode
+		// by: a 6px gap against the row's 8px started every note 2px early.
+		const gapOf = (body: string | null): string | undefined =>
+			/(?:^|[\s;])gap:\s*([^;]+);/.exec(body ?? '')?.[1];
+		expect(gapOf(line)).toBeDefined();
+		expect(gapOf(line)).toBe(gapOf(ruleBody(MARKER.row)));
+
 		// The indent is a hidden copy of the timecode, so it is exactly as
 		// wide as the column it aligns to whatever the stamps run to
 		const indent = ruleBody(MARKER.noteIndent);
 		expect(indent).not.toBeNull();
 		expect(indent).toMatch(/visibility:\s*hidden/);
 		expect(indent).toMatch(/font-variant-numeric:\s*tabular-nums/);
+	});
+
+	// The time, the note indent under it and the segment length are each as
+	// wide as the longest timestamp, so what follows them lines up in every row.
+	// The field a time is typed into is too: at a fixed width a ten-hour
+	// recording's 10:02:03 ran past its edges. The field is styled by two
+	// rules, so every rule it is given is read.
+	it.each([
+		['time', MARKER.time],
+		['note indent', MARKER.noteIndent],
+		['segment length', MARKER.segment],
+		['time field', MARKER.timeEditRule],
+	])('sizes the %s column to the longest timestamp', (_name, selector) => {
+		expect(ruleBodies(selector).join('\n')).toMatch(
+			/min-width:\s*calc\(var\(--aar-marker-time-chars/,
+		);
+	});
+
+	// Most rows carry no note, and a second line holding only a placeholder
+	// took about a third of every row. It opens while the row is worked in.
+	it('keeps a row with an empty note to one line until the row is open', () => {
+		const note = ruleBody(MARKER.idleEmptyNote);
+		expect(note).toMatch(/(?:^|[\s;])height:\s*0;/);
+		expect(note).toMatch(/border-block-width:\s*0/);
+		expect(ruleBody(MARKER.idleEmptyNoteIcon)).toMatch(/display:\s*none/);
+
+		// A gap between the lines would stay behind the hidden note
+		expect(ruleBody(MARKER.editableRow)).toMatch(/row-gap:\s*0/);
+	});
+
+	// A field taken out of the layout is taken out of the tab order too, so
+	// Shift+Tab from a closed row's buttons would skip its empty note, and no
+	// button opens the row. The closed note is collapsed and kept instead.
+	it('keeps the empty note of a closed row in the tab order', () => {
+		expect(ruleBody(MARKER.idleEmptyNote)).not.toMatch(
+			/display:\s*none|visibility:\s*hidden/,
+		);
+	});
+
+	// A note typed as a list over several lines read as one run-on line.
+	it('keeps the line breaks of a reading-view note', () => {
+		const note = ruleBody(MARKER.staticNote);
+		expect(note).not.toBeNull();
+		expect(note).toMatch(/white-space:\s*pre-wrap/);
 	});
 
 	it.each(['red', 'orange', 'yellow', 'green', 'blue', 'purple'])(
@@ -140,6 +213,59 @@ describe('read-only player styles', () => {
 			);
 		},
 	);
+
+	// The closed control is a dot in the row's colour, grey while it has none,
+	// with the real select laid over it transparent and the same size.
+	it('draws the colour control as a dot under a transparent select', () => {
+		const dot = ruleBody(MARKER.swatchDot);
+		expect(dot).not.toBeNull();
+		expect(dot).toMatch(/background-color:\s*var\(\s*--aar-marker-color,/);
+
+		const control = ruleBody(MARKER.colorRule);
+		expect(control).not.toBeNull();
+		expect(control).toMatch(/opacity:\s*0/);
+		expect(control).toMatch(/position:\s*absolute/);
+		expect(control).toMatch(/grid-area:\s*color/);
+		expect(ruleBody(MARKER.swatch)).toMatch(/grid-area:\s*color/);
+
+		// Absolute placement resolves against the grid area only in a
+		// positioned grid, so the row has to be one.
+		expect(ruleBody(MARKER.editableRow)).toMatch(/position:\s*relative/);
+	});
+
+	it('draws the delete icon of the playing row in red', () => {
+		const remove = ruleBody(MARKER.activeDelete);
+		expect(remove).not.toBeNull();
+		expect(remove).toMatch(/color:\s*var\(--text-error\)/);
+	});
+
+	it('draws play / pause as the accent primary button', () => {
+		const play = ruleBody(PLAYER.play);
+		expect(play).not.toBeNull();
+		expect(play).toMatch(/background-color:\s*var\(--interactive-accent\)/);
+	});
+
+	// The design draws the primary action as a circle, which sets it apart
+	// from the square buttons beside it as much as its colour does.
+	it('draws play / pause round, apart from the square buttons beside it', () => {
+		expect(ruleBody(PLAYER.play)).toMatch(/border-radius:\s*50%/);
+	});
+
+	// The player renders into Obsidian's embed element, which the app sets to
+	// display: block through a class and a :not(), outranking one class alone.
+	it('keeps the column layout inside the embed element it renders into', () => {
+		const embed = ruleBody(PLAYER.embedRoot);
+		expect(embed).not.toBeNull();
+		expect(embed).toMatch(/display:\s*flex/);
+	});
+
+	// Live Preview sets display: block on every direct child of the editor's
+	// content, with three classes, so the embed rule alone is not enough there.
+	it('keeps the column layout as a line of the Live Preview editor', () => {
+		const line = ruleBody(PLAYER.livePreviewRoot);
+		expect(line).not.toBeNull();
+		expect(line).toMatch(/display:\s*flex/);
+	});
 
 	it('frames the waveform in a padded bordered rectangle', () => {
 		const waveform = ruleBody(PLAYER.seekWaveform);

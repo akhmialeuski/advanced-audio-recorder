@@ -656,8 +656,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			register: (cleanup) => {
 				this.registerRenderCleanup(cleanup);
 			},
-			registerDomEvent: (el, type, callback) => {
-				this.registerRenderDomEvent(el, type, callback);
+			registerDomEvent: (el, type, callback, options) => {
+				this.registerRenderDomEvent(el, type, callback, options);
 			},
 		};
 		const callbacks: MarkerListCallbacks = {
@@ -1325,18 +1325,25 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * Adds a DOM listener scoped to the current render pass. The target element
 	 * is recreated on every renderUi (containerEl.empty()), so its listener is
 	 * removed per render rather than retained on the component until unload.
-	 * @param el - Target element (recreated each render)
+	 * A document outlives every render, so a listener on one is removed the
+	 * same way, with the options it was added with: a capture listener is
+	 * only removed by a call that names capture as well.
+	 * @param el - Target element (recreated each render), or a document
 	 * @param type - DOM event type
 	 * @param handler - Event handler
+	 * @param options - The addEventListener options, such as capture
 	 */
 	private registerRenderDomEvent<K extends keyof HTMLElementEventMap>(
-		el: HTMLElement,
+		el: HTMLElement | Document,
 		type: K,
 		handler: (event: HTMLElementEventMap[K]) => void,
+		options?: boolean | AddEventListenerOptions,
 	): void {
-		el.addEventListener(type, handler as EventListener);
+		// The one listener signature an element and a document share
+		const target: EventTarget = el;
+		target.addEventListener(type, handler as EventListener, options);
 		this.registerRenderCleanup(() => {
-			el.removeEventListener(type, handler as EventListener);
+			target.removeEventListener(type, handler as EventListener, options);
 		});
 	}
 

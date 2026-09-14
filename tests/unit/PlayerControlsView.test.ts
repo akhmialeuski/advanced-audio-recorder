@@ -115,6 +115,34 @@ describe('the controls the row offers', () => {
 		]);
 	});
 
+	// Play / pause is the one control the stylesheet draws as the primary
+	// action, and it can only do so while the button carries its class.
+	it('marks play / pause as the primary control', () => {
+		const { container } = createSut();
+
+		expect(control(container, 'Play / pause').matches(PLAYER.play)).toBe(
+			true,
+		);
+		expect(allEls(container, PLAYER.play)).toHaveLength(1);
+	});
+
+	// The app's slider class fills the track up to a ratio, which has to follow
+	// the value, or the fill stays wherever the mount left it.
+	it('fills the volume track up to the thumb as it moves', () => {
+		const { container } = createSut({ volume: 0.4 });
+		const volume = el<HTMLInputElement>(container, PLAYER.volume);
+		expect(volume.style.getPropertyValue('--slider-fill-ratio')).toBe(
+			'0.4',
+		);
+
+		volume.value = '0.7';
+		volume.dispatchEvent(new Event('input', { bubbles: true }));
+
+		expect(volume.style.getPropertyValue('--slider-fill-ratio')).toBe(
+			'0.7',
+		);
+	});
+
 	// Adding markers edits the note, which reading view does not allow; the
 	// four marker controls are the ones a markerless render leaves out.
 	it('leaves the marker controls out when markers are off', () => {

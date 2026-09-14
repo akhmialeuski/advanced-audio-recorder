@@ -153,6 +153,24 @@ describe('PlayerMarkerController', () => {
 		// The removal was refused, so the marker is restored from the store.
 		expect(controller.all.map((m) => m.id)).toEqual(['keep']);
 	});
+
+	// The store read is asynchronous, and a note closed or re-rendered while
+	// it ran has already torn this player down: rendering then would paint a
+	// view nobody shows and hold markers for a player that is gone.
+	it('renders nothing for a player unloaded while its markers load', async () => {
+		const { store } = makeStore([
+			{ id: 'a', time: 10, label: 'Intro', kind: 'chapter' },
+		]);
+		const host = makeHost();
+		const controller = new PlayerMarkerController(store, 'rec.wav', host);
+
+		const loading = controller.load();
+		host.unloaded = true;
+		await loading;
+
+		expect(host.renderMarkers).not.toHaveBeenCalled();
+		expect(controller.all).toEqual([]);
+	});
 });
 
 /**
