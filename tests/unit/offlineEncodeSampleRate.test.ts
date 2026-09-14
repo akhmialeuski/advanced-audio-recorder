@@ -12,11 +12,7 @@
 jest.mock('mediabunny', () => require('../mocks/modules/mediabunny'));
 
 import { offlineEncodeSampleRate } from 'src/audio/AudioFormatConverter';
-import {
-	installAudioContextRate,
-	type AudioContextDouble,
-	type InstalledMock,
-} from '../helpers/mediaMocks';
+import { installAudioContextRate } from '../helpers/mediaMocks';
 
 /** The rate the settings ask for, which the device does not run at. */
 const REQUESTED_RATE = 22050;
@@ -25,33 +21,24 @@ const REQUESTED_RATE = 22050;
 const DEVICE_RATE = 48000;
 
 describe('the rate an offline encode runs at', () => {
-	/** The device a case is running on, restored after it. */
-	let device: InstalledMock<AudioContextDouble> | null = null;
-
-	/** Whether a case installed a refusing constructor of its own. */
-	let refusing = false;
-
 	/**
 	 * Installs a device that refuses another context, which is what Chromium
 	 * does once a document holds its maximum of live hardware ones.
 	 * @param refusal - What the constructor throws
 	 */
 	function refuseAudioContext(refusal: Error): void {
-		refusing = true;
 		(global as Record<string, unknown>)['AudioContext'] = jest.fn(() => {
 			throw refusal;
 		});
 	}
 
 	afterEach(() => {
-		device?.restore();
-		device = null;
-		// Cleared after the handle, which may have restored the refusing
-		// constructor as the value it found.
-		if (refusing) {
-			delete (global as Record<string, unknown>)['AudioContext'];
-			refusing = false;
-		}
+		// jsdom has no AudioContext, which the first case asserts, so every
+		// case ends with none however many constructors it stacked. Restoring
+		// each handle puts back the value that handle found: a case that
+		// installed twice and restored once left the first device behind, and
+		// in a random order the case expecting no AudioContext read its rate.
+		delete (global as Record<string, unknown>)['AudioContext'];
 	});
 
 	it('answers with the requested rate where there is no AudioContext', () => {
@@ -59,7 +46,7 @@ describe('the rate an offline encode runs at', () => {
 	});
 
 	it('opens one context for every question asked of the same device', () => {
-		device = installAudioContextRate(DEVICE_RATE);
+		const device = installAudioContextRate(DEVICE_RATE);
 
 		const first = offlineEncodeSampleRate(REQUESTED_RATE);
 		const second = offlineEncodeSampleRate(REQUESTED_RATE);
@@ -71,7 +58,7 @@ describe('the rate an offline encode runs at', () => {
 	it('reads another implementation afresh rather than repeating the last answer', () => {
 		installAudioContextRate(DEVICE_RATE);
 		offlineEncodeSampleRate(REQUESTED_RATE);
-		device = installAudioContextRate(REQUESTED_RATE);
+		const device = installAudioContextRate(REQUESTED_RATE);
 
 		expect(offlineEncodeSampleRate(REQUESTED_RATE)).toBe(REQUESTED_RATE);
 		expect(device.instances).toHaveLength(1);
@@ -101,7 +88,7 @@ describe('the rate an offline encode runs at', () => {
 		refuseAudioContext(new Error('too many contexts'));
 		jest.spyOn(console, 'warn').mockImplementation(() => {});
 		offlineEncodeSampleRate(REQUESTED_RATE);
-		device = installAudioContextRate(DEVICE_RATE);
+		installAudioContextRate(DEVICE_RATE);
 
 		expect(offlineEncodeSampleRate(REQUESTED_RATE)).toBe(DEVICE_RATE);
 	});
@@ -109,9 +96,7 @@ describe('the rate an offline encode runs at', () => {
 	it('reports a close that fails instead of leaving it unhandled', async () => {
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 		const failure = new Error('device busy');
-		device = installAudioContextRate(DEVICE_RATE, () =>
-			Promise.reject(failure),
-		);
+		installAudioContextRate(DEVICE_RATE, () => Promise.reject(failure));
 
 		expect(offlineEncodeSampleRate(REQUESTED_RATE)).toBe(DEVICE_RATE);
 		// The rejection is delivered on a later microtask; the handler must
