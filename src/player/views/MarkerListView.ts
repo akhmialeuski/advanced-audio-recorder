@@ -42,11 +42,19 @@ import {
 const RENAME_DEBOUNCE_MS = 400;
 
 /**
- * Marks a row being worked in: focus is inside it, or has left it through a
- * click or keystroke that has not been dispatched yet. The stylesheet shows an
- * empty note line only on such a row.
+ * Marks a row being worked in: a field or keyboard focus is inside it, or
+ * focus has left it through a click or keystroke that has not been dispatched
+ * yet. The stylesheet shows an empty note line only on such a row.
  */
 const ROW_OPEN_CLASS = 'aar-player-marker-row-open';
+
+/**
+ * The fields of a row that are typed into: its time, its title and its note.
+ * Only these open a row as they take focus. A pointer focuses a button or a
+ * select on the press itself, and opening the row then would move that
+ * control before the release.
+ */
+const ROW_TEXT_FIELD = 'input[type="text"], textarea';
 
 /**
  * Identifies one editable field: the marker it belongs to, and which of that
@@ -289,13 +297,19 @@ export class MarkerListView {
 			}
 		});
 		// A row shows its empty note line while it is being worked in. It opens
-		// as focus enters it and closes only once the click or key release
-		// that took focus away has been dispatched. Closed as focus left, it
-		// moved every row below it up between a press and its release, so the
-		// release landed on another element and the click meant for a lower
-		// row's jump, move or delete did nothing.
+		// as one of its text fields takes focus, the note included, and closes
+		// only once the click or key release that took focus away has been
+		// dispatched. Closed as focus left, it moved every row below it up
+		// between a press and its release, so the release landed on another
+		// element and the click meant for a lower row's jump, move or delete
+		// did nothing. Its buttons and colour select open nothing: a pointer
+		// focuses them on the press itself, and a narrow row keeps them under
+		// the note line, so opening then moved the pressed control away.
 		this.host.registerDomEvent(this.listEl, 'focusin', (event) => {
-			const target = event.target as Node | null;
+			const target = event.target as Element | null;
+			if (!target?.matches(ROW_TEXT_FIELD)) {
+				return;
+			}
 			this.rowEls
 				.find((rowEl) => rowEl.contains(target))
 				?.addClass(ROW_OPEN_CLASS);

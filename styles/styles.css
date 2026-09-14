@@ -999,13 +999,19 @@ div.aar-player-marker-row {
 
 /*
  * An empty note keeps the row to one line until the row is being worked in.
- * MarkerListView opens the row as focus enters it, in the title, the time or
- * by Tab, and closes it once the click or key release that took focus away has
- * been dispatched, so the rows below hold still for that click. A note that
- * has text is always shown.
+ * MarkerListView opens the row as one of its text fields takes focus and
+ * closes it once the click or key release that took focus away has been
+ * dispatched, so the rows below hold still for that click. The closed field is
+ * collapsed to no height instead of taken out of the layout, so Tab and
+ * Shift+Tab still reach it, and reaching it opens the row. A note that has
+ * text is always shown.
  */
 div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-note:placeholder-shown {
-    display: none;
+    height: 0;
+    margin-top: 0;
+    padding-block: 0;
+    border-block-width: 0;
+    overflow: hidden;
 }
 
 div.aar-player-marker-row:not(.aar-player-marker-row-open):has(.aar-player-marker-note:placeholder-shown) .aar-player-marker-note-icon {

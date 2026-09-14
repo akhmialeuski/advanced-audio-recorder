@@ -178,11 +178,22 @@ describe('read-only player styles', () => {
 	// Most rows carry no note, and a second line holding only a placeholder
 	// took about a third of every row. It opens while the row is worked in.
 	it('keeps a row with an empty note to one line until the row is open', () => {
-		expect(ruleBody(MARKER.idleEmptyNote)).toMatch(/display:\s*none/);
+		const note = ruleBody(MARKER.idleEmptyNote);
+		expect(note).toMatch(/(?:^|[\s;])height:\s*0;/);
+		expect(note).toMatch(/border-block-width:\s*0/);
 		expect(ruleBody(MARKER.idleEmptyNoteIcon)).toMatch(/display:\s*none/);
 
 		// A gap between the lines would stay behind the hidden note
 		expect(ruleBody(MARKER.editableRow)).toMatch(/row-gap:\s*0/);
+	});
+
+	// A field taken out of the layout is taken out of the tab order too, so
+	// Shift+Tab from a closed row's buttons would skip its empty note, and no
+	// button opens the row. The closed note is collapsed and kept instead.
+	it('keeps the empty note of a closed row in the tab order', () => {
+		expect(ruleBody(MARKER.idleEmptyNote)).not.toMatch(
+			/display:\s*none|visibility:\s*hidden/,
+		);
 	});
 
 	// A note typed as a list over several lines read as one run-on line.

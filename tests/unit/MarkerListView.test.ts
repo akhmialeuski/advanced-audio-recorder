@@ -716,6 +716,42 @@ describe('the note line of a row being worked in', () => {
 
 		expect(upper.matches(MARKER.openRow)).toBe(true);
 	});
+
+	// A pointer focuses a button or the colour select on the press itself,
+	// well before its click, and a narrow row keeps those controls under the
+	// note line. Opening the row then moved the pressed control down before
+	// the release, so the click did nothing.
+	it.each([
+		['jump', MARKER.jump],
+		['move', MARKER.here],
+		['colour', MARKER.color],
+		['delete', MARKER.delete],
+	])(
+		'leaves a row closed when its %s control takes focus',
+		(_name, selector) => {
+			const { listContainer } = mounted;
+			const row = at(allEls(listContainer, MARKER.editableRow), 1);
+
+			at(allEls(listContainer, selector), 1).focus();
+
+			expect(row.matches(MARKER.openRow)).toBe(false);
+		},
+	);
+
+	// The note of a closed row stays in the tab order, so Shift+Tab from the
+	// row's buttons reaches it and has to open the row as it arrives.
+	it.each([
+		['time', MARKER.timeEdit],
+		['title', MARKER.labelInput],
+		['note', MARKER.note],
+	])('opens a row when its %s field takes focus', (_name, selector) => {
+		const { listContainer } = mounted;
+		const row = at(allEls(listContainer, MARKER.editableRow), 1);
+
+		at(allEls(listContainer, selector), 1).focus();
+
+		expect(row.matches(MARKER.openRow)).toBe(true);
+	});
 });
 
 describe('editing a marker time from the list', () => {
