@@ -41,6 +41,13 @@ import {
 const RENAME_DEBOUNCE_MS = 400;
 
 /**
+ * Marks a row being worked in: focus is inside it, or has left it through a
+ * click or keystroke that has not been dispatched yet. The stylesheet shows an
+ * empty note line only on such a row.
+ */
+const ROW_OPEN_CLASS = 'aar-player-marker-row-open';
+
+/**
  * Identifies one editable field: the marker it belongs to, and which of that
  * marker's fields it is. A row offers two fields that are typed into, and both
  * of them can be waiting to be written at the same moment.
@@ -175,8 +182,9 @@ export class MarkerListView {
 	}
 
 	/**
-	 * Creates the marker list container and wires delegated jump/delete and
-	 * debounced rename handling. Rows themselves carry no listeners.
+	 * Creates the marker list container and wires delegated jump/delete,
+	 * debounced rename handling and the open state of the row being worked
+	 * in. Rows themselves carry no listeners.
 	 * @param container - Element to append the list to
 	 */
 	mountList(container: HTMLElement): void {
@@ -272,6 +280,38 @@ export class MarkerListView {
 					break;
 			}
 		});
+		// A row shows its empty note line while it is being worked in. It opens
+		// as focus enters it and closes only once the click or key release
+		// that took focus away has been dispatched. Closed as focus left, it
+		// moved every row below it up between a press and its release, so the
+		// release landed on another element and the click meant for a lower
+		// row's jump, move or delete did nothing.
+		this.host.registerDomEvent(this.listEl, 'focusin', (event) => {
+			const target = event.target as Node | null;
+			this.rowEls
+				.find((rowEl) => rowEl.contains(target))
+				?.addClass(ROW_OPEN_CLASS);
+		});
+		// That click or key release can happen outside the list, as a Tab out
+		// of it does, so it is heard on the list's own document, which is a
+		// pop-out window's when the note is shown in one. Captured, so a
+		// handler that stops the event on its way cannot keep a row open. The
+		// host registers element listeners only, so these are paired with a
+		// cleanup of their own.
+		const doc = this.listEl.ownerDocument;
+		const closeRowsFocusLeft = (): void => {
+			for (const rowEl of this.rowEls) {
+				if (!rowEl.contains(doc.activeElement)) {
+					rowEl.removeClass(ROW_OPEN_CLASS);
+				}
+			}
+		};
+		for (const type of ['click', 'keyup'] as const) {
+			doc.addEventListener(type, closeRowsFocusLeft, true);
+			this.host.register(() => {
+				doc.removeEventListener(type, closeRowsFocusLeft, true);
+			});
+		}
 		this.host.register(() => {
 			for (const pending of this.pendingEdits.values()) {
 				window.clearTimeout(pending);

@@ -232,7 +232,7 @@ The list below the player shows every marker and chapter in time order. From it 
 - **Rename** an entry by editing its label inline (saved shortly after you stop typing).
 - **Move** an entry to another time by typing into its time field, in any of the forms a timecode link accepts (`90`, `1:30`, `0:01:30`). A time that means nothing is refused and the field goes back to what it showed.
 - **Move** an entry to wherever playback currently is with the crosshair button beside its play button. A marker is almost always pressed a beat after the thing worth marking, so this is the quickest way to correct one.
-- **Note** an entry in the field under its row, for the reason a short label cannot hold.
+- **Note** an entry in the field under its title, for the reason a short label cannot hold. An empty note field stays hidden until you click into the entry's time or title or tab into its row. A note that has text is always shown.
 - **Colour** an entry from its colour picker, to tell apart what different markers are for.
 - **Delete** an entry with its trash button.
 

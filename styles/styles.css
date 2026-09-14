@@ -819,6 +819,9 @@ div.aar-player-marker-row {
 .aar-player .aar-player-marker-time-edit {
     grid-area: time;
     width: calc(6ch + 16px);
+    /* Never narrower than the list's longest timestamp: its characters plus
+       16px of padding, 2px of border and 2px for the caret */
+    min-width: calc(var(--aar-marker-time-chars, 0) * 1ch + 20px);
     padding: 0 8px;
     font-variant-numeric: tabular-nums;
     text-align: center;
@@ -992,15 +995,17 @@ div.aar-player-marker-row {
 }
 
 /*
- * An empty note keeps the row to one line until the row is being worked in:
- * focus anywhere inside it, in the title, the time or by Tab, opens the note
- * line under the title. A note that has text is always shown.
+ * An empty note keeps the row to one line until the row is being worked in.
+ * MarkerListView opens the row as focus enters it, in the title, the time or
+ * by Tab, and closes it once the click or key release that took focus away has
+ * been dispatched, so the rows below hold still for that click. A note that
+ * has text is always shown.
  */
-div.aar-player-marker-row:not(:focus-within) .aar-player-marker-note:placeholder-shown {
+div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-note:placeholder-shown {
     display: none;
 }
 
-div.aar-player-marker-row:not(:focus-within):has(.aar-player-marker-note:placeholder-shown) .aar-player-marker-note-icon {
+div.aar-player-marker-row:not(.aar-player-marker-row-open):has(.aar-player-marker-note:placeholder-shown) .aar-player-marker-note-icon {
     display: none;
 }
 

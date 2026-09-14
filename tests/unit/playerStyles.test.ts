@@ -16,12 +16,18 @@ function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Returns the declaration bodies of every CSS rule a selector ends. */
+function ruleBodies(selector: string): string[] {
+	const pattern = new RegExp(
+		`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`,
+		'g',
+	);
+	return [...css.matchAll(pattern)].map((match) => match[1] ?? '');
+}
+
 /** Returns the declaration body of a CSS rule, or null when absent. */
 function ruleBody(selector: string): string | null {
-	const match = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`).exec(
-		css,
-	);
-	return match?.[1] ?? null;
+	return ruleBodies(selector)[0] ?? null;
 }
 
 describe('read-only player styles', () => {
@@ -148,19 +154,23 @@ describe('read-only player styles', () => {
 
 	// The time, the note indent under it and the segment length are each as
 	// wide as the longest timestamp, so what follows them lines up in every row.
+	// The field a time is typed into is too: at a fixed width a ten-hour
+	// recording's 10:02:03 ran past its edges. The field is styled by two
+	// rules, so every rule it is given is read.
 	it.each([
 		['time', MARKER.time],
 		['note indent', MARKER.noteIndent],
 		['segment length', MARKER.segment],
+		['time field', MARKER.timeEditRule],
 	])('sizes the %s column to the longest timestamp', (_name, selector) => {
-		expect(ruleBody(selector)).toMatch(
+		expect(ruleBodies(selector).join('\n')).toMatch(
 			/min-width:\s*calc\(var\(--aar-marker-time-chars/,
 		);
 	});
 
 	// Most rows carry no note, and a second line holding only a placeholder
-	// took about a third of every row. It opens once the row has focus.
-	it('keeps a row with an empty note to one line until it has focus', () => {
+	// took about a third of every row. It opens while the row is worked in.
+	it('keeps a row with an empty note to one line until the row is open', () => {
 		expect(ruleBody(MARKER.idleEmptyNote)).toMatch(/display:\s*none/);
 		expect(ruleBody(MARKER.idleEmptyNoteIcon)).toMatch(/display:\s*none/);
 
@@ -170,7 +180,7 @@ describe('read-only player styles', () => {
 
 	// A note typed as a list over several lines read as one run-on line.
 	it('keeps the line breaks of a reading-view note', () => {
-		const note = ruleBody(MARKER.noteStaticRule);
+		const note = ruleBody(MARKER.staticNote);
 		expect(note).not.toBeNull();
 		expect(note).toMatch(/white-space:\s*pre-wrap/);
 	});

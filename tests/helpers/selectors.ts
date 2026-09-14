@@ -61,12 +61,12 @@ export const MARKER = {
 	/** The play button that jumps to an entry from an editable row. */
 	jump: '.aar-player-marker-jump',
 	timeEdit: 'input.aar-player-marker-time-edit',
+	/** The time field as the stylesheet scopes it, for reading its CSS rules. */
+	timeEditRule: '.aar-player .aar-player-marker-time-edit',
 	here: '.aar-player-marker-here',
 	color: 'select.aar-player-marker-color',
 	note: 'textarea.aar-player-marker-note',
 	staticNote: '.aar-player-marker-note-static',
-	/** The reading-view note by its class alone, for reading its CSS rule. */
-	noteStaticRule: '.aar-player-marker-note-static',
 	/** The line the reading-view note sits on, with its alignment indent. */
 	noteLine: '.aar-player-marker-note-line',
 	/** The hidden copy of the timecode that holds the note's column open. */
@@ -82,12 +82,14 @@ export const MARKER = {
 	noteRule: '.aar-player-marker-note',
 	/** An empty note in a row nobody is working in, for its CSS rule. */
 	idleEmptyNote:
-		'div.aar-player-marker-row:not(:focus-within) .aar-player-marker-note:placeholder-shown',
+		'div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-note:placeholder-shown',
 	/** The page icon of that empty note, for its CSS rule. */
 	idleEmptyNoteIcon:
-		'div.aar-player-marker-row:not(:focus-within):has(.aar-player-marker-note:placeholder-shown) .aar-player-marker-note-icon',
+		'div.aar-player-marker-row:not(.aar-player-marker-row-open):has(.aar-player-marker-note:placeholder-shown) .aar-player-marker-note-icon',
 	/** An edit-mode row, which is a block rather than a button. */
 	editableRow: 'div.aar-player-marker-row',
+	/** A row being worked in, which shows its note line even when empty. */
+	openRow: '.aar-player-marker-row.aar-player-marker-row-open',
 	/** The colour control by its class alone, for reading its CSS rule. */
 	colorRule: '.aar-player-marker-color',
 	/** The drawing of the closed colour control: a dot and a chevron. */

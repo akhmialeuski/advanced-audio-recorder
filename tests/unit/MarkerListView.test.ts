@@ -636,6 +636,72 @@ describe('MarkerListView teardown', () => {
 	});
 });
 
+describe('the note line of a row being worked in', () => {
+	/** The list under test, attached so focus can move inside it. */
+	let mounted: Setup;
+
+	beforeEach(() => {
+		mounted = setup(true);
+		document.body.appendChild(mounted.listContainer);
+	});
+
+	afterEach(() => {
+		mounted.listContainer.remove();
+	});
+
+	// A press moves focus on mousedown, well before its click. A row that
+	// closed right then moved every row below it up before the release, so
+	// the click meant for a lower row's jump landed on another element.
+	it('keeps a row open until the click that took focus from it has landed', () => {
+		const { listContainer, callbacks } = mounted;
+		const upper = at(allEls(listContainer, MARKER.editableRow), 0);
+		const jump = at(allEls(listContainer, MARKER.jump), 1);
+
+		el(listContainer, MARKER.labelOf('a')).focus();
+		jump.focus();
+
+		expect(upper.matches(MARKER.openRow)).toBe(true);
+
+		jump.click();
+
+		expect(callbacks.onJump).toHaveBeenCalledWith(30);
+		expect(upper.matches(MARKER.openRow)).toBe(false);
+	});
+
+	// Tab has no click to wait for, and releasing the key ends it, so a row
+	// left from the keyboard closes as soon as focus has settled elsewhere.
+	it('closes a row once the key that moved focus out of it is released', () => {
+		const { listContainer } = mounted;
+		const rows = allEls(listContainer, MARKER.editableRow);
+		const nextTime = at(allEls(listContainer, MARKER.timeEdit), 1);
+
+		el(listContainer, MARKER.labelOf('a')).focus();
+		nextTime.focus();
+		nextTime.dispatchEvent(
+			new KeyboardEvent('keyup', { key: 'Tab', bubbles: true }),
+		);
+
+		expect(at(rows, 0).matches(MARKER.openRow)).toBe(false);
+		expect(at(rows, 1).matches(MARKER.openRow)).toBe(true);
+	});
+
+	// The listeners sit on the document, which outlives the player, so they
+	// have to leave with it rather than keep closing rows nobody renders.
+	it('stops listening to the document once the player unloads', () => {
+		const { listContainer, teardowns } = mounted;
+		const upper = at(allEls(listContainer, MARKER.editableRow), 0);
+		el(listContainer, MARKER.labelOf('a')).focus();
+
+		for (const teardown of teardowns) {
+			teardown();
+		}
+		at(allEls(listContainer, MARKER.timeEdit), 1).focus();
+		document.body.click();
+
+		expect(upper.matches(MARKER.openRow)).toBe(true);
+	});
+});
+
 describe('editing a marker time from the list', () => {
 	it('reports a typed timecode as seconds', () => {
 		const { listContainer, callbacks } = setup(true);
