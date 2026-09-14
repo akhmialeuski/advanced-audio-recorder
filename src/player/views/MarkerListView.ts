@@ -430,6 +430,14 @@ export class MarkerListView {
 		const reference =
 			durationSeconds ??
 			rows.reduce((max, row) => Math.max(max, row.time), 0);
+		// The shared format does not give a shared width: 0:29 is a digit
+		// shorter than 11:25. No timestamp or segment in the list runs longer
+		// than the reference, so its length sizes the time columns of every row.
+		this.listEl.setCssProps({
+			'--aar-marker-time-chars': String(
+				formatTimecode(reference, reference).length,
+			),
+		});
 		for (const row of rows) {
 			// A button in reading view, where the row is the jump target, and a
 			// plain block in edit mode, where it holds a text field and two
@@ -456,7 +464,8 @@ export class MarkerListView {
 	}
 
 	/**
-	 * Builds an editable row: jump time, kind icon, rename input, delete.
+	 * Builds an editable row: kind icon, time field, title with its note,
+	 * segment length, and the jump, move, colour and delete controls.
 	 * @param rowEl - The row element
 	 * @param row - Row model
 	 * @param referenceSeconds - Duration used to align the timestamp
@@ -466,25 +475,10 @@ export class MarkerListView {
 		row: MarkerRow,
 		referenceSeconds: number,
 	): void {
-		const jump = rowEl.createEl('button', {
-			cls: 'aar-player-marker-time',
-			text: formatTimecode(row.time, referenceSeconds),
-		});
-		jump.dataset.action = MARKER_ROW_ACTION.jump;
-		jump.dataset.markerId = row.id;
-		// The action alone here: this button sits inside the row rather than
-		// being it, so the rename field beside it still carries the identity.
-		jump.setAttribute('aria-label', jumpAction(row.kind));
 		setIcon(
 			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
 			row.kind === MARKER_KIND.chapter ? 'list' : 'bookmark',
 		);
-		const label = rowEl.createEl('input', {
-			cls: 'aar-player-marker-label',
-			attr: { type: 'text', value: row.label },
-		});
-		label.dataset.action = MARKER_ROW_ACTION.rename;
-		label.dataset.markerId = row.id;
 		const timecode = formatTimecode(row.time, referenceSeconds);
 		// A marker is almost always dropped a beat late, so moving it is the
 		// commonest edit there is. Typed as a timecode rather than as seconds,
@@ -500,8 +494,55 @@ export class MarkerListView {
 		timeEdit.dataset.action = MARKER_ROW_ACTION.editTime;
 		timeEdit.dataset.markerId = row.id;
 		timeEdit.dataset.timecode = timecode;
+		const label = rowEl.createEl('input', {
+			cls: 'aar-player-marker-label',
+			attr: { type: 'text', value: row.label },
+		});
+		label.dataset.action = MARKER_ROW_ACTION.rename;
+		label.dataset.markerId = row.id;
+		// A pencil inside the title field says the title is edited in place.
+		// It is drawing only, so it is hidden from assistive technology and
+		// lets a click through to the field under it.
+		setIcon(
+			rowEl.createSpan({
+				cls: 'aar-player-marker-label-icon',
+				attr: { 'aria-hidden': 'true' },
+			}),
+			'pencil',
+		);
+		// The note sits under the title: it is prose, and a field sized to
+		// the control column would show four characters of it.
+		const note = rowEl.createEl('textarea', {
+			cls: 'aar-player-marker-note',
+			attr: {
+				rows: '1',
+				placeholder: 'Add note...',
+				'aria-label': 'Marker note',
+			},
+		});
+		note.value = row.note ?? '';
+		note.dataset.action = MARKER_ROW_ACTION.editNote;
+		note.dataset.markerId = row.id;
+		// A page icon marks the note line, drawn over the field's empty start.
+		setIcon(
+			rowEl.createSpan({
+				cls: 'aar-player-marker-note-icon',
+				attr: { 'aria-hidden': 'true' },
+			}),
+			'file-text',
+		);
+		this.createSegment(rowEl, row, referenceSeconds);
+		const jump = rowEl.createEl('button', {
+			cls: 'aar-player-marker-jump clickable-icon',
+			// The action alone here: this button sits inside the row rather than
+			// being it, so the rename field beside it still carries the identity.
+			attr: { 'aria-label': jumpAction(row.kind) },
+		});
+		jump.dataset.action = MARKER_ROW_ACTION.jump;
+		jump.dataset.markerId = row.id;
+		setIcon(jump, 'play');
 		const here = rowEl.createEl('button', {
-			cls: 'aar-player-marker-here',
+			cls: 'aar-player-marker-here clickable-icon',
 			attr: { 'aria-label': 'Move marker to the current position' },
 		});
 		here.dataset.action = MARKER_ROW_ACTION.useCurrentTime;
@@ -529,31 +570,46 @@ export class MarkerListView {
 				.addClass(`aar-player-marker-color-${name}`);
 		}
 		color.value = row.color ?? '';
-		// The closed control shows the chosen colour too, so the row states it
-		// without being opened.
-		if (row.color) {
-			color.addClass(`aar-player-marker-color-${row.color}`);
-		}
+		// The closed control is drawn as a dot in the row's colour and a
+		// chevron. The select lies over that drawing, transparent, so picking
+		// a colour is still the platform's own menu and keyboard handling.
+		const swatch = rowEl.createSpan({
+			cls: 'aar-player-marker-swatch',
+			attr: { 'aria-hidden': 'true' },
+		});
+		swatch.createSpan({ cls: 'aar-player-marker-swatch-dot' });
+		setIcon(
+			swatch.createSpan({ cls: 'aar-player-marker-swatch-chevron' }),
+			'chevron-down',
+		);
 		const remove = rowEl.createEl('button', {
-			cls: 'aar-player-marker-delete',
+			cls: 'aar-player-marker-delete clickable-icon',
 			attr: { 'aria-label': 'Delete' },
 		});
 		remove.dataset.action = MARKER_ROW_ACTION.delete;
 		remove.dataset.markerId = row.id;
 		setIcon(remove, 'trash-2');
-		// The note sits under the row's own line: it is prose, and a field
-		// sized to the control column would show four characters of it.
-		const note = rowEl.createEl('textarea', {
-			cls: 'aar-player-marker-note',
-			attr: {
-				rows: '1',
-				placeholder: 'Note',
-				'aria-label': 'Marker note',
-			},
+	}
+
+	/**
+	 * Adds how long the entry runs until the next one. Blank for the last
+	 * entry of a track whose length is not known yet.
+	 * @param rowEl - The row element
+	 * @param row - Row model
+	 * @param referenceSeconds - Duration used to align the timestamps
+	 */
+	private createSegment(
+		rowEl: HTMLElement,
+		row: MarkerRow,
+		referenceSeconds: number,
+	): void {
+		rowEl.createSpan({
+			cls: 'aar-player-marker-segment',
+			text:
+				row.segmentSeconds !== null
+					? formatTimecode(row.segmentSeconds, referenceSeconds)
+					: '',
 		});
-		note.value = row.note ?? '';
-		note.dataset.action = MARKER_ROW_ACTION.editNote;
-		note.dataset.markerId = row.id;
 	}
 
 	/**
@@ -599,13 +655,7 @@ export class MarkerListView {
 			cls: 'aar-player-marker-label-static',
 			text: row.label,
 		});
-		rowEl.createSpan({
-			cls: 'aar-player-marker-segment',
-			text:
-				row.segmentSeconds !== null
-					? formatTimecode(row.segmentSeconds, referenceSeconds)
-					: '',
-		});
+		this.createSegment(rowEl, row, referenceSeconds);
 		if (row.note) {
 			// The note takes a line of its own under the row, starting where
 			// the marker's icon does rather than under its timecode. The

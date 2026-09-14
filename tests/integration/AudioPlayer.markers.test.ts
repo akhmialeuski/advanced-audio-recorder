@@ -131,10 +131,7 @@ describe('the marker list', () => {
 
 	it('renames a marker in the store', async () => {
 		const { container, store } = await openWithMarkers();
-		const input = el<HTMLInputElement>(
-			container,
-			'input[data-marker-id="b"]',
-		);
+		const input = el<HTMLInputElement>(container, MARKER.labelOf('b'));
 
 		input.value = 'Follow-up';
 		input.dispatchEvent(new Event('change', { bubbles: true }));

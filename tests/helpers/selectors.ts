@@ -15,6 +15,10 @@
 /** The inline player under a note's audio embed. */
 export const PLAYER = {
 	root: '.aar-player',
+	/** The player as Obsidian's embed element, for reading its CSS rule. */
+	embedRoot: '.internal-embed.aar-player',
+	/** The player as a line of the Live Preview editor, for its CSS rule. */
+	livePreviewRoot: '.markdown-source-view.mod-cm6 .cm-content > .aar-player',
 	readonly: '.aar-player-readonly',
 	editOnly: '.aar-player-edit-only',
 	controls: '.aar-player-controls',
@@ -30,6 +34,8 @@ export const PLAYER = {
 	canvasPlayed: '.aar-player-canvas-played',
 	progressFill: '.aar-player-progress-fill',
 	progressThumb: '.aar-player-progress-thumb',
+	/** The round primary play / pause button. */
+	play: '.aar-player-play',
 	tick: '.aar-player-tick',
 	/** The label rule that only applies inside a player. */
 	scopedStaticLabel: '.aar-player .aar-player-marker-label-static',
@@ -43,17 +49,24 @@ export const MARKER = {
 	clickableRow: '.aar-player-marker-row-clickable',
 	activeRow: '.aar-player-marker-row.is-active',
 	labelInput: 'input.aar-player-marker-label',
+	/** One entry's rename field, told apart from its time field. */
+	labelOf: (id: string): string =>
+		`input.aar-player-marker-label[data-marker-id="${id}"]`,
 	staticLabel: '.aar-player-marker-label-static',
 	label: '.aar-player-marker-label',
 	segment: '.aar-player-marker-segment',
 	/** The marker's timecode as shown in reading view. */
 	time: '.aar-player-marker-time',
 	delete: '.aar-player-marker-delete',
+	/** The play button that jumps to an entry from an editable row. */
+	jump: '.aar-player-marker-jump',
 	timeEdit: 'input.aar-player-marker-time-edit',
 	here: '.aar-player-marker-here',
 	color: 'select.aar-player-marker-color',
 	note: 'textarea.aar-player-marker-note',
 	staticNote: '.aar-player-marker-note-static',
+	/** The reading-view note by its class alone, for reading its CSS rule. */
+	noteStaticRule: '.aar-player-marker-note-static',
 	/** The line the reading-view note sits on, with its alignment indent. */
 	noteLine: '.aar-player-marker-note-line',
 	/** The hidden copy of the timecode that holds the note's column open. */
@@ -67,6 +80,22 @@ export const MARKER = {
 	coloredButtonRow: '.aar-player-marker-row.aar-player-marker-row-colored',
 	/** The note field by its class alone, for reading its CSS rule. */
 	noteRule: '.aar-player-marker-note',
+	/** An empty note in a row nobody is working in, for its CSS rule. */
+	idleEmptyNote:
+		'div.aar-player-marker-row:not(:focus-within) .aar-player-marker-note:placeholder-shown',
+	/** The page icon of that empty note, for its CSS rule. */
+	idleEmptyNoteIcon:
+		'div.aar-player-marker-row:not(:focus-within):has(.aar-player-marker-note:placeholder-shown) .aar-player-marker-note-icon',
+	/** An edit-mode row, which is a block rather than a button. */
+	editableRow: 'div.aar-player-marker-row',
+	/** The colour control by its class alone, for reading its CSS rule. */
+	colorRule: '.aar-player-marker-color',
+	/** The drawing of the closed colour control: a dot and a chevron. */
+	swatch: '.aar-player-marker-swatch',
+	/** The dot of the closed colour control. */
+	swatchDot: '.aar-player-marker-swatch-dot',
+	/** The delete icon of the row that is playing. */
+	activeDelete: '.aar-player-marker-row.is-active .aar-player-marker-delete',
 	/** A bookmark tick on the timeline. */
 	tickBookmark: '.aar-player-tick-bookmark',
 	/** The overlay the ticks are drawn onto, over the seek area. */

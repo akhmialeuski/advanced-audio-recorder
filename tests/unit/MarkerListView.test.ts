@@ -115,6 +115,18 @@ describe('MarkerListView rendering', () => {
 		expect(allEls(listContainer, MARKER.delete)).toHaveLength(2);
 	});
 
+	// A timestamp a digit shorter than the next one pulled its icon and title
+	// left of the rows around it, so the list states the longest length.
+	it('sizes every row to the longest timestamp in the recording', () => {
+		const { listContainer } = setup(false, { duration: 1700 });
+
+		expect(
+			el(listContainer, MARKER.list).style.getPropertyValue(
+				'--aar-marker-time-chars',
+			),
+		).toBe(String('28:20'.length));
+	});
+
 	it('renders read-only rows as clickable jump targets without inputs', () => {
 		const { listContainer } = setup(false);
 		expect(allEls(listContainer, MARKER.labelInput)).toHaveLength(0);
@@ -125,6 +137,20 @@ describe('MarkerListView rendering', () => {
 		const { seekEl } = setup(true);
 		expect(seekEl).toHaveMarkerAt(10, 'Intro');
 		expect(seekEl).toHaveMarkerAt(30, 'Note');
+	});
+
+	// The time field opens an editable row, so the length it runs for and a
+	// play button to reach it take the right-hand side.
+	it('shows how long each entry runs in an editable row, beside its jump', () => {
+		const { listContainer } = setup(true);
+
+		// Intro runs from 10s to the next marker at 30s
+		expect(at(allEls(listContainer, MARKER.segment), 0).textContent).toBe(
+			'0:20',
+		);
+		expect(
+			at(allEls(listContainer, MARKER.jump), 0).dataset['action'],
+		).toBe('jump');
 	});
 });
 
@@ -149,10 +175,7 @@ describe('MarkerListView interaction', () => {
 
 	it('renames a marker immediately on a change event', () => {
 		const { listContainer, callbacks } = setup(true);
-		const input = el<HTMLInputElement>(
-			listContainer,
-			'input[data-marker-id="b"]',
-		);
+		const input = el<HTMLInputElement>(listContainer, MARKER.labelOf('b'));
 		input.value = 'Renamed';
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 		expect(callbacks.onRename).toHaveBeenCalledWith('b', 'Renamed');
@@ -436,7 +459,8 @@ describe('MarkerListView renaming while typing', () => {
 
 	/** Types into a row's rename input without committing it. */
 	function type(listContainer: HTMLElement, id: string, value: string): void {
-		typeInto(listContainer, 'input', id, value);
+		// By class: the time field is an input in the same row, and it comes first
+		typeInto(listContainer, MARKER.labelInput, id, value);
 	}
 
 	// The name and the note shared one timer, so a keystroke in either
@@ -492,10 +516,7 @@ describe('MarkerListView renaming while typing', () => {
 
 	it('does not save twice when the field is committed as well', () => {
 		const { listContainer, callbacks } = setup(true);
-		const input = el<HTMLInputElement>(
-			listContainer,
-			'input[data-marker-id="b"]',
-		);
+		const input = el<HTMLInputElement>(listContainer, MARKER.labelOf('b'));
 
 		type(listContainer, 'b', 'Renamed');
 		input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -602,10 +623,7 @@ describe('MarkerListView teardown', () => {
 		// The debounce would otherwise fire against a player that is gone,
 		// writing to a file the user has closed.
 		const { listContainer, callbacks, teardowns } = setup(true);
-		const input = el<HTMLInputElement>(
-			listContainer,
-			'input[data-marker-id="b"]',
-		);
+		const input = el<HTMLInputElement>(listContainer, MARKER.labelOf('b'));
 		input.value = 'Half-typed';
 		input.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -779,10 +797,13 @@ describe('a marker note and colour in the list', () => {
 			],
 		});
 
+		// The closed control is a dot drawn from the row's colour property
 		expect(
-			allEls(listContainer, MARKER.colorSwatch('purple')),
-			// The control itself, plus the one option that names the colour
-		).toHaveLength(2);
+			el(listContainer, MARKER.row).style.getPropertyValue(
+				'--aar-marker-color',
+			),
+		).toBe('var(--aar-marker-purple)');
+		expect(allEls(listContainer, MARKER.swatch)).toHaveLength(1);
 	});
 
 	it('marks a coloured row so the stylesheet can draw its edge', () => {

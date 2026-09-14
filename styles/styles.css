@@ -370,45 +370,101 @@ input.aar-input-invalid {
        one place (the constant) rather than being duplicated here. */
     --aar-waveform-played: var(--color-accent);
     --aar-waveform-unplayed: var(--background-modifier-border);
+    /*
+     * Three surfaces, all taken from the theme: the player itself, the cards
+     * and buttons raised above it, and the fields and waveform set into it. A
+     * raised surface moves toward the text colour, so it lifts in a dark theme
+     * and tints in a light one.
+     */
+    --aar-surface-raised: color-mix(
+        in srgb,
+        var(--background-secondary),
+        var(--text-normal) 6%
+    );
+    --aar-surface-sunken: var(--background-primary);
+    /* Fields sit just below the card they are on, so text stays the focus */
+    --aar-surface-field: color-mix(
+        in srgb,
+        var(--aar-surface-raised),
+        var(--background-primary) 35%
+    );
+    --aar-line: color-mix(
+        in srgb,
+        var(--background-secondary),
+        var(--text-normal) 13%
+    );
+    --aar-control-size: 28px;
 
     display: flex;
     flex-direction: column;
     gap: 8px;
     width: 100%;
-    padding: 10px 12px;
+    padding: 10px;
     border: 1px solid var(--background-modifier-border);
-    border-radius: 8px;
+    border-radius: 10px;
     background-color: var(--background-secondary);
+}
+
+/*
+ * The player renders into Obsidian's own embed element, which the app styles
+ * as .internal-embed:not(.image-embed) { display: block }. That rule outranks
+ * a single class, so without this one the player loses its column layout and
+ * every gap between its parts. Equal specificity, stated later, wins.
+ */
+.internal-embed.aar-player {
+    display: flex;
+}
+
+/*
+ * Live Preview goes further: .markdown-source-view.mod-cm6 .cm-content > *
+ * sets display: block on every line of the editor, the player included. The
+ * app answers the same rule this way for its own image embeds.
+ */
+.markdown-source-view.mod-cm6 .cm-content > .aar-player {
+    display: flex;
 }
 
 .aar-player-controls {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     flex-wrap: wrap;
 }
 
-.aar-player-btn {
+/*
+ * Buttons, text fields and the note inside the player are stated under
+ * .aar-player: the app styles them through button:not(.clickable-icon) and
+ * input[type='text'], and a bare class loses to either.
+ */
+.aar-player .aar-player-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     min-width: 28px;
     height: 28px;
     padding: 0 6px;
-    border: none;
-    border-radius: 5px;
-    background-color: transparent;
+    border: 1px solid var(--aar-line);
+    border-radius: 6px;
+    background-color: var(--aar-surface-raised);
     color: var(--text-normal);
     cursor: pointer;
     box-shadow: none;
-    transition: background-color 0.15s ease, color 0.15s ease;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
 }
 
-.aar-player-btn:hover {
-    background-color: var(--background-modifier-hover);
+.aar-player .aar-player-btn:hover {
+    background-color: color-mix(
+        in srgb,
+        var(--aar-surface-raised),
+        var(--text-normal) 8%
+    );
 }
 
-.aar-player-btn.is-active {
+.aar-player .aar-player-btn.is-active {
+    border-color: var(--color-accent);
     color: var(--color-accent);
 }
 
@@ -417,23 +473,68 @@ input.aar-input-invalid {
     height: 16px;
 }
 
+/* The primary action: an accent button, a little larger than the rest */
+.aar-player .aar-player-play {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+    margin-right: 2px;
+    border: none;
+    border-radius: 8px;
+    background-color: var(--interactive-accent);
+    box-shadow: 0 1px 6px
+        color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+    color: var(--text-on-accent);
+}
+
+.aar-player .aar-player-play:hover {
+    background-color: var(--interactive-accent-hover);
+}
+
+.aar-player-play svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
 .aar-player-speed {
-    font-size: 0.85em;
+    gap: 6px;
+    font-size: var(--font-ui-small);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
 
-.aar-player-volume {
-    width: 80px;
+/* A chevron says the speed button opens a menu */
+.aar-player-speed::after {
+    content: '';
+    width: 5px;
+    height: 5px;
+    margin-top: -3px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg);
+    opacity: 0.7;
+}
+
+/*
+ * The volume slider is the one control that gives way: the row breaks onto a
+ * second line by its minimum width, and any room left over widens it.
+ */
+.aar-player .aar-player-volume {
+    flex: 1 1 0;
+    min-width: 36px;
+    max-width: 96px;
     accent-color: var(--color-accent);
     cursor: pointer;
 }
 
 .aar-player-time {
     margin-left: auto;
-    font-size: 0.85em;
+    padding: 0 2px;
+    font-size: var(--font-ui-small);
     font-variant-numeric: tabular-nums;
-    color: var(--text-muted);
+    color: var(--text-normal);
     white-space: nowrap;
 }
 
@@ -452,14 +553,16 @@ input.aar-input-invalid {
 .aar-player-seek-waveform {
     /* Frame the waveform in a padded rectangle so it reads as its own
        panel. content-box keeps the canvas height equal to
-       --aar-waveform-height (no stretch); the padding/border add around it. */
+       --aar-waveform-height (no stretch); the padding/border add around it.
+       The padding is vertical only: the ticks and the seek position are
+       measured across the full width of this element. */
     box-sizing: content-box;
     height: var(--aar-waveform-height);
-    padding: 20px 0;
-    margin: 8px 0;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 6px;
-    background-color: var(--background-primary);
+    padding: 12px 0;
+    margin: 2px 0;
+    border: 1px solid var(--aar-line);
+    border-radius: 8px;
+    background-color: var(--aar-surface-sunken);
 }
 
 /* Inner layer that stacks the base and played waveform canvases */
@@ -598,29 +701,59 @@ input.aar-input-invalid {
 
 /* Marker / chapter list below the player */
 .aar-player-marker-list {
+    /* Sized by the player, so rows can adapt to the width they are given */
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 6px;
+}
+
+/* Editable rows are taller, so they sit closer together */
+.aar-player:not(.aar-player-readonly) .aar-player-marker-list {
+    gap: 3px;
 }
 
 .aar-player-marker-row {
     display: flex;
-    /* The note takes a line of its own under the controls, so the row wraps. */
+    /* A reading-view note takes a line of its own under the row, so it wraps. */
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    padding: 1px 4px;
-    border-radius: 4px;
+    gap: 8px;
+    padding: 5px 10px;
+    border: 1px solid var(--aar-line);
+    border-radius: 8px;
+    background-color: var(--aar-surface-raised);
+}
+
+/*
+ * An editable row is a grid. Every control sits on the title's line, and the
+ * note is a group of its own on the line below, starting under the title, so
+ * a note of several lines never pulls the controls down with it. Only the
+ * placement changes: the DOM order, and with it the tab order, stays as
+ * built. The row is positioned so the colour select can lie over its cell.
+ */
+div.aar-player-marker-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto auto auto auto;
+    grid-template-areas:
+        'kind time label length jump here color delete'
+        '. . note note note note note note';
+    align-items: center;
+    column-gap: 4px;
+    /* No gap between the lines: a hidden empty note must leave none behind */
+    row-gap: 0;
 }
 
 .aar-player-marker-kind {
+    grid-area: kind;
     display: inline-flex;
-    color: var(--text-muted);
+    color: var(--text-faint);
 }
 
 .aar-player-marker-kind svg {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
 }
 
 .aar-player-marker-time {
@@ -632,65 +765,149 @@ input.aar-input-invalid {
     box-shadow: none;
     padding: 0 4px;
     cursor: pointer;
+    /* As wide as the list's longest timestamp, so every row lines up */
+    box-sizing: content-box;
+    min-width: calc(var(--aar-marker-time-chars, 0) * 1ch);
+    text-align: right;
 }
 
-.aar-player-marker-label {
-    flex: 1;
-    min-width: 0;
-    font-size: 0.85em;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
+.aar-player .aar-player-marker-label,
+.aar-player .aar-player-marker-time-edit {
+    box-sizing: border-box;
+    height: var(--aar-control-size);
+    border: 1px solid var(--aar-line);
+    border-radius: 6px;
+    background-color: var(--aar-surface-field);
+    box-shadow: none;
     color: var(--text-normal);
+    font-size: var(--font-ui-small);
 }
 
-.aar-player-marker-label:hover,
-.aar-player-marker-label:focus {
-    border-color: var(--background-modifier-border);
-    background-color: var(--background-primary);
+.aar-player .aar-player-marker-label:hover,
+.aar-player .aar-player-marker-time-edit:hover {
+    border-color: color-mix(in srgb, var(--aar-line), var(--text-normal) 20%);
 }
 
-.aar-player-marker-time-edit {
-    width: 7ch;
-    flex: none;
+.aar-player .aar-player-marker-label:focus,
+.aar-player .aar-player-marker-time-edit:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px
+        color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.aar-player .aar-player-marker-label {
+    grid-area: label;
+    width: 100%;
+    min-width: 0;
+    /* Room on the right for the pencil drawn over the field */
+    padding: 0 32px 0 10px;
+    font-size: var(--font-ui-medium);
+}
+
+/* The pencil says the title is edited in place; clicks pass to the field */
+.aar-player-marker-label-icon {
+    --icon-size: 14px;
+    grid-area: label;
+    justify-self: end;
+    display: inline-flex;
+    margin-right: 10px;
+    color: var(--text-faint);
+    pointer-events: none;
+}
+
+/* The marker's time opens its row, as a field the time is typed into */
+.aar-player .aar-player-marker-time-edit {
+    grid-area: time;
+    width: calc(6ch + 16px);
+    padding: 0 8px;
     font-variant-numeric: tabular-nums;
-    font-size: 0.85em;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    color: var(--text-muted);
+    text-align: center;
 }
 
-.aar-player-marker-time-edit:hover,
-.aar-player-marker-time-edit:focus {
-    border-color: var(--background-modifier-border);
-    background-color: var(--background-primary);
+/* Jump, crosshair and delete are bare icons: their chrome is clickable-icon */
+.aar-player .aar-player-marker-jump,
+.aar-player .aar-player-marker-here,
+.aar-player .aar-player-marker-delete {
+    --icon-size: 14px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    justify-content: center;
+}
+
+.aar-player-marker-jump {
+    grid-area: jump;
 }
 
 .aar-player-marker-here {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    color: var(--text-faint);
+    grid-area: here;
+}
+
+.aar-player-marker-delete {
+    grid-area: delete;
+}
+
+.aar-player .aar-player-marker-delete:hover {
+    color: var(--text-error);
+}
+
+/* The row that is playing offers its delete in red, ready to hand */
+.aar-player .aar-player-marker-row.is-active .aar-player-marker-delete {
+    color: var(--text-error);
+}
+
+/*
+ * The colour control is drawn as a dot in the marker's colour and a chevron.
+ * The native select lies over that drawing, transparent and the same size, so
+ * choosing a colour is still the platform's own menu and keyboard handling.
+ */
+.aar-player-marker-color {
+    grid-area: color;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
     cursor: pointer;
 }
 
-.aar-player-marker-here:hover {
-    color: var(--text-accent);
+.aar-player-marker-swatch {
+    --icon-size: 12px;
+    grid-area: color;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 22px;
+    padding: 0 3px;
+    border-radius: 6px;
+    color: var(--text-muted);
 }
 
-.aar-player-marker-here svg {
-    width: 14px;
-    height: 14px;
+.aar-player-marker-swatch-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    /* A marker with no colour shows a neutral grey, whatever the theme's
+       faint text happens to be */
+    background-color: var(
+        --aar-marker-color,
+        color-mix(in srgb, var(--text-normal) 35%, transparent)
+    );
 }
 
-.aar-player-marker-color {
-    flex: none;
-    font-size: 0.8em;
-    max-width: 8em;
+.aar-player-marker-swatch-chevron {
+    display: inline-flex;
+}
+
+.aar-player-marker-color:hover + .aar-player-marker-swatch {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.aar-player-marker-color:focus-visible + .aar-player-marker-swatch {
+    box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
 /*
@@ -722,25 +939,69 @@ input.aar-input-invalid {
 }
 
 /*
- * The note is prose, so it takes the whole width under the row's own line
- * rather than a share of the control column, which would show four characters
- * of it.
+ * The note is prose, so it sits under the title across the width the title
+ * has: a quiet line until it is hovered or edited, one line tall until its
+ * text needs more.
  */
-.aar-player-marker-note {
-    flex-basis: 100%;
-    min-height: 1.6em;
-    resize: vertical;
-    font-size: 0.8em;
-    background: transparent;
+.aar-player .aar-player-marker-note {
+    grid-area: note;
+    box-sizing: border-box;
+    width: 100%;
+    margin-top: 2px;
+    min-height: 0;
+    height: auto;
+    /* Room on the left for the page icon drawn over the field */
+    padding: 2px 10px 2px 30px;
+    resize: none;
+    field-sizing: content;
+    font-size: var(--font-ui-small);
+    line-height: 1.4;
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: 6px;
+    background-color: transparent;
+    box-shadow: none;
     color: var(--text-muted);
 }
 
-.aar-player-marker-note:hover,
-.aar-player-marker-note:focus {
-    border-color: var(--background-modifier-border);
-    background-color: var(--background-primary);
+/* Where the field cannot size itself, it can still be dragged taller */
+@supports not (field-sizing: content) {
+    .aar-player .aar-player-marker-note {
+        resize: vertical;
+    }
+}
+
+.aar-player .aar-player-marker-note:hover {
+    border-color: var(--aar-line);
+}
+
+.aar-player .aar-player-marker-note:focus {
+    border-color: var(--color-accent);
+    background-color: var(--aar-surface-field);
+    color: var(--text-normal);
+}
+
+.aar-player-marker-note-icon {
+    --icon-size: 14px;
+    grid-area: note;
+    justify-self: start;
+    align-self: start;
+    display: inline-flex;
+    margin: 6px 0 0 10px;
+    color: var(--text-faint);
+    pointer-events: none;
+}
+
+/*
+ * An empty note keeps the row to one line until the row is being worked in:
+ * focus anywhere inside it, in the title, the time or by Tab, opens the note
+ * line under the title. A note that has text is always shown.
+ */
+div.aar-player-marker-row:not(:focus-within) .aar-player-marker-note:placeholder-shown {
+    display: none;
+}
+
+div.aar-player-marker-row:not(:focus-within):has(.aar-player-marker-note:placeholder-shown) .aar-player-marker-note-icon {
+    display: none;
 }
 
 /*
@@ -761,6 +1022,8 @@ input.aar-input-invalid {
     font-size: 0.85em;
     font-variant-numeric: tabular-nums;
     padding: 0 4px;
+    box-sizing: content-box;
+    min-width: calc(var(--aar-marker-time-chars, 0) * 1ch);
 }
 
 .aar-player-marker-note-static {
@@ -768,26 +1031,8 @@ input.aar-input-invalid {
     font-size: 0.8em;
     color: var(--text-muted);
     text-align: left;
-}
-
-.aar-player-marker-delete {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    color: var(--text-faint);
-    cursor: pointer;
-}
-
-.aar-player-marker-delete:hover {
-    color: var(--text-error);
-}
-
-.aar-player-marker-delete svg {
-    width: 14px;
-    height: 14px;
+    /* A note typed over several lines is shown over the same lines */
+    white-space: pre-wrap;
 }
 
 /* Read-only mode (reading view): hide editing affordances */
@@ -804,16 +1049,20 @@ input.aar-input-invalid {
     padding: 0 4px;
     text-align: left;
     justify-content: flex-start;
-    font-size: 0.85em;
+    font-size: 0.9em;
     color: var(--text-normal);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-/* Segment length shown at the right of a read-only row */
+/* Segment length: how long the entry runs, at the right of its row */
 .aar-player-marker-segment {
+    grid-area: length;
     padding-left: 8px;
+    text-align: right;
+    box-sizing: content-box;
+    min-width: calc(var(--aar-marker-time-chars, 0) * 1ch);
     font-variant-numeric: tabular-nums;
     font-size: 0.8em;
     color: var(--text-muted);
@@ -826,10 +1075,11 @@ input.aar-input-invalid {
    of which belongs on a row of the list. */
 button.aar-player-marker-row {
     width: 100%;
-    padding: 1px 4px;
-    border: none;
+    padding: 5px 10px;
+    border: 1px solid var(--aar-line);
+    border-radius: 8px;
     box-shadow: none;
-    background-color: transparent;
+    background-color: var(--aar-surface-raised);
     color: inherit;
     font: inherit;
     text-align: left;
@@ -846,7 +1096,11 @@ button.aar-player-marker-row {
 }
 
 .aar-player-marker-row-clickable:hover {
-    background-color: var(--background-modifier-hover);
+    background-color: color-mix(
+        in srgb,
+        var(--aar-surface-raised),
+        var(--text-normal) 5%
+    );
 }
 
 /* Keyboard focus on a marker row, matching the seek area's ring so every
@@ -856,10 +1110,14 @@ button.aar-player-marker-row {
     outline-offset: 2px;
 }
 
-/* Currently-playing segment: highlighted with an accent edge */
+/* Currently-playing segment: highlighted with an accent border */
 .aar-player-marker-row.is-active {
-    background-color: var(--background-modifier-hover);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+    border-color: var(--color-accent);
+    background-color: color-mix(
+        in srgb,
+        var(--aar-surface-raised),
+        var(--color-accent) 8%
+    );
 }
 
 /*
@@ -870,17 +1128,21 @@ button.aar-player-marker-row {
  * moment the note was read.
  */
 .aar-player-marker-row.aar-player-marker-row-colored {
-    box-shadow: inset 3px 0 0 var(--aar-marker-color);
+    box-shadow: inset 4px 0 0 var(--aar-marker-color);
 }
 
 /*
- * Playing and coloured at once: the accent sits behind the colour rather
- * than replacing it, so the edge says both things.
+ * A narrow player keeps the title on the first line with its time, gives the
+ * note the second, and moves the row's controls to a third, right-aligned.
  */
-.aar-player-marker-row.aar-player-marker-row-colored.is-active {
-    box-shadow:
-        inset 3px 0 0 var(--aar-marker-color),
-        inset 6px 0 0 var(--color-accent);
+@container (max-width: 480px) {
+    div.aar-player-marker-row {
+        grid-template-areas:
+            'kind time label label label label label label'
+            '. . note note note note note note'
+            '. . . length jump here color delete';
+        row-gap: 3px;
+    }
 }
 
 /* Modal text shared by the transcription and audio-cleanup dialogs */

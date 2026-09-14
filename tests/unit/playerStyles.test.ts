@@ -105,11 +105,27 @@ describe('read-only player styles', () => {
 		expect(reset).toMatch(/white-space:\s*normal/);
 	});
 
-	it('gives the note a line of its own under the row it belongs to', () => {
+	// A note spanning the whole row read as a caption on the controls as much
+	// as on the marker, so an edit-mode row places it under the title.
+	it('puts the edit-mode note under the title it annotates', () => {
 		const note = ruleBody(MARKER.noteRule);
 		expect(note).not.toBeNull();
-		expect(note).toMatch(/flex-basis:\s*100%/);
+		expect(note).toMatch(/grid-area:\s*note/);
 
+		const editable = ruleBody(MARKER.editableRow);
+		expect(editable).not.toBeNull();
+		expect(editable).toMatch(/display:\s*grid/);
+		const areas = /grid-template-areas:\s*'([^']*)'\s*'([^']*)'/.exec(
+			editable ?? '',
+		);
+		expect(areas).not.toBeNull();
+		const [titleLine, noteLine] = [areas?.[1], areas?.[2]].map((line) =>
+			(line ?? '').split(/\s+/),
+		);
+		expect(noteLine?.indexOf('note')).toBe(titleLine?.indexOf('label'));
+	});
+
+	it('still wraps a reading-view row, whose note takes a line of its own', () => {
 		const row = ruleBody(MARKER.row);
 		expect(row).toMatch(/flex-wrap:\s*wrap/);
 	});
@@ -130,6 +146,35 @@ describe('read-only player styles', () => {
 		expect(indent).toMatch(/font-variant-numeric:\s*tabular-nums/);
 	});
 
+	// The time, the note indent under it and the segment length are each as
+	// wide as the longest timestamp, so what follows them lines up in every row.
+	it.each([
+		['time', MARKER.time],
+		['note indent', MARKER.noteIndent],
+		['segment length', MARKER.segment],
+	])('sizes the %s column to the longest timestamp', (_name, selector) => {
+		expect(ruleBody(selector)).toMatch(
+			/min-width:\s*calc\(var\(--aar-marker-time-chars/,
+		);
+	});
+
+	// Most rows carry no note, and a second line holding only a placeholder
+	// took about a third of every row. It opens once the row has focus.
+	it('keeps a row with an empty note to one line until it has focus', () => {
+		expect(ruleBody(MARKER.idleEmptyNote)).toMatch(/display:\s*none/);
+		expect(ruleBody(MARKER.idleEmptyNoteIcon)).toMatch(/display:\s*none/);
+
+		// A gap between the lines would stay behind the hidden note
+		expect(ruleBody(MARKER.editableRow)).toMatch(/row-gap:\s*0/);
+	});
+
+	// A note typed as a list over several lines read as one run-on line.
+	it('keeps the line breaks of a reading-view note', () => {
+		const note = ruleBody(MARKER.noteStaticRule);
+		expect(note).not.toBeNull();
+		expect(note).toMatch(/white-space:\s*pre-wrap/);
+	});
+
 	it.each(['red', 'orange', 'yellow', 'green', 'blue', 'purple'])(
 		'draws the %s option in the colour it names',
 		(name) => {
@@ -140,6 +185,53 @@ describe('read-only player styles', () => {
 			);
 		},
 	);
+
+	// The closed control is a dot in the row's colour, grey while it has none,
+	// with the real select laid over it transparent and the same size.
+	it('draws the colour control as a dot under a transparent select', () => {
+		const dot = ruleBody(MARKER.swatchDot);
+		expect(dot).not.toBeNull();
+		expect(dot).toMatch(/background-color:\s*var\(\s*--aar-marker-color,/);
+
+		const control = ruleBody(MARKER.colorRule);
+		expect(control).not.toBeNull();
+		expect(control).toMatch(/opacity:\s*0/);
+		expect(control).toMatch(/position:\s*absolute/);
+		expect(control).toMatch(/grid-area:\s*color/);
+		expect(ruleBody(MARKER.swatch)).toMatch(/grid-area:\s*color/);
+
+		// Absolute placement resolves against the grid area only in a
+		// positioned grid, so the row has to be one.
+		expect(ruleBody(MARKER.editableRow)).toMatch(/position:\s*relative/);
+	});
+
+	it('draws the delete icon of the playing row in red', () => {
+		const remove = ruleBody(MARKER.activeDelete);
+		expect(remove).not.toBeNull();
+		expect(remove).toMatch(/color:\s*var\(--text-error\)/);
+	});
+
+	it('draws play / pause as the accent primary button', () => {
+		const play = ruleBody(PLAYER.play);
+		expect(play).not.toBeNull();
+		expect(play).toMatch(/background-color:\s*var\(--interactive-accent\)/);
+	});
+
+	// The player renders into Obsidian's embed element, which the app sets to
+	// display: block through a class and a :not(), outranking one class alone.
+	it('keeps the column layout inside the embed element it renders into', () => {
+		const embed = ruleBody(PLAYER.embedRoot);
+		expect(embed).not.toBeNull();
+		expect(embed).toMatch(/display:\s*flex/);
+	});
+
+	// Live Preview sets display: block on every direct child of the editor's
+	// content, with three classes, so the embed rule alone is not enough there.
+	it('keeps the column layout as a line of the Live Preview editor', () => {
+		const line = ruleBody(PLAYER.livePreviewRoot);
+		expect(line).not.toBeNull();
+		expect(line).toMatch(/display:\s*flex/);
+	});
 
 	it('frames the waveform in a padded bordered rectangle', () => {
 		const waveform = ruleBody(PLAYER.seekWaveform);
