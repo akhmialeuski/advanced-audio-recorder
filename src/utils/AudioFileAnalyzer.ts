@@ -274,7 +274,9 @@ async function probeAudioMetadataAt(
 	using input = disposableOf(
 		new Input({ source: new UrlSource(url), formats: ALL_FORMATS }),
 	);
-	return readTrackMetadata(input, path);
+	// Awaited, never returned: see readTrackMetadata on what disposal
+	// does to a read still in flight.
+	return await readTrackMetadata(input, path);
 }
 
 /**
@@ -295,13 +297,22 @@ export async function probeAudioMetadata(
 			formats: ALL_FORMATS,
 		}),
 	);
-	return readTrackMetadata(input, path);
+	// Awaited, never returned: see readTrackMetadata on what disposal
+	// does to a read still in flight.
+	return await readTrackMetadata(input, path);
 }
 
 /**
  * Pulls the primary audio track's numbers out of an opened input. Shared by
  * the buffered and ranged probes, which differ only in where their bytes come
  * from - so a container the one can read, the other can too.
+ *
+ * Every caller awaits this inside the scope that owns the input. A `using`
+ * binding disposes at the end of its own scope, and an async function's scope
+ * ends the moment it returns a promise rather than when that promise settles,
+ * so handing this one back unawaited disposes the input under a read that has
+ * only just started. Mediabunny answers such a read with InputDisposedError,
+ * and the probe then reports a perfectly readable container as unparseable.
  * @param input - An opened mediabunny input
  * @param path - Vault path, for the warning log only
  * @returns The metadata, or null when there is no audio track or the parse failed

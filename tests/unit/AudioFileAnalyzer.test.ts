@@ -54,15 +54,26 @@ const mockGetPrimaryAudioTrack = jest.fn();
 const mockComputeDuration = jest.fn();
 const mockDispose = jest.fn();
 
+// Each input remembers its own disposal and hands itself to the track
+// mock, so a test can answer a read the way mediabunny does once the
+// input is gone.
 jest.mock('mediabunny', () => ({
 	ALL_FORMATS: [],
 	BufferSource: jest.fn(),
 	UrlSource: jest.fn(),
-	Input: jest.fn().mockImplementation(() => ({
-		getPrimaryAudioTrack: (): unknown => mockGetPrimaryAudioTrack(),
-		computeDuration: (): unknown => mockComputeDuration(),
-		dispose: mockDispose,
-	})),
+	Input: jest.fn().mockImplementation(() => {
+		const input = {
+			disposed: false,
+			getPrimaryAudioTrack: (): unknown =>
+				mockGetPrimaryAudioTrack(input),
+			computeDuration: (): unknown => mockComputeDuration(),
+			dispose: (): void => {
+				input.disposed = true;
+				mockDispose();
+			},
+		};
+		return input;
+	}),
 }));
 
 jest.mock('src/platform/capabilities', () => {
@@ -177,6 +188,43 @@ describe('getAudioFileInfo', () => {
 		expect(app.vault.readBinary).toHaveBeenCalledTimes(1);
 		expect(mockDecodeAudioData).not.toHaveBeenCalled();
 	});
+
+	it.each([
+		{ probe: 'ranged', rangedFails: false },
+		{ probe: 'buffered', rangedFails: true },
+	])(
+		'reads through the $probe probe before its input is disposed',
+		async ({ rangedFails }) => {
+			jest.spyOn(console, 'warn').mockImplementation();
+			let refuseRange = rangedFails;
+			mockGetPrimaryAudioTrack.mockImplementation(
+				async (input: { disposed: boolean }) => {
+					if (refuseRange) {
+						refuseRange = false;
+						throw new Error('range request refused');
+					}
+					// One turn of the event loop is all a real read needs to
+					// outlive a scope that ended at the return instead of at
+					// the answer.
+					await Promise.resolve();
+					if (input.disposed) {
+						throw new Error('Input has been disposed.');
+					}
+					return {
+						getSampleRate: () => 48000,
+						getNumberOfChannels: () => 2,
+					};
+				},
+			);
+			mockComputeDuration.mockResolvedValue(90);
+
+			const result = await getAudioFileInfo(app, file);
+
+			// The container answered, so the whole-file decode never ran.
+			expect(result?.duration).toBe('1:30');
+			expect(mockDecodeAudioData).not.toHaveBeenCalled();
+		},
+	);
 
 	it('disposes the probe input even when parsing fails', async () => {
 		jest.spyOn(console, 'warn').mockImplementation();
