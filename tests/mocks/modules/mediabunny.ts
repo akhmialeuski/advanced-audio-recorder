@@ -1,10 +1,12 @@
 /**
- * Default double for the `mediabunny` conversion pipeline.
+ * Default double for the `mediabunny` conversion pipeline and its container
+ * probe.
  *
- * Three suites carried an identical copy of this factory. None of them tests
- * mediabunny - they test what the plugin asks it to do - so the surface lives
- * here and a suite scripts only the call it asserts on, through the exported
- * spies.
+ * Three suites carried an identical copy of this factory, and the metadata
+ * probe suite a fourth that only added a duration and the input's disposal.
+ * None of them tests mediabunny - they test what the plugin asks it to do - so
+ * the surface lives here and a suite scripts only the call it asserts on,
+ * through the exported spies.
  *
  * Usage:
  * ```ts
@@ -23,20 +25,42 @@ export const convertedBuffer = new ArrayBuffer(CONVERTED_BYTES);
 /** `Conversion.init`; script it with the conversion object a test wants. */
 export const conversionInit = jest.fn();
 
-/** The audio track the input reports; resolve it with a track descriptor. */
+/**
+ * The audio track the input reports; resolve it with a track descriptor. It is
+ * handed the input it was asked of.
+ */
 export const getPrimaryAudioTrack = jest.fn();
+
+/** `Input.computeDuration`; resolve it with the length the container carries. */
+export const computeDuration = jest.fn();
 
 /** `Input.dispose`, for asserting the source was released. */
 export const inputDispose = jest.fn();
 
-export const Input = jest.fn().mockImplementation(() => ({
-	getPrimaryAudioTrack: (): unknown => getPrimaryAudioTrack(),
-	dispose: inputDispose,
-}));
+/**
+ * Each input remembers its own disposal and hands itself to the track spy, so
+ * a suite can answer a read the way mediabunny does once the input is gone.
+ */
+export const Input = jest.fn().mockImplementation(() => {
+	const input = {
+		disposed: false,
+		getPrimaryAudioTrack: (): unknown => getPrimaryAudioTrack(input),
+		computeDuration: (): unknown => computeDuration(),
+		dispose: (): void => {
+			input.disposed = true;
+			inputDispose();
+		},
+	};
+	return input;
+});
 
 export const Output = jest.fn().mockImplementation(() => ({}));
 
 export const BlobSource = jest.fn();
+
+/** The sources a probe reads: bytes already in memory, or a URL read by range. */
+export const BufferSource = jest.fn();
+export const UrlSource = jest.fn();
 
 export const BufferTarget = jest.fn().mockImplementation(() => ({
 	buffer: convertedBuffer,

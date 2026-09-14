@@ -12,6 +12,11 @@ import { App, Notice } from 'obsidian';
 import type { TFile } from 'obsidian';
 import { createFile } from '../helpers/createApp';
 import {
+	computeDuration as mockComputeDuration,
+	getPrimaryAudioTrack as mockGetPrimaryAudioTrack,
+	inputDispose as mockDispose,
+} from '../mocks/modules/mediabunny';
+import {
 	installAudioElementMock,
 	installObjectUrlMock,
 	type AudioElementDouble,
@@ -47,34 +52,10 @@ afterEach(() => {
 	urlMock.restore();
 });
 
-// Mock mediabunny's container probe. Defaults to an unparseable input
-// (getPrimaryAudioTrack rejects) so the existing decode-fallback tests
-// keep exercising the AudioContext path; probe tests override it.
-const mockGetPrimaryAudioTrack = jest.fn();
-const mockComputeDuration = jest.fn();
-const mockDispose = jest.fn();
-
-// Each input remembers its own disposal and hands itself to the track
-// mock, so a test can answer a read the way mediabunny does once the
-// input is gone.
-jest.mock('mediabunny', () => ({
-	ALL_FORMATS: [],
-	BufferSource: jest.fn(),
-	UrlSource: jest.fn(),
-	Input: jest.fn().mockImplementation(() => {
-		const input = {
-			disposed: false,
-			getPrimaryAudioTrack: (): unknown =>
-				mockGetPrimaryAudioTrack(input),
-			computeDuration: (): unknown => mockComputeDuration(),
-			dispose: (): void => {
-				input.disposed = true;
-				mockDispose();
-			},
-		};
-		return input;
-	}),
-}));
+// The container probe runs against the shared mediabunny double. Its track
+// and duration spies answer with no track by default, so the decode-fallback
+// tests keep exercising the AudioContext path and the probe tests script them.
+jest.mock('mediabunny', () => require('../mocks/modules/mediabunny'));
 
 jest.mock('src/platform/capabilities', () => {
 	const actual = jest.requireActual<
