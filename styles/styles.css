@@ -473,7 +473,7 @@ input.aar-input-invalid {
     height: 16px;
 }
 
-/* The primary action: an accent button, a little larger than the rest */
+/* The primary action: a round accent button, a little larger than the rest */
 .aar-player .aar-player-play {
     width: 32px;
     min-width: 32px;
@@ -481,7 +481,7 @@ input.aar-input-invalid {
     padding: 0;
     margin-right: 2px;
     border: none;
-    border-radius: 8px;
+    border-radius: 50%;
     background-color: var(--interactive-accent);
     box-shadow: 0 1px 6px
         color-mix(in srgb, var(--interactive-accent) 35%, transparent);

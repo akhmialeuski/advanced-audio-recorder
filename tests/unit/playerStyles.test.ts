@@ -245,6 +245,12 @@ describe('read-only player styles', () => {
 		expect(play).toMatch(/background-color:\s*var\(--interactive-accent\)/);
 	});
 
+	// The design draws the primary action as a circle, which sets it apart
+	// from the square buttons beside it as much as its colour does.
+	it('draws play / pause round, apart from the square buttons beside it', () => {
+		expect(ruleBody(PLAYER.play)).toMatch(/border-radius:\s*50%/);
+	});
+
 	// The player renders into Obsidian's embed element, which the app sets to
 	// display: block through a class and a :not(), outranking one class alone.
 	it('keeps the column layout inside the embed element it renders into', () => {
