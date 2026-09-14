@@ -434,6 +434,34 @@ describe('playback controls', () => {
 		expect(state.onVolumeInput).toHaveBeenCalledWith(0.4);
 	});
 
+	// The app's slider class fills the track up to a ratio, which has to follow
+	// the slider whichever way its value changed.
+	it('fills the volume track up to the thumb from a drag and from playback', () => {
+		const statusBarItem = createStatusBar();
+		renderPlaybackStatusBar(
+			statusBarItem,
+			makePlaybackState({ volume: 0.5 }),
+		);
+		const volume = el<HTMLInputElement>(statusBarItem, PLAYBACK.volume);
+		expect(volume.style.getPropertyValue('--slider-fill-ratio')).toBe(
+			'0.5',
+		);
+
+		volume.value = '0.8';
+		volume.dispatchEvent(new Event('input'));
+		expect(volume.style.getPropertyValue('--slider-fill-ratio')).toBe(
+			'0.8',
+		);
+
+		renderPlaybackStatusBar(
+			statusBarItem,
+			makePlaybackState({ volume: 0.2 }),
+		);
+		expect(volume.style.getPropertyValue('--slider-fill-ratio')).toBe(
+			'0.2',
+		);
+	});
+
 	it.each([
 		{ name: 'Enter', key: 'Enter', activates: true },
 		{ name: 'Space', key: ' ', activates: true },
