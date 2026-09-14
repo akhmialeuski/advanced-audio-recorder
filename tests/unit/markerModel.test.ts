@@ -445,9 +445,14 @@ describe('a marker note and colour', () => {
 		expect(parsed[0]).not.toHaveProperty('color');
 	});
 
-	it('drops a blank note instead of keeping an empty field', () => {
+	// A note of only spaces read from a hand-edited sidecar showed as an empty
+	// line under its row in reading view.
+	it.each([
+		{ name: 'an empty note', note: '' },
+		{ name: 'a note of only whitespace', note: ' \n ' },
+	])('drops $name instead of keeping an empty field', ({ note }) => {
 		const parsed = parseMarkers([
-			{ id: 'a', time: 0, label: '', kind: 'bookmark', note: '' },
+			{ id: 'a', time: 0, label: '', kind: 'bookmark', note },
 		]);
 
 		expect(parsed[0]).not.toHaveProperty('note');

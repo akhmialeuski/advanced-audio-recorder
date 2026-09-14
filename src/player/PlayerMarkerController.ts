@@ -18,6 +18,7 @@ import {
 	nextChapterTime,
 	previousChapterTime,
 	removeMarker,
+	storedNote,
 	updateMarker,
 	type MarkerKind,
 	type PlayerMarker,
@@ -156,9 +157,7 @@ export class PlayerMarkerController {
 	 * @param note - New note; blank clears it
 	 */
 	async setNote(id: string, note: string): Promise<void> {
-		// A blank note is no note: storing an empty string would keep the
-		// field in the sidecar and stop an otherwise empty one being deleted.
-		const next = note.trim() === '' ? undefined : note;
+		const next = storedNote(note);
 		this.markers = updateMarker(this.markers, id, { note: next });
 		this.host.refreshTicks();
 		await this.persist((stored) =>

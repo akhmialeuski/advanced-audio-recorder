@@ -685,6 +685,22 @@ describe('the note line of a row being worked in', () => {
 		expect(at(rows, 1).matches(MARKER.openRow)).toBe(true);
 	});
 
+	// A note of only spaces is kept as none, but the field kept its spaces,
+	// which :placeholder-shown does not match, so the line never closed.
+	it('empties a note committed blank, so its line can close', () => {
+		const { listContainer, callbacks } = mounted;
+		const note = at(
+			allEls<HTMLTextAreaElement>(listContainer, MARKER.note),
+			0,
+		);
+
+		note.value = '   ';
+		note.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(note.value).toBe('');
+		expect(callbacks.onEditNote).toHaveBeenCalledWith('a', '');
+	});
+
 	// The listeners sit on the document, which outlives the player, so they
 	// have to leave with it rather than keep closing rows nobody renders.
 	it('stops listening to the document once the player unloads', () => {

@@ -27,6 +27,7 @@ import {
 	markerRows,
 	sortMarkers,
 	isMarkerColor,
+	storedNote,
 	type MarkerColor,
 	type MarkerKind,
 	type MarkerRow,
@@ -254,6 +255,13 @@ export class MarkerListView {
 					break;
 				case MARKER_ROW_ACTION.editNote:
 					this.cancelEdit(editKey(id, MARKER_ROW_ACTION.editNote));
+					// A blank note is kept as none, but a field holding spaces
+					// does not match :placeholder-shown, and the list is not
+					// rebuilt for a note, so its line stayed open. The field is
+					// emptied to what is kept.
+					if (storedNote(input.value) === undefined) {
+						input.value = '';
+					}
 					this.callbacks.onEditNote(id, input.value);
 					break;
 				case MARKER_ROW_ACTION.editTime: {

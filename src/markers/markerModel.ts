@@ -68,6 +68,17 @@ export function isMarkerColor(value: unknown): value is MarkerColor {
 }
 
 /**
+ * The note a marker keeps for what was typed or read: none for a blank one.
+ * An empty field in the sidecar would keep an otherwise empty file from being
+ * deleted, and a note of only spaces shows as an empty line under its row.
+ * @param note - The note as typed, or as read from disk
+ * @returns The note to keep, or undefined when there is none
+ */
+export function storedNote(note: string): string | undefined {
+	return note.trim() === '' ? undefined : note;
+}
+
+/**
  * A labelled point in an audio file.
  */
 export interface PlayerMarker {
@@ -281,17 +292,21 @@ export function parseMarkers(value: unknown): PlayerMarker[] {
 		) {
 			continue;
 		}
-		const note = record.note;
+		const note =
+			typeof record.note === 'string'
+				? storedNote(record.note)
+				: undefined;
 		const color = record.color;
 		result.push({
 			id,
 			time: Math.max(0, time),
 			label: typeof label === 'string' ? label : '',
 			kind,
-			// A field the file does not carry stays absent rather than
-			// becoming an empty string, which is what keeps a marker written
-			// by an older version identical after a read and a write.
-			...(typeof note === 'string' && note !== '' ? { note } : {}),
+			// A field the file does not carry, or carries blank, stays absent
+			// rather than becoming an empty string, which is what keeps a
+			// marker written by an older version identical after a read and a
+			// write.
+			...(note !== undefined ? { note } : {}),
 			...(isMarkerColor(color) ? { color } : {}),
 		});
 	}
