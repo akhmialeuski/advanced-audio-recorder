@@ -714,11 +714,14 @@ input.aar-input-invalid {
 }
 
 .aar-player-marker-row {
+    /* Also the gap inside a reading-view note line, which starts the note
+       where the marker's icon starts only while the two are equal */
+    --aar-marker-row-gap: 8px;
     display: flex;
     /* A reading-view note takes a line of its own under the row, so it wraps. */
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: var(--aar-marker-row-gap);
     padding: 5px 10px;
     border: 1px solid var(--aar-line);
     border-radius: 8px;
@@ -1014,11 +1017,12 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open):has(.aar-player-marke
  * indent is a hidden copy of the timecode rather than a fixed measurement, so
  * a list whose stamps run to an hour lines up as well as one that does not,
  * and a note long enough to wrap keeps its whole block in the same column.
+ * The gap after the indent is the row's own for the same reason.
  */
 .aar-player-marker-note-line {
     display: flex;
     flex-basis: 100%;
-    gap: 6px;
+    gap: var(--aar-marker-row-gap);
 }
 
 .aar-player-marker-note-indent {

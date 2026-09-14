@@ -144,6 +144,13 @@ describe('read-only player styles', () => {
 		expect(line).toMatch(/flex-basis:\s*100%/);
 		expect(line).toMatch(/display:\s*flex/);
 
+		// The note follows the indent by the gap the icon follows the timecode
+		// by: a 6px gap against the row's 8px started every note 2px early.
+		const gapOf = (body: string | null): string | undefined =>
+			/(?:^|[\s;])gap:\s*([^;]+);/.exec(body ?? '')?.[1];
+		expect(gapOf(line)).toBeDefined();
+		expect(gapOf(line)).toBe(gapOf(ruleBody(MARKER.row)));
+
 		// The indent is a hidden copy of the timecode, so it is exactly as
 		// wide as the column it aligns to whatever the stamps run to
 		const indent = ruleBody(MARKER.noteIndent);
