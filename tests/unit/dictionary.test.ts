@@ -60,6 +60,30 @@ describe('parseDictionary', () => {
 		]);
 	});
 
+	it('reads a linked term as the name the link shows', () => {
+		// A glossary in a vault links its terms to their notes; the engine is
+		// given the name, and the link markup never reaches it.
+		expect(
+			parseDictionary(
+				'- [[Kubernetes]]\n- [[Tools/gRPC|gRPC]]\n- [[Glossaries/Helm#Charts]]\n- [[Argo CD|]]',
+			),
+		).toEqual(['Kubernetes', 'gRPC', 'Helm', 'Argo CD']);
+	});
+
+	it('skips comments and horizontal rules, which a note hides or only draws', () => {
+		expect(
+			parseDictionary(
+				'Kubernetes %% k8s %%\n%%\nDraft term\n%%\n---\n* * *\n___\nHelm',
+			),
+		).toEqual(['Kubernetes', 'Helm']);
+	});
+
+	it('reads the list inside a callout, without the callout title', () => {
+		expect(
+			parseDictionary('> [!note] Tools\n> - Helm\n> > Argo\n> ## Later'),
+		).toEqual(['Helm', 'Argo']);
+	});
+
 	it('returns an empty array for empty or whitespace-only input', () => {
 		expect(parseDictionary('')).toEqual([]);
 		expect(parseDictionary('   \n\t\n')).toEqual([]);

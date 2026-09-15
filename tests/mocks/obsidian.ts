@@ -223,6 +223,18 @@ export class Plugin {
 	/** Event handles passed to {@link registerEvent}, in order. */
 	readonly registeredEvents: EventRef[] = [];
 
+	/**
+	 * Records a teardown callback. The real Plugin runs these as it unloads;
+	 * a test that unloads the plugin runs them from here.
+	 * @param callback - What to run on unload
+	 */
+	register(callback: () => void): void {
+		this.registeredCleanups.push(callback);
+	}
+
+	/** Callbacks passed to {@link register}, in order. */
+	readonly registeredCleanups: Array<() => void> = [];
+
 	async loadData(): Promise<unknown> {
 		return {};
 	}
@@ -651,10 +663,12 @@ export class Workspace extends Events {
 
 	getLeavesOfType = jest.fn((_type: string): unknown[] => []);
 
-	openLinkText = jest.fn(
-		(_linktext: string, _sourcePath: string, _newLeaf?: unknown) =>
-			Promise.resolve(),
-	);
+	/** The leaf getLeaf hands out, so a test can read what was opened in it. */
+	readonly leaf = {
+		openFile: jest.fn((_file: TFile) => Promise.resolve()),
+	};
+
+	getLeaf = jest.fn((_newLeaf?: unknown) => this.leaf);
 
 	iterateAllLeaves = jest.fn((_callback: (leaf: unknown) => void): void => {
 		// No leaves unless a test seeds them

@@ -19,6 +19,14 @@ describe('parseParticipantBody', () => {
 		).toEqual(['Alex', 'Bob', 'Cleo', 'Dana']);
 	});
 
+	it('reads a name linked to a person note as the name the link shows', () => {
+		expect(
+			parseParticipantBody(
+				'- [[People/Alice Smith|Alice]]\n- [[People/Bob Jones]]',
+			),
+		).toEqual(['Alice', 'Bob Jones']);
+	});
+
 	it('reads plain lines exactly as before', () => {
 		expect(parseParticipantBody('Alex\r\n  Bob \n\nAlex')).toEqual([
 			'Alex',

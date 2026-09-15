@@ -31,7 +31,7 @@ import {
 } from '../speakers/participantRoster';
 
 /** The kind of profile holding the prompt for each post-processing task. */
-const PROMPT_KIND_OF_TASK: Record<LlmTask, ProfileKindId> = {
+export const PROMPT_KIND_OF_TASK: Record<LlmTask, ProfileKindId> = {
 	cleanup: 'llmCleanup',
 	summary: 'llmSummary',
 	custom: 'llmCustom',

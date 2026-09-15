@@ -1,6 +1,7 @@
 /**
- * Tests that a transcription run names a profile it applies whose note has
- * gone from the vault, and goes ahead on the text last read from that note.
+ * Tests that a transcription run names a profile it reads whose note has gone
+ * from the vault, goes ahead on the text last read from that note, and says
+ * nothing about a profile whose text the run does not read.
  * @module tests/integration/transcriptionLostProfileNote.test
  */
 
@@ -8,16 +9,15 @@ import type { TFile } from 'obsidian';
 import {
 	NEVER_CANCELLED,
 	TranscriptionService,
+	type TranscribeRunOptions,
 } from 'src/transcription/TranscriptionService';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { setSelectedProfileId } from 'src/settings/profiles';
+import { setSelectedProfileId, type Profile } from 'src/settings/profiles';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 import { noticeMessages } from '../mocks/obsidian';
-
-const GLOSSARY_NOTE = 'Glossaries/Standup.md';
 
 const standup = partial<TFile>({
 	name: 'standup.webm',
@@ -26,59 +26,131 @@ const standup = partial<TFile>({
 });
 
 /**
- * Settings that transcribe with a glossary read from a note, as the advanced
- * settings apply it.
- * @param body - The text last read from the note
+ * What a run says about the missing note of one profile.
+ * @param name - The profile's name
+ * @param path - The path of the note it was read from
  */
-function glossaryFromNote(body: string): AudioRecorderSettings {
+const lostNoteNotice = (name: string, path: string): string =>
+	`The note of profile "${name}" (${path}) is missing, so the text last read from it is used.`;
+
+/**
+ * Settings that transcribe on the Whisper API with one profile in use whose
+ * note the vault no longer holds.
+ * @param profile - The profile, read from that note
+ * @param overrides - What the run is configured with besides it
+ */
+function withLostNote(
+	profile: Profile,
+	overrides: Partial<AudioRecorderSettings> = {},
+): AudioRecorderSettings {
 	const settings = mergeSettings({
 		transcriptionEnabled: true,
 		transcriptionProvider: 'whisper-api',
 		whisperApiKey: 'sk-glossary',
-		profiles: [
-			{
-				id: 'g1',
-				kind: 'dictionary',
-				name: 'Standup',
-				body,
-				sourcePath: GLOSSARY_NOTE,
-			},
-		],
+		profiles: [profile],
 	});
-	settings.transcriptionAdvancedSettingsEnabled = true;
-	setSelectedProfileId(settings, 'dictionary', 'g1');
+	Object.assign(settings, overrides);
+	setSelectedProfileId(settings, profile.kind, profile.id);
 	return settings;
 }
 
-describe('a transcription whose glossary note is gone', () => {
-	it('names the note, and transcribes with the text last read from it', async () => {
-		const transcribe = jest.fn(() =>
-			Promise.resolve({
-				segments: [{ start: 0, end: 2, text: 'kubectl' }],
-			}),
-		);
-		// The vault answers no file for any path, the note's included.
-		const vaultWithoutNote = createMockApp({
-			vault: { readBinary: () => Promise.resolve(new ArrayBuffer(8)) },
-		}).app;
-		const service = new TranscriptionService(
-			vaultWithoutNote,
-			() => glossaryFromNote('- Kubernetes'),
-			{
-				createProvider: () =>
-					fakeProvider({ capabilities: NO_DIARIZATION, transcribe }),
-			},
-		);
+/**
+ * Transcribes the standup recording over a vault that answers no file for any
+ * path, so every profile note is missing.
+ * @param settings - The settings the run reads
+ * @param options - Run options besides the note for links and the token
+ * @returns The Markdown the run wrote
+ */
+async function transcribe(
+	settings: AudioRecorderSettings,
+	options: Partial<TranscribeRunOptions> = {},
+): Promise<string> {
+	const vaultWithoutNotes = createMockApp({
+		vault: { readBinary: () => Promise.resolve(new ArrayBuffer(8)) },
+	}).app;
+	const service = new TranscriptionService(
+		vaultWithoutNotes,
+		() => settings,
+		{
+			createProvider: () =>
+				fakeProvider({
+					capabilities: NO_DIARIZATION,
+					transcribe: () =>
+						Promise.resolve({
+							segments: [{ start: 0, end: 2, text: 'kubectl' }],
+						}),
+				}),
+		},
+	);
+	const result = (await service.run(standup, {
+		notePathForLinks: 'Meetings/Standup.md',
+		token: NEVER_CANCELLED,
+		...options,
+	})) as { markdown: string };
+	return result.markdown;
+}
 
-		const result = (await service.run(standup, {
-			notePathForLinks: 'Meetings/Standup.md',
-			token: NEVER_CANCELLED,
-		})) as { markdown: string };
+describe('a transcription whose profile note is gone', () => {
+	it('names the glossary note, and transcribes with the text last read from it', async () => {
+		const markdown = await transcribe(
+			withLostNote(
+				{
+					id: 'g1',
+					kind: 'dictionary',
+					name: 'Standup',
+					body: '- Kubernetes',
+					sourcePath: 'Glossaries/Standup.md',
+				},
+				{ transcriptionAdvancedSettingsEnabled: true },
+			),
+		);
 
 		expect(noticeMessages()).toContain(
-			'The note of profile "Standup" (Glossaries/Standup.md) is missing, so the text last read from it is used.',
+			lostNoteNotice('Standup', 'Glossaries/Standup.md'),
 		);
-		expect(transcribe).toHaveBeenCalledTimes(1);
-		expect(result.markdown).toContain('kubectl');
+		expect(markdown).toContain('kubectl');
+	});
+
+	it('says nothing about the prompt note of a pass the run skips', async () => {
+		// Retrying failed parts transcribes without post-processing, whatever
+		// the settings switch on.
+		await transcribe(
+			withLostNote(
+				{
+					id: 'c1',
+					kind: 'llmCleanup',
+					name: 'Cleanup',
+					body: 'Tidy the transcript.',
+					sourcePath: 'Prompts/Cleanup.md',
+				},
+				{ llmPostProcessEnabled: true, llmPostProcessTask: 'cleanup' },
+			),
+			{ skipPostProcessing: true },
+		);
+
+		expect(noticeMessages()).not.toContain(
+			lostNoteNotice('Cleanup', 'Prompts/Cleanup.md'),
+		);
+	});
+
+	it('says nothing about the roster note on an engine that labels no speakers', async () => {
+		// Speaker labels are switched on, and the Whisper API cannot produce
+		// them, so the run reads no participant names.
+		await transcribe(
+			withLostNote(
+				{
+					id: 'p1',
+					kind: 'participants',
+					name: 'Team',
+					body: 'Alex',
+					sourcePath: 'People/Team.md',
+				},
+				{ transcriptionDiarize: true },
+			),
+		);
+
+		expect(noticeMessages()).not.toContain(
+			lostNoteNotice('Team', 'People/Team.md'),
+		);
 	});
 });

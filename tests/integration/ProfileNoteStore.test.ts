@@ -1,8 +1,9 @@
 /**
  * Tests for the store that keeps note-backed profile bodies in step with their
  * notes: the read once the vault is loaded, edits, a rename of the note and of
- * its folder, a note that goes missing or arrives late, a reload of the
- * settings, and the roster the rename dialog appends to a note.
+ * its folder, a note that goes missing or arrives late, a note picked again
+ * after a detach, a reload of the settings, an unload with a write pending, and
+ * the roster the rename dialog appends to a note.
  * @module tests/integration/ProfileNoteStore.test
  */
 
@@ -72,6 +73,7 @@ describe('ProfileNoteStore', () => {
 		settings = settingsWithNoteGlossary('Stale');
 		persist = jest.fn().mockResolvedValue(undefined);
 		plugin = partial<Plugin>({
+			register: jest.fn(),
 			registerEvent: jest.fn((ref: unknown) => ref),
 		});
 		store = new ProfileNoteStore(app, () => settings, persist);
@@ -98,6 +100,28 @@ describe('ProfileNoteStore', () => {
 	/** Puts the note in the vault as the given text. */
 	const seedNote = (content: string): MockTFile =>
 		at(vault().seed([{ path: NOTE, content }]), 0);
+
+	/** Saves new text into the note the way the editor does, and lets it be read. */
+	const saveNote = async (
+		file: MockTFile,
+		content: string,
+	): Promise<void> => {
+		await vault().modify(file, content);
+		vault().trigger('modify', file);
+		await settle();
+	};
+
+	/** Clears the note on the profile's page, and the save that follows reconciles. */
+	const detach = async (): Promise<void> => {
+		delete glossary().sourcePath;
+		await store.reconcile();
+	};
+
+	/** Picks the note on the profile's page again, and the save reconciles. */
+	const pickAgain = async (): Promise<void> => {
+		glossary().sourcePath = NOTE;
+		await store.reconcile();
+	};
 
 	it('reads the note once the vault is loaded, leaving its frontmatter out', async () => {
 		seedNote('---\ntags: [glossary]\n---\n# Terms\n- Kubernetes\n- gRPC\n');
@@ -134,6 +158,22 @@ describe('ProfileNoteStore', () => {
 		await jest.advanceTimersByTimeAsync(PERSIST_DEBOUNCE_MS);
 
 		expect(persist).toHaveBeenCalledTimes(1);
+	});
+
+	it('drops a write still pending when the plugin unloads', async () => {
+		const edited = seedNote('- Kubernetes');
+		store.register(plugin);
+		await settle();
+		await saveNote(edited, '- Helm');
+		persist.mockClear();
+
+		// Obsidian runs what a plugin registered once it unloads the plugin.
+		for (const [cleanup] of jest.mocked(plugin.register).mock.calls) {
+			cleanup();
+		}
+		await jest.advanceTimersByTimeAsync(PERSIST_DEBOUNCE_MS);
+
+		expect(persist).toHaveBeenCalledTimes(0);
 	});
 
 	it('ignores a note no profile is read from', async () => {
@@ -211,6 +251,30 @@ describe('ProfileNoteStore', () => {
 		expect(glossary().body).toBe('- Kubernetes');
 	});
 
+	it('reads the note again when it is picked back after changing while detached', async () => {
+		const note = seedNote('- Kubernetes');
+		store.register(plugin);
+		await settle();
+
+		await detach();
+		// Saved while no profile names it, so no read follows the save.
+		await saveNote(note, '- Helm');
+		await pickAgain();
+
+		expect(glossary().body).toBe('- Helm');
+	});
+
+	it('reads the note again when it is picked back after the body was typed', async () => {
+		seedNote('- Kubernetes');
+		await store.reconcile();
+
+		await detach();
+		glossary().body = 'Typed on the page';
+		await pickAgain();
+
+		expect(glossary().body).toBe('- Kubernetes');
+	});
+
 	it('keeps the text last read when the note goes missing, and names it for a run', async () => {
 		seedNote('- Kubernetes');
 		store.register(plugin);
@@ -221,12 +285,14 @@ describe('ProfileNoteStore', () => {
 		expect(await store.reconcile()).toBe(false);
 		expect(glossary().body).toBe('- Kubernetes');
 		expect(resolveDictionaryTermList(settings)).toEqual(['Kubernetes']);
-		expect(lostProfileSourceNotice(app.vault, settings, ['advanced'])).toBe(
+		expect(
+			lostProfileSourceNotice(app.vault, settings, ['dictionary']),
+		).toBe(
 			'The note of profile "Standup" (Glossaries/Standup.md) is missing, so the text last read from it is used.',
 		);
-		// A run that applies no glossary has nothing to be told about one.
+		// A run that reads no glossary has nothing to be told about one.
 		expect(
-			lostProfileSourceNotice(app.vault, settings, ['llm']),
+			lostProfileSourceNotice(app.vault, settings, ['llmCleanup']),
 		).toBeNull();
 	});
 
@@ -236,7 +302,7 @@ describe('ProfileNoteStore', () => {
 		await settle();
 
 		expect(
-			lostProfileSourceNotice(app.vault, settings, ['advanced']),
+			lostProfileSourceNotice(app.vault, settings, ['dictionary']),
 		).toBeNull();
 	});
 
@@ -344,6 +410,32 @@ describe('appendParticipantsToNote', () => {
 		expect(await append('# Team\n* Alex\n', ['Bob'])).toEqual({
 			added: true,
 			text: '# Team\n* Alex\n* Bob\n',
+		});
+	});
+
+	it('numbers the names on after an ordered roster', async () => {
+		expect(await append('1. Alex\n2) Bob\n', ['Cleo', 'Dana'])).toEqual({
+			added: true,
+			text: '1. Alex\n2) Bob\n3) Cleo\n4) Dana\n',
+		});
+	});
+
+	it('opens an empty checkbox after a roster of tasks', async () => {
+		expect(await append('- [x] Alex\n', ['Bob'])).toEqual({
+			added: true,
+			text: '- [x] Alex\n- [ ] Bob\n',
+		});
+	});
+
+	it('keeps a roster kept in a callout inside it, reading its linked names', async () => {
+		expect(
+			await append('> [!info] Team\n> - [[People/Alex Smith|Alex]]\n', [
+				'Alex',
+				'Bob',
+			]),
+		).toEqual({
+			added: true,
+			text: '> [!info] Team\n> - [[People/Alex Smith|Alex]]\n> - Bob\n',
 		});
 	});
 

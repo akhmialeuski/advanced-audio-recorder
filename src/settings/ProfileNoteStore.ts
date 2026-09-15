@@ -13,12 +13,12 @@
 import { TFile, debounce, getFrontMatterInfo } from 'obsidian';
 import type { App, Plugin, TAbstractFile, Vault } from 'obsidian';
 import type { AudioRecorderSettings } from './settingsSchema';
-import { selectedProfile, type Profile } from './profiles';
-import { PROFILE_KINDS, type ProfileSection } from './profileKinds';
+import { selectedProfile, type Profile, type ProfileKindId } from './profiles';
 import {
 	mergeParticipantNames,
 	parseParticipantBody,
 } from '../speakers/participantRoster';
+import { nextEntryPrefix } from '../utils/listLines';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
@@ -27,9 +27,6 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
  * and each save is a `modify`; data.json follows once the typing pauses.
  */
 const PERSIST_DEBOUNCE_MS = 2000;
-
-/** The bullet a list line opens with, repeated by the names appended after it. */
-const BULLET_LINE = /^\s*([-*+])\s/;
 
 /**
  * The text of a note below its frontmatter. The frontmatter describes the file
@@ -50,7 +47,9 @@ export class ProfileNoteStore {
 	 * The path each profile's body was last read from. Keyed by the profile
 	 * object: a settings reload builds new objects, whose bodies came from
 	 * data.json and may be older than the notes, and because no key is shared
-	 * with them the next reconcile reads every one of them again.
+	 * with them the next reconcile reads every one of them again. A profile
+	 * that names no note has no entry, so the note it is pointed back at is
+	 * read again rather than trusted as read.
 	 */
 	private readonly readFrom = new WeakMap<Profile, string>();
 
@@ -82,6 +81,12 @@ export class ProfileNoteStore {
 	 * @param plugin - Owning plugin, which releases the subscriptions on unload
 	 */
 	register(plugin: Plugin): void {
+		// A write still waiting at unload would save the settings of a plugin
+		// that is gone. Nothing is lost by dropping it: the next load reads
+		// every note again.
+		plugin.register(() => {
+			this.persistSoon.cancel();
+		});
 		this.app.workspace.onLayoutReady(() => {
 			const { vault } = this.app;
 			// A note saved, or a note arriving: created, restored from the
@@ -115,18 +120,23 @@ export class ProfileNoteStore {
 	 * reload of the settings. A note that cannot be found leaves the body as it
 	 * is and is looked for again next time.
 	 *
+	 * A profile that names no note any more loses its read. Its body is edited
+	 * on the page from then on and its note may change unseen, so the same note
+	 * picked again has to be read again. Every settings save runs this, the one
+	 * that detaches a profile included, which is what keeps that rule whole.
+	 *
 	 * Nothing is saved here, so the call is safe from inside a settings save.
 	 * @returns Whether any body changed
 	 */
 	async reconcile(): Promise<boolean> {
-		const paths = new Set(
-			this.getSettings().profiles.flatMap((profile) =>
-				profile.sourcePath !== undefined &&
-				this.readFrom.get(profile) !== profile.sourcePath
-					? [profile.sourcePath]
-					: [],
-			),
-		);
+		const paths = new Set<string>();
+		for (const profile of this.getSettings().profiles) {
+			if (profile.sourcePath === undefined) {
+				this.readFrom.delete(profile);
+			} else if (this.readFrom.get(profile) !== profile.sourcePath) {
+				paths.add(profile.sourcePath);
+			}
+		}
 		const results = await Promise.all(
 			[...paths].map((path) => this.readNote(path)),
 		);
@@ -213,11 +223,12 @@ export class ProfileNoteStore {
  *
  * The note is the user's document, so it is appended to and never rewritten:
  * its headings, comments, and order stay as they are. Each new name goes on a
- * line of its own after the last line of text, opened with the bullet that line
- * uses, so a bulleted roster stays one list. The names already in the note are
- * read inside the same atomic write, so an edit landing meanwhile is neither
- * lost nor duplicated. The profile's body follows through the `modify` the
- * write raises.
+ * line of its own after the last line of text and continues the list that line
+ * belongs to, through the same grammar the roster is read with: the same quote
+ * and bullet, the next number of an ordered list, an open box after a task. The
+ * names already in the note are read inside the same atomic write, so an edit
+ * landing meanwhile is neither lost nor duplicated. The profile's body follows
+ * through the `modify` the write raises.
  * @param vault - The vault holding the note
  * @param file - The note the roster is read from
  * @param names - Names to add
@@ -239,36 +250,38 @@ export async function appendParticipantsToNote(
 		}
 		added = true;
 		const text = content.trimEnd();
-		const lastLine = text.slice(text.lastIndexOf('\n') + 1);
-		const bullet = BULLET_LINE.exec(lastLine)?.[1];
-		const prefix = bullet === undefined ? '' : `${bullet} `;
-		const lines = fresh.map((name) => `${prefix}${name}`).join('\n');
-		return `${text}${text === '' ? '' : '\n'}${lines}\n`;
+		// Each name continues the line before it, so an ordered list counts on.
+		let previous = text.slice(text.lastIndexOf('\n') + 1);
+		const lines = fresh.map((name) => {
+			previous = `${nextEntryPrefix(previous)}${name}`;
+			return previous;
+		});
+		return `${text}${text === '' ? '' : '\n'}${lines.join('\n')}\n`;
 	});
 	return added;
 }
 
 /**
- * What a run is told about the profiles it applies whose note is gone.
+ * What a run is told about the profiles it reads whose note is gone.
  *
  * Such a profile keeps the text last read from its note: a note deleted, moved
  * outside Obsidian, or not yet delivered by sync must not empty a glossary in
  * the middle of a transcription. The run goes ahead on that text, and this
- * names what it is running on.
+ * names what it is running on. The caller names the kinds it reads by the same
+ * gates that decide whether it reads them, so a run is never told about a note
+ * it has no use for.
  * @param vault - The vault the notes are looked up in
  * @param settings - The active settings
- * @param sections - Blocks of the settings whose kinds this run applies
+ * @param kinds - Kinds whose selected profile the run reads
  * @returns The notice text, or null when every note is in place
  */
 export function lostProfileSourceNotice(
 	vault: Vault,
 	settings: AudioRecorderSettings,
-	sections: readonly ProfileSection[],
+	kinds: readonly ProfileKindId[],
 ): string | null {
-	const lost = PROFILE_KINDS.filter(
-		(kind) => sections.includes(kind.section) && kind.visible(settings),
-	).flatMap((kind) => {
-		const profile = selectedProfile(settings, kind.id);
+	const lost = kinds.flatMap((kind) => {
+		const profile = selectedProfile(settings, kind);
 		return profile?.sourcePath !== undefined &&
 			vault.getFileByPath(profile.sourcePath) === null
 			? [`"${profile.name}" (${profile.sourcePath})`]

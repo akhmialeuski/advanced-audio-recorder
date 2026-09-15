@@ -348,10 +348,10 @@ describe('AutoChapterService.generate', () => {
 		const service = makeService({
 			llm,
 			store,
+			// Chapters switched off in the settings: the run still reads the
+			// guidance it was handed, so it still says where that came from.
 			settings: {
-				// The run speaks for the catalogues on screen, and guidance is
-				// on screen while chapters are switched on.
-				transcriptionAutoChaptersEnabled: true,
+				transcriptionAutoChaptersEnabled: false,
 				...agendaGuidance('Prompts/Agenda.md'),
 			},
 		});

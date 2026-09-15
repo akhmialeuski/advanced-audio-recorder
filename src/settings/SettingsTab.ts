@@ -810,15 +810,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				if (path === undefined) {
 					return;
 				}
-				// Opened only when it exists: a link to a missing note creates
-				// an empty one, and reading that would empty the body.
 				const note = this.app.vault.getFileByPath(path);
 				if (!note) {
 					new Notice(`The note ${path} is missing.`);
 					return;
 				}
 				closeSettings(this.app);
-				void this.app.workspace.openLinkText(note.path, '', 'tab');
+				// Opened as the file the path resolves to. As link text, a '#',
+				// '^' or '|' in the note's name would be read as link syntax, and
+				// a link that resolves to nothing creates an empty note.
+				void this.app.workspace.getLeaf('tab').openFile(note);
 			},
 			entries: (settings) =>
 				profilesOfKind(settings.profiles, kindId).map((profile) => {

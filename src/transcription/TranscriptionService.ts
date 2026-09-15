@@ -81,6 +81,7 @@ import {
 	type RecordingRange,
 } from './partFailure';
 import {
+	PROMPT_KIND_OF_TASK,
 	resolveDictionaryTermList,
 	resolveLlmPrompt,
 	resolveRunParticipants,
@@ -488,10 +489,11 @@ export class TranscriptionService {
 		// to the provider's cap, and a Whisper prompt is bounded to its token
 		// window, so a request never carries terms the provider would reject or
 		// silently ignore. Whatever is dropped is surfaced below.
+		const dictionaryTerms = resolveDictionaryTermList(settings);
 		const dictionaryPlan = planDictionaryBias(
 			settings.transcriptionProvider,
 			settings.deepgramModel,
-			resolveDictionaryTermList(settings),
+			dictionaryTerms,
 		);
 		const dictionaryNotice = describeDictionaryOmission(dictionaryPlan);
 		if (dictionaryNotice) {
@@ -499,13 +501,27 @@ export class TranscriptionService {
 			// implying every configured term was applied.
 			new Notice(dictionaryNotice);
 		}
+		// One decision for whether the post-processing pass runs, read by the
+		// pass below and by the warning about the prompt it would send.
+		const postProcessing =
+			settings.llmPostProcessEnabled && !options.skipPostProcessing;
 		// The glossary, the roster, and the post-processing prompt of this run
 		// may be read from notes, and a note that went missing leaves its
-		// profile on the text last read from it rather than on nothing.
+		// profile on the text last read from it rather than on nothing. The run
+		// names only what it reads, by the gates that decide it reads it: terms
+		// resolved at all, speakers labelled, a pass that runs.
 		const lostSourceNotice = lostProfileSourceNotice(
 			this.app.vault,
 			settings,
-			['transcription', 'advanced', 'llm'],
+			[
+				...(dictionaryTerms.length > 0
+					? (['dictionary'] as const)
+					: []),
+				...(diarize ? (['participants'] as const) : []),
+				...(postProcessing
+					? [PROMPT_KIND_OF_TASK[settings.llmPostProcessTask]]
+					: []),
+			],
 		);
 		if (lostSourceNotice) {
 			new Notice(lostSourceNotice);
@@ -740,7 +756,7 @@ export class TranscriptionService {
 		}
 
 		let translation: TranscriptTranslation | undefined;
-		if (settings.llmPostProcessEnabled && !options.skipPostProcessing) {
+		if (postProcessing) {
 			this.throwIfCancelled(token);
 			const translating = settings.llmPostProcessTask === 'translate';
 			options.onProgress?.(

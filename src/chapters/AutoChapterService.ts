@@ -209,7 +209,7 @@ export class AutoChapterService {
 			const lostSourceNotice = lostProfileSourceNotice(
 				this.app.vault,
 				settings,
-				['chapters'],
+				['chapterPrompt'],
 			);
 			if (lostSourceNotice) {
 				new Notice(lostSourceNotice);

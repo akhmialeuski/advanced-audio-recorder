@@ -628,6 +628,30 @@ describe('AudioRecorderSettingTab', () => {
 			expect(mockSettings.transcriptionLanguage).toBe('en');
 		});
 
+		/** Pause the tab waits for after the last text write before it saves. */
+		const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
+
+		it('saves a text control once, after the typing pauses', async () => {
+			// Every keystroke is a write, so the save waits for a pause. Without
+			// letting that pause pass, no test sees the save happen at all.
+			jest.useFakeTimers();
+			try {
+				saveSettingsMock.mockClear();
+				void tab.setControlValue('transcriptionLanguage', 'e');
+				void tab.setControlValue('transcriptionLanguage', 'en');
+
+				expect(saveSettingsMock).toHaveBeenCalledTimes(0);
+
+				await jest.advanceTimersByTimeAsync(
+					TEXT_SETTING_SAVE_DEBOUNCE_MS,
+				);
+
+				expect(saveSettingsMock).toHaveBeenCalledTimes(1);
+			} finally {
+				jest.useRealTimers();
+			}
+		});
+
 		it('leaves an ordinary value untouched and asks for no re-render', async () => {
 			await tab.setControlValue('debug', true);
 
@@ -1823,30 +1847,38 @@ describe('AudioRecorderSettingTab', () => {
 				).toBe('In use, Note missing, No terms');
 			});
 
-			it('opens the note in a tab of its own and leaves the settings', async () => {
+			it('opens the note file itself in a tab of its own and leaves the settings', async () => {
 				const profile = await glossaryAndNote();
+				// As link text this path would name "Glossaries/C", because a '#'
+				// starts a heading there.
+				const hashNote = 'Glossaries/C# terms.md';
+				const note = at(
+					asMockVault(tab.app.vault).seed([
+						{ path: hashNote, content: '- LINQ' },
+					]),
+					0,
+				);
 				const close = jest.fn();
 				tab.app.setting = { close };
-				await tab.setControlValue(sourceKey(profile.id), NOTE);
+				await tab.setControlValue(sourceKey(profile.id), hashNote);
 
 				rowIn(profilePage(), 'Open note').action?.(createDiv(), 0);
 
 				expect(close).toHaveBeenCalledTimes(1);
-				expect(tab.app.workspace.openLinkText).toHaveBeenCalledWith(
-					NOTE,
-					'',
-					'tab',
-				);
+				expect(tab.app.workspace.getLeaf).toHaveBeenCalledWith('tab');
+				expect(
+					tab.app.workspace.getLeaf('tab').openFile,
+				).toHaveBeenCalledWith(note);
 			});
 
-			it('opens nothing for a note that is gone, since opening would create it empty', async () => {
+			it('opens nothing for a note that is gone, and says so', async () => {
 				const profile = await glossaryAndNote();
 				await tab.setControlValue(sourceKey(profile.id), NOTE);
 				asMockVault(tab.app.vault).forget(NOTE);
 
 				rowIn(profilePage(), 'Open note').action?.(createDiv(), 0);
 
-				expect(tab.app.workspace.openLinkText).not.toHaveBeenCalled();
+				expect(tab.app.workspace.getLeaf).not.toHaveBeenCalled();
 				expect(Notice).toHaveBeenCalledWith(
 					`The note ${NOTE} is missing.`,
 				);
@@ -1857,7 +1889,7 @@ describe('AudioRecorderSettingTab', () => {
 
 				rowIn(profilePage(), 'Open note').action?.(createDiv(), 0);
 
-				expect(tab.app.workspace.openLinkText).not.toHaveBeenCalled();
+				expect(tab.app.workspace.getLeaf).not.toHaveBeenCalled();
 				expect(Notice).not.toHaveBeenCalledWith(
 					expect.stringContaining('is missing'),
 				);
