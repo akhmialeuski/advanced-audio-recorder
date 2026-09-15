@@ -19,6 +19,7 @@ import type {
 	LlmProviderId,
 } from '../settings/settingsSchema';
 import { resolveChapterGuidance } from '../settings/profileResolution';
+import { lostProfileSourceNotice } from '../settings/ProfileNoteStore';
 import { createLlmProvider } from '../transcription/factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { probeMediaDurationSeconds } from '../utils/mediaDuration';
@@ -203,6 +204,16 @@ export class AutoChapterService {
 			// The selected chapter profile steers how the recording is split;
 			// an empty selection appends no guidance and keeps the base prompt.
 			const guidance = resolveChapterGuidance(settings);
+			// Guidance kept in a note that went missing is the text last read
+			// from it, and the run says so instead of passing it off as current.
+			const lostSourceNotice = lostProfileSourceNotice(
+				this.app.vault,
+				settings,
+				['chapterPrompt'],
+			);
+			if (lostSourceNotice) {
+				new Notice(lostSourceNotice);
+			}
 			const prompt = buildChapterPrompt(lines, {
 				...(language ? { language } : {}),
 				...(guidance ? { guidance } : {}),

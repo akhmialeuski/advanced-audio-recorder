@@ -4,7 +4,7 @@
  * @module tests/unit/SettingsTab.test
  */
 
-import { App } from 'obsidian';
+import { App, Notice } from 'obsidian';
 import {
 	groupOf,
 	listIn,
@@ -38,6 +38,7 @@ import { tick } from '../helpers/async';
 import { allEls, el, maybeEl, textsOf } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
 import {
+	rowInput,
 	rowSelect,
 	rowToggle,
 	rowToggleOn,
@@ -53,6 +54,7 @@ import {
 } from '../helpers/mediaMocks';
 import { closeSettingsPage } from 'src/obsidian/settingsNavigation';
 import { listFormatAvailability } from 'src/audio/AudioCapabilityDetector';
+import { TextInputSuggest } from 'src/ui/TextInputSuggest';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -131,6 +133,21 @@ jest.mock('src/ui/ModelIdModal', () => ({
 			return { open: (): void => undefined };
 		}),
 }));
+
+// The real suggester, recorded: the candidates a field is offered are a
+// closure the tab hands over, and a test reads them through its arguments.
+jest.mock('src/ui/TextInputSuggest', () => {
+	const actual: {
+		TextInputSuggest: new (...args: unknown[]) => unknown;
+	} = jest.requireActual('src/ui/TextInputSuggest');
+	return {
+		TextInputSuggest: jest
+			.fn()
+			.mockImplementation(
+				(...args: unknown[]) => new actual.TextInputSuggest(...args),
+			),
+	};
+});
 
 /**
  * Plugin name as the manifest carries it. The tab names its declarative
@@ -609,6 +626,30 @@ describe('AudioRecorderSettingTab', () => {
 			void tab.setControlValue('transcriptionLanguage', '  en  ');
 
 			expect(mockSettings.transcriptionLanguage).toBe('en');
+		});
+
+		/** Pause the tab waits for after the last text write before it saves. */
+		const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
+
+		it('saves a text control once, after the typing pauses', async () => {
+			// Every keystroke is a write, so the save waits for a pause. Without
+			// letting that pause pass, no test sees the save happen at all.
+			jest.useFakeTimers();
+			try {
+				saveSettingsMock.mockClear();
+				void tab.setControlValue('transcriptionLanguage', 'e');
+				void tab.setControlValue('transcriptionLanguage', 'en');
+
+				expect(saveSettingsMock).toHaveBeenCalledTimes(0);
+
+				await jest.advanceTimersByTimeAsync(
+					TEXT_SETTING_SAVE_DEBOUNCE_MS,
+				);
+
+				expect(saveSettingsMock).toHaveBeenCalledTimes(1);
+			} finally {
+				jest.useRealTimers();
+			}
 		});
 
 		it('leaves an ordinary value untouched and asks for no re-render', async () => {
@@ -1719,6 +1760,176 @@ describe('AudioRecorderSettingTab', () => {
 			expect(tab.getControlValue('profile.dictionary.body#gone')).toBe(
 				'',
 			);
+		});
+
+		describe('a profile whose body is read from a note', () => {
+			const NOTE = 'Glossaries/Standup.md';
+			const sourceKey = (id: string): string =>
+				`profile.dictionary.source#${id}`;
+			const profilePage = (): GroupDefinition =>
+				pageOf(tab.getSettingDefinitions(), 'New profile');
+			const shown = (predicate: unknown): boolean =>
+				typeof predicate === 'function'
+					? (predicate as () => boolean)()
+					: predicate !== false;
+
+			/** Adds one glossary and puts the note it can be pointed at in the vault. */
+			const glossaryAndNote = async (): Promise<StoredProfile> => {
+				listOf('Dictionary profiles').addItem?.action();
+				await tick();
+				asMockVault(tab.app.vault).seed([
+					{ path: NOTE, content: '- Kubernetes' },
+					{ path: 'audio/rec.wav', data: new ArrayBuffer(4) },
+				]);
+				return at(glossaries(mockSettings), 0);
+			};
+
+			it('binds the profile to a note and detaches it again', async () => {
+				const profile = await glossaryAndNote();
+				saveSettingsMock.mockClear();
+
+				await tab.setControlValue(sourceKey(profile.id), NOTE);
+
+				expect(profile.sourcePath).toBe(NOTE);
+				expect(tab.getControlValue(sourceKey(profile.id))).toBe(NOTE);
+				// The save is what reads the note into the body.
+				expect(saveSettingsMock).toHaveBeenCalledTimes(1);
+
+				await tab.setControlValue(sourceKey(profile.id), '');
+
+				expect('sourcePath' in profile).toBe(false);
+				expect(tab.getControlValue(sourceKey(profile.id))).toBe('');
+			});
+
+			it('trades the body editor for the note on the profile page', async () => {
+				const profile = await glossaryAndNote();
+				const bodyBlock = (): GroupDefinition | undefined =>
+					(profilePage().items as GroupDefinition[]).find((group) =>
+						group.items.some(
+							(item) => (item as RowDefinition).name === 'Terms',
+						),
+					);
+
+				expect(shown(bodyBlock()?.visible)).toBe(true);
+				expect(shown(rowIn(profilePage(), 'Open note').visible)).toBe(
+					false,
+				);
+
+				await tab.setControlValue(sourceKey(profile.id), NOTE);
+
+				expect(shown(bodyBlock()?.visible)).toBe(false);
+				expect(shown(rowIn(profilePage(), 'Open note').visible)).toBe(
+					true,
+				);
+			});
+
+			it('stores only a path that names a note', async () => {
+				await glossaryAndNote();
+				const validate = rowIn(profilePage(), 'Source note').control
+					?.validate as (value: string) => string | undefined;
+
+				expect(validate(NOTE)).toBeUndefined();
+				expect(validate('')).toBeUndefined();
+				expect(validate('Glossaries/Stand')).toBe(
+					'No note at this path.',
+				);
+				expect(validate('audio/rec.wav')).toBe('No note at this path.');
+			});
+
+			it('says on the entry when the note is gone', async () => {
+				const profile = await glossaryAndNote();
+				await tab.setControlValue(sourceKey(profile.id), NOTE);
+
+				asMockVault(tab.app.vault).forget(NOTE);
+
+				expect(
+					(profilePage() as { displayValue?: unknown }).displayValue,
+				).toBe('In use, Note missing, No terms');
+			});
+
+			it('opens the note file itself in a tab of its own and leaves the settings', async () => {
+				const profile = await glossaryAndNote();
+				// As link text this path would name "Glossaries/C", because a '#'
+				// starts a heading there.
+				const hashNote = 'Glossaries/C# terms.md';
+				const note = at(
+					asMockVault(tab.app.vault).seed([
+						{ path: hashNote, content: '- LINQ' },
+					]),
+					0,
+				);
+				const close = jest.fn();
+				tab.app.setting = { close };
+				await tab.setControlValue(sourceKey(profile.id), hashNote);
+
+				rowIn(profilePage(), 'Open note').action?.(createDiv(), 0);
+
+				expect(close).toHaveBeenCalledTimes(1);
+				expect(tab.app.workspace.getLeaf).toHaveBeenCalledWith('tab');
+				expect(
+					tab.app.workspace.getLeaf('tab').openFile,
+				).toHaveBeenCalledWith(note);
+			});
+
+			it('opens nothing for a note that is gone, and says so', async () => {
+				const profile = await glossaryAndNote();
+				await tab.setControlValue(sourceKey(profile.id), NOTE);
+				asMockVault(tab.app.vault).forget(NOTE);
+
+				rowIn(profilePage(), 'Open note').action?.(createDiv(), 0);
+
+				expect(tab.app.workspace.getLeaf).not.toHaveBeenCalled();
+				expect(Notice).toHaveBeenCalledWith(
+					`The note ${NOTE} is missing.`,
+				);
+			});
+
+			it('opens nothing for a profile typed into the settings', async () => {
+				await glossaryAndNote();
+
+				rowIn(profilePage(), 'Open note').action?.(createDiv(), 0);
+
+				expect(tab.app.workspace.getLeaf).not.toHaveBeenCalled();
+				expect(Notice).not.toHaveBeenCalledWith(
+					expect.stringContaining('is missing'),
+				);
+			});
+
+			it('writes no path for a profile deleted while its page was open', async () => {
+				const profile = await glossaryAndNote();
+
+				await tab.setControlValue(sourceKey('gone'), NOTE);
+
+				expect(profile.sourcePath).toBeUndefined();
+				expect(tab.getControlValue(sourceKey('gone'))).toBe('');
+			});
+
+			it('suggests only notes for the path below Obsidian 1.13', () => {
+				// The file control is native from 1.13; below it the tab's own
+				// suggester carries the filter the declaration names.
+				mockSettings.profiles = [
+					dictionaryProfile('g1', 'Standup', ''),
+				];
+				const legacyTab = withoutDeclarativeSettings(() =>
+					tabOver(mockSettings),
+				);
+				asMockVault(legacyTab.app.vault).seed([
+					{ path: NOTE, content: '- Kubernetes' },
+					{ path: 'audio/rec.wav', data: new ArrayBuffer(4) },
+				]);
+
+				legacyTab.display();
+
+				const input = rowInput(
+					settingRow(legacyTab.containerEl, 'Source note'),
+				);
+				const [, , candidates] =
+					jest
+						.mocked(TextInputSuggest)
+						.mock.calls.find(([, inputEl]) => inputEl === input) ??
+					[];
+				expect(candidates?.()).toEqual([NOTE]);
+			});
 		});
 
 		it('offers no model list for the engine that serves none', () => {

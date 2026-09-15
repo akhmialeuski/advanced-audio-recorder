@@ -44,6 +44,8 @@ export interface ProfileKind {
 	readonly selectionKey: string;
 	/** Control key namespace the body is bound to, per profile. */
 	readonly bodyKey: string;
+	/** Control key namespace of the note the body is read from, per profile. */
+	readonly sourceKey: string;
 	/** What a profile's entry says about it without being opened. */
 	readonly summary: (profile: Profile) => string;
 	/** Whether this kind is on screen at all. */
@@ -51,7 +53,10 @@ export interface ProfileKind {
 }
 
 /** A kind as it is declared: the keys are the id's to give, not the author's. */
-type ProfileKindSpec = Omit<ProfileKind, 'selectionKey' | 'bodyKey'>;
+type ProfileKindSpec = Omit<
+	ProfileKind,
+	'selectionKey' | 'bodyKey' | 'sourceKey'
+>;
 
 /**
  * Completes a declared kind with the control keys its rows bind to. The keys
@@ -65,6 +70,7 @@ function defineKind(spec: ProfileKindSpec): ProfileKind {
 		...spec,
 		selectionKey: `profile.${spec.id}.selection`,
 		bodyKey: `profile.${spec.id}.body`,
+		sourceKey: `profile.${spec.id}.source`,
 	};
 }
 

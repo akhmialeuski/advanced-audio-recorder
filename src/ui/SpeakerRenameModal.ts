@@ -29,9 +29,11 @@ import {
 	addProfile,
 	createProfile,
 	effectiveProfileId,
+	findProfile,
 	profileNameRejection,
 	profilesOfKind,
 } from '../settings/profiles';
+import { appendParticipantsToNote } from '../settings/ProfileNoteStore';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	addParticipantsToProfile,
@@ -622,6 +624,24 @@ export class SpeakerRenameModal extends PluginModal {
 			return;
 		}
 		const settings = this.options.getSettings();
+		const target = findProfile(settings.profiles, this.selectedProfileId);
+		// A roster kept in a note grows in the note. Its body is only the text
+		// last read from there, so a name added to the body alone would be gone
+		// with the next read.
+		if (
+			target?.kind === 'participants' &&
+			target.sourcePath !== undefined
+		) {
+			const note = this.app.vault.getFileByPath(target.sourcePath);
+			if (!note) {
+				new Notice(
+					`The note of profile "${target.name}" (${target.sourcePath}) is missing, so the new names were not added to it.`,
+				);
+				return;
+			}
+			await appendParticipantsToNote(this.app.vault, note, names);
+			return;
+		}
 		// Undefined is a roster that did not grow - every name entered was
 		// already in it - and there is then nothing to save.
 		const grown = addParticipantsToProfile(

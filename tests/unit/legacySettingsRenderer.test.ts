@@ -5,7 +5,7 @@
  * @module tests/unit/legacySettingsRenderer.test
  */
 
-import type { SettingDefinitionItem } from 'obsidian';
+import type { SettingDefinitionItem, TFile } from 'obsidian';
 import { at } from '../helpers/assertions';
 import { allEls, el, maybeEl } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
@@ -478,6 +478,49 @@ describe('LegacySettingsRenderer', () => {
 			expect(input.classList.contains('aar-input-invalid')).toBe(true);
 			expect(rejectionOn('Recording folder')).toBe(
 				'Use a vault-relative path.',
+			);
+		});
+
+		it('suggests files for a file control, narrowed by the filter it declares', () => {
+			// The file control is native from 1.13 on; below it the tab supplies
+			// the suggester, and the filter has to reach it or every file in the
+			// vault would be offered as a note.
+			const attachFolderSuggest = jest.fn();
+			const attachFileSuggest = jest.fn();
+			renderer = new LegacySettingsRenderer(host, {
+				attachFolderSuggest,
+				attachFileSuggest,
+			});
+			const filter = (file: TFile): boolean => file.extension === 'md';
+			renderer.render(containerEl, [
+				{
+					name: 'Source note',
+					control: {
+						type: 'file',
+						key: 'note',
+						filter,
+						validate: (value: string) =>
+							value === '' || value.endsWith('.md')
+								? undefined
+								: 'No note at this path.',
+					},
+				},
+			]);
+
+			const input = rowInput(rowFor('Source note'));
+			expect(attachFileSuggest).toHaveBeenCalledWith(input, filter);
+			expect(attachFolderSuggest).not.toHaveBeenCalled();
+
+			input.value = 'Glossaries/Stand';
+			input.dispatchEvent(new Event('input'));
+			expect(setControlValue).not.toHaveBeenCalled();
+			expect(rejectionOn('Source note')).toBe('No note at this path.');
+
+			input.value = 'Glossaries/Standup.md';
+			input.dispatchEvent(new Event('input'));
+			expect(setControlValue).toHaveBeenCalledWith(
+				'note',
+				'Glossaries/Standup.md',
 			);
 		});
 

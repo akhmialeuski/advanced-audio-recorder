@@ -120,6 +120,25 @@ function requestedSystemPrompt(llm: LlmProvider): string {
 	return call[0].system;
 }
 
+/**
+ * Settings selecting the chapter guidance profile "Agenda".
+ * @param sourcePath - The note the guidance is read from, when it is kept in one
+ */
+function agendaGuidance(sourcePath?: string): Partial<AudioRecorderSettings> {
+	return {
+		profiles: [
+			{
+				id: 'p',
+				kind: 'chapterPrompt',
+				name: 'Agenda',
+				body: 'Split by agenda item.',
+				...(sourcePath === undefined ? {} : { sourcePath }),
+			},
+		],
+		selectedProfileIds: { ...noSelectedProfiles(), chapterPrompt: 'p' },
+	};
+}
+
 /** A transcript with no detected language (the diarizer returned none). */
 const TRANSCRIPT_NO_LANGUAGE: Transcript = {
 	segments: [
@@ -315,24 +334,33 @@ describe('AutoChapterService.generate', () => {
 		const service = makeService({
 			llm,
 			store,
+			settings: agendaGuidance(),
+		});
+
+		await service.generate(tf('rec.wav'), TRANSCRIPT);
+
+		expect(requestedSystemPrompt(llm)).toContain('Split by agenda item.');
+	});
+
+	it('says when the guidance note is gone, and divides by the text last read from it', async () => {
+		const llm = makeLlm('[{"time": 0, "title": "Intro"}]');
+		const { store } = makeStore();
+		const service = makeService({
+			llm,
+			store,
+			// Chapters switched off in the settings: the run still reads the
+			// guidance it was handed, so it still says where that came from.
 			settings: {
-				profiles: [
-					{
-						id: 'p',
-						kind: 'chapterPrompt',
-						name: 'Agenda',
-						body: 'Split by agenda item.',
-					},
-				],
-				selectedProfileIds: {
-					...noSelectedProfiles(),
-					chapterPrompt: 'p',
-				},
+				transcriptionAutoChaptersEnabled: false,
+				...agendaGuidance('Prompts/Agenda.md'),
 			},
 		});
 
 		await service.generate(tf('rec.wav'), TRANSCRIPT);
 
+		expect(noticeTexts()).toContain(
+			'The note of profile "Agenda" (Prompts/Agenda.md) is missing, so the text last read from it is used.',
+		);
 		expect(requestedSystemPrompt(llm)).toContain('Split by agenda item.');
 	});
 

@@ -668,12 +668,16 @@ function normalizeProfiles(merged: AudioRecorderSettings): void {
 			if (id === '' || name === '') {
 				return [];
 			}
+			// Rebuilt field by field, so a field this list does not name is
+			// lost on the next load. An empty path is no note at all.
+			const sourcePath = legacyString(entry.sourcePath);
 			return [
 				{
 					id,
 					kind: entry.kind as ProfileKindId,
 					name,
 					body: legacyString(entry.body),
+					...(sourcePath === '' ? {} : { sourcePath }),
 				},
 			];
 		},

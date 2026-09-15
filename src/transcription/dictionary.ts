@@ -7,14 +7,18 @@
  * @module transcription/dictionary
  */
 
+import { listEntries } from '../utils/listLines';
+
 /**
- * Splits the raw dictionary text into trimmed, de-duplicated terms.
- * @param raw - The multi-line dictionary setting value
+ * Splits the raw dictionary text into trimmed, de-duplicated terms. The text is
+ * read as a list, so a glossary kept in a note as `- Kubernetes` under a
+ * heading yields the term `Kubernetes` and no term for the heading.
+ * @param raw - The multi-line dictionary body
  * @returns Terms in first-seen order, without blanks or case-insensitive
  * duplicates
  */
 export function parseDictionary(raw: string): string[] {
-	return dedupeTerms(raw.split(/\r?\n/));
+	return dedupeTerms(listEntries(raw));
 }
 
 /**

@@ -48,11 +48,20 @@ export interface Profile {
 	/** Display name shown in the pickers and on the profile's page. */
 	name: string;
 	/**
-	 * The body as the user edits it: free text for a prompt, one entry per
-	 * line for a glossary or a roster. Kept as text whatever a run makes of
-	 * it, so the editor, the store, and the migration all address one field.
+	 * The body as a run reads it: free text for a prompt, one entry per line
+	 * for a glossary or a roster. Kept as text whatever a run makes of it, so
+	 * the editor, the store, and the migration all address one field. For a
+	 * note-backed profile this holds the last text read from `sourcePath`,
+	 * kept current by ProfileNoteStore, so every reader stays synchronous and
+	 * the cached copy still answers before the first read of a session.
 	 */
 	body: string;
+	/**
+	 * Vault path of the note the body is read from. Absent for a profile whose
+	 * body is typed into the settings, which is what every profile stored
+	 * before this field existed is, so none of them needs a migration.
+	 */
+	sourcePath?: string;
 }
 
 /**
