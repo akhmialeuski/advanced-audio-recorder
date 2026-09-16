@@ -34,6 +34,7 @@ import {
 	profilesOfKind,
 } from '../settings/profiles';
 import { appendParticipantsToNote } from '../settings/ProfileNoteStore';
+import { ProfileTextSource } from '../settings/ProfileTextSource';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	addParticipantsToProfile,
@@ -122,6 +123,11 @@ export class SpeakerRenameModal extends PluginModal {
 	/** Whether to rewrite notes that carry no timecode links to scope by. */
 	private allowBroad = false;
 	private profileDropdown: DropdownComponent | null = null;
+	/**
+	 * Rewrites the picker's description for the profile now picked. Held so a
+	 * profile created in the dialog is described without rebuilding it.
+	 */
+	private describeProfilePick: (() => void) | null = null;
 	private newProfileInput: HTMLInputElement | null = null;
 	/** Plays a speaker's first turn; created lazily on the first preview. */
 	private preview: SpeakerPreviewPlayer | null = null;
@@ -349,15 +355,13 @@ export class SpeakerRenameModal extends PluginModal {
 		section: TranscriptSection,
 	): void {
 		const stored = section.participants.length;
-		new Setting(this.contentEl)
+		const suggests = `This recording suggests ${
+			stored > 0
+				? `${String(stored)} stored name${stored > 1 ? 's' : ''}`
+				: 'no names yet'
+		}. Pick a profile to add its names to the suggestions; every name you apply is saved to both.`;
+		const picker = new Setting(this.contentEl)
 			.setName('Participant profile')
-			.setDesc(
-				`This recording suggests ${
-					stored > 0
-						? `${String(stored)} stored name${stored > 1 ? 's' : ''}`
-						: 'no names yet'
-				}. Pick a profile to add its names to the suggestions; every name you apply is saved to both.`,
-			)
 			.addDropdown((dropdown) => {
 				dropdown.addOption(RECORDING_ROSTER_OPTION, 'This recording');
 				for (const profile of profilesOfKind(
@@ -367,9 +371,30 @@ export class SpeakerRenameModal extends PluginModal {
 					dropdown.addOption(profile.id, profile.name);
 				}
 				dropdown.setValue(this.selectedProfileId);
-				dropdown.onChange((value) => (this.selectedProfileId = value));
+				dropdown.onChange((value) => {
+					this.selectedProfileId = value;
+					this.describeProfilePick?.();
+				});
 				this.profileDropdown = dropdown;
 			});
+		// Rewritten in place on every pick: rebuilding the dialog would drop
+		// the names already typed into it.
+		const profileText = new ProfileTextSource(this.app.vault);
+		this.describeProfilePick = (): void => {
+			picker.setDesc(
+				profileText.describe(
+					suggests,
+					findProfile(
+						profilesOfKind(
+							this.options.getSettings().profiles,
+							'participants',
+						),
+						this.selectedProfileId,
+					),
+				),
+			);
+		};
+		this.describeProfilePick();
 		new Setting(this.contentEl)
 			.setName('New profile')
 			.addText((text) => {
@@ -427,6 +452,7 @@ export class SpeakerRenameModal extends PluginModal {
 		this.selectedProfileId = created.id;
 		this.profileDropdown?.addOption(created.id, created.name);
 		this.profileDropdown?.setValue(created.id);
+		this.describeProfilePick?.();
 		if (this.newProfileInput) {
 			this.newProfileInput.value = '';
 		}
@@ -632,10 +658,11 @@ export class SpeakerRenameModal extends PluginModal {
 			target?.kind === 'participants' &&
 			target.sourcePath !== undefined
 		) {
-			const note = this.app.vault.getFileByPath(target.sourcePath);
+			const profileText = new ProfileTextSource(this.app.vault);
+			const note = profileText.note(target);
 			if (!note) {
 				new Notice(
-					`The note of profile "${target.name}" (${target.sourcePath}) is missing, so the new names were not added to it.`,
+					`${profileText.missingNote(target.name, target.sourcePath)}, so the new names were not added to it.`,
 				);
 				return;
 			}

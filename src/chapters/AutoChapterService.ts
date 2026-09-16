@@ -19,7 +19,7 @@ import type {
 	LlmProviderId,
 } from '../settings/settingsSchema';
 import { resolveChapterGuidance } from '../settings/profileResolution';
-import { lostProfileSourceNotice } from '../settings/ProfileNoteStore';
+import { ProfileTextSource } from '../settings/ProfileTextSource';
 import { createLlmProvider } from '../transcription/factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { probeMediaDurationSeconds } from '../utils/mediaDuration';
@@ -206,11 +206,9 @@ export class AutoChapterService {
 			const guidance = resolveChapterGuidance(settings);
 			// Guidance kept in a note that went missing is the text last read
 			// from it, and the run says so instead of passing it off as current.
-			const lostSourceNotice = lostProfileSourceNotice(
+			const lostSourceNotice = new ProfileTextSource(
 				this.app.vault,
-				settings,
-				['chapterPrompt'],
-			);
+			).lostNotesNotice(settings, ['chapterPrompt']);
 			if (lostSourceNotice) {
 				new Notice(lostSourceNotice);
 			}

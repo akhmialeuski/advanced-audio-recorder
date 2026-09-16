@@ -32,13 +32,15 @@ describe.each(PROFILE_KINDS.map((kind) => [kind.heading, kind] as const))(
 		it('derives its control keys from its id, so two kinds cannot collide', () => {
 			expect(kind.selectionKey).toBe(`profile.${kind.id}.selection`);
 			expect(kind.bodyKey).toBe(`profile.${kind.id}.body`);
-			expect(kind.sourceKey).toBe(`profile.${kind.id}.source`);
+			expect(kind.choiceKey).toBe(`profile.${kind.id}.choice`);
+			expect(kind.noteKey).toBe(`profile.${kind.id}.note`);
 		});
 
 		it('says what a profile holds, and says so when it holds nothing', () => {
 			const empty = createProfile(kind.id, 'Empty');
 
-			expect(kind.summary(empty)).toMatch(/^No /);
+			// Lowercase, because the entry reads it after where the text is from.
+			expect(kind.summary(empty)).toMatch(/^no /);
 			expect(
 				kind.summary(createProfile(kind.id, 'Full', 'Alex')),
 			).not.toBe(kind.summary(empty));

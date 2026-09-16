@@ -300,6 +300,10 @@ describe('ChapterGenerationModal run settings', () => {
 		profile.dispatchEvent(new Event('change'));
 		await Promise.resolve();
 
+		// The picker names the text of the guidance it now holds.
+		expect(descriptionOf(modal, 'Chapter guidance profile')).toContain(
+			'Uses the text typed in the settings.',
+		);
 		at(buttons(modal), 0).click();
 
 		expect(settings.selectedProfileIds.chapterPrompt).toBe('p1');

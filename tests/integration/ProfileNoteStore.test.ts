@@ -12,8 +12,8 @@ import type { Plugin, TFile } from 'obsidian';
 import {
 	ProfileNoteStore,
 	appendParticipantsToNote,
-	lostProfileSourceNotice,
 } from 'src/settings/ProfileNoteStore';
+import { ProfileTextSource } from 'src/settings/ProfileTextSource';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	resolveDictionaryTermList,
@@ -286,13 +286,17 @@ describe('ProfileNoteStore', () => {
 		expect(glossary().body).toBe('- Kubernetes');
 		expect(resolveDictionaryTermList(settings)).toEqual(['Kubernetes']);
 		expect(
-			lostProfileSourceNotice(app.vault, settings, ['dictionary']),
+			new ProfileTextSource(app.vault).lostNotesNotice(settings, [
+				'dictionary',
+			]),
 		).toBe(
 			'The note of profile "Standup" (Glossaries/Standup.md) is missing, so the text last read from it is used.',
 		);
 		// A run that reads no glossary has nothing to be told about one.
 		expect(
-			lostProfileSourceNotice(app.vault, settings, ['llmCleanup']),
+			new ProfileTextSource(app.vault).lostNotesNotice(settings, [
+				'llmCleanup',
+			]),
 		).toBeNull();
 	});
 
@@ -302,7 +306,9 @@ describe('ProfileNoteStore', () => {
 		await settle();
 
 		expect(
-			lostProfileSourceNotice(app.vault, settings, ['dictionary']),
+			new ProfileTextSource(app.vault).lostNotesNotice(settings, [
+				'dictionary',
+			]),
 		).toBeNull();
 	});
 

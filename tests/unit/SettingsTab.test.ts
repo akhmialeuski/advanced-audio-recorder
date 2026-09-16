@@ -38,6 +38,7 @@ import { tick } from '../helpers/async';
 import { allEls, el, maybeEl, textsOf } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
 import {
+	rowDescription,
 	rowInput,
 	rowSelect,
 	rowToggle,
@@ -1765,7 +1766,7 @@ describe('AudioRecorderSettingTab', () => {
 		describe('a profile whose body is read from a note', () => {
 			const NOTE = 'Glossaries/Standup.md';
 			const sourceKey = (id: string): string =>
-				`profile.dictionary.source#${id}`;
+				`profile.dictionary.note#${id}`;
 			const profilePage = (): GroupDefinition =>
 				pageOf(tab.getSettingDefinitions(), 'New profile');
 			const shown = (predicate: unknown): boolean =>
@@ -1823,9 +1824,149 @@ describe('AudioRecorderSettingTab', () => {
 				);
 			});
 
+			describe('the Source row', () => {
+				const choiceKey = (id: string): string =>
+					`profile.dictionary.choice#${id}`;
+				const sourceDesc = (): unknown =>
+					rowIn(profilePage(), 'Source').desc;
+				const TYPED = 'Uses the text typed in the settings.';
+
+				it('reads where the text comes from, and names it', async () => {
+					const profile = await glossaryAndNote();
+
+					expect(tab.getControlValue(choiceKey(profile.id))).toBe(
+						'typed',
+					);
+					expect(sourceDesc()).toBe(TYPED);
+
+					await tab.setControlValue(sourceKey(profile.id), NOTE);
+
+					expect(tab.getControlValue(choiceKey(profile.id))).toBe(
+						'note',
+					);
+					expect(sourceDesc()).toBe(`Uses the text of ${NOTE}.`);
+					expect(
+						(profilePage() as { displayValue?: unknown })
+							.displayValue,
+					).toBe('In use, note, no terms');
+				});
+
+				it('switches the page to a note before one is picked, storing nothing', async () => {
+					const profile = await glossaryAndNote();
+					saveSettingsMock.mockClear();
+
+					await tab.setControlValue(choiceKey(profile.id), 'note');
+
+					expect(profile.sourcePath).toBeUndefined();
+					expect(saveSettingsMock).not.toHaveBeenCalled();
+					expect(shown(rowIn(profilePage(), 'Note').visible)).toBe(
+						true,
+					);
+					// The typed text still applies, and the page says so.
+					expect(sourceDesc()).toBe(`No note picked yet. ${TYPED}`);
+
+					// Nothing was stored, so leaving the settings forgets it.
+					tab.hide();
+
+					expect(tab.getControlValue(choiceKey(profile.id))).toBe(
+						'typed',
+					);
+				});
+
+				it('detaches the note on a switch back to typed text', async () => {
+					const profile = await glossaryAndNote();
+					await tab.setControlValue(sourceKey(profile.id), NOTE);
+					saveSettingsMock.mockClear();
+
+					await tab.setControlValue(choiceKey(profile.id), 'typed');
+
+					expect('sourcePath' in profile).toBe(false);
+					expect(saveSettingsMock).toHaveBeenCalledTimes(1);
+					expect(shown(rowIn(profilePage(), 'Note').visible)).toBe(
+						false,
+					);
+				});
+
+				it('changes nothing stored when the choice repeats what is stored', async () => {
+					const profile = await glossaryAndNote();
+					saveSettingsMock.mockClear();
+
+					await tab.setControlValue(choiceKey(profile.id), 'typed');
+					await tab.setControlValue(sourceKey(profile.id), NOTE);
+					await tab.setControlValue(choiceKey(profile.id), 'note');
+
+					expect(profile.sourcePath).toBe(NOTE);
+					// Only the pick of the note itself was a save.
+					expect(saveSettingsMock).toHaveBeenCalledTimes(1);
+				});
+
+				it('takes no choice for a profile deleted while its page was open', async () => {
+					await glossaryAndNote();
+
+					await tab.setControlValue(choiceKey('gone'), 'note');
+
+					expect(tab.getControlValue(choiceKey('gone'))).toBe(
+						'typed',
+					);
+				});
+
+				it('stays on a note when the path is cleared', async () => {
+					const profile = await glossaryAndNote();
+					await tab.setControlValue(sourceKey(profile.id), NOTE);
+
+					await tab.setControlValue(sourceKey(profile.id), '');
+
+					// Emptying the field is not choosing typed text.
+					expect(tab.getControlValue(choiceKey(profile.id))).toBe(
+						'note',
+					);
+					expect(sourceDesc()).toBe(`No note picked yet. ${TYPED}`);
+				});
+
+				it('trades the fields and the line below Obsidian 1.13 too', async () => {
+					mockSettings.transcriptionEnabled = true;
+					mockSettings.transcriptionAdvancedSettingsEnabled = true;
+					mockSettings.profiles = [
+						dictionaryProfile('g1', 'Standup', ''),
+					];
+					const legacyTab = withoutDeclarativeSettings(() =>
+						tabOver(mockSettings),
+					);
+					legacyTab.display();
+					const hidden = (row: HTMLElement): boolean => {
+						for (
+							let el: HTMLElement | null = row;
+							el;
+							el = el.parentElement
+						) {
+							if (el.style.display === 'none') {
+								return true;
+							}
+						}
+						return false;
+					};
+					const row = (name: string): HTMLElement =>
+						settingRow(legacyTab.containerEl, name);
+					expect(hidden(row('Source'))).toBe(false);
+					expect(hidden(row('Terms'))).toBe(false);
+					expect(hidden(row('Note'))).toBe(true);
+
+					const select = rowSelect(row('Source'));
+					select.value = 'note';
+					select.dispatchEvent(new Event('change'));
+					await tick();
+
+					expect(hidden(row('Terms'))).toBe(true);
+					expect(hidden(row('Note'))).toBe(false);
+					expect(rowDescription(row('Source'))).toBe(
+						`No note picked yet. ${TYPED}`,
+					);
+				});
+			});
+
 			it('stores only a path that names a note', async () => {
 				await glossaryAndNote();
-				const validate = rowIn(profilePage(), 'Source note').control
+				const validate = rowIn(profilePage(), 'Note').control
 					?.validate as (value: string) => string | undefined;
 
 				expect(validate(NOTE)).toBeUndefined();
@@ -1844,7 +1985,7 @@ describe('AudioRecorderSettingTab', () => {
 
 				expect(
 					(profilePage() as { displayValue?: unknown }).displayValue,
-				).toBe('In use, Note missing, No terms');
+				).toBe('In use, note missing, no terms');
 			});
 
 			it('opens the note file itself in a tab of its own and leaves the settings', async () => {
@@ -1880,7 +2021,7 @@ describe('AudioRecorderSettingTab', () => {
 
 				expect(tab.app.workspace.getLeaf).not.toHaveBeenCalled();
 				expect(Notice).toHaveBeenCalledWith(
-					`The note ${NOTE} is missing.`,
+					`The note of profile "New profile" (${NOTE}) is missing.`,
 				);
 			});
 
@@ -1908,7 +2049,10 @@ describe('AudioRecorderSettingTab', () => {
 				// The file control is native from 1.13; below it the tab's own
 				// suggester carries the filter the declaration names.
 				mockSettings.profiles = [
-					dictionaryProfile('g1', 'Standup', ''),
+					{
+						...dictionaryProfile('g1', 'Standup', ''),
+						sourcePath: NOTE,
+					},
 				];
 				const legacyTab = withoutDeclarativeSettings(() =>
 					tabOver(mockSettings),
@@ -1921,7 +2065,7 @@ describe('AudioRecorderSettingTab', () => {
 				legacyTab.display();
 
 				const input = rowInput(
-					settingRow(legacyTab.containerEl, 'Source note'),
+					settingRow(legacyTab.containerEl, 'Note'),
 				);
 				const [, , candidates] =
 					jest

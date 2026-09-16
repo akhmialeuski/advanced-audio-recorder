@@ -27,6 +27,7 @@ import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
 import { noticeMessages } from '../mocks/obsidian';
 import { internalsOf, partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { rowDescription, rowSelect, settingRow } from '../helpers/settingRows';
 import { installControlledAudio } from '../helpers/mediaMocks';
 import type { ControlledAudio } from '../helpers/mediaMocks';
 
@@ -1099,6 +1100,49 @@ describe('SpeakerRenameModal', () => {
 			await nameSecondSpeaker(dialog, 'Maria');
 
 			expect(dialog.noteText()).toBe('- Maria\n');
+		});
+
+		it('names under the picker the text of the picked roster, as the pick moves', async () => {
+			const dialog = makeNoteModal('- Maria\n');
+			dialog.modal.open();
+			await dialog.internals.render();
+			const picker = (): HTMLElement =>
+				settingRow(dialog.modal.contentEl, 'Participant profile');
+
+			expect(rowDescription(picker())).toContain(
+				`Uses the text of ${NOTE_PATH}.`,
+			);
+
+			// The recording's own roster is no profile, so no text is named.
+			rowSelect(picker()).value = '';
+			rowSelect(picker()).dispatchEvent(new Event('change'));
+
+			expect(rowDescription(picker())).not.toContain('Uses the text');
+
+			// A profile created here is typed in, and is described in place
+			// without rebuilding the dialog.
+			if (dialog.internals.newProfileInput) {
+				dialog.internals.newProfileInput.value = 'Standup';
+			}
+			await dialog.internals.createProfile();
+
+			expect(rowDescription(picker())).toContain(
+				'Uses the text typed in the settings.',
+			);
+		});
+
+		it('says under the picker that the roster note is gone', async () => {
+			const dialog = makeNoteModal(null);
+			dialog.modal.open();
+			await dialog.internals.render();
+
+			expect(
+				rowDescription(
+					settingRow(dialog.modal.contentEl, 'Participant profile'),
+				),
+			).toContain(
+				`Uses the text last read from ${NOTE_PATH}, which is missing.`,
+			);
 		});
 
 		it('tells the user when the note is gone, and leaves the profile alone', async () => {

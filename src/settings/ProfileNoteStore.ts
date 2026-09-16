@@ -13,7 +13,7 @@
 import { TFile, debounce, getFrontMatterInfo } from 'obsidian';
 import type { App, Plugin, TAbstractFile, Vault } from 'obsidian';
 import type { AudioRecorderSettings } from './settingsSchema';
-import { selectedProfile, type Profile, type ProfileKindId } from './profiles';
+import type { Profile } from './profiles';
 import {
 	mergeParticipantNames,
 	parseParticipantBody,
@@ -259,38 +259,4 @@ export async function appendParticipantsToNote(
 		return `${text}${text === '' ? '' : '\n'}${lines.join('\n')}\n`;
 	});
 	return added;
-}
-
-/**
- * What a run is told about the profiles it reads whose note is gone.
- *
- * Such a profile keeps the text last read from its note: a note deleted, moved
- * outside Obsidian, or not yet delivered by sync must not empty a glossary in
- * the middle of a transcription. The run goes ahead on that text, and this
- * names what it is running on. The caller names the kinds it reads by the same
- * gates that decide whether it reads them, so a run is never told about a note
- * it has no use for.
- * @param vault - The vault the notes are looked up in
- * @param settings - The active settings
- * @param kinds - Kinds whose selected profile the run reads
- * @returns The notice text, or null when every note is in place
- */
-export function lostProfileSourceNotice(
-	vault: Vault,
-	settings: AudioRecorderSettings,
-	kinds: readonly ProfileKindId[],
-): string | null {
-	const lost = kinds.flatMap((kind) => {
-		const profile = selectedProfile(settings, kind);
-		return profile?.sourcePath !== undefined &&
-			vault.getFileByPath(profile.sourcePath) === null
-			? [`"${profile.name}" (${profile.sourcePath})`]
-			: [];
-	});
-	if (lost.length === 0) {
-		return null;
-	}
-	return lost.length === 1
-		? `The note of profile ${lost.join('')} is missing, so the text last read from it is used.`
-		: `The notes of profiles ${lost.join(', ')} are missing, so the text last read from them is used.`;
 }

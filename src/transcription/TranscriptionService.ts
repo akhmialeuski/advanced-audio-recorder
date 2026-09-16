@@ -87,7 +87,7 @@ import {
 	resolveRunParticipants,
 } from '../settings/profileResolution';
 import { selectedProfileId } from '../settings/profiles';
-import { lostProfileSourceNotice } from '../settings/ProfileNoteStore';
+import { ProfileTextSource } from '../settings/ProfileTextSource';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { jobVendorId } from './llm/vendors';
@@ -510,19 +510,15 @@ export class TranscriptionService {
 		// profile on the text last read from it rather than on nothing. The run
 		// names only what it reads, by the gates that decide it reads it: terms
 		// resolved at all, speakers labelled, a pass that runs.
-		const lostSourceNotice = lostProfileSourceNotice(
+		const lostSourceNotice = new ProfileTextSource(
 			this.app.vault,
-			settings,
-			[
-				...(dictionaryTerms.length > 0
-					? (['dictionary'] as const)
-					: []),
-				...(diarize ? (['participants'] as const) : []),
-				...(postProcessing
-					? [PROMPT_KIND_OF_TASK[settings.llmPostProcessTask]]
-					: []),
-			],
-		);
+		).lostNotesNotice(settings, [
+			...(dictionaryTerms.length > 0 ? (['dictionary'] as const) : []),
+			...(diarize ? (['participants'] as const) : []),
+			...(postProcessing
+				? [PROMPT_KIND_OF_TASK[settings.llmPostProcessTask]]
+				: []),
+		]);
 		if (lostSourceNotice) {
 			new Notice(lostSourceNotice);
 		}

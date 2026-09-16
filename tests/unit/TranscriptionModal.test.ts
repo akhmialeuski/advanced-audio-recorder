@@ -18,6 +18,7 @@ import { createFile } from '../helpers/createApp';
 import { allEls, maybeEl } from '../helpers/dom';
 import {
 	hasSettingRow,
+	rowDescription,
 	rowInput,
 	rowSelect,
 	rowToggle,
@@ -27,6 +28,7 @@ import {
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { internalsOf } from '../helpers/doubles';
+import { asMockVault } from '../helpers/obsidianMock';
 
 // The run itself has its own suites (runTranscription, the providers); what
 // this dialog owes is what it does with the outcome, so the run is recorded
@@ -424,6 +426,51 @@ describe('TranscriptionModal participant profile selection', () => {
 		expect(settings.selectedProfileIds.participants).toBe('');
 	});
 
+	it('names where the picked roster text comes from, and follows the pick', async () => {
+		const note = 'Teams/Weekly.md';
+		const settings = diarizingSettings({
+			profiles: [
+				{
+					...storedProfile(
+						'participants',
+						's1',
+						'Weekly sync',
+						'Alex',
+					),
+					sourcePath: note,
+				},
+				storedProfile('participants', 's2', 'Interviews', ''),
+			],
+			selectedProfileIds: {
+				...DEFAULT_SETTINGS.selectedProfileIds,
+				participants: 's1',
+			},
+		});
+		const app = new App();
+		asMockVault(app.vault).seed([{ path: note, content: '- Alex' }]);
+		const modal = new TranscriptionModal(
+			app,
+			createAudioFile(),
+			() => settings,
+			{},
+		);
+		modal.onOpen();
+		const description = (): string =>
+			rowDescription(settingRow(modal.contentEl, 'Participant profile'));
+
+		expect(description()).toContain(`Uses the text of ${note}.`);
+
+		const select = selectByName(modal, 'Participant profile');
+		if (!select) {
+			throw new Error('Participant profile select not rendered');
+		}
+		select.value = 's2';
+		select.dispatchEvent(new Event('change'));
+		await tick();
+
+		expect(description()).toContain('Uses the text typed in the settings.');
+	});
+
 	it('shows a removed profile as None rather than a dangling selection', () => {
 		const stored = diarizingSettings({
 			selectedProfileIds: {
@@ -510,6 +557,25 @@ describe('TranscriptionModal chapter profile selection', () => {
 		);
 		modal.onOpen();
 		expect(chapterProfileSelect(modal)).toBeNull();
+	});
+
+	it('describes the compact picker only by the picked guidance text', async () => {
+		const modal = openedOver(settingsWithChapterProfiles(true));
+		const description = (): string =>
+			rowDescription(settingRow(modal.contentEl, 'Chapter profile'));
+
+		// None applies no guidance, so the picker says nothing.
+		expect(description()).toBe('');
+
+		const select = chapterProfileSelect(modal);
+		if (!select) {
+			throw new Error('Chapter profile select not rendered');
+		}
+		select.value = 'c1';
+		select.dispatchEvent(new Event('change'));
+		await tick();
+
+		expect(description()).toBe('Uses the text typed in the settings.');
 	});
 
 	it('persists the picked chapter profile and updates the run snapshot', () => {

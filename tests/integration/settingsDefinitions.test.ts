@@ -84,7 +84,8 @@ describe('settings definitions', () => {
 	let reorderProfile: jest.Mock;
 	let openProfileSource: jest.Mock;
 	let profileSourcePath: string;
-	let profileEntries: Array<{ id: string; name: string; summary: string }>;
+	let profileReadsNote: boolean;
+	let profileEntries: ReturnType<ProfileCatalogue['entries']>;
 	let selectedProfileId: string;
 	let declareListAddRow: boolean;
 	let removeModel: jest.Mock;
@@ -109,9 +110,20 @@ describe('settings definitions', () => {
 		reorderProfile = jest.fn();
 		openProfileSource = jest.fn();
 		profileSourcePath = '';
+		profileReadsNote = false;
 		profileEntries = [
-			{ id: 'a', name: 'Standup', summary: '3 terms' },
-			{ id: 'b', name: 'Legal', summary: 'In use, 12 terms' },
+			{
+				id: 'a',
+				name: 'Standup',
+				summary: 'Typed text, 3 terms',
+				status: 'Uses the text typed in the settings.',
+			},
+			{
+				id: 'b',
+				name: 'Legal',
+				summary: 'In use, note, 12 terms',
+				status: 'Uses the text of Glossaries/Legal.md.',
+			},
 		];
 		selectedProfileId = 'b';
 		declareListAddRow = false;
@@ -189,9 +201,11 @@ describe('settings definitions', () => {
 		selectionDesc: 'Offer this profile in the Transcribe dialog.',
 		selectedId: () => selectedProfileId,
 		selectionKey: `${heading} id`,
+		choiceKey: `${heading}.choice`,
 		bodyKey: `${heading}.body`,
-		sourceKey: `${heading}.source`,
+		noteKey: `${heading}.note`,
 		sourcePath: () => profileSourcePath,
+		readsNote: () => profileReadsNote,
 		sourceRejection: () => undefined,
 		openSource: openProfileSource as (id: string) => void,
 		entries: () => profileEntries,
@@ -1156,7 +1170,7 @@ describe('settings definitions', () => {
 				list.items.map(
 					(item) => (item as { displayValue?: string }).displayValue,
 				),
-			).toEqual(['3 terms', 'In use, 12 terms']);
+			).toEqual(['Typed text, 3 terms', 'In use, note, 12 terms']);
 			for (const item of list.items) {
 				expect((item as { type?: string }).type).toBe('page');
 			}
@@ -1215,7 +1229,21 @@ describe('settings definitions', () => {
 			).toContain('Terms');
 		});
 
-		it('names the note a profile is read from, and sets the editor aside while it does', () => {
+		it('says on the page where the profile text comes from, through a choice of its own', () => {
+			const page = profilePageOf('Dictionary profiles', 'Standup');
+			const source = rowIn(page, 'Source');
+
+			expect(source.control).toEqual({
+				type: 'dropdown',
+				key: 'Dictionary profiles.choice#a',
+				options: { typed: 'Typed text', note: 'Note' },
+			});
+			// The row states the text in use, so it is never inferred from
+			// which of the fields below happen to be shown.
+			expect(source.desc).toBe('Uses the text typed in the settings.');
+		});
+
+		it('shows the note rows or the editor as the page is set, never both', () => {
 			const page = profilePageOf('Dictionary profiles', 'Standup');
 			const shown = (predicate: unknown): boolean =>
 				typeof predicate === 'function'
@@ -1224,16 +1252,20 @@ describe('settings definitions', () => {
 			const stacked = (page.items as GroupDefinition[]).find((item) =>
 				(item.cls ?? '').split(' ').includes(STACKED_TEXT_CLASS),
 			);
-			const control = rowIn(page, 'Source note').control as {
+			const note = rowIn(page, 'Note');
+			const control = note.control as {
 				type: string;
 				key: string;
+				placeholder?: string;
 				filter?: (file: TFile) => boolean;
 			};
 
 			expect(control).toEqual(
 				expect.objectContaining({
 					type: 'file',
-					key: 'Dictionary profiles.source#a',
+					key: 'Dictionary profiles.note#a',
+					// An example path would read as a note already picked.
+					placeholder: 'Pick a note',
 				}),
 			);
 			// Only notes are offered: a body is text, and an audio file is not.
@@ -1244,16 +1276,56 @@ describe('settings definitions', () => {
 				false,
 			);
 			expect(shown(stacked?.visible)).toBe(true);
+			expect(shown(note.visible)).toBe(false);
+			expect(shown(rowIn(page, 'Open note').visible)).toBe(false);
+
+			// Switched to a note that is not picked yet: the editor steps aside
+			// at once, and there is no note to open.
+			profileReadsNote = true;
+
+			expect(shown(stacked?.visible)).toBe(false);
+			expect(shown(note.visible)).toBe(true);
 			expect(shown(rowIn(page, 'Open note').visible)).toBe(false);
 
 			// The predicates read the catalogue live, so a note picked after the
 			// page was built is what they answer for.
 			profileSourcePath = 'Glossaries/Standup.md';
 
-			expect(shown(stacked?.visible)).toBe(false);
 			expect(shown(rowIn(page, 'Open note').visible)).toBe(true);
 			rowIn(page, 'Open note').action?.(createDiv(), 0);
 			expect(openProfileSource).toHaveBeenCalledWith('a');
+		});
+
+		it('names the text of the profile in use under the picker, on a line of its own', () => {
+			const picker = rowIn(
+				groupOf(build(), 'Advanced'),
+				'Use by default',
+			);
+			const desc = picker.desc as DocumentFragment;
+
+			expect(picker.control).toEqual(
+				expect.objectContaining({
+					type: 'dropdown',
+					key: 'Dictionary profiles id',
+				}),
+			);
+			expect(desc.textContent).toBe(
+				'Offer this profile in the Transcribe dialog.' +
+					'Uses the text of Glossaries/Legal.md.',
+			);
+			expect(desc.lastChild?.textContent).toBe(
+				'Uses the text of Glossaries/Legal.md.',
+			);
+
+			// None applies no text, so the picker says only what it is for.
+			selectedProfileId = '';
+
+			expect(
+				rowIn(groupOf(build(), 'Advanced'), 'Use by default').desc,
+			).toBe('Offer this profile in the Transcribe dialog.');
+			expect(entryValueOf(pageOf(build(), 'Dictionary profiles'))).toBe(
+				'None',
+			);
 		});
 
 		it('renames and deletes from the page of the profile itself', () => {

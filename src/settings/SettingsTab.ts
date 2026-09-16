@@ -96,6 +96,7 @@ import {
 	type ProfileKindId,
 } from './profiles';
 import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
+import { ProfileTextSource } from './ProfileTextSource';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
 import {
 	closeSettings,
@@ -239,7 +240,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * Base control keys addressing the note a profile's body is read from,
 	 * resolved to the profile the same way a body key is.
 	 */
-	private readonly profileSources = new Map<string, ProfileKindId>();
+	private readonly profileNotes = new Map<string, ProfileKindId>();
+
+	/**
+	 * Base control keys addressing a profile's Source row, resolved to the
+	 * profile the same way a body key is.
+	 */
+	private readonly profileChoices = new Map<string, ProfileKindId>();
+
+	/**
+	 * Where each profile's text comes from, and what its Source row is set to.
+	 * One for the tab, because a switch to a note that is not picked yet is
+	 * state of these pages until the settings close.
+	 */
+	private readonly profileText = new ProfileTextSource(this.app.vault);
 
 	/**
 	 * Base control keys addressing whether a profile is the selected one. The
@@ -408,9 +422,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// what they read then.
 			return field.profile?.body ?? '';
 		}
-		const source = this.profileFieldFor(key, this.profileSources);
+		const source = this.profileFieldFor(key, this.profileNotes);
 		if (source) {
 			return source.profile?.sourcePath ?? '';
+		}
+		const choice = this.profileFieldFor(key, this.profileChoices);
+		if (choice) {
+			return choice.profile
+				? this.profileText.choice(choice.profile)
+				: 'typed';
 		}
 		const selection = this.profileSelectionFor(key);
 		if (selection) {
@@ -502,20 +522,33 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			this.saveTextSettingDebounced();
 			return;
 		}
-		const source = this.profileFieldFor(key, this.profileSources);
+		const source = this.profileFieldFor(key, this.profileNotes);
 		if (source) {
-			const path = String(value);
-			if (source.profile && path === '') {
-				// Detached: the text last read from the note stays as the
-				// body, editable on the page again.
-				delete source.profile.sourcePath;
-			} else if (source.profile) {
-				source.profile.sourcePath = path;
+			if (source.profile) {
+				this.profileText.bindNote(source.profile, String(value));
 			}
 			// The save reads the note into the body, and the tree is read again
 			// because the page trades its editor for the note and the entry
 			// counts what the note holds.
 			return this.commit();
+		}
+		const choice = this.profileFieldFor(key, this.profileChoices);
+		if (choice) {
+			if (
+				choice.profile &&
+				this.profileText.choose(
+					choice.profile,
+					value === 'note' ? 'note' : 'typed',
+				)
+			) {
+				return this.commit();
+			}
+			// Nothing stored changed, but the page trades its fields and its
+			// Source line. Drawn after this write returns, as every other
+			// redraw is, so the renderer finishes the change it is handling.
+			return Promise.resolve().then(() => {
+				this.rerender();
+			});
 		}
 		const selection = this.profileSelectionFor(key);
 		if (selection) {
@@ -778,7 +811,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const ofKind = (): Profile[] =>
 			profilesOfKind(this.plugin.settings.profiles, kindId);
 		this.profileAccess.set(kind.bodyKey, kindId);
-		this.profileSources.set(kind.sourceKey, kindId);
+		this.profileNotes.set(kind.noteKey, kindId);
+		this.profileChoices.set(kind.choiceKey, kindId);
 		this.profileSelections.set(kind.selectionKey, kindId);
 		const rejection = (id: string, name: string): string | undefined =>
 			profileNameRejection(
@@ -797,22 +831,32 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			selectionDesc: kind.selectionDesc,
 			selectedId: (settings) => selectedProfileId(settings, kindId),
 			selectionKey: kind.selectionKey,
+			choiceKey: kind.choiceKey,
 			bodyKey: kind.bodyKey,
-			sourceKey: kind.sourceKey,
+			noteKey: kind.noteKey,
 			sourcePath: (id) => findProfile(ofKind(), id)?.sourcePath ?? '',
+			readsNote: (id) => {
+				const profile = findProfile(ofKind(), id);
+				return (
+					profile !== undefined &&
+					this.profileText.choice(profile) === 'note'
+				);
+			},
 			sourceRejection: (path) =>
 				path === '' ||
 				this.app.vault.getFileByPath(path)?.extension === 'md'
 					? undefined
 					: 'No note at this path.',
 			openSource: (id): void => {
-				const path = findProfile(ofKind(), id)?.sourcePath;
-				if (path === undefined) {
+				const profile = findProfile(ofKind(), id);
+				if (profile?.sourcePath === undefined) {
 					return;
 				}
-				const note = this.app.vault.getFileByPath(path);
+				const note = this.profileText.note(profile);
 				if (!note) {
-					new Notice(`The note ${path} is missing.`);
+					new Notice(
+						`${this.profileText.missingNote(profile.name, profile.sourcePath)}.`,
+					);
 					return;
 				}
 				closeSettings(this.app);
@@ -821,27 +865,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				// a link that resolves to nothing creates an empty note.
 				void this.app.workspace.getLeaf('tab').openFile(note);
 			},
+			// A note gone from the vault leaves the body it was last read into,
+			// and the entry and the page say which text that is.
 			entries: (settings) =>
-				profilesOfKind(settings.profiles, kindId).map((profile) => {
-					// A note gone from the vault leaves the body it was last read
-					// into, and the entry says which text that is.
-					const lost =
-						profile.sourcePath !== undefined &&
-						this.app.vault.getFileByPath(profile.sourcePath) ===
-							null;
-					const parts = [
-						...(profile.id === selectedProfileId(settings, kindId)
-							? ['In use']
-							: []),
-						...(lost ? ['Note missing'] : []),
-						kind.summary(profile),
-					];
-					return {
-						id: profile.id,
-						name: profile.name,
-						summary: parts.join(', '),
-					};
-				}),
+				profilesOfKind(settings.profiles, kindId).map((profile) => ({
+					id: profile.id,
+					name: profile.name,
+					summary: this.profileText.summary(
+						profile,
+						profile.id === selectedProfileId(settings, kindId),
+					),
+					status: this.profileText.status(profile),
+				})),
 			visible: kind.visible,
 			add: (): void => {
 				const settings = this.plugin.settings;
@@ -1409,6 +1444,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		this.deviceRefreshGeneration++;
 		this.formatAvailabilityGeneration++;
 		this.saveTextSettingDebounced.run();
+		// A switch to a note that was never picked stored nothing, so the
+		// next visit opens the page on the text it really applies.
+		this.profileText.forgetChoices();
 		// On the legacy path the renderer holds the rows and their cleanups;
 		// releasing it is what runs them when the tab is left. On 1.13 the
 		// framework runs them itself and this renderer holds nothing.
