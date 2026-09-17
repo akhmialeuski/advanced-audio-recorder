@@ -1,10 +1,12 @@
 /**
- * Tests that a transcription run names a profile it reads whose note has gone
- * from the vault, goes ahead on the text last read from that note, and says
- * nothing about a profile whose text the run does not read.
- * @module tests/integration/transcriptionLostProfileNote.test
+ * Tests that a transcription run reads the note of a profile it applies as the
+ * run starts, names a profile it reads whose note has gone from the vault, goes
+ * ahead on the text last read from that note, and says nothing about a profile
+ * whose text the run does not read.
+ * @module tests/integration/transcriptionProfileNotes.test
  */
 
+import { App } from 'obsidian';
 import type { TFile } from 'obsidian';
 import {
 	NEVER_CANCELLED,
@@ -18,6 +20,7 @@ import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 import { noticeMessages } from '../mocks/obsidian';
+import { asMockVault } from '../helpers/obsidianMock';
 
 const standup = partial<TFile>({
 	name: 'standup.webm',
@@ -33,13 +36,22 @@ const standup = partial<TFile>({
 const lostNoteNotice = (name: string, path: string): string =>
 	`The note of profile "${name}" (${path}) is missing, so the text last read from it is used.`;
 
+/** The glossary in use, last read from its note as one term. */
+const STANDUP_GLOSSARY: Profile = {
+	id: 'g1',
+	kind: 'dictionary',
+	name: 'Standup',
+	body: '- Kubernetes',
+	sourcePath: 'Glossaries/Standup.md',
+};
+
 /**
- * Settings that transcribe on the Whisper API with one profile in use whose
- * note the vault no longer holds.
+ * Settings that transcribe on the Whisper API with one profile in use, read
+ * from a note.
  * @param profile - The profile, read from that note
  * @param overrides - What the run is configured with besides it
  */
-function withLostNote(
+function withNoteProfile(
 	profile: Profile,
 	overrides: Partial<AudioRecorderSettings> = {},
 ): AudioRecorderSettings {
@@ -55,67 +67,83 @@ function withLostNote(
 }
 
 /**
- * Transcribes the standup recording over a vault that answers no file for any
- * path, so every profile note is missing.
+ * Transcribes the standup recording, by default over a vault that answers no
+ * file for any path, so every profile note is missing.
  * @param settings - The settings the run reads
  * @param options - Run options besides the note for links and the token
- * @returns The Markdown the run wrote
+ * @param app - The app whose vault holds the notes and the recording
+ * @returns The Markdown the run wrote, and the terms it sent the engine
  */
 async function transcribe(
 	settings: AudioRecorderSettings,
 	options: Partial<TranscribeRunOptions> = {},
-): Promise<string> {
-	const vaultWithoutNotes = createMockApp({
+	app: App = createMockApp({
 		vault: { readBinary: () => Promise.resolve(new ArrayBuffer(8)) },
-	}).app;
-	const service = new TranscriptionService(
-		vaultWithoutNotes,
-		() => settings,
-		{
-			createProvider: () =>
-				fakeProvider({
-					capabilities: NO_DIARIZATION,
-					transcribe: () =>
-						Promise.resolve({
-							segments: [{ start: 0, end: 2, text: 'kubectl' }],
-						}),
-				}),
-		},
-	);
+	}).app,
+): Promise<{ markdown: string; dictionary: string[] | undefined }> {
+	const provider = fakeProvider({
+		capabilities: NO_DIARIZATION,
+		transcribe: () =>
+			Promise.resolve({
+				segments: [{ start: 0, end: 2, text: 'kubectl' }],
+			}),
+	});
+	const service = new TranscriptionService(app, () => settings, {
+		createProvider: () => provider,
+	});
 	const result = (await service.run(standup, {
 		notePathForLinks: 'Meetings/Standup.md',
 		token: NEVER_CANCELLED,
 		...options,
 	})) as { markdown: string };
-	return result.markdown;
+	const [, request] = provider.transcribe.mock.calls[0] as [
+		unknown,
+		{ dictionary?: string[] },
+	];
+	return { markdown: result.markdown, dictionary: request.dictionary };
 }
+
+describe('a transcription whose profile is read from a note', () => {
+	it('biases toward the terms the note holds as the run starts', async () => {
+		// The body still holds the term read before the note was edited.
+		const app = new App();
+		asMockVault(app.vault).seed([
+			{ path: 'Glossaries/Standup.md', content: '- Kubernetes\n- Helm' },
+			{ path: standup.path, data: new ArrayBuffer(8) },
+		]);
+
+		const { dictionary } = await transcribe(
+			withNoteProfile(STANDUP_GLOSSARY, {
+				transcriptionAdvancedSettingsEnabled: true,
+			}),
+			{},
+			app,
+		);
+
+		expect(dictionary).toEqual(['Kubernetes', 'Helm']);
+	});
+});
 
 describe('a transcription whose profile note is gone', () => {
 	it('names the glossary note, and transcribes with the text last read from it', async () => {
-		const markdown = await transcribe(
-			withLostNote(
-				{
-					id: 'g1',
-					kind: 'dictionary',
-					name: 'Standup',
-					body: '- Kubernetes',
-					sourcePath: 'Glossaries/Standup.md',
-				},
-				{ transcriptionAdvancedSettingsEnabled: true },
-			),
+		const { markdown, dictionary } = await transcribe(
+			withNoteProfile(STANDUP_GLOSSARY, {
+				transcriptionAdvancedSettingsEnabled: true,
+			}),
 		);
 
 		expect(noticeMessages()).toContain(
 			lostNoteNotice('Standup', 'Glossaries/Standup.md'),
 		);
 		expect(markdown).toContain('kubectl');
+		expect(dictionary).toEqual(['Kubernetes']);
 	});
 
 	it('says nothing about the prompt note of a pass the run skips', async () => {
 		// Retrying failed parts transcribes without post-processing, whatever
 		// the settings switch on.
 		await transcribe(
-			withLostNote(
+			withNoteProfile(
 				{
 					id: 'c1',
 					kind: 'llmCleanup',
@@ -137,7 +165,7 @@ describe('a transcription whose profile note is gone', () => {
 		// Speaker labels are switched on, and the Whisper API cannot produce
 		// them, so the run reads no participant names.
 		await transcribe(
-			withLostNote(
+			withNoteProfile(
 				{
 					id: 'p1',
 					kind: 'participants',

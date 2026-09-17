@@ -97,6 +97,8 @@ import {
 } from './profiles';
 import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
 import { ProfileTextSource } from './ProfileTextSource';
+import { appendTextToNote, readNoteText } from './ProfileNoteStore';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
 import {
 	closeSettings,
@@ -524,13 +526,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 		const source = this.profileFieldFor(key, this.profileNotes);
 		if (source) {
-			if (source.profile) {
-				this.profileText.bindNote(source.profile, String(value));
-			}
-			// The save reads the note into the body, and the tree is read again
-			// because the page trades its editor for the note and the entry
-			// counts what the note holds.
-			return this.commit();
+			return source.profile
+				? this.bindProfileNote(source.profile, String(value))
+				: this.commit();
 		}
 		const choice = this.profileFieldFor(key, this.profileChoices);
 		if (choice) {
@@ -963,6 +961,67 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			() => this.plugin.settings,
 			() => this.commit(),
 		);
+	}
+
+	/**
+	 * Points a profile at the note its Note row names, and saves. The save reads
+	 * the note into the body, and the tree is read again because the page trades
+	 * its editor for the note and the entry counts what the note holds.
+	 *
+	 * A note whose text would take the place of text typed for the profile is
+	 * asked about first, because that text exists nowhere else once the note is
+	 * read. Nothing is stored while the question is open.
+	 * @param profile - The profile whose Note row was edited
+	 * @param path - The note's vault path, or '' when the row was emptied
+	 * @returns Resolves once the change is saved, or once the question is open
+	 */
+	private async bindProfileNote(
+		profile: Profile,
+		path: string,
+	): Promise<void> {
+		const note = path === '' ? null : this.app.vault.getFileByPath(path);
+		const question =
+			note === null
+				? null
+				: this.profileText.typedTextQuestion(
+						profile,
+						path,
+						await readNoteText(this.app, note),
+					);
+		if (note === null || question === null) {
+			this.profileText.bindNote(profile, path);
+			return this.commit();
+		}
+		// The field holds the path just picked. Drawn again, the page holds
+		// what is stored, which is what stays when the question is cancelled.
+		this.rerender();
+		new ConfirmModal(this.app, {
+			title: question.title,
+			message: question.message,
+			confirmText: question.confirmText,
+			onConfirm: () => {
+				const moved = question.moveIntoNote
+					? appendTextToNote(this.app.vault, note, profile.body)
+					: Promise.resolve();
+				void moved.then(
+					() => {
+						this.profileText.bindNote(profile, path);
+						return this.commit();
+					},
+					(error: unknown) => {
+						// Pointed at the note without the text, the profile
+						// would lose it, so it stays as it is.
+						const message =
+							error instanceof Error
+								? error.message
+								: String(error);
+						new Notice(
+							`The typed text was not added to ${path}: ${message}`,
+						);
+					},
+				);
+			},
+		}).open();
 	}
 
 	/**

@@ -3,12 +3,15 @@
  *
  * A glossary or a roster typed into the settings is plain lines, and the same
  * body kept in a note is almost always a Markdown list under a heading, often
- * with links to other notes, a comment, a horizontal rule, or a callout around
- * it. Both have to yield the same entries, so the rule turning a line into an
- * entry is written once here and every list-shaped profile body is read through
- * it. A writer continuing such a list uses the same grammar, so it writes only
- * what the reader reads back. A prompt is never read this way: its markup is
- * part of the instruction.
+ * with links to other notes, bold or code around a term, a comment, a
+ * horizontal rule, a table, or a callout around it. Both have to yield the same
+ * entries, so the rule turning a line into an entry is written once here and
+ * every list-shaped profile body is read through it. A writer continuing such a
+ * list uses the same grammar, so it writes only what the reader reads back. A
+ * prompt is never read this way: its markup is part of the instruction.
+ *
+ * The rule is a set of expressions. Obsidian's own Markdown renderer draws into
+ * the page asynchronously, and a catalogue summary reads a body synchronously.
  * @module utils/listLines
  */
 
@@ -19,6 +22,12 @@ const HEADING_LINE = /^\s{0,3}#{1,6}(?:\s|$)/;
 
 /** A horizontal rule: three or more of one of `-`, `*`, `_`, spaced or not. */
 const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+
+/** The fence a code block opens and closes with: three or more backticks or tildes. */
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+
+/** A table row, its rule row included, which Obsidian writes opening with a pipe. */
+const TABLE_ROW = /^\s*\|/;
 
 /** An Obsidian comment, inline or across lines, hidden from the note's reader. */
 const COMMENT = /%%[\s\S]*?%%/g;
@@ -39,6 +48,33 @@ const LIST_MARKER = /^(\s*)(?:([-*+])|(\d+)([.)]))(?:\s+|$)(\[.\](?:\s+|$))?/;
 
 /** A wikilink: the note it names, then an optional alias. */
 const WIKILINK = /\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g;
+
+/** An embedded note, file, or image, which the note shows as what it embeds. */
+const EMBED = /!\[\[[^\]]*\]\]|!\[[^\]]*\]\([^)]*\)/g;
+
+/** A Markdown link, which the note shows as its label. */
+const MARKDOWN_LINK = /\[([^\]]*)\]\([^)]*\)/g;
+
+/** Inline code, whose text the note shows exactly as written. */
+const CODE_SPAN = /(`[^`]+`)/;
+
+/** Struck-through text, which the note shows as withdrawn. */
+const STRUCK = /~~.*?~~/g;
+
+/**
+ * Bold, highlight, and italic, each with what it puts in place of the span:
+ * the text inside, without the markers. A single `*` or `_` counts only with no
+ * word character outside it, so `snake_case` and `2*3*4` stay as written. The
+ * lookbehind that says this more directly is left out for the older WebKit of
+ * Obsidian on iOS.
+ */
+const EMPHASIS: readonly (readonly [RegExp, string])[] = [
+	[/\*\*(\S(?:.*?\S)?)\*\*/g, '$1'],
+	[/__(\S(?:.*?\S)?)__/g, '$1'],
+	[/==(\S(?:.*?\S)?)==/g, '$1'],
+	[/(^|[^\w*])\*(\S(?:[^*]*?\S)?)\*(?![\w*])/g, '$1$2'],
+	[/(^|[^\w_])_(\S(?:[^_]*?\S)?)_(?![\w_])/g, '$1$2'],
+];
 
 /**
  * Splits a line into its quote markers and the text they quote.
@@ -71,31 +107,78 @@ function linkName(
 }
 
 /**
+ * The text an entry shows once its inline markup is rendered. Inside inline
+ * code nothing is markup, so only the backticks go; elsewhere an embed shows no
+ * text, a link shows its label or its note's name, struck-through text is gone,
+ * and emphasis leaves the text it wraps.
+ * @param entry - A line with its quote and list markers removed
+ * @returns The entry as the note shows it
+ */
+function shownText(entry: string): string {
+	return entry
+		.split(CODE_SPAN)
+		.map((part, index) =>
+			// Split on a capturing expression, the code spans sit at the odd
+			// indices between the text around them.
+			index % 2 === 1
+				? part.slice(1, -1)
+				: EMPHASIS.reduce(
+						(shown, [markup, replacement]) =>
+							shown.replace(markup, replacement),
+						part
+							.replace(EMBED, '')
+							.replace(MARKDOWN_LINK, '$1')
+							.replace(WIKILINK, linkName)
+							.replace(STRUCK, ''),
+					),
+		)
+		.join('');
+}
+
+/**
  * Splits text into its list entries. Comments are dropped, and a heading, a
- * horizontal rule, or the first line of a callout is skipped. Every other line
- * keeps only the text after its quote and list markers, with each link read as
- * the name it shows. Entries come back untrimmed and possibly blank, because
- * trimming and de-duplicating are the rules of the list being read, which
- * differ between a glossary and a roster.
+ * horizontal rule, a table row, a code block, or the first line of a callout
+ * is skipped. Every other line keeps only the text after its quote and list
+ * markers, read as the note shows it. Entries come back untrimmed and possibly
+ * blank, because trimming and de-duplicating are the rules of the list being
+ * read, which differ between a glossary and a roster.
  * @param text - The body as typed, or as read from a note
  * @returns One entry per line that can hold one
  */
 export function listEntries(text: string): string[] {
+	// The fence of the code block being read through, or '' outside one.
+	let fence = '';
 	return text
 		.replace(COMMENT, '')
 		.split(/\r?\n/)
 		.flatMap((line) => {
 			const { quote, content } = unquote(line);
+			const marker = FENCE.exec(content)?.[1];
+			if (fence !== '') {
+				// A block ends at a fence of its own character, at least as
+				// long as the one that opened it.
+				if (
+					marker !== undefined &&
+					marker.charAt(0) === fence.charAt(0) &&
+					marker.length >= fence.length
+				) {
+					fence = '';
+				}
+				return [];
+			}
+			if (marker !== undefined) {
+				fence = marker;
+				return [];
+			}
 			if (
 				HEADING_LINE.test(content) ||
 				THEMATIC_BREAK.test(content) ||
+				TABLE_ROW.test(content) ||
 				(quote !== '' && CALLOUT_TYPE.test(content))
 			) {
 				return [];
 			}
-			return [
-				content.replace(LIST_MARKER, '').replace(WIKILINK, linkName),
-			];
+			return [shownText(content.replace(LIST_MARKER, ''))];
 		});
 }
 

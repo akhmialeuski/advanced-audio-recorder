@@ -84,6 +84,60 @@ describe('parseDictionary', () => {
 		).toEqual(['Helm', 'Argo']);
 	});
 
+	it('reads an emphasized term as the text the note shows', () => {
+		// Each marker would otherwise reach the engine as part of the term and
+		// take a place the provider caps.
+		expect(
+			parseDictionary(
+				'- **Kubernetes**\n- __gRPC__\n- *Helm*\n- _Argo_\n- ==Nova==\n- `kubectl`',
+			),
+		).toEqual(['Kubernetes', 'gRPC', 'Helm', 'Argo', 'Nova', 'kubectl']);
+	});
+
+	it('reads a Markdown link as its label, and an embed or struck-through text as nothing', () => {
+		expect(
+			parseDictionary(
+				'- [Helm](https://helm.sh)\n- ![[logo.png]]\n- ![diagram](arch.png)\n- ~~Docker Swarm~~\n- Argo ~~CD~~',
+			),
+		).toEqual(['Helm', 'Argo']);
+	});
+
+	it('keeps inline code as written, markup inside it included', () => {
+		expect(parseDictionary('- `__init__`\n- `**kwargs`')).toEqual([
+			'__init__',
+			'**kwargs',
+		]);
+	});
+
+	it('keeps an underscore or an asterisk inside a word', () => {
+		expect(parseDictionary('snake_case_name\n2*3*4\nfoo_bar_')).toEqual([
+			'snake_case_name',
+			'2*3*4',
+			'foo_bar_',
+		]);
+	});
+
+	it('skips tables and code blocks, which hold no term', () => {
+		expect(
+			parseDictionary(
+				[
+					'- Helm',
+					'| Term | Meaning |',
+					'| --- | --- |',
+					'| Argo | CD |',
+					'```yaml',
+					'kind: Deployment',
+					'~~~',
+					'```',
+					'> ~~~',
+					'> quoted code',
+					'> ~~~',
+					'- Nova',
+				].join('\n'),
+			),
+		).toEqual(['Helm', 'Nova']);
+	});
+
 	it('returns an empty array for empty or whitespace-only input', () => {
 		expect(parseDictionary('')).toEqual([]);
 		expect(parseDictionary('   \n\t\n')).toEqual([]);

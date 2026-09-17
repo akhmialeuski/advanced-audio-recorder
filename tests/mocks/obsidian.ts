@@ -1364,6 +1364,13 @@ export class MarkdownView {
 	// The real MarkdownView carries the file through FileView; production code
 	// narrows a leaf to a MarkdownView and then reads view.file.
 	file: TFile | null = null;
+	// What the editor holds, which Obsidian saves to disk two seconds after
+	// the typing stops; a test sets it apart from the file to tell the two.
+	data = '';
+
+	getViewData(): string {
+		return this.data;
+	}
 }
 
 /**

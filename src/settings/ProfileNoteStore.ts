@@ -7,6 +7,12 @@
  * reads the note a profile names and writes the text into the profile's `body`,
  * the field every reader already reads, so none of them changes and the copy
  * kept in data.json still answers before the first read of a session.
+ *
+ * That copy follows the vault's events, and the events trail the note: the
+ * editor saves two seconds after the typing stops, and the read an event
+ * starts finishes later still. What a run applies is therefore read again as
+ * the run starts, through {@link readProfileNotes}, and the copy serves the
+ * screens that only show a profile.
  * @module settings/ProfileNoteStore
  */
 
@@ -19,6 +25,7 @@ import {
 	parseParticipantBody,
 } from '../speakers/participantRoster';
 import { nextEntryPrefix } from '../utils/listLines';
+import { findNoteView } from '../transcription/transcriptOutput';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
@@ -36,6 +43,18 @@ const PERSIST_DEBOUNCE_MS = 2000;
  */
 function noteBody(content: string): string {
 	return content.slice(getFrontMatterInfo(content).contentStart);
+}
+
+/**
+ * A note with lines added after its last line of text. The note is the user's
+ * document, so what it holds stays as it is, blank lines at its end aside.
+ * @param content - The note as read
+ * @param lines - The lines to add, joined by newlines
+ * @returns The note with the lines at its end
+ */
+function withLinesAppended(content: string, lines: string): string {
+	const text = content.trimEnd();
+	return `${text}${text === '' ? '' : '\n'}${lines}\n`;
 }
 
 /**
@@ -161,11 +180,15 @@ export class ProfileNoteStore {
 			content = await this.app.vault.cachedRead(file);
 		} catch (error) {
 			// Deleted or locked between the lookup and the read: the body
-			// stays, and the next event or reconcile tries again.
+			// stays, and the next event or reconcile tries again. A reconcile
+			// skips a note already read, so the read on record is dropped.
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to read the profile note ${path}.`,
 				error,
 			);
+			for (const profile of profiles) {
+				this.readFrom.delete(profile);
+			}
 			return false;
 		}
 		const body = noteBody(content);
@@ -256,7 +279,83 @@ export async function appendParticipantsToNote(
 			previous = `${nextEntryPrefix(previous)}${name}`;
 			return previous;
 		});
-		return `${text}${text === '' ? '' : '\n'}${lines.join('\n')}\n`;
+		return withLinesAppended(content, lines.join('\n'));
 	});
 	return added;
+}
+
+/**
+ * Writes the text typed for a profile at the end of a note, so the note holds
+ * that text before the profile is pointed at it and reads it from there. The
+ * note was found blank, and it is appended to all the same: a note that gained
+ * text since keeps it.
+ * @param vault - The vault holding the note
+ * @param file - The note the profile is about to read
+ * @param text - The text typed for the profile
+ */
+export async function appendTextToNote(
+	vault: Vault,
+	file: TFile,
+	text: string,
+): Promise<void> {
+	await vault.process(file, (content) =>
+		withLinesAppended(content, text.trimEnd()),
+	);
+}
+
+/**
+ * The text of a note as the user sees it now, below its frontmatter. A note
+ * open in an editor is read from the editor, which writes what is typed to disk
+ * two seconds after the typing stops. Any other note is read from disk, past
+ * the cache a change made outside Obsidian may not have reached yet.
+ * @param app - Obsidian App instance
+ * @param file - The note to read
+ * @returns The note's text below its frontmatter
+ */
+export async function readNoteText(app: App, file: TFile): Promise<string> {
+	const view = findNoteView(app, file.path);
+	return noteBody(view ? view.getViewData() : await app.vault.read(file));
+}
+
+/**
+ * Settings to run on, with the note of every profile a run may apply read now.
+ *
+ * The body the store keeps trails the note, so a run started on it can apply
+ * a glossary or a prompt older than the note it names. The profiles come back
+ * as copies: a note saved while the run goes on, or a reload of the settings,
+ * leaves the text the run started with in place until it ends. A note that is
+ * missing or cannot be read leaves the text last read from it, which is what
+ * the run's notice about a missing note names.
+ * @param app - Obsidian App instance
+ * @param settings - The settings the run starts from
+ * @param ids - Profiles whose notes are read; by default those selected for a run
+ * @returns A copy of the settings whose profiles are copies too
+ */
+export async function readProfileNotes(
+	app: App,
+	settings: AudioRecorderSettings,
+	ids: readonly string[] = Object.values(settings.selectedProfileIds),
+): Promise<AudioRecorderSettings> {
+	const wanted = new Set(ids);
+	const profiles = await Promise.all(
+		settings.profiles.map(async (profile): Promise<Profile> => {
+			const file =
+				wanted.has(profile.id) && profile.sourcePath !== undefined
+					? app.vault.getFileByPath(profile.sourcePath)
+					: null;
+			if (!file) {
+				return { ...profile };
+			}
+			try {
+				return { ...profile, body: await readNoteText(app, file) };
+			} catch (error) {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Failed to read the profile note ${file.path}.`,
+					error,
+				);
+				return { ...profile };
+			}
+		}),
+	);
+	return { ...settings, profiles };
 }

@@ -20,6 +20,7 @@ import type {
 } from '../settings/settingsSchema';
 import { resolveChapterGuidance } from '../settings/profileResolution';
 import { ProfileTextSource } from '../settings/ProfileTextSource';
+import { readProfileNotes } from '../settings/ProfileNoteStore';
 import { createLlmProvider } from '../transcription/factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { probeMediaDurationSeconds } from '../utils/mediaDuration';
@@ -161,7 +162,12 @@ export class AutoChapterService {
 			}
 			const { lines } = resolved;
 			new Notice(`Generating chapters for ${file.name}...`);
-			const settings = this.getSettings();
+			// Guidance kept in a note is read now, so the note applies as it
+			// stands when generation starts.
+			const settings = await readProfileNotes(
+				this.app,
+				this.getSettings(),
+			);
 			// The engine this job names, not the one post-processing points at:
 			// chapters are configured on a row of their own.
 			const vendorId = jobVendorId(settings, 'autoChapters');

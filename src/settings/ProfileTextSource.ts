@@ -26,6 +26,18 @@ export type ProfileTextChoice = 'typed' | 'note';
  */
 export type ProfileTextOrigin = ProfileTextChoice | 'missingNote';
 
+/** What picking a note asks before the note takes the place of typed text. */
+export interface TypedTextQuestion {
+	/** Title of the dialog asking. */
+	readonly title: string;
+	/** What becomes of the typed text. */
+	readonly message: string;
+	/** Label of the button that goes ahead. */
+	readonly confirmText: string;
+	/** Whether going ahead writes the typed text into the note first. */
+	readonly moveIntoNote: boolean;
+}
+
 /** How a catalogue entry names each origin, worded to follow another part. */
 const ORIGIN_SUMMARY: Record<ProfileTextOrigin, string> = {
 	typed: 'typed text',
@@ -149,6 +161,48 @@ export class ProfileTextSource {
 		}
 		profile.sourcePath = path;
 		this.awaitingNote.delete(profile.id);
+	}
+
+	/**
+	 * What to ask before a profile is pointed at a note whose text would take
+	 * the place of the text typed for it. Once the note is read into the body,
+	 * the typed text exists nowhere else. A blank note can take that text, so
+	 * going ahead moves it there; any other note replaces it. Nothing is asked
+	 * for a profile already read from a note, whose text lives in that note,
+	 * nor when the note holds the typed text already.
+	 * @param profile - The profile whose Note row names the note
+	 * @param path - The note's vault path
+	 * @param noteText - The note's text below its frontmatter, as it stands now
+	 * @returns The question, or null when no typed text would be lost
+	 */
+	typedTextQuestion(
+		profile: Profile,
+		path: string,
+		noteText: string,
+	): TypedTextQuestion | null {
+		const typed = profile.body.trim();
+		const held = noteText.trim();
+		if (
+			profile.sourcePath !== undefined ||
+			typed === '' ||
+			held === typed
+		) {
+			return null;
+		}
+		if (held === '') {
+			return {
+				title: 'Move the typed text into the note?',
+				message: `${path} is empty. The text typed for profile "${profile.name}" is added to it, and the profile reads its text from there.`,
+				confirmText: 'Move text',
+				moveIntoNote: true,
+			};
+		}
+		return {
+			title: 'Replace the typed text?',
+			message: `Profile "${profile.name}" reads its text from ${path}, and the text typed for it is lost. To keep that text, choose Typed text, copy it into the note, and pick the note again.`,
+			confirmText: 'Use the note',
+			moveIntoNote: false,
+		};
 	}
 
 	/** Drops every switch to a note that was never picked. */

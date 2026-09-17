@@ -2,8 +2,9 @@
  * Tests for the store that keeps note-backed profile bodies in step with their
  * notes: the read once the vault is loaded, edits, a rename of the note and of
  * its folder, a note that goes missing or arrives late, a note picked again
- * after a detach, a reload of the settings, an unload with a write pending, and
- * the roster the rename dialog appends to a note.
+ * after a detach, a reload of the settings, an unload with a write pending, the
+ * read a run makes of its notes as it starts, and the roster the rename dialog
+ * appends to a note.
  * @module tests/integration/ProfileNoteStore.test
  */
 
@@ -12,6 +13,7 @@ import type { Plugin, TFile } from 'obsidian';
 import {
 	ProfileNoteStore,
 	appendParticipantsToNote,
+	readProfileNotes,
 } from 'src/settings/ProfileNoteStore';
 import { ProfileTextSource } from 'src/settings/ProfileTextSource';
 import { mergeSettings } from 'src/settings/settingsSerialization';
@@ -25,8 +27,12 @@ import {
 	type Profile,
 } from 'src/settings/profiles';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import { TFile as MockTFile, TFolder as MockTFolder } from '../mocks/obsidian';
-import { asMockVault } from '../helpers/obsidianMock';
+import {
+	MarkdownView as MockMarkdownView,
+	TFile as MockTFile,
+	TFolder as MockTFolder,
+} from '../mocks/obsidian';
+import { asMockVault, asMockWorkspace } from '../helpers/obsidianMock';
 import { at } from '../helpers/assertions';
 import { partial } from '../helpers/doubles';
 
@@ -224,6 +230,21 @@ describe('ProfileNoteStore', () => {
 		warn.mockRestore();
 	});
 
+	it('reads a note again at the next save after the read of an edit failed', async () => {
+		const file = seedNote('- Kubernetes');
+		store.register(plugin);
+		await settle();
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+		vault().cachedRead.mockRejectedValueOnce(new Error('EBUSY'));
+
+		await saveNote(file, '- Helm');
+
+		expect(glossary().body).toBe('- Kubernetes');
+		// The note was read before, and a reconcile skips a note it has read.
+		expect(await store.reconcile()).toBe(true);
+		expect(glossary().body).toBe('- Helm');
+	});
+
 	it('follows the note through a rename and a move of its folder', async () => {
 		seedNote('- Kubernetes');
 		store.register(plugin);
@@ -389,6 +410,64 @@ describe('ProfileNoteStore', () => {
 		expect(glossary().body).toBe('Stale');
 		expect(await store.reconcile()).toBe(true);
 		expect(glossary().body).toBe('- New');
+	});
+
+	describe('readProfileNotes', () => {
+		it('reads the note as a run starts, though no event told of its change', async () => {
+			const file = seedNote('- Kubernetes');
+			await store.reconcile();
+			// Written by git, a sync client, or another editor, and not yet
+			// reported by the vault.
+			await vault().modify(file, '- Helm');
+
+			const run = await readProfileNotes(app, settings);
+
+			expect(resolveDictionaryTermList(run)).toEqual(['Helm']);
+		});
+
+		it('reads a note open in an editor with the text not saved yet', async () => {
+			const view = new MockMarkdownView();
+			view.file = seedNote('- Kubernetes');
+			view.data = '---\ntags: [ops]\n---\n- Kubernetes\n- Helm';
+			asMockWorkspace(app.workspace).getLeavesOfType.mockReturnValue([
+				{ view },
+			]);
+
+			const run = await readProfileNotes(app, settings);
+
+			expect(resolveDictionaryTermList(run)).toEqual([
+				'Kubernetes',
+				'Helm',
+			]);
+		});
+
+		it('keeps the text a run started with while the note is saved again', async () => {
+			const file = seedNote('- Kubernetes');
+			store.register(plugin);
+			await settle();
+
+			const run = await readProfileNotes(app, settings);
+			await saveNote(file, '- Helm');
+
+			expect(glossary().body).toBe('- Helm');
+			expect(resolveDictionaryTermList(run)).toEqual(['Kubernetes']);
+		});
+
+		it('keeps the text last read from a note it cannot read', async () => {
+			seedNote('- Kubernetes');
+			const warn = jest
+				.spyOn(console, 'warn')
+				.mockImplementation(() => undefined);
+			vault().read.mockRejectedValueOnce(new Error('EACCES'));
+
+			const run = await readProfileNotes(app, settings);
+
+			expect(resolveDictionaryTermList(run)).toEqual(['Stale']);
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining(NOTE),
+				expect.any(Error),
+			);
+		});
 	});
 });
 

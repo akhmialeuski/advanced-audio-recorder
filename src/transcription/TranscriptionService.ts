@@ -88,6 +88,7 @@ import {
 } from '../settings/profileResolution';
 import { selectedProfileId } from '../settings/profiles';
 import { ProfileTextSource } from '../settings/ProfileTextSource';
+import { readProfileNotes } from '../settings/ProfileNoteStore';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { jobVendorId } from './llm/vendors';
@@ -470,7 +471,9 @@ export class TranscriptionService {
 		file: TFile,
 		options: TranscribeRunOptions,
 	): Promise<TranscribeRunResult> {
-		const settings = this.getSettings();
+		// The glossary, the roster, and the prompt a profile keeps in a note are
+		// read now, so the run applies the note as it stands when it starts.
+		const settings = await readProfileNotes(this.app, this.getSettings());
 		const token = options.token ?? NEVER_CANCELLED;
 		const provider = this.createProvider(settings);
 		// One gate for the whole run: a stale "on" left from a diarizing engine

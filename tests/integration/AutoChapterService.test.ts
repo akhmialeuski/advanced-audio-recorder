@@ -364,6 +364,29 @@ describe('AutoChapterService.generate', () => {
 		expect(requestedSystemPrompt(llm)).toContain('Split by agenda item.');
 	});
 
+	it('divides by the guidance its note holds as generation starts', async () => {
+		// The body is the guidance last read, and the note was edited since.
+		const note = partial<TFile>({ path: 'Prompts/Agenda.md' });
+		const llm = makeLlm('[{"time": 0, "title": "Intro"}]');
+		const service = makeService({
+			llm,
+			store: makeStore().store,
+			app: createMockApp({
+				vault: {
+					getFileByPath: () => note,
+					read: () => Promise.resolve('Split by speaker.'),
+				},
+			}).app,
+			settings: agendaGuidance(note.path),
+		});
+
+		await service.generate(tf('rec.wav'), TRANSCRIPT);
+
+		const system = requestedSystemPrompt(llm);
+		expect(system).toContain('Split by speaker.');
+		expect(system).not.toContain('Split by agenda item.');
+	});
+
 	it('enforces a minimum chapter gap on bunched model output', async () => {
 		const llm = makeLlm(
 			'[{"time": 0, "title": "A"}, {"time": 3, "title": "B"}, ' +

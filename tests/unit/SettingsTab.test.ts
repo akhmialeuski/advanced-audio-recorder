@@ -37,7 +37,9 @@ import {
 import { tick } from '../helpers/async';
 import { allEls, el, maybeEl, textsOf } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
+import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import {
+	rowButton,
 	rowDescription,
 	rowInput,
 	rowSelect,
@@ -1822,6 +1824,84 @@ describe('AudioRecorderSettingTab', () => {
 				expect(shown(rowIn(profilePage(), 'Open note').visible)).toBe(
 					true,
 				);
+			});
+
+			describe('a note picked for a profile with typed text', () => {
+				const PICKED = 'Glossaries/Ops.md';
+				const TYPED_TERMS = '- Helm';
+
+				/** Types terms for a glossary, then picks a note holding the text. */
+				const pickOverTyped = async (
+					noteText: string,
+				): Promise<StoredProfile> => {
+					const profile = await glossaryAndNote();
+					asMockVault(tab.app.vault).seed([
+						{ path: PICKED, content: noteText },
+					]);
+					profile.body = TYPED_TERMS;
+					saveSettingsMock.mockClear();
+					await tab.setControlValue(sourceKey(profile.id), PICKED);
+					return profile;
+				};
+
+				/** Answers the question the pick opened with one of its buttons. */
+				const answer = async (button: string): Promise<void> => {
+					rowButton(
+						at(modalInstances, modalInstances.length - 1).contentEl,
+						button,
+					).click();
+					await tick();
+				};
+
+				it('asks before the note replaces the typed text, and stores nothing until then', async () => {
+					const profile = await pickOverTyped('- Argo');
+
+					expect(profile.sourcePath).toBeUndefined();
+					expect(saveSettingsMock).not.toHaveBeenCalled();
+
+					await answer('Use the note');
+
+					expect(profile.sourcePath).toBe(PICKED);
+					expect(saveSettingsMock).toHaveBeenCalledTimes(1);
+				});
+
+				it('keeps the typed text when the question is cancelled', async () => {
+					const profile = await pickOverTyped('- Argo');
+
+					await answer('Cancel');
+
+					expect(profile.sourcePath).toBeUndefined();
+					expect(profile.body).toBe(TYPED_TERMS);
+					expect(saveSettingsMock).not.toHaveBeenCalled();
+				});
+
+				it('moves the typed text into an empty note before the profile reads it', async () => {
+					const profile = await pickOverTyped(
+						'---\ntags: [ops]\n---\n',
+					);
+
+					await answer('Move text');
+
+					const note = tab.app.vault.getFileByPath(PICKED);
+					expect(note && (await tab.app.vault.read(note))).toBe(
+						`---\ntags: [ops]\n---\n${TYPED_TERMS}\n`,
+					);
+					expect(profile.sourcePath).toBe(PICKED);
+				});
+
+				it('stays on the typed text when that text cannot be added to the note', async () => {
+					const profile = await pickOverTyped('');
+					asMockVault(tab.app.vault).process.mockRejectedValueOnce(
+						new Error('EACCES'),
+					);
+
+					await answer('Move text');
+
+					expect(profile.sourcePath).toBeUndefined();
+					expect(noticeMessages()).toContain(
+						`The typed text was not added to ${PICKED}: EACCES`,
+					);
+				});
 			});
 
 			describe('the Source row', () => {

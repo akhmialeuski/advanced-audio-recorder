@@ -106,11 +106,12 @@ export async function writeTranscriptFile(
  * when that note is not open in a Markdown leaf. Targets the note the
  * timecode links were generated against - not whatever happens to be active
  * when an async transcription finishes - so output never lands in an
- * unrelated file the user switched to mid-run.
+ * unrelated file the user switched to mid-run. A profile note is read through
+ * it too, since its editor holds text not yet saved to disk.
  * @param app - Obsidian App
  * @param notePath - Vault path of the target note
  */
-function findNoteView(app: App, notePath: string): MarkdownView | null {
+export function findNoteView(app: App, notePath: string): MarkdownView | null {
 	if (!notePath) {
 		return null;
 	}

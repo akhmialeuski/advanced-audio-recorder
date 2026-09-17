@@ -171,6 +171,50 @@ describe('ProfileTextSource', () => {
 		});
 	});
 
+	describe('typedTextQuestion', () => {
+		it('offers an empty note the text typed for the profile', () => {
+			expect(
+				source.typedTextQuestion(roster(), NOTE, '\n\n'),
+			).toMatchObject({
+				confirmText: 'Move text',
+				moveIntoNote: true,
+			});
+		});
+
+		it('asks before the text of a note replaces the typed text', () => {
+			const question = source.typedTextQuestion(
+				roster(),
+				NOTE,
+				'- Alex\n- Maria\n- Ivan',
+			);
+
+			expect(question).toMatchObject({
+				confirmText: 'Use the note',
+				moveIntoNote: false,
+			});
+			expect(question?.message).toContain(NOTE);
+		});
+
+		it('asks nothing when no typed text would be lost', () => {
+			// A profile read from a note keeps its text in that note, an empty
+			// body has nothing to lose, and a note holding the typed text
+			// already loses nothing by being read.
+			expect(
+				source.typedTextQuestion(roster(NOTE), NOTE, '- Ivan'),
+			).toBeNull();
+			expect(
+				source.typedTextQuestion(
+					createProfile('participants', 'Empty'),
+					NOTE,
+					'- Ivan',
+				),
+			).toBeNull();
+			expect(
+				source.typedTextQuestion(roster(), NOTE, 'Alex\nMaria\n'),
+			).toBeNull();
+		});
+	});
+
 	describe('lostNotesNotice', () => {
 		const glossary = (): Profile => ({
 			...createProfile('dictionary', 'Terms', 'Kubernetes'),
