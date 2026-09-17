@@ -24,9 +24,11 @@ import {
 } from '../chapters/transcriptSources';
 import {
 	profilesOfKind,
+	selectedProfile,
 	selectedProfileId,
 	setSelectedProfileId,
 } from '../settings/profiles';
+import { ProfileTextSource } from '../settings/ProfileTextSource';
 import { ensureSelectedInList } from '../settings/modelList';
 import { ConfirmModal } from './ConfirmModal';
 import { PluginModal } from './PluginModal';
@@ -192,8 +194,11 @@ export class ChapterGenerationModal extends PluginModal {
 		new Setting(this.contentEl)
 			.setName('Chapter guidance profile')
 			.setDesc(
-				'Steers how this recording is divided. Add or edit profiles in ' +
-					'the plugin settings.',
+				new ProfileTextSource(this.app.vault).describe(
+					'Steers how this recording is divided. Add or edit profiles ' +
+						'in the plugin settings.',
+					selectedProfile(s, 'chapterPrompt'),
+				),
 			)
 			.addDropdown((dropdown) => {
 				dropdown.addOption('', 'None (base prompt only)');
@@ -202,6 +207,9 @@ export class ChapterGenerationModal extends PluginModal {
 				}
 				dropdown.setValue(current).onChange((id) => {
 					setSelectedProfileId(s, 'chapterPrompt', id);
+					// Drawn again so the line naming the picked guidance's text
+					// follows the pick; the transcript is not read again.
+					void this.render();
 				});
 			});
 	}

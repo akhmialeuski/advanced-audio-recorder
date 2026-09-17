@@ -8,6 +8,7 @@
  */
 
 import type { ProfileSection } from '../profileKinds';
+import { ProfileTextSource } from '../ProfileTextSource';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import {
 	type ProfileCatalogue,
@@ -22,6 +23,16 @@ import type { SettingGroupItem } from 'obsidian';
 
 /** Visible lines a profile body field opens with. */
 const PROFILE_BODY_ROWS = 8;
+
+/** Description of the row that names the note a profile's body is read from. */
+const PROFILE_NOTE_DESC =
+	'The note the text is read from, followed as it is edited, renamed, or moved. Its frontmatter is ignored.';
+
+/**
+ * Placeholder of that row. An example path would read as a note already
+ * picked, which is the very confusion the Source row exists to end.
+ */
+const PROFILE_NOTE_PLACEHOLDER = 'Pick a note';
 
 /**
  * One saved profile, as a page of its own.
@@ -64,10 +75,56 @@ function profilePage(
 				],
 			},
 			{
+				type: 'group',
+				cls: SETTINGS_SECTION_CLASS,
+				items: [
+					{
+						// The page says here, in one row, which text the profile
+						// applies, so it is never inferred from which fields
+						// below happen to be shown.
+						name: 'Source',
+						desc: entry.status,
+						control: {
+							type: 'dropdown',
+							key: profileControlKey(
+								catalogue.choiceKey,
+								entry.id,
+							),
+							options: { ...ProfileTextSource.CHOICES },
+						},
+					},
+					{
+						name: 'Note',
+						desc: PROFILE_NOTE_DESC,
+						visible: () => catalogue.readsNote(entry.id),
+						control: {
+							type: 'file',
+							key: profileControlKey(catalogue.noteKey, entry.id),
+							placeholder: PROFILE_NOTE_PLACEHOLDER,
+							filter: (file) => file.extension === 'md',
+							// Only a path naming a note is stored, so a path typed
+							// a letter at a time writes nothing until it is whole.
+							validate: (path) => catalogue.sourceRejection(path),
+						},
+					},
+					{
+						name: 'Open note',
+						desc: 'Opens the note this body is read from, where it is edited.',
+						visible: () => catalogue.sourcePath(entry.id) !== '',
+						action: (): void => {
+							catalogue.openSource(entry.id);
+						},
+					},
+				],
+			},
+			{
 				// The body is a multi-line editor, which is laid out across the
-				// whole row and therefore in a block of its own.
+				// whole row and therefore in a block of its own. A body read from
+				// a note is edited in the note, so the editor steps aside as soon
+				// as the page is set to one.
 				type: 'group',
 				cls: `${SETTINGS_SECTION_CLASS} ${STACKED_TEXT_CLASS}`,
+				visible: () => !catalogue.readsNote(entry.id),
 				items: [
 					{
 						name: catalogue.bodyName,
@@ -124,14 +181,11 @@ function profileGroups(
 ): SettingGroupItem[] {
 	const entries = catalogue.entries(settings);
 	const visible = (): boolean => catalogue.visible(settings);
-	const selectedName = (): string => {
+	const inUse = (list: readonly ProfileEntry[]): ProfileEntry | undefined => {
 		// The selection lives in the profile store, not in a settings field of
 		// its own, so the catalogue is what answers which profile is in use.
 		const selected = catalogue.selectedId(settings);
-		return (
-			catalogue.entries(settings).find((entry) => entry.id === selected)
-				?.name ?? 'None'
-		);
+		return list.find((entry) => entry.id === selected);
 	};
 	const add = (): void => {
 		catalogue.add();
@@ -139,7 +193,12 @@ function profileGroups(
 	const selectionRow: SettingGroupItem = {
 		name: catalogue.selectionName,
 		aliases: ['profile', 'preset'],
-		desc: catalogue.selectionDesc,
+		// Every pick redraws the tree, so the line naming the text in use is
+		// read here once per build.
+		desc: ProfileTextSource.withStatus(
+			catalogue.selectionDesc,
+			inUse(entries)?.status ?? '',
+		),
 		visible,
 		control: {
 			type: 'dropdown',
@@ -159,7 +218,8 @@ function profileGroups(
 			type: 'page',
 			name: catalogue.heading,
 			desc: catalogue.selectorDesc,
-			displayValue: selectedName,
+			displayValue: () =>
+				inUse(catalogue.entries(settings))?.name ?? 'None',
 			visible,
 			items: [
 				{

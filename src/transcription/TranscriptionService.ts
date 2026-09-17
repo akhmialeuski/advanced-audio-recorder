@@ -81,11 +81,14 @@ import {
 	type RecordingRange,
 } from './partFailure';
 import {
+	PROMPT_KIND_OF_TASK,
 	resolveDictionaryTermList,
 	resolveLlmPrompt,
 	resolveRunParticipants,
 } from '../settings/profileResolution';
 import { selectedProfileId } from '../settings/profiles';
+import { ProfileTextSource } from '../settings/ProfileTextSource';
+import { readProfileNotes } from '../settings/ProfileNoteStore';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { jobVendorId } from './llm/vendors';
@@ -468,7 +471,12 @@ export class TranscriptionService {
 		file: TFile,
 		options: TranscribeRunOptions,
 	): Promise<TranscribeRunResult> {
-		const settings = this.getSettings();
+		// The glossary, the roster, and the prompt a profile keeps in a note are
+		// read now, so the run applies the note as it stands when it starts.
+		const { settings, unread } = await readProfileNotes(
+			this.app,
+			this.getSettings(),
+		);
 		const token = options.token ?? NEVER_CANCELLED;
 		const provider = this.createProvider(settings);
 		// One gate for the whole run: a stale "on" left from a diarizing engine
@@ -487,16 +495,39 @@ export class TranscriptionService {
 		// to the provider's cap, and a Whisper prompt is bounded to its token
 		// window, so a request never carries terms the provider would reject or
 		// silently ignore. Whatever is dropped is surfaced below.
+		const dictionaryTerms = resolveDictionaryTermList(settings);
 		const dictionaryPlan = planDictionaryBias(
 			settings.transcriptionProvider,
 			settings.deepgramModel,
-			resolveDictionaryTermList(settings),
+			dictionaryTerms,
 		);
 		const dictionaryNotice = describeDictionaryOmission(dictionaryPlan);
 		if (dictionaryNotice) {
 			// Tell the user which terms will not bias this run instead of
 			// implying every configured term was applied.
 			new Notice(dictionaryNotice);
+		}
+		// One decision for whether the post-processing pass runs, read by the
+		// pass below and by the warning about the prompt it would send.
+		const postProcessing =
+			settings.llmPostProcessEnabled && !options.skipPostProcessing;
+		// The glossary, the roster, and the post-processing prompt of this run
+		// may be read from notes, and a note that went missing or could not be
+		// read leaves its profile on the text last read from it rather than on
+		// nothing. The run names only what it reads, by the gates that decide it
+		// reads it: terms resolved at all, speakers labelled, a pass that runs.
+		const lostSourceNotice = new ProfileTextSource(
+			this.app.vault,
+			unread,
+		).lostNotesNotice(settings, [
+			...(dictionaryTerms.length > 0 ? (['dictionary'] as const) : []),
+			...(diarize ? (['participants'] as const) : []),
+			...(postProcessing
+				? [PROMPT_KIND_OF_TASK[settings.llmPostProcessTask]]
+				: []),
+		]);
+		if (lostSourceNotice) {
+			new Notice(lostSourceNotice);
 		}
 		const transcribeOptions = {
 			// Gated like diarize below: an engine that detects the language
@@ -728,7 +759,7 @@ export class TranscriptionService {
 		}
 
 		let translation: TranscriptTranslation | undefined;
-		if (settings.llmPostProcessEnabled && !options.skipPostProcessing) {
+		if (postProcessing) {
 			this.throwIfCancelled(token);
 			const translating = settings.llmPostProcessTask === 'translate';
 			options.onProgress?.(

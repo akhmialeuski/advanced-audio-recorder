@@ -19,6 +19,8 @@ import type {
 	LlmProviderId,
 } from '../settings/settingsSchema';
 import { resolveChapterGuidance } from '../settings/profileResolution';
+import { ProfileTextSource } from '../settings/ProfileTextSource';
+import { readProfileNotes } from '../settings/ProfileNoteStore';
 import { createLlmProvider } from '../transcription/factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { probeMediaDurationSeconds } from '../utils/mediaDuration';
@@ -160,7 +162,12 @@ export class AutoChapterService {
 			}
 			const { lines } = resolved;
 			new Notice(`Generating chapters for ${file.name}...`);
-			const settings = this.getSettings();
+			// Guidance kept in a note is read now, so the note applies as it
+			// stands when generation starts.
+			const { settings, unread } = await readProfileNotes(
+				this.app,
+				this.getSettings(),
+			);
 			// The engine this job names, not the one post-processing points at:
 			// chapters are configured on a row of their own.
 			const vendorId = jobVendorId(settings, 'autoChapters');
@@ -203,6 +210,16 @@ export class AutoChapterService {
 			// The selected chapter profile steers how the recording is split;
 			// an empty selection appends no guidance and keeps the base prompt.
 			const guidance = resolveChapterGuidance(settings);
+			// Guidance kept in a note that went missing or could not be read is
+			// the text last read from it, and the run says so instead of passing
+			// it off as current.
+			const lostSourceNotice = new ProfileTextSource(
+				this.app.vault,
+				unread,
+			).lostNotesNotice(settings, ['chapterPrompt']);
+			if (lostSourceNotice) {
+				new Notice(lostSourceNotice);
+			}
 			const prompt = buildChapterPrompt(lines, {
 				...(language ? { language } : {}),
 				...(guidance ? { guidance } : {}),

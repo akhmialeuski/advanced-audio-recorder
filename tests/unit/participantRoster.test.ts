@@ -7,7 +7,33 @@
 import {
 	mergeParticipantNames,
 	normalizeParticipantNames,
+	parseParticipantBody,
 } from 'src/speakers/participantRoster';
+
+describe('parseParticipantBody', () => {
+	it('reads a roster written as a Markdown list under a heading', () => {
+		expect(
+			parseParticipantBody(
+				'## Team\n- Alex\n* Bob\n\n1. Cleo\n- [ ] Dana',
+			),
+		).toEqual(['Alex', 'Bob', 'Cleo', 'Dana']);
+	});
+
+	it('reads a name linked to a person note as the name the link shows', () => {
+		expect(
+			parseParticipantBody(
+				'- [[People/Alice Smith|Alice]]\n- [[People/Bob Jones]]',
+			),
+		).toEqual(['Alice', 'Bob Jones']);
+	});
+
+	it('reads plain lines exactly as before', () => {
+		expect(parseParticipantBody('Alex\r\n  Bob \n\nAlex')).toEqual([
+			'Alex',
+			'Bob',
+		]);
+	});
+});
 
 describe('normalizeParticipantNames', () => {
 	it('trims, drops blanks, and keeps the first of a duplicate in order', () => {

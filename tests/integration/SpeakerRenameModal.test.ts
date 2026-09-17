@@ -5,7 +5,9 @@
  * outputs (diffed against the stored names, with roster and history persisted
  * first), a repeated apply that heals the outputs without recording anything,
  * the notice that names why a note went untouched, undo, and the participant
- * roster the recording carries alongside the settings profiles.
+ * roster the recording carries alongside the settings profiles, read from its
+ * note as the dialog opens, named under the picker when that read fails, and
+ * reported when it cannot be written, while the rename goes ahead.
  * @jest-environment jsdom
  */
 
@@ -27,6 +29,7 @@ import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
 import { noticeMessages } from '../mocks/obsidian';
 import { internalsOf, partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { rowDescription, rowSelect, settingRow } from '../helpers/settingRows';
 import { installControlledAudio } from '../helpers/mediaMocks';
 import type { ControlledAudio } from '../helpers/mediaMocks';
 
@@ -115,6 +118,59 @@ function rosterSection(
 		],
 		...overrides,
 	};
+}
+
+/**
+ * The picked roster "Weekly sync" holding Maria, over a recording whose own
+ * roster is Alex and whose two speakers are still unnamed.
+ * @param sourcePath - The note the roster is read from, when it is kept in one
+ */
+function weeklySyncRoster(sourcePath?: string): {
+	settings: AudioRecorderSettings;
+	sidecar: ReturnType<typeof makeSidecar>;
+} {
+	return {
+		settings: mergeSettings({
+			profiles: [
+				{
+					id: 'p1',
+					kind: 'participants',
+					name: 'Weekly sync',
+					body: 'Maria',
+					...(sourcePath === undefined ? {} : { sourcePath }),
+				},
+			],
+		}),
+		sidecar: makeSidecar(
+			rosterSection({
+				speakers: [{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
+				participants: ['Alex'],
+				participantProfileId: 'p1',
+			}),
+		),
+	};
+}
+
+/**
+ * Opens the dialog, names the second speaker, and applies.
+ * @param dialog - The dialog and its internals
+ * @param name - The name typed for the second speaker
+ * @param meanwhile - What happens elsewhere while the dialog is open
+ */
+async function nameSecondSpeaker(
+	dialog: { modal: SpeakerRenameModal; internals: ModalInternals },
+	name: string,
+	meanwhile: () => void = (): void => undefined,
+): Promise<void> {
+	dialog.modal.open();
+	await dialog.internals.render();
+	const second = dialog.internals.inputs.get('Speaker 2');
+	if (!second) {
+		throw new Error('missing input');
+	}
+	second.value = name;
+	meanwhile();
+	await dialog.internals.apply();
 }
 
 const cleanApplyResult = {
@@ -953,23 +1009,7 @@ describe('SpeakerRenameModal', () => {
 	});
 
 	it('saves a name that is in neither the recording nor the profile to both', async () => {
-		const settings = mergeSettings({
-			profiles: [
-				{
-					id: 'p1',
-					kind: 'participants',
-					name: 'Weekly sync',
-					body: 'Maria',
-				},
-			],
-		});
-		const sidecar = makeSidecar(
-			rosterSection({
-				speakers: [{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
-				participants: ['Alex'],
-				participantProfileId: 'p1',
-			}),
-		);
+		const { settings, sidecar } = weeklySyncRoster();
 		const { modal, internals, saveSettings } = makeModal(settings, sidecar);
 		modal.open();
 		await internals.render();
@@ -991,6 +1031,224 @@ describe('SpeakerRenameModal', () => {
 		// ...and the picked profile learns the name too.
 		expect(settings.profiles[0]?.body).toBe('Maria\nIvan');
 		expect(saveSettings).toHaveBeenCalled();
+	});
+
+	it('renames the speakers when the profile with the new name cannot be saved', async () => {
+		const { settings, sidecar } = weeklySyncRoster();
+		const dialog = makeModal(settings, sidecar);
+		// A save may fail with a bare message as well as with an Error.
+		dialog.saveSettings.mockRejectedValueOnce('disk full');
+		const warn = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => undefined);
+
+		await nameSecondSpeaker(dialog, 'Ivan');
+
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('Weekly sync'),
+			'disk full',
+		);
+		expect(sidecar.commitRename).toHaveBeenCalledTimes(1);
+		expect(noticeMessages()).toContain(
+			'The new names were not added to profile "Weekly sync": disk full',
+		);
+	});
+
+	it('renames the speakers when the picked profile is deleted while the dialog is open', async () => {
+		const { settings, sidecar } = weeklySyncRoster();
+		const dialog = makeModal(settings, sidecar);
+
+		await nameSecondSpeaker(dialog, 'Ivan', () => {
+			settings.profiles = [];
+		});
+
+		expect(sidecar.commitRename).toHaveBeenCalledTimes(1);
+		expect(dialog.saveSettings).not.toHaveBeenCalled();
+	});
+
+	describe('a roster kept in a note', () => {
+		const NOTE_PATH = 'People/Weekly sync.md';
+
+		/**
+		 * A dialog over a vault that holds the roster note as the given text, or
+		 * no note at all for null.
+		 */
+		function makeNoteModal(content: string | null): {
+			internals: ModalInternals;
+			modal: SpeakerRenameModal;
+			process: jest.Mock;
+			read: jest.Mock;
+			settings: AudioRecorderSettings;
+			sidecar: ReturnType<typeof makeSidecar>;
+			noteText: () => string;
+		} {
+			let text = content ?? '';
+			const note = partial<TFile>({
+				path: NOTE_PATH,
+				name: 'Weekly sync.md',
+			});
+			const process = jest.fn(
+				(
+					_file: TFile,
+					fn: (data: string) => string,
+				): Promise<string> => {
+					text = fn(text);
+					return Promise.resolve(text);
+				},
+			);
+			const read = jest.fn(() => Promise.resolve(text));
+			const noteApp = createMockApp({
+				vault: {
+					getResourcePath: () => 'app://vault/audio/rec.wav',
+					getFileByPath: (path: string) =>
+						content !== null && path === NOTE_PATH ? note : null,
+					read,
+					process,
+				},
+			}).app;
+			const { settings, sidecar } = weeklySyncRoster(NOTE_PATH);
+			const modal = new SpeakerRenameModal(noteApp, audioFile, {
+				getSettings: () => settings,
+				saveSettings: jest.fn().mockResolvedValue(undefined),
+				sidecar,
+			});
+			return {
+				internals: internalsOf<ModalInternals>(modal),
+				modal,
+				process,
+				read,
+				settings,
+				sidecar,
+				noteText: () => text,
+			};
+		}
+
+		it('appends a new name to the note, in the list style it is written in', async () => {
+			const dialog = makeNoteModal(
+				'---\ntags: [team]\n---\n# Weekly sync\n- Maria\n',
+			);
+
+			await nameSecondSpeaker(dialog, 'Ivan');
+
+			// The note is the user's document: appended to, never rewritten.
+			expect(dialog.noteText()).toBe(
+				'---\ntags: [team]\n---\n# Weekly sync\n- Maria\n- Ivan\n',
+			);
+			// The body follows through the modify the write raises. Written
+			// here as well, it would only be overwritten by that read.
+			expect(dialog.settings.profiles[0]?.body).toBe('Maria');
+			expect(dialog.sidecar.commitRename).toHaveBeenCalledTimes(1);
+		});
+
+		it('suggests the names the roster note holds as the dialog opens', async () => {
+			// The body is the roster last read, and Ivan joined the note since.
+			const dialog = makeNoteModal('# Weekly sync\n- Maria\n- Ivan\n');
+			dialog.modal.open();
+			await dialog.internals.render();
+
+			expect(dialog.internals.suggestionPool()).toEqual([
+				'Alex',
+				'Maria',
+				'Ivan',
+			]);
+		});
+
+		it('renames the speakers when the roster note cannot be written, and says so', async () => {
+			const dialog = makeNoteModal('- Maria\n');
+			dialog.process.mockRejectedValueOnce(new Error('EBUSY'));
+			jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+			await nameSecondSpeaker(dialog, 'Ivan');
+
+			expect(dialog.sidecar.commitRename).toHaveBeenCalledTimes(1);
+			expect(noticeMessages()).toContain(
+				'The new names were not added to profile "Weekly sync": EBUSY',
+			);
+		});
+
+		it('adds nothing to the note for a name it already holds', async () => {
+			const dialog = makeNoteModal('- Maria\n');
+
+			await nameSecondSpeaker(dialog, 'Maria');
+
+			expect(dialog.noteText()).toBe('- Maria\n');
+		});
+
+		it('names under the picker the text of the picked roster, as the pick moves', async () => {
+			const dialog = makeNoteModal('- Maria\n');
+			dialog.modal.open();
+			await dialog.internals.render();
+			const picker = (): HTMLElement =>
+				settingRow(dialog.modal.contentEl, 'Participant profile');
+
+			expect(rowDescription(picker())).toContain(
+				`Uses the text of ${NOTE_PATH}.`,
+			);
+
+			// The recording's own roster is no profile, so no text is named.
+			rowSelect(picker()).value = '';
+			rowSelect(picker()).dispatchEvent(new Event('change'));
+
+			expect(rowDescription(picker())).not.toContain('Uses the text');
+
+			// A profile created here is typed in, and is described in place
+			// without rebuilding the dialog.
+			if (dialog.internals.newProfileInput) {
+				dialog.internals.newProfileInput.value = 'Standup';
+			}
+			await dialog.internals.createProfile();
+
+			expect(rowDescription(picker())).toContain(
+				'Uses the text typed in the settings.',
+			);
+		});
+
+		/**
+		 * Opens the dialog and reads the line under its profile picker.
+		 * @param dialog - The dialog to open
+		 */
+		const pickerLineOnOpen = async (
+			dialog: ReturnType<typeof makeNoteModal>,
+		): Promise<string> => {
+			dialog.modal.open();
+			await dialog.internals.render();
+			return rowDescription(
+				settingRow(dialog.modal.contentEl, 'Participant profile'),
+			);
+		};
+
+		it('says under the picker that the roster note is gone', async () => {
+			expect(await pickerLineOnOpen(makeNoteModal(null))).toContain(
+				`Uses the text last read from ${NOTE_PATH}, which is missing.`,
+			);
+		});
+
+		it('says under the picker that the roster note could not be read, and suggests the roster last read', async () => {
+			// Ivan joined the note, and its read fails however often it is tried.
+			const dialog = makeNoteModal('- Maria\n- Ivan\n');
+			dialog.read.mockRejectedValue(new Error('EBUSY'));
+			jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+			expect(await pickerLineOnOpen(dialog)).toContain(
+				`Uses the text last read from ${NOTE_PATH}, which could not be read.`,
+			);
+			expect(dialog.internals.suggestionPool()).toEqual([
+				'Alex',
+				'Maria',
+			]);
+		});
+
+		it('tells the user when the note is gone, and leaves the profile alone', async () => {
+			const dialog = makeNoteModal(null);
+
+			await nameSecondSpeaker(dialog, 'Ivan');
+
+			expect(dialog.process).not.toHaveBeenCalled();
+			expect(dialog.settings.profiles[0]?.body).toBe('Maria');
+			expect(noticeMessages()).toContain(
+				'The note of profile "Weekly sync" (People/Weekly sync.md) is missing, so the new names were not added to it.',
+			);
+		});
 	});
 
 	it('records "no profile" when the recording roster is the only source', async () => {

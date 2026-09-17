@@ -18,6 +18,7 @@
 import {
 	App,
 	DropdownComponent,
+	Notice,
 	PluginSettingTab,
 	Setting,
 	TFolder,
@@ -26,7 +27,7 @@ import {
 	requireApiVersion,
 	setIcon,
 } from 'obsidian';
-import type { Plugin } from 'obsidian';
+import type { Plugin, TFile } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
 import {
 	createSettingsRenderMode,
@@ -95,8 +96,14 @@ import {
 	type ProfileKindId,
 } from './profiles';
 import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
+import { ProfileTextSource } from './ProfileTextSource';
+import { appendTextToNote, readNoteText } from './ProfileNoteStore';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
-import { closeSettingsPage } from '../obsidian/settingsNavigation';
+import {
+	closeSettings,
+	closeSettingsPage,
+} from '../obsidian/settingsNavigation';
 import { ENGINES, type EngineId } from '../providers/providers';
 import {
 	applyEngineSettingsField,
@@ -203,6 +210,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				this.getFolderOptions(),
 			);
 		},
+		// The same for the file control, narrowed by the filter it declares.
+		attachFileSuggest: (
+			inputEl: HTMLInputElement,
+			filter?: (file: TFile) => boolean,
+		): void => {
+			new TextInputSuggest(this.app, inputEl, () =>
+				this.app.vault
+					.getFiles()
+					.filter((file) => filter?.(file) ?? true)
+					.map((file) => file.path),
+			);
+		},
 	});
 
 	/**
@@ -218,6 +237,25 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * carries names the field here and the profile by id.
 	 */
 	private readonly profileAccess = new Map<string, ProfileKindId>();
+
+	/**
+	 * Base control keys addressing the note a profile's body is read from,
+	 * resolved to the profile the same way a body key is.
+	 */
+	private readonly profileNotes = new Map<string, ProfileKindId>();
+
+	/**
+	 * Base control keys addressing a profile's Source row, resolved to the
+	 * profile the same way a body key is.
+	 */
+	private readonly profileChoices = new Map<string, ProfileKindId>();
+
+	/**
+	 * Where each profile's text comes from, and what its Source row is set to.
+	 * One for the tab, because a switch to a note that is not picked yet is
+	 * state of these pages until the settings close.
+	 */
+	private readonly profileText = new ProfileTextSource(this.app.vault);
 
 	/**
 	 * Base control keys addressing whether a profile is the selected one. The
@@ -379,12 +417,22 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @returns The stored value
 	 */
 	override getControlValue(key: string): unknown {
-		const field = this.profileFieldFor(key);
+		const field = this.profileFieldFor(key, this.profileAccess);
 		if (field) {
 			// A profile deleted while its page was open leaves the controls of
 			// that page standing until the page is torn down; an empty body is
 			// what they read then.
 			return field.profile?.body ?? '';
+		}
+		const source = this.profileFieldFor(key, this.profileNotes);
+		if (source) {
+			return source.profile?.sourcePath ?? '';
+		}
+		const choice = this.profileFieldFor(key, this.profileChoices);
+		if (choice) {
+			return choice.profile
+				? this.profileText.choice(choice.profile)
+				: 'typed';
 		}
 		const selection = this.profileSelectionFor(key);
 		if (selection) {
@@ -466,7 +514,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		key: string,
 		value: unknown,
 	): void | Promise<void> {
-		const field = this.profileFieldFor(key);
+		const field = this.profileFieldFor(key, this.profileAccess);
 		if (field) {
 			if (field.profile) {
 				field.profile.body = String(value);
@@ -475,6 +523,35 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// is live in memory either way, only the write to disk waits.
 			this.saveTextSettingDebounced();
 			return;
+		}
+		const source = this.profileFieldFor(key, this.profileNotes);
+		if (source) {
+			return source.profile
+				? this.bindProfileNote(source.profile, String(value))
+				: this.commit();
+		}
+		const choice = this.profileFieldFor(key, this.profileChoices);
+		if (choice) {
+			const chosen = value === 'note' ? 'note' : 'typed';
+			const note =
+				choice.profile && chosen === 'typed'
+					? this.profileText.note(choice.profile)
+					: null;
+			if (choice.profile && note) {
+				return this.detachProfileNote(choice.profile, note);
+			}
+			if (
+				choice.profile &&
+				this.profileText.choose(choice.profile, chosen)
+			) {
+				return this.commit();
+			}
+			// Nothing stored changed, but the page trades its fields and its
+			// Source line. Drawn after this write returns, as every other
+			// redraw is, so the renderer finishes the change it is handling.
+			return Promise.resolve().then(() => {
+				this.rerender();
+			});
 		}
 		const selection = this.profileSelectionFor(key);
 		if (selection) {
@@ -573,18 +650,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * The profile whose body a control key addresses. The key names the kind
+	 * The profile whose field a control key addresses. The key names the kind
 	 * the field belongs to and the profile it belongs to, so a row on one
 	 * profile's page can never write to another's.
 	 * @param key - The control key to resolve
+	 * @param access - Base keys of the field being asked about, by kind
 	 * @returns The profile, or undefined for any other key. The `profile` is
 	 * undefined when the key addresses a kind that no longer holds this id.
 	 */
 	private profileFieldFor(
 		key: string,
+		access: ReadonlyMap<string, ProfileKindId>,
 	): { profile: Profile | undefined } | undefined {
 		const parsed = parseProfileControlKey(key);
-		const kind = parsed && this.profileAccess.get(parsed.base);
+		const kind = parsed && access.get(parsed.base);
 		if (!parsed || !kind) {
 			return undefined;
 		}
@@ -735,6 +814,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const ofKind = (): Profile[] =>
 			profilesOfKind(this.plugin.settings.profiles, kindId);
 		this.profileAccess.set(kind.bodyKey, kindId);
+		this.profileNotes.set(kind.noteKey, kindId);
+		this.profileChoices.set(kind.choiceKey, kindId);
 		this.profileSelections.set(kind.selectionKey, kindId);
 		const rejection = (id: string, name: string): string | undefined =>
 			profileNameRejection(
@@ -753,15 +834,51 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			selectionDesc: kind.selectionDesc,
 			selectedId: (settings) => selectedProfileId(settings, kindId),
 			selectionKey: kind.selectionKey,
+			choiceKey: kind.choiceKey,
 			bodyKey: kind.bodyKey,
+			noteKey: kind.noteKey,
+			sourcePath: (id) => findProfile(ofKind(), id)?.sourcePath ?? '',
+			readsNote: (id) => {
+				const profile = findProfile(ofKind(), id);
+				return (
+					profile !== undefined &&
+					this.profileText.choice(profile) === 'note'
+				);
+			},
+			sourceRejection: (path) =>
+				path === '' ||
+				this.app.vault.getFileByPath(path)?.extension === 'md'
+					? undefined
+					: 'No note at this path.',
+			openSource: (id): void => {
+				const profile = findProfile(ofKind(), id);
+				if (profile?.sourcePath === undefined) {
+					return;
+				}
+				const note = this.profileText.note(profile);
+				if (!note) {
+					new Notice(
+						`${this.profileText.missingNote(profile.name, profile.sourcePath)}.`,
+					);
+					return;
+				}
+				closeSettings(this.app);
+				// Opened as the file the path resolves to. As link text, a '#',
+				// '^' or '|' in the note's name would be read as link syntax, and
+				// a link that resolves to nothing creates an empty note.
+				void this.app.workspace.getLeaf('tab').openFile(note);
+			},
+			// A note gone from the vault leaves the body it was last read into,
+			// and the entry and the page say which text that is.
 			entries: (settings) =>
 				profilesOfKind(settings.profiles, kindId).map((profile) => ({
 					id: profile.id,
 					name: profile.name,
-					summary:
-						profile.id === selectedProfileId(settings, kindId)
-							? `In use, ${kind.summary(profile)}`
-							: kind.summary(profile),
+					summary: this.profileText.summary(
+						profile,
+						profile.id === selectedProfileId(settings, kindId),
+					),
+					status: this.profileText.status(profile),
 				})),
 			visible: kind.visible,
 			add: (): void => {
@@ -849,6 +966,123 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			() => this.plugin.settings,
 			() => this.commit(),
 		);
+	}
+
+	/**
+	 * Points a profile at the note its Note row names, and saves. The save reads
+	 * the note into the body, and the tree is read again because the page trades
+	 * its editor for the note and the entry counts what the note holds.
+	 *
+	 * A note whose text would take the place of text typed for the profile is
+	 * asked about first, because that text exists nowhere else once the note is
+	 * read. Nothing is stored while the question is open, and nothing for a note
+	 * that cannot be read, since its text cannot be weighed against the typed
+	 * text.
+	 * @param profile - The profile whose Note row was edited
+	 * @param path - The note's vault path, or '' when the row was emptied
+	 * @returns Resolves once the change is saved, or once the question is open
+	 */
+	private async bindProfileNote(
+		profile: Profile,
+		path: string,
+	): Promise<void> {
+		const note = path === '' ? null : this.app.vault.getFileByPath(path);
+		const noteText =
+			note === null
+				? ''
+				: await this.readRowNote(note, 'so it was not picked');
+		if (noteText === null) {
+			// The field holds the path just picked. Drawn again, the page
+			// holds what is stored.
+			this.rerender();
+			return;
+		}
+		const question =
+			note === null
+				? null
+				: this.profileText.typedTextQuestion(profile, path, noteText);
+		if (note === null || question === null) {
+			this.profileText.bindNote(profile, path);
+			return this.commit();
+		}
+		// The field holds the path just picked. Drawn again, the page holds
+		// what is stored, which is what stays when the question is cancelled.
+		this.rerender();
+		new ConfirmModal(this.app, {
+			title: question.title,
+			message: question.message,
+			confirmText: question.confirmText,
+			onConfirm: () => {
+				const moved = question.moveIntoNote
+					? appendTextToNote(this.app.vault, note, profile.body)
+					: Promise.resolve();
+				void moved.then(
+					() => {
+						this.profileText.bindNote(profile, path);
+						return this.commit();
+					},
+					(error: unknown) => {
+						// Pointed at the note without the text, the profile
+						// would lose it, so it stays as it is.
+						const message =
+							error instanceof Error
+								? error.message
+								: String(error);
+						new Notice(
+							`The typed text was not added to ${path}: ${message}`,
+						);
+					},
+				);
+			},
+		}).open();
+	}
+
+	/**
+	 * Detaches a profile from its note on a choice of typed text, and saves.
+	 * The text the note holds becomes the typed text, so the note is read now:
+	 * the body holds the text of the last vault event, which trails an edit the
+	 * editor has not saved yet. A note that cannot be read leaves that text.
+	 * @param profile - The profile whose Source row was set to typed text
+	 * @param note - The note the profile is read from
+	 * @returns Resolves once the change is saved
+	 */
+	private async detachProfileNote(
+		profile: Profile,
+		note: TFile,
+	): Promise<void> {
+		const text = await this.readRowNote(
+			note,
+			'so the typed text is the text last read from it',
+		);
+		if (text !== null) {
+			profile.body = text;
+		}
+		this.profileText.choose(profile, 'typed');
+		return this.commit();
+	}
+
+	/**
+	 * The text of a note a profile row is about to act on, read as it stands
+	 * now. A note that cannot be read is reported in a notice finished with
+	 * what that means for the row.
+	 * @param note - The note to read
+	 * @param consequence - What the failed read means, e.g. "so it was not picked"
+	 * @returns The note's text below its frontmatter, or null when unread
+	 */
+	private async readRowNote(
+		note: TFile,
+		consequence: string,
+	): Promise<string | null> {
+		try {
+			return await readNoteText(this.app, note);
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : String(error);
+			new Notice(
+				`${note.path} could not be read, ${consequence}: ${message}`,
+			);
+			return null;
+		}
 	}
 
 	/**
@@ -1330,6 +1564,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		this.deviceRefreshGeneration++;
 		this.formatAvailabilityGeneration++;
 		this.saveTextSettingDebounced.run();
+		// A switch to a note that was never picked stored nothing, so the
+		// next visit opens the page on the text it really applies.
+		this.profileText.forgetChoices();
 		// On the legacy path the renderer holds the rows and their cleanups;
 		// releasing it is what runs them when the tab is left. On 1.13 the
 		// framework runs them itself and this renderer holds nothing.

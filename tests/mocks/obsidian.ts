@@ -223,6 +223,18 @@ export class Plugin {
 	/** Event handles passed to {@link registerEvent}, in order. */
 	readonly registeredEvents: EventRef[] = [];
 
+	/**
+	 * Records a teardown callback. The real Plugin runs these as it unloads;
+	 * a test that unloads the plugin runs them from here.
+	 * @param callback - What to run on unload
+	 */
+	register(callback: () => void): void {
+		this.registeredCleanups.push(callback);
+	}
+
+	/** Callbacks passed to {@link register}, in order. */
+	readonly registeredCleanups: Array<() => void> = [];
+
 	async loadData(): Promise<unknown> {
 		return {};
 	}
@@ -650,6 +662,13 @@ export class Workspace extends Events {
 	});
 
 	getLeavesOfType = jest.fn((_type: string): unknown[] => []);
+
+	/** The leaf getLeaf hands out, so a test can read what was opened in it. */
+	readonly leaf = {
+		openFile: jest.fn((_file: TFile) => Promise.resolve()),
+	};
+
+	getLeaf = jest.fn((_newLeaf?: unknown) => this.leaf);
 
 	iterateAllLeaves = jest.fn((_callback: (leaf: unknown) => void): void => {
 		// No leaves unless a test seeds them
@@ -1345,6 +1364,13 @@ export class MarkdownView {
 	// The real MarkdownView carries the file through FileView; production code
 	// narrows a leaf to a MarkdownView and then reads view.file.
 	file: TFile | null = null;
+	// What the editor holds, which Obsidian saves to disk two seconds after
+	// the typing stops; a test sets it apart from the file to tell the two.
+	data = '';
+
+	getViewData(): string {
+		return this.data;
+	}
 }
 
 /**
@@ -1724,6 +1750,40 @@ export function normalizePath(path: string): string {
 export const setIcon = jest.fn((el: HTMLElement, iconId: string): void => {
 	el.setAttribute('data-icon', iconId);
 });
+
+/**
+ * Mock getFrontMatterInfo: locates the frontmatter block a note opens with the
+ * way Obsidian's does, so a note read by the plugin loses it in tests too.
+ */
+export function getFrontMatterInfo(content: string): {
+	exists: boolean;
+	frontmatter: string;
+	from: number;
+	to: number;
+	contentStart: number;
+} {
+	const match = /^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(
+		content,
+	);
+	if (!match) {
+		return {
+			exists: false,
+			frontmatter: '',
+			from: 0,
+			to: 0,
+			contentStart: 0,
+		};
+	}
+	const frontmatter = match[1] ?? '';
+	const from = content.indexOf('\n') + 1;
+	return {
+		exists: true,
+		frontmatter,
+		from,
+		to: from + frontmatter.length,
+		contentStart: match[0].length,
+	};
+}
 
 /**
  * Mock getLinkpath function: strips the subpath (heading/block

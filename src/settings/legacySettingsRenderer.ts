@@ -28,6 +28,7 @@ import type {
 	SettingDefinitionList,
 	SettingDefinitionPage,
 	SettingGroup,
+	TFile,
 } from 'obsidian';
 import { NUMBER_INPUT_CLASS } from './settingControls';
 import { numberControlRejection } from './settingsDefinitions';
@@ -76,6 +77,11 @@ export interface LegacySettingsHost {
 export interface LegacyRenderExtras {
 	/** Puts the vault's folders under a folder field, as the folder control does. */
 	attachFolderSuggest(inputEl: HTMLInputElement): void;
+	/** Puts the vault's files under a file field, as the file control does. */
+	attachFileSuggest(
+		inputEl: HTMLInputElement,
+		filter?: (file: TFile) => boolean,
+	): void;
 }
 
 /**
@@ -614,10 +620,19 @@ export class LegacySettingsRenderer {
 					persist,
 				});
 			}
-			case 'folder': {
+			case 'folder':
+			case 'file': {
 				let hook: ((disabled: boolean) => void) | undefined;
 				setting.addText((text) => {
-					this.extras?.attachFolderSuggest(text.inputEl);
+					// The two path controls differ only in what they suggest.
+					if (control.type === 'folder') {
+						this.extras?.attachFolderSuggest(text.inputEl);
+					} else {
+						this.extras?.attachFileSuggest(
+							text.inputEl,
+							control.filter,
+						);
+					}
 					if (control.placeholder) {
 						text.setPlaceholder(control.placeholder);
 					}

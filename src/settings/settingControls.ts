@@ -223,7 +223,7 @@ export function addToggle(
 /** Configuration for a dropdown control. */
 export interface DropdownControlConfig {
 	name: string;
-	desc?: string | undefined;
+	desc?: string | DocumentFragment | undefined;
 	/** Value/label option pairs (see {@link LabeledOption}). */
 	options: LabeledOption[];
 	get: () => string;

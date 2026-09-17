@@ -42,16 +42,29 @@ export interface ProfileKind {
 	readonly bodyDesc: string;
 	/** Control key namespace of the row that selects a profile. */
 	readonly selectionKey: string;
+	/**
+	 * Control key namespace of the Source row, which chooses per profile
+	 * whether its text is typed on its page or read from a note.
+	 */
+	readonly choiceKey: string;
 	/** Control key namespace the body is bound to, per profile. */
 	readonly bodyKey: string;
-	/** What a profile's entry says about it without being opened. */
+	/** Control key namespace of the note the body is read from, per profile. */
+	readonly noteKey: string;
+	/**
+	 * What a profile holds, e.g. "12 names" or "no prompt", worded to follow
+	 * another part of its catalogue entry.
+	 */
 	readonly summary: (profile: Profile) => string;
 	/** Whether this kind is on screen at all. */
 	readonly visible: (settings: AudioRecorderSettings) => boolean;
 }
 
 /** A kind as it is declared: the keys are the id's to give, not the author's. */
-type ProfileKindSpec = Omit<ProfileKind, 'selectionKey' | 'bodyKey'>;
+type ProfileKindSpec = Omit<
+	ProfileKind,
+	'selectionKey' | 'choiceKey' | 'bodyKey' | 'noteKey'
+>;
 
 /**
  * Completes a declared kind with the control keys its rows bind to. The keys
@@ -64,7 +77,9 @@ function defineKind(spec: ProfileKindSpec): ProfileKind {
 	return {
 		...spec,
 		selectionKey: `profile.${spec.id}.selection`,
+		choiceKey: `profile.${spec.id}.choice`,
 		bodyKey: `profile.${spec.id}.body`,
+		noteKey: `profile.${spec.id}.note`,
 	};
 }
 
@@ -78,7 +93,7 @@ function defineKind(spec: ProfileKindSpec): ProfileKind {
  */
 function countSummary(count: number, one: string, many: string): string {
 	if (count === 0) {
-		return `No ${many}`;
+		return `no ${many}`;
 	}
 	return count === 1 ? `1 ${one}` : `${String(count)} ${many}`;
 }
@@ -90,7 +105,7 @@ function countSummary(count: number, one: string, many: string): string {
  * @returns The entry's summary line
  */
 function promptSummary(profile: Profile): string {
-	return profile.body.trim() === '' ? 'No prompt' : 'Prompt set';
+	return profile.body.trim() === '' ? 'no prompt' : 'prompt set';
 }
 
 /** Whether the LLM post-processing pass runs at all, as configured. */

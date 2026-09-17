@@ -165,6 +165,11 @@ export interface ProfileEntry {
 	readonly name: string;
 	/** What the entry says about the profile without opening it. */
 	readonly summary: string;
+	/**
+	 * The line naming the text the profile applies and where it comes from,
+	 * shown on its page and under the picker while it is the one in use.
+	 */
+	readonly status: string;
 }
 
 /** One profile catalogue, as the definitions address it. */
@@ -185,8 +190,23 @@ export interface ProfileCatalogue {
 	selectedId(settings: AudioRecorderSettings): string;
 	/** Control key of the row that picks the profile in use. */
 	readonly selectionKey: string;
+	/** Control key of the Source row, choosing typed text or a note. */
+	readonly choiceKey: string;
 	/** Control key of a profile's body. */
 	readonly bodyKey: string;
+	/** Control key of the note a profile's body is read from. */
+	readonly noteKey: string;
+	/** The note a profile's body is read from, read live; '' when typed in. */
+	sourcePath(id: string): string;
+	/**
+	 * Whether a profile's page is set to a note, read live. True for a profile
+	 * bound to one, and for one switched to a note that is not picked yet.
+	 */
+	readsNote(id: string): boolean;
+	/** Why a path cannot name a profile's note, or undefined when it can. */
+	sourceRejection(path: string): string | undefined;
+	/** Opens a profile's note in a tab of its own, leaving the settings. */
+	openSource(id: string): void;
 	/** The stored profiles, in the order they are shown. */
 	entries(settings: AudioRecorderSettings): readonly ProfileEntry[];
 	/** Whether this catalogue is on screen at all. */

@@ -30,6 +30,7 @@ import {
 	addToggle,
 	type SettingsSectionContext,
 } from '../settings/settingControls';
+import { ProfileTextSource } from '../settings/ProfileTextSource';
 import { formatTimecode } from '../utils/TimeUtils';
 import { readAudioMetadata } from '../utils/AudioFileAnalyzer';
 import {
@@ -61,6 +62,7 @@ import {
 import { CancellationSource } from '../utils/cancellation';
 import {
 	profilesOfKind,
+	selectedProfile,
 	selectedProfileId,
 	setSelectedProfileId,
 	type ProfileKindId,
@@ -310,6 +312,7 @@ export class TranscriptionModal extends PluginModal {
 		}
 		container.empty();
 		const s = this.runSettings;
+		const profileText = new ProfileTextSource(this.app.vault);
 		const ctx: SettingsSectionContext = {
 			containerEl: container,
 			settings: s,
@@ -393,7 +396,10 @@ export class TranscriptionModal extends PluginModal {
 			);
 			addDropdown(ctx, {
 				name: 'Participant profile',
-				desc: 'Names saved with this recording, so the Rename speakers dialog suggests them. Profiles are created there.',
+				desc: profileText.describe(
+					'Names saved with this recording, so the Rename speakers dialog suggests them. Profiles are created there.',
+					selectedProfile(s, 'participants'),
+				),
 				options: [
 					{ value: '', label: 'None' },
 					...speakerProfiles.map((profile) => ({
@@ -408,6 +414,9 @@ export class TranscriptionModal extends PluginModal {
 					setSelectedProfileId(s, 'participants', v);
 					void this.options.onProfileSelected?.('participants', v);
 				},
+				// Re-render so the line naming the picked roster's text follows
+				// the pick.
+				rerender: true,
 			});
 		}
 		addToggle(ctx, {
@@ -446,9 +455,12 @@ export class TranscriptionModal extends PluginModal {
 			);
 			addDropdown(ctx, {
 				name: 'Dictionary',
-				desc: providerSupportsDictionary(s.transcriptionProvider)
-					? 'Bias recognition toward a named glossary, or None.'
-					: 'The selected engine cannot bias recognition; the dictionary is ignored.',
+				desc: profileText.describe(
+					providerSupportsDictionary(s.transcriptionProvider)
+						? 'Bias recognition toward a named glossary, or None.'
+						: 'The selected engine cannot bias recognition; the dictionary is ignored.',
+					selectedProfile(s, 'dictionary'),
+				),
 				options: [
 					{ value: '', label: 'None' },
 					...profiles.map((profile) => ({
@@ -463,6 +475,9 @@ export class TranscriptionModal extends PluginModal {
 					setSelectedProfileId(s, 'dictionary', v);
 					void this.options.onProfileSelected?.('dictionary', v);
 				},
+				// Re-render so the line naming the picked glossary's text
+				// follows the pick.
+				rerender: true,
 			});
 
 			// Advanced two-pass mode: the sub-toggle under the advanced settings,
@@ -555,10 +570,13 @@ export class TranscriptionModal extends PluginModal {
 					s,
 					'chapterPrompt',
 				);
-				// Compact one-line picker (no description) so the section does
-				// not grow tall; the guidance profile steers the chaptering.
+				// Compact picker whose only description is the line naming the
+				// picked guidance's text, so the section does not grow tall.
 				addDropdown(ctx, {
 					name: 'Chapter profile',
+					desc: profileText.status(
+						selectedProfile(s, 'chapterPrompt'),
+					),
 					options: [
 						{ value: '', label: 'None (base prompt)' },
 						...chapterProfiles.map((profile) => ({
@@ -576,6 +594,7 @@ export class TranscriptionModal extends PluginModal {
 							v,
 						);
 					},
+					rerender: true,
 				});
 			}
 		}

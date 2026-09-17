@@ -16,7 +16,7 @@ import { createFile } from '../helpers/createApp';
 import { allEls, el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
-import { asMockPlugin } from '../helpers/obsidianMock';
+import { asMockPlugin, asMockVault } from '../helpers/obsidianMock';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import { COMMAND_IDS } from 'src/constants';
 import { RecordingManager } from 'src/recording/RecordingManager';
@@ -608,6 +608,69 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		expect(loadData).toHaveBeenCalledTimes(2);
 		expect(plugin.settings.filePrefix).toBe('after-sync');
+	});
+
+	describe('a profile whose body is read from a note', () => {
+		const NOTE = 'Glossaries/Standup.md';
+
+		/** The glossary as data.json stores it, cached as the given text. */
+		const storedGlossary = (body: string): Record<string, unknown> => ({
+			profiles: [
+				{
+					id: 'g1',
+					kind: 'dictionary',
+					name: 'Standup',
+					body,
+					sourcePath: NOTE,
+				},
+			],
+		});
+
+		it('reads the note once the vault is up, and saves what it read', async () => {
+			const { plugin, saveData } = createPlugin([
+				storedGlossary('Older'),
+			]);
+			asMockVault(plugin.app.vault).seed([
+				{
+					path: NOTE,
+					content: '---\ntags: [glossary]\n---\n- Kubernetes',
+				},
+			]);
+
+			await onloadWithTimers(plugin);
+			await jest.advanceTimersByTimeAsync(0);
+
+			expect(at(plugin.settings.profiles, 0).body).toBe('- Kubernetes');
+			expect(saveData).toHaveBeenCalledWith(
+				expect.objectContaining({
+					profiles: [
+						expect.objectContaining({
+							body: '- Kubernetes',
+							sourcePath: NOTE,
+						}),
+					],
+				}),
+			);
+		});
+
+		it('reads the notes again after an external change, and writes nothing back', async () => {
+			const { plugin, saveData } = createPlugin([
+				storedGlossary('- Kubernetes'),
+				// Cached on another device, before the note was last edited.
+				storedGlossary('Older'),
+			]);
+			asMockVault(plugin.app.vault).seed([
+				{ path: NOTE, content: '- Kubernetes' },
+			]);
+			await onloadWithTimers(plugin);
+			await jest.advanceTimersByTimeAsync(0);
+			saveData.mockClear();
+
+			await plugin.onExternalSettingsChange();
+
+			expect(at(plugin.settings.profiles, 0).body).toBe('- Kubernetes');
+			expect(saveData).not.toHaveBeenCalled();
+		});
 	});
 
 	it('recovers saving after a successful reload', async () => {

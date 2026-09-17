@@ -7,6 +7,7 @@
  */
 
 import {
+	closeSettings,
 	closeSettingsPage,
 	openPluginSettings,
 } from 'src/obsidian/settingsNavigation';
@@ -18,9 +19,25 @@ import type { App } from 'obsidian';
  */
 const appWith = (setting?: {
 	closePage?: unknown;
+	close?: unknown;
 	open?: unknown;
 	openTabById?: unknown;
 }): App => ({ setting }) as unknown as App;
+
+describe('closeSettings', () => {
+	it('closes the dialog through the modal', () => {
+		const close = jest.fn();
+
+		expect(closeSettings(appWith({ close }))).toBe(true);
+		expect(close).toHaveBeenCalledTimes(1);
+	});
+
+	it('reports a build whose modal cannot close, or that has no modal', () => {
+		// The note still opens; it opens behind the dialog.
+		expect(closeSettings(appWith({ close: 'gone' }))).toBe(false);
+		expect(closeSettings(appWith())).toBe(false);
+	});
+});
 
 describe('closeSettingsPage', () => {
 	it('closes the open page through the modal', () => {

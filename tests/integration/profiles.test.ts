@@ -25,7 +25,10 @@ import {
 	type Profile,
 	type ProfileKindId,
 } from 'src/settings/profiles';
-import { mergeSettings } from 'src/settings/settingsSerialization';
+import {
+	mergeSettings,
+	serializeSettings,
+} from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 /** A profile of the kind under test, so the helpers are exercised on their own. */
@@ -260,6 +263,81 @@ describe('profileNameRejection', () => {
 		expect(profileNameRejection(profiles, 'dictionary', '', '   ')).toBe(
 			'Give the profile a name.',
 		);
+	});
+});
+
+describe('a note-backed profile in data.json', () => {
+	/** Settings as the next load reads them back from what a save wrote. */
+	const reloaded = (settings: AudioRecorderSettings): AudioRecorderSettings =>
+		mergeSettings(
+			JSON.parse(
+				JSON.stringify(serializeSettings(settings)),
+			) as Partial<AudioRecorderSettings>,
+		);
+
+	it('keeps the note it is read from, and the text last read from it', () => {
+		const settings = mergeSettings({
+			profiles: [
+				{
+					id: 'note',
+					kind: 'dictionary',
+					name: 'Standup',
+					body: 'Kubernetes',
+					sourcePath: 'Glossaries/Standup.md',
+				},
+			],
+		});
+
+		expect(findProfile(reloaded(settings).profiles, 'note')).toEqual({
+			id: 'note',
+			kind: 'dictionary',
+			name: 'Standup',
+			body: 'Kubernetes',
+			sourcePath: 'Glossaries/Standup.md',
+		});
+	});
+
+	it('reads a profile stored without a note exactly as before', () => {
+		const settings = mergeSettings({
+			profiles: [
+				{ id: 'typed', kind: 'dictionary', name: 'Legal', body: 'NDA' },
+			],
+		});
+
+		const profile = findProfile(reloaded(settings).profiles, 'typed');
+
+		expect(profile).toEqual({
+			id: 'typed',
+			kind: 'dictionary',
+			name: 'Legal',
+			body: 'NDA',
+		});
+		expect(profile && 'sourcePath' in profile).toBe(false);
+	});
+
+	it('reads an empty or non-string path as no note at all', () => {
+		const settings = mergeSettings({
+			profiles: [
+				{
+					id: 'empty',
+					kind: 'dictionary',
+					name: 'Empty',
+					body: '',
+					sourcePath: '',
+				},
+				{
+					id: 'broken',
+					kind: 'dictionary',
+					name: 'Broken',
+					body: '',
+					sourcePath: 42 as unknown as string,
+				},
+			],
+		});
+
+		expect(
+			settings.profiles.map((profile) => 'sourcePath' in profile),
+		).toEqual([false, false]);
 	});
 });
 

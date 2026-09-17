@@ -29,9 +29,16 @@ import {
 	addProfile,
 	createProfile,
 	effectiveProfileId,
+	findProfile,
 	profileNameRejection,
 	profilesOfKind,
 } from '../settings/profiles';
+import {
+	appendParticipantsToNote,
+	readProfileNotes,
+	type ProfileNotesRead,
+} from '../settings/ProfileNoteStore';
+import { ProfileTextSource } from '../settings/ProfileTextSource';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	addParticipantsToProfile,
@@ -117,9 +124,22 @@ export class SpeakerRenameModal extends PluginModal {
 	 * render, so the profile a transcription ran with re-selects itself.
 	 */
 	private selectedProfileId = '';
+	/**
+	 * The settings the suggestions read participant profiles from, with every
+	 * roster kept in a note read as the dialog is drawn, so a name added to the
+	 * note a moment ago is suggested, and the rosters whose note could not be
+	 * read, which the picker names. The settings the dialog was built with,
+	 * with nothing unread, until the first draw reads them.
+	 */
+	private rosterNotes: ProfileNotesRead;
 	/** Whether to rewrite notes that carry no timecode links to scope by. */
 	private allowBroad = false;
 	private profileDropdown: DropdownComponent | null = null;
+	/**
+	 * Rewrites the picker's description for the profile now picked. Held so a
+	 * profile created in the dialog is described without rebuilding it.
+	 */
+	private describeProfilePick: (() => void) | null = null;
 	private newProfileInput: HTMLInputElement | null = null;
 	/** Plays a speaker's first turn; created lazily on the first preview. */
 	private preview: SpeakerPreviewPlayer | null = null;
@@ -130,6 +150,10 @@ export class SpeakerRenameModal extends PluginModal {
 		private readonly options: SpeakerRenameModalOptions,
 	) {
 		super(app);
+		this.rosterNotes = {
+			settings: options.getSettings(),
+			unread: new Set(),
+		};
 	}
 
 	override onOpen(): void {
@@ -147,6 +171,13 @@ export class SpeakerRenameModal extends PluginModal {
 	private async render(): Promise<void> {
 		const settings = this.options.getSettings();
 		this.section = await this.loadSection();
+		this.rosterNotes = await readProfileNotes(
+			this.app,
+			settings,
+			profilesOfKind(settings.profiles, 'participants').map(
+				(profile) => profile.id,
+			),
+		);
 		const section = this.section;
 		const { contentEl } = this;
 		contentEl.empty();
@@ -347,15 +378,13 @@ export class SpeakerRenameModal extends PluginModal {
 		section: TranscriptSection,
 	): void {
 		const stored = section.participants.length;
-		new Setting(this.contentEl)
+		const suggests = `This recording suggests ${
+			stored > 0
+				? `${String(stored)} stored name${stored > 1 ? 's' : ''}`
+				: 'no names yet'
+		}. Pick a profile to add its names to the suggestions; every name you apply is saved to both.`;
+		const picker = new Setting(this.contentEl)
 			.setName('Participant profile')
-			.setDesc(
-				`This recording suggests ${
-					stored > 0
-						? `${String(stored)} stored name${stored > 1 ? 's' : ''}`
-						: 'no names yet'
-				}. Pick a profile to add its names to the suggestions; every name you apply is saved to both.`,
-			)
 			.addDropdown((dropdown) => {
 				dropdown.addOption(RECORDING_ROSTER_OPTION, 'This recording');
 				for (const profile of profilesOfKind(
@@ -365,9 +394,33 @@ export class SpeakerRenameModal extends PluginModal {
 					dropdown.addOption(profile.id, profile.name);
 				}
 				dropdown.setValue(this.selectedProfileId);
-				dropdown.onChange((value) => (this.selectedProfileId = value));
+				dropdown.onChange((value) => {
+					this.selectedProfileId = value;
+					this.describeProfilePick?.();
+				});
 				this.profileDropdown = dropdown;
 			});
+		// Rewritten in place on every pick: rebuilding the dialog would drop
+		// the names already typed into it.
+		const profileText = new ProfileTextSource(
+			this.app.vault,
+			this.rosterNotes.unread,
+		);
+		this.describeProfilePick = (): void => {
+			picker.setDesc(
+				profileText.describe(
+					suggests,
+					findProfile(
+						profilesOfKind(
+							this.options.getSettings().profiles,
+							'participants',
+						),
+						this.selectedProfileId,
+					),
+				),
+			);
+		};
+		this.describeProfilePick();
 		new Setting(this.contentEl)
 			.setName('New profile')
 			.addText((text) => {
@@ -390,7 +443,7 @@ export class SpeakerRenameModal extends PluginModal {
 	private suggestionPool(): string[] {
 		return mergeParticipantNames(
 			this.section?.participants ?? [],
-			participantsOf(this.options.getSettings(), this.selectedProfileId),
+			participantsOf(this.rosterNotes.settings, this.selectedProfileId),
 		);
 	}
 
@@ -425,6 +478,7 @@ export class SpeakerRenameModal extends PluginModal {
 		this.selectedProfileId = created.id;
 		this.profileDropdown?.addOption(created.id, created.name);
 		this.profileDropdown?.setValue(created.id);
+		this.describeProfilePick?.();
 		if (this.newProfileInput) {
 			this.newProfileInput.value = '';
 		}
@@ -622,16 +676,53 @@ export class SpeakerRenameModal extends PluginModal {
 			return;
 		}
 		const settings = this.options.getSettings();
-		// Undefined is a roster that did not grow - every name entered was
-		// already in it - and there is then nothing to save.
-		const grown = addParticipantsToProfile(
-			settings.profiles,
-			this.selectedProfileId,
-			names,
-		);
-		if (grown) {
-			settings.profiles = grown;
-			await this.options.saveSettings();
+		const target = findProfile(settings.profiles, this.selectedProfileId);
+		if (!target) {
+			return;
+		}
+		// The roster only feeds the suggestions of the next recording, and the
+		// rename is what the user applied: a roster that cannot be written is
+		// reported, and the rename goes ahead.
+		try {
+			// A roster kept in a note grows in the note. Its body is only the
+			// text last read from there, so a name added to the body alone
+			// would be gone with the next read.
+			if (
+				target.kind === 'participants' &&
+				target.sourcePath !== undefined
+			) {
+				const profileText = new ProfileTextSource(this.app.vault);
+				const note = profileText.note(target);
+				if (!note) {
+					new Notice(
+						`${profileText.missingNote(target.name, target.sourcePath)}, so the new names were not added to it.`,
+					);
+					return;
+				}
+				await appendParticipantsToNote(this.app.vault, note, names);
+				return;
+			}
+			// Undefined is a roster that did not grow - every name entered was
+			// already in it - and there is then nothing to save.
+			const grown = addParticipantsToProfile(
+				settings.profiles,
+				this.selectedProfileId,
+				names,
+			);
+			if (grown) {
+				settings.profiles = grown;
+				await this.options.saveSettings();
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : String(error);
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to add names to profile ${target.name}:`,
+				error,
+			);
+			new Notice(
+				`The new names were not added to profile "${target.name}": ${message}`,
+			);
 		}
 	}
 
