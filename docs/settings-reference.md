@@ -119,8 +119,11 @@ Split a long recording into fixed-duration parts, and set the defaults the manua
 
 Record from several input devices at once. The track configuration controls only appear once **Enable multi-track recording** is on, and the number of **Track N input** dropdowns matches **Maximum tracks**. See [Multi-track recording](multi-track-recording.md).
 
-![Multi-track recording settings section with the enable toggle, maximum tracks number field, output mode dropdown, and per-track source dropdowns](images/settings-multi-track.png)
-_Figure: The Multi-track recording section with one source dropdown per track._
+![Multi-track recording settings section with the enable toggle, maximum tracks number field, output mode dropdown, match track levels toggle, and the Track 1 source and Track 1 input dropdowns](images/settings-multi-track.png)
+_Figure: The head of the Multi-track recording section, down to the first track's source and input._
+
+![Track 1 input set to a microphone with Track 1 processing on Voice, and Track 2 input set to a Stereo Mix loopback marked "(system audio)" with Track 2 processing on Raw](images/settings-multi-track-processing.png)
+_Figure: Track N processing set per track, Voice on the microphone and Raw on the loopback input._
 
 | Setting                          | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Options / range                                                                             | Default                 |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- |

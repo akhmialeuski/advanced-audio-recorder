@@ -170,6 +170,9 @@ With the routing in place, configure the session under **Settings > Advanced Aud
 5. Leave **Output mode** on **Single file**, so both sides land on one timeline and the transcription engine can diarize across everyone.
 6. If the remote side comes in louder or quieter than your own voice, correct it with **Track 2 level** rather than at the operating system.
 
+![Track 1 input set to a microphone with Track 1 processing on Voice, and Track 2 input set to a Stereo Mix loopback marked "(system audio)" with Track 2 processing on Raw](../images/settings-multi-track-processing.png)
+_Figure: the configured pair, with the microphone on Voice and the loopback input on Raw._
+
 From there the workflow is the one above: record, and the diarized transcript plus the LLM summary cover both sides of the call. The **System info** report (**Settings > Diagnostics**) lists any loopback input it found, which is the quickest way to confirm the routing before a meeting rather than after it.
 
 ---
