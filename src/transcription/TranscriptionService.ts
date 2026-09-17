@@ -473,7 +473,10 @@ export class TranscriptionService {
 	): Promise<TranscribeRunResult> {
 		// The glossary, the roster, and the prompt a profile keeps in a note are
 		// read now, so the run applies the note as it stands when it starts.
-		const settings = await readProfileNotes(this.app, this.getSettings());
+		const { settings, unread } = await readProfileNotes(
+			this.app,
+			this.getSettings(),
+		);
 		const token = options.token ?? NEVER_CANCELLED;
 		const provider = this.createProvider(settings);
 		// One gate for the whole run: a stale "on" left from a diarizing engine
@@ -509,12 +512,13 @@ export class TranscriptionService {
 		const postProcessing =
 			settings.llmPostProcessEnabled && !options.skipPostProcessing;
 		// The glossary, the roster, and the post-processing prompt of this run
-		// may be read from notes, and a note that went missing leaves its
-		// profile on the text last read from it rather than on nothing. The run
-		// names only what it reads, by the gates that decide it reads it: terms
-		// resolved at all, speakers labelled, a pass that runs.
+		// may be read from notes, and a note that went missing or could not be
+		// read leaves its profile on the text last read from it rather than on
+		// nothing. The run names only what it reads, by the gates that decide it
+		// reads it: terms resolved at all, speakers labelled, a pass that runs.
 		const lostSourceNotice = new ProfileTextSource(
 			this.app.vault,
+			unread,
 		).lostNotesNotice(settings, [
 			...(dictionaryTerms.length > 0 ? (['dictionary'] as const) : []),
 			...(diarize ? (['participants'] as const) : []),

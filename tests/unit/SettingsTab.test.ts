@@ -1804,6 +1804,23 @@ describe('AudioRecorderSettingTab', () => {
 				expect(tab.getControlValue(sourceKey(profile.id))).toBe('');
 			});
 
+			it('picks no note it cannot read, and says so', async () => {
+				// Unread, the note cannot be weighed against the typed text.
+				const profile = await glossaryAndNote();
+				asMockVault(tab.app.vault).read.mockRejectedValueOnce(
+					new Error('EACCES'),
+				);
+				saveSettingsMock.mockClear();
+
+				await tab.setControlValue(sourceKey(profile.id), NOTE);
+
+				expect(profile.sourcePath).toBeUndefined();
+				expect(saveSettingsMock).not.toHaveBeenCalled();
+				expect(noticeMessages()).toContain(
+					`${NOTE} could not be read, so it was not picked: EACCES`,
+				);
+			});
+
 			it('trades the body editor for the note on the profile page', async () => {
 				const profile = await glossaryAndNote();
 				const bodyBlock = (): GroupDefinition | undefined =>
@@ -1964,6 +1981,41 @@ describe('AudioRecorderSettingTab', () => {
 					expect(saveSettingsMock).toHaveBeenCalledTimes(1);
 					expect(shown(rowIn(profilePage(), 'Note').visible)).toBe(
 						false,
+					);
+				});
+
+				/** A glossary bound to the note, its body the text last read from it. */
+				const boundGlossary = async (
+					lastRead: string,
+				): Promise<StoredProfile> => {
+					const profile = await glossaryAndNote();
+					await tab.setControlValue(sourceKey(profile.id), NOTE);
+					profile.body = lastRead;
+					return profile;
+				};
+
+				it('keeps the text the note holds now as the typed text on a switch back', async () => {
+					// The body is the text of the last vault event, and the note
+					// has changed since.
+					const profile = await boundGlossary('- Stale');
+
+					await tab.setControlValue(choiceKey(profile.id), 'typed');
+
+					expect(profile.body).toBe('- Kubernetes');
+				});
+
+				it('keeps the text last read on a switch back to a note it cannot read, and says so', async () => {
+					const profile = await boundGlossary('- Stale');
+					asMockVault(tab.app.vault).read.mockRejectedValueOnce(
+						new Error('EBUSY'),
+					);
+
+					await tab.setControlValue(choiceKey(profile.id), 'typed');
+
+					expect('sourcePath' in profile).toBe(false);
+					expect(profile.body).toBe('- Stale');
+					expect(noticeMessages()).toContain(
+						`${NOTE} could not be read, so the typed text is the text last read from it: EBUSY`,
 					);
 				});
 

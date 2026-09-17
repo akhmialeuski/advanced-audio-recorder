@@ -20,11 +20,17 @@ import { PROFILE_KINDS } from './profileKinds';
 export type ProfileTextChoice = 'typed' | 'note';
 
 /**
- * Where the text a profile applies comes from now. A missing note is a state a
+ * The states that leave a note-backed profile on the text last read from its
+ * note: the note is gone from the vault, or it is there and could not be read.
+ */
+type LostNoteOrigin = 'missingNote' | 'unreadNote';
+
+/**
+ * Where the text a profile applies comes from now. A lost note is a state a
  * note-backed profile falls into rather than a choice, which is why it is an
  * origin and not a {@link ProfileTextChoice}.
  */
-export type ProfileTextOrigin = ProfileTextChoice | 'missingNote';
+export type ProfileTextOrigin = ProfileTextChoice | LostNoteOrigin;
 
 /** What picking a note asks before the note takes the place of typed text. */
 export interface TypedTextQuestion {
@@ -43,7 +49,23 @@ const ORIGIN_SUMMARY: Record<ProfileTextOrigin, string> = {
 	typed: 'typed text',
 	note: 'note',
 	missingNote: 'note missing',
+	unreadNote: 'note unreadable',
 };
+
+/** What a line or a notice says became of a lost note, for one and for several. */
+const LOST_NOTE_STATE: Record<
+	LostNoteOrigin,
+	{ readonly one: string; readonly many: string }
+> = {
+	missingNote: { one: 'is missing', many: 'are missing' },
+	unreadNote: { one: 'could not be read', many: 'could not be read' },
+};
+
+/** Every lost-note state, in the order a notice names them. */
+const LOST_NOTE_ORIGINS: readonly LostNoteOrigin[] = [
+	'missingNote',
+	'unreadNote',
+];
 
 /** Says where the text of a profile comes from, in one wording for all. */
 export class ProfileTextSource {
@@ -62,8 +84,14 @@ export class ProfileTextSource {
 
 	/**
 	 * @param vault - The vault a profile's note is looked up in
+	 * @param unread - Ids of profiles whose note is in the vault and could not
+	 *   be read by the run or the screen this instance speaks for. Only the one
+	 *   that read the notes knows them, so every other instance has none.
 	 */
-	constructor(private readonly vault: Vault) {}
+	constructor(
+		private readonly vault: Vault,
+		private readonly unread: ReadonlySet<string> = new Set(),
+	) {}
 
 	/**
 	 * A description followed by a status on a line of its own. The own line is
@@ -107,7 +135,10 @@ export class ProfileTextSource {
 		if (profile.sourcePath === undefined) {
 			return 'typed';
 		}
-		return this.note(profile) === null ? 'missingNote' : 'note';
+		if (this.note(profile) === null) {
+			return 'missingNote';
+		}
+		return this.unread.has(profile.id) ? 'unreadNote' : 'note';
 	}
 
 	/**
@@ -223,7 +254,8 @@ export class ProfileTextSource {
 			return '';
 		}
 		const path = profile.sourcePath ?? '';
-		switch (this.origin(profile)) {
+		const origin = this.origin(profile);
+		switch (origin) {
 			case 'typed':
 				return this.awaitingNote.has(profile.id)
 					? 'No note picked yet. Uses the text typed in the settings.'
@@ -231,7 +263,8 @@ export class ProfileTextSource {
 			case 'note':
 				return `Uses the text of ${path}.`;
 			case 'missingNote':
-				return `Uses the text last read from ${path}, which is missing.`;
+			case 'unreadNote':
+				return `Uses the text last read from ${path}, which ${LOST_NOTE_STATE[origin].one}.`;
 		}
 	}
 
@@ -277,43 +310,67 @@ export class ProfileTextSource {
 	 * @returns The clause, without closing punctuation
 	 */
 	missingNote(name: string, path: string): string {
-		return `The note of profile "${name}" (${path}) is missing`;
+		return this.lostNote(name, path, 'missingNote');
 	}
 
 	/**
-	 * What a run is told about the profiles it reads whose note is gone.
+	 * What a run is told about the profiles it reads whose note is gone or
+	 * could not be read.
 	 *
 	 * Such a profile keeps the text last read from its note: a note deleted,
-	 * moved outside Obsidian, or not yet delivered by sync must not empty a
-	 * glossary in the middle of a transcription. The run goes ahead on that
-	 * text, and this names what it is running on. The caller names the kinds it
-	 * reads by the same gates that decide whether it reads them, so a run is
-	 * never told about a note it has no use for.
+	 * moved outside Obsidian, not yet delivered by sync, or locked by another
+	 * program must not empty a glossary in the middle of a transcription. The
+	 * run goes ahead on that text, and this names what it is running on. The
+	 * caller names the kinds it reads by the same gates that decide whether it
+	 * reads them, so a run is never told about a note it has no use for.
 	 * @param settings - The active settings
 	 * @param kinds - Kinds whose selected profile the run reads
-	 * @returns The notice text, or null when every note is in place
+	 * @returns The notice text, or null when every note was read
 	 */
 	lostNotesNotice(
 		settings: AudioRecorderSettings,
 		kinds: readonly ProfileKindId[],
 	): string | null {
-		const lost = kinds.flatMap((kind) => {
-			const profile = selectedProfile(settings, kind);
-			return profile?.sourcePath !== undefined &&
-				this.note(profile) === null
-				? [{ name: profile.name, path: profile.sourcePath }]
-				: [];
+		const sentences = LOST_NOTE_ORIGINS.flatMap((origin) => {
+			const lost = kinds.flatMap((kind) => {
+				const profile = selectedProfile(settings, kind);
+				return profile?.sourcePath !== undefined &&
+					this.origin(profile) === origin
+					? [{ name: profile.name, path: profile.sourcePath }]
+					: [];
+			});
+			const [first] = lost;
+			if (!first) {
+				return [];
+			}
+			if (lost.length === 1) {
+				return [
+					`${this.lostNote(first.name, first.path, origin)}, so the text last read from it is used.`,
+				];
+			}
+			const named = lost
+				.map(({ name, path }) => `"${name}" (${path})`)
+				.join(', ');
+			return [
+				`The notes of profiles ${named} ${LOST_NOTE_STATE[origin].many}, so the text last read from them is used.`,
+			];
 		});
-		const [first] = lost;
-		if (!first) {
-			return null;
-		}
-		if (lost.length === 1) {
-			return `${this.missingNote(first.name, first.path)}, so the text last read from it is used.`;
-		}
-		const named = lost
-			.map(({ name, path }) => `"${name}" (${path})`)
-			.join(', ');
-		return `The notes of profiles ${named} are missing, so the text last read from them is used.`;
+		return sentences.length === 0 ? null : sentences.join(' ');
+	}
+
+	/**
+	 * The clause naming one lost note, e.g. 'The note of profile "Standup"
+	 * (Teams/Standup.md) could not be read'.
+	 * @param name - Name of the profile whose note is lost
+	 * @param path - Vault path the profile names
+	 * @param origin - What became of the note
+	 * @returns The clause, without closing punctuation
+	 */
+	private lostNote(
+		name: string,
+		path: string,
+		origin: LostNoteOrigin,
+	): string {
+		return `The note of profile "${name}" (${path}) ${LOST_NOTE_STATE[origin].one}`;
 	}
 }

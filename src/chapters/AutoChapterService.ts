@@ -164,7 +164,7 @@ export class AutoChapterService {
 			new Notice(`Generating chapters for ${file.name}...`);
 			// Guidance kept in a note is read now, so the note applies as it
 			// stands when generation starts.
-			const settings = await readProfileNotes(
+			const { settings, unread } = await readProfileNotes(
 				this.app,
 				this.getSettings(),
 			);
@@ -210,10 +210,12 @@ export class AutoChapterService {
 			// The selected chapter profile steers how the recording is split;
 			// an empty selection appends no guidance and keeps the base prompt.
 			const guidance = resolveChapterGuidance(settings);
-			// Guidance kept in a note that went missing is the text last read
-			// from it, and the run says so instead of passing it off as current.
+			// Guidance kept in a note that went missing or could not be read is
+			// the text last read from it, and the run says so instead of passing
+			// it off as current.
 			const lostSourceNotice = new ProfileTextSource(
 				this.app.vault,
+				unread,
 			).lostNotesNotice(settings, ['chapterPrompt']);
 			if (lostSourceNotice) {
 				new Notice(lostSourceNotice);

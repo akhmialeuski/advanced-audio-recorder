@@ -532,12 +532,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 		const choice = this.profileFieldFor(key, this.profileChoices);
 		if (choice) {
+			const chosen = value === 'note' ? 'note' : 'typed';
+			const note =
+				choice.profile && chosen === 'typed'
+					? this.profileText.note(choice.profile)
+					: null;
+			if (choice.profile && note) {
+				return this.detachProfileNote(choice.profile, note);
+			}
 			if (
 				choice.profile &&
-				this.profileText.choose(
-					choice.profile,
-					value === 'note' ? 'note' : 'typed',
-				)
+				this.profileText.choose(choice.profile, chosen)
 			) {
 				return this.commit();
 			}
@@ -970,7 +975,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 *
 	 * A note whose text would take the place of text typed for the profile is
 	 * asked about first, because that text exists nowhere else once the note is
-	 * read. Nothing is stored while the question is open.
+	 * read. Nothing is stored while the question is open, and nothing for a note
+	 * that cannot be read, since its text cannot be weighed against the typed
+	 * text.
 	 * @param profile - The profile whose Note row was edited
 	 * @param path - The note's vault path, or '' when the row was emptied
 	 * @returns Resolves once the change is saved, or once the question is open
@@ -980,14 +987,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		path: string,
 	): Promise<void> {
 		const note = path === '' ? null : this.app.vault.getFileByPath(path);
+		const noteText =
+			note === null
+				? ''
+				: await this.readRowNote(note, 'so it was not picked');
+		if (noteText === null) {
+			// The field holds the path just picked. Drawn again, the page
+			// holds what is stored.
+			this.rerender();
+			return;
+		}
 		const question =
 			note === null
 				? null
-				: this.profileText.typedTextQuestion(
-						profile,
-						path,
-						await readNoteText(this.app, note),
-					);
+				: this.profileText.typedTextQuestion(profile, path, noteText);
 		if (note === null || question === null) {
 			this.profileText.bindNote(profile, path);
 			return this.commit();
@@ -1022,6 +1035,54 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				);
 			},
 		}).open();
+	}
+
+	/**
+	 * Detaches a profile from its note on a choice of typed text, and saves.
+	 * The text the note holds becomes the typed text, so the note is read now:
+	 * the body holds the text of the last vault event, which trails an edit the
+	 * editor has not saved yet. A note that cannot be read leaves that text.
+	 * @param profile - The profile whose Source row was set to typed text
+	 * @param note - The note the profile is read from
+	 * @returns Resolves once the change is saved
+	 */
+	private async detachProfileNote(
+		profile: Profile,
+		note: TFile,
+	): Promise<void> {
+		const text = await this.readRowNote(
+			note,
+			'so the typed text is the text last read from it',
+		);
+		if (text !== null) {
+			profile.body = text;
+		}
+		this.profileText.choose(profile, 'typed');
+		return this.commit();
+	}
+
+	/**
+	 * The text of a note a profile row is about to act on, read as it stands
+	 * now. A note that cannot be read is reported in a notice finished with
+	 * what that means for the row.
+	 * @param note - The note to read
+	 * @param consequence - What the failed read means, e.g. "so it was not picked"
+	 * @returns The note's text below its frontmatter, or null when unread
+	 */
+	private async readRowNote(
+		note: TFile,
+		consequence: string,
+	): Promise<string | null> {
+		try {
+			return await readNoteText(this.app, note);
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : String(error);
+			new Notice(
+				`${note.path} could not be read, ${consequence}: ${message}`,
+			);
+			return null;
+		}
 	}
 
 	/**

@@ -2,7 +2,7 @@
  * Tests the one class that says where the text of a profile comes from: the
  * note lookup, the Source choice and its pending switch to a note, the line the
  * profile page and the pickers show, the catalogue entry line, and the notices
- * about a note that is gone.
+ * about a note that is gone or could not be read.
  * @module tests/unit/ProfileTextSource.test
  */
 
@@ -51,6 +51,23 @@ describe('ProfileTextSource', () => {
 
 			// Looked up when asked, so a deletion shows before any re-read.
 			expect(source.origin(roster(NOTE))).toBe('missingNote');
+		});
+
+		it('tells a note that could not be read from one that is gone', () => {
+			const profile = roster(NOTE);
+			const reader = new ProfileTextSource(
+				app.vault,
+				new Set([profile.id]),
+			);
+
+			expect(reader.origin(profile)).toBe('unreadNote');
+			// Only the instance that read the notes knows a read failed.
+			expect(source.origin(profile)).toBe('note');
+
+			asMockVault(app.vault).forget(NOTE);
+
+			// A note gone since the read is gone, whatever the read met.
+			expect(reader.origin(profile)).toBe('missingNote');
 		});
 	});
 
@@ -117,6 +134,18 @@ describe('ProfileTextSource', () => {
 
 			expect(source.status(roster(NOTE))).toBe(
 				`Uses the text last read from ${NOTE}, which is missing.`,
+			);
+		});
+
+		it('names the text last read from a note that could not be read', () => {
+			const profile = roster(NOTE);
+
+			expect(
+				new ProfileTextSource(app.vault, new Set([profile.id])).status(
+					profile,
+				),
+			).toBe(
+				`Uses the text last read from ${NOTE}, which could not be read.`,
 			);
 		});
 
@@ -250,6 +279,29 @@ describe('ProfileTextSource', () => {
 			expect(
 				source.lostNotesNotice(settings, ['participants']),
 			).toBeNull();
+		});
+
+		it('names a note the run could not read apart from a note that is gone', () => {
+			// The glossary note is in the vault and its read failed; the roster
+			// note is gone.
+			asMockVault(app.vault).seed([
+				{ path: 'Glossaries/Terms.md', content: '- Kubernetes' },
+			]);
+			asMockVault(app.vault).forget(NOTE);
+			const reader = new ProfileTextSource(
+				app.vault,
+				new Set([settings.profiles[0]?.id ?? '']),
+			);
+
+			expect(
+				reader.lostNotesNotice(settings, [
+					'dictionary',
+					'participants',
+				]),
+			).toBe(
+				`The note of profile "Standup" (${NOTE}) is missing, so the text last read from it is used. ` +
+					'The note of profile "Terms" (Glossaries/Terms.md) could not be read, so the text last read from it is used.',
+			);
 		});
 	});
 });

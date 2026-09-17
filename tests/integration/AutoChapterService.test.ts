@@ -139,6 +139,27 @@ function agendaGuidance(sourcePath?: string): Partial<AudioRecorderSettings> {
 	};
 }
 
+/**
+ * Generates chapters with the "Agenda" guidance kept in a note, its body still
+ * holding the guidance last read from that note.
+ * @param read - What a read of the note answers with
+ * @returns The LLM double the generation called
+ */
+async function generateOverGuidanceNote(
+	read: () => Promise<string>,
+): Promise<LlmProvider> {
+	const note = partial<TFile>({ path: 'Prompts/Agenda.md' });
+	const llm = makeLlm('[{"time": 0, "title": "Intro"}]');
+	const service = makeService({
+		llm,
+		store: makeStore().store,
+		app: createMockApp({ vault: { getFileByPath: () => note, read } }).app,
+		settings: agendaGuidance(note.path),
+	});
+	await service.generate(tf('rec.wav'), TRANSCRIPT);
+	return llm;
+}
+
 /** A transcript with no detected language (the diarizer returned none). */
 const TRANSCRIPT_NO_LANGUAGE: Transcript = {
 	segments: [
@@ -365,26 +386,29 @@ describe('AutoChapterService.generate', () => {
 	});
 
 	it('divides by the guidance its note holds as generation starts', async () => {
-		// The body is the guidance last read, and the note was edited since.
-		const note = partial<TFile>({ path: 'Prompts/Agenda.md' });
-		const llm = makeLlm('[{"time": 0, "title": "Intro"}]');
-		const service = makeService({
-			llm,
-			store: makeStore().store,
-			app: createMockApp({
-				vault: {
-					getFileByPath: () => note,
-					read: () => Promise.resolve('Split by speaker.'),
-				},
-			}).app,
-			settings: agendaGuidance(note.path),
-		});
-
-		await service.generate(tf('rec.wav'), TRANSCRIPT);
+		// The note was edited since the guidance was last read from it.
+		const llm = await generateOverGuidanceNote(() =>
+			Promise.resolve('Split by speaker.'),
+		);
 
 		const system = requestedSystemPrompt(llm);
 		expect(system).toContain('Split by speaker.');
 		expect(system).not.toContain('Split by agenda item.');
+	});
+
+	it('says when the guidance note could not be read, and divides by the text last read from it', async () => {
+		// The note is in the vault, so only the failed read tells the
+		// generation that the guidance it holds is not the note's.
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+		const llm = await generateOverGuidanceNote(() =>
+			Promise.reject(new Error('EBUSY')),
+		);
+
+		expect(noticeTexts()).toContain(
+			'The note of profile "Agenda" (Prompts/Agenda.md) could not be read, so the text last read from it is used.',
+		);
+		expect(requestedSystemPrompt(llm)).toContain('Split by agenda item.');
 	});
 
 	it('enforces a minimum chapter gap on bunched model output', async () => {

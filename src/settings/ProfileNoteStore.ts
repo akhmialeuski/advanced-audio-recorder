@@ -72,7 +72,11 @@ export class ProfileNoteStore {
 	 */
 	private readonly readFrom = new WeakMap<Profile, string>();
 
-	/** Writes data.json once a burst of note saves has settled. */
+	/**
+	 * Writes data.json once a burst of note saves has settled. A run reads its
+	 * notes itself, and the body is still written because it is the text a
+	 * note that goes missing leaves behind, which has to outlive a restart.
+	 */
 	private readonly persistSoon = debounce(
 		() => {
 			void this.persist();
@@ -177,6 +181,10 @@ export class ProfileNoteStore {
 		}
 		let content: string;
 		try {
+			// Read from the vault, never from an open editor through
+			// readNoteText: Obsidian reports a `modify` before the editor loads
+			// the new text, so the editor still holds the text a write such as
+			// a roster append has just replaced.
 			content = await this.app.vault.cachedRead(file);
 		} catch (error) {
 			// Deleted or locked between the lookup and the read: the body
@@ -317,6 +325,18 @@ export async function readNoteText(app: App, file: TFile): Promise<string> {
 	return noteBody(view ? view.getViewData() : await app.vault.read(file));
 }
 
+/** The settings a run applies, read from the notes as the run starts. */
+export interface ProfileNotesRead {
+	/** A copy of the settings whose profiles are copies too. */
+	readonly settings: AudioRecorderSettings;
+	/**
+	 * Ids of the profiles whose note is in the vault and could not be read.
+	 * Their copies hold the text last read from the note, and a run hands
+	 * these ids to ProfileTextSource so its notice names that text as such.
+	 */
+	readonly unread: ReadonlySet<string>;
+}
+
 /**
  * Settings to run on, with the note of every profile a run may apply read now.
  *
@@ -324,19 +344,21 @@ export async function readNoteText(app: App, file: TFile): Promise<string> {
  * a glossary or a prompt older than the note it names. The profiles come back
  * as copies: a note saved while the run goes on, or a reload of the settings,
  * leaves the text the run started with in place until it ends. A note that is
- * missing or cannot be read leaves the text last read from it, which is what
- * the run's notice about a missing note names.
+ * missing or cannot be read leaves the text last read from it. A missing note
+ * is visible to anyone who looks the path up; a failed read is known only
+ * here, so it is returned with the settings.
  * @param app - Obsidian App instance
  * @param settings - The settings the run starts from
  * @param ids - Profiles whose notes are read; by default those selected for a run
- * @returns A copy of the settings whose profiles are copies too
+ * @returns The settings copy, and the profiles whose note could not be read
  */
 export async function readProfileNotes(
 	app: App,
 	settings: AudioRecorderSettings,
 	ids: readonly string[] = Object.values(settings.selectedProfileIds),
-): Promise<AudioRecorderSettings> {
+): Promise<ProfileNotesRead> {
 	const wanted = new Set(ids);
+	const unread = new Set<string>();
 	const profiles = await Promise.all(
 		settings.profiles.map(async (profile): Promise<Profile> => {
 			const file =
@@ -353,9 +375,10 @@ export async function readProfileNotes(
 					`${PLUGIN_LOG_PREFIX} Failed to read the profile note ${file.path}.`,
 					error,
 				);
+				unread.add(profile.id);
 				return { ...profile };
 			}
 		}),
 	);
-	return { ...settings, profiles };
+	return { settings: { ...settings, profiles }, unread };
 }

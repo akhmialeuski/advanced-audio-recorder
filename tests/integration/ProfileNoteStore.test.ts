@@ -420,9 +420,13 @@ describe('ProfileNoteStore', () => {
 			// reported by the vault.
 			await vault().modify(file, '- Helm');
 
-			const run = await readProfileNotes(app, settings);
+			const { settings: run, unread } = await readProfileNotes(
+				app,
+				settings,
+			);
 
 			expect(resolveDictionaryTermList(run)).toEqual(['Helm']);
+			expect(unread.size).toBe(0);
 		});
 
 		it('reads a note open in an editor with the text not saved yet', async () => {
@@ -433,7 +437,7 @@ describe('ProfileNoteStore', () => {
 				{ view },
 			]);
 
-			const run = await readProfileNotes(app, settings);
+			const { settings: run } = await readProfileNotes(app, settings);
 
 			expect(resolveDictionaryTermList(run)).toEqual([
 				'Kubernetes',
@@ -446,26 +450,38 @@ describe('ProfileNoteStore', () => {
 			store.register(plugin);
 			await settle();
 
-			const run = await readProfileNotes(app, settings);
+			const { settings: run } = await readProfileNotes(app, settings);
 			await saveNote(file, '- Helm');
 
 			expect(glossary().body).toBe('- Helm');
 			expect(resolveDictionaryTermList(run)).toEqual(['Kubernetes']);
 		});
 
-		it('keeps the text last read from a note it cannot read', async () => {
+		it('keeps the text last read from a note it cannot read, and names that note for the run', async () => {
+			// The note is in the vault, so nothing but the failed read itself
+			// can tell the run that its text is not the note's.
 			seedNote('- Kubernetes');
 			const warn = jest
 				.spyOn(console, 'warn')
 				.mockImplementation(() => undefined);
 			vault().read.mockRejectedValueOnce(new Error('EACCES'));
 
-			const run = await readProfileNotes(app, settings);
+			const { settings: run, unread } = await readProfileNotes(
+				app,
+				settings,
+			);
 
 			expect(resolveDictionaryTermList(run)).toEqual(['Stale']);
 			expect(warn).toHaveBeenCalledWith(
 				expect.stringContaining(NOTE),
 				expect.any(Error),
+			);
+			expect(
+				new ProfileTextSource(app.vault, unread).lostNotesNotice(run, [
+					'dictionary',
+				]),
+			).toBe(
+				`The note of profile "Standup" (${NOTE}) could not be read, so the text last read from it is used.`,
 			);
 		});
 	});

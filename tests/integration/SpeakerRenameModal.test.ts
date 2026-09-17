@@ -6,8 +6,8 @@
  * first), a repeated apply that heals the outputs without recording anything,
  * the notice that names why a note went untouched, undo, and the participant
  * roster the recording carries alongside the settings profiles, read from its
- * note as the dialog opens and reported when it cannot be written, while the
- * rename goes ahead.
+ * note as the dialog opens, named under the picker when that read fails, and
+ * reported when it cannot be written, while the rename goes ahead.
  * @jest-environment jsdom
  */
 
@@ -1077,6 +1077,7 @@ describe('SpeakerRenameModal', () => {
 			internals: ModalInternals;
 			modal: SpeakerRenameModal;
 			process: jest.Mock;
+			read: jest.Mock;
 			settings: AudioRecorderSettings;
 			sidecar: ReturnType<typeof makeSidecar>;
 			noteText: () => string;
@@ -1095,12 +1096,13 @@ describe('SpeakerRenameModal', () => {
 					return Promise.resolve(text);
 				},
 			);
+			const read = jest.fn(() => Promise.resolve(text));
 			const noteApp = createMockApp({
 				vault: {
 					getResourcePath: () => 'app://vault/audio/rec.wav',
 					getFileByPath: (path: string) =>
 						content !== null && path === NOTE_PATH ? note : null,
-					read: () => Promise.resolve(text),
+					read,
 					process,
 				},
 			}).app;
@@ -1114,6 +1116,7 @@ describe('SpeakerRenameModal', () => {
 				internals: internalsOf<ModalInternals>(modal),
 				modal,
 				process,
+				read,
 				settings,
 				sidecar,
 				noteText: () => text,
@@ -1200,18 +1203,39 @@ describe('SpeakerRenameModal', () => {
 			);
 		});
 
-		it('says under the picker that the roster note is gone', async () => {
-			const dialog = makeNoteModal(null);
+		/**
+		 * Opens the dialog and reads the line under its profile picker.
+		 * @param dialog - The dialog to open
+		 */
+		const pickerLineOnOpen = async (
+			dialog: ReturnType<typeof makeNoteModal>,
+		): Promise<string> => {
 			dialog.modal.open();
 			await dialog.internals.render();
+			return rowDescription(
+				settingRow(dialog.modal.contentEl, 'Participant profile'),
+			);
+		};
 
-			expect(
-				rowDescription(
-					settingRow(dialog.modal.contentEl, 'Participant profile'),
-				),
-			).toContain(
+		it('says under the picker that the roster note is gone', async () => {
+			expect(await pickerLineOnOpen(makeNoteModal(null))).toContain(
 				`Uses the text last read from ${NOTE_PATH}, which is missing.`,
 			);
+		});
+
+		it('says under the picker that the roster note could not be read, and suggests the roster last read', async () => {
+			// Ivan joined the note, and its read fails however often it is tried.
+			const dialog = makeNoteModal('- Maria\n- Ivan\n');
+			dialog.read.mockRejectedValue(new Error('EBUSY'));
+			jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+			expect(await pickerLineOnOpen(dialog)).toContain(
+				`Uses the text last read from ${NOTE_PATH}, which could not be read.`,
+			);
+			expect(dialog.internals.suggestionPool()).toEqual([
+				'Alex',
+				'Maria',
+			]);
 		});
 
 		it('tells the user when the note is gone, and leaves the profile alone', async () => {

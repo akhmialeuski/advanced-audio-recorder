@@ -36,6 +36,7 @@ import {
 import {
 	appendParticipantsToNote,
 	readProfileNotes,
+	type ProfileNotesRead,
 } from '../settings/ProfileNoteStore';
 import { ProfileTextSource } from '../settings/ProfileTextSource';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
@@ -126,10 +127,11 @@ export class SpeakerRenameModal extends PluginModal {
 	/**
 	 * The settings the suggestions read participant profiles from, with every
 	 * roster kept in a note read as the dialog is drawn, so a name added to the
-	 * note a moment ago is suggested. The settings the dialog was built with
-	 * until the first draw reads them.
+	 * note a moment ago is suggested, and the rosters whose note could not be
+	 * read, which the picker names. The settings the dialog was built with,
+	 * with nothing unread, until the first draw reads them.
 	 */
-	private rosterSettings: AudioRecorderSettings;
+	private rosterNotes: ProfileNotesRead;
 	/** Whether to rewrite notes that carry no timecode links to scope by. */
 	private allowBroad = false;
 	private profileDropdown: DropdownComponent | null = null;
@@ -148,7 +150,10 @@ export class SpeakerRenameModal extends PluginModal {
 		private readonly options: SpeakerRenameModalOptions,
 	) {
 		super(app);
-		this.rosterSettings = options.getSettings();
+		this.rosterNotes = {
+			settings: options.getSettings(),
+			unread: new Set(),
+		};
 	}
 
 	override onOpen(): void {
@@ -166,7 +171,7 @@ export class SpeakerRenameModal extends PluginModal {
 	private async render(): Promise<void> {
 		const settings = this.options.getSettings();
 		this.section = await this.loadSection();
-		this.rosterSettings = await readProfileNotes(
+		this.rosterNotes = await readProfileNotes(
 			this.app,
 			settings,
 			profilesOfKind(settings.profiles, 'participants').map(
@@ -397,7 +402,10 @@ export class SpeakerRenameModal extends PluginModal {
 			});
 		// Rewritten in place on every pick: rebuilding the dialog would drop
 		// the names already typed into it.
-		const profileText = new ProfileTextSource(this.app.vault);
+		const profileText = new ProfileTextSource(
+			this.app.vault,
+			this.rosterNotes.unread,
+		);
 		this.describeProfilePick = (): void => {
 			picker.setDesc(
 				profileText.describe(
@@ -435,7 +443,7 @@ export class SpeakerRenameModal extends PluginModal {
 	private suggestionPool(): string[] {
 		return mergeParticipantNames(
 			this.section?.participants ?? [],
-			participantsOf(this.rosterSettings, this.selectedProfileId),
+			participantsOf(this.rosterNotes.settings, this.selectedProfileId),
 		);
 	}
 
