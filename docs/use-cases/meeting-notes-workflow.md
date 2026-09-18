@@ -152,7 +152,9 @@ For a transcribe-and-diarize workflow, **Single file** is usually the right choi
 
 Everything above assumes the meeting is in the room with you. A Zoom, Teams or Meet call is different: your microphone carries your voice, and every other participant arrives as **playback**, on an output device. The plugin records input devices, so a call recorded with nothing else configured holds one side of the conversation.
 
-On **Windows** the plugin can capture the system output directly. Set **Track N source** to **System audio (this computer)** and there is nothing to install: the track records the machine's own output, and the device dropdown disappears because such a track names no device. The row says so itself when the build cannot grant it, which is every platform but Windows.
+On **Windows** the plugin can capture the system output directly, and the shortest way to ask for it is the **Include system audio** switch under **Settings > Advanced Audio Recorder > Audio input**. Turn it on and the next recording holds two tracks - your microphone as the rows beside the switch describe it, and the call - mixed into one file. There is nothing to install and nothing else to set: the second track has no device to pick, no filtering to choose and no place in the mix to set, which is what makes it one switch rather than a page. It is off on mobile, which cannot open two captures at once, and the row says so itself where the build cannot be granted the output, which is every platform but Windows.
+
+Turning on multi-track recording hands those answers back to you, and the switch stands down for it: set **Track N source** to **System audio (this computer)** for the track that records the machine's own output, and its device dropdown disappears because such a track names no device. Go that way when two mixed tracks are not what the meeting needs - a third microphone in the room, one file per side, or a level correction on the remote participants.
 
 Everywhere else, and on Windows if you prefer it, route that output back into the machine as an **input** and record it on a second track. Any such input appears in the device dropdowns like a microphone, marked `(system audio)`.
 
@@ -162,7 +164,7 @@ Everywhere else, and on Windows if you prefer it, route that output back into th
 
 **Linux.** Nothing to install. PipeWire and PulseAudio publish a `Monitor of ...` source for every output, and it is already in the device list.
 
-With the routing in place, configure the session under **Settings > Advanced Audio Recorder > Multi-track recording**:
+With the routing in place, configure the session under **Settings > Advanced Audio Recorder > Multi-track recording**. A loopback input is an input device like any other, so the **Include system audio** switch has nothing to do with this route and stays off:
 
 1. Turn on **Enable multi-track recording** and set **Maximum tracks** to 2.
 2. Leave **Track 1 source** on **Input device** and set **Track 1 input** to your microphone.

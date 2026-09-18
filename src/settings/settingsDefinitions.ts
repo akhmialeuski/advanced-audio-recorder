@@ -40,6 +40,7 @@ import {
 import { diagnosticsPage } from './sections/diagnosticsSection';
 import { enginesPage } from './sections/enginesSection';
 import { fileStorageGroup } from './sections/fileStorageSection';
+import { isSystemAudioLoopbackAvailable } from '../recording/systemAudioSupport';
 import { llmGroup } from './sections/llmSection';
 import { multiTrackPage } from './sections/multiTrackSection';
 import { outputFormatGroup } from './sections/outputFormatSection';
@@ -92,6 +93,13 @@ export {
 export function buildSettingsDefinitions(
 	ctx: SettingsDefinitionContext,
 ): SettingDefinitionItem[] {
+	// The one answer two sections say out loud: the audio-input switch that
+	// pairs the microphone with the system output, and the source row of every
+	// track. It is a fact of the platform and the installed build, so it cannot
+	// differ between them, and asking it costs a synchronous trip through
+	// Electron's remote module - which is why it is asked here, once per build
+	// of the tree, rather than by each row that reports it.
+	const systemAudioAvailable = isSystemAudioLoopbackAvailable();
 	return [
 		...sectionItems([
 			{
@@ -105,12 +113,17 @@ export function buildSettingsDefinitions(
 				},
 			},
 		]),
-		audioInputGroup(ctx.settings, ctx.devices, ctx.sampleRates),
+		audioInputGroup(
+			ctx.settings,
+			ctx.devices,
+			ctx.sampleRates,
+			systemAudioAvailable,
+		),
 		outputFormatGroup(ctx.outputFormat, ctx.settings),
 		fileStorageGroup(ctx.settings),
 		...sectionItems([
 			audioSplittingPage(ctx.settings),
-			multiTrackPage(ctx.settings, ctx.devices),
+			multiTrackPage(ctx.settings, ctx.devices, systemAudioAvailable),
 			audioPlayerPage(ctx.settings),
 			{
 				// Forty-odd settings with a scope of their own: the style guide's

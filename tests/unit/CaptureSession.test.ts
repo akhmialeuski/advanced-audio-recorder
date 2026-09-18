@@ -17,9 +17,15 @@ jest.mock('src/audio/AudioEncoder', () => ({
 }));
 
 import { createCaptureSession } from 'src/recording/CaptureSession';
-import type { CaptureSessionRequest } from 'src/recording/CaptureSession';
+import type {
+	CaptureSession,
+	CaptureSessionRequest,
+} from 'src/recording/CaptureSession';
 import { DEFAULT_BITRATE, FORMAT_MP3, FORMAT_WEBM } from 'src/constants';
-import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import {
+	DEFAULT_SETTINGS,
+	type AudioRecorderSettings,
+} from 'src/settings/settingsSchema';
 import { useDesktopPlatform } from '../helpers/platform';
 import {
 	installAudioContextRate,
@@ -54,6 +60,53 @@ function requestWith(overrides: {
 			? {}
 			: { bitrate: overrides.resolvedBitrate }),
 	};
+}
+
+/**
+ * One of a session's tracks, named off the request rather than imported from
+ * the capture module: a unit test that reaches for five source modules is one
+ * the layer check sends to the integration suite.
+ */
+type SessionTrack = CaptureSessionRequest['trackOrder'][number];
+
+/** A second track recording this machine's own output rather than an input. */
+const SYSTEM_AUDIO_TRACK: SessionTrack = {
+	trackNumber: 2,
+	deviceId: '',
+	channelMode: 'source',
+	kind: 'system-audio',
+};
+
+/**
+ * A two-track session over the default settings, as the manager hands one in.
+ *
+ * Three cases differ only in what makes the session merge and in what its
+ * second track records, so the request around them is built once here.
+ * @param settings - What this session's settings differ in
+ * @param second - The second track, another microphone unless a case says so
+ * @returns The frozen snapshot every writer of the run reads
+ */
+function twoTrackSession(
+	settings: Partial<AudioRecorderSettings>,
+	second: SessionTrack = {
+		trackNumber: 2,
+		deviceId: 'mic-2',
+		channelMode: 'source',
+	},
+): CaptureSession {
+	const request = requestWith({
+		bitrate: DEFAULT_BITRATE,
+		outputFormat: FORMAT_WEBM,
+	});
+	return createCaptureSession({
+		...request,
+		settings: { ...request.settings, ...settings },
+		streamCount: 2,
+		trackOrder: [
+			{ trackNumber: 1, deviceId: 'mic-1', channelMode: 'source' },
+			second,
+		],
+	}).session;
 }
 
 describe('createCaptureSession', () => {
@@ -151,5 +204,44 @@ describe('createCaptureSession', () => {
 		);
 
 		expect(session.bitrate).toBe(DEFAULT_BITRATE);
+	});
+
+	// The stored mode is the multi-track page's, and a session that paired the
+	// microphone with the system output configured no tracks there: what it
+	// records is one call, so the snapshot every writer reads says one file
+	// however that page was last left.
+	it('writes a system-audio pairing as one file', () => {
+		const session = twoTrackSession(
+			{ includeSystemAudio: true, outputMode: 'multiple' },
+			SYSTEM_AUDIO_TRACK,
+		);
+
+		expect(session.outputMode).toBe('single');
+		expect(session.trackMix).toHaveLength(2);
+	});
+
+	// Match track levels sits on the multi-track page under a predicate that
+	// hides it while multi-track is off, so a pairing can neither show it nor
+	// be configured through it. Left applied, a value stored by an earlier
+	// multi-track session went on correcting the levels of a recorded call
+	// with nothing on screen saying so.
+	it('leaves a system-audio pairing at the levels it recorded', () => {
+		const session = twoTrackSession(
+			{ includeSystemAudio: true, mixAlignTrackLevels: true },
+			SYSTEM_AUDIO_TRACK,
+		);
+
+		expect(session.alignTrackLevels).toBe(false);
+	});
+
+	// The same switch on the session it was written for, so the fix above
+	// cannot have turned the feature off for everyone.
+	it('levels the tracks of a session that configured them', () => {
+		const session = twoTrackSession({
+			enableMultiTrack: true,
+			mixAlignTrackLevels: true,
+		});
+
+		expect(session.alignTrackLevels).toBe(true);
 	});
 });

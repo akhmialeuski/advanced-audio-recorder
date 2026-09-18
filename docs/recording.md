@@ -59,7 +59,7 @@ Each command answers with one line: the state it left behind, or why it did noth
 
 Transcription is a paid job, so the command opens the transcribe dialog in Obsidian and starts it there, where it reports progress and can be cancelled - the same thing [transcribe on save](transcription.md) does. The answer says the run was started, not that it finished.
 
-One session the command cannot start is a multi-track one holding a track whose **Track N source** is **System audio (this computer)**. The host grants that capture only in answer to a user action in a focused Obsidian window, and a command typed in a terminal is neither, so `advanced-audio-recorder:record` answers with the reason and starts nothing. Start such a recording from the ribbon icon, the command palette or a hotkey. A track recording a loopback **input device** has no such restriction and records from the command line like any microphone - see [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
+One session the command cannot start is one that records this computer's own output, whether that is **Include system audio** under [Audio input](settings-reference.md#audio-input) or a track whose **Track N source** is **System audio (this computer)**. The host grants that capture only in answer to a user action in a focused Obsidian window, and a command typed in a terminal is neither, so `advanced-audio-recorder:record` answers with the reason and starts nothing. Start such a recording from the ribbon icon, the command palette or a hotkey. A track recording a loopback **input device** has no such restriction and records from the command line like any microphone - see [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
 
 ---
 
@@ -69,7 +69,17 @@ You do not have to open the settings tab to change which microphone records. Run
 
 This is the quickest way to switch mics between recordings - for example, moving from a laptop's built-in microphone to a headset before a meeting. The same choice is also available, alongside the sample rate, under [Audio input settings](settings-reference.md#audio-input).
 
-A multi-track track can record this machine's own output directly, through **Track N source**, which Electron grants on Windows only. An input that carries that output, such as a Stereo Mix device or a virtual cable, is marked `(system audio)` in both dropdowns on every platform, so it can be told apart from a microphone. Such an input exists only where the operating system or an installed virtual cable publishes one, and it is how a call's remote participants reach a recording. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
+### Recording this computer's own output
+
+A recording that has to carry the other side of a call needs more than a microphone, and there are two ways to ask for it.
+
+The short one is **Include system audio**, the switch under [Audio input](settings-reference.md#audio-input) beside the input device. With it on, a recording captures two tracks - the microphone exactly as the rows around that switch describe it, and this computer's own output - and mixes them into one file, written as `<file prefix>-multitrack-<timestamp>.<ext>` the way any merged session is. Nothing else is configured: the second track has no device to pick, no filtering to choose and no place in the mix to set, because those answers are what the switch decides. Two mixed tracks are one file to write at the end, so automatic splitting has nothing to rotate and is skipped for such a session, with a notice saying so. Electron grants the machine's output on Windows only, and the switch says so where the build cannot; it is off on mobile, which cannot open two captures at once, and it stands down while multi-track recording is on.
+
+![The Include system audio switch turned on under Audio input, above the description of what the paired session records and of the platforms that grant the system output](images/settings-include-system-audio.png)
+
+The long one is a track of your own, through **Track N source**, which is where to go when the pairing's fixed answers are not the wanted ones: a session of three tracks rather than two, one file per track rather than a mix, or a level correction on the remote side. See [Multi-track recording](multi-track-recording.md).
+
+Either way this is the direct capture, which Electron grants on Windows alone. An input that carries the machine's output, such as a Stereo Mix device or a virtual cable, is marked `(system audio)` in both dropdowns on every platform, so it can be told apart from a microphone. Such an input exists only where the operating system or an installed virtual cable publishes one, and recording it is how a call's remote participants reach a recording everywhere else. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
 
 ---
 

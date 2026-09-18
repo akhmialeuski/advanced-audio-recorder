@@ -3,7 +3,8 @@
  * @module settings/settingsSchema
  */
 
-import type { ConversionLinkAction, OutputMode } from '../types';
+import type { ConversionLinkAction } from '../types';
+import { OutputMode } from '../types';
 import {
 	FORMAT_WEBM,
 	DEFAULT_SAMPLE_RATE,
@@ -73,23 +74,32 @@ export type { OutputMode } from '../types';
 export type { ConversionLinkAction } from '../types';
 
 /**
- * Browser input processing applied to one track's capture, in the order the
- * dropdown offers them. Stored in data.json, so a value is renamed only with
- * a migration.
- */
-export const TRACK_PROCESSING_MODES = ['global', 'voice', 'raw'] as const;
-
-/**
  * How one track's capture is filtered by the browser.
  *
- * `global` follows the three session-wide toggles, which is what every track
- * did before this existed. `voice` turns all three on, the profile a
- * microphone in a room wants. `raw` turns all three off, the profile a
- * loopback input, a line input or an already-processed headset wants: echo
- * cancellation on a loopback input suppresses the far end of a call, because
- * to the filter it looks like this machine's own speaker output coming back.
+ * Stored in data.json, so a value is renamed only with a migration. The keys
+ * are declared in the order the dropdown offers them, which is the order
+ * `Object.values` hands them back in.
  */
-export type TrackProcessingMode = (typeof TRACK_PROCESSING_MODES)[number];
+export const TrackProcessingMode = {
+	/**
+	 * Follows the three session-wide toggles, which is what every track did
+	 * before this existed.
+	 */
+	Global: 'global',
+	/** All three filters on, the profile a microphone in a room wants. */
+	Voice: 'voice',
+	/**
+	 * All three filters off, the profile a loopback input, a line input or an
+	 * already-processed headset wants: echo cancellation on a loopback input
+	 * suppresses the far end of a call, because to the filter it looks like
+	 * this machine's own speaker output coming back.
+	 */
+	Raw: 'raw',
+} as const;
+
+/** One processing profile (derived from {@link TrackProcessingMode}). */
+export type TrackProcessingMode =
+	(typeof TrackProcessingMode)[keyof typeof TrackProcessingMode];
 
 /**
  * Coerces an untrusted value (a settings file loaded from disk, a hand edit)
@@ -101,24 +111,36 @@ export function normalizeTrackProcessingMode(
 ): TrackProcessingMode {
 	// Matched rather than asserted, so the narrowing comes from the list
 	// itself and no cast can outlive a mode being renamed.
-	return TRACK_PROCESSING_MODES.find((mode) => mode === value) ?? 'global';
+	return (
+		Object.values(TrackProcessingMode).find((mode) => mode === value) ??
+		TrackProcessingMode.Global
+	);
 }
-
-/**
- * What a track captures from, in the order the dropdown offers them. Stored
- * in data.json, so a value is renamed only with a migration.
- */
-export const TRACK_SOURCE_KINDS = ['input-device', 'system-audio'] as const;
 
 /**
  * Where one track's audio comes from.
  *
- * `input-device` is an enumerated microphone or line input, which is what
- * every track was before this existed. `system-audio` is this machine's own
- * output, granted by the host rather than opened from the device list, so
- * such a track carries no device id and is never checked against one.
+ * Stored in data.json, so a value is renamed only with a migration. The keys
+ * are declared in the order the dropdown offers them, which is the order
+ * `Object.values` hands them back in.
  */
-export type TrackSourceKind = (typeof TRACK_SOURCE_KINDS)[number];
+export const TrackSourceKind = {
+	/**
+	 * An enumerated microphone or line input, which is what every track was
+	 * before this existed.
+	 */
+	InputDevice: 'input-device',
+	/**
+	 * This machine's own output, granted by the host rather than opened from
+	 * the device list, so such a track carries no device id and is never
+	 * checked against one.
+	 */
+	SystemAudio: 'system-audio',
+} as const;
+
+/** One source kind (derived from {@link TrackSourceKind}). */
+export type TrackSourceKind =
+	(typeof TrackSourceKind)[keyof typeof TrackSourceKind];
 
 /**
  * Coerces an untrusted value to a source kind, falling back to the input
@@ -126,7 +148,10 @@ export type TrackSourceKind = (typeof TRACK_SOURCE_KINDS)[number];
  * @param value - Candidate value
  */
 export function normalizeTrackSourceKind(value: unknown): TrackSourceKind {
-	return TRACK_SOURCE_KINDS.find((kind) => kind === value) ?? 'input-device';
+	return (
+		Object.values(TrackSourceKind).find((kind) => kind === value) ??
+		TrackSourceKind.InputDevice
+	);
 }
 
 /**
@@ -303,6 +328,23 @@ export interface AudioRecorderSettings {
 	recordingChannels: ChannelMode;
 	/** Audio bitrate in bps */
 	bitrate: number;
+	/**
+	 * Record this computer's own output beside the microphone, without
+	 * configuring a track for it.
+	 *
+	 * A session started this way captures two tracks - the single-track
+	 * microphone as it always was, and the system output granted by the host -
+	 * and mixes them into one file. It is the whole configuration of that
+	 * second track: the pairing chooses what the advanced page would have been
+	 * used to choose, so a call can be recorded with its remote participants by
+	 * turning one switch on.
+	 *
+	 * Ignored while {@link enableMultiTrack} is on, because a per-track
+	 * configuration already says what every track records and one session can
+	 * capture the system output only once. That is the way round to reach for
+	 * when the pairing's answers are not the wanted ones.
+	 */
+	includeSystemAudio: boolean;
 	/** Enable multi-track recording */
 	enableMultiTrack: boolean;
 	/** Maximum number of tracks */
@@ -793,10 +835,11 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	sampleRate: DEFAULT_SAMPLE_RATE,
 	recordingChannels: CHANNEL_MODE_SOURCE,
 	bitrate: DEFAULT_BITRATE,
+	includeSystemAudio: false,
 	enableMultiTrack: false,
 	maxTracks: 2,
 	mixAlignTrackLevels: false,
-	outputMode: 'single',
+	outputMode: OutputMode.Single,
 	useSourceNamesForTracks: true,
 	trackAudioSources: new Map(),
 	perPlatform: createPerPlatformDefaults(),

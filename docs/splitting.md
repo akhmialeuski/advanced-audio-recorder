@@ -196,7 +196,7 @@ These live under **Settings > Advanced Audio Recorder > Audio splitting** and se
 
 | Setting                            | Used by                        | Default | Notes                                                                  |
 | ---------------------------------- | ------------------------------ | ------- | ---------------------------------------------------------------------- |
-| **Split recordings automatically** | Automatic splitting only       | `Off`   | Not applied to merged multi-track recordings.                          |
+| **Split recordings automatically** | Automatic splitting only       | `Off`   | Not applied when several tracks are mixed into one file.               |
 | **Part duration**                  | Automatic and manual splitting | `15`    | `1`-`180` minutes. Also the starting value in the manual split dialog. |
 | **Part name suffix**               | Automatic and manual splitting | `part`  | Letters, digits, hyphens, and underscores only.                        |
 | **Delete source after split**      | Manual split dialog default    | `Off`   | Seeds the **Delete source file** toggle in the split dialog.           |

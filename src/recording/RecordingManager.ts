@@ -17,6 +17,8 @@ import type { MarkerKind } from '../markers/markerModel';
 import type { RecordingMarkerHandle } from './recordingMarkers';
 import { RecordingMarkerCoordinator } from './RecordingMarkerCoordinator';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { TrackSourceKind } from '../settings/settingsSchema';
+import { OutputMode } from '../types';
 import {
 	getAudioStreams,
 	getAudioSourceName,
@@ -407,8 +409,12 @@ export class RecordingManager {
 			});
 			this.session = plan.session;
 			if (plan.autoSplitSkipped) {
+				// Said in terms of the session rather than of the feature that
+				// configured it. Two configurations reach this line now, and
+				// naming the multi-track page told a user who had only turned
+				// the system-audio switch on about a page they never opened.
 				new Notice(
-					'Auto-split is skipped for merged multi-track recordings.',
+					"Auto-split is skipped: this session's tracks are mixed into one file.",
 				);
 			}
 			if (this.session.splitEnabled) {
@@ -575,7 +581,7 @@ export class RecordingManager {
 			return {
 				trackNumber: trackInfo?.trackNumber ?? index + 1,
 				deviceId: trackInfo?.deviceId,
-				systemAudio: trackInfo?.kind === 'system-audio',
+				systemAudio: trackInfo?.kind === TrackSourceKind.SystemAudio,
 			};
 		});
 		const sourceNames = await Promise.all(
@@ -714,7 +720,7 @@ export class RecordingManager {
 	private systemAudioIndexes(): ReadonlySet<number> {
 		return new Set(
 			this.trackOrder.flatMap((source, index) =>
-				source.kind === 'system-audio' ? [index] : [],
+				source.kind === TrackSourceKind.SystemAudio ? [index] : [],
 			),
 		);
 	}
@@ -742,7 +748,8 @@ export class RecordingManager {
 		// What ended decides the sentence: a granted capture of this
 		// machine's output is revoked or switched off, and calling that a
 		// disconnected device sends the user looking at their cables.
-		const systemAudio = this.trackOrder[index]?.kind === 'system-audio';
+		const systemAudio =
+			this.trackOrder[index]?.kind === TrackSourceKind.SystemAudio;
 		const trackCause = systemAudio
 			? 'its system audio capture ended'
 			: 'its input device was disconnected';
@@ -1086,7 +1093,7 @@ export class RecordingManager {
 	): readonly RecordingTarget[] {
 		const merged =
 			this.session.isWavPcm &&
-			this.session.outputMode === 'single' &&
+			this.session.outputMode === OutputMode.Single &&
 			this.chunkTargets.length > 1;
 		return merged ? this.chunkTargets : [target];
 	}

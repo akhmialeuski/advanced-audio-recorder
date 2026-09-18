@@ -8,6 +8,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 - [Markers while recording](#markers-while-recording)
 - [Crash recovery](#crash-recovery)
 - [Automatic splitting](#automatic-splitting)
+- [System audio beside the microphone](#system-audio-beside-the-microphone)
 - [Multi-track recording](#multi-track-recording)
 - [Output formats and encoding](#output-formats-and-encoding)
 - [Format conversion](#format-conversion)
@@ -65,9 +66,15 @@ Learn more: [Recording](recording.md#crash-recovery)
 
 ## Automatic splitting
 
-Enable **Split recordings automatically** to save a recording as separate part files of a fixed duration (`...-part1.webm`, `...-part2.webm`, ...) instead of one long file. Each finished part is written to disk while recording continues, and links to all parts are inserted into the note when you stop. WAV is split sample-exactly; compressed formats restart the recorder at each boundary, so parts are approximately the configured length. It works on mobile as well, where it also bounds how much an interrupted session can lose. Auto-split is not applied to merged multi-track recordings.
+Enable **Split recordings automatically** to save a recording as separate part files of a fixed duration (`...-part1.webm`, `...-part2.webm`, ...) instead of one long file. Each finished part is written to disk while recording continues, and links to all parts are inserted into the note when you stop. WAV is split sample-exactly; compressed formats restart the recorder at each boundary, so parts are approximately the configured length. It works on mobile as well, where it also bounds how much an interrupted session can lose. Auto-split is not applied to a session that mixes several tracks into one file.
 
 Learn more: [Splitting](splitting.md#automatic-splitting-during-recording)
+
+## System audio beside the microphone
+
+Turn on **Include system audio** under **Audio input** and a recording captures two tracks - the microphone as the rows beside that switch describe it, and this computer's own output - mixed into one file. It is how the remote participants of a Zoom, Teams or Meet call reach a recording with nothing installed and nothing else configured. Electron grants the machine's output on Windows only, and the row says so where the build cannot; the switch is off on mobile, which cannot open two captures at once, and it stands down while multi-track recording is on, where a track's own source row says the same thing with every answer left open.
+
+Learn more: [Recording this computer's own output](recording.md#recording-this-computers-own-output)
 
 ## Multi-track recording
 
@@ -196,6 +203,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | Markers while recording       | Drop a bookmark or chapter at the live position                     | Status bar / command palette (markers enabled)  | [Recording](recording.md#marking-moments-while-recording)      |
 | Crash recovery                | Recover audio after a crash, power loss, or mid-recording disable   | Automatic modal on next launch                  | [Recording](recording.md#crash-recovery)                       |
 | Automatic splitting           | Save a recording as fixed-duration part files                       | Settings > Audio splitting                      | [Splitting](splitting.md#automatic-splitting-during-recording) |
+| Include system audio          | Record this computer's own output beside the microphone, as one mixed file | Settings > Audio input                   | [Recording](recording.md#recording-this-computers-own-output)  |
 | Multi-track recording         | Capture up to 8 input devices at once; single or per-track files    | Settings > Multi-track recording                | [Multi-track recording](multi-track-recording.md)              |
 | Output formats and encoding   | 8 formats with online/offline encoding                              | Settings > Output format                        | [Formats](formats.md)                                          |
 | Format conversion             | Transcode a file to another format and bitrate                      | Context menu / palette > Convert audio format   | [File operations](file-operations.md#convert-audio-format)     |

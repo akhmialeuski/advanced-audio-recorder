@@ -35,6 +35,7 @@ It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.
 ## Highlights
 
 - **One-click recording** - start and stop from the ribbon microphone icon or the command palette, with a link inserted automatically. See [Recording](recording.md).
+- **System audio with the microphone** - one switch records this computer's own output beside your voice, mixed into one file, so a call arrives with its remote participants (Windows). See [Recording](recording.md#recording-this-computers-own-output).
 - **Multi-track capture** - record up to 8 devices at once, mixed or per-track. See [Multi-track recording](multi-track-recording.md).
 - **Eight output formats** - pick the right balance of quality, size, and compatibility. See [Formats](formats.md).
 - **Convert, split, and manage files** - transcode, divide into parts, and update note links from the context menu. See [File operations](file-operations.md) and [Splitting](splitting.md).

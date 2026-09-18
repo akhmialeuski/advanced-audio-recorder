@@ -21,8 +21,11 @@ import {
 	FORMAT_WEBM,
 } from '../constants';
 import type { RecordingSessionConfig, TrackMix } from '../types';
+import { OutputMode } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
+	effectiveOutputMode,
+	effectiveTrackLevelAlignment,
 	recordingEncodingFor,
 	type TrackAudioSource,
 } from './AudioStreamHandler';
@@ -114,9 +117,15 @@ export function createCaptureSession(
 			: Array.from({ length: streamCount }, () =>
 					normalizeChannelMode(settings.recordingChannels),
 				);
+	// Read here, from the one place that answers them: both are rows of the
+	// multi-track page, and a session pairing the microphone with the system
+	// output shows none of that page, so it is mixed into one file and left at
+	// the levels it was recorded at whatever those rows were last set to.
+	const outputMode = effectiveOutputMode(settings);
+	const alignTrackLevels = effectiveTrackLevelAlignment(settings);
 	// A session writing one file per track never mixes, so it carries no
 	// placement at all rather than a set of neutral ones nothing reads.
-	const merging = settings.outputMode === 'single' && trackOrder.length > 1;
+	const merging = outputMode === OutputMode.Single && trackOrder.length > 1;
 	const trackMix: readonly TrackMix[] = merging
 		? Object.freeze(
 				trackOrder.map(
@@ -129,7 +138,7 @@ export function createCaptureSession(
 		: Object.freeze([]);
 	const requestedSplit = settings.autoSplitEnabled;
 	const autoSplitSkipped =
-		requestedSplit && settings.outputMode === 'single' && streamCount > 1;
+		requestedSplit && outputMode === OutputMode.Single && streamCount > 1;
 	const session: CaptureSession = Object.freeze({
 		// Platforms that must not leave raw mid-stream segments behind run
 		// their buffer flushes as full part rotations at this size boundary.
@@ -141,7 +150,7 @@ export function createCaptureSession(
 		recorderMimeType:
 			request.recorderMimeType ?? buildMimeType(request.recorderFormat),
 		outputFormat: request.outputFormat,
-		outputMode: settings.outputMode,
+		outputMode,
 		// Snapped onto the output format's own rates here, at the one point
 		// every recorder, merge and conversion of the session reads it from: a
 		// rate the codec cannot write would otherwise be raised silently by
@@ -160,7 +169,7 @@ export function createCaptureSession(
 		partSuffix: sanitizePartSuffix(settings.splitPartSuffix),
 		channelModes: Object.freeze(channelModes),
 		trackMix,
-		alignTrackLevels: merging && settings.mixAlignTrackLevels,
+		alignTrackLevels: merging && alignTrackLevels,
 	});
 	return { session, autoSplitSkipped };
 }
@@ -172,7 +181,7 @@ export const IDLE_CAPTURE_SESSION: CaptureSession = Object.freeze({
 	recorderFormat: FORMAT_WEBM,
 	recorderMimeType: buildMimeType(FORMAT_WEBM),
 	outputFormat: FORMAT_WEBM,
-	outputMode: 'multiple' as const,
+	outputMode: OutputMode.Multiple,
 	bitrate: 0,
 	splitEnabled: false,
 	partMinutes: DEFAULT_SPLIT_CHUNK_MINUTES,

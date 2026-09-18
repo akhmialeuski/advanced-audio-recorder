@@ -34,9 +34,18 @@ export const audioDeviceApi = jest.fn(
 	() => (navigator.mediaDevices as MediaDevices | undefined) ?? null,
 );
 
+const actual = jest.requireActual<
+	typeof import('../../../src/recording/AudioStreamHandler')
+>('../../../src/recording/AudioStreamHandler');
+
 // Derived from settings alone and read by the manager before it asks the
 // encoder anything, so the real one runs: a double here would have to restate
 // the mixer's layout rule, and a suite about that rule tests the real function.
-export const recordingEncodingFor = jest.requireActual<
-	typeof import('../../../src/recording/AudioStreamHandler')
->('../../../src/recording/AudioStreamHandler').recordingEncodingFor;
+export const recordingEncodingFor = actual.recordingEncodingFor;
+// Read by the session builder for the same kind of reason: which mode a
+// session writes in is a question about the settings, and a double would have
+// to restate when the system-audio pairing overrules the stored mode. The
+// switch beside that row is answered by the same rule and comes from the same
+// place, so the two can never disagree here either.
+export const effectiveOutputMode = actual.effectiveOutputMode;
+export const effectiveTrackLevelAlignment = actual.effectiveTrackLevelAlignment;

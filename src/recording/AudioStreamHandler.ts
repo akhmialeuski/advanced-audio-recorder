@@ -6,11 +6,12 @@
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioStreamError } from '../errors';
 import { delay } from '../utils/TimeUtils';
-import type {
-	AudioRecorderSettings,
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import {
 	TrackProcessingMode,
 	TrackSourceKind,
 } from '../settings/settingsSchema';
+import { OutputMode } from '../types';
 import { captureSystemAudioStream } from './systemAudioSupport';
 import {
 	CHANNEL_MODE_SOURCE,
@@ -390,17 +391,125 @@ async function getAudioStream(
 }
 
 /**
- * Whether the current session records multiple tracks: the setting must
- * be on AND the platform must support multi-device capture. A stored
- * "on" synced from a desktop config silently degrades to a single-track
- * session where multi-track capture is unavailable (mobile).
+ * Whether the multi-track page's own configuration is what this session
+ * records: the setting must be on AND the platform must support
+ * multi-device capture. A stored "on" synced from a desktop config silently
+ * degrades to a single-track session where multi-track capture is
+ * unavailable (mobile).
+ *
+ * A session can hold several tracks without this being true - the pairing of
+ * {@link isSystemAudioPairingEnabled} is one - so a caller asking which
+ * tracks to open asks {@link getOrderedTrackSources} rather than this.
  * @param settings - Plugin settings
- * @returns True when a multi-track session should be started
+ * @returns True when the per-track configuration is in force
  */
 export function isMultiTrackSessionEnabled(
 	settings: AudioRecorderSettings,
 ): boolean {
 	return settings.enableMultiTrack && isMultiTrackCaptureSupported();
+}
+
+/**
+ * Whether this session records the system output beside the microphone
+ * without a track having been configured for it.
+ *
+ * Three facts decide it. The switch, which is the whole of the pairing's
+ * configuration. The multi-track switch being *off*, because a per-track
+ * configuration already says what each track records, and a session can
+ * capture the system output once: adding a track to one that already asks for
+ * it would refuse the very sessions the pairing exists to make easy. And the
+ * platform, because the pairing opens two captures at once, which is the same
+ * ability the multi-track page needs and the mobile app does not have - a
+ * switch synced from a desktop config degrades there to the single-track
+ * session it always was, exactly as the multi-track one does.
+ *
+ * Whether the host can actually grant the system output is deliberately not
+ * among them. That answer costs a synchronous trip through Electron's remote
+ * module, and this question is asked on every settings render as well as at
+ * the start of a recording; where the grant is refused, the capture says so in
+ * the words the user acts on, which is what a hand-configured system-audio
+ * track does too.
+ * @param settings - Plugin settings
+ * @returns True when the session pairs the microphone with the system output
+ */
+export function isSystemAudioPairingEnabled(
+	settings: AudioRecorderSettings,
+): boolean {
+	return (
+		settings.includeSystemAudio &&
+		!settings.enableMultiTrack &&
+		isMultiTrackCaptureSupported()
+	);
+}
+
+/**
+ * Whether this session's captures are described by a track list at all.
+ *
+ * Two configurations produce one: the multi-track page's, and the pairing
+ * that stands in for it. Asked as one question wherever the answer decides
+ * between the track path and the single capture, so a third way of reaching
+ * that path cannot be added to one caller and missed by the other. The one
+ * fork that stays on {@link isMultiTrackSessionEnabled} is
+ * {@link validateSelectedDevices}, which chooses a sentence rather than a
+ * path, and says why there.
+ *
+ * A multi-track session with no track configured answers true and opens
+ * nothing, which is the session the settings entry warns about rather than
+ * one this function quietly turns into a recording of the default microphone.
+ * @param settings - Plugin settings
+ * @returns True when the session opens the tracks a list names
+ */
+export function isTrackListSession(settings: AudioRecorderSettings): boolean {
+	return (
+		isMultiTrackSessionEnabled(settings) ||
+		isSystemAudioPairingEnabled(settings)
+	);
+}
+
+/**
+ * The output mode a session started under these settings writes in.
+ *
+ * The stored mode is the multi-track page's, set beside the tracks it
+ * describes. The pairing configures no tracks and shows no such row, and the
+ * file it exists to produce is one recording of a call rather than a
+ * microphone file and a loudspeaker file, so it is mixed whatever the page was
+ * last left on.
+ * @param settings - Plugin settings
+ * @returns The mode this session's tracks are written with
+ */
+export function effectiveOutputMode(
+	settings: AudioRecorderSettings,
+): OutputMode {
+	return isSystemAudioPairingEnabled(settings)
+		? OutputMode.Single
+		: settings.outputMode;
+}
+
+/**
+ * Whether the mixer brings this session's tracks to a common level before it
+ * combines them.
+ *
+ * The same question as {@link effectiveOutputMode}, asked of the switch beside
+ * that row: Match track levels is declared on the multi-track page, under a
+ * visible predicate that hides it while multi-track is off, so the pairing can
+ * neither show it nor be configured through it. A stored value left behind by
+ * an earlier multi-track session would otherwise keep correcting the levels of
+ * a call nothing on screen says is being corrected, and the pairing's own
+ * documentation sends a user who wants that correction to the multi-track page
+ * to get it.
+ *
+ * Every value the multi-track page owns is answered here rather than read off
+ * the settings at the point of use, so a row added to that page arrives with
+ * one place to say what the pairing does with it.
+ * @param settings - Plugin settings
+ * @returns True when the mixer levels the tracks against each other
+ */
+export function effectiveTrackLevelAlignment(
+	settings: AudioRecorderSettings,
+): boolean {
+	return (
+		!isSystemAudioPairingEnabled(settings) && settings.mixAlignTrackLevels
+	);
 }
 
 /**
@@ -438,7 +547,7 @@ export async function getAudioStreams(
 	settings: AudioRecorderSettings,
 ): Promise<{ streams: MediaStream[]; trackOrder: TrackAudioSource[] }> {
 	const processing = getProcessingConstraints(settings);
-	if (isMultiTrackSessionEnabled(settings)) {
+	if (isTrackListSession(settings)) {
 		const trackOrder = getOrderedTrackSources(settings);
 		const surplus = surplusSystemAudioTracks(trackOrder);
 		if (surplus.length > 0) {
@@ -455,7 +564,7 @@ export async function getAudioStreams(
 			);
 		}
 		const streamPromises = trackOrder.map((source) =>
-			source.kind === 'system-audio'
+			source.kind === TrackSourceKind.SystemAudio
 				? captureSystemAudioStream()
 				: getAudioStream(
 						source.deviceId,
@@ -515,7 +624,7 @@ export async function getAudioStreams(
  */
 export function recordingEncodingFor(
 	settings: AudioRecorderSettings,
-	tracks: readonly TrackAudioSource[] = isMultiTrackSessionEnabled(settings)
+	tracks: readonly TrackAudioSource[] = isTrackListSession(settings)
 		? getOrderedTrackSources(settings)
 		: [],
 ): RecordingEncoding {
@@ -523,7 +632,9 @@ export function recordingEncodingFor(
 		tracks.length > 0
 			? tracks.map((source) => source.channelMode)
 			: [normalizeChannelMode(settings.recordingChannels)];
-	const mergesTracks = settings.outputMode === 'single' && tracks.length > 1;
+	const mergesTracks =
+		effectiveOutputMode(settings) === OutputMode.Single &&
+		tracks.length > 1;
 	const panned = tracks.some((source) => (source.pan ?? 0) !== 0);
 	return {
 		sampleRate: offlineEncodeSampleRate(settings.sampleRate),
@@ -536,22 +647,73 @@ export function recordingEncodingFor(
 }
 
 /**
+ * The two tracks the system-audio pairing records, in capture order.
+ *
+ * Neither is stored anywhere. The microphone track is the single-track
+ * session as it stands - the input the device row names, the layout the
+ * channel row picks, the filters the processing switches apply - so turning
+ * the pairing on changes nothing about the recording that was already being
+ * made; it adds the second track beside it. That second one is a system-audio
+ * track, which is configured by being one.
+ * @param settings - Plugin settings, read for the single-track capture
+ * @returns The microphone track, then the system output
+ */
+function systemAudioPairSources(
+	settings: AudioRecorderSettings,
+): TrackAudioSource[] {
+	return [
+		{
+			trackNumber: 1,
+			// Asked the way the single-track path asks it, so a stored id the
+			// platform cannot satisfy is left behind here too.
+			deviceId: resolveCaptureDeviceId(settings) ?? '',
+			channelMode: normalizeChannelMode(settings.recordingChannels),
+			gainDb: 0,
+			pan: 0,
+			processing: TrackProcessingMode.Global,
+			kind: TrackSourceKind.InputDevice,
+		},
+		{
+			trackNumber: 2,
+			deviceId: '',
+			channelMode: CHANNEL_MODE_SOURCE,
+			gainDb: 0,
+			pan: 0,
+			// No processing named: this capture is granted by the host rather
+			// than opened through getUserMedia, so none of those filters is on
+			// the path at all and naming one would describe something that
+			// never happens.
+			kind: TrackSourceKind.SystemAudio,
+		},
+	];
+}
+
+/**
  * Gets ordered track audio sources based on settings.
  */
 export function getOrderedTrackSources(
 	settings: AudioRecorderSettings,
 ): TrackAudioSource[] {
+	// Asked before the stored tracks, because the pairing is the answer for a
+	// session that configured none: its own predicate has already established
+	// that the multi-track switch is off, so the two can never both apply.
+	if (isSystemAudioPairingEnabled(settings)) {
+		return systemAudioPairSources(settings);
+	}
 	const sources: TrackAudioSource[] = [];
 	if (!settings.enableMultiTrack) {
 		return sources;
 	}
 	for (let i = 1; i <= settings.maxTracks; i++) {
 		const source = settings.trackAudioSources.get(i);
-		const kind = source?.kind ?? 'input-device';
+		const kind = source?.kind ?? TrackSourceKind.InputDevice;
 		// A device track is configured by naming a device; a system-audio
 		// track is configured by being one, and never carries an id.
-		if (source && (kind === 'system-audio' || source.deviceId)) {
-			const systemAudio = kind === 'system-audio';
+		if (
+			source &&
+			(kind === TrackSourceKind.SystemAudio || source.deviceId)
+		) {
+			const systemAudio = kind === TrackSourceKind.SystemAudio;
 			sources.push({
 				trackNumber: i,
 				deviceId: systemAudio ? '' : source.deviceId,
@@ -565,7 +727,7 @@ export function getOrderedTrackSources(
 					: normalizeChannelMode(source.channelMode),
 				gainDb: source.gainDb ?? 0,
 				pan: source.pan ?? 0,
-				processing: source.processing ?? 'global',
+				processing: source.processing ?? TrackProcessingMode.Global,
 				kind,
 			});
 		}
@@ -591,7 +753,7 @@ export function surplusSystemAudioTracks(
 	tracks: readonly TrackAudioSource[],
 ): number[] {
 	return tracks
-		.filter((source) => source.kind === 'system-audio')
+		.filter((source) => source.kind === TrackSourceKind.SystemAudio)
 		.slice(1)
 		.map((source) => source.trackNumber);
 }
@@ -691,6 +853,14 @@ export async function missingCaptureIndexes(
  * used for capture there (see {@link resolveCaptureDeviceId}), so their
  * absence - e.g. desktop ids arriving through a synced data.json - must not
  * block recording on the default microphone.
+ *
+ * The one fork here that asks {@link isMultiTrackSessionEnabled} rather than
+ * {@link isTrackListSession}, because the question is which sentence the user
+ * reads and not which path the capture takes. The system-audio pairing opens
+ * a track list, and the only device in it is the single-track microphone, so
+ * the second branch checks exactly the same id; sent down the first one it
+ * would answer a user who never opened the multi-track page with a track
+ * number instead of the row they set.
  * @param settings - Plugin settings holding the configured inputs
  * @throws Error naming what is missing, when anything is
  */
@@ -707,7 +877,7 @@ export async function validateSelectedDevices(
 			// nothing to say about it; asked anyway, it refuses every start.
 			.filter(
 				(source) =>
-					source.kind !== 'system-audio' &&
+					source.kind !== TrackSourceKind.SystemAudio &&
 					!available.has(source.deviceId),
 			)
 			.map((source) => source.trackNumber);

@@ -46,6 +46,8 @@ import {
 } from './settingsDefinitions';
 import { LegacySettingsRenderer } from './legacySettingsRenderer';
 import {
+	TrackProcessingMode,
+	TrackSourceKind,
 	normalizeTrackProcessingMode,
 	normalizeTrackSourceKind,
 	type AudioRecorderSettings,
@@ -460,10 +462,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				return source?.channelMode ?? CHANNEL_MODE_SOURCE;
 			}
 			if (track.field === 'processing') {
-				return source?.processing ?? 'global';
+				return source?.processing ?? TrackProcessingMode.Global;
 			}
 			if (track.field === 'kind') {
-				return source?.kind ?? 'input-device';
+				return source?.kind ?? TrackSourceKind.InputDevice;
 			}
 			// A track placed nowhere in particular sits at the centre, at the
 			// level it was captured at.
@@ -475,8 +477,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// A feature switched on where the platform cannot honour it reads as
 		// off, so the control never claims a result this device cannot give.
 		// The stored value is left alone, so the setting survives a sync back
-		// to a device that can.
-		if (key === 'enableMultiTrack') {
+		// to a device that can. The system-audio pairing answers here for the
+		// same reason and to the same fact: it opens two captures at once,
+		// which is the ability the multi-track switch needs as well.
+		if (key === 'enableMultiTrack' || key === 'includeSystemAudio') {
 			return stored === true && isMultiTrackCaptureSupported();
 		}
 		// The same rule with an engine in the platform's place, and the row
@@ -710,7 +714,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// system output is the whole configuration of such a track, and
 			// there is no device to bind it to.
 			const kind = normalizeTrackSourceKind(value);
-			if (kind === 'input-device' && !current?.deviceId) {
+			if (kind === TrackSourceKind.InputDevice && !current?.deviceId) {
 				// A device track without a device is the unconfigured state,
 				// and an unconfigured track has no entry - the same rule the
 				// device dropdown applies when it is cleared. Written anyway,

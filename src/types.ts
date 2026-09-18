@@ -4,9 +4,21 @@
  */
 
 /**
- * Output mode for multi-track recordings.
+ * How a session's tracks become files.
+ *
+ * Stored in data.json, so a value is renamed only with a migration. The keys
+ * are declared in the order the dropdown offers them, which is the order
+ * `Object.values` hands them back in.
  */
-export type OutputMode = 'single' | 'multiple';
+export const OutputMode = {
+	/** Every track of the session summed into one combined file. */
+	Single: 'single',
+	/** One file written per track of the session. */
+	Multiple: 'multiple',
+} as const;
+
+/** One output mode (derived from {@link OutputMode}). */
+export type OutputMode = (typeof OutputMode)[keyof typeof OutputMode];
 
 /**
  * Recording status states.

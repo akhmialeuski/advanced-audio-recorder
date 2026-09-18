@@ -36,6 +36,7 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 			saveNearActiveFile: false,
 			activeFileSubfolder: '',
 			filePrefix: 'recording',
+			includeSystemAudio: false,
 			enableMultiTrack: false,
 			maxTracks: 2,
 			outputMode: 'single',

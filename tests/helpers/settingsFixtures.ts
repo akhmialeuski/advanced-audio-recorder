@@ -48,6 +48,7 @@ export function fullyPopulatedSettings(): Omit<
 		sampleRate: 22050,
 		recordingChannels: 'mono-left',
 		bitrate: 64000,
+		includeSystemAudio: true,
 		enableMultiTrack: true,
 		maxTracks: 4,
 		mixAlignTrackLevels: false,
