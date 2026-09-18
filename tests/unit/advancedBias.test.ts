@@ -175,6 +175,18 @@ describe('advancedBiasUnsupportedReason', () => {
 		expect(reason).toMatch(/cannot bias recognition/);
 	});
 
+	it('warns about a hosted Whisper id the user capitalised', () => {
+		// Read as a Nova generation, such an id would let the two-pass run
+		// believe it can bias and keep the warning from ever being shown.
+		const reason = advancedBiasUnsupportedReason(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'Whisper-Large',
+		);
+
+		expect(reason).toContain('Whisper-Large');
+		expect(reason).toMatch(/cannot bias recognition/);
+	});
+
 	// The Deepgram model is consulted for Deepgram alone: an engine with no
 	// per-model rule must not inherit whichever model the settings happen to
 	// hold from a previous engine.

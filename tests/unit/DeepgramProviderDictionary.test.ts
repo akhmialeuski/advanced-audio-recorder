@@ -58,6 +58,9 @@ function queryOf(calls: MockRequestUrlParam[]): URLSearchParams {
 }
 
 describe('DeepgramProvider dictionary biasing', () => {
+	/** The dictionary every case-variant row below sends. */
+	const CASE_VARIANT_TERMS = ['Kubernetes', 'gRPC'];
+
 	it('sends each term as a keyterm param on nova-3', async () => {
 		const calls = capture();
 		const provider = new DeepgramProvider({
@@ -132,6 +135,55 @@ describe('DeepgramProvider dictionary biasing', () => {
 		expect(params.has('keyterm')).toBe(false);
 		expect(params.has('keywords')).toBe(false);
 	});
+
+	// The model catalogue is user-editable and the add-model dialog only trims,
+	// so an id typed the way Deepgram's documentation writes it still has to
+	// reach the query param of its own generation.
+	it.each<{
+		name: string;
+		model: string;
+		keyterm: string[];
+		keywords: string[];
+	}>([
+		{
+			name: 'a capitalised Nova-3 id',
+			model: 'Nova-3',
+			keyterm: CASE_VARIANT_TERMS,
+			keywords: [],
+		},
+		{
+			name: 'an upper-cased Nova-2 id',
+			model: 'NOVA-2-MEETING',
+			keyterm: [],
+			keywords: CASE_VARIANT_TERMS,
+		},
+		{
+			name: 'a capitalised hosted Whisper id',
+			model: 'Whisper-Medium',
+			keyterm: [],
+			keywords: [],
+		},
+	])(
+		'biases $name through the param its own generation takes',
+		async ({ model, keyterm, keywords }) => {
+			const calls = capture();
+			const provider = new DeepgramProvider({
+				baseUrl: BASE_URL,
+				apiKey: 'k',
+				model,
+			});
+
+			await provider.transcribe(payload(), {
+				diarize: false,
+				wordTimestamps: false,
+				dictionary: CASE_VARIANT_TERMS,
+			});
+
+			const params = queryOf(calls);
+			expect(params.getAll('keyterm')).toEqual(keyterm);
+			expect(params.getAll('keywords')).toEqual(keywords);
+		},
+	);
 
 	it('trims keyterms to the entry and token limits on nova-3', async () => {
 		const calls = capture();
