@@ -45,7 +45,7 @@ What it tells you:
 
 The test uses exactly the same input device, sample rate, bitrate, and browser input processing (noise suppression, echo cancellation, automatic gain control) as a real recording, so it is a faithful preview. Nothing is written to disk - when you leave the section the clip is discarded.
 
-![Test recording control after a successful 5-second clip, showing the inline playback player](images/diagnostics-test-recording.png)
+![The Diagnostics section with the Test recording row and its Start test button, the System info row and the Debug mode toggle](images/settings-diagnostics.png)
 
 ### System info
 

@@ -177,7 +177,7 @@ This is post-processing you invoke on demand; it never changes how live recordin
 
 A progress dialog shows the elapsed timer and lets you **Cancel** or **Minimize** the job to the status bar. The full reference - engines, language, diarization, output formats, and setup - is in [Transcription](transcription.md). For step-by-step provider setup, see the [use-case guides](use-cases/index.md).
 
-![Transcribe audio progress dialog with a progress bar, elapsed timer, Cancel, and Minimize buttons](images/transcription-dialog.png)
+![The Transcribe audio dialog with its per-run rows for engine, language, speaker diarization, the participant and dictionary profiles, the two-pass mode, the destination and file format, LLM post-processing and chapter generation](images/transcription-dialog.png)
 
 ---
 
