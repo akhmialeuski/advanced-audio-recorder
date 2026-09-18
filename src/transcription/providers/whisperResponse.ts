@@ -50,7 +50,10 @@ function mapWords(value: unknown): TranscriptWord[] | undefined {
 		words.push({
 			text: text.trim(),
 			start: num(entry.start),
-			end: num(entry.end),
+			// A missing end is taken from the word's own start, so the
+			// interval degenerates instead of pointing backwards as a zero
+			// would. Same rule as the segment below.
+			end: num(entry.end, num(entry.start)),
 		});
 	}
 	return words.length > 0 ? words : undefined;
