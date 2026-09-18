@@ -83,11 +83,11 @@ The recording is drawn as a waveform that doubles as the seek bar.
 
 ### Playback speed
 
-Click the **speed** button to open a dropdown of presets and pick any one (the current rate is checked). The presets are `0.5×`, `0.75×`, `1×`, `1.25×`, `1.5×`, `1.75×`, `2×`, `2.5×`, and `3×`.
+Click the **speed** button to open a dropdown of presets and pick any one (the current rate is checked). The presets are `0.5x`, `0.75x`, `1x`, `1.25x`, `1.5x`, `1.75x`, `2x`, `2.5x`, and `3x`.
 
 New players start at `1×`. The button always shows the current rate.
 
-![Playback-speed dropdown menu listing the speed presets with the current rate checked](images/player-speed-menu.png)
+![The playback-speed menu listing the nine presets from 0.5x to 3x, with a check beside 1x](images/player-speed-menu.png)
 
 ### Skip forward and back
 
@@ -241,7 +241,7 @@ The **previous chapter** and **next chapter** buttons move between chapter bound
 
 Right-click the player to add a **marker** or **chapter**, or copy a **timestamp link**, **at the clicked position** - alongside the same audio file actions the [file explorer menu](file-operations.md#where-the-menu-appears) offers for that recording. Position-aware actions use the spot under the cursor. The **add marker** and **add chapter** items appear only when **Markers and chapters** is enabled and the note is open for editing (Live Preview), while **copy timestamp link** is always available.
 
-![Right-click context menu on the player offering add marker, add chapter, copy timestamp link, and file actions](images/player-context-menu.png)
+![The player's right-click menu, with Add marker here, Add chapter here and Copy timestamp link here above the file actions, from Audio file info through to Delete recording](images/player-context-menu.png)
 
 **Editing versus read-only**
 

@@ -144,7 +144,7 @@ Record from several input devices at once. The track configuration controls only
 
 ## Audio player
 
-Replace Obsidian's built-in audio embed with the enhanced player. The two window toggles (**Show waveform**, **Markers and chapters**) only appear once **Enhanced audio player** is on. The player's other controls - playback speed (0.5×-3×), volume, mute, loop, time display, and the copy-timestamp-link button - are fixed and not configurable here. See [Audio player](audio-player.md).
+Replace Obsidian's built-in audio embed with the enhanced player. The three rows below the master switch (**Show waveform**, **Markers and chapters**, **Skip step**) only appear once **Enhanced audio player** is on. The player's other controls - playback speed (0.5x-3x), volume, mute, loop, time display, and the copy-timestamp-link button - are fixed and not configurable here. See [Audio player](audio-player.md).
 
 ![Audio player settings with the enhanced player, show waveform and markers and chapters toggles all on, and the skip step field](images/settings-audio-player.png)
 

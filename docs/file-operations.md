@@ -23,7 +23,7 @@ A **folder** carries one entry of its own rather than the file actions, because 
 
 The plugin recognizes a file as audio by its extension. Supported extensions are `webm`, `ogg`, `wav`, `mp3`, `flac`, `mp4`, `m4a`, and `aac` - see [Formats](formats.md) for what each one is.
 
-![Right-click context menu on an audio file in the File Explorer showing the Advanced Audio Recorder actions](images/context-menu-file-explorer.png)
+![The plugin's ten entries in the context menu of an audio file, from Audio file info through to Delete recording, with transcription, rename speakers and auto chapters all enabled](images/context-menu-file-explorer.png)
 
 Which actions appear depends on where you click and on your settings:
 
@@ -188,7 +188,7 @@ Two delete actions hand the file to Obsidian, which disposes of it the way your 
 - **Delete recording** - trashes the audio file. Available in the File Explorer and on an embedded player; on an editor embed link the menu offers only the **& link to file** variant below, so deleting the file never leaves the link you clicked behind.
 - **Delete recording & link to file** - trashes the audio file **and** removes the embed link from the editor in the same step. Available only when you right-click a **link** in the editor or an **embedded player**, because that variant needs a link at the click position to remove.
 
-![Delete recording and Delete recording & link to file actions in the context menu of an embedded audio player](images/context-menu-delete.png)
+![The two delete entries side by side, Delete recording above Delete recording & link to file](images/context-menu-delete.png)
 
 If a recording has marker or chapter data, its sidecar (`recording.webm.markers.json`) is moved or removed automatically with the file - see [Audio player](audio-player.md#markers-and-chapters).
 
