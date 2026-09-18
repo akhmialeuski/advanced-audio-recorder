@@ -17,12 +17,29 @@
  */
 
 import type { AudioRecorderSettings } from './settingsSchema';
-import type { Profile, ProfileKindId } from './profiles';
+import { type Profile, ProfileKindId } from './profiles';
 import { parseDictionary } from '../transcription/dictionary';
+import { LlmTask } from '../transcription/llmPostProcess';
 import { parseParticipantBody } from '../speakers/participantRoster';
 
-/** Which block of the settings a kind's catalogue belongs to. */
-export type ProfileSection = 'transcription' | 'advanced' | 'chapters' | 'llm';
+/**
+ * Which block of the settings a kind's catalogue belongs to. Not stored: the
+ * members only match a catalogue to the page that renders it.
+ */
+export const ProfileSection = {
+	/** The transcription page, where an engine and its inputs are chosen. */
+	Transcription: 'transcription',
+	/** The advanced transcription page, behind the main one. */
+	Advanced: 'advanced',
+	/** The automatic chapters page. */
+	Chapters: 'chapters',
+	/** The LLM post-processing page. */
+	Llm: 'llm',
+} as const;
+
+/** One settings block (derived from {@link ProfileSection}). */
+export type ProfileSection =
+	(typeof ProfileSection)[keyof typeof ProfileSection];
 
 /** Everything the plugin knows about one kind of profile. */
 export interface ProfileKind {
@@ -132,8 +149,8 @@ function promptSelectionDesc(what: string): string {
  */
 export const PROFILE_KINDS: readonly ProfileKind[] = [
 	defineKind({
-		id: 'participants',
-		section: 'transcription',
+		id: ProfileKindId.Participants,
+		section: ProfileSection.Transcription,
 		heading: 'Participant profiles',
 		catalogueDesc:
 			'Named rosters of people. The one a run carries is written into the recording, so renaming speakers suggests the right names.',
@@ -153,8 +170,8 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 			settings.transcriptionEnabled && settings.transcriptionDiarize,
 	}),
 	defineKind({
-		id: 'dictionary',
-		section: 'advanced',
+		id: ProfileKindId.Dictionary,
+		section: ProfileSection.Advanced,
 		heading: 'Dictionary profiles',
 		catalogueDesc:
 			'Named glossaries of names, abbreviations, and domain terms. Pick one, or None, per run in the Transcribe dialog.',
@@ -171,8 +188,8 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 			settings.transcriptionAdvancedSettingsEnabled,
 	}),
 	defineKind({
-		id: 'chapterPrompt',
-		section: 'chapters',
+		id: ProfileKindId.ChapterPrompt,
+		section: ProfileSection.Chapters,
 		heading: 'Chapter guidance profiles',
 		catalogueDesc:
 			'Named prompts describing how to divide a recording into chapters. The response format is fixed, so editing one is safe.',
@@ -189,8 +206,8 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		visible: (settings) => settings.transcriptionAutoChaptersEnabled,
 	}),
 	defineKind({
-		id: 'llmCleanup',
-		section: 'llm',
+		id: ProfileKindId.LlmCleanup,
+		section: ProfileSection.Llm,
 		heading: 'Cleanup prompt profiles',
 		catalogueDesc:
 			'Named system instructions for the cleanup pass. Keep one per kind of recording instead of rewriting the single prompt each time.',
@@ -202,11 +219,11 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
-			settings.llmPostProcessTask === 'cleanup',
+			settings.llmPostProcessTask === LlmTask.Cleanup,
 	}),
 	defineKind({
-		id: 'llmSummary',
-		section: 'llm',
+		id: ProfileKindId.LlmSummary,
+		section: ProfileSection.Llm,
 		heading: 'Summary prompt profiles',
 		catalogueDesc:
 			'Named system instructions for the summary pass, so a standup and a client call can be summarized on their own terms.',
@@ -218,11 +235,11 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
-			settings.llmPostProcessTask === 'summary',
+			settings.llmPostProcessTask === LlmTask.Summary,
 	}),
 	defineKind({
-		id: 'llmTranslate',
-		section: 'llm',
+		id: ProfileKindId.LlmTranslate,
+		section: ProfileSection.Llm,
 		heading: 'Translation prompt profiles',
 		catalogueDesc:
 			'Named system instructions for the translation pass. Keep one per target audience instead of rewriting the single prompt each time.',
@@ -234,11 +251,11 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
-			settings.llmPostProcessTask === 'translate',
+			settings.llmPostProcessTask === LlmTask.Translate,
 	}),
 	defineKind({
-		id: 'llmCustom',
-		section: 'llm',
+		id: ProfileKindId.LlmCustom,
+		section: ProfileSection.Llm,
 		heading: 'Custom instruction profiles',
 		catalogueDesc:
 			'Named instructions applied to the transcript verbatim. One per task you run the transcript through.',
@@ -254,6 +271,6 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
-			settings.llmPostProcessTask === 'custom',
+			settings.llmPostProcessTask === LlmTask.Custom,
 	}),
 ];

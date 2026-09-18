@@ -37,11 +37,17 @@ import {
 import type { AudioRecorderSettings, LlmProviderId } from './settingsSchema';
 
 /**
- * A page entry's status: the indicator, or nothing. The union is the
- * framework's own (`SettingDefinitionPage.status`), named here because the
- * predicates below are the only writers of it.
+ * The indicator a page entry can carry. The one member is the framework's own
+ * (`SettingDefinitionPage.status`), named here because the predicates below
+ * are the only writers of it; a page with nothing to report gets null.
  */
-export type PageStatus = 'warning' | null;
+export const PageStatus = {
+	/** The value on the page needs the user's attention. */
+	Warning: 'warning',
+} as const;
+
+/** A page entry's status: the indicator, or nothing. */
+export type PageStatus = (typeof PageStatus)[keyof typeof PageStatus] | null;
 
 /**
  * Why a run calling this engine would be refused, or null when none would be.
@@ -149,7 +155,7 @@ export function engineStatus(
 ): PageStatus {
 	return enginesInUse(settings).includes(engine) &&
 		engineNeedsSetup(settings, engine)
-		? 'warning'
+		? PageStatus.Warning
 		: null;
 }
 
@@ -164,7 +170,7 @@ export function enginesStatus(settings: AudioRecorderSettings): PageStatus {
 	return enginesInUse(settings).some((engine) =>
 		engineNeedsSetup(settings, engine),
 	)
-		? 'warning'
+		? PageStatus.Warning
 		: null;
 }
 
@@ -194,7 +200,7 @@ export function multiTrackStatus(settings: AudioRecorderSettings): PageStatus {
 	// so the entry cannot warn about a session that would record, or stay
 	// quiet in front of one that would be refused.
 	return tracks.length === 0 || surplusSystemAudioTracks(tracks).length > 0
-		? 'warning'
+		? PageStatus.Warning
 		: null;
 }
 

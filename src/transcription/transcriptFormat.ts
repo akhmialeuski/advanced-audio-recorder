@@ -8,10 +8,10 @@
  */
 
 import { formatTimecode } from '../utils/TimeUtils';
-import type {
-	Transcript,
+import {
+	type Transcript,
 	TranscriptFileFormat,
-	TranscriptSegment,
+	type TranscriptSegment,
 } from './TranscriptTypes';
 
 /**
@@ -214,13 +214,13 @@ export function serializeTranscriptFile(
 	format: TranscriptFileFormat,
 ): string {
 	switch (format) {
-		case 'json':
+		case TranscriptFileFormat.Json:
 			return JSON.stringify(transcript, null, 2);
-		case 'srt':
+		case TranscriptFileFormat.Srt:
 			return toSrt(transcript);
-		case 'vtt':
+		case TranscriptFileFormat.Vtt:
 			return toVtt(transcript);
-		case 'txt':
+		case TranscriptFileFormat.Txt:
 			return toPlainTextFile(transcript);
 		default: {
 			// Compile-time exhaustiveness: a new format becomes a type error

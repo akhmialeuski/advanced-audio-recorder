@@ -20,38 +20,33 @@
  * @module audio/downmix
  */
 
-/** Keep the channel layout the capture device or source file provides. */
-export const CHANNEL_MODE_SOURCE = 'source';
+/**
+ * Which channels a capture or a conversion keeps.
+ *
+ * Stored in data.json, so a value is renamed only with a migration. The keys
+ * are declared in the order the dropdown offers them, which is the order
+ * `Object.values` hands them back in.
+ */
+export const ChannelMode = {
+	/** Keep the channel layout the capture device or source file provides. */
+	Source: 'source',
+	/** Mix all input channels into one (average, Web Audio downmix rule). */
+	MonoMix: 'mono-mix',
+	/** Keep only the first (left) input channel. */
+	MonoLeft: 'mono-left',
+	/** Keep only the second (right) input channel. */
+	MonoRight: 'mono-right',
+} as const;
 
-/** Mix all input channels into one (average, Web Audio downmix rule). */
-export const CHANNEL_MODE_MONO_MIX = 'mono-mix';
-
-/** Keep only the first (left) input channel. */
-export const CHANNEL_MODE_MONO_LEFT = 'mono-left';
-
-/** Keep only the second (right) input channel. */
-export const CHANNEL_MODE_MONO_RIGHT = 'mono-right';
-
-/** Every supported channel mode, in UI order. */
-export const CHANNEL_MODES = [
-	CHANNEL_MODE_SOURCE,
-	CHANNEL_MODE_MONO_MIX,
-	CHANNEL_MODE_MONO_LEFT,
-	CHANNEL_MODE_MONO_RIGHT,
-] as const;
-
-/** A channel-layout mode (derived from {@link CHANNEL_MODES}). */
-export type ChannelMode = (typeof CHANNEL_MODES)[number];
+/** A channel-layout mode (derived from {@link ChannelMode}). */
+export type ChannelMode = (typeof ChannelMode)[keyof typeof ChannelMode];
 
 /**
  * Type guard for {@link ChannelMode} values.
  * @param value - Candidate value
  */
 export function isChannelMode(value: unknown): value is ChannelMode {
-	return (
-		typeof value === 'string' &&
-		(CHANNEL_MODES as readonly string[]).includes(value)
-	);
+	return Object.values(ChannelMode).some((mode) => mode === value);
 }
 
 /**
@@ -61,7 +56,7 @@ export function isChannelMode(value: unknown): value is ChannelMode {
  * @param value - Candidate value
  */
 export function normalizeChannelMode(value: unknown): ChannelMode {
-	return isChannelMode(value) ? value : CHANNEL_MODE_SOURCE;
+	return isChannelMode(value) ? value : ChannelMode.Source;
 }
 
 /**
@@ -69,7 +64,7 @@ export function normalizeChannelMode(value: unknown): ChannelMode {
  * @param mode - Channel mode
  */
 export function isMonoChannelMode(mode: ChannelMode): boolean {
-	return mode !== CHANNEL_MODE_SOURCE;
+	return mode !== ChannelMode.Source;
 }
 
 /**
@@ -104,10 +99,10 @@ export function monoPickIndex(
 	mode: ChannelMode,
 	availableChannels: number,
 ): number | null {
-	if (mode !== CHANNEL_MODE_MONO_LEFT && mode !== CHANNEL_MODE_MONO_RIGHT) {
+	if (mode !== ChannelMode.MonoLeft && mode !== ChannelMode.MonoRight) {
 		return null;
 	}
-	const wanted = mode === CHANNEL_MODE_MONO_RIGHT ? 1 : 0;
+	const wanted = mode === ChannelMode.MonoRight ? 1 : 0;
 	return Math.max(0, Math.min(wanted, availableChannels - 1));
 }
 

@@ -14,7 +14,7 @@ import {
 	PLUGIN_LOG_PREFIX,
 } from '../constants';
 import { scaledTimeoutMs } from '../utils/TimeUtils';
-import { CHANNEL_MODE_SOURCE, type ChannelMode } from './downmix';
+import { ChannelMode } from './downmix';
 import type { WorkerRequest, WorkerResponse } from './encodingWorker';
 
 /** Pending request bookkeeping. */
@@ -75,7 +75,7 @@ export class EncodingWorkerClient {
 		targetFormat: string,
 		bitrate: number,
 		allowRemux: boolean,
-		channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
+		channelMode: ChannelMode = ChannelMode.Source,
 		onProgress?: (percent: number) => void,
 	): Promise<Blob> {
 		const worker = this.ensureWorker();

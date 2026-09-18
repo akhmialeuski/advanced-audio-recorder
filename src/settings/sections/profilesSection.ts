@@ -7,7 +7,7 @@
  * @module settings/sections/profilesSection
  */
 
-import type { ProfileSection } from '../profileKinds';
+import { ProfileSection } from '../profileKinds';
 import { ProfileTextSource } from '../ProfileTextSource';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import {

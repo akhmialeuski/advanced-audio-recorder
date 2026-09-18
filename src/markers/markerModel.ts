@@ -43,28 +43,29 @@ const CHAPTER_LEAD_IN_SECONDS = 2;
  * reader's theme, and a chosen colour has to stay legible on both. Each name
  * maps to one of Obsidian's own accent variables in the stylesheet, so a marker
  * looks like part of the app rather than like a swatch pasted onto it.
+ *
+ * Stored with a marker, so a value is renamed only with a migration. The keys
+ * are declared in the order the colour menu offers them, which is the order
+ * `Object.values` hands them back in.
  */
-export const MARKER_COLORS = [
-	'red',
-	'orange',
-	'yellow',
-	'green',
-	'blue',
-	'purple',
-] as const;
+export const MarkerColor = {
+	Red: 'red',
+	Orange: 'orange',
+	Yellow: 'yellow',
+	Green: 'green',
+	Blue: 'blue',
+	Purple: 'purple',
+} as const;
 
-/** One of {@link MARKER_COLORS}. */
-export type MarkerColor = (typeof MARKER_COLORS)[number];
+/** One marker colour (derived from {@link MarkerColor}). */
+export type MarkerColor = (typeof MarkerColor)[keyof typeof MarkerColor];
 
 /**
  * Whether a value is one of the offered colours.
  * @param value - Value to test
  */
 export function isMarkerColor(value: unknown): value is MarkerColor {
-	return (
-		typeof value === 'string' &&
-		(MARKER_COLORS as readonly string[]).includes(value)
-	);
+	return Object.values(MarkerColor).some((color) => color === value);
 }
 
 /**

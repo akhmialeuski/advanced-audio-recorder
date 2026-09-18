@@ -249,8 +249,21 @@ export function llmVendor(id: LlmProviderId): LlmVendorDescriptor {
 /**
  * The jobs that drive an LLM. Each one picks its own engine, so a run can
  * summarize with one service and title its chapters with another.
+ *
+ * Used as a cost-model step id and as a key of {@link LLM_JOBS}; not stored on
+ * its own, because each job's engine lives under its own settings key.
  */
-export type LlmJobId = 'postProcess' | 'contextAgents' | 'autoChapters';
+export const LlmJobId = {
+	/** Cleanup, summary, custom instruction and translation of a transcript. */
+	PostProcess: 'postProcess',
+	/** The context agents of the two-pass advanced run. */
+	ContextAgents: 'contextAgents',
+	/** Automatic chapter titling. */
+	AutoChapters: 'autoChapters',
+} as const;
+
+/** One LLM job (derived from {@link LlmJobId}). */
+export type LlmJobId = (typeof LlmJobId)[keyof typeof LlmJobId];
 
 /** Where one job's engine choice is stored. */
 export interface LlmJob {
@@ -278,15 +291,15 @@ export interface LlmJob {
  * place and run in another.
  */
 export const LLM_JOBS: Record<LlmJobId, LlmJob> = {
-	postProcess: {
+	[LlmJobId.PostProcess]: {
 		key: 'llmProvider',
 		vendor: (settings) => settings.llmProvider,
 	},
-	contextAgents: {
+	[LlmJobId.ContextAgents]: {
 		key: 'advancedLlmProvider',
 		vendor: (settings) => settings.advancedLlmProvider,
 	},
-	autoChapters: {
+	[LlmJobId.AutoChapters]: {
 		key: 'chaptersLlmProvider',
 		vendor: (settings) => settings.chaptersLlmProvider,
 	},

@@ -29,6 +29,7 @@ import {
 	type SettingsDefinitionContext,
 } from './context';
 import { profileCatalogues } from './profilesSection';
+import { ProfileSection } from '../profileKinds';
 import type { SettingDefinitionItem, SettingGroupItem } from 'obsidian';
 
 /** Accepted shape of the transcription language field: an ISO code or empty. */
@@ -169,7 +170,7 @@ export function transcriptionGroup(
 			},
 			// The rosters a run labels speakers with, beside the switch that
 			// asks for the labels.
-			...profileCatalogues(ctx, 'transcription'),
+			...profileCatalogues(ctx, ProfileSection.Transcription),
 			{
 				name: 'Word-level timestamps',
 				// Read at build time rather than per render, which is enough:

@@ -13,7 +13,7 @@ import { TranscriptionQueueModal } from '../ui/TranscriptionQueueModal';
 import { buildCostEstimate } from './costs';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { QueueRunner } from './QueueRunner';
-import type { TranscriptionQueue } from './TranscriptionQueue';
+import { QueueEntryState, type TranscriptionQueue } from './TranscriptionQueue';
 
 /** What the coordinator needs. */
 export interface QueueCoordinatorDeps {
@@ -107,7 +107,7 @@ export class QueueCoordinator {
 		}
 		const waiting = this.deps.queue
 			.entries()
-			.filter((entry) => entry.state === 'waiting').length;
+			.filter((entry) => entry.state === QueueEntryState.Waiting).length;
 		new ConfirmModal(this.deps.app, {
 			title: 'Continue the transcription queue',
 			message:

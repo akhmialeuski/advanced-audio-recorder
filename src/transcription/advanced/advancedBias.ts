@@ -40,8 +40,8 @@ export interface AdvancedBiasPlan {
  * How an engine carries the generated bias: a Whisper-style prompt sentence, or
  * a flat keyterm list. Declared with the rest of an engine's capabilities.
  */
-export type { AdvancedBiasChannel } from '../providers/TranscriptionProvider';
-import type { AdvancedBiasChannel } from '../providers/TranscriptionProvider';
+import { AdvancedBiasChannel } from '../providers/TranscriptionProvider';
+export { AdvancedBiasChannel };
 
 /**
  * The biasing channel an engine reads. The single source of truth shared by the
@@ -119,7 +119,7 @@ export function planAdvancedBias(
 	engineId: TranscriptionProviderId,
 	context: GeneratedContext,
 ): AdvancedBiasPlan {
-	if (advancedBiasChannel(engineId) === 'keyterm') {
+	if (advancedBiasChannel(engineId) === AdvancedBiasChannel.Keyterm) {
 		return context.keyterms.length ? { keyterms: context.keyterms } : {};
 	}
 	return context.promptSentence ? { biasPrompt: context.promptSentence } : {};

@@ -27,7 +27,11 @@ import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { serializeTranscriptFile } from './transcriptFormat';
 import type { PartFailure, RecordingRange } from './partFailure';
-import type { Transcript, TranscriptSegment } from './TranscriptTypes';
+import {
+	TranscriptFileFormat,
+	type Transcript,
+	type TranscriptSegment,
+} from './TranscriptTypes';
 import type {
 	TranscribeRunCost,
 	TranscriptionSidecarAccess,
@@ -279,7 +283,9 @@ export class FailedPartRetry {
 		// translation is a second document and topping it up would need the
 		// translation pass, not the engine.
 		const outputs = section.fileOutputs.filter((o) => !o.language);
-		const json = outputs.find((output) => output.format === 'json');
+		const json = outputs.find(
+			(output) => output.format === TranscriptFileFormat.Json,
+		);
 		if (!json) {
 			return null;
 		}

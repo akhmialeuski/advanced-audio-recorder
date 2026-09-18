@@ -81,27 +81,47 @@ export interface TranscriptionUsage {
 	outputTokens?: number;
 }
 
-/** Format used to serialize a transcript to a sidecar/export file. */
-export type TranscriptFileFormat = 'json' | 'srt' | 'vtt' | 'txt';
-
 /**
- * Every transcript file format, in output preference order (JSON first: it
- * is lossless and carries the detected language). The single source both
- * discovery and sidecar validation enumerate, so adding a member to the
- * union only needs this one list updated alongside it.
+ * Format used to serialize a transcript to a sidecar/export file.
+ *
+ * Stored in data.json and used as a file extension, so a value is renamed only
+ * with a migration. The keys are declared in output preference order (JSON
+ * first: it is lossless and carries the detected language), which is the order
+ * `Object.values` hands them back in and the order discovery prefers them in.
  */
-export const TRANSCRIPT_FILE_FORMATS: readonly TranscriptFileFormat[] = [
-	'json',
-	'srt',
-	'vtt',
-	'txt',
-];
+export const TranscriptFileFormat = {
+	/** The whole transcript, with segments, words and speakers. */
+	Json: 'json',
+	/** SubRip subtitles. */
+	Srt: 'srt',
+	/** WebVTT subtitles. */
+	Vtt: 'vtt',
+	/** The spoken text alone. */
+	Txt: 'txt',
+} as const;
+
+/** One transcript file format (derived from {@link TranscriptFileFormat}). */
+export type TranscriptFileFormat =
+	(typeof TranscriptFileFormat)[keyof typeof TranscriptFileFormat];
 
 /**
  * Where the transcript output is written.
- * - `note`: render the full transcript Markdown into the active note.
- * - `file`: write a sidecar transcript file next to the audio.
- * - `both`: render into the note and write a sidecar file.
- * - `link`: write a sidecar file and insert a link to it into the note.
+ *
+ * Stored in data.json, so a value is renamed only with a migration. The
+ * dropdown order is the one `TRANSCRIPT_DESTINATION_LABELS` in settings/labels
+ * declares, which the keys here repeat.
  */
-export type TranscriptDestination = 'note' | 'file' | 'both' | 'link';
+export const TranscriptDestination = {
+	/** Render the full transcript Markdown into the active note. */
+	Note: 'note',
+	/** Write a sidecar transcript file next to the audio. */
+	File: 'file',
+	/** Render into the note and write a sidecar file. */
+	Both: 'both',
+	/** Write a sidecar file and insert a link to it into the note. */
+	Link: 'link',
+} as const;
+
+/** One transcript destination (derived from {@link TranscriptDestination}). */
+export type TranscriptDestination =
+	(typeof TranscriptDestination)[keyof typeof TranscriptDestination];

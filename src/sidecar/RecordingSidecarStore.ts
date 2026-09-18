@@ -20,7 +20,7 @@ import type { PlayerMarker } from '../markers/markerModel';
 import type { PartFailure } from '../transcription/partFailure';
 import { serializeMarkers } from '../markers/markerModel';
 import { mergeParticipantNames } from '../speakers/participantRoster';
-import { TRANSCRIPT_FILE_FORMATS } from '../transcription/TranscriptTypes';
+import { TranscriptFileFormat } from '../transcription/TranscriptTypes';
 import {
 	cloneSpeakerEntry,
 	cloneTranscriptSection,
@@ -50,7 +50,7 @@ export const SIDECAR_SUFFIX = '.markers.json';
  */
 const RECORDABLE_OUTPUT_EXTENSIONS = new Set<string>([
 	'md',
-	...TRANSCRIPT_FILE_FORMATS,
+	...Object.values(TranscriptFileFormat),
 ]);
 
 /** Whether a vault path could be a recorded transcript output. */

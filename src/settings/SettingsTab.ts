@@ -64,7 +64,7 @@ import {
 import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
 import { recordingBitrateFormat } from '../audio/AudioFormatConverter';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
-import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
+import { ChannelMode, normalizeChannelMode } from '../audio/downmix';
 import {
 	audioDeviceApi,
 	channelSelectionAvailable,
@@ -99,7 +99,7 @@ import {
 	type ProfileKindId,
 } from './profiles';
 import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
-import { ProfileTextSource } from './ProfileTextSource';
+import { ProfileTextChoice, ProfileTextSource } from './ProfileTextSource';
 import { appendTextToNote, readNoteText } from './ProfileNoteStore';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
@@ -435,7 +435,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		if (choice) {
 			return choice.profile
 				? this.profileText.choice(choice.profile)
-				: 'typed';
+				: ProfileTextChoice.Typed;
 		}
 		const selection = this.profileSelectionFor(key);
 		if (selection) {
@@ -460,7 +460,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				return source?.deviceId ?? '';
 			}
 			if (track.field === 'channelMode') {
-				return source?.channelMode ?? CHANNEL_MODE_SOURCE;
+				return source?.channelMode ?? ChannelMode.Source;
 			}
 			if (track.field === 'processing') {
 				return source?.processing ?? TrackProcessingMode.Global;
@@ -537,9 +537,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 		const choice = this.profileFieldFor(key, this.profileChoices);
 		if (choice) {
-			const chosen = value === 'note' ? 'note' : 'typed';
+			const chosen =
+				value === ProfileTextChoice.Note
+					? ProfileTextChoice.Note
+					: ProfileTextChoice.Typed;
 			const note =
-				choice.profile && chosen === 'typed'
+				choice.profile && chosen === ProfileTextChoice.Typed
 					? this.profileText.note(choice.profile)
 					: null;
 			if (choice.profile && note) {
@@ -738,7 +741,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			sources.set(track, {
 				...(current ?? {
 					deviceId: '',
-					channelMode: CHANNEL_MODE_SOURCE,
+					channelMode: ChannelMode.Source,
 				}),
 				kind,
 			});
@@ -773,7 +776,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		sources.set(track, {
 			...current,
 			deviceId,
-			channelMode: current?.channelMode ?? CHANNEL_MODE_SOURCE,
+			channelMode: current?.channelMode ?? ChannelMode.Source,
 		});
 	}
 
@@ -854,7 +857,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				const profile = findProfile(ofKind(), id);
 				return (
 					profile !== undefined &&
-					this.profileText.choice(profile) === 'note'
+					this.profileText.choice(profile) === ProfileTextChoice.Note
 				);
 			},
 			sourceRejection: (path) =>
@@ -1069,7 +1072,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		if (text !== null) {
 			profile.body = text;
 		}
-		this.profileText.choose(profile, 'typed');
+		this.profileText.choose(profile, ProfileTextChoice.Typed);
 		return this.commit();
 	}
 

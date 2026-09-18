@@ -49,13 +49,14 @@ import {
 	transcribeFile,
 	TranscriptionCancelledError,
 	type CancellationToken,
+	CostEstimateUnpricedReason,
 	type CostEstimate,
 	type CostEstimateLine,
 	type LlmTask,
 	type SessionCostTracker,
 	type TranscribeRunCost,
-	type TranscriptDestination,
-	type TranscriptFileFormat,
+	TranscriptDestination,
+	TranscriptFileFormat,
 	type Transcript,
 	type TranscriptOutputSidecar,
 } from '../transcription/api';
@@ -65,7 +66,7 @@ import {
 	selectedProfile,
 	selectedProfileId,
 	setSelectedProfileId,
-	type ProfileKindId,
+	ProfileKindId,
 } from '../settings/profiles';
 import type { SaveProgress } from '../types';
 
@@ -128,7 +129,7 @@ function formatCostLine(line: CostEstimateLine): string {
 	if (line.usd !== null) {
 		return `~${formatUsd(line.usd)}`;
 	}
-	return line.reason === 'no-duration'
+	return line.reason === CostEstimateUnpricedReason.NoDuration
 		? 'estimate unavailable (duration unreadable)'
 		: 'no built-in rate';
 }
@@ -388,17 +389,20 @@ export class TranscriptionModal extends PluginModal {
 			// Only meaningful with diarization: the roster this profile fills is
 			// written alongside the speakers the run detects, and there are none
 			// without it.
-			const speakerProfiles = profilesOfKind(s.profiles, 'participants');
+			const speakerProfiles = profilesOfKind(
+				s.profiles,
+				ProfileKindId.Participants,
+			);
 			// A stored id whose profile was removed reads as None here.
 			const selectedSpeakerProfileId = selectedProfileId(
 				s,
-				'participants',
+				ProfileKindId.Participants,
 			);
 			addDropdown(ctx, {
 				name: 'Participant profile',
 				desc: profileText.describe(
 					'Names saved with this recording, so the Rename speakers dialog suggests them. Profiles are created there.',
-					selectedProfile(s, 'participants'),
+					selectedProfile(s, ProfileKindId.Participants),
 				),
 				options: [
 					{ value: '', label: 'None' },
@@ -411,8 +415,11 @@ export class TranscriptionModal extends PluginModal {
 				set: (v) => {
 					// Affects this run (runSettings clone); persist as the
 					// remembered choice for the next dialog and transcribe-on-save.
-					setSelectedProfileId(s, 'participants', v);
-					void this.options.onProfileSelected?.('participants', v);
+					setSelectedProfileId(s, ProfileKindId.Participants, v);
+					void this.options.onProfileSelected?.(
+						ProfileKindId.Participants,
+						v,
+					);
 				},
 				// Re-render so the line naming the picked roster's text follows
 				// the pick.
@@ -447,11 +454,14 @@ export class TranscriptionModal extends PluginModal {
 			rerender: true,
 		});
 		if (s.transcriptionAdvancedSettingsEnabled) {
-			const profiles = profilesOfKind(s.profiles, 'dictionary');
+			const profiles = profilesOfKind(
+				s.profiles,
+				ProfileKindId.Dictionary,
+			);
 			// A stored id whose profile was removed reads as None here.
 			const selectedDictionaryProfileId = selectedProfileId(
 				s,
-				'dictionary',
+				ProfileKindId.Dictionary,
 			);
 			addDropdown(ctx, {
 				name: 'Dictionary',
@@ -459,7 +469,7 @@ export class TranscriptionModal extends PluginModal {
 					providerSupportsDictionary(s.transcriptionProvider)
 						? 'Bias recognition toward a named glossary, or None.'
 						: 'The selected engine cannot bias recognition; the dictionary is ignored.',
-					selectedProfile(s, 'dictionary'),
+					selectedProfile(s, ProfileKindId.Dictionary),
 				),
 				options: [
 					{ value: '', label: 'None' },
@@ -472,8 +482,11 @@ export class TranscriptionModal extends PluginModal {
 				set: (v) => {
 					// Affects this run (runSettings clone); persist as the
 					// remembered choice for the next dialog and transcribe-on-save.
-					setSelectedProfileId(s, 'dictionary', v);
-					void this.options.onProfileSelected?.('dictionary', v);
+					setSelectedProfileId(s, ProfileKindId.Dictionary, v);
+					void this.options.onProfileSelected?.(
+						ProfileKindId.Dictionary,
+						v,
+					);
 				},
 				// Re-render so the line naming the picked glossary's text
 				// follows the pick.
@@ -500,7 +513,7 @@ export class TranscriptionModal extends PluginModal {
 			set: (v) => (s.transcriptDestination = v as TranscriptDestination),
 			rerender: true,
 		});
-		if (s.transcriptDestination !== 'note') {
+		if (s.transcriptDestination !== TranscriptDestination.Note) {
 			addDropdown(ctx, {
 				name: 'File format',
 				options: TRANSCRIPT_FILE_FORMAT_OPTIONS,
@@ -513,8 +526,8 @@ export class TranscriptionModal extends PluginModal {
 		// rendered into the note (note/both). For file/link only the sidecar
 		// file is produced, so these toggles would have no effect.
 		if (
-			s.transcriptDestination === 'note' ||
-			s.transcriptDestination === 'both'
+			s.transcriptDestination === TranscriptDestination.Note ||
+			s.transcriptDestination === TranscriptDestination.Both
 		) {
 			addToggle(ctx, {
 				name: 'Include timestamps',
@@ -563,19 +576,19 @@ export class TranscriptionModal extends PluginModal {
 			if (s.transcriptionAutoChaptersOnTranscribe) {
 				const chapterProfiles = profilesOfKind(
 					s.profiles,
-					'chapterPrompt',
+					ProfileKindId.ChapterPrompt,
 				);
 				// A stored id whose profile was removed reads as None here.
 				const selectedChapterProfileId = selectedProfileId(
 					s,
-					'chapterPrompt',
+					ProfileKindId.ChapterPrompt,
 				);
 				// Compact picker whose only description is the line naming the
 				// picked guidance's text, so the section does not grow tall.
 				addDropdown(ctx, {
 					name: 'Chapter profile',
 					desc: profileText.status(
-						selectedProfile(s, 'chapterPrompt'),
+						selectedProfile(s, ProfileKindId.ChapterPrompt),
 					),
 					options: [
 						{ value: '', label: 'None (base prompt)' },
@@ -588,9 +601,9 @@ export class TranscriptionModal extends PluginModal {
 					set: (v) => {
 						// Affects this run and, persisted, the after-transcription
 						// generation which reads the plugin settings.
-						setSelectedProfileId(s, 'chapterPrompt', v);
+						setSelectedProfileId(s, ProfileKindId.ChapterPrompt, v);
 						void this.options.onProfileSelected?.(
-							'chapterPrompt',
+							ProfileKindId.ChapterPrompt,
 							v,
 						);
 					},

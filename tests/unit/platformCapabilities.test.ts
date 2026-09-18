@@ -11,7 +11,7 @@ import {
 	getPlatformKind,
 	isMobilePlatform,
 	normalizePlatformKind,
-	PLATFORM_KINDS,
+	PlatformKind,
 } from 'src/platform/platformKind';
 import {
 	getChunkFlushThresholdBytes,
@@ -72,7 +72,10 @@ describe('platformKind', () => {
 	});
 
 	it('lists every platform kind exactly once', () => {
-		expect([...PLATFORM_KINDS].sort()).toEqual(['desktop', 'mobile']);
+		expect(Object.values(PlatformKind).sort()).toEqual([
+			'desktop',
+			'mobile',
+		]);
 	});
 
 	it('normalizes known platform keys and rejects everything else', () => {

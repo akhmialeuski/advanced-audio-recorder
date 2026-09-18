@@ -129,13 +129,22 @@ export interface LlmConfig {
  * `max_tokens`, so asking it first means only OpenAI's own current models ever
  * reach the second attempt, and no endpoint can quietly discard the budget.
  */
-const OUTPUT_TOKEN_PARAMS = ['max_tokens', 'max_completion_tokens'] as const;
+const OutputTokenParam = {
+	/** The original name, which every OpenAI-compatible server understands. */
+	MaxTokens: 'max_tokens',
+	/** The name OpenAI's own current models require instead. */
+	MaxCompletionTokens: 'max_completion_tokens',
+} as const;
+
+/**
+ * One of the two names an output-token ceiling can be sent under (derived from
+ * {@link OutputTokenParam}).
+ */
+type OutputTokenParam =
+	(typeof OutputTokenParam)[keyof typeof OutputTokenParam];
 
 /** The status an endpoint refuses an unknown parameter with. */
 const HTTP_BAD_REQUEST = 400;
-
-/** One of the two names an output-token ceiling can be sent under. */
-type OutputTokenParam = (typeof OUTPUT_TOKEN_PARAMS)[number];
 
 /**
  * Whether a failure is the endpoint saying it does not know this parameter,
@@ -251,11 +260,13 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 	private candidateParams(): readonly OutputTokenParam[] {
 		const accepted = this.acceptedParam;
 		if (accepted === null) {
-			return OUTPUT_TOKEN_PARAMS;
+			return Object.values(OutputTokenParam);
 		}
 		return [
 			accepted,
-			...OUTPUT_TOKEN_PARAMS.filter((param) => param !== accepted),
+			...Object.values(OutputTokenParam).filter(
+				(param) => param !== accepted,
+			),
 		];
 	}
 

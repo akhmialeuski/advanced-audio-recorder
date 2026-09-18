@@ -16,7 +16,7 @@ import {
 	sortMarkers,
 	updateMarker,
 	isMarkerColor,
-	MARKER_COLORS,
+	MarkerColor,
 	type PlayerMarker,
 } from 'src/markers/markerModel';
 
@@ -474,7 +474,7 @@ describe('a marker note and colour', () => {
 		expect(cleared).not.toHaveProperty('color');
 	});
 
-	it.each(MARKER_COLORS.map((color) => ({ color })))(
+	it.each(Object.values(MarkerColor).map((color) => ({ color })))(
 		'accepts $color as one of the offered colours',
 		({ color }) => {
 			expect(isMarkerColor(color)).toBe(true);

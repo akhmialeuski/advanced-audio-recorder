@@ -13,7 +13,7 @@ import type {
 } from '../settings/settingsSchema';
 import type { TranscriptionProvider } from './providers/TranscriptionProvider';
 import type { LlmProvider } from './llm/LlmProvider';
-import { jobVendorId, llmVendor } from './llm/vendors';
+import { jobVendorId, llmVendor, LlmJobId } from './llm/vendors';
 import { accountKeyMissing, vendorConnection } from '../providers/providers';
 import { ProviderConfigError } from './providerConfigError';
 
@@ -41,7 +41,7 @@ export type { TranscriptionProvider, LlmProvider };
  */
 export function createLlmProvider(
 	settings: AudioRecorderSettings,
-	vendorId: LlmProviderId = jobVendorId(settings, 'postProcess'),
+	vendorId: LlmProviderId = jobVendorId(settings, LlmJobId.PostProcess),
 ): LlmProvider {
 	const vendor = llmVendor(vendorId);
 	// The endpoint belongs to the provider the vendor is a capability of,

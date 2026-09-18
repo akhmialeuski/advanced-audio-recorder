@@ -11,7 +11,7 @@
 import { TFile, getLinkpath } from 'obsidian';
 import type { App, ReferenceCache } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import type { ConversionLinkAction } from '../types';
+import { ConversionLinkAction } from '../types';
 
 /**
  * Checks whether a reference occupies its line alone (ignoring
@@ -67,7 +67,7 @@ function buildReferenceReplacement(
 			return isEmbed ? `!${bareLink}` : bareLink;
 		})
 		.join(separator);
-	return action === 'after'
+	return action === ConversionLinkAction.After
 		? `${reference.original}${separator}${links}`
 		: links;
 }
@@ -166,7 +166,7 @@ export interface VaultLinkUpdateResult {
  * @param app - Obsidian App instance
  * @param sourceFile - File whose links are being rewritten
  * @param newFiles - Files the replacement links point to
- * @param action - How to rewrite the links ('none' is a no-op)
+ * @param action - How to rewrite the links (None is a no-op)
  * @returns Counts of updated notes, skipped references, and
  * frontmatter references left untouched
  */
@@ -181,7 +181,7 @@ export async function updateLinksInVault(
 		skippedReferences: 0,
 		frontmatterReferences: 0,
 	};
-	if (action === 'none' || newFiles.length === 0) {
+	if (action === ConversionLinkAction.None || newFiles.length === 0) {
 		return result;
 	}
 

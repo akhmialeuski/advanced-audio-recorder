@@ -24,6 +24,24 @@ export interface BitrateAvailabilityEntry {
 	available: boolean;
 }
 
+/**
+ * The encoder verdicts, taken from the real module.
+ *
+ * A double declaring a set of its own would work until the two drifted, and
+ * the drift would be invisible: the row picks its sentence by comparing the
+ * verdict in a `switch`, so a renamed value would simply stop matching and the
+ * suites would go on passing against a branch nothing reaches. They are a
+ * closed set of the module rather than behaviour worth faking, so the double
+ * borrows the real one.
+ */
+export const EncoderVerdict = jest.requireActual<
+	typeof import('src/audio/AudioCapabilityDetector')
+>('src/audio/AudioCapabilityDetector').EncoderVerdict;
+
+/** One encoder verdict, as the real module derives it. */
+export type EncoderVerdict =
+	(typeof EncoderVerdict)[keyof typeof EncoderVerdict];
+
 /** Bitrates the double offers until a suite installs its own list. */
 export const DOUBLE_BITRATES = [64000, 96000, 128000, 192000, 256000, 320000];
 
@@ -53,11 +71,11 @@ export const resolveBitrateOffer = jest.fn(
 		sampleRate?: number,
 	): Promise<{
 		bitrates: number[];
-		encoder: 'confirmed' | 'unavailable' | 'refused';
+		encoder: EncoderVerdict;
 	}> =>
 		Promise.resolve({
 			bitrates: getSupportedBitrates(format, sampleRate),
-			encoder: 'unavailable',
+			encoder: EncoderVerdict.Unavailable,
 		}),
 );
 

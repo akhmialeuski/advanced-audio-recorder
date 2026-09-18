@@ -22,11 +22,7 @@ import {
 	isKnownLongerThan,
 	probeAudioMetadata,
 } from '../utils/AudioFileAnalyzer';
-import {
-	CHANNEL_MODE_MONO_LEFT,
-	CHANNEL_MODE_MONO_RIGHT,
-	type ChannelMode,
-} from '../audio/downmix';
+import { ChannelMode } from '../audio/downmix';
 
 /**
  * Outcome of the lopsided-stereo analysis: which channel is silent (so
@@ -123,14 +119,14 @@ export function analyzeChannelBalance(
 		return {
 			silentChannel: 1,
 			audioChannel: 0,
-			keepMode: CHANNEL_MODE_MONO_LEFT,
+			keepMode: ChannelMode.MonoLeft,
 		};
 	}
 	if (leftSilent && rightDb >= minAudioDb && rightDb - leftDb >= minGapDb) {
 		return {
 			silentChannel: 0,
 			audioChannel: 1,
-			keepMode: CHANNEL_MODE_MONO_RIGHT,
+			keepMode: ChannelMode.MonoRight,
 		};
 	}
 	return null;

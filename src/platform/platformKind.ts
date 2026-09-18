@@ -9,11 +9,21 @@
 
 import { Platform } from 'obsidian';
 
-/** The two platform families the plugin distinguishes. */
-export type PlatformKind = 'desktop' | 'mobile';
+/**
+ * The two platform families the plugin distinguishes.
+ *
+ * Used as a key in data.json, where the per-platform settings live under one
+ * branch per member, so a value is renamed only with a migration.
+ */
+export const PlatformKind = {
+	/** Obsidian on Windows, macOS or Linux. */
+	Desktop: 'desktop',
+	/** The Obsidian mobile app, on phone or tablet. */
+	Mobile: 'mobile',
+} as const;
 
-/** Every platform kind, for iteration (settings branches, tests). */
-export const PLATFORM_KINDS: readonly PlatformKind[] = ['desktop', 'mobile'];
+/** One platform family (derived from {@link PlatformKind}). */
+export type PlatformKind = (typeof PlatformKind)[keyof typeof PlatformKind];
 
 /**
  * Resolves the platform the plugin is currently running on. Read lazily
@@ -22,7 +32,9 @@ export const PLATFORM_KINDS: readonly PlatformKind[] = ['desktop', 'mobile'];
  * @returns The current platform kind
  */
 export function getPlatformKind(): PlatformKind {
-	return Platform.isMobileApp || Platform.isMobile ? 'mobile' : 'desktop';
+	return Platform.isMobileApp || Platform.isMobile
+		? PlatformKind.Mobile
+		: PlatformKind.Desktop;
 }
 
 /**
@@ -30,7 +42,7 @@ export function getPlatformKind(): PlatformKind {
  * @returns True on mobile
  */
 export function isMobilePlatform(): boolean {
-	return getPlatformKind() === 'mobile';
+	return getPlatformKind() === PlatformKind.Mobile;
 }
 
 /**
@@ -40,5 +52,5 @@ export function isMobilePlatform(): boolean {
  * @returns The platform kind, or null for unknown values
  */
 export function normalizePlatformKind(value: unknown): PlatformKind | null {
-	return value === 'desktop' || value === 'mobile' ? value : null;
+	return Object.values(PlatformKind).find((kind) => kind === value) ?? null;
 }

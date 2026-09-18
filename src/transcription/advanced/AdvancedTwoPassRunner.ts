@@ -24,13 +24,14 @@ import type {
 } from '../../settings/settingsSchema';
 import type { LlmProvider } from '../llm/LlmProvider';
 import type { LlmCostSink } from '../llm/llmStep';
-import { jobVendorId } from '../llm/vendors';
+import { jobVendorId, LlmJobId } from '../llm/vendors';
 import type { TranscribeOptions } from '../providers/TranscriptionProvider';
 import { plainText, stitchChunks } from '../transcriptModel';
 import type { Transcript, TranscriptionUsage } from '../TranscriptTypes';
 import type { CancellationToken } from '../../utils/cancellation';
 import type { PartFailure } from '../partFailure';
 import {
+	AdvancedBiasChannel,
 	advancedBiasChannel,
 	keepsDetectedLanguage,
 	meetsLengthSafeguard,
@@ -222,14 +223,14 @@ export class AdvancedTwoPassRunner {
 		// prompt-sentence agents.
 		const llm = this.input.createLlm(
 			settings,
-			jobVendorId(settings, 'contextAgents'),
+			jobVendorId(settings, LlmJobId.ContextAgents),
 		);
 		const context = await generateContext(baseline, llm, {
 			language: transcribeOptions.language ?? baseline.language,
 			glossary: resolveDictionaryTermList(settings),
 			buildPromptSentence:
 				advancedBiasChannel(settings.transcriptionProvider) ===
-				'prompt',
+				AdvancedBiasChannel.Prompt,
 			token: this.input.token,
 			settings,
 			durationSeconds: baseline.segments.at(-1)?.end ?? null,

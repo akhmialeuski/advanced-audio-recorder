@@ -11,13 +11,7 @@ import {
 	PCM_FLUSH_TIMEOUT_MS,
 	PLUGIN_LOG_PREFIX,
 } from '../constants';
-import {
-	CHANNEL_MODE_SOURCE,
-	CHANNEL_MODE_MONO_MIX,
-	CHANNEL_MODE_MONO_RIGHT,
-	isMonoChannelMode,
-	type ChannelMode,
-} from '../audio/downmix';
+import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
 
 /**
  * Number of interleaved int16 samples to accumulate before posting.
@@ -49,7 +43,7 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 		this._writeIndex = 0;
 		this._channels = 0;
 		const opts = (options && options.processorOptions) || {};
-		this._mode = opts.channelMode || '${CHANNEL_MODE_SOURCE}';
+		this._mode = opts.channelMode || '${ChannelMode.Source}';
 		this.port.onmessage = (e) => {
 			if (e.data.type === 'pause') this._paused = true;
 			if (e.data.type === 'resume') this._paused = false;
@@ -79,7 +73,7 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 		const numChannels = input.length;
 		const numSamples = input[0].length;
 		const outChannels =
-			this._mode === '${CHANNEL_MODE_SOURCE}' ? numChannels : 1;
+			this._mode === '${ChannelMode.Source}' ? numChannels : 1;
 
 		if (!this._buffer || this._channels !== outChannels) {
 			this._channels = outChannels;
@@ -87,14 +81,14 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 			this._writeIndex = 0;
 		}
 
-		if (this._mode === '${CHANNEL_MODE_SOURCE}') {
+		if (this._mode === '${ChannelMode.Source}') {
 			for (let i = 0; i < numSamples; i++) {
 				for (let ch = 0; ch < numChannels; ch++) {
 					this._buffer[this._writeIndex++] =
 						this._toInt16(input[ch][i]);
 				}
 			}
-		} else if (this._mode === '${CHANNEL_MODE_MONO_MIX}') {
+		} else if (this._mode === '${ChannelMode.MonoMix}') {
 			for (let i = 0; i < numSamples; i++) {
 				let sum = 0;
 				for (let ch = 0; ch < numChannels; ch++) {
@@ -107,7 +101,7 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 			// Picked channel, clamped so a right pick on a mono
 			// input records that input instead of silence
 			const pick = Math.min(
-				this._mode === '${CHANNEL_MODE_MONO_RIGHT}' ? 1 : 0,
+				this._mode === '${ChannelMode.MonoRight}' ? 1 : 0,
 				numChannels - 1,
 			);
 			const channel = input[pick];
@@ -166,7 +160,7 @@ export class PcmStreamRecorder {
 		private stream: MediaStream,
 		private requestedSampleRate: number,
 		private onChunk: PcmChunkCallback,
-		private readonly channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
+		private readonly channelMode: ChannelMode = ChannelMode.Source,
 	) {}
 
 	/**

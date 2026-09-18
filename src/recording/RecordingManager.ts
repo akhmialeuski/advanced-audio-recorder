@@ -44,7 +44,7 @@ import {
 	resolveEffectiveBitrate,
 	resolveEffectiveOutputFormat,
 } from '../audio/AudioCapabilityDetector';
-import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
+import { ChannelMode } from '../audio/downmix';
 import { CaptureLossWatcher } from './CaptureLossWatcher';
 import { createPcmRecorders } from './RecorderFactory';
 import { describeRecordingError } from './recordingErrors';
@@ -658,7 +658,7 @@ export class RecordingManager {
 						new MediaRecorderCaptureTrack(
 							stream,
 							this.session.channelModes[index] ??
-								CHANNEL_MODE_SOURCE,
+								ChannelMode.Source,
 							this.settings.sampleRate,
 							{
 								mimeType: this.session.recorderMimeType,

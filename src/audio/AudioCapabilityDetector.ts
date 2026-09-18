@@ -496,15 +496,27 @@ export async function listBitrateAvailability(
 	return entries;
 }
 
-/**
- * What this device's own encoder said about a bitrate list. `confirmed`: it
- * accepted the values listed. `unavailable`: there was no encoder to ask, so
- * the codec's declared range is offered unverified. `refused`: it was asked
- * and accepted none of them, which is not a missing answer but a real one -
- * the format cannot be written at this sample rate and layout here at all,
- * and it is the format, not the bitrate, that has to change.
- */
-export type EncoderVerdict = 'confirmed' | 'unavailable' | 'refused';
+/** What this device's own encoder said about a bitrate list. */
+export const EncoderVerdict = {
+	/** It accepted the values listed. */
+	Confirmed: 'confirmed',
+	/**
+	 * There was no encoder to ask, so the codec's declared range is offered
+	 * unverified.
+	 */
+	Unavailable: 'unavailable',
+	/**
+	 * It was asked and accepted none of them, which is a real answer rather
+	 * than a missing one: the format cannot be written at this sample rate and
+	 * layout here at all, and it is the format, not the bitrate, that has to
+	 * change.
+	 */
+	Refused: 'refused',
+} as const;
+
+/** One encoder verdict (derived from {@link EncoderVerdict}). */
+export type EncoderVerdict =
+	(typeof EncoderVerdict)[keyof typeof EncoderVerdict];
 
 /**
  * The bitrates a format can be written at here, and where that answer came
@@ -549,7 +561,7 @@ export async function resolveBitrateOffer(
 ): Promise<BitrateOffer> {
 	const declared = getSupportedBitrates(format, sampleRate);
 	if (!isOfflineEncodingSupported(format)) {
-		return { bitrates: declared, encoder: 'unavailable' };
+		return { bitrates: declared, encoder: EncoderVerdict.Unavailable };
 	}
 	// probeOfflineEncodingSupport is the error boundary: a registration or
 	// probe that throws comes back as "unavailable", so a failed probe reaches
@@ -560,9 +572,9 @@ export async function resolveBitrateOffer(
 		numberOfChannels,
 	);
 	if (accepted.length === 0) {
-		return { bitrates: declared, encoder: 'refused' };
+		return { bitrates: declared, encoder: EncoderVerdict.Refused };
 	}
-	return { bitrates: accepted, encoder: 'confirmed' };
+	return { bitrates: accepted, encoder: EncoderVerdict.Confirmed };
 }
 
 /**
@@ -628,7 +640,10 @@ export async function resolveEffectiveBitrate(
 		encoding.sampleRate,
 		encoding.numberOfChannels,
 	);
-	if (offer.encoder !== 'confirmed' || offer.bitrates.includes(requested)) {
+	if (
+		offer.encoder !== EncoderVerdict.Confirmed ||
+		offer.bitrates.includes(requested)
+	) {
 		// Unavailable: nothing to check against. Refused: no rate would help,
 		// and the format check at start has already moved the session off
 		// this format.

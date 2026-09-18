@@ -15,13 +15,13 @@
  */
 
 import type { AudioRecorderSettings } from './settingsSchema';
-import type { LlmTask } from '../transcription/llmPostProcess';
+import { LlmTask } from '../transcription/llmPostProcess';
 import {
 	findProfile,
 	profilesOfKind,
 	selectedProfile,
 	type Profile,
-	type ProfileKindId,
+	ProfileKindId,
 } from './profiles';
 import { parseDictionary } from '../transcription/dictionary';
 import {
@@ -32,10 +32,10 @@ import {
 
 /** The kind of profile holding the prompt for each post-processing task. */
 export const PROMPT_KIND_OF_TASK: Record<LlmTask, ProfileKindId> = {
-	cleanup: 'llmCleanup',
-	summary: 'llmSummary',
-	custom: 'llmCustom',
-	translate: 'llmTranslate',
+	[LlmTask.Cleanup]: ProfileKindId.LlmCleanup,
+	[LlmTask.Summary]: ProfileKindId.LlmSummary,
+	[LlmTask.Custom]: ProfileKindId.LlmCustom,
+	[LlmTask.Translate]: ProfileKindId.LlmTranslate,
 };
 
 /**
@@ -73,7 +73,7 @@ export function resolveDictionaryTermList(
 	if (!settings.transcriptionAdvancedSettingsEnabled) {
 		return [];
 	}
-	return parseDictionary(selectedBody(settings, 'dictionary'));
+	return parseDictionary(selectedBody(settings, ProfileKindId.Dictionary));
 }
 
 /**
@@ -87,7 +87,7 @@ export function resolveDictionaryTermList(
 export function resolveChapterGuidance(
 	settings: AudioRecorderSettings,
 ): string {
-	return selectedBody(settings, 'chapterPrompt');
+	return selectedBody(settings, ProfileKindId.ChapterPrompt);
 }
 
 /**
@@ -116,7 +116,9 @@ export function resolveLlmPrompt(
 export function resolveRunParticipants(
 	settings: AudioRecorderSettings,
 ): string[] {
-	return parseParticipantBody(selectedBody(settings, 'participants'));
+	return parseParticipantBody(
+		selectedBody(settings, ProfileKindId.Participants),
+	);
 }
 
 /**
@@ -131,7 +133,7 @@ export function participantsOf(
 	id: string,
 ): string[] {
 	const profile = findProfile(
-		profilesOfKind(settings.profiles, 'participants'),
+		profilesOfKind(settings.profiles, ProfileKindId.Participants),
 		id,
 	);
 	return profile ? parseParticipantBody(profile.body) : [];
@@ -156,7 +158,7 @@ export function addParticipantsToProfile(
 	names: readonly string[],
 ): Profile[] | undefined {
 	const target = findProfile(profiles, id);
-	if (!target || target.kind !== 'participants') {
+	if (!target || target.kind !== ProfileKindId.Participants) {
 		return undefined;
 	}
 	const current = parseParticipantBody(target.body);

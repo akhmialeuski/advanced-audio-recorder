@@ -13,8 +13,26 @@ import {
 	DEFAULT_LLM_TRANSLATE_PROMPT,
 } from '../constants';
 
-/** What the LLM should do with the transcript text. */
-export type LlmTask = 'cleanup' | 'summary' | 'custom' | 'translate';
+/**
+ * What the LLM should do with the transcript text.
+ *
+ * Stored in data.json, so a value is renamed only with a migration. The
+ * dropdown order is the one `LLM_TASK_LABELS` in settings/labels declares,
+ * which the keys here repeat.
+ */
+export const LlmTask = {
+	/** Rewrite the transcript into readable prose, keeping what was said. */
+	Cleanup: 'cleanup',
+	/** Reduce the transcript to its points. */
+	Summary: 'summary',
+	/** Follow an instruction the user wrote. */
+	Custom: 'custom',
+	/** Render the transcript in another language. */
+	Translate: 'translate',
+} as const;
+
+/** One post-processing task (derived from {@link LlmTask}). */
+export type LlmTask = (typeof LlmTask)[keyof typeof LlmTask];
 
 /** A provider-neutral prompt: a system instruction and a user message. */
 export interface LlmPrompt {
@@ -38,14 +56,14 @@ export interface PostProcessOptions {
 	 * Falls back to {@link DEFAULT_LLM_SUMMARY_PROMPT} when empty.
 	 */
 	summaryPrompt?: string;
-	/** Custom instruction, sent verbatim, used when task is 'custom'. */
+	/** Custom instruction, sent verbatim, used by {@link LlmTask.Custom}. */
 	customInstruction?: string;
 	/**
 	 * Editable translation system prompt (base text, before the target-language
 	 * clause). Falls back to {@link DEFAULT_LLM_TRANSLATE_PROMPT} when empty.
 	 */
 	translatePrompt?: string;
-	/** Language to translate into, used when task is 'translate'. */
+	/** Language to translate into, used by {@link LlmTask.Translate}. */
 	targetLanguage?: string | undefined;
 	/**
 	 * Canonical spellings of domain names, terms, and acronyms, from the run's
@@ -118,7 +136,7 @@ export function buildPostProcessPrompt(
 	options: PostProcessOptions,
 ): LlmPrompt {
 	switch (options.task) {
-		case 'cleanup':
+		case LlmTask.Cleanup:
 			return {
 				system:
 					(options.cleanupPrompt?.trim() ||
@@ -127,7 +145,7 @@ export function buildPostProcessPrompt(
 					cleanupLanguageClause(options.language),
 				user: text,
 			};
-		case 'summary':
+		case LlmTask.Summary:
 			return {
 				system:
 					(options.summaryPrompt?.trim() ||
@@ -135,14 +153,14 @@ export function buildPostProcessPrompt(
 					summaryLanguageClause(options.language),
 				user: text,
 			};
-		case 'custom':
+		case LlmTask.Custom:
 			return {
 				system:
 					(options.customInstruction ?? '').trim() ||
 					'Process the following transcript as instructed.',
 				user: text,
 			};
-		case 'translate':
+		case LlmTask.Translate:
 			return {
 				system:
 					(options.translatePrompt?.trim() ||

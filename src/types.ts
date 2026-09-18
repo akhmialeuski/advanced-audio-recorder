@@ -229,8 +229,22 @@ export type RecordingTarget = {
 };
 
 /**
- * What happens to the note link after a conversion or split produces a
- * new file: leave the original link, replace it, or insert the new
- * link after it.
+ * What happens to the note link after a conversion or split produces a new
+ * file.
+ *
+ * Stored in data.json, so a value is renamed only with a migration. The
+ * dropdown order is the one `CONVERSION_LINK_ACTION_LABELS` in settings/labels
+ * declares, which the keys here repeat.
  */
-export type ConversionLinkAction = 'none' | 'replace' | 'after';
+export const ConversionLinkAction = {
+	/** Leave the original link alone; only the file is written. */
+	None: 'none',
+	/** Point the original link at the new file. */
+	Replace: 'replace',
+	/** Keep the original link and insert the new one after it. */
+	After: 'after',
+} as const;
+
+/** One link action (derived from {@link ConversionLinkAction}). */
+export type ConversionLinkAction =
+	(typeof ConversionLinkAction)[keyof typeof ConversionLinkAction];

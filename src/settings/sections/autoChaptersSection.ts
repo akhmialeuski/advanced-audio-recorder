@@ -4,7 +4,7 @@
  */
 
 import { LLM_JOBS } from '../../transcription/llm/vendors';
-import type { ProfileSection } from '../profileKinds';
+import { ProfileSection } from '../profileKinds';
 import {
 	SETTINGS_SECTION_CLASS,
 	type SettingsDefinitionContext,

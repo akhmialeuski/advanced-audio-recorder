@@ -8,12 +8,10 @@ import { PluginModal } from './PluginModal';
 import type { DropdownComponent } from 'obsidian';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
-	CHANNEL_MODE_SOURCE,
-	CHANNEL_MODES,
+	ChannelMode,
 	channelCountFor,
 	isMonoChannelMode,
 	normalizeChannelMode,
-	type ChannelMode,
 } from '../audio/downmix';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import {
@@ -44,7 +42,7 @@ export class ConversionModal extends PluginModal {
 	private readonly sourceFile: TFile;
 	private targetFormat: string = FORMAT_WAV;
 	private bitrate: number;
-	private channelMode: ChannelMode = CHANNEL_MODE_SOURCE;
+	private channelMode: ChannelMode = ChannelMode.Source;
 	private deleteSource: boolean;
 	private linkAction: ConversionLinkAction;
 	/** Target-format dropdown, rebuilt when the channel mode changes. */
@@ -127,12 +125,12 @@ export class ConversionModal extends PluginModal {
 			)
 			.addDropdown((dropdown) => {
 				const labels: Record<ChannelMode, string> = {
-					source: 'Keep source channels',
-					'mono-mix': 'Mono (mix all channels)',
-					'mono-left': 'Mono (left channel)',
-					'mono-right': 'Mono (right channel)',
+					[ChannelMode.Source]: 'Keep source channels',
+					[ChannelMode.MonoMix]: 'Mono (mix all channels)',
+					[ChannelMode.MonoLeft]: 'Mono (left channel)',
+					[ChannelMode.MonoRight]: 'Mono (right channel)',
 				};
-				CHANNEL_MODES.forEach((mode) => {
+				Object.values(ChannelMode).forEach((mode) => {
 					dropdown.addOption(mode, labels[mode]);
 				});
 				dropdown.setValue(this.channelMode);

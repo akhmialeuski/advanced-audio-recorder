@@ -61,8 +61,24 @@ export const DICTIONARY_JOIN_SEPARATOR = ', ';
 /** Reused encoder for the UTF-8 byte count behind {@link tokenUpperBound}. */
 const UTF8_ENCODER = new TextEncoder();
 
-/** How a Deepgram model biases recognition, or null when it cannot bias. */
-export type DeepgramBiasMechanism = 'keyterm' | 'keywords' | null;
+/**
+ * How a Deepgram model biases recognition. The values are Deepgram's own query
+ * parameter names, so terms are appended under the member itself.
+ */
+export const DeepgramBiasMechanism = {
+	/** Nova-3 keyterm prompting. */
+	Keyterm: 'keyterm',
+	/** Nova-2 and older keyword boosting. */
+	Keywords: 'keywords',
+} as const;
+
+/**
+ * One biasing mechanism, or null for a model that cannot bias (derived from
+ * {@link DeepgramBiasMechanism}).
+ */
+export type DeepgramBiasMechanism =
+	| (typeof DeepgramBiasMechanism)[keyof typeof DeepgramBiasMechanism]
+	| null;
 
 /**
  * Why some dictionary terms were left out of a run, when any were. The two
@@ -108,7 +124,7 @@ export interface DictionaryBiasPlan {
 export function deepgramBiasMechanism(model: string): DeepgramBiasMechanism {
 	const normalized = model.toLowerCase();
 	if (normalized.startsWith('nova-3')) {
-		return 'keyterm';
+		return DeepgramBiasMechanism.Keyterm;
 	}
 	// Hosted Whisper on Deepgram accepts neither keyterm nor keywords, so a
 	// dictionary would be silently ignored (or reject the request).
@@ -116,7 +132,7 @@ export function deepgramBiasMechanism(model: string): DeepgramBiasMechanism {
 		return null;
 	}
 	// Nova-2 and older (Nova, Enhanced, Base) use keyword boosting.
-	return 'keywords';
+	return DeepgramBiasMechanism.Keywords;
 }
 
 /**

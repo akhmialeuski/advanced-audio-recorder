@@ -10,8 +10,8 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
 import { directoryOf } from '../utils/paths';
 import { serializeTranscriptFile } from './transcriptFormat';
-import type {
-	Transcript,
+import {
+	type Transcript,
 	TranscriptDestination,
 	TranscriptFileFormat,
 } from './TranscriptTypes';
@@ -32,7 +32,9 @@ export function effectiveTranscriptDestination(
 	destination: TranscriptDestination,
 	hasHostNote: boolean,
 ): TranscriptDestination {
-	return !hasHostNote && destination === 'note' ? 'file' : destination;
+	return !hasHostNote && destination === TranscriptDestination.Note
+		? TranscriptDestination.File
+		: destination;
 }
 
 /**
@@ -67,7 +69,8 @@ export function buildTranscriptFilePath(
 ): string {
 	const dotIndex = audioPath.lastIndexOf('.');
 	const base = dotIndex > 0 ? audioPath.slice(0, dotIndex) : audioPath;
-	const suffix = format === 'json' ? 'transcript.json' : format;
+	const suffix =
+		format === TranscriptFileFormat.Json ? 'transcript.json' : format;
 	const label = languageLabel(language);
 	return label ? `${base}.${label}.${suffix}` : `${base}.${suffix}`;
 }

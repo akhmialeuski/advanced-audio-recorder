@@ -7,11 +7,7 @@
 import type { RecordingTarget } from '../types';
 import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
 import { runStreamingConversion } from './streamingConversion';
-import {
-	CHANNEL_MODE_SOURCE,
-	downmixAudioBuffer,
-	type ChannelMode,
-} from './downmix';
+import { ChannelMode, downmixAudioBuffer } from './downmix';
 import { autoClosing } from '../utils/disposables';
 import {
 	isDecodableSize,
@@ -378,7 +374,7 @@ async function runConversionLadder<T>(
 	options: BlobConversionOptions,
 	deliver: LadderResult<T>,
 ): Promise<T> {
-	const channelMode = options.channelMode ?? CHANNEL_MODE_SOURCE;
+	const channelMode = options.channelMode ?? ChannelMode.Source;
 	const allowRemux = options.allowRemux ?? false;
 	const workerClient =
 		options.workerClient && options.workerClient.isAvailable()

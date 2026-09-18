@@ -4,11 +4,6 @@
  */
 
 import {
-	CHANNEL_MODES,
-	CHANNEL_MODE_SOURCE,
-	CHANNEL_MODE_MONO_MIX,
-	CHANNEL_MODE_MONO_LEFT,
-	CHANNEL_MODE_MONO_RIGHT,
 	isChannelMode,
 	normalizeChannelMode,
 	isMonoChannelMode,
@@ -71,9 +66,21 @@ function stereoBuffer(
 	return partial<AudioBuffer>(buffer);
 }
 
+/**
+ * The channel-mode strings as they are written to data.json, spelled out here
+ * rather than read from the ChannelMode object: a rename of a member has to
+ * fail this test rather than quietly change what a saved setting holds.
+ */
+const STORED_CHANNEL_MODES = [
+	'source',
+	'mono-mix',
+	'mono-left',
+	'mono-right',
+] as const;
+
 describe('channel mode guards', () => {
 	it('accepts every declared mode', () => {
-		for (const mode of CHANNEL_MODES) {
+		for (const mode of STORED_CHANNEL_MODES) {
 			expect(isChannelMode(mode)).toBe(true);
 		}
 	});
@@ -86,18 +93,16 @@ describe('channel mode guards', () => {
 	);
 
 	it('normalizes invalid values to the source mode', () => {
-		expect(normalizeChannelMode('bogus')).toBe(CHANNEL_MODE_SOURCE);
-		expect(normalizeChannelMode(undefined)).toBe(CHANNEL_MODE_SOURCE);
-		expect(normalizeChannelMode(CHANNEL_MODE_MONO_LEFT)).toBe(
-			CHANNEL_MODE_MONO_LEFT,
-		);
+		expect(normalizeChannelMode('bogus')).toBe('source');
+		expect(normalizeChannelMode(undefined)).toBe('source');
+		expect(normalizeChannelMode('mono-left')).toBe('mono-left');
 	});
 
 	it('classifies mono modes', () => {
-		expect(isMonoChannelMode(CHANNEL_MODE_SOURCE)).toBe(false);
-		expect(isMonoChannelMode(CHANNEL_MODE_MONO_MIX)).toBe(true);
-		expect(isMonoChannelMode(CHANNEL_MODE_MONO_LEFT)).toBe(true);
-		expect(isMonoChannelMode(CHANNEL_MODE_MONO_RIGHT)).toBe(true);
+		expect(isMonoChannelMode('source')).toBe(false);
+		expect(isMonoChannelMode('mono-mix')).toBe(true);
+		expect(isMonoChannelMode('mono-left')).toBe(true);
+		expect(isMonoChannelMode('mono-right')).toBe(true);
 	});
 });
 
@@ -109,14 +114,14 @@ describe.each([
 	// The index goes straight into a channel array; a negative or
 	// out-of-range one would read past the end of a capture.
 	it('picks the left channel', () => {
-		expect(monoPickIndex(CHANNEL_MODE_MONO_LEFT, channels)).toBe(left);
+		expect(monoPickIndex('mono-left', channels)).toBe(left);
 	});
 
 	it('picks the right channel, clamped to what exists', () => {
-		expect(monoPickIndex(CHANNEL_MODE_MONO_RIGHT, channels)).toBe(right);
+		expect(monoPickIndex('mono-right', channels)).toBe(right);
 	});
 
-	it.each([CHANNEL_MODE_SOURCE, CHANNEL_MODE_MONO_MIX] as const)(
+	it.each(['source', 'mono-mix'] as const)(
 		'picks nothing for the %s mode, which mixes rather than picks',
 		(mode) => {
 			expect(monoPickIndex(mode, channels)).toBeNull();
@@ -129,17 +134,14 @@ describe('downmixChannelData', () => {
 	const right = Float32Array.from([-0.5, -0.5, 0]);
 
 	it('averages all channels in the mix mode', () => {
-		const mixed = downmixChannelData([left, right], CHANNEL_MODE_MONO_MIX);
+		const mixed = downmixChannelData([left, right], 'mono-mix');
 
 		expect(Array.from(mixed)).toEqual([0, -0.5, 0.5]);
 	});
 
 	it('averages more than two channels', () => {
 		const third = Float32Array.from([0.5, 0.5, 0.5]);
-		const mixed = downmixChannelData(
-			[left, right, third],
-			CHANNEL_MODE_MONO_MIX,
-		);
+		const mixed = downmixChannelData([left, right, third], 'mono-mix');
 
 		expect(mixed[0]).toBeCloseTo(1 / 6);
 		expect(mixed[1]).toBeCloseTo(-1 / 6);
@@ -147,24 +149,44 @@ describe('downmixChannelData', () => {
 	});
 
 	it('returns a copy of the picked channel', () => {
-		const picked = downmixChannelData(
-			[left, right],
-			CHANNEL_MODE_MONO_RIGHT,
-		);
+		const picked = downmixChannelData([left, right], 'mono-right');
 
 		expect(Array.from(picked)).toEqual(Array.from(right));
 		expect(picked).not.toBe(right);
 	});
 
 	it('falls back to the first channel for a right pick on mono data', () => {
-		const picked = downmixChannelData([left], CHANNEL_MODE_MONO_RIGHT);
+		const picked = downmixChannelData([left], 'mono-right');
 
 		expect(Array.from(picked)).toEqual(Array.from(left));
 	});
 
 	it('throws for the source mode and for empty data', () => {
-		expect(() => downmixChannelData([left], CHANNEL_MODE_SOURCE)).toThrow();
-		expect(() => downmixChannelData([], CHANNEL_MODE_MONO_MIX)).toThrow();
+		expect(() => downmixChannelData([left], 'source')).toThrow();
+		expect(() => downmixChannelData([], 'mono-mix')).toThrow();
+	});
+
+	// Both production callers fill the array densely, so the two `??` guards
+	// in downmixChannelData answer the compiler rather than a caller:
+	// noUncheckedIndexedAccess types an indexed read as possibly undefined.
+	// A list whose length counts a channel it does not hold is the synthetic
+	// input that reaches them, and these two cases pin what each one yields.
+	it('falls back to the first channel when the picked one is absent', () => {
+		const sparse: Float32Array[] = [left];
+		sparse.length = 2;
+
+		expect(Array.from(downmixChannelData(sparse, 'mono-right'))).toEqual(
+			Array.from(left),
+		);
+	});
+
+	it('mixes an absent channel as silence', () => {
+		const sparse: Float32Array[] = [left];
+		sparse.length = 2;
+
+		expect(Array.from(downmixChannelData(sparse, 'mono-mix'))).toEqual([
+			0.25, -0.25, 0.5,
+		]);
 	});
 });
 
@@ -172,7 +194,7 @@ describe('downmixAudioBuffer', () => {
 	it('returns the buffer unchanged for the source mode', () => {
 		const buffer = stereoBuffer([0.5], [-0.5]);
 
-		expect(downmixAudioBuffer(buffer, CHANNEL_MODE_SOURCE)).toBe(buffer);
+		expect(downmixAudioBuffer(buffer, 'source')).toBe(buffer);
 	});
 
 	it('returns an already-mono buffer unchanged', () => {
@@ -184,13 +206,13 @@ describe('downmixAudioBuffer', () => {
 			}),
 		);
 
-		expect(downmixAudioBuffer(mono, CHANNEL_MODE_MONO_MIX)).toBe(mono);
+		expect(downmixAudioBuffer(mono, 'mono-mix')).toBe(mono);
 	});
 
 	it('mixes a stereo buffer down to mono', () => {
 		const buffer = stereoBuffer([0.5, 1], [-0.5, 0], 48000);
 
-		const mono = downmixAudioBuffer(buffer, CHANNEL_MODE_MONO_MIX);
+		const mono = downmixAudioBuffer(buffer, 'mono-mix');
 
 		expect(mono.numberOfChannels).toBe(1);
 		expect(mono.sampleRate).toBe(48000);
@@ -201,7 +223,7 @@ describe('downmixAudioBuffer', () => {
 	it('keeps only the picked channel', () => {
 		const buffer = stereoBuffer([0.5, 1], [-0.5, 0]);
 
-		const mono = downmixAudioBuffer(buffer, CHANNEL_MODE_MONO_LEFT);
+		const mono = downmixAudioBuffer(buffer, 'mono-left');
 
 		expect(Array.from(mono.getChannelData(0))).toEqual([0.5, 1]);
 	});
