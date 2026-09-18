@@ -12,6 +12,7 @@ import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
 import {
 	DEEPGRAM_KEYWORDS_LIMIT,
 	deepgramBiasMechanism,
+	DeepgramBiasMechanism,
 	termsWithinDeepgramKeyterm,
 } from '../dictionaryBias';
 import { dedupeTerms } from '../dictionary';
@@ -90,7 +91,7 @@ export class DeepgramProvider implements TranscriptionProvider {
 			const mechanism = deepgramBiasMechanism(this.config.model);
 			if (mechanism) {
 				const terms =
-					mechanism === 'keyterm'
+					mechanism === DeepgramBiasMechanism.Keyterm
 						? termsWithinDeepgramKeyterm(biasTerms)
 						: biasTerms.slice(0, DEEPGRAM_KEYWORDS_LIMIT);
 				for (const term of terms) {

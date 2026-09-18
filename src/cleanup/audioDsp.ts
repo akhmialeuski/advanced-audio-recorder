@@ -18,7 +18,7 @@ import {
 	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
-import { CHANNEL_MODE_SOURCE, type ChannelMode } from '../audio/downmix';
+import { ChannelMode } from '../audio/downmix';
 
 /** Resolved, clamped audio-cleanup configuration. */
 export interface AudioDspConfig {
@@ -83,7 +83,7 @@ export function resolveAudioDspConfig(
 				DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
 			),
 		},
-		channelMode: CHANNEL_MODE_SOURCE,
+		channelMode: ChannelMode.Source,
 	};
 }
 
@@ -110,7 +110,7 @@ export function hasActiveStage(config: AudioDspConfig): boolean {
  * @param config - Resolved config
  */
 export function hasActiveChange(config: AudioDspConfig): boolean {
-	return hasActiveStage(config) || config.channelMode !== CHANNEL_MODE_SOURCE;
+	return hasActiveStage(config) || config.channelMode !== ChannelMode.Source;
 }
 
 /**

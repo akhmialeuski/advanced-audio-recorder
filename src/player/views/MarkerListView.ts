@@ -22,13 +22,12 @@ import { formatTimecode, parseTimecode } from '../../utils/TimeUtils';
 import {
 	activeMarkerIndex,
 	MARKER_KIND,
-	MARKER_COLORS,
+	MarkerColor,
 	MARKER_ROW_ACTION,
 	markerRows,
 	sortMarkers,
 	isMarkerColor,
 	storedNote,
-	type MarkerColor,
 	type MarkerKind,
 	type MarkerRow,
 	type PlayerMarker,
@@ -616,7 +615,7 @@ export class MarkerListView {
 		color.dataset.action = MARKER_ROW_ACTION.setColor;
 		color.dataset.markerId = row.id;
 		color.createEl('option', { value: '', text: 'No colour' });
-		for (const name of MARKER_COLORS) {
+		for (const name of Object.values(MarkerColor)) {
 			// A name alone does not tell the user what the theme's red looks
 			// like on the seek bar, so every option carries the colour itself:
 			// a filled circle drawn in it, and the option text in the same

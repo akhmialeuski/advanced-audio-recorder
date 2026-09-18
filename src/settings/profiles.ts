@@ -23,21 +23,31 @@ import type { AudioRecorderSettings } from './settingsSchema';
 
 /**
  * Every kind of profile the plugin stores, as a stored entry names itself.
- * The ids are persisted in data.json, so they are renamed only with a
- * migration.
+ *
+ * The ids are persisted in data.json, both as a profile's own `kind` and as
+ * the keys of the selection map, so a value is renamed only with a migration.
+ * Nothing reads the members in order: the catalogues are laid out by the kind
+ * declarations in settings/profileKinds, which carry an order of their own.
  */
-export const PROFILE_KIND_IDS = [
-	'participants',
-	'dictionary',
-	'chapterPrompt',
-	'llmCleanup',
-	'llmSummary',
-	'llmCustom',
-	'llmTranslate',
-] as const;
+export const ProfileKindId = {
+	/** Named speakers a diarized transcript is relabelled with. */
+	Participants: 'participants',
+	/** Terms fed to an engine so it spells them the way this vault does. */
+	Dictionary: 'dictionary',
+	/** The instruction an automatic chapter run is given. */
+	ChapterPrompt: 'chapterPrompt',
+	/** The instruction the cleanup task is given. */
+	LlmCleanup: 'llmCleanup',
+	/** The instruction the summary task is given. */
+	LlmSummary: 'llmSummary',
+	/** The instruction the custom task is given. */
+	LlmCustom: 'llmCustom',
+	/** The instruction the translation task is given. */
+	LlmTranslate: 'llmTranslate',
+} as const;
 
-/** Which kind of thing a profile holds. */
-export type ProfileKindId = (typeof PROFILE_KIND_IDS)[number];
+/** Which kind of thing a profile holds (derived from {@link ProfileKindId}). */
+export type ProfileKindId = (typeof ProfileKindId)[keyof typeof ProfileKindId];
 
 /** One named profile, whatever kind it is. */
 export interface Profile {
@@ -73,17 +83,15 @@ export type SelectedProfileIds = Record<ProfileKindId, string>;
 /** Name a freshly created profile starts out under, numbered when taken. */
 export const NEW_PROFILE_NAME = 'New profile';
 
-/** A selection map with every kind set to none. */
+/**
+ * A selection map with every kind set to none. Built from the kinds
+ * themselves, so a kind added to {@link ProfileKindId} starts out unselected
+ * without this function being touched.
+ */
 export function noSelectedProfiles(): SelectedProfileIds {
-	return {
-		participants: '',
-		dictionary: '',
-		chapterPrompt: '',
-		llmCleanup: '',
-		llmSummary: '',
-		llmCustom: '',
-		llmTranslate: '',
-	};
+	return Object.fromEntries(
+		Object.values(ProfileKindId).map((kind) => [kind, '']),
+	) as SelectedProfileIds;
 }
 
 /**

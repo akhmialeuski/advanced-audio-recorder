@@ -20,12 +20,7 @@ import {
 import type { AudioCodec, ConversionAudioOptions } from 'mediabunny';
 import { ensureEncoderRegistered, createOutputFormat } from './AudioEncoder';
 import { getFormatDescriptor } from './formatRegistry';
-import {
-	CHANNEL_MODE_SOURCE,
-	CHANNEL_MODE_MONO_MIX,
-	monoPickIndex,
-	type ChannelMode,
-} from './downmix';
+import { ChannelMode, monoPickIndex } from './downmix';
 import { disposableOf } from '../utils/disposables';
 
 /**
@@ -118,7 +113,7 @@ export async function runStreamingConversion(
 	bitrate: number,
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
-	channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
+	channelMode: ChannelMode = ChannelMode.Source,
 ): Promise<ArrayBuffer> {
 	const codec: AudioCodec | undefined =
 		getFormatDescriptor(targetFormat)?.codec;
@@ -158,7 +153,7 @@ async function convertWithInput(
 	bitrate: number,
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
-	channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
+	channelMode: ChannelMode = ChannelMode.Source,
 ): Promise<ArrayBuffer> {
 	const audioTrack = await input.getPrimaryAudioTrack();
 	if (!audioTrack) {
@@ -183,9 +178,9 @@ async function convertWithInput(
 	// one-channel input, including a right-channel pick (which falls
 	// back to that only channel), so a no-op transcode is unnecessary.
 	let monoProcess: ((sample: AudioSample) => AudioSample) | null = null;
-	if (channelMode !== CHANNEL_MODE_SOURCE) {
+	if (channelMode !== ChannelMode.Source) {
 		const sourceChannels = await audioTrack.getNumberOfChannels();
-		if (sourceChannels > 1 && channelMode === CHANNEL_MODE_MONO_MIX) {
+		if (sourceChannels > 1 && channelMode === ChannelMode.MonoMix) {
 			monoProcess = averageChannelsSample;
 		} else if (sourceChannels > 1) {
 			const pick = monoPickIndex(channelMode, sourceChannels);

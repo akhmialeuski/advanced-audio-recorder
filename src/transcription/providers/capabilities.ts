@@ -18,9 +18,9 @@ import {
 } from '../../constants';
 import { isLocalTranscriptionSupported } from '../../platform/capabilities';
 import type { TranscriptionProviderId } from '../../settings/settingsSchema';
-import type {
+import {
 	AdvancedBiasChannel,
-	ProviderCapabilities,
+	type ProviderCapabilities,
 	WordTimestampSupport,
 } from './TranscriptionProvider';
 
@@ -36,8 +36,8 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	// OpenAI Whisper accepts a `prompt` that seeds recognition with spellings.
 	supportsDictionary: true,
 	// The one engine that reads the request: it adds the `word` granularity.
-	wordTimestamps: 'requested',
-	biasChannel: 'prompt',
+	wordTimestamps: WordTimestampSupport.Requested,
+	biasChannel: AdvancedBiasChannel.Prompt,
 	// The endpoint has an /audio/translations operation taking the same
 	// fields as transcription and answering in the same shape.
 	supportsSpeechTranslation: true,
@@ -54,8 +54,8 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	supportsDictionary: true,
 	// Every Deepgram response carries its words, asked for or not, and the
 	// mapping keeps them; there is nothing to request and nothing to turn off.
-	wordTimestamps: 'always',
-	biasChannel: 'keyterm',
+	wordTimestamps: WordTimestampSupport.Always,
+	biasChannel: AdvancedBiasChannel.Keyterm,
 	supportsSpeechTranslation: false,
 	readsLanguageHint: true,
 };
@@ -69,8 +69,8 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	// whisper.cpp accepts an initial prompt via the --prompt CLI flag.
 	supportsDictionary: true,
 	// The -oj output carries segment offsets and nothing finer.
-	wordTimestamps: 'none',
-	biasChannel: 'prompt',
+	wordTimestamps: WordTimestampSupport.None,
+	biasChannel: AdvancedBiasChannel.Prompt,
 	supportsSpeechTranslation: false,
 	readsLanguageHint: true,
 };
@@ -93,8 +93,8 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	supportsDictionary: true,
 	// The transcript comes back as timed segments; the model is not asked for,
 	// and does not return, a timing per word.
-	wordTimestamps: 'none',
-	biasChannel: 'prompt',
+	wordTimestamps: WordTimestampSupport.None,
+	biasChannel: AdvancedBiasChannel.Prompt,
 	supportsSpeechTranslation: false,
 	readsLanguageHint: true,
 };
@@ -146,8 +146,8 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	// it would cost the transcript its sentences, its timecode links and its
 	// chapters. Both levels would need two requests, which on this engine means
 	// uploading a multi-hour recording twice.
-	wordTimestamps: 'none',
-	biasChannel: 'keyterm',
+	wordTimestamps: WordTimestampSupport.None,
+	biasChannel: AdvancedBiasChannel.Keyterm,
 	// There is no translations operation, so English-only output cannot be
 	// asked for.
 	supportsSpeechTranslation: false,
@@ -244,7 +244,7 @@ export function providerWordTimestamps(
  * @returns True when the switch actually steers the request
  */
 export function wordTimestampsSelectable(id: TranscriptionProviderId): boolean {
-	return providerWordTimestamps(id) === 'requested';
+	return providerWordTimestamps(id) === WordTimestampSupport.Requested;
 }
 
 /**
@@ -262,7 +262,10 @@ export function effectiveWordTimestamps(
 	requested: boolean,
 ): boolean {
 	const support = providerWordTimestamps(id);
-	return support === 'always' || (support === 'requested' && requested);
+	return (
+		support === WordTimestampSupport.Always ||
+		(support === WordTimestampSupport.Requested && requested)
+	);
 }
 
 /**
@@ -274,9 +277,9 @@ export function effectiveWordTimestamps(
  */
 export function wordTimestampsNote(id: TranscriptionProviderId): string {
 	switch (providerWordTimestamps(id)) {
-		case 'requested':
+		case WordTimestampSupport.Requested:
 			return 'Request per-word timing. Recorded in JSON file output only.';
-		case 'always':
+		case WordTimestampSupport.Always:
 			return 'This engine returns per-word timing on every run, so there is nothing to turn on. Recorded in JSON file output only.';
 		default:
 			return 'This engine returns segment-level timing only, so the JSON file output carries segment times and no words.';

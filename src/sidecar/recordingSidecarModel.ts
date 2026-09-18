@@ -20,10 +20,7 @@ import {
 } from '../markers/markerModel';
 import { normalizeParticipantNames } from '../speakers/participantRoster';
 import type { PartFailure } from '../transcription/partFailure';
-import {
-	TRANSCRIPT_FILE_FORMATS,
-	type TranscriptFileFormat,
-} from '../transcription/TranscriptTypes';
+import { TranscriptFileFormat } from '../transcription/TranscriptTypes';
 
 /** Current on-disk sidecar schema version. */
 const SIDECAR_VERSION = 2;
@@ -469,6 +466,7 @@ function parseFileOutputs(value: unknown): FileOutput[] {
 		return [];
 	}
 	const seen = new Set<string>();
+	const formats: readonly string[] = Object.values(TranscriptFileFormat);
 	const result: FileOutput[] = [];
 	for (const entry of value) {
 		if (typeof entry !== 'object' || entry === null) {
@@ -477,11 +475,7 @@ function parseFileOutputs(value: unknown): FileOutput[] {
 		const record = entry as Record<string, unknown>;
 		const path = trimmedString(record.path);
 		const format = record.format;
-		if (
-			!path ||
-			seen.has(path) ||
-			!TRANSCRIPT_FILE_FORMATS.includes(format as TranscriptFileFormat)
-		) {
+		if (!path || seen.has(path) || !formats.includes(format as string)) {
 			continue;
 		}
 		seen.add(path);

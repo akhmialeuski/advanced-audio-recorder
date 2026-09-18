@@ -15,7 +15,7 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import { CancellationSource } from '../utils/cancellation';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { RunCostSink } from './SessionCostTracker';
-import type { TranscriptionQueue } from './TranscriptionQueue';
+import { QueueEntryState, type TranscriptionQueue } from './TranscriptionQueue';
 import type { TranscribeFileOptions } from './runTranscription';
 import type { TranscribeRunCost } from './TranscriptionService';
 
@@ -120,12 +120,12 @@ export class QueueRunner {
 		if (!(file instanceof TFile)) {
 			this.deps.queue.setState(
 				path,
-				'failed',
+				QueueEntryState.Failed,
 				'The recording is no longer in the vault.',
 			);
 			return;
 		}
-		this.deps.queue.setState(path, 'running');
+		this.deps.queue.setState(path, QueueEntryState.Running);
 		try {
 			const { cost } = await this.deps.transcribe(file, {
 				// A queued run has no note to write links against, so the
@@ -144,14 +144,14 @@ export class QueueRunner {
 				this.deps.getSettings(),
 				this.deps.assumedSecondsPerRecording,
 			);
-			this.deps.queue.setState(path, 'done');
+			this.deps.queue.setState(path, QueueEntryState.Done);
 		} catch (error) {
 			if (this.cancellation.token.isCancelled()) {
 				// Stopped rather than refused, so the recording goes back in
 				// the queue: it never had its chance, and recording it as a
 				// failure would leave the user clearing by hand something the
 				// engine never even answered about.
-				this.deps.queue.setState(path, 'waiting');
+				this.deps.queue.setState(path, QueueEntryState.Waiting);
 				return;
 			}
 			const message =
@@ -161,7 +161,7 @@ export class QueueRunner {
 				error,
 			);
 			new Notice(`Could not transcribe ${file.name}: ${message}`);
-			this.deps.queue.setState(path, 'failed', message);
+			this.deps.queue.setState(path, QueueEntryState.Failed, message);
 		}
 	}
 }

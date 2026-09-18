@@ -9,10 +9,9 @@ import type { App, TFile } from 'obsidian';
 import { encodeAudioBuffer } from '../audio/AudioEncoder';
 import { FORMAT_WAV } from '../constants';
 import {
-	CHANNEL_MODE_SOURCE,
+	ChannelMode,
 	downmixAudioBuffer,
 	isMonoChannelMode,
-	type ChannelMode,
 } from '../audio/downmix';
 import {
 	decodeAudioBlob,
@@ -22,7 +21,7 @@ import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { isReadableSize, tooLargeMessage } from '../platform/capabilities';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
-import type { ConversionLinkAction } from '../settings/settingsSchema';
+import { ConversionLinkAction } from '../settings/settingsSchema';
 
 /**
  * Parameters of one conversion operation.
@@ -103,9 +102,7 @@ export class ConversionService {
 			// output gets its own name instead of colliding with the
 			// source, and a channel-preserving request is refused because
 			// it would just re-encode the file into itself
-			if (
-				!isMonoChannelMode(request.channelMode ?? CHANNEL_MODE_SOURCE)
-			) {
+			if (!isMonoChannelMode(request.channelMode ?? ChannelMode.Source)) {
 				new Notice(
 					'Converting to the same format requires a mono channels option.',
 				);
@@ -143,7 +140,7 @@ export class ConversionService {
 				request.sourceFile.path,
 			);
 
-			const channelMode = request.channelMode ?? CHANNEL_MODE_SOURCE;
+			const channelMode = request.channelMode ?? ChannelMode.Source;
 			let data: ArrayBuffer;
 			if (request.targetFormat === FORMAT_WAV) {
 				// WAV needs a full decode; the streaming pipeline only
@@ -226,7 +223,7 @@ export class ConversionService {
 		onProgress: (text: string) => void,
 	): Promise<boolean> {
 		let linkResult: VaultLinkUpdateResult | null = null;
-		if (request.linkAction !== 'none') {
+		if (request.linkAction !== ConversionLinkAction.None) {
 			onProgress('Updating links...');
 			try {
 				linkResult = await updateLinksInVault(

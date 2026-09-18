@@ -12,8 +12,8 @@ import { setIcon } from 'obsidian';
 import type { App } from 'obsidian';
 import { PluginModal } from './PluginModal';
 import { formatUsd } from '../transcription/costs';
-import type {
-	QueueEntry,
+import {
+	type QueueEntry,
 	QueueEntryState,
 } from '../transcription/TranscriptionQueue';
 import type { TranscriptionQueue } from '../transcription/TranscriptionQueue';
@@ -35,10 +35,10 @@ const QUEUE_COST_CLASS = 'aar-queue-cost';
 
 /** What each state is called on screen. */
 const STATE_LABELS: Record<QueueEntryState, string> = {
-	waiting: 'Waiting',
-	running: 'Transcribing',
-	done: 'Done',
-	failed: 'Failed',
+	[QueueEntryState.Waiting]: 'Waiting',
+	[QueueEntryState.Running]: 'Transcribing',
+	[QueueEntryState.Done]: 'Done',
+	[QueueEntryState.Failed]: 'Failed',
 };
 
 /** What the dialog needs beyond the queue itself. */
@@ -163,7 +163,7 @@ export class TranscriptionQueueModal extends PluginModal {
 		});
 		// Not offered for the recording in flight: stopping that one is the
 		// run's own business, and the button would do nothing.
-		if (entry.state === 'running') {
+		if (entry.state === QueueEntryState.Running) {
 			return;
 		}
 		const remove = row.createEl('button', {

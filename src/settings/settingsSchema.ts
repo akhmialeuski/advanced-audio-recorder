@@ -3,8 +3,7 @@
  * @module settings/settingsSchema
  */
 
-import type { ConversionLinkAction } from '../types';
-import { OutputMode } from '../types';
+import { ConversionLinkAction, OutputMode } from '../types';
 import {
 	FORMAT_WEBM,
 	DEFAULT_SAMPLE_RATE,
@@ -52,26 +51,20 @@ import {
 	DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
 	PLAYER_SKIP_SECONDS,
 } from '../constants';
-import type {
+import {
 	TranscriptDestination,
 	TranscriptFileFormat,
 } from '../transcription/TranscriptTypes';
-import type { LlmTask } from '../transcription/llmPostProcess';
-import { noSelectedProfiles } from './profiles';
+import { LlmTask } from '../transcription/llmPostProcess';
+import { noSelectedProfiles, ProfileKindId } from './profiles';
 import type { Profile, SelectedProfileIds } from './profiles';
-import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
-import type { ChannelMode } from '../audio/downmix';
-import type { PlatformKind } from '../platform/platformKind';
+import { ChannelMode } from '../audio/downmix';
+import { PlatformKind } from '../platform/platformKind';
 
 export type { OutputMode } from '../types';
 
-/**
- * What to do with the converted file link in notes.
- * - 'none': just save the file, don't touch notes
- * - 'replace': replace source file link with the new file link
- * - 'after': insert new file link after the source file link
- */
-export type { ConversionLinkAction } from '../types';
+/** What to do with the converted file link in notes. */
+export { ConversionLinkAction } from '../types';
 
 /**
  * How one track's capture is filtered by the browser.
@@ -274,7 +267,7 @@ export interface SerializedPlatformScopedSettings {
 export function createPlatformScopedDefaults(): PlatformScopedSettings {
 	return {
 		audioDeviceId: '',
-		recordingChannels: CHANNEL_MODE_SOURCE,
+		recordingChannels: ChannelMode.Source,
 		trackAudioSources: new Map(),
 	};
 }
@@ -285,8 +278,8 @@ export function createPlatformScopedDefaults(): PlatformScopedSettings {
  */
 function createPerPlatformDefaults(): PlatformScopedSettingsMap {
 	return {
-		desktop: createPlatformScopedDefaults(),
-		mobile: createPlatformScopedDefaults(),
+		[PlatformKind.Desktop]: createPlatformScopedDefaults(),
+		[PlatformKind.Mobile]: createPlatformScopedDefaults(),
 	};
 }
 
@@ -794,25 +787,25 @@ function seededProfiles(): Profile[] {
 	return [
 		{
 			id: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
-			kind: 'chapterPrompt',
+			kind: ProfileKindId.ChapterPrompt,
 			name: DEFAULT_PROFILE_NAME,
 			body: DEFAULT_CHAPTER_PROMPT,
 		},
 		{
 			id: DEFAULT_LLM_CLEANUP_PROFILE_ID,
-			kind: 'llmCleanup',
+			kind: ProfileKindId.LlmCleanup,
 			name: DEFAULT_PROFILE_NAME,
 			body: DEFAULT_LLM_CLEANUP_PROMPT,
 		},
 		{
 			id: DEFAULT_LLM_SUMMARY_PROFILE_ID,
-			kind: 'llmSummary',
+			kind: ProfileKindId.LlmSummary,
 			name: DEFAULT_PROFILE_NAME,
 			body: DEFAULT_LLM_SUMMARY_PROMPT,
 		},
 		{
 			id: DEFAULT_LLM_CUSTOM_PROFILE_ID,
-			kind: 'llmCustom',
+			kind: ProfileKindId.LlmCustom,
 			name: DEFAULT_PROFILE_NAME,
 			body: DEFAULT_LLM_CUSTOM_INSTRUCTION,
 		},
@@ -833,7 +826,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	resumeHotkey: '',
 	audioDeviceId: '',
 	sampleRate: DEFAULT_SAMPLE_RATE,
-	recordingChannels: CHANNEL_MODE_SOURCE,
+	recordingChannels: ChannelMode.Source,
 	bitrate: DEFAULT_BITRATE,
 	includeSystemAudio: false,
 	enableMultiTrack: false,
@@ -846,7 +839,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	debug: false,
 	insertAtOriginalPosition: false,
 	deleteSourceAfterConversion: false,
-	conversionLinkAction: 'replace',
+	conversionLinkAction: ConversionLinkAction.Replace,
 	autoSplitEnabled: false,
 	splitChunkMinutes: DEFAULT_SPLIT_CHUNK_MINUTES,
 	splitPartSuffix: DEFAULT_SPLIT_PART_SUFFIX,
@@ -891,8 +884,8 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	localWhisperModelPath: '',
 	localWhisperExtraArgs: '',
 	localWhisperTimeoutMinutes: DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
-	transcriptDestination: 'note',
-	transcriptFileFormat: 'json',
+	transcriptDestination: TranscriptDestination.Note,
+	transcriptFileFormat: TranscriptFileFormat.Json,
 	transcriptIncludeTimestamps: true,
 	transcriptTimestampLinks: true,
 	transcriptIncludeSpeakers: true,
@@ -902,15 +895,15 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptLineFormat: '{timestamp} {speaker} {text}',
 	transcriptHeading: '## Transcript',
 	llmPostProcessEnabled: false,
-	llmPostProcessTask: 'cleanup',
+	llmPostProcessTask: LlmTask.Cleanup,
 	llmTranslateTargetLanguage: '',
 	profiles: seededProfiles(),
 	selectedProfileIds: {
 		...noSelectedProfiles(),
-		chapterPrompt: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
-		llmCleanup: DEFAULT_LLM_CLEANUP_PROFILE_ID,
-		llmSummary: DEFAULT_LLM_SUMMARY_PROFILE_ID,
-		llmCustom: DEFAULT_LLM_CUSTOM_PROFILE_ID,
+		[ProfileKindId.ChapterPrompt]: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
+		[ProfileKindId.LlmCleanup]: DEFAULT_LLM_CLEANUP_PROFILE_ID,
+		[ProfileKindId.LlmSummary]: DEFAULT_LLM_SUMMARY_PROFILE_ID,
+		[ProfileKindId.LlmCustom]: DEFAULT_LLM_CUSTOM_PROFILE_ID,
 	},
 	llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	chaptersLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,

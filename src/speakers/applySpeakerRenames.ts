@@ -18,7 +18,7 @@ import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { audioTimecodeRefs } from '../obsidian/timecodeRefs';
 import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
-import type { TranscriptFileFormat } from '../transcription/TranscriptTypes';
+import { TranscriptFileFormat } from '../transcription/TranscriptTypes';
 import type { SpeakerRename } from './speakerRename';
 import {
 	noteShowsAnySpeaker,
@@ -92,12 +92,12 @@ function rewriteSidecar(
 	renames: readonly SpeakerRename[],
 ): string {
 	switch (format) {
-		case 'json':
+		case TranscriptFileFormat.Json:
 			return renameSpeakersInTranscriptJson(content, renames) ?? content;
-		case 'srt':
-		case 'vtt':
+		case TranscriptFileFormat.Srt:
+		case TranscriptFileFormat.Vtt:
 			return renameSpeakersInSubtitles(content, renames);
-		case 'txt':
+		case TranscriptFileFormat.Txt:
 			return renameSpeakersInPlainText(content, renames);
 		default: {
 			const exhaustive: never = format;

@@ -7,7 +7,7 @@
  */
 
 import { CHUNK_TIMESLICE_MS } from '../constants';
-import { CHANNEL_MODE_SOURCE, type ChannelMode } from '../audio/downmix';
+import { ChannelMode } from '../audio/downmix';
 import { PcmStreamRecorder } from './PcmStreamRecorder';
 
 /** Configuration for a batch of MediaRecorders. */
@@ -100,7 +100,7 @@ export function createPcmRecorders(
 				(data: ArrayBuffer) => {
 					onChunk(index, data);
 				},
-				channelModes[index] ?? CHANNEL_MODE_SOURCE,
+				channelModes[index] ?? ChannelMode.Source,
 			),
 	);
 }

@@ -27,18 +27,17 @@ export type {
 export {
 	buildCostEstimate,
 	costEstimateNeedsDuration,
+	CostEstimateUnpricedReason,
 	estimateStepCost,
 	formatUsd,
 	runCostToRecord,
+	RunCostStepId,
 } from './costs';
-export type { CostEstimate, CostEstimateLine, RunCostStepId } from './costs';
+export type { CostEstimate, CostEstimateLine } from './costs';
 export { advancedTwoPassWillRun } from './advanced/advancedBias';
 export { SessionCostTracker } from './SessionCostTracker';
-export type {
-	TranscriptDestination,
-	TranscriptFileFormat,
-} from './TranscriptTypes';
-export type { LlmTask } from './llmPostProcess';
+export { TranscriptDestination, TranscriptFileFormat } from './TranscriptTypes';
+export { LlmTask } from './llmPostProcess';
 export type { Transcript } from './TranscriptTypes';
 /**
  * The LLM vendor registry, re-exported for the dialogs that let the user pick
@@ -50,7 +49,8 @@ export {
 	LLM_JOBS,
 	LLM_VENDOR_IDS,
 	LLM_VENDORS,
+	LlmJobId,
 	jobLlmVendor,
 	jobVendorId,
 } from './llm/vendors';
-export type { LlmJobId, LlmVendorDescriptor } from './llm/vendors';
+export type { LlmVendorDescriptor } from './llm/vendors';

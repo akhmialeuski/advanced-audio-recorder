@@ -11,7 +11,7 @@ import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import {
 	createProfile,
 	freeProfileName,
-	PROFILE_KIND_IDS,
+	ProfileKindId,
 	NEW_PROFILE_NAME,
 } from 'src/settings/profiles';
 
@@ -87,7 +87,7 @@ describe('the profile kinds together', () => {
 		// A kind the model knows but the settings never describe is a stored
 		// profile with no editor; the reverse is a catalogue over nothing.
 		expect(PROFILE_KINDS.map((kind) => kind.id).sort()).toEqual(
-			[...PROFILE_KIND_IDS].sort(),
+			Object.values(ProfileKindId).sort(),
 		);
 	});
 

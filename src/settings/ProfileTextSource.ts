@@ -16,14 +16,37 @@ import type { AudioRecorderSettings } from './settingsSchema';
 import { selectedProfile, type Profile, type ProfileKindId } from './profiles';
 import { PROFILE_KINDS } from './profileKinds';
 
-/** Where a profile's text can be chosen to come from. */
-export type ProfileTextChoice = 'typed' | 'note';
+/**
+ * Where a profile's text can be chosen to come from. The chosen value is not
+ * stored as such: a bound note path is what a note-backed profile holds. The
+ * keys are declared in the order the Source row offers them, which is the
+ * order {@link ProfileTextSource.CHOICES} repeats.
+ */
+export const ProfileTextChoice = {
+	/** The text typed on the profile's own page. */
+	Typed: 'typed',
+	/** The text of a note in the vault, read on every run. */
+	Note: 'note',
+} as const;
+
+/** One text source a page offers (derived from {@link ProfileTextChoice}). */
+export type ProfileTextChoice =
+	(typeof ProfileTextChoice)[keyof typeof ProfileTextChoice];
 
 /**
  * The states that leave a note-backed profile on the text last read from its
- * note: the note is gone from the vault, or it is there and could not be read.
+ * note. The keys are declared in the order a notice names them, which is the
+ * order `Object.values` hands them back in.
  */
-type LostNoteOrigin = 'missingNote' | 'unreadNote';
+const LostNoteOrigin = {
+	/** The note is gone from the vault. */
+	MissingNote: 'missingNote',
+	/** The note is there and could not be read. */
+	UnreadNote: 'unreadNote',
+} as const;
+
+/** One lost-note state (derived from {@link LostNoteOrigin}). */
+type LostNoteOrigin = (typeof LostNoteOrigin)[keyof typeof LostNoteOrigin];
 
 /**
  * Where the text a profile applies comes from now. A lost note is a state a
@@ -46,10 +69,10 @@ export interface TypedTextQuestion {
 
 /** How a catalogue entry names each origin, worded to follow another part. */
 const ORIGIN_SUMMARY: Record<ProfileTextOrigin, string> = {
-	typed: 'typed text',
-	note: 'note',
-	missingNote: 'note missing',
-	unreadNote: 'note unreadable',
+	[ProfileTextChoice.Typed]: 'typed text',
+	[ProfileTextChoice.Note]: 'note',
+	[LostNoteOrigin.MissingNote]: 'note missing',
+	[LostNoteOrigin.UnreadNote]: 'note unreadable',
 };
 
 /** What a line or a notice says became of a lost note, for one and for several. */
@@ -57,22 +80,19 @@ const LOST_NOTE_STATE: Record<
 	LostNoteOrigin,
 	{ readonly one: string; readonly many: string }
 > = {
-	missingNote: { one: 'is missing', many: 'are missing' },
-	unreadNote: { one: 'could not be read', many: 'could not be read' },
+	[LostNoteOrigin.MissingNote]: { one: 'is missing', many: 'are missing' },
+	[LostNoteOrigin.UnreadNote]: {
+		one: 'could not be read',
+		many: 'could not be read',
+	},
 };
-
-/** Every lost-note state, in the order a notice names them. */
-const LOST_NOTE_ORIGINS: readonly LostNoteOrigin[] = [
-	'missingNote',
-	'unreadNote',
-];
 
 /** Says where the text of a profile comes from, in one wording for all. */
 export class ProfileTextSource {
 	/** The label of each choice, as the Source row offers it. */
 	static readonly CHOICES: Readonly<Record<ProfileTextChoice, string>> = {
-		typed: 'Typed text',
-		note: 'Note',
+		[ProfileTextChoice.Typed]: 'Typed text',
+		[ProfileTextChoice.Note]: 'Note',
 	};
 
 	/**
@@ -133,12 +153,14 @@ export class ProfileTextSource {
 	 */
 	origin(profile: Profile): ProfileTextOrigin {
 		if (profile.sourcePath === undefined) {
-			return 'typed';
+			return ProfileTextChoice.Typed;
 		}
 		if (this.note(profile) === null) {
-			return 'missingNote';
+			return LostNoteOrigin.MissingNote;
 		}
-		return this.unread.has(profile.id) ? 'unreadNote' : 'note';
+		return this.unread.has(profile.id)
+			? LostNoteOrigin.UnreadNote
+			: ProfileTextChoice.Note;
 	}
 
 	/**
@@ -150,8 +172,8 @@ export class ProfileTextSource {
 	choice(profile: Profile): ProfileTextChoice {
 		return profile.sourcePath !== undefined ||
 			this.awaitingNote.has(profile.id)
-			? 'note'
-			: 'typed';
+			? ProfileTextChoice.Note
+			: ProfileTextChoice.Typed;
 	}
 
 	/**
@@ -163,7 +185,7 @@ export class ProfileTextSource {
 	 * @returns Whether stored settings changed and have to be saved
 	 */
 	choose(profile: Profile, choice: ProfileTextChoice): boolean {
-		if (choice === 'note') {
+		if (choice === ProfileTextChoice.Note) {
 			if (profile.sourcePath === undefined) {
 				this.awaitingNote.add(profile.id);
 			}
@@ -256,14 +278,14 @@ export class ProfileTextSource {
 		const path = profile.sourcePath ?? '';
 		const origin = this.origin(profile);
 		switch (origin) {
-			case 'typed':
+			case ProfileTextChoice.Typed:
 				return this.awaitingNote.has(profile.id)
 					? 'No note picked yet. Uses the text typed in the settings.'
 					: 'Uses the text typed in the settings.';
-			case 'note':
+			case ProfileTextChoice.Note:
 				return `Uses the text of ${path}.`;
-			case 'missingNote':
-			case 'unreadNote':
+			case LostNoteOrigin.MissingNote:
+			case LostNoteOrigin.UnreadNote:
 				return `Uses the text last read from ${path}, which ${LOST_NOTE_STATE[origin].one}.`;
 		}
 	}
@@ -310,7 +332,7 @@ export class ProfileTextSource {
 	 * @returns The clause, without closing punctuation
 	 */
 	missingNote(name: string, path: string): string {
-		return this.lostNote(name, path, 'missingNote');
+		return this.lostNote(name, path, LostNoteOrigin.MissingNote);
 	}
 
 	/**
@@ -331,7 +353,7 @@ export class ProfileTextSource {
 		settings: AudioRecorderSettings,
 		kinds: readonly ProfileKindId[],
 	): string | null {
-		const sentences = LOST_NOTE_ORIGINS.flatMap((origin) => {
+		const sentences = Object.values(LostNoteOrigin).flatMap((origin) => {
 			const lost = kinds.flatMap((kind) => {
 				const profile = selectedProfile(settings, kind);
 				return profile?.sourcePath !== undefined &&

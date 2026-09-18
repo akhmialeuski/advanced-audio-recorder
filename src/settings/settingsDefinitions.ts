@@ -33,6 +33,7 @@ import { audioPlayerPage } from './sections/audioPlayerSection';
 import { audioProcessingPage } from './sections/audioProcessingSection';
 import { audioSplittingPage } from './sections/audioSplittingSection';
 import { autoChaptersGroup } from './sections/autoChaptersSection';
+import { ProfileSection } from './profileKinds';
 import {
 	SETTINGS_ROOT_CLASS,
 	type SettingsDefinitionContext,
@@ -143,9 +144,9 @@ export function buildSettingsDefinitions(
 					// nothing floats on the page beside the section it configures.
 					transcriptionGroup(ctx, enginesPage(ctx)),
 					transcriptOutputGroup(ctx.settings),
-					autoChaptersGroup(ctx, 'chapters'),
+					autoChaptersGroup(ctx, ProfileSection.Chapters),
 					...llmGroup(ctx),
-					transcriptionAdvancedGroup(ctx, 'advanced'),
+					transcriptionAdvancedGroup(ctx, ProfileSection.Advanced),
 				],
 			},
 			audioProcessingPage(ctx.settings),

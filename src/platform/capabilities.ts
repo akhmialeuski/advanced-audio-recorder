@@ -18,7 +18,7 @@ import {
 	MOBILE_MAX_DECODE_BYTES,
 	WAVEFORM_MAX_DECODE_BYTES,
 } from '../constants';
-import { getPlatformKind, type PlatformKind } from './platformKind';
+import { getPlatformKind, PlatformKind } from './platformKind';
 
 /**
  * Everything the plugin allows or bounds differently per platform.
@@ -127,8 +127,8 @@ const MOBILE_CAPABILITIES: PlatformCapabilities = {
 };
 
 const CAPABILITY_TABLE: Record<PlatformKind, PlatformCapabilities> = {
-	desktop: DESKTOP_CAPABILITIES,
-	mobile: MOBILE_CAPABILITIES,
+	[PlatformKind.Desktop]: DESKTOP_CAPABILITIES,
+	[PlatformKind.Mobile]: MOBILE_CAPABILITIES,
 };
 
 /**
@@ -256,7 +256,7 @@ export function tooLargeMessage(
 	action: string,
 	options: TooLargeOptions = {},
 ): string {
-	if ((options.kind ?? getPlatformKind()) === 'mobile') {
+	if ((options.kind ?? getPlatformKind()) === PlatformKind.Mobile) {
 		return (
 			`File is too large to ${action} on this device. ` +
 			'Convert or split it on desktop instead.'

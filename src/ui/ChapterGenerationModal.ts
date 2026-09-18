@@ -23,6 +23,7 @@ import {
 	type TranscriptLinesSource,
 } from '../chapters/transcriptSources';
 import {
+	ProfileKindId,
 	profilesOfKind,
 	selectedProfile,
 	selectedProfileId,
@@ -38,7 +39,7 @@ import {
 	formatUsd,
 	jobLlmVendor,
 	jobVendorId,
-	type LlmJobId,
+	LlmJobId,
 } from '../transcription/api';
 import { formatTimecode } from '../utils/TimeUtils';
 import { vendorEngine } from '../providers/providers';
@@ -48,7 +49,7 @@ import { applyEngineSettings } from '../providers/engineSettings';
  * The job this dialog configures. Named once so the engine picker, the model
  * picker, and the cost estimate below all speak about the same one.
  */
-const CHAPTERS_JOB: LlmJobId = 'autoChapters';
+const CHAPTERS_JOB: LlmJobId = LlmJobId.AutoChapters;
 
 /**
  * What the engine row says about the pickers under it.
@@ -189,15 +190,18 @@ export class ChapterGenerationModal extends PluginModal {
 	 */
 	private renderProfilePicker(): void {
 		const s = this.runSettings;
-		const profiles = profilesOfKind(s.profiles, 'chapterPrompt');
-		const current = selectedProfileId(s, 'chapterPrompt');
+		const profiles = profilesOfKind(
+			s.profiles,
+			ProfileKindId.ChapterPrompt,
+		);
+		const current = selectedProfileId(s, ProfileKindId.ChapterPrompt);
 		new Setting(this.contentEl)
 			.setName('Chapter guidance profile')
 			.setDesc(
 				new ProfileTextSource(this.app.vault).describe(
 					'Steers how this recording is divided. Add or edit profiles ' +
 						'in the plugin settings.',
-					selectedProfile(s, 'chapterPrompt'),
+					selectedProfile(s, ProfileKindId.ChapterPrompt),
 				),
 			)
 			.addDropdown((dropdown) => {
@@ -206,7 +210,7 @@ export class ChapterGenerationModal extends PluginModal {
 					dropdown.addOption(profile.id, profile.name);
 				}
 				dropdown.setValue(current).onChange((id) => {
-					setSelectedProfileId(s, 'chapterPrompt', id);
+					setSelectedProfileId(s, ProfileKindId.ChapterPrompt, id);
 					// Drawn again so the line naming the picked guidance's text
 					// follows the pick; the transcript is not read again.
 					void this.render();
@@ -262,7 +266,7 @@ export class ChapterGenerationModal extends PluginModal {
 
 	/**
 	 * Renders the up-front LLM cost estimate line, when cost estimates are
-	 * enabled. Priced through the shared 'autoChapters' step, so this dialog
+	 * enabled. Priced through the shared automatic-chapters step, so this dialog
 	 * shows exactly the number the Transcribe dialog shows for the same work;
 	 * pricing it here with the post-processing formula instead made the two
 	 * disagree by up to 4x and made this estimate move with the unrelated LLM
@@ -274,7 +278,7 @@ export class ChapterGenerationModal extends PluginModal {
 			return;
 		}
 		const line = estimateStepCost(
-			'autoChapters',
+			LlmJobId.AutoChapters,
 			this.runSettings,
 			durationSeconds,
 		);
@@ -331,8 +335,8 @@ export class ChapterGenerationModal extends PluginModal {
 		});
 		setSelectedProfileId(
 			live,
-			'chapterPrompt',
-			selectedProfileId(this.runSettings, 'chapterPrompt'),
+			ProfileKindId.ChapterPrompt,
+			selectedProfileId(this.runSettings, ProfileKindId.ChapterPrompt),
 		);
 	}
 

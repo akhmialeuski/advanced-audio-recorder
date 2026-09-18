@@ -64,7 +64,7 @@ import {
 	type TimecodeLinkBuilder,
 	type TranscriptMarkdownOptions,
 } from './transcriptFormat';
-import { buildPostProcessPrompt } from './llmPostProcess';
+import { buildPostProcessPrompt, LlmTask } from './llmPostProcess';
 import { TranscriptTranslator } from './llm/TranscriptTranslator';
 import { describeDictionaryOmission } from './dictionaryBias';
 import { planDictionaryBias } from './providers/engines';
@@ -86,12 +86,12 @@ import {
 	resolveLlmPrompt,
 	resolveRunParticipants,
 } from '../settings/profileResolution';
-import { selectedProfileId } from '../settings/profiles';
+import { ProfileKindId, selectedProfileId } from '../settings/profiles';
 import { ProfileTextSource } from '../settings/ProfileTextSource';
 import { readProfileNotes } from '../settings/ProfileNoteStore';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { vendorMaxTokens } from '../providers/providers';
-import { jobVendorId } from './llm/vendors';
+import { jobVendorId, LlmJobId } from './llm/vendors';
 import {
 	effectiveDiarize,
 	effectiveLanguage,
@@ -520,8 +520,10 @@ export class TranscriptionService {
 			this.app.vault,
 			unread,
 		).lostNotesNotice(settings, [
-			...(dictionaryTerms.length > 0 ? (['dictionary'] as const) : []),
-			...(diarize ? (['participants'] as const) : []),
+			...(dictionaryTerms.length > 0
+				? ([ProfileKindId.Dictionary] as const)
+				: []),
+			...(diarize ? ([ProfileKindId.Participants] as const) : []),
 			...(postProcessing
 				? [PROMPT_KIND_OF_TASK[settings.llmPostProcessTask]]
 				: []),
@@ -736,7 +738,10 @@ export class TranscriptionService {
 					// this meeting's people without the user re-picking a profile.
 					{
 						names: resolveRunParticipants(settings),
-						profileId: selectedProfileId(settings, 'participants'),
+						profileId: selectedProfileId(
+							settings,
+							ProfileKindId.Participants,
+						),
 					},
 					!isRestrictedRun(options.onlyRanges),
 				)
@@ -761,7 +766,8 @@ export class TranscriptionService {
 		let translation: TranscriptTranslation | undefined;
 		if (postProcessing) {
 			this.throwIfCancelled(token);
-			const translating = settings.llmPostProcessTask === 'translate';
+			const translating =
+				settings.llmPostProcessTask === LlmTask.Translate;
 			options.onProgress?.(
 				TRANSCRIBE_CHUNK_PROGRESS_CEILING,
 				translating
@@ -836,7 +842,7 @@ export class TranscriptionService {
 		token: CancellationToken,
 		render: (source: Transcript) => string,
 	): Promise<TranscriptTranslation> {
-		const vendorId = jobVendorId(settings, 'postProcess');
+		const vendorId = jobVendorId(settings, LlmJobId.PostProcess);
 		const { transcript: translated, language } =
 			await new TranscriptTranslator({
 				transcript,
@@ -1272,18 +1278,18 @@ export class TranscriptionService {
 		markdown: string,
 		token: CancellationToken,
 	): Promise<string> {
-		const vendorId = jobVendorId(settings, 'postProcess');
+		const vendorId = jobVendorId(settings, LlmJobId.PostProcess);
 		const llm = this.createLlm(settings, vendorId);
 		const prompt = buildPostProcessPrompt(
-			settings.llmPostProcessTask === 'summary'
+			settings.llmPostProcessTask === LlmTask.Summary
 				? plainText(transcript)
 				: markdown,
 			{
 				task: settings.llmPostProcessTask,
 				language: transcript.language,
-				cleanupPrompt: resolveLlmPrompt(settings, 'cleanup'),
-				summaryPrompt: resolveLlmPrompt(settings, 'summary'),
-				customInstruction: resolveLlmPrompt(settings, 'custom'),
+				cleanupPrompt: resolveLlmPrompt(settings, LlmTask.Cleanup),
+				summaryPrompt: resolveLlmPrompt(settings, LlmTask.Summary),
+				customInstruction: resolveLlmPrompt(settings, LlmTask.Custom),
 				// The user's Dictionary terms give the cleanup pass the canonical
 				// spellings, so even a single-pass run corrects garbled names and
 				// acronyms.
@@ -1291,7 +1297,7 @@ export class TranscriptionService {
 			},
 		);
 		const output = await runLlmStep({
-			step: 'postProcess',
+			step: LlmJobId.PostProcess,
 			llm,
 			prompt,
 			maxTokens: vendorMaxTokens(settings, vendorId),
@@ -1305,7 +1311,7 @@ export class TranscriptionService {
 		if (!output) {
 			return markdown;
 		}
-		if (settings.llmPostProcessTask === 'summary') {
+		if (settings.llmPostProcessTask === LlmTask.Summary) {
 			return `### Summary\n\n${output}\n\n### Transcript\n\n${markdown}`;
 		}
 		return output;

@@ -22,6 +22,7 @@ import { CONVERSION_LINK_ACTION_OPTIONS, type LabeledOption } from './labels';
 import {
 	closestBitrate,
 	effectiveBitrate,
+	EncoderVerdict,
 	getSupportedBitrates,
 	kilohertz,
 	resolveBitrateOffer,
@@ -450,13 +451,13 @@ export function bitrateOfferNote(
 		return range;
 	}
 	switch (offer.encoder) {
-		case 'unavailable':
+		case EncoderVerdict.Unavailable:
 			return `${range} There is no encoder on this device to confirm them.`;
-		case 'refused':
+		case EncoderVerdict.Refused:
 			return `${range} The encoder on this device cannot write ${codec} at ${kilohertz(
 				sampleRate,
 			)} kHz. ${LOW_RATES_ELSEWHERE}`;
-		case 'confirmed': {
+		case EncoderVerdict.Confirmed: {
 			const declared = getSupportedBitrates(format, sampleRate);
 			if (declared.length === bitrates.length) {
 				return `${range} The encoder on this device accepts all of them.`;
@@ -521,7 +522,7 @@ async function narrowToOfferedBitrates(
 	// back the codec's own range, which is already on offer, so re-rendering
 	// it would move the selection on the strength of an answer that measured
 	// nothing.
-	if (offer.encoder !== 'confirmed') {
+	if (offer.encoder !== EncoderVerdict.Confirmed) {
 		return { bitrate: selected, moved: false, note };
 	}
 	const settled = closestBitrate(offer.bitrates, selected);

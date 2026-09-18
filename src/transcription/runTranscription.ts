@@ -8,6 +8,7 @@
 
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { TranscriptDestination } from './TranscriptTypes';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type {
 	FileOutput,
@@ -107,11 +108,13 @@ export async function transcribeFile(
 
 	const destination = settings.transcriptDestination;
 	const wantsFile =
-		destination === 'file' ||
-		destination === 'both' ||
-		destination === 'link';
-	const wantsNote = destination === 'note' || destination === 'both';
-	const wantsLink = destination === 'link';
+		destination === TranscriptDestination.File ||
+		destination === TranscriptDestination.Both ||
+		destination === TranscriptDestination.Link;
+	const wantsNote =
+		destination === TranscriptDestination.Note ||
+		destination === TranscriptDestination.Both;
+	const wantsLink = destination === TranscriptDestination.Link;
 
 	let transcriptFile: TFile | null = null;
 	if (wantsFile) {

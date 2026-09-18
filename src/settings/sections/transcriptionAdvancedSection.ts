@@ -9,7 +9,7 @@ import {
 	MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
 } from '../../constants';
 import { LLM_JOBS } from '../../transcription/llm/vendors';
-import type { ProfileSection } from '../profileKinds';
+import { ProfileSection } from '../profileKinds';
 import {
 	SETTINGS_SECTION_CLASS,
 	type SettingsDefinitionContext,

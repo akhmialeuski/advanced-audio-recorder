@@ -26,16 +26,28 @@ const QUEUE_VERSION = 1;
 /** Debounce window for writing the queue file after a change. */
 const SAVE_DEBOUNCE_MS = 500;
 
-/** What one queued recording is doing. */
-export const QUEUE_ENTRY_STATES = [
-	'waiting',
-	'running',
-	'done',
-	'failed',
-] as const;
+/**
+ * What one queued recording is doing.
+ *
+ * Written to the queue file, so a value is renamed only with a migration. The
+ * keys are declared in the order a run moves an entry through them, which
+ * nothing reads: the only list of them is the membership check in
+ * {@link isValidQueue}.
+ */
+export const QueueEntryState = {
+	/** Queued and not started. */
+	Waiting: 'waiting',
+	/** Being transcribed right now. */
+	Running: 'running',
+	/** Transcribed. */
+	Done: 'done',
+	/** The run ended in an error, which the entry carries. */
+	Failed: 'failed',
+} as const;
 
-/** The state of one queued recording. */
-export type QueueEntryState = (typeof QUEUE_ENTRY_STATES)[number];
+/** The state of one queued recording (derived from {@link QueueEntryState}). */
+export type QueueEntryState =
+	(typeof QueueEntryState)[keyof typeof QueueEntryState];
 
 /** One recording in the queue. */
 export interface QueueEntry {
@@ -79,6 +91,7 @@ function isValidQueue(value: unknown): value is QueueFileShape {
 	) {
 		return false;
 	}
+	const states: readonly string[] = Object.values(QueueEntryState);
 	return candidate.entries.every((entry: unknown) => {
 		if (typeof entry !== 'object' || entry === null) {
 			return false;
@@ -87,7 +100,7 @@ function isValidQueue(value: unknown): value is QueueFileShape {
 		return (
 			typeof item.path === 'string' &&
 			typeof item.state === 'string' &&
-			(QUEUE_ENTRY_STATES as readonly string[]).includes(item.state)
+			states.includes(item.state)
 		);
 	});
 }
@@ -231,8 +244,9 @@ export class TranscriptionQueue {
 			return null;
 		}
 		return (
-			this.state.entries.find((entry) => entry.state === 'waiting') ??
-			null
+			this.state.entries.find(
+				(entry) => entry.state === QueueEntryState.Waiting,
+			) ?? null
 		);
 	}
 
@@ -247,7 +261,9 @@ export class TranscriptionQueue {
 	 */
 	pendingCount(): number {
 		return this.state.entries.filter(
-			(entry) => entry.state === 'waiting' || entry.state === 'running',
+			(entry) =>
+				entry.state === QueueEntryState.Waiting ||
+				entry.state === QueueEntryState.Running,
 		).length;
 	}
 
@@ -271,7 +287,12 @@ export class TranscriptionQueue {
 		const before = this.state.entries.length;
 		this.state.entries = uniqueByPath([
 			...this.state.entries,
-			...paths.map((path): QueueEntry => ({ path, state: 'waiting' })),
+			...paths.map(
+				(path): QueueEntry => ({
+					path,
+					state: QueueEntryState.Waiting,
+				}),
+			),
 		]);
 		this.changed();
 		return this.state.entries.length - before;
@@ -316,7 +337,8 @@ export class TranscriptionQueue {
 	 */
 	remove(path: string): boolean {
 		const index = this.state.entries.findIndex(
-			(entry) => entry.path === path && entry.state !== 'running',
+			(entry) =>
+				entry.path === path && entry.state !== QueueEntryState.Running,
 		);
 		if (index < 0) {
 			return false;
@@ -329,7 +351,7 @@ export class TranscriptionQueue {
 	/** Empties the queue, leaving anything currently running in place. */
 	clear(): void {
 		this.state.entries = this.state.entries.filter(
-			(entry) => entry.state === 'running',
+			(entry) => entry.state === QueueEntryState.Running,
 		);
 		this.changed();
 	}
@@ -342,8 +364,8 @@ export class TranscriptionQueue {
 	requeueInterrupted(): void {
 		let changed = false;
 		for (const entry of this.state.entries) {
-			if (entry.state === 'running') {
-				entry.state = 'waiting';
+			if (entry.state === QueueEntryState.Running) {
+				entry.state = QueueEntryState.Waiting;
 				changed = true;
 			}
 		}

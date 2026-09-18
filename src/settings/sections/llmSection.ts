@@ -5,11 +5,13 @@
 
 import { LLM_JOBS } from '../../transcription/llm/vendors';
 import { LLM_TASK_LABELS } from '../labels';
+import { LlmTask } from '../../transcription/llmPostProcess';
 import {
 	SETTINGS_SECTION_CLASS,
 	type SettingsDefinitionContext,
 } from './context';
 import { profileCatalogues } from './profilesSection';
+import { ProfileSection } from '../profileKinds';
 import { engineChoiceRow } from './rowHelpers';
 import type { SettingDefinitionItem } from 'obsidian';
 
@@ -66,7 +68,7 @@ export function llmGroup(
 					desc: 'Language the translation is written in. Leave empty for English. The original transcript is kept alongside it.',
 					visible: (): boolean =>
 						postProcessing() &&
-						settings.llmPostProcessTask === 'translate',
+						settings.llmPostProcessTask === LlmTask.Translate,
 					control: {
 						type: 'text',
 						key: 'llmTranslateTargetLanguage',
@@ -75,7 +77,7 @@ export function llmGroup(
 				},
 				// The prompt profiles of whichever task is selected: each kind
 				// answers the task itself, so this is one entry, not a branch.
-				...profileCatalogues(ctx, 'llm'),
+				...profileCatalogues(ctx, ProfileSection.Llm),
 			],
 		},
 	];

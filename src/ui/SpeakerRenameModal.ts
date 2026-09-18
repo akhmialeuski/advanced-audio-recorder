@@ -34,6 +34,7 @@ import {
 	effectiveProfileId,
 	findProfile,
 	profileNameRejection,
+	ProfileKindId,
 	profilesOfKind,
 } from '../settings/profiles';
 import {
@@ -180,7 +181,7 @@ export class SpeakerRenameModal extends PluginModal {
 		this.rosterNotes = await readProfileNotes(
 			this.app,
 			settings,
-			profilesOfKind(settings.profiles, 'participants').map(
+			profilesOfKind(settings.profiles, ProfileKindId.Participants).map(
 				(profile) => profile.id,
 			),
 		);
@@ -219,7 +220,7 @@ export class SpeakerRenameModal extends PluginModal {
 		// of that meeting are suggested without the user picking anything. A
 		// profile deleted since resolves to the recording's own roster.
 		this.selectedProfileId = effectiveProfileId(
-			profilesOfKind(settings.profiles, 'participants'),
+			profilesOfKind(settings.profiles, ProfileKindId.Participants),
 			section.participantProfileId ?? '',
 		);
 		this.renderProfilePicker(settings, section);
@@ -395,7 +396,7 @@ export class SpeakerRenameModal extends PluginModal {
 				dropdown.addOption(RECORDING_ROSTER_OPTION, 'This recording');
 				for (const profile of profilesOfKind(
 					settings.profiles,
-					'participants',
+					ProfileKindId.Participants,
 				)) {
 					dropdown.addOption(profile.id, profile.name);
 				}
@@ -419,7 +420,7 @@ export class SpeakerRenameModal extends PluginModal {
 					findProfile(
 						profilesOfKind(
 							this.options.getSettings().profiles,
-							'participants',
+							ProfileKindId.Participants,
 						),
 						this.selectedProfileId,
 					),
@@ -466,7 +467,7 @@ export class SpeakerRenameModal extends PluginModal {
 		// name than one created there.
 		const rejection = profileNameRejection(
 			settings.profiles,
-			'participants',
+			ProfileKindId.Participants,
 			'',
 			name,
 		);
@@ -478,7 +479,7 @@ export class SpeakerRenameModal extends PluginModal {
 			}
 			return;
 		}
-		const created = createProfile('participants', name);
+		const created = createProfile(ProfileKindId.Participants, name);
 		settings.profiles = addProfile(settings.profiles, created);
 		await this.options.saveSettings();
 		this.selectedProfileId = created.id;
@@ -742,7 +743,7 @@ export class SpeakerRenameModal extends PluginModal {
 			// text last read from there, so a name added to the body alone
 			// would be gone with the next read.
 			if (
-				target.kind === 'participants' &&
+				target.kind === ProfileKindId.Participants &&
 				target.sourcePath !== undefined
 			) {
 				const profileText = new ProfileTextSource(this.app.vault);

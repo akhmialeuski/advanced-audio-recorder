@@ -20,16 +20,12 @@ import type {
 import { autoChaptersAfterTranscribe } from '../settings/settingsSchema';
 import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import {
+	AdvancedBiasChannel,
 	advancedBiasChannel,
 	advancedTwoPassWillRun,
 } from './advanced/advancedBias';
 import { LLM_TASK_LABELS } from '../settings/labels';
-import {
-	jobLlmVendor,
-	jobVendorId,
-	llmVendor,
-	type LlmJobId,
-} from './llm/vendors';
+import { jobLlmVendor, jobVendorId, llmVendor, LlmJobId } from './llm/vendors';
 import { vendorMaxTokens } from '../providers/providers';
 import {
 	matchRate,
@@ -39,7 +35,7 @@ import {
 } from './providers/engines';
 
 export type { EnginePricing } from './providers/engines';
-import type { LlmTask } from './llmPostProcess';
+import { LlmTask } from './llmPostProcess';
 import type { TranscriptionUsage } from './TranscriptTypes';
 import type { LlmUsage } from './llm/llmResponse';
 
@@ -63,12 +59,12 @@ const ESTIMATED_OUTPUT_TOKENS_PER_SECOND = 8;
  * input, whereas a summary is much shorter.
  */
 const LLM_OUTPUT_RATIO: Record<LlmTask, number> = {
-	cleanup: 1,
-	summary: 0.25,
-	custom: 1,
+	[LlmTask.Cleanup]: 1,
+	[LlmTask.Summary]: 0.25,
+	[LlmTask.Custom]: 1,
 	// A translation is about as long as what it translates, so the pass is
 	// sized like a cleanup rather than like a summary.
-	translate: 1,
+	[LlmTask.Translate]: 1,
 };
 
 /**
@@ -373,7 +369,16 @@ export function formatUsd(usd: number): string {
 }
 
 /** Why a cost-estimate line could not be priced. */
-export type CostEstimateUnpricedReason = 'no-rate' | 'no-duration';
+export const CostEstimateUnpricedReason = {
+	/** No built-in rate is known for the model the step would call. */
+	NoRate: 'no-rate',
+	/** The audio duration the rate applies to is not known yet. */
+	NoDuration: 'no-duration',
+} as const;
+
+/** One unpriced reason (derived from {@link CostEstimateUnpricedReason}). */
+export type CostEstimateUnpricedReason =
+	(typeof CostEstimateUnpricedReason)[keyof typeof CostEstimateUnpricedReason];
 
 /** One line of the pre-run cost estimate (a transcription pass or an LLM step). */
 export interface CostEstimateLine {
@@ -415,8 +420,19 @@ export interface CostEstimate {
  * the pre-run breakdown, a single-purpose dialog, the post-run accounting -
  * names the step it means and goes through {@link estimateStepCost}, so one
  * step can never be priced by two different formulas.
+ *
+ * Every LLM job is such a step, so the set is the transcription itself plus
+ * {@link LlmJobId}. The order a breakdown lists them in is
+ * {@link RUN_COST_STEP_ORDER}, not the order declared here.
  */
-export type RunCostStepId = 'transcription' | LlmJobId;
+export const RunCostStepId = {
+	/** Turning the audio into a transcript, which every run does. */
+	Transcription: 'transcription',
+	...LlmJobId,
+} as const;
+
+/** One billable step (derived from {@link RunCostStepId}). */
+export type RunCostStepId = (typeof RunCostStepId)[keyof typeof RunCostStepId];
 
 /**
  * How many times the engine decodes the audio for a run. The advanced
@@ -455,10 +471,18 @@ function transcriptionEstimateLine(
 		return { ...base, pricingUrl: undefined, usd: 0, free: true };
 	}
 	if (!pricing) {
-		return { ...base, usd: null, reason: 'no-rate' };
+		return {
+			...base,
+			usd: null,
+			reason: CostEstimateUnpricedReason.NoRate,
+		};
 	}
 	if (durationSeconds === null) {
-		return { ...base, usd: null, reason: 'no-duration' };
+		return {
+			...base,
+			usd: null,
+			reason: CostEstimateUnpricedReason.NoDuration,
+		};
 	}
 	const perPass = costFromUsage(
 		pricing,
@@ -495,10 +519,18 @@ function llmLine(
 	};
 	const pricing = resolveLlmPricing(vendor.id, model);
 	if (!pricing) {
-		return { ...base, usd: null, reason: 'no-rate' };
+		return {
+			...base,
+			usd: null,
+			reason: CostEstimateUnpricedReason.NoRate,
+		};
 	}
 	if (durationSeconds === null) {
-		return { ...base, usd: null, reason: 'no-duration' };
+		return {
+			...base,
+			usd: null,
+			reason: CostEstimateUnpricedReason.NoDuration,
+		};
 	}
 	return { ...base, usd: costFromUsage(pricing, usage(durationSeconds)) };
 }
@@ -544,7 +576,7 @@ interface RunCostStep {
  * identically everywhere - no consumer carries its own formula.
  */
 const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
-	transcription: {
+	[RunCostStepId.Transcription]: {
 		line: transcriptionEstimateLine,
 		// The audio is always transcribed; only the pass count varies.
 		enabled: () => true,
@@ -554,49 +586,49 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 			return pricing !== null && pricing.kind !== 'free';
 		},
 	},
-	contextAgents: {
+	[RunCostStepId.ContextAgents]: {
 		line: (settings, durationSeconds) => {
 			// A keyword-biased engine skips the topic and sentence agents, so it
 			// runs fewer calls than a prompt-biased one; price what will run.
 			const callCount =
 				advancedBiasChannel(settings.transcriptionProvider) ===
-				'keyterm'
+				AdvancedBiasChannel.Keyterm
 					? CONTEXT_AGENT_CALL_ESTIMATE_KEYTERM
 					: CONTEXT_AGENT_CALL_ESTIMATE_PROMPT;
 			return llmLine(
 				settings,
-				'contextAgents',
+				LlmJobId.ContextAgents,
 				durationSeconds,
 				CONTEXT_AGENTS_ESTIMATE_LABEL,
 				(seconds) => estimatedContextAgentsUsage(seconds, callCount),
 			);
 		},
 		enabled: advancedTwoPassWillRun,
-		needsDuration: llmStepIsPriced('contextAgents'),
+		needsDuration: llmStepIsPriced(LlmJobId.ContextAgents),
 	},
-	postProcess: {
+	[RunCostStepId.PostProcess]: {
 		line: (settings, durationSeconds) =>
 			llmLine(
 				settings,
-				'postProcess',
+				LlmJobId.PostProcess,
 				durationSeconds,
 				`Post-processing (${LLM_TASK_LABELS[settings.llmPostProcessTask]})`,
 				(seconds) =>
 					estimatedTranscriptPassUsage(
 						settings,
 						seconds,
-						'postProcess',
+						LlmJobId.PostProcess,
 						LLM_OUTPUT_RATIO[settings.llmPostProcessTask] ?? 1,
 					),
 			),
 		enabled: (settings) => settings.llmPostProcessEnabled,
-		needsDuration: llmStepIsPriced('postProcess'),
+		needsDuration: llmStepIsPriced(LlmJobId.PostProcess),
 	},
-	autoChapters: {
+	[RunCostStepId.AutoChapters]: {
 		line: (settings, durationSeconds) =>
 			llmLine(
 				settings,
-				'autoChapters',
+				LlmJobId.AutoChapters,
 				durationSeconds,
 				'Auto chapters',
 				(seconds) =>
@@ -606,21 +638,21 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 						// Bounded by the engine chapters name, which is what the
 						// run is actually bounded by; pricing it against another
 						// engine's ceiling made the estimate and the run disagree.
-						'autoChapters',
+						LlmJobId.AutoChapters,
 						CHAPTERS_OUTPUT_TOKEN_RATIO,
 					),
 			),
 		enabled: autoChaptersAfterTranscribe,
-		needsDuration: llmStepIsPriced('autoChapters'),
+		needsDuration: llmStepIsPriced(LlmJobId.AutoChapters),
 	},
 };
 
 /** The steps in execution order, independent of which are enabled. */
 const RUN_COST_STEP_ORDER: readonly RunCostStepId[] = [
-	'transcription',
-	'contextAgents',
-	'postProcess',
-	'autoChapters',
+	RunCostStepId.Transcription,
+	RunCostStepId.ContextAgents,
+	RunCostStepId.PostProcess,
+	RunCostStepId.AutoChapters,
 ];
 
 /**
@@ -677,7 +709,11 @@ export function runCostToRecord(
 	return {
 		usd:
 			cost.usd ??
-			estimateStepCost('transcription', settings, durationSeconds).usd,
+			estimateStepCost(
+				RunCostStepId.Transcription,
+				settings,
+				durationSeconds,
+			).usd,
 		estimated: cost.usd === null,
 	};
 }
@@ -705,10 +741,10 @@ export function estimateLlmCallCost(
 	settings: AudioRecorderSettings,
 	durationSeconds: number | null,
 ): number | null {
-	if (step === 'contextAgents') {
+	if (step === RunCostStepId.ContextAgents) {
 		return llmLine(
 			settings,
-			'contextAgents',
+			LlmJobId.ContextAgents,
 			durationSeconds,
 			CONTEXT_AGENTS_ESTIMATE_LABEL,
 			(seconds) => estimatedContextAgentsUsage(seconds, 1),

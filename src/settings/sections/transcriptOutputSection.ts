@@ -10,6 +10,7 @@ import {
 } from '../labels';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import { SETTINGS_SECTION_CLASS } from './context';
+import { TranscriptDestination } from '../../transcription/TranscriptTypes';
 import type { SettingDefinition, SettingDefinitionItem } from 'obsidian';
 
 /**
@@ -63,7 +64,8 @@ export function transcriptOutputGroup(
 				name: 'File format',
 				desc: 'Format for the transcript sidecar file.',
 				visible: (): boolean =>
-					settings.transcriptDestination !== 'note',
+					settings.transcriptDestination !==
+					TranscriptDestination.Note,
 				control: {
 					type: 'dropdown',
 					key: 'transcriptFileFormat',

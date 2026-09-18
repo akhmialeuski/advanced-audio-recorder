@@ -17,9 +17,8 @@ import { audioTimecodeRefs } from '../obsidian/timecodeRefs';
 import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import { buildTranscriptFilePath } from '../transcription/transcriptOutput';
 import {
-	TRANSCRIPT_FILE_FORMATS,
 	type Transcript,
-	type TranscriptFileFormat,
+	TranscriptFileFormat,
 } from '../transcription/TranscriptTypes';
 import { isAudioFile } from '../utils/audioFile';
 import { directoryOf } from '../utils/paths';
@@ -82,7 +81,7 @@ function findTranscriptSidecarFiles(
 		(file) => file.path !== audioFile.path && isAudioFile(file),
 	);
 	const sidecars: TranscriptSidecar[] = [];
-	for (const format of TRANSCRIPT_FILE_FORMATS) {
+	for (const format of Object.values(TranscriptFileFormat)) {
 		const canonical = buildTranscriptFilePath(audioFile.path, format);
 		const canonicalName = canonical.slice(dir ? dir.length + 1 : 0);
 		const dot = canonicalName.lastIndexOf('.');
@@ -265,12 +264,12 @@ function linesFromSidecar(
 	content: string,
 ): SidecarParse {
 	switch (format) {
-		case 'json':
+		case TranscriptFileFormat.Json:
 			return linesFromTranscriptJson(content);
-		case 'srt':
-		case 'vtt':
+		case TranscriptFileFormat.Srt:
+		case TranscriptFileFormat.Vtt:
 			return { lines: linesFromSubtitles(content) };
-		case 'txt':
+		case TranscriptFileFormat.Txt:
 			return { lines: linesFromPlainText(content) };
 		default: {
 			const exhaustive: never = format;
@@ -426,10 +425,9 @@ async function loadFromRecordedOutputs(
 	audioFile: TFile,
 	section: TranscriptSection,
 ): Promise<TranscriptLinesSource | null> {
+	const preference = Object.values(TranscriptFileFormat);
 	const byPreference = [...section.fileOutputs].sort(
-		(a, b) =>
-			TRANSCRIPT_FILE_FORMATS.indexOf(a.format) -
-			TRANSCRIPT_FILE_FORMATS.indexOf(b.format),
+		(a, b) => preference.indexOf(a.format) - preference.indexOf(b.format),
 	);
 	for (const output of byPreference) {
 		const file = app.vault.getFileByPath(output.path);

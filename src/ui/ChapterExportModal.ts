@@ -23,17 +23,29 @@ import { directoryOf } from '../utils/paths';
 import { insertTranscriptIntoNote } from '../transcription/transcriptOutput';
 import type { PlayerMarker } from '../markers/markerModel';
 
-/** The representations the markers can be written in. */
-export const CHAPTER_EXPORT_VIEWS = ['list', 'cue', 'outline'] as const;
+/**
+ * The representations the markers can be written in. Not stored: the dialog
+ * starts on the first one every time. The keys are declared in the order the
+ * dropdown offers them, which is the order {@link VIEW_LABELS} repeats.
+ */
+export const ChapterExportView = {
+	/** A timecoded list, as a video description carries one. */
+	List: 'list',
+	/** A cue sheet, as players and audio editors read one. */
+	Cue: 'cue',
+	/** A Markdown outline whose timecodes are clickable. */
+	Outline: 'outline',
+} as const;
 
-/** One representation of a recording's markers. */
-export type ChapterExportView = (typeof CHAPTER_EXPORT_VIEWS)[number];
+/** One representation (derived from {@link ChapterExportView}). */
+export type ChapterExportView =
+	(typeof ChapterExportView)[keyof typeof ChapterExportView];
 
 /** What each representation is called, and what it is for. */
 const VIEW_LABELS: Record<ChapterExportView, string> = {
-	list: 'Timecoded list (video description)',
-	cue: 'Cue sheet (players and audio editors)',
-	outline: 'Markdown outline (clickable timecodes)',
+	[ChapterExportView.List]: 'Timecoded list (video description)',
+	[ChapterExportView.Cue]: 'Cue sheet (players and audio editors)',
+	[ChapterExportView.Outline]: 'Markdown outline (clickable timecodes)',
 };
 
 /** Where the outline can go, since it is Markdown rather than a file format. */
@@ -62,7 +74,7 @@ export interface ChapterExportOptions {
  */
 export class ChapterExportModal extends PluginModal {
 	/** The representation being written. */
-	private view: ChapterExportView = 'list';
+	private view: ChapterExportView = ChapterExportView.List;
 
 	/** Where the outline goes; ignored for the two file formats. */
 	private target: OutlineTarget = 'note';
@@ -100,7 +112,9 @@ export class ChapterExportModal extends PluginModal {
 					this.view = value as ChapterExportView;
 					// The two file formats have one destination, so the
 					// question only applies to the outline.
-					targetSetting.settingEl.toggle(this.view === 'outline');
+					targetSetting.settingEl.toggle(
+						this.view === ChapterExportView.Outline,
+					);
 				});
 		});
 		targetSetting.addDropdown((dropdown) => {
@@ -133,7 +147,7 @@ export class ChapterExportModal extends PluginModal {
 	private async exportMarkers(): Promise<void> {
 		try {
 			const message =
-				this.view === 'outline'
+				this.view === ChapterExportView.Outline
 					? await this.writeOutline()
 					: await this.writeFile();
 			new Notice(message);
@@ -157,7 +171,7 @@ export class ChapterExportModal extends PluginModal {
 	 */
 	private async writeFile(): Promise<string> {
 		const base = this.options.file.path.replace(/\.[^.]+$/, '');
-		const isCue = this.view === 'cue';
+		const isCue = this.view === ChapterExportView.Cue;
 		const content = isCue
 			? formatCueSheet(this.options.markers, {
 					fileName: this.options.file.name,

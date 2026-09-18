@@ -8,7 +8,7 @@
 import { normalizeChannelMode } from '../audio/downmix';
 import { isRecord } from '../utils/objects';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
-import { getPlatformKind, type PlatformKind } from '../platform/platformKind';
+import { getPlatformKind, PlatformKind } from '../platform/platformKind';
 import { isDeviceSelectionSupported } from '../platform/capabilities';
 import { LLM_JOBS, LLM_VENDORS } from '../transcription/llm/vendors';
 import { TRANSCRIPTION_ENGINES } from '../transcription/providers/engines';
@@ -58,10 +58,9 @@ import {
 	createProfile,
 	noSelectedProfiles,
 	profilesOfKind,
+	ProfileKindId,
 	setSelectedProfileId,
-	PROFILE_KIND_IDS,
 	type Profile,
-	type ProfileKindId,
 } from './profiles';
 import {
 	formatParticipantBody,
@@ -225,10 +224,12 @@ export function normalizePerPlatformSettings(
 		trackAudioSources: raw.trackAudioSources,
 	};
 	return {
-		desktop: normalizePlatformScopedSettings(
-			stored?.desktop ?? legacyDesktop,
+		[PlatformKind.Desktop]: normalizePlatformScopedSettings(
+			stored?.[PlatformKind.Desktop] ?? legacyDesktop,
 		),
-		mobile: normalizePlatformScopedSettings(stored?.mobile),
+		[PlatformKind.Mobile]: normalizePlatformScopedSettings(
+			stored?.[PlatformKind.Mobile],
+		),
 	};
 }
 
@@ -264,8 +265,12 @@ export function serializeSettings(
 	return {
 		...rest,
 		perPlatform: {
-			desktop: serializePlatformScopedSettings(perPlatform.desktop),
-			mobile: serializePlatformScopedSettings(perPlatform.mobile),
+			[PlatformKind.Desktop]: serializePlatformScopedSettings(
+				perPlatform[PlatformKind.Desktop],
+			),
+			[PlatformKind.Mobile]: serializePlatformScopedSettings(
+				perPlatform[PlatformKind.Mobile],
+			),
 		},
 	};
 }
@@ -416,7 +421,7 @@ function migrateAdvancedDictionaryGate(
 	if (legacy.transcriptionAdvancedSettingsEnabled !== undefined) {
 		return;
 	}
-	if (profilesOfKind(merged.profiles, 'dictionary').length > 0) {
+	if (profilesOfKind(merged.profiles, ProfileKindId.Dictionary).length > 0) {
 		merged.transcriptionAdvancedSettingsEnabled = true;
 	}
 }
@@ -456,7 +461,7 @@ const LEGACY_PROFILE_LISTS: readonly LegacyProfileList[] = [
 	{
 		key: 'transcriptionSpeakerProfiles',
 		selectionKey: 'transcriptionSpeakerProfileId',
-		kind: 'participants',
+		kind: ProfileKindId.Participants,
 		// The roster was stored parsed; a unified profile keeps the text the
 		// editor shows, so it is written back one name per line.
 		body: (entry) =>
@@ -469,13 +474,13 @@ const LEGACY_PROFILE_LISTS: readonly LegacyProfileList[] = [
 	{
 		key: 'transcriptionDictionaryProfiles',
 		selectionKey: 'transcriptionDictionaryProfileId',
-		kind: 'dictionary',
+		kind: ProfileKindId.Dictionary,
 		body: (entry) => legacyString(entry.terms),
 	},
 	{
 		key: 'transcriptionChapterPromptProfiles',
 		selectionKey: 'transcriptionChapterPromptProfileId',
-		kind: 'chapterPrompt',
+		kind: ProfileKindId.ChapterPrompt,
 		body: (entry) => legacyString(entry.prompt),
 	},
 ];
@@ -487,9 +492,9 @@ const LEGACY_PROMPT_FIELDS: readonly {
 	readonly key: string;
 	readonly kind: ProfileKindId;
 }[] = [
-	{ key: 'llmCleanupPrompt', kind: 'llmCleanup' },
-	{ key: 'llmSummaryPrompt', kind: 'llmSummary' },
-	{ key: 'llmCustomInstruction', kind: 'llmCustom' },
+	{ key: 'llmCleanupPrompt', kind: ProfileKindId.LlmCleanup },
+	{ key: 'llmSummaryPrompt', kind: ProfileKindId.LlmSummary },
+	{ key: 'llmCustomInstruction', kind: ProfileKindId.LlmCustom },
 ];
 
 /**
@@ -639,12 +644,16 @@ function migrateLegacyTranscriptionDictionary(
 	const legacyTerms = legacyString(raw.transcriptionDictionary);
 	if (
 		legacyTerms.trim() !== '' &&
-		profilesOfKind(merged.profiles, 'dictionary').length === 0
+		profilesOfKind(merged.profiles, ProfileKindId.Dictionary).length === 0
 	) {
 		// Keep the raw multi-line text; parsing happens at run time.
-		const profile = createProfile('dictionary', 'General', legacyTerms);
+		const profile = createProfile(
+			ProfileKindId.Dictionary,
+			'General',
+			legacyTerms,
+		);
 		merged.profiles = [...merged.profiles, profile];
-		setSelectedProfileId(merged, 'dictionary', profile.id);
+		setSelectedProfileId(merged, ProfileKindId.Dictionary, profile.id);
 	}
 	deleteLegacyField(merged, 'transcriptionDictionary');
 }
@@ -659,7 +668,7 @@ function migrateLegacyTranscriptionDictionary(
  */
 function normalizeProfiles(merged: AudioRecorderSettings): void {
 	const stored: unknown = merged.profiles;
-	const kinds = new Set<string>(PROFILE_KIND_IDS);
+	const kinds = new Set<string>(Object.values(ProfileKindId));
 	merged.profiles = (Array.isArray(stored) ? stored : []).flatMap(
 		(entry: unknown) => {
 			if (!isRecord(entry) || !kinds.has(legacyString(entry.kind))) {
@@ -692,7 +701,7 @@ function normalizeProfiles(merged: AudioRecorderSettings): void {
 		unknown
 	>;
 	const normalized = noSelectedProfiles();
-	for (const kind of PROFILE_KIND_IDS) {
+	for (const kind of Object.values(ProfileKindId)) {
 		normalized[kind] = legacyString(selections[kind]);
 	}
 	merged.selectedProfileIds = normalized;

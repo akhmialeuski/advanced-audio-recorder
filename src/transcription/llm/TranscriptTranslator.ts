@@ -20,10 +20,11 @@ import {
 import type { AudioRecorderSettings } from '../../settings/settingsSchema';
 import { resolveLlmPrompt } from '../../settings/profileResolution';
 import { tokenUpperBound } from '../dictionaryBias';
-import { buildPostProcessPrompt } from '../llmPostProcess';
+import { buildPostProcessPrompt, LlmTask } from '../llmPostProcess';
 import type { Transcript, TranscriptSegment } from '../TranscriptTypes';
 import type { LlmProvider } from './LlmProvider';
 import { runLlmStep, type LlmCostSink } from './llmStep';
+import { LlmJobId } from './vendors';
 
 /** Field separator of one wire line: number, speaker, text. */
 const FIELD_SEPARATOR = '|';
@@ -257,17 +258,17 @@ export class TranscriptTranslator {
 		const wanted = new Set(indices);
 		const chunk = this.resolve(indices);
 		const text = await runLlmStep({
-			step: 'postProcess',
+			step: LlmJobId.PostProcess,
 			llm: this.request.llm,
 			prompt: buildPostProcessPrompt(
 				chunk
 					.map(({ index, segment }) => encodeLine(segment, index))
 					.join('\n'),
 				{
-					task: 'translate',
+					task: LlmTask.Translate,
 					translatePrompt: resolveLlmPrompt(
 						this.request.settings,
-						'translate',
+						LlmTask.Translate,
 					),
 					targetLanguage: this.targetLanguage(),
 				},

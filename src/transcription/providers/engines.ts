@@ -41,6 +41,7 @@ import {
 	DEEPGRAM_KEYTERM_LIMIT,
 	DEEPGRAM_KEYWORDS_LIMIT,
 	deepgramBiasMechanism,
+	DeepgramBiasMechanism,
 	termsWithinDeepgramKeyterm,
 	termsWithinVoxtralContextBias,
 	termsWithinWhisperPrompt,
@@ -298,7 +299,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 					reason: 'model-unsupported',
 				};
 			}
-			if (mechanism === 'keyterm') {
+			if (mechanism === DeepgramBiasMechanism.Keyterm) {
 				const applied = termsWithinDeepgramKeyterm(terms);
 				if (applied.length < terms.length) {
 					return {

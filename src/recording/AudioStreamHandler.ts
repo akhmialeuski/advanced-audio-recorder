@@ -14,10 +14,9 @@ import {
 import { OutputMode } from '../types';
 import { captureSystemAudioStream } from './systemAudioSupport';
 import {
-	CHANNEL_MODE_SOURCE,
+	ChannelMode,
 	channelCountFor,
 	normalizeChannelMode,
-	type ChannelMode,
 } from '../audio/downmix';
 import type { RecordingEncoding } from '../audio/AudioCapabilityDetector';
 import { offlineEncodeSampleRate } from '../audio/AudioFormatConverter';
@@ -676,7 +675,7 @@ function systemAudioPairSources(
 		{
 			trackNumber: 2,
 			deviceId: '',
-			channelMode: CHANNEL_MODE_SOURCE,
+			channelMode: ChannelMode.Source,
 			gainDb: 0,
 			pan: 0,
 			// No processing named: this capture is granted by the host rather
@@ -723,7 +722,7 @@ export function getOrderedTrackSources(
 				// was a device track would otherwise keep reducing a capture
 				// no visible setting still accounts for.
 				channelMode: systemAudio
-					? CHANNEL_MODE_SOURCE
+					? ChannelMode.Source
 					: normalizeChannelMode(source.channelMode),
 				gainDb: source.gainDb ?? 0,
 				pan: source.pan ?? 0,

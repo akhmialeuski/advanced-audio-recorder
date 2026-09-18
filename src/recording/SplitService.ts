@@ -35,7 +35,7 @@ import { toFileNameSegment, uniqueName } from '../utils/fileNames';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { delay } from '../utils/TimeUtils';
-import type { ConversionLinkAction } from '../settings/settingsSchema';
+import { ConversionLinkAction } from '../settings/settingsSchema';
 
 /**
  * The way out of a desktop size ceiling for the splitter, which cannot use
@@ -219,7 +219,7 @@ export class SplitService {
 		onProgress: (text: string) => void,
 	): Promise<boolean> {
 		let linkResult: VaultLinkUpdateResult | null = null;
-		if (request.linkAction !== 'none') {
+		if (request.linkAction !== ConversionLinkAction.None) {
 			onProgress('Updating links...');
 			try {
 				linkResult = await updateLinksInVault(

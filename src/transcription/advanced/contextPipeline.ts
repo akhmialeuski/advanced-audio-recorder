@@ -30,6 +30,7 @@ import { dedupeTerms } from '../dictionary';
 import { WHISPER_PROMPT_TOKEN_LIMIT, tokenUpperBound } from '../dictionaryBias';
 import type { LlmProvider } from '../llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from '../llm/llmStep';
+import { LlmJobId } from '../llm/vendors';
 import type { AudioRecorderSettings } from '../../settings/settingsSchema';
 import type { Transcript } from '../TranscriptTypes';
 import type { CancellationToken } from '../../utils/cancellation';
@@ -633,7 +634,7 @@ export async function generateContext(
 			// Every agent call goes through the accounted step, so their spend
 			// reaches the session total instead of being invisible after the run.
 			return await runLlmStep({
-				step: 'contextAgents',
+				step: LlmJobId.ContextAgents,
 				llm,
 				prompt: { system, user },
 				maxTokens,

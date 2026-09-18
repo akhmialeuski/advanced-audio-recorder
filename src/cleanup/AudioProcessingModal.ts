@@ -27,11 +27,7 @@ import {
 	resolveAudioDspConfig,
 	type AudioDspConfig,
 } from './audioDsp';
-import {
-	CHANNEL_MODES,
-	normalizeChannelMode,
-	type ChannelMode,
-} from '../audio/downmix';
+import { ChannelMode, normalizeChannelMode } from '../audio/downmix';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
 /**
@@ -133,12 +129,12 @@ export class AudioProcessingModal extends PluginModal {
 			)
 			.addDropdown((dropdown) => {
 				const labels: Record<ChannelMode, string> = {
-					source: 'Same as source',
-					'mono-mix': 'Mono (mix all channels)',
-					'mono-left': 'Mono (left channel)',
-					'mono-right': 'Mono (right channel)',
+					[ChannelMode.Source]: 'Same as source',
+					[ChannelMode.MonoMix]: 'Mono (mix all channels)',
+					[ChannelMode.MonoLeft]: 'Mono (left channel)',
+					[ChannelMode.MonoRight]: 'Mono (right channel)',
 				};
-				CHANNEL_MODES.forEach((mode) => {
+				Object.values(ChannelMode).forEach((mode) => {
 					dropdown.addOption(mode, labels[mode]);
 				});
 				dropdown.setValue(this.config.channelMode);

@@ -14,6 +14,7 @@
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { ProfileKindId } from '../settings/profiles';
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
@@ -24,7 +25,7 @@ import { readProfileNotes } from '../settings/ProfileNoteStore';
 import { createLlmProvider } from '../transcription/factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { probeMediaDurationSeconds } from '../utils/mediaDuration';
-import { jobVendorId } from '../transcription/llm/vendors';
+import { jobVendorId, LlmJobId } from '../transcription/llm/vendors';
 import { configuredLanguageHint } from '../transcription/providers/capabilities';
 import type { LlmProvider } from '../transcription/llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from '../transcription/llm/llmStep';
@@ -170,7 +171,7 @@ export class AutoChapterService {
 			);
 			// The engine this job names, not the one post-processing points at:
 			// chapters are configured on a row of their own.
-			const vendorId = jobVendorId(settings, 'autoChapters');
+			const vendorId = jobVendorId(settings, LlmJobId.AutoChapters);
 			const llm = this.createLlm(settings, vendorId);
 			const lastSegment = transcript?.segments.at(-1);
 			// Bound everything by the recording's REAL length. Prefer the
@@ -216,7 +217,7 @@ export class AutoChapterService {
 			const lostSourceNotice = new ProfileTextSource(
 				this.app.vault,
 				unread,
-			).lostNotesNotice(settings, ['chapterPrompt']);
+			).lostNotesNotice(settings, [ProfileKindId.ChapterPrompt]);
 			if (lostSourceNotice) {
 				new Notice(lostSourceNotice);
 			}
@@ -226,7 +227,7 @@ export class AutoChapterService {
 				...(durationSeconds !== null ? { durationSeconds } : {}),
 			});
 			const output = await runLlmStep({
-				step: 'autoChapters',
+				step: LlmJobId.AutoChapters,
 				llm,
 				prompt,
 				maxTokens: vendorMaxTokens(settings, vendorId),
