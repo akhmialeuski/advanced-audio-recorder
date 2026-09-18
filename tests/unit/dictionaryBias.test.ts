@@ -21,7 +21,10 @@ import {
 	termsWithinVoxtralContextBias,
 	voxtralContextBiasTerms,
 } from 'src/transcription/dictionaryBias';
-import type { DictionaryBiasPlan } from 'src/transcription/dictionaryBias';
+import type {
+	DeepgramBiasMechanism,
+	DictionaryBiasPlan,
+} from 'src/transcription/dictionaryBias';
 import { planDictionaryBias } from 'src/transcription/providers/engines';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
@@ -62,6 +65,47 @@ describe('deepgramBiasMechanism', () => {
 		expect(deepgramBiasMechanism('whisper')).toBeNull();
 		expect(deepgramBiasMechanism('whisper-medium')).toBeNull();
 	});
+
+	// A model id arrives as the user typed it into the add-model dialog, which
+	// only trims, so a family has to be recognised whatever case the vendor's
+	// documentation spelled it in. Reading `Nova-3` as an older generation
+	// sends the dictionary under the wrong query param and trims it by the cap
+	// of a mechanism the model does not use.
+	it.each<{ name: string; model: string; mechanism: DeepgramBiasMechanism }>([
+		{ name: 'Nova-3 capitalised', model: 'Nova-3', mechanism: 'keyterm' },
+		{
+			name: 'a Nova-3 variant in upper case',
+			model: 'NOVA-3-MEDICAL',
+			mechanism: 'keyterm',
+		},
+		{
+			name: 'a Nova-2 variant in mixed case',
+			model: 'Nova-2-Meeting',
+			mechanism: 'keywords',
+		},
+		{
+			name: 'Enhanced in mixed case',
+			model: 'Enhanced-PhoneCall',
+			mechanism: 'keywords',
+		},
+		{ name: 'Base in upper case', model: 'BASE', mechanism: 'keywords' },
+		{
+			name: 'hosted Whisper capitalised',
+			model: 'Whisper',
+			mechanism: null,
+		},
+		{
+			name: 'a hosted Whisper size in upper case',
+			model: 'WHISPER-MEDIUM',
+			mechanism: null,
+		},
+	])(
+		'gives $name the mechanism of its lower-case spelling',
+		({ model, mechanism }) => {
+			expect(deepgramBiasMechanism(model)).toBe(mechanism);
+			expect(deepgramBiasMechanism(model.toLowerCase())).toBe(mechanism);
+		},
+	);
 });
 
 describe('tokenUpperBound', () => {
@@ -189,6 +233,20 @@ describe('planDictionaryBias', () => {
 		expect(plan.applied).toHaveLength(DEEPGRAM_KEYWORDS_LIMIT);
 		expect(plan.omitted).toHaveLength(25);
 		expect(plan.reason).toBe('keywords-limit');
+	});
+
+	it('plans a capitalised Nova-3 id by the keyterm cap, not the keywords one', () => {
+		// Both mechanisms cap at 100 entries today, so the reason is what tells
+		// them apart: it names the limit the user is shown and the rule the
+		// terms were actually trimmed by.
+		const plan = planDictionaryBias(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'Nova-3',
+			shortTerms(DEEPGRAM_KEYTERM_LIMIT + 25),
+		);
+
+		expect(plan.applied).toHaveLength(DEEPGRAM_KEYTERM_LIMIT);
+		expect(plan.reason).toBe('keyterm-limit');
 	});
 
 	it('drops the whole dictionary for a Deepgram Whisper model', () => {

@@ -94,16 +94,25 @@ export interface DictionaryBiasPlan {
  * Deepgram's biasing mechanism for a model id. Nova-3 uses keyterm prompting;
  * Nova-2, Nova, Enhanced, and Base use keyword boosting; the hosted Whisper
  * models support neither, so they cannot bias at all.
+ *
+ * The family is read case-insensitively, the way `matchRate` in
+ * providers/engines already reads an id for pricing. The model catalogue is
+ * user-editable and its add-model dialog only trims what is typed, so a
+ * `Nova-3` copied out of Deepgram's own documentation is an ordinary entry;
+ * matching it literally would hand it the default branch, bias it under an
+ * older generation's query param, and trim the dictionary by a cap that model
+ * never had.
  * @param model - Deepgram model id (e.g. "nova-3", "nova-2-meeting", "whisper")
  * @returns The query param to send terms under, or null when the model cannot bias
  */
 export function deepgramBiasMechanism(model: string): DeepgramBiasMechanism {
-	if (model.startsWith('nova-3')) {
+	const normalized = model.toLowerCase();
+	if (normalized.startsWith('nova-3')) {
 		return 'keyterm';
 	}
 	// Hosted Whisper on Deepgram accepts neither keyterm nor keywords, so a
 	// dictionary would be silently ignored (or reject the request).
-	if (model.startsWith('whisper')) {
+	if (normalized.startsWith('whisper')) {
 		return null;
 	}
 	// Nova-2 and older (Nova, Enhanced, Base) use keyword boosting.
