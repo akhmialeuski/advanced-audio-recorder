@@ -609,6 +609,10 @@ export class SpeakerRenameModal extends PluginModal {
 	 * through the same plan/apply path, and the undone entry is removed from
 	 * the history - so each press walks one step further back and the button
 	 * disappears once the history is exhausted, instead of ping-ponging.
+	 *
+	 * A merge is the one rename this cannot walk back: both speakers render
+	 * as the same text by now, so the plan reports that text as ambiguous
+	 * and the outputs keep it while the roster steps back.
 	 */
 	private async undo(): Promise<void> {
 		const section = this.section;

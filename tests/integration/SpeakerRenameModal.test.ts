@@ -181,6 +181,22 @@ async function nameSecondSpeaker(
 	await dialog.internals.apply();
 }
 
+/**
+ * Opens the dialog over a stored section and presses Undo last rename.
+ * @param section - The section the sidecar hands the dialog
+ * @returns The sidecar stub, for asserting what the undo wrote through it
+ */
+async function undoOver(
+	section: TranscriptSection,
+): Promise<ReturnType<typeof makeSidecar>> {
+	const sidecar = makeSidecar(section);
+	const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+	modal.open();
+	await internals.render();
+	await internals.undo();
+	return sidecar;
+}
+
 const cleanApplyResult = {
 	updatedNotes: 1,
 	updatedTranscriptFiles: 1,
@@ -784,11 +800,8 @@ describe('SpeakerRenameModal', () => {
 				{ at: 't2', names: { 'Speaker 1': 'Bob' } },
 			],
 		});
-		const sidecar = makeSidecar(section);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
-		await internals.undo();
+
+		const sidecar = await undoOver(section);
 
 		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
 			{ label: 'Speaker 1', name: 'Alex' },
@@ -813,11 +826,8 @@ describe('SpeakerRenameModal', () => {
 		const section = rosterSection({
 			history: [{ at: 't1', names: { 'Speaker 1': 'Alex' } }],
 		});
-		const sidecar = makeSidecar(section);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
-		await internals.undo();
+
+		const sidecar = await undoOver(section);
 
 		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
 			{ label: 'Speaker 1' },
@@ -846,11 +856,8 @@ describe('SpeakerRenameModal', () => {
 				{ at: 't2', names: { 'Speaker 1': 'Alex' } },
 			],
 		});
-		const sidecar = makeSidecar(section);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
-		await internals.undo();
+
+		const sidecar = await undoOver(section);
 
 		expect(applyMock).toHaveBeenCalledWith(
 			app,
@@ -873,16 +880,13 @@ describe('SpeakerRenameModal', () => {
 			updatedNotes: 0,
 			unscopableNotes: 1,
 		});
-		const sidecar = makeSidecar(
+
+		await undoOver(
 			rosterSection({
 				speakers: [{ label: 'Speaker 1', name: 'Alex' }],
 				history: [{ at: 't1', names: { 'Speaker 1': 'Alex' } }],
 			}),
 		);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
-		await internals.undo();
 
 		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
 		expect(notice).toContain(
@@ -890,6 +894,49 @@ describe('SpeakerRenameModal', () => {
 				'left as they are.',
 		);
 		expect(notice).not.toContain('apply again');
+	});
+
+	it('undo of a merge steps the roster back and leaves the merged name', async () => {
+		// Undo is the first thing pressed after a merge made by mistake, and
+		// it is the one rename that cannot be walked back: both speakers
+		// render as "Alex" by now, so no rule can tell their lines apart. The
+		// roster reverts, the shared text stays, and the notice says so
+		// instead of dragging both speakers' lines onto one of the names.
+		const section = rosterSection({
+			speakers: [
+				{ label: 'Speaker 1', name: 'Alex' },
+				{ label: 'Speaker 2', name: 'Alex' },
+			],
+			history: [
+				{ at: 't1', names: { 'Speaker 1': 'Alex' } },
+				{
+					at: 't2',
+					names: { 'Speaker 1': 'Alex', 'Speaker 2': 'Alex' },
+				},
+			],
+		});
+
+		const sidecar = await undoOver(section);
+
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
+			{ label: 'Speaker 1', name: 'Alex' },
+			{ label: 'Speaker 2' },
+		]);
+		// Only the healing rule for the label of the speaker that keeps its
+		// name survives. The shared name is claimed by both speakers, so it
+		// is rewritten for neither.
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			section,
+			[{ from: 'Speaker 1', to: 'Alex' }],
+			{ allowBroad: false },
+		);
+		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
+		expect(notice).toContain(
+			'Left as it is: "Alex" - shown by more than one speaker',
+		);
+		expect(sidecar.popHistory).toHaveBeenCalledWith('audio/rec.wav');
 	});
 
 	it('reports a note that already uses these names without alarm', async () => {
