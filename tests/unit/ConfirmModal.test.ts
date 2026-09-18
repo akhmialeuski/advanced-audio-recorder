@@ -1,8 +1,10 @@
 /**
  * Tests the confirmation dialog that gates destructive actions (regenerating
- * chapters over existing ones). The contract worth pinning is that the callback
- * fires once and only on confirm: a cancel that still ran the action, or a
- * confirm that ran it twice, destroys the user's content.
+ * chapters over existing ones, merging two diarized speakers). The contract
+ * worth pinning is that each callback fires once and only for its own answer:
+ * a cancel that still ran the action, or a confirm that ran it twice, destroys
+ * the user's content, and a caller awaiting the answer hangs forever on a no
+ * that is never reported.
  * @module tests/unit/ConfirmModal.test
  */
 
@@ -11,7 +13,10 @@ import type { App } from 'obsidian';
 import { at } from '../helpers/assertions';
 
 /** Opens a confirm dialog and exposes its rendered buttons. */
-function open(onConfirm: () => void): {
+function open(
+	onConfirm: () => void,
+	onCancel?: () => void,
+): {
 	modal: ConfirmModal;
 	buttons: HTMLButtonElement[];
 } {
@@ -20,6 +25,7 @@ function open(onConfirm: () => void): {
 		message: 'The note already has chapters.',
 		confirmText: 'Replace',
 		onConfirm,
+		...(onCancel ? { onCancel } : {}),
 	});
 	modal.onOpen();
 	return {
@@ -71,6 +77,36 @@ describe('ConfirmModal', () => {
 
 		expect(onConfirm).not.toHaveBeenCalled();
 		expect(close).toHaveBeenCalled();
+	});
+
+	it('reports the no exactly once on cancel', () => {
+		const onCancel = jest.fn();
+		const { buttons } = open(() => undefined, onCancel);
+
+		at(buttons, 1).click();
+
+		// A caller that awaits the answer hangs forever without it.
+		expect(onCancel).toHaveBeenCalledTimes(1);
+	});
+
+	it('reports the no when the dialog is dismissed without an answer', () => {
+		// Escape and the window chrome close the dialog without touching a
+		// button, and they mean the same thing as Cancel.
+		const onCancel = jest.fn();
+		const { modal } = open(() => undefined, onCancel);
+
+		modal.close();
+
+		expect(onCancel).toHaveBeenCalledTimes(1);
+	});
+
+	it('reports no cancel once the action was confirmed', () => {
+		const onCancel = jest.fn();
+		const { buttons } = open(() => undefined, onCancel);
+
+		at(buttons, 0).click();
+
+		expect(onCancel).not.toHaveBeenCalled();
 	});
 
 	it('empties its body on close', () => {

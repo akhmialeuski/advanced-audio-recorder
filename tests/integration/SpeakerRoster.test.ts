@@ -22,6 +22,7 @@ import type { TranscriptionProvider } from 'src/transcription/providers/Transcri
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import { internalsOf, partial } from '../helpers/doubles';
+import { applyAnsweringMerge, typeSpeakerNames } from '../helpers/speakerRows';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
 import { installControlledAudio } from '../helpers/mediaMocks';
@@ -236,6 +237,33 @@ describe('speaker roster round trip', () => {
 		]);
 		// The profile learned it too, for the next recording that picks it.
 		expect(settings.profiles[0]?.body).toBe('Maria\nIvan\nPriya');
+	});
+
+	it('a merge applied in the dialog survives a re-transcription', async () => {
+		// The whole point of merging: diarization split one person across two
+		// labels, and the next run must not hand them back as two people.
+		const { app, store, files, settings, internals } =
+			await openRenameDialog();
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Priya',
+			'Speaker 2': 'Priya',
+		});
+		await applyAnsweringMerge(() => internals.apply(), 'Merge');
+
+		await transcribe(app, store, settings);
+
+		const transcript = storedTranscript(files);
+		expect(transcript.speakers).toEqual([
+			{ label: 'Speaker 1', name: 'Priya', firstStart: 3, firstEnd: 9.5 },
+			{
+				label: 'Speaker 2',
+				name: 'Priya',
+				firstStart: 10,
+				firstEnd: 14,
+			},
+		]);
+		// One person, stored once, however many labels resolve to the name.
+		expect(transcript.participants).toEqual(['Maria', 'Ivan', 'Priya']);
 	});
 
 	it('a re-transcription keeps the name and refreshes the offsets', async () => {

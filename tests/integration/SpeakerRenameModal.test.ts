@@ -26,8 +26,9 @@ import {
 	hasUnscopableRecordedNote,
 } from 'src/speakers/applySpeakerRenames';
 import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
-import { noticeMessages } from '../mocks/obsidian';
+import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import { internalsOf, partial } from '../helpers/doubles';
+import { applyAnsweringMerge, typeSpeakerNames } from '../helpers/speakerRows';
 import { createMockApp } from '../helpers/createApp';
 import { rowDescription, rowSelect, settingRow } from '../helpers/settingRows';
 import { installControlledAudio } from '../helpers/mediaMocks';
@@ -118,6 +119,13 @@ function rosterSection(
 		],
 		...overrides,
 	};
+}
+
+/** A section whose two speakers are both still unnamed. */
+function unnamedRosterSection(): TranscriptSection {
+	return rosterSection({
+		speakers: [{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
+	});
 }
 
 /**
@@ -258,13 +266,10 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		const second = internals.inputs.get('Speaker 2');
-		if (!first || !second) {
-			throw new Error('missing inputs');
-		}
-		first.value = 'Bob';
-		second.value = ' Cleo ';
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Bob',
+			'Speaker 2': ' Cleo ',
+		});
 		await internals.apply();
 
 		expect(sidecar.commitRename).toHaveBeenCalledWith(
@@ -308,11 +313,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		const applyOrder = applyMock.mock.invocationCallOrder[0] ?? 0;
@@ -329,11 +330,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		expect(sidecar.commitRename).not.toHaveBeenCalled();
@@ -348,11 +345,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = '';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': '' });
 		await internals.apply();
 
 		expect(sidecar.commitRename).toHaveBeenCalledWith(
@@ -370,42 +363,156 @@ describe('SpeakerRenameModal', () => {
 		);
 	});
 
-	it('rejects assigning one name to two speakers', async () => {
-		const sidecar = makeSidecar(rosterSection());
+	it('merges two speakers into one name once the merge is confirmed', async () => {
+		// Diarization routinely splits one person across two labels; naming
+		// both of them is the fix, and the only way to repair such a note.
+		const sidecar = makeSidecar(unnamedRosterSection());
 		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
 		modal.open();
 		await internals.render();
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Alex',
+			'Speaker 2': 'Alex',
+		});
 
-		const first = internals.inputs.get('Speaker 1');
-		const second = internals.inputs.get('Speaker 2');
-		if (!first || !second) {
-			throw new Error('missing inputs');
-		}
-		first.value = 'Alex';
-		second.value = 'Alex';
-		await internals.apply();
+		await applyAnsweringMerge(() => internals.apply(), 'Merge');
+
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			[
+				{ from: 'Speaker 1', to: 'Alex' },
+				{ from: 'Speaker 2', to: 'Alex' },
+			],
+			{ allowBroad: false },
+		);
+		expect(sidecar.commitRename).toHaveBeenCalledWith(
+			'audio/rec.wav',
+			[
+				{ label: 'Speaker 1', name: 'Alex' },
+				{ label: 'Speaker 2', name: 'Alex' },
+			],
+			{ 'Speaker 1': 'Alex', 'Speaker 2': 'Alex' },
+			{ names: ['Alex', 'Alex'], profileId: '' },
+		);
+	});
+
+	it('names the speakers it is about to merge', async () => {
+		const { modal, internals } = makeModal(
+			mergeSettings({}),
+			makeSidecar(unnamedRosterSection()),
+		);
+		modal.open();
+		await internals.render();
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Alex',
+			'Speaker 2': 'Alex',
+		});
+
+		const asked = await applyAnsweringMerge(
+			() => internals.apply(),
+			'Cancel',
+		);
+
+		expect(asked).toContain('Speaker 1, Speaker 2 become Alex.');
+	});
+
+	it('writes nothing when the merge is not confirmed', async () => {
+		const sidecar = makeSidecar(unnamedRosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Alex',
+			'Speaker 2': 'Alex',
+		});
+
+		await applyAnsweringMerge(() => internals.apply(), 'Cancel');
 
 		expect(applyMock).not.toHaveBeenCalled();
 		expect(sidecar.commitRename).not.toHaveBeenCalled();
+	});
+
+	it('asks nothing when the stored roster already carries the merge', async () => {
+		// A repeat only heals the outputs; asking again for a merge already
+		// applied would nag on every press.
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [
+					{ label: 'Speaker 1', name: 'Alex' },
+					{ label: 'Speaker 2', name: 'Alex' },
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		const before = modalInstances.length;
+
+		await internals.apply();
+
+		expect(modalInstances).toHaveLength(before);
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			[
+				{ from: 'Speaker 1', to: 'Alex' },
+				{ from: 'Speaker 2', to: 'Alex' },
+			],
+			{ allowBroad: false },
+		);
+	});
+
+	it('leaves a merged name alone when the speakers are given separate names again', async () => {
+		// Both speakers already render as "Alex", so nothing in the outputs
+		// says which of them a line belonged to.
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [
+					{ label: 'Speaker 1', name: 'Alex' },
+					{ label: 'Speaker 2', name: 'Alex' },
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Alex',
+			'Speaker 2': 'Bob',
+		});
+
+		await internals.apply();
+
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			[
+				{ from: 'Speaker 1', to: 'Alex' },
+				{ from: 'Speaker 2', to: 'Bob' },
+			],
+			{ allowBroad: false },
+		);
 		expect(Notice).toHaveBeenCalledWith(
-			expect.stringContaining('Two speakers cannot share a name'),
+			expect.stringContaining(
+				'Left as it is: "Alex" - shown by more than one speaker',
+			),
 		);
 	});
 
 	it("explains why a name equal to another speaker's label is rejected", async () => {
-		// Swapping raw engine labels (or naming one speaker after another's
-		// label) would make their lines textually indistinguishable forever,
-		// so the block is deliberate - and the message says which collision.
+		// Naming one speaker after another's engine label says nothing about
+		// which of the two a written occurrence belonged to, so the block is
+		// deliberate - and the message points at the merge that does work.
 		const sidecar = makeSidecar(rosterSection());
 		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Speaker 2';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Speaker 2' });
 		await internals.apply();
 
 		expect(applyMock).not.toHaveBeenCalled();
@@ -529,11 +636,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
@@ -556,11 +659,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
@@ -583,11 +682,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		expect(Notice).toHaveBeenCalledWith(
@@ -609,11 +704,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		expect(Notice).toHaveBeenCalledWith(
@@ -813,11 +904,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
@@ -1405,11 +1492,7 @@ describe('SpeakerRenameModal', () => {
 		);
 		await internals.render();
 		internals.selectedProfileId = 'p1';
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Maria';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Maria' });
 
 		await internals.apply();
 
