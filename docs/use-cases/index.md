@@ -21,7 +21,7 @@ This is the hub for the step-by-step guides. The reference docs describe _what_ 
 
 ## Getting API keys
 
-Cloud transcription engines (and the LLM post-processing providers) authenticate with an **API key** you generate on the provider's website. Each guide walks you through creating an account, generating the key, and pasting it into the correct field in **Settings > Advanced Audio Recorder > Transcription**. Keys are stored only in the plugin's `data.json` on this device and are never written to diagnostics.
+Cloud transcription engines (and the LLM post-processing providers) authenticate with an **API key** you generate on the provider's website. Each guide walks you through creating an account, generating the key, and pasting it into the key field on that service's own page under **Settings > Advanced Audio Recorder > Transcription > Engines**. Keys are stored only in the plugin's `data.json` on this device and are never written to diagnostics.
 
 | Guide                                             | Provider                 | Use it for                                                  |
 | ------------------------------------------------- | ------------------------ | ----------------------------------------------------------- |
@@ -32,7 +32,7 @@ Cloud transcription engines (and the LLM post-processing providers) authenticate
 | [Mistral](mistral-api-key.md)                     | Mistral                  | The **Mistral Voxtral** engine and Mistral post-processing. |
 | [Anthropic / Claude](anthropic-api-key.md)        | Anthropic                | **LLM post-processing** with Claude (clean up/summarize).   |
 
-Every API-key guide follows the same shape: generate the key on the provider's site, then paste it into the matching field in the Transcription settings.
+Every API-key guide follows the same shape: generate the key on the provider's site, then paste it into the matching field on that engine's page under **Transcription > Engines**.
 
 > **Heads-up on shared keys.** A key belongs to the account rather than to the job, so the OpenAI page serves both Whisper API transcription and OpenAI post-processing, and the Gemini page serves transcription and prompts alike. Anthropic/Claude only writes, so it keeps a page and a key of its own. See [LLM post-processing](../llm-post-processing.md) for details.
 
@@ -46,7 +46,7 @@ Every API-key guide follows the same shape: generate the key on the provider's s
 
 The **Local whisper.cpp** engine runs a binary you install yourself and a GGML model file you download once. Nothing leaves your machine. This guide covers the binary path, the model path (an absolute path to a GGML `.bin` file), extra CLI arguments, and which model size to pick.
 
-![The Transcription settings with the Local whisper.cpp engine selected, showing the binary path, model path, and extra CLI args fields](../images/local-whisper-settings-engine.png)
+![The Local whisper.cpp engine page under Engines, with the whisper.cpp binary path, Model path, and Extra arguments fields](../images/local-whisper-settings-engine.png)
 
 ---
 
@@ -73,6 +73,7 @@ Pick a transcription engine before you sign up anywhere - the choice decides whi
 | **Whisper API** (OpenAI/Groq) | Paid (Groq has a free tier) | No          | 25 MB\*  | No      | Accurate single-speaker transcription   |
 | **Deepgram**                  | Free credit, then pay-as-go | Yes         | 2 GB     | No      | Meetings and interviews with speakers   |
 | **Google Gemini**             | Free tier, then paid        | Yes         | 2 GB     | No      | Long recordings and reuse for LLM tasks |
+| **Mistral Voxtral**           | Paid, about $0.003 a minute | Yes         | 1 GB     | No      | Long meetings in one whole-file request |
 | **Local whisper.cpp**         | Free                        | No          | -        | Yes     | Private, offline transcription          |
 
 \* Files over 25 MB are automatically resampled to 16 kHz mono and split into upload-sized chunks, then stitched onto one timeline. See [Transcription](../transcription.md) for the full mechanics.
@@ -80,7 +81,7 @@ Pick a transcription engine before you sign up anywhere - the choice decides whi
 Quick rules of thumb:
 
 - **One speaker, want it accurate** > Whisper API (use [Groq](groq-whisper-setup.md) for a free tier, or [OpenAI](openai-whisper-api-key.md)).
-- **Multiple speakers / meetings** > [Deepgram](deepgram-api-key.md) or [Google Gemini](gemini-api-key.md) - both support speaker diarization.
+- **Multiple speakers / meetings** > [Deepgram](deepgram-api-key.md), [Google Gemini](gemini-api-key.md), or [Mistral Voxtral](mistral-api-key.md) - all three support speaker diarization.
 - **Long recordings, or you also want LLM summaries** > [Google Gemini](gemini-api-key.md).
 - **Must stay offline / no API key** > [Local whisper.cpp](local-whisper-cpp.md).
 

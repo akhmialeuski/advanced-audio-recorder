@@ -85,11 +85,11 @@ OpenAI's speech-to-text API, and any OpenAI-compatible host (for example **Groq*
 
 Settings to fill:
 
-| Setting               | Description                                                                                                                | Default                     |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| **Upload chunk size** | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                                      | 24                          |
-| **Base URL**          | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL. Shared with the OpenAI engine.            | `https://api.openai.com/v1` |
-| **OpenAI API key**    | Your API key, read by this engine and by the OpenAI one. Stored in plugin data on this device.                             | -                           |
+| Setting               | Description                                                                                                                     | Default                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| **Upload chunk size** | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                                           | 24                          |
+| **Base URL**          | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL. Shared with the OpenAI engine.                 | `https://api.openai.com/v1` |
+| **OpenAI API key**    | Your API key, read by this engine and by the OpenAI one. Stored in plugin data on this device.                                  | -                           |
 | **Model**             | Model id in use, picked from the ids the **Model catalogue** entry below it holds. Must support `verbose_json` with timestamps. | `whisper-1`                 |
 
 Behavior and limits:
@@ -110,10 +110,10 @@ Deepgram's official **pre-recorded** transcription API, with strong diarization.
 
 Settings to fill:
 
-| Setting              | Description                                                                                                        | Default                       |
+| Setting              | Description                                                                                                          | Default                       |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| **Base URL**         | Deepgram API base.                                                                                                 | `https://api.deepgram.com/v1` |
-| **Deepgram API key** | Your Deepgram key. Stored in plugin data on this device.                                                           | -                             |
+| **Base URL**         | Deepgram API base.                                                                                                   | `https://api.deepgram.com/v1` |
+| **Deepgram API key** | Your Deepgram key. Stored in plugin data on this device.                                                             | -                             |
 | **Model**            | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `nova-3`, `nova-2-meeting`). | `nova-3`                      |
 
 Behavior and limits:
@@ -134,11 +134,11 @@ Google's multimodal `generateContent` API, using the File API to upload the reco
 
 Settings to fill:
 
-| Setting                   | Description                                                                                                                       | Default                                     |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| **Base URL**              | Gemini API base (no version segment).                                                                                             | `https://generativelanguage.googleapis.com` |
-| **Google Gemini API key** | Your Gemini key. Stored in plugin data on this device.                                                                            | -                                           |
-| **Model**                 | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `gemini-3.5-flash`, `gemini-2.5-pro`).     | `gemini-3.5-flash`                          |
+| Setting                   | Description                                                                                                                    | Default                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| **Base URL**              | Gemini API base (no version segment).                                                                                          | `https://generativelanguage.googleapis.com` |
+| **Google Gemini API key** | Your Gemini key. Stored in plugin data on this device.                                                                         | -                                           |
+| **Model**                 | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `gemini-3.5-flash`, `gemini-2.5-pro`). | `gemini-3.5-flash`                          |
 
 Behavior and limits:
 
@@ -157,11 +157,11 @@ Mistral's batch transcription endpoint, running the Voxtral Mini Transcribe mode
 
 Settings to fill:
 
-| Setting             | Description                                                                                                        | Default                     |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| **Base URL**        | Mistral API base, shared with the Mistral chat engine.                                                             | `https://api.mistral.ai/v1` |
-| **Mistral API key** | Your Mistral key. Stored in plugin data on this device.                                                            | -                           |
-| **Model**           | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `voxtral-mini-latest`).     | `voxtral-mini-latest`       |
+| Setting             | Description                                                                                                     | Default                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| **Base URL**        | Mistral API base, shared with the Mistral chat engine.                                                          | `https://api.mistral.ai/v1` |
+| **Mistral API key** | Your Mistral key. Stored in plugin data on this device.                                                         | -                           |
+| **Model**           | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `voxtral-mini-latest`). | `voxtral-mini-latest`       |
 
 Behavior and limits:
 
@@ -471,7 +471,7 @@ Below the breakdown, a **Check current pricing** line links straight to the pric
 
 ## LLM post-processing
 
-After transcription, you can optionally pass the transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. The provider defaults to OpenAI (`gpt-5.6-sol`), with Anthropic (`claude-opus-4-8`) and Google Gemini (`gemini-3.5-flash`) also available; the OpenAI and Gemini keys are shared with the matching transcription engines.
+After transcription, you can optionally pass the transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. The provider defaults to OpenAI (`gpt-5.6-sol`), with Anthropic (`claude-opus-4-8`), Google Gemini (`gemini-3.5-flash`), and Mistral (`mistral-medium-latest`) also available. The OpenAI, Gemini, and Mistral keys are shared with the matching transcription engines.
 
 LLM post-processing is **best-effort**: a failure (bad key, network, timeout) falls back to the raw transcript rather than discarding completed work.
 
@@ -516,9 +516,11 @@ All transcription settings live under **Settings > Advanced Audio Recorder > Tra
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | **Enable transcription**            | Master toggle that reveals the rest of the section.                                                     | Off                            |
 | **Transcribe after recording**      | Auto-transcribe each saved recording (first file only).                                                 | Off                            |
+| **Show cost estimates**             | Show an approximate API cost before a run and a running session total (cloud engines only).             | On                             |
 | **Transcription engine**            | Whisper API / Deepgram / Google Gemini / Mistral Voxtral / Local whisper.cpp.                           | Whisper API                    |
 | **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`). Ignored by Voxtral, which detects it itself.       | `auto`                         |
 | **Speaker diarization**             | Request speaker labels (Deepgram, Gemini, and Voxtral only).                                            | Off                            |
+| **Translate speech to English**     | Write the recording down in English whatever was spoken (Whisper API only).                             | Off                            |
 | **Word-level timestamps**           | Per-word timing in JSON file output. Selectable on Whisper API, the one engine that reads the request.  | Off                            |
 | **Request timeout**                 | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.                    | 10                             |
 | **Local run timeout**               | Minutes before the local whisper.cpp process is stopped (that engine only). Range 1-720.                | 120                            |

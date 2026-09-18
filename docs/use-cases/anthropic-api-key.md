@@ -1,8 +1,8 @@
 # Get an Anthropic (Claude) API key for LLM post-processing
 
-Anthropic (Claude) is one of the three **LLM post-processing** providers. After a transcript is produced, the plugin can send it to a Claude model to **clean it up**, **summarize** it, or run a **custom instruction**. Claude is not a transcription engine - it never turns audio into text. It only rewrites or summarizes text that one of the transcription engines already produced. This guide walks you through creating an Anthropic account, generating an API key, and wiring it into the plugin.
+Anthropic (Claude) is one of the four **LLM post-processing** providers. After a transcript is produced, the plugin can send it to a Claude model to **clean it up**, **summarize** it, **translate** it, or run a **custom instruction**. Claude is not a transcription engine - it never turns audio into text. It only rewrites, translates, or summarizes text that one of the transcription engines already produced. This guide walks you through creating an Anthropic account, generating an API key, and wiring it into the plugin.
 
-Unlike the OpenAI and Gemini pages - which are shared with the matching transcription engines - Anthropic has **a page and a key of its own**. You enter the Anthropic key separately, and you can use Claude for post-processing no matter which engine produced the transcript (Whisper API, Deepgram, Gemini, or local `whisper.cpp`).
+Unlike the OpenAI, Gemini, and Mistral pages - which are shared with the matching transcription engines - Anthropic has **a page and a key of its own**. You enter the Anthropic key separately, and you can use Claude for post-processing no matter which engine produced the transcript (Whisper API, Deepgram, Gemini, Mistral Voxtral, or local `whisper.cpp`).
 
 - [What it is for](#what-it-is-for)
 - [Before you start](#before-you-start)
@@ -19,10 +19,11 @@ Unlike the OpenAI and Gemini pages - which are shared with the matching transcri
 
 ## What it is for
 
-LLM post-processing is an optional, second pass that runs **after** transcription. When you enable it and pick **Anthropic (Claude)** as the provider, the finished transcript is sent to a Claude model with one of three instructions:
+LLM post-processing is an optional, second pass that runs **after** transcription. When you enable it and pick **Anthropic (Claude)** as the provider, the finished transcript is sent to a Claude model with one of four instructions:
 
 - **Clean up** - fix punctuation, capitalization, and obvious speech-to-text errors, add paragraph breaks, and remove filler, while preserving the exact wording, speaker labels, and timestamps.
 - **Summarize** - condense the transcript into key points and action items as Markdown bullet lists.
+- **Translate** - write the transcript in the language named in **Translate into**, one line per spoken segment, keeping the original beside it.
 - **Custom** - send your own verbatim instruction (e.g. "rewrite as meeting notes").
 
 The default Claude model is **`claude-opus-4-8`**. Requests use Anthropic's Messages API at `https://api.anthropic.com/v1`.
@@ -68,7 +69,7 @@ The API requires prepaid credit or a billing method before it will answer reques
 
 ## Step 4: Configure the plugin
 
-1. Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** section.
+1. Open **Settings > Advanced Audio Recorder > Transcription**.
 2. Turn on **Enable transcription** if it is off, and confirm an engine is configured.
 3. Scroll to the **LLM post-processing** subsection and turn on **Enable LLM post-processing**.
 4. Set its **Post-processing engine** to **Anthropic (Claude)**.
@@ -79,11 +80,11 @@ The API requires prepaid credit or a billing method before it will answer reques
 9. Optionally adjust **Max output tokens** (default `4096`, range `512`-`200000`), which bounds every job that calls this engine. The field guards against a typo rather than stating any limit of Anthropic's: how long a reply may be is the model's own maximum, it differs between models, and a budget above it is refused by the service, which names the maximum it accepts.
 10. Back in **LLM post-processing**, pick a **Task** and review its prompt (see [Choosing a task](#choosing-a-task)).
 
-> **Shared vs. own keys.** The OpenAI account is read by both the Whisper API engine and the OpenAI engine, and the Gemini account by the one Gemini engine that transcribes and writes alike. **Anthropic does not share** - it has a page and a key of its own, because there is no Anthropic transcription engine to borrow a key from. See [Shared API keys](../llm-post-processing.md#shared-api-keys).
+> **Shared vs. own keys.** The OpenAI account is read by both the Whisper API engine and the OpenAI engine, the Mistral account by both the Voxtral and Mistral engines, and the Gemini account by the one Gemini engine that transcribes and writes alike. **Anthropic does not share** - it has a page and a key of its own, because there is no Anthropic transcription engine to borrow a key from. See [Shared API keys](../llm-post-processing.md#shared-api-keys).
 
 ## Choosing a model
 
-The **Model** entry on the Anthropic page opens a catalogue seeded with the current Claude family and editable there: the add button takes a newer id, the button on a row drops one, and the link in the catalogue's description opens Anthropic's own model list.
+The **Model** row on the Anthropic page is a dropdown over the saved ids, seeded with the current Claude family, and the **Model catalogue** entry below it is where the list is edited: the add button takes a newer id and the button on a row drops one. The link at the end of the **Model** row's description opens Anthropic's own model list.
 
 | Model              | Notes                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
@@ -97,16 +98,17 @@ The **Model** entry on the Anthropic page opens a catalogue seeded with the curr
 
 ## Choosing a task
 
-The **Task** dropdown selects what Claude does with the transcript. Each task has its own editable prompt.
+The **Task** dropdown selects what Claude does with the transcript. Each task has its own catalogue of named prompt profiles, and the one in use supplies the prompt.
 
-| Task          | What Claude does                                                                  | Prompt behavior                                                                 |
-| ------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| **Clean up**  | Fixes punctuation/capitalization, adds paragraphs, removes filler; keeps wording. | Ships with a default prompt; the transcript language is appended automatically. |
-| **Summarize** | Condenses the transcript into key points and action items as bullet lists.        | Ships with a default prompt; the transcript language is appended automatically. |
-| **Custom**    | Follows your own instruction verbatim, in a larger editor.                        | Sent exactly as written - no language clause is added, so you control language. |
+| Task          | What Claude does                                                                           | Prompt behavior                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| **Clean up**  | Fixes punctuation/capitalization, adds paragraphs, removes filler; keeps wording.          | Ships with a default prompt; the transcript language is appended automatically. |
+| **Summarize** | Condenses the transcript into key points and action items as bullet lists.                 | Ships with a default prompt; the transcript language is appended automatically. |
+| **Translate** | Rewrites the transcript in the language named in **Translate into**, keeping the original. | Ships with a default prompt, and the target language is appended automatically. |
+| **Custom**    | Follows your own instruction verbatim.                                                     | Sent exactly as written - no language clause is added, so you control language. |
 
-- The cleanup and summary prompts are editable but ship with sensible defaults. The plugin appends the transcript's language to them automatically, so the result stays in the source language.
-- The custom instruction is sent **verbatim** in a larger editor - include any language, tone, or formatting directives yourself.
+- The cleanup, summary, and translation profiles are editable but ship with sensible defaults. The plugin appends the transcript's language to the first two automatically, so the result stays in the source language, and the target language to the third.
+- The custom instruction is sent **verbatim** - include any language, tone, or formatting directives yourself.
 
 For a deeper explanation of the tasks and prompts, see [LLM post-processing](../llm-post-processing.md).
 
@@ -130,7 +132,7 @@ For a deeper explanation of the tasks and prompts, see [LLM post-processing](../
 | **Base URL** (Engines page)    | `https://api.anthropic.com/v1` (shipped default)                                        |
 | **Anthropic API key**          | Your `sk-ant-…` key (Anthropic's own field; not shared)                                 |
 | **Model**                      | `claude-opus-4-8` (default) / `claude-sonnet-5` / `claude-haiku-4-5` / `claude-fable-5` |
-| **Task**                       | `Clean up` (default) / `Summarize` / `Custom`                                           |
+| **Task**                       | `Clean up` (default) / `Summarize` / `Translate` / `Custom`                             |
 | **Max output tokens**          | `4096` default; range `512`-`200000`                                                    |
 
 > **Where the key is stored.** The key lives in the plugin's `data.json` on this device. It is never written into the **System info** diagnostics report. Avoid syncing `data.json` to untrusted locations. Only the transcript **text** is sent to Anthropic - your audio never leaves your machine for the LLM step.
@@ -156,5 +158,5 @@ If transcription itself fails before Claude runs, fix that first - see the engin
 - [LLM post-processing](../llm-post-processing.md) - the full reference for tasks, prompts, providers, shared keys, base URLs, and token limits.
 - [Transcription](../transcription.md) - engines, [diarization](../transcription.md#speakers-and-diarization), output formats, and destinations.
 - [Use cases & how-tos](index.md) - all the API-key and setup guides in one place.
-- [OpenAI / Whisper API key](openai-whisper-api-key.md) and [Google Gemini key](gemini-api-key.md) - the two accounts whose keys are **shared** with transcription, unlike Anthropic.
+- [OpenAI / Whisper API key](openai-whisper-api-key.md), [Google Gemini key](gemini-api-key.md), and [Mistral key](mistral-api-key.md) - the three accounts whose keys are **shared** with transcription, unlike Anthropic.
 - [Settings reference](../settings-reference.md) - every setting, option, and default in one table.

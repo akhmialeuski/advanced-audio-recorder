@@ -56,7 +56,7 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 3. Open **Engines** and then the **Mistral Voxtral** page.
 4. Leave **Base URL** at `https://api.mistral.ai/v1` unless you are routing requests through a gateway.
 5. Paste your key into **Mistral API key**.
-6. Under **Model**, pick `voxtral-mini-latest` (the default). Use the **Model catalogue** entry to add another id, drop one, or follow the **Voxtral model list** link to the [Mistral audio guide](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription).
+6. Under **Model**, pick `voxtral-mini-latest` (the default). Use the **Model catalogue** entry below it to add another id or drop one, and follow the **Voxtral model list** link at the end of the **Model** row's description to the [Mistral audio guide](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription).
 7. (Optional) Back in **Transcription**, turn on **Speaker diarization** for meetings and interviews.
 8. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
 

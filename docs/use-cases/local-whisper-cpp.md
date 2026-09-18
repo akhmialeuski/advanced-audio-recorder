@@ -28,7 +28,7 @@ Pick the local engine when privacy, cost, or connectivity matter more than raw s
 - **Desktop only.** The engine shells out to a native binary through Node, which the mobile app cannot do, so it runs only in the Obsidian **desktop** app. The rest of the plugin - including cloud transcription - works on mobile too; see [Mobile support](../mobile-support.md).
 - **It uses your hardware.** Transcription runs on your CPU (or GPU, if you built/downloaded a build with acceleration). A large model on a laptop CPU can be several times slower than real time.
 - **Accuracy scales with model size.** Bigger models are more accurate but slower and use more memory. Smaller models are fast but make more mistakes.
-- **No speaker labels.** Local `whisper.cpp` does not do diarization, so it produces no "who said what" labels. If you need speaker labels, use Deepgram or Gemini instead - see [Speakers and diarization](../transcription.md#speakers-and-diarization).
+- **No speaker labels.** Local `whisper.cpp` does not do diarization, so it produces no "who said what" labels. If you need speaker labels, use Deepgram, Gemini, or Mistral Voxtral instead - see [Speakers and diarization](../transcription.md#speakers-and-diarization).
 
 ---
 
@@ -122,7 +122,8 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 
 1. Toggle **Enable transcription** on.
 2. In the **Transcription engine** dropdown, choose **Local whisper.cpp (desktop)**.
-3. Fill in the three local-engine fields:
+3. Open **Engines** and then the **Local whisper.cpp (desktop)** page, which is where this engine's three fields live. It has no base URL and no API key, so the page holds nothing else.
+4. Fill in the three fields:
 
 | Field                       | What to enter                                                                                             |
 | --------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -132,9 +133,9 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 
 Both paths must be **absolute** (full) paths. Use the OS-native form: backslashes on Windows, forward slashes on macOS/Linux. The **Model path** field also shows a **Download whisper.cpp models** link to the same Hugging Face repository from Step 2.
 
-![Transcription settings with Engine set to Local whisper.cpp and the binary path, model path, and extra arguments fields](../images/local-whisper-settings-engine.png)
+![The Local whisper.cpp engine page under Engines, with the whisper.cpp binary path, Model path, and Extra arguments fields](../images/local-whisper-settings-engine.png)
 
-You can also set **Language** (an ISO code like `en`, `ru`, `es`, or `auto` to detect) here - it is shared with the other engines. The plugin passes a chosen language to the binary; with `auto` it lets `whisper.cpp` detect the language.
+You can also set **Language** (an ISO code like `en`, `ru`, `es`, or `auto` to detect) back under **Transcription** - it is shared with the other engines. The plugin passes a chosen language to the binary, and with `auto` it lets `whisper.cpp` detect the language.
 
 > **Note:** the **Speaker diarization** toggle is greyed out for this engine because local `whisper.cpp` cannot produce speaker labels, and the **Word-level timestamps** toggle is greyed out with it because the `-oj` output carries segment times and no words. The cloud-only **Request timeout** number field is hidden because there is no network request to time out, and **Local run timeout** appears in its place.
 
@@ -168,7 +169,7 @@ The settings are stored on this device. Because the local engine needs nothing e
 
 ## Extra arguments (optional)
 
-The **Extra arguments** field is appended verbatim to the `whisper.cpp` command line, after the model, input, and output flags the plugin already sets. The plugin always passes `-m <model>`, `-f <audio>`, `-oj` (JSON output), `-of <output>`, and `-l <language>` when a language is set - so do **not** repeat those. Use Extra arguments only for flags the plugin does not manage, for example:
+The **Extra arguments** field is appended verbatim to the `whisper.cpp` command line, after the model, input, and output flags the plugin already sets. The plugin always passes `-m <model>`, `-f <audio>`, `-oj` (JSON output), and `-of <output>`, it adds `-l <language>` when a language is set, and it adds `--prompt <terms>` when a [dictionary profile](../transcription.md#biasing-recognition-toward-your-own-terms) applies to the run - so do **not** repeat those. The plugin places its own `--prompt` before your extra arguments, so a `--prompt` you supply yourself still wins. Use Extra arguments only for flags the plugin does not manage, for example:
 
 | Example flag | Effect                                                          |
 | ------------ | --------------------------------------------------------------- |
@@ -191,7 +192,7 @@ Arguments are space-separated. Leave the field empty unless you have a specific 
 - **Wrong model path / "failed to load model"** - Verify the **Model path** points to a valid GGML `.bin` file you downloaded from the Hugging Face repository, that the file finished downloading, and that it is not corrupted. Re-download if in doubt.
 - **"Local whisper.cpp produced invalid JSON output."** - The binary ran but its output could not be parsed. This usually means a non-standard or very old build, or an extra argument that changed the output format. Remove your extra arguments and try a clean prebuilt release.
 - **Transcription is very slow / freezes for a while** - A large model on a CPU is slow. Switch to a smaller model (`base` or `small`), add `-t <n>` threads in Extra arguments, or use a GPU-accelerated build. A long recording can take minutes; the progress dialog stays responsive and can be minimized to the status bar while it runs.
-- **The transcript has no speaker labels** - This is expected. Local `whisper.cpp` does not do diarization, so it cannot label speakers. The **Speaker diarization** toggle is greyed out for this engine. Use Deepgram or Gemini for speaker labels - see [Speakers and diarization](../transcription.md#speakers-and-diarization).
+- **The transcript has no speaker labels** - This is expected. Local `whisper.cpp` does not do diarization, so it cannot label speakers. The **Speaker diarization** toggle is greyed out for this engine. Use Deepgram, Gemini, or Mistral Voxtral for speaker labels - see [Speakers and diarization](../transcription.md#speakers-and-diarization).
 - **Wrong language detected** - Set **Language** to the correct ISO code (e.g. `en`, `ru`, `es`) instead of leaving it on `auto`, and consider a multilingual model (a `.en` model only handles English).
 
 ---
