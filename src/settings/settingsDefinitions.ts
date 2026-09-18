@@ -55,6 +55,7 @@ import type { Setting, SettingDefinitionItem } from 'obsidian';
 // this module. Only what it actually reads is passed on: a name the tab does
 // not take is imported from the module that owns it.
 export {
+	LAYOUT_TRACK_FIELDS,
 	parseProfileControlKey,
 	parseTrackControlKey,
 	type TrackControlField,

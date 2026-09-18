@@ -60,6 +60,14 @@ export function rowOptions(row: ParentNode): string[] {
 	return textsOf(row, 'option');
 }
 
+/**
+ * The values behind those options, which is what a test asserting on a list
+ * the code computes reads: a bitrate row offers "32 kbps" and stores 32000.
+ */
+export function rowOptionValues(row: ParentNode): string[] {
+	return Array.from(rowSelect(row).options).map((option) => option.value);
+}
+
 /** The row's multi-line input. */
 export function rowTextarea(row: ParentNode): HTMLTextAreaElement {
 	return el<HTMLTextAreaElement>(row, 'textarea');

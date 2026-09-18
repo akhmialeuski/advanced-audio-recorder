@@ -34,7 +34,7 @@ import {
 	useDesktopPlatform,
 	useMobilePlatform,
 } from '../helpers/platform';
-import { tick } from '../helpers/async';
+import { tick, tickTimes } from '../helpers/async';
 import { allEls, el, maybeEl, textsOf } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
 import { modalInstances, noticeMessages } from '../mocks/obsidian';
@@ -42,6 +42,7 @@ import {
 	rowButton,
 	rowDescription,
 	rowInput,
+	rowOptionValues,
 	rowSelect,
 	rowToggle,
 	rowToggleOn,
@@ -622,6 +623,89 @@ describe('AudioRecorderSettingTab', () => {
 			// The model catalogue and the credential fields are another
 			// engine's now, in the rows that were already there.
 			expect(updateSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it.each<[string, string, unknown]>([
+			[
+				'the layout a single capture is reduced to',
+				'recordingChannels',
+				'mono-mix',
+			],
+			['the per-track configuration', 'enableMultiTrack', true],
+			[
+				'the system output paired with the microphone',
+				'includeSystemAudio',
+				true,
+			],
+			['how many tracks it is taken from', 'maxTracks', 2],
+			['whether the tracks become one file', 'outputMode', 'multiple'],
+		])(
+			'reads the tree again when %s decides another channel count',
+			async (_case, key, value) => {
+				await tab.setControlValue(key, value);
+
+				// The bitrate row offers what this device's encoder accepts
+				// for the layout the capture will have, and the format row
+				// blocks the formats it cannot write in that layout. Both are
+				// the rows already on screen holding another answer, which no
+				// visible predicate reaches: the tab went on offering the mono
+				// list beside a stereo capture until it was opened afresh.
+				expect(updateSpy).toHaveBeenCalledTimes(1);
+			},
+		);
+
+		it.each<[string, string, unknown]>([
+			['its channel layout', 'track.1.channelMode', 'mono-mix'],
+			['its place in the mix', 'track.1.pan', 1],
+			['the device it records', 'track.1.deviceId', ''],
+			['what it records at all', 'track.1.kind', 'system-audio'],
+		])(
+			'reads the tree again when a track changes %s',
+			async (_case, key, value) => {
+				await tab.setControlValue('track.1.deviceId', 'mic-1');
+				updateSpy.mockClear();
+
+				await tab.setControlValue(key, value);
+
+				// A session described by a track list takes its layout from
+				// the widest of its tracks, so these four move the same answer
+				// the keys above do. They reach it through the track branch of
+				// the write path, which returns before the effects table, so a
+				// row of the multi-track page left the bitrate row holding the
+				// previous layout's list.
+				expect(updateSpy).toHaveBeenCalledTimes(1);
+			},
+		);
+
+		it.each<[string, string, unknown]>([
+			['level in the mix', 'track.1.gainDb', -6],
+			['input processing', 'track.1.processing', 'raw'],
+		])(
+			'stores a track %s without rebuilding the tree',
+			async (_case, key, value) => {
+				await tab.setControlValue('track.1.deviceId', 'mic-1');
+				updateSpy.mockClear();
+
+				await tab.setControlValue(key, value);
+
+				// Neither reaches the channel layout, so neither is worth a
+				// pass over the whole tree; the rows they do reveal are
+				// governed by predicates the renderer re-evaluates in place.
+				expect(updateSpy).not.toHaveBeenCalled();
+			},
+		);
+
+		it('pops no page when a channel-count write rebuilds the tree', async () => {
+			// The multi-track switch is the one of the three that lives on a
+			// sub-page. The framework resolves an open page by its name path
+			// on every re-render (see module:obsidian/settingsNavigation) and
+			// that page is declared whether the switch is on or off, so the
+			// rebuild alone leaves the user on it. What would take them off it
+			// is the close a renamed or deleted profile needs, and a write
+			// that only moves the channel count must not reach for it.
+			await tab.setControlValue('enableMultiTrack', true);
+
+			expect(jest.mocked(closeSettingsPage)).not.toHaveBeenCalled();
 		});
 
 		it('stores a language code the way the engines receive it', () => {
@@ -2846,18 +2930,51 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 	}
 
 	/**
-	 * Scripts a platform encoder that takes everything from one rate upward,
-	 * which is the shape of the AAC encoders that refuse the low end.
-	 * @param lowest - The lowest bitrate the encoder accepts, in bps
+	 * One channel, which every mono recording mode hands the encoder. Declared
+	 * here rather than imported from the downmix module: this file sits at the
+	 * unit layer's cap of four src imports, which `scripts/layer-check.mjs`
+	 * enforces.
 	 */
-	function acceptBitratesFrom(lowest: number): void {
+	const MONO_CHANNEL_COUNT = 1;
+
+	/**
+	 * Scripts a platform encoder that takes everything from one rate upward,
+	 * which is the shape of the AAC encoders that refuse the low end. The
+	 * floor is answered per layout, because that is how those encoders answer
+	 * it: two channels in one frame need more bits than one, so a rate a mono
+	 * capture reaches is refused for the same capture in stereo.
+	 * @param lowest - The lowest bitrate the encoder accepts, in bps
+	 * @param lowestInStereo - The same for a two-channel capture, where this
+	 *   encoder puts its floor higher
+	 */
+	function acceptBitratesFrom(
+		lowest: number,
+		lowestInStereo: number = lowest,
+	): void {
 		const { probeOfflineEncodingSupport } = jest.requireMock(
 			'src/audio/AudioEncoder',
 		);
 		(probeOfflineEncodingSupport as jest.Mock).mockImplementation(
-			(_format: string, quality?: { bitrate?: number }) =>
-				Promise.resolve((quality?.bitrate ?? 0) >= lowest),
+			(
+				_format: string,
+				quality?: { bitrate?: number; numberOfChannels?: number },
+			) =>
+				Promise.resolve(
+					(quality?.bitrate ?? 0) >=
+						(quality?.numberOfChannels === MONO_CHANNEL_COUNT
+							? lowest
+							: lowestInStereo),
+				),
 		);
+	}
+
+	/**
+	 * The bitrates the row is offering now, read without drawing the tab
+	 * again: what a write left on screen is the whole question in the cases
+	 * below.
+	 */
+	function shownBitrates(): string[] {
+		return rowOptionValues(settingRow(tab.containerEl, 'Audio bitrate'));
 	}
 
 	/**
@@ -3064,6 +3181,30 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 
 		expect((await probedBitrateRow()).value).toBe('96000');
 		expect(mockSettings.bitrate).toBe(96000);
+	});
+
+	it('offers the stereo list the moment the channel row moves to it', async () => {
+		// The row is filled from the layout the capture will have, and three
+		// settings decide that layout from outside the row. Written without
+		// the tree being read again, the tab kept offering the mono list for a
+		// stereo capture until the settings tab was opened afresh, so the user
+		// was picking among rates this encoder refuses.
+		acceptBitratesFrom(32000, 96000);
+		mockSettings.recordingFormat = 'm4a';
+		mockSettings.recordingChannels = 'mono-mix';
+
+		await probedBitrateRow();
+		const inMono = shownBitrates();
+		const channels = rowSelect(
+			settingRow(tab.containerEl, 'Recording channels'),
+		);
+		channels.value = 'source';
+		channels.dispatchEvent(new Event('change'));
+		await tickTimes(4);
+
+		expect(inMono).toContain('32000');
+		expect(shownBitrates()).not.toContain('32000');
+		expect(at(shownBitrates(), 0)).toBe('96000');
 	});
 
 	it('says what narrowed the list once the encoder has answered', async () => {

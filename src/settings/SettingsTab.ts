@@ -35,6 +35,7 @@ import {
 } from './settingsRenderMode';
 import {
 	CONTROL_WRITE_EFFECTS,
+	LAYOUT_TRACK_FIELDS,
 	SETTINGS_TAB_CLASS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
@@ -584,7 +585,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const track = parseTrackControlKey(key);
 		if (track) {
 			this.writeTrackSource(track.track, track.field, value);
-			return this.plugin.saveSettings();
+			// The rows of the Output format section are built from the channel
+			// layout the session will have, which a track's own fields move as
+			// surely as the three keys marked reshapesTree do. This branch
+			// returns before the effects table is consulted, so the same
+			// rebuild is asked for here.
+			return LAYOUT_TRACK_FIELDS.has(track.field)
+				? this.commit()
+				: this.plugin.saveSettings();
 		}
 		const effect = CONTROL_WRITE_EFFECTS[key];
 		const settings = this.plugin.settings as unknown as Record<

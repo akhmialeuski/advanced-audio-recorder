@@ -22,6 +22,19 @@ export type TrackControlField =
 	| 'processing'
 	| 'kind';
 
+/**
+ * Track fields the recording's channel layout is built from.
+ *
+ * A track-list session takes its layout from the widest of its tracks, and
+ * goes stereo for a track placed off centre in a combined file, so four of the
+ * six fields move that answer: the layout itself, the placement, and the two
+ * that decide whether the track is in the list at all. A track's level and its
+ * processing move nothing the settings tab reads, which is why the fields are
+ * named here rather than the whole type being taken.
+ */
+export const LAYOUT_TRACK_FIELDS: ReadonlySet<TrackControlField> =
+	new Set<TrackControlField>(['deviceId', 'channelMode', 'pan', 'kind']);
+
 /** Control key for one field of one track's audio source. */
 export const trackControlKey = (
 	track: number,
