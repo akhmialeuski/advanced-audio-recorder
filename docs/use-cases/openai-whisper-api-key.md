@@ -26,7 +26,7 @@ The plugin's **Whisper API** engine is the OpenAI-compatible speech-to-text path
 | **Per-request cap**  | 25 MB (larger files are resampled and auto-chunked) |
 | **Cost**             | Paid, billed per minute of audio                    |
 
-Whisper API is the best choice when you want accurate single-speaker transcription - voice notes, dictation, and lectures. It does **not** label who is speaking; if you need that, use the [Deepgram](deepgram-api-key.md) or [Gemini](gemini-api-key.md) engines instead, which support [speaker diarization](../transcription.md#speakers-and-diarization).
+Whisper API is the best choice when you want accurate single-speaker transcription - voice notes, dictation, and lectures. It does **not** label who is speaking, so if you need that, use the [Deepgram](deepgram-api-key.md), [Gemini](gemini-api-key.md), or [Mistral Voxtral](mistral-api-key.md) engines instead, which support [speaker diarization](../transcription.md#speakers-and-diarization).
 
 ---
 
@@ -66,14 +66,14 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 
 1. Turn on **Enable transcription**. The transcription controls appear.
 2. In the **Transcription engine** dropdown, choose **Whisper API (OpenAI-compatible)**.
-3. Leave **Whisper API base URL** as `https://api.openai.com/v1` (the default).
-4. Paste your secret key into **Whisper API key**.
-5. In the **Whisper model** picker, select **`whisper-1`** (the default). The list below it adds a model id and deletes one.
-6. Set **Language** to `auto` to auto-detect, or to an ISO code (for example `en`, `ru`, `es`).
-7. (Optional) Choose where the transcript goes under **Transcript output > Destination**. The default is **Insert into note**.
+3. Open **Engines** and then the **Whisper API (OpenAI-compatible)** page, where the service itself is configured.
+4. Leave **Base URL** as `https://api.openai.com/v1` (the default).
+5. Paste your secret key into **OpenAI API key**. The same field is read by the OpenAI post-processing engine, so the key is entered once.
+6. In the **Model** dropdown, select **`whisper-1`** (the default). The **Model catalogue** entry below it is where a model id is added or deleted.
+7. Back under **Transcription**, set **Language** to `auto` to auto-detect, or to an ISO code (for example `en`, `ru`, `es`).
+8. (Optional) Choose where the transcript goes under **Transcript output > Destination**. The default is **Insert into note**.
 
-![The plugin Transcription settings with the Whisper API engine selected and the key, base URL, and model fields](../images/settings-transcription-whisper-api.png)
-_Figure: the Transcription settings configured for the OpenAI Whisper API engine._
+![The Whisper API engine page under Engines, with the Base URL, OpenAI API key, Model and Upload chunk size rows](../images/settings-engine-whisper-api.png)
 
 > **Speaker diarization** stays greyed out and off for the Whisper API engine - OpenAI's Whisper does not return speaker labels. The speaker-related output controls (Include speakers, Merge speaker turns, Speaker format) are disabled to match.
 
@@ -91,41 +91,45 @@ If the test works, your key, billing, and model are all correct.
 
 ## Settings reference
 
-The fields the Whisper API engine adds under **Settings > Transcription** (defaults match the plugin):
+The fields the Whisper API engine adds, some under **Settings > Transcription** and the rest on its own page under **Transcription > Engines** (defaults match the plugin):
 
-| Setting                   | What it does                                                                                     | Default                     |
-| ------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------- |
-| **Transcription engine**  | Selects the transcription engine. Choose `Whisper API (OpenAI-compatible)`.                      | `Whisper API`               |
-| **Language**              | ISO code (e.g. `en`, `ru`, `es`) or `auto` to detect.                                            | `auto`                      |
-| **Speaker diarization**   | Speaker labels. Disabled and greyed out for Whisper API.                                         | Off (unavailable)           |
-| **Word-level timestamps** | Per-word timing, recorded in JSON file output only.                                              | Off                         |
-| **Request timeout**       | Minutes before a single request is aborted and reported as failed. Range 1-60.                   | 10 minutes                  |
-| **Upload chunk size**     | Megabytes per WAV chunk when a file is too large to send whole. Range 1-24 (API limit is 25 MB). | 24 MB                       |
-| **Whisper API base URL**  | OpenAI-compatible endpoint base.                                                                 | `https://api.openai.com/v1` |
-| **Whisper API key**       | Your secret key. Stored in the plugin's `data.json` on this device.                              | empty                       |
-| **Whisper model**         | The model id to request. Must support `verbose_json` with timestamps.                            | `whisper-1`                 |
+| Setting                         | What it does                                                                                               | Where                 | Default                     |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------- |
+| **Transcription engine**        | Selects the transcription engine. Choose `Whisper API (OpenAI-compatible)`.                                | Transcription         | `Whisper API`               |
+| **Language**                    | ISO code (e.g. `en`, `ru`, `es`) or `auto` to detect.                                                      | Transcription         | `auto`                      |
+| **Speaker diarization**         | Speaker labels. Disabled and greyed out for Whisper API.                                                   | Transcription         | Off (unavailable)           |
+| **Translate speech to English** | Writes the recording down in English whatever was spoken. Whisper API is the only engine that offers it.   | Transcription         | Off                         |
+| **Word-level timestamps**       | Per-word timing, recorded in JSON file output only. Whisper API is the only engine that reads the request. | Transcription         | Off                         |
+| **Request timeout**             | Minutes before a single request is aborted and reported as failed. Range 1-60.                             | Transcription         | 10 minutes                  |
+| **Base URL**                    | OpenAI-compatible endpoint base, shared with the OpenAI engine.                                            | Engines > Whisper API | `https://api.openai.com/v1` |
+| **OpenAI API key**              | Your secret key. Stored in the plugin's `data.json` on this device.                                        | Engines > Whisper API | empty                       |
+| **Model**                       | The model id to request. Must support `verbose_json` with timestamps.                                      | Engines > Whisper API | `whisper-1`                 |
+| **Model catalogue**             | The saved model ids the dropdown above offers, where one is added or removed.                              | Engines > Whisper API | 4 saved                     |
+| **Upload chunk size**           | Megabytes per WAV chunk when a file is too large to send whole. Range 1-24 (API limit is 25 MB).           | Engines > Whisper API | 24 MB                       |
 
-The catalogue link shown next to the model picker points to OpenAI's speech-to-text guide: <https://platform.openai.com/docs/guides/speech-to-text>. For the full list of every transcription setting and its options, see the [Settings reference](../settings-reference.md) and the [Transcription guide](../transcription.md).
+The **Whisper API models** link at the end of the **Model** row's description points to OpenAI's speech-to-text guide: <https://developers.openai.com/api/docs/guides/speech-to-text>. For the full list of every transcription setting and its options, see the [Settings reference](../settings-reference.md) and the [Transcription guide](../transcription.md).
 
 ## Limits and behavior
 
 - **25 MB hard per-request limit.** OpenAI rejects any single request larger than 25 MB. Files at or under 25 MB are uploaded in their original container, untouched. Larger recordings are automatically resampled to 16 kHz mono and split into upload-sized WAV chunks, transcribed separately, and stitched back onto one timeline - you do not need to split anything by hand. The **Upload chunk size** setting controls how big each chunk is (default 24 MB, to stay safely under the 25 MB limit).
 - **No diarization.** The Whisper API does not return speaker labels, so the engine produces a single, unlabeled transcript. See [Speakers and diarization](../transcription.md#speakers-and-diarization).
+- **Speech translation.** The endpoint carries a second operation that writes the recording down in **English** whatever was spoken, and **Translate speech to English** turns it on. This is the only engine that offers it. The **Language** hint and **Word-level timestamps** are dropped from a translating request, because that operation takes neither, so a translated transcript carries per-segment timings only. To translate into any other language, use the [translation task](../llm-post-processing.md) of LLM post-processing on the finished transcript instead.
+- **Dictionary terms travel in the prompt.** A [dictionary profile](../transcription.md#biasing-recognition-toward-your-own-terms) applied to a run is sent as the OpenAI `prompt` field, which holds only about 224 tokens, so a long glossary is trimmed to the terms that fit and a notice says so.
 - **Model requirements.** The model you pick must support `verbose_json` output with segment timestamps. `whisper-1` does; OpenAI's newer `gpt-4o-transcribe` models do **not**, so they are not offered and will not work here.
 - **Compatible hosts.** Because this engine is OpenAI-compatible, you can point it at another host (such as Groq) by changing the base URL, key, and model. See [Groq (free Whisper)](groq-whisper-setup.md).
 - **Where your key lives.** The key is stored in the plugin's `data.json` on this device and is never written into diagnostics output. Avoid syncing `data.json` to untrusted locations. If you want a fully offline path with no key at all, use [local whisper.cpp](local-whisper-cpp.md).
 
 ## Troubleshooting
 
-| Symptom                                          | Likely cause and fix                                                                                                                           |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **401 / invalid key**                            | The key is wrong, truncated, revoked, or pasted with extra spaces. Re-copy it from <https://platform.openai.com/api-keys> or create a new one. |
-| **Quota / insufficient balance / billing error** | No credit on the account. Add a payment method and credit at <https://platform.openai.com/settings/organization/billing>.                      |
-| **File too large / 413**                         | A single chunk exceeded 25 MB. Lower **Upload chunk size** toward 24 MB; the plugin already auto-chunks files over the limit.                  |
-| **Request timed out**                            | The network stalled or the file is very long. Raise **Request timeout** (up to 60 minutes) and check your connection.                          |
-| **Wrong language detected**                      | Set **Language** to the explicit ISO code instead of `auto`.                                                                                   |
-| **No speaker labels**                            | Expected - Whisper API has no diarization. Switch to [Deepgram](deepgram-api-key.md) or [Gemini](gemini-api-key.md) for speakers.              |
-| **"Model not found" or empty result**            | The model id is wrong or unsupported. Reselect `whisper-1`, or pick a model that supports `verbose_json` with timestamps.                      |
+| Symptom                                          | Likely cause and fix                                                                                                                                              |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **401 / invalid key**                            | The key is wrong, truncated, revoked, or pasted with extra spaces. Re-copy it from <https://platform.openai.com/api-keys> or create a new one.                    |
+| **Quota / insufficient balance / billing error** | No credit on the account. Add a payment method and credit at <https://platform.openai.com/settings/organization/billing>.                                         |
+| **File too large / 413**                         | A single chunk exceeded 25 MB. Lower **Upload chunk size** below its default of 24 MB, since the plugin already auto-chunks over the limit.                       |
+| **Request timed out**                            | The network stalled or the file is very long. Raise **Request timeout** (up to 60 minutes) and check your connection.                                             |
+| **Wrong language detected**                      | Set **Language** to the explicit ISO code instead of `auto`.                                                                                                      |
+| **No speaker labels**                            | Expected - Whisper API has no diarization. Switch to [Deepgram](deepgram-api-key.md), [Gemini](gemini-api-key.md), or [Voxtral](mistral-api-key.md) for speakers. |
+| **"Model not found" or empty result**            | The model id is wrong or unsupported. Reselect `whisper-1`, or pick a model that supports `verbose_json` with timestamps.                                         |
 
 For broader diagnostics, see the [Troubleshooting guide](../troubleshooting.md).
 

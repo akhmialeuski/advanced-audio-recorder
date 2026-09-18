@@ -6,7 +6,7 @@ Use it for voice notes, meetings, interviews, lectures, and dictation. [Record](
 
 The plugin also includes [built-in transcription](docs/transcription.md). You can transcribe recordings or existing audio files in your vault using the OpenAI-compatible Whisper API (OpenAI, Groq, and other hosts), Deepgram, Google Gemini, Mistral Voxtral, or a local offline whisper.cpp model. Transcripts can include speaker labels, clickable timestamps, and an optional [AI summary](docs/llm-post-processing.md) saved next to your note.
 
-All audio and generated files stay in your vault. API keys are stored locally and are never sent anywhere except to the transcription provider you choose.
+All audio and generated files stay in your vault. API keys are stored locally and are never sent anywhere except to the providers you choose, which are the transcription engine a run uses and, when post-processing is on, the LLM vendor it calls.
 
 Works on desktop and mobile (iOS and Android). Some features are desktop-only (multi-track recording, local whisper.cpp transcription, input device selection); see [Mobile support](docs/mobile-support.md) for the platform differences. Requires Obsidian 1.6.6 or newer. MIT licensed.
 
@@ -33,7 +33,7 @@ The enhanced player turns playback into a first-class part of your notes. Record
 
 Transcription turns any recording, or any audio file already in your vault, into text with the engine that fits your needs: the OpenAI-compatible Whisper API (Groq and other compatible hosts included), Deepgram, Google Gemini, Mistral Voxtral, or a fully offline `whisper.cpp` model that never touches the network. Deepgram, Gemini, and Voxtral add automatic speaker diarization, so meetings and interviews come back labelled by speaker. You decide where the transcript goes and in which format (JSON, SRT, WebVTT, or plain text), with timestamps you can click to jump the player to the right moment. An optional pass through an LLM (OpenAI, Anthropic, Gemini, or Mistral) cleans up the wording or condenses the transcript into key points and action items. See [Transcription](docs/transcription.md) and [LLM post-processing](docs/llm-post-processing.md).
 
-![The Transcribe audio dialog with per-run controls for engine, language, speaker diarization, destination, and LLM post-processing.](docs/images/transcription-dialog.png)
+![The Transcribe audio dialog with its per-run rows for engine, language, speaker diarization, the participant and dictionary profiles, the two-pass mode, the destination and file format, LLM post-processing and chapter generation](docs/images/transcription-dialog.png)
 
 Everything else keeps your audio tidy. Convert recordings between WAV, WebM, OGG, MP3, MP4, M4A, AAC, and FLAC, and split long files into parts straight from the right-click menu; the formats you can record in are the subset your platform supports. Clean up noisy audio on demand with a high-pass filter, noise gate, and loudness leveling, always written to a fresh copy so the original is left untouched. See [Formats](docs/formats.md), [File operations](docs/file-operations.md), and [Audio cleanup](docs/audio-cleanup.md).
 

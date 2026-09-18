@@ -35,6 +35,7 @@ Before automatic transcription can do anything useful, you need a transcription 
 | Whisper API (Groq, free tier) | [Groq Whisper setup](groq-whisper-setup.md)           | Yes          | No          |
 | Deepgram                      | [Deepgram API key](deepgram-api-key.md)               | Yes          | Yes         |
 | Google Gemini                 | [Gemini API key](gemini-api-key.md)                   | Yes          | Yes         |
+| Mistral Voxtral               | [Mistral API key](mistral-api-key.md)                 | Yes          | Yes         |
 | Local `whisper.cpp` (offline) | [Local whisper.cpp](local-whisper-cpp.md)             | No           | No          |
 
 2. **Confirm it works once, manually.** Open any audio file, run **Transcribe audio** from the command palette (or from the right-click menu), and make sure a transcript comes back. Automatic transcription uses the exact same configuration, so if a manual run succeeds, the automatic one will too.
@@ -69,8 +70,8 @@ Automatic runs use your saved settings with no prompt, so set them before you re
 | **Destination**          | Transcript output                      | Insert into note, Save to file, Note and file, or Save to file and link it. Default: Insert into note.                     |
 | **File format**          | Transcript output (when not note-only) | JSON, SubRip `.srt`, WebVTT `.vtt`, or Plain text `.txt`. Default: JSON.                                                   |
 | **Note heading**         | Transcript output                      | The heading the transcript is inserted under. Default: `## Transcript`.                                                    |
-| **Include timestamps**   | Transcript output                      | Clickable timecode links in the note. Default: On.                                                                         |
-| **LLM post-processing**  | LLM post-processing                    | Optional automatic clean-up, summary, or custom instruction. Default: Off. See below.                                      |
+| **Include timestamps**   | Transcript output                      | Renders a timecode at the start of each line. **Timestamps as player links** is what makes it clickable. Default: On.      |
+| **LLM post-processing**  | LLM post-processing                    | Optional automatic clean-up, summary, translation, or custom instruction. Default: Off. See below.                         |
 
 For the full list of output options (timestamp/speaker/line templates, the note vs. file destinations, and word-level timestamps), see [Transcription](../transcription.md). To have every automatic transcript cleaned up or summarized by an LLM in the same pass, enable it under [LLM post-processing](../llm-post-processing.md) - it runs as part of the same automatic job.
 

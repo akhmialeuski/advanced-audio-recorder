@@ -23,7 +23,7 @@ Deepgram is one of five transcription engines in the plugin (alongside the [Whis
 - **Free starter credit, then pay-as-you-go.** A new Deepgram account includes a starter credit so you can transcribe right away; after that you pay only for what you use.
 - **Default model `nova-3`.** The plugin ships pointing at Deepgram's current general model, with a model picker for named variants and older families.
 
-If you only ever record a single speaker and want a fully free, offline option, [local whisper.cpp](../use-cases/local-whisper-cpp.md) may suit you better - but it cannot diarize. For diarized speaker labels, use Deepgram (or Gemini). See [Speakers and diarization](../transcription.md#speakers-and-diarization) for how speaker labels flow into the transcript.
+If you only ever record a single speaker and want a fully free, offline option, [local whisper.cpp](../use-cases/local-whisper-cpp.md) may suit you better - but it cannot diarize. For diarized speaker labels, use Deepgram, Gemini, or Mistral Voxtral. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for how speaker labels flow into the transcript.
 
 ## Step 1: Sign up for Deepgram
 
@@ -47,23 +47,23 @@ Treat the key like a password. Anyone who has it can spend your Deepgram credit.
 
 Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** section.
 
-1. Turn on **Enable transcription**. The engine fields appear below it.
+1. Turn on **Enable transcription**. The transcription controls appear below it.
 2. Set **Transcription engine** to **Deepgram**.
-3. In **Deepgram base URL**, leave the default `https://api.deepgram.com/v1`. Only change this if Deepgram tells you to use a different endpoint.
-4. Paste the key you copied into **Deepgram API key**.
-5. In **Deepgram model**, pick a model. The default is `nova-3`; other options are listed under [Choosing a model](#choosing-a-model).
+3. Open **Engines** and then the **Deepgram** page, where the service itself is configured.
+4. In **Base URL**, leave the default `https://api.deepgram.com/v1`. Only change this if Deepgram tells you to use a different endpoint.
+5. Paste the key you copied into **Deepgram API key**.
+6. In **Model**, pick a model. The default is `nova-3`, and the other options are listed under [Choosing a model](#choosing-a-model).
 
-| Field                 | What to enter                              | Default                       |
-| --------------------- | ------------------------------------------ | ----------------------------- |
-| **Transcription engine** | `Deepgram`                              | Whisper API                   |
-| **Deepgram base URL** | Leave as the default unless told otherwise | `https://api.deepgram.com/v1` |
-| **Deepgram API key**  | The key copied from the Deepgram Console   | (empty)                       |
-| **Deepgram model**    | `nova-3` (or a named variant)              | `nova-3`                      |
+| Field                    | What to enter                              | Where              | Default                       |
+| ------------------------ | ------------------------------------------ | ------------------ | ----------------------------- |
+| **Transcription engine** | `Deepgram`                                 | Transcription      | Whisper API                   |
+| **Base URL**             | Leave as the default unless told otherwise | Engines > Deepgram | `https://api.deepgram.com/v1` |
+| **Deepgram API key**     | The key copied from the Deepgram Console   | Engines > Deepgram | (empty)                       |
+| **Model**                | `nova-3` (or a named variant)              | Engines > Deepgram | `nova-3`                      |
 
-![Transcription settings with Engine set to Deepgram, the base URL, API key, and model picker](../images/settings-transcription-deepgram.png)
-_Figure: The Deepgram engine fields under Settings > Transcription._
+![The Deepgram engine page under Engines, with the Base URL, Deepgram API key and Model rows](../images/settings-engine-deepgram.png)
 
-The model picker lets you pick from a seeded list, and the list below it adds an id Deepgram supports or drops one you do not use. A link to Deepgram's authoritative model catalogue - [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model) - sits next to the picker.
+The **Model** row is a dropdown over the seeded ids, and the **Model catalogue** entry below it is where you add an id Deepgram supports or drop one you do not use. A link to Deepgram's authoritative model catalogue - [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model) - closes the **Model** row's description.
 
 ## Step 4: Enable speaker diarization
 
@@ -72,10 +72,9 @@ Diarization is what separates each voice into a labelled speaker. It is **off by
 1. Still in the **Transcription** section, find **Speaker diarization**.
 2. Turn it **on**.
 
-**Speaker diarization** is enabled only for engines that support it - **Deepgram** and **Google Gemini**. With the Whisper API or local whisper.cpp selected, the toggle is greyed out and reads _"Not supported by the selected engine. Use Deepgram for speaker labels."_ Because you selected Deepgram in Step 3, the toggle is active.
+**Speaker diarization** is enabled only for engines that support it - **Deepgram**, **Google Gemini**, and **Mistral Voxtral**. With the Whisper API or local whisper.cpp selected, the toggle is greyed out, and in the **Transcribe audio** dialog it reads _"Not supported by the selected engine. Use Deepgram for speaker labels."_ Because you selected Deepgram in Step 3, the toggle is active.
 
 ![Speaker diarization toggle turned on in the Transcription settings](../images/settings-transcription-diarization.png)
-_Figure: The Speaker diarization toggle, enabled because Deepgram is the selected engine._
 
 When diarization is on, the speaker-related output options unlock further down the **Transcript output** area: **Include speakers** (default on) and **Merge speaker turns** (default on, which combines consecutive lines from the same speaker into one block). The **Speaker format** template (default `**{speaker}**`) controls how each label is rendered. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for the full behavior.
 
@@ -102,7 +101,7 @@ If both speakers appear with their own labels, diarization is working. If everyt
 
 ## Choosing a model
 
-The **Deepgram model** picker is seeded with the families below; the current, authoritative list lives at [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model). You can also add any model id Deepgram supports.
+The **Model catalogue** on the Deepgram engine page is seeded with the families below, and the current, authoritative list lives at [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model). You can also add any model id Deepgram supports.
 
 | Model family       | Example ids                                                                                   | Notes                                                |
 | ------------------ | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
@@ -135,16 +134,16 @@ The plugin sends one request per transcription job (whole-file, up to 2 GB), so 
 
 ## Troubleshooting
 
-| Symptom                                        | Likely cause and fix                                                                                                                                                      |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Authentication / 401 error**                 | The **Deepgram API key** is wrong, has a stray space, or was revoked. Re-copy it from the Console's **API Keys** page and paste it again.                                 |
-| **Out of credit / payment error**              | Your free starter credit is used up. Add billing in the **Deepgram Console** to continue.                                                                                 |
-| **Model not found / invalid model**            | The **Deepgram model** id is not one Deepgram serves. Pick a seeded id (for example `nova-3`) or check the [model catalogue](https://developers.deepgram.com/docs/model). |
-| **Everything is one speaker**                  | **Speaker diarization** is off, or the audio truly has one dominant voice. Confirm the toggle is on (Step 4) and that both voices are audible.                            |
-| **Speaker labels missing from the transcript** | **Include speakers** is off, or the engine produced no labels. Turn on diarization and **Include speakers** under **Transcript output**.                                  |
-| **Wrong base URL / connection error**          | The **Deepgram base URL** was changed. Reset it to `https://api.deepgram.com/v1`.                                                                                         |
-| **Transcribe command is missing**              | **Enable transcription** is off, or the active file is not an audio file. Turn transcription on and select an audio file.                                                 |
-| **The job times out on a very long file**      | Increase **Request timeout** in the **Transcription** settings (default 10 minutes; range 1-60).                                                                          |
+| Symptom                                        | Likely cause and fix                                                                                                                                                                         |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Authentication / 401 error**                 | The **Deepgram API key** is wrong, has a stray space, or was revoked. Re-copy it from the Console's **API Keys** page and paste it again.                                                    |
+| **Out of credit / payment error**              | Your free starter credit is used up. Add billing in the **Deepgram Console** to continue.                                                                                                    |
+| **Model not found / invalid model**            | The **Model** id on the Deepgram engine page is not one Deepgram serves. Pick a seeded id (for example `nova-3`) or check the [model catalogue](https://developers.deepgram.com/docs/model). |
+| **Everything is one speaker**                  | **Speaker diarization** is off, or the audio truly has one dominant voice. Confirm the toggle is on (Step 4) and that both voices are audible.                                               |
+| **Speaker labels missing from the transcript** | **Include speakers** is off, or the engine produced no labels. Turn on diarization and **Include speakers** under **Transcript output**.                                                     |
+| **Wrong base URL / connection error**          | The **Base URL** on the Deepgram engine page was changed. Reset it to `https://api.deepgram.com/v1`.                                                                                         |
+| **Transcribe command is missing**              | **Enable transcription** is off, or the active file is not an audio file. Turn transcription on and select an audio file.                                                                    |
+| **The job times out on a very long file**      | Increase **Request timeout** in the **Transcription** settings (default 10 minutes; range 1-60).                                                                                             |
 
 For anything else, see the general [Troubleshooting](../troubleshooting.md) guide, and check Deepgram's own status and docs.
 

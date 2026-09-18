@@ -33,16 +33,19 @@
 
 Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable transcription**. The rest of the section appears only while it is on. From top to bottom you then configure:
 
-1. **Transcribe after recording** - auto-transcribe each saved recording (off by default).
-2. **Transcription engine** - the row naming the service that transcribes, with the **Engines** entry under it opening the page where that service is configured: base URL, API key, and model.
-3. **Language** - `auto` to detect, or an ISO code.
-4. **Speaker diarization** - request speaker labels (only some engines).
-5. **Translate speech to English** - write the recording down in English whatever was spoken, using the engine's own translating operation (only some engines).
-6. **Word-level timestamps** - per-word timing in JSON output, selectable on Whisper API and decided by the engine on the other four.
-7. **Request timeout** - the per-request network deadline (cloud engines only), replaced by **Local run timeout** on local whisper.cpp.
-8. **Transcript output** - destination, file format, and in-note formatting.
-9. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
-10. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
+1. **Transcription engine** - the row naming the service that transcribes, with the **Engines** entry under it opening the page where that service is configured: base URL, API key, and model.
+2. **Transcribe after recording** - auto-transcribe each saved recording (off by default).
+3. **Show cost estimates** - the estimated API cost before a run and the running session total (on by default).
+4. **Language** - `auto` to detect, or an ISO code.
+5. **Speaker diarization** - request speaker labels (only some engines).
+6. **Translate speech to English** - write the recording down in English whatever was spoken, using the engine's own translating operation (only some engines).
+7. **Participant profile** - shown while diarization is on, with the **Participant profiles** catalogue under it.
+8. **Word-level timestamps** - per-word timing in JSON output, selectable on Whisper API and decided by the engine on the other four.
+9. **Request timeout** - the per-request network deadline (cloud engines only), replaced by **Local run timeout** on local whisper.cpp.
+10. **Transcript output** - destination, file format, and in-note formatting.
+11. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
+12. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
+13. **Advanced** - the dictionary profiles and the experimental two-pass mode, behind the **Advanced settings** master switch.
 
 ---
 
@@ -82,12 +85,12 @@ OpenAI's speech-to-text API, and any OpenAI-compatible host (for example **Groq*
 
 Settings to fill:
 
-| Setting                  | Description                                                                                                      | Default                     |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| **Upload chunk size**    | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                            | 24                          |
-| **Whisper API base URL** | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL.                                 | `https://api.openai.com/v1` |
-| **Whisper API key**      | Your API key. Stored in plugin data on this device.                                                              | -                           |
-| **Whisper model**        | Model id in use; the entry opens the saved ids, where it is picked. Must support `verbose_json` with timestamps. | `whisper-1`                 |
+| Setting               | Description                                                                                                                     | Default                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| **Upload chunk size** | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                                           | 24                          |
+| **Base URL**          | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL. Shared with the OpenAI engine.                 | `https://api.openai.com/v1` |
+| **OpenAI API key**    | Your API key, read by this engine and by the OpenAI one. Stored in plugin data on this device.                                  | -                           |
+| **Model**             | Model id in use, picked from the ids the **Model catalogue** entry below it holds. Must support `verbose_json` with timestamps. | `whisper-1`                 |
 
 Behavior and limits:
 
@@ -97,10 +100,9 @@ Behavior and limits:
 - **Speech translation.** The endpoint carries a second operation that writes the recording down in **English** whatever was spoken. Turn on **Translate speech to English** to use it. Chunking and the dictionary bias behave exactly as they do on the transcription operation, but the translation one takes a narrower set of fields, so two things are dropped from the request rather than sent and refused. The **Language** hint goes, because it would describe the audio rather than the answer. **Word-level timestamps** go with it, because the operation has no timing granularity to ask for and answers with segments only, so a translated transcript carries per-segment timings and never per-word ones. This is the only engine that offers speech translation at all. To translate into any other language, or on any other engine, use the [translation task](llm-post-processing.md) of LLM post-processing instead, which runs on the finished transcript.
 - **Model requirements.** Only models that return `verbose_json` with segment timestamps work. `whisper-1` is OpenAI's; `whisper-large-v3` and `whisper-large-v3-turbo` are served by Groq and other compatible hosts. (OpenAI's `gpt-4o-transcribe` models do **not** support `verbose_json` and are intentionally excluded.)
 
-Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The catalogue link next to the model picker points at the [OpenAI speech-to-text guide](https://platform.openai.com/docs/guides/speech-to-text).
+Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The **Whisper API models** link in the **Model** row's description points at the [OpenAI speech-to-text guide](https://developers.openai.com/api/docs/guides/speech-to-text).
 
-![Whisper API engine settings: upload chunk size number field, base URL, API key, and model picker](images/settings-transcription-whisper.png)
-_Figure: the Whisper API engine fields, with the upload chunk-size number field and the model picker._
+![The Whisper API engine page under Engines, with the Base URL, OpenAI API key, Model and Upload chunk size rows](images/settings-engine-whisper-api.png)
 
 ### Deepgram
 
@@ -108,24 +110,23 @@ Deepgram's official **pre-recorded** transcription API, with strong diarization.
 
 Settings to fill:
 
-| Setting               | Description                                                                                           | Default                       |
-| --------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------- |
-| **Deepgram base URL** | Deepgram API base.                                                                                    | `https://api.deepgram.com/v1` |
-| **Deepgram API key**  | Your Deepgram key. Stored in plugin data on this device.                                              | -                             |
-| **Deepgram model**    | Model id in use; the entry opens the saved ids, where it is picked (e.g. `nova-3`, `nova-2-meeting`). | `nova-3`                      |
+| Setting              | Description                                                                                                          | Default                       |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **Base URL**         | Deepgram API base.                                                                                                   | `https://api.deepgram.com/v1` |
+| **Deepgram API key** | Your Deepgram key. Stored in plugin data on this device.                                                             | -                             |
+| **Model**            | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `nova-3`, `nova-2-meeting`). | `nova-3`                      |
 
 Behavior and limits:
 
 - **Up to 2 GB sent whole.** Because the entire recording goes in one request, **diarization keeps consistent speaker numbering across the whole file**.
 - **Diarization supported.** Turn on **Speaker diarization** to request speaker labels.
 - **Billing.** A free Deepgram account includes a generous starter credit; beyond that, usage is pay-as-you-go.
-- The picker is seeded with the Nova, Enhanced, and Base families; add your own ids if needed.
+- The catalogue is seeded with the Nova, Enhanced, and Base families together with the Whisper models Deepgram hosts, and you can add your own ids to it.
 - **Custom dictionary support depends on the model.** Nova-3 biases with keyterm prompting and Nova-2 and older with keyword boosting, while the hosted Whisper models cannot bias; see [Biasing recognition toward your own terms](#biasing-recognition-toward-your-own-terms).
 
-Getting a key: [Deepgram API key](use-cases/deepgram-api-key.md). The catalogue link points at the [Deepgram model list](https://developers.deepgram.com/docs/model).
+Getting a key: [Deepgram API key](use-cases/deepgram-api-key.md). The **Deepgram model list** link in the **Model** row's description points at the [Deepgram model list](https://developers.deepgram.com/docs/model).
 
-![Deepgram engine settings: base URL, API key, and the Deepgram model picker](images/settings-transcription-deepgram.png)
-_Figure: the Deepgram engine fields with the model picker seeded with the Nova family._
+![The Deepgram engine page under Engines, with the Base URL, Deepgram API key and Model rows](images/settings-engine-deepgram.png)
 
 ### Google Gemini
 
@@ -133,11 +134,11 @@ Google's multimodal `generateContent` API, using the File API to upload the reco
 
 Settings to fill:
 
-| Setting             | Description                                                                                                     | Default                                     |
-| ------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| **Gemini base URL** | Gemini API base (no version segment).                                                                           | `https://generativelanguage.googleapis.com` |
-| **Gemini API key**  | Your Gemini key. Stored in plugin data on this device.                                                          | -                                           |
-| **Gemini model**    | Model id in use; the entry opens the saved ids, where it is picked (e.g. `gemini-3.5-flash`, `gemini-2.5-pro`). | `gemini-3.5-flash`                          |
+| Setting                   | Description                                                                                                                    | Default                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| **Base URL**              | Gemini API base (no version segment).                                                                                          | `https://generativelanguage.googleapis.com` |
+| **Google Gemini API key** | Your Gemini key. Stored in plugin data on this device.                                                                         | -                                           |
+| **Model**                 | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `gemini-3.5-flash`, `gemini-2.5-pro`). | `gemini-3.5-flash`                          |
 
 Behavior and limits:
 
@@ -146,10 +147,9 @@ Behavior and limits:
 - **Long recordings are split.** A recording **longer than 15 minutes** is split into parts of equal length, each transcribed and stitched back onto the timeline; a recording of exactly 15 minutes still goes in one request. Splitting **resets Gemini's per-request speaker numbering**, so a diarized split shows a warning that speaker labels may differ between parts; the message suggests using Deepgram or splitting the recording for consistent speakers.
 - **Diarization supported.** Turn on **Speaker diarization** to request speaker labels.
 
-Getting a key: [Gemini API key](use-cases/gemini-api-key.md). The catalogue link points at the [Gemini model list](https://ai.google.dev/gemini-api/docs/models).
+Getting a key: [Gemini API key](use-cases/gemini-api-key.md). The **Gemini model list** link in the **Model** row's description points at the [Gemini model list](https://ai.google.dev/gemini-api/docs/models).
 
-![Google Gemini engine settings: base URL, API key, and the Gemini model picker](images/settings-transcription-gemini.png)
-_Figure: the Google Gemini engine fields with the Flash and Pro models in the picker._
+![The Google Gemini engine page under Engines, with the Base URL, Google Gemini API key, Model and Max output tokens rows](images/settings-llm-gemini-provider.png)
 
 ### Mistral Voxtral
 
@@ -157,11 +157,11 @@ Mistral's batch transcription endpoint, running the Voxtral Mini Transcribe mode
 
 Settings to fill:
 
-| Setting             | Description                                                                                      | Default                     |
-| ------------------- | ------------------------------------------------------------------------------------------------ | --------------------------- |
-| **Base URL**        | Mistral API base, shared with the Mistral chat engine.                                           | `https://api.mistral.ai/v1` |
-| **Mistral API key** | Your Mistral key. Stored in plugin data on this device.                                          | -                           |
-| **Model**           | Model id in use; the entry opens the saved ids, where it is picked (e.g. `voxtral-mini-latest`). | `voxtral-mini-latest`       |
+| Setting             | Description                                                                                                     | Default                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| **Base URL**        | Mistral API base, shared with the Mistral chat engine.                                                          | `https://api.mistral.ai/v1` |
+| **Mistral API key** | Your Mistral key. Stored in plugin data on this device.                                                         | -                           |
+| **Model**           | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `voxtral-mini-latest`). | `voxtral-mini-latest`       |
 
 Behavior and limits:
 
@@ -174,7 +174,7 @@ Behavior and limits:
 - **A generous request deadline.** The whole recording travels in one request, and the endpoint needs far longer to transcribe three hours of it than the upload itself takes, so the deadline never falls below 20 minutes. **Request timeout** still caps it, so raise that setting above its 10-minute default before transcribing a recording of more than about an hour.
 - **No speech translation.** The endpoint has no translating operation, so **Translate speech to English** is disabled for this engine. Use the [translation task](llm-post-processing.md) of LLM post-processing on the finished transcript instead.
 
-Getting a key: [Mistral API key](use-cases/mistral-api-key.md). The catalogue link points at the [Mistral offline transcription guide](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription).
+Getting a key: [Mistral API key](use-cases/mistral-api-key.md). The **Voxtral model list** link in the **Model** row's description points at the [Mistral offline transcription guide](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription).
 
 ### Local whisper.cpp (desktop)
 
@@ -198,21 +198,21 @@ Behavior and limits:
 Setup walkthrough: [Local whisper.cpp](use-cases/local-whisper-cpp.md). The download link in the model-path description points at the [whisper.cpp models on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp).
 
 ![Local whisper.cpp engine settings: binary path, model path, and extra arguments fields](images/local-whisper-settings-engine.png)
-_Figure: the local whisper.cpp engine fields for an offline transcription setup._
 
 ---
 
 ## Model picker and language
 
-The cloud engines share one **model picker** control, with the saved model ids listed below it. Between them you can:
+Every cloud engine's page carries the same pair of rows: a **Model** dropdown holding the id in use, and a **Model catalogue** entry below it whose value reads how many ids are saved, for example `7 saved`. Between them you can:
 
-- **Pick from the list** - choose a model id from the dropdown of saved suggestions.
-- **Add a model** - the add button on the list asks for the id your endpoint serves, adds it, and selects it.
-- **Delete one** - the button on a list row removes that id; deleting the one **In use** moves the selection to the first remaining id.
-- **Filter the list** - type in the field above it once the list is long enough to scroll.
+- **Pick from the list** - choose a model id from the **Model** dropdown, which offers the saved ids and nothing else.
+- **Add a model** - the add button on the **Model catalogue** page asks for the id your endpoint serves and adds it.
+- **Delete one** - the button on a catalogue row removes that id.
+- **Put one to work** - tapping a catalogue row selects that id, and the row in use says **In use** under its name.
+- **Filter the list** - type in the **Filter models** field above the catalogue once the list is long enough to scroll.
+- **Catalogue link** - the **Model** row's description ends in a link to that engine's official model list. Every engine carries one, Voxtral, Anthropic and Mistral included.
 
-On Obsidian 1.13 and later the saved ids live on a page of their own, reached from the model row, which shows the id in use; a vendor catalogue can run to thirty ids and inline they would bury the settings after them. On older versions the list is shown inline, since that Obsidian has no sub-pages.
-- **Catalogue link** - a help link beside the field opens that engine's official model list (OpenAI, Deepgram, or Gemini).
+On Obsidian 1.13 and later the catalogue lives on a page of its own, because a vendor catalogue can run to thirty ids and inline they would bury the settings after them. On older versions the list is shown inline, since that Obsidian has no sub-pages.
 
 The list is seeded on first run with common models for each engine and is fully user-editable. Local whisper.cpp does not use this picker - it takes a model **file path** instead (see above).
 
@@ -227,7 +227,7 @@ The **Language** setting controls the spoken language sent to the engine:
 
 The transcript data model carries a **speaker** label per segment. To populate it, enable **Speaker diarization** - the provider then detects the number of speakers automatically and labels segments (for example `Speaker 1`, `Speaker 2`).
 
-- **Diarization is available only with Deepgram and Google Gemini.** For Whisper API and local whisper.cpp the **Speaker diarization** toggle is **disabled and greyed out**, since those engines never return speaker labels.
+- **Diarization is available with Deepgram, Google Gemini, and Mistral Voxtral.** For Whisper API and local whisper.cpp the **Speaker diarization** toggle is **disabled and greyed out**, since those engines never return speaker labels.
 - The effective state is what matters: a stored "on" reads as off the moment you switch to an engine that cannot diarize, so the toggle never claims a result it cannot deliver.
 
 When diarization is **not in effect** (an engine that cannot diarize, or the toggle turned off), speaker labels are **stripped from the transcript entirely**. Neither the in-note Markdown nor the sidecar file - **including JSON** - shows them. The strip happens once on the canonical transcript, so every output path stays consistent.
@@ -238,8 +238,7 @@ Because there are no labels to act on without diarization, these output controls
 - **Merge speaker turns**
 - **Speaker format**
 
-![Speaker diarization toggle enabled for Deepgram, with the speaker output controls active below](images/settings-transcription-diarization.png)
-_Figure: with Deepgram and diarization on, the speaker-related output controls become editable._
+![The Transcription block with Deepgram selected and Speaker diarization turned on, above the Translate speech to English, Participant profile and Word-level timestamps rows](images/settings-transcription-diarization.png)
 
 ### Naming speakers
 
@@ -264,30 +263,24 @@ The names you assign are **remembered in the recording's sidecar file** (`<recor
 - When a transcript has no timecode links to identify the recording (for example with timestamp links turned off), the dialog cannot pin its lines to this audio. It warns you, and only after you opt in does it rewrite every matching label in those notes.
 
 ![The Participant profile row of the Rename speakers dialog, naming the text last read from a roster note that could not be read](images/dialog-rename-speakers-roster.png)
-_Figure: the picker of the Rename speakers dialog, which names the roster its suggestions come from; here the note holding it could not be read._
 
 ---
 
 ## Biasing recognition toward your own terms
 
-Names, abbreviations, and domain jargon are the words an engine mishears most often. **Dictionary profiles** live under the **Advanced settings** master switch (**Settings > Advanced Audio Recorder > Transcription > Advanced settings**), which is off by default; turn it on to reveal the dictionary and the two-pass mode, and with it off a recording transcribes in one plain pass with no biasing. The profiles are named glossaries, one term per line, so you can keep separate lists for different meeting types (standup, legal, medical) instead of one merged glossary that dilutes the bias. Manage them in the settings tab: **Dictionary profiles** opens a page (on Obsidian 1.13 and later; inline on older versions) whose entry shows the profile in use. That page is a list of the saved profiles with a filter above them, each entry saying how many terms it holds and whether a run uses it, plus **Add profile** for another one. Opening an entry gives that profile a page of its own with its terms across the full width, a **Use by default** switch deciding whether the Transcribe dialog offers it, and **Rename profile** and **Delete profile**. Names are unique, because a profile's page is addressed by its name. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. In the per-run **Transcribe audio** dialog you choose which profile to apply for that run, or **None**; the last choice is remembered and becomes the default for the next dialog and for transcribe-on-save.
+Names, abbreviations, and domain jargon are the words an engine mishears most often. **Dictionary profiles** live under the **Advanced settings** master switch (**Settings > Advanced Audio Recorder > Transcription > Advanced settings**), which is off by default; turn it on to reveal the dictionary and the two-pass mode, and with it off a recording transcribes in one plain pass with no biasing. The profiles are named glossaries, one term per line, so you can keep separate lists for different meeting types (standup, legal, medical) instead of one merged glossary that dilutes the bias. Manage them in the settings tab: **Dictionary profiles** opens a page (on Obsidian 1.13 and later; inline on older versions) whose entry shows the profile in use. That page is a list of the saved profiles with a filter above them, each entry saying how many terms it holds and whether a run uses it, plus **Add profile** for another one. Opening an entry gives that profile a page of its own with its terms across the full width, a **Dictionary profile** switch that makes it the profile in use, and **Rename profile** and **Delete profile**. That switch decides which profile a run applies by default, and the Transcribe dialog lists every saved profile whichever one is in use. Names are unique, because a profile's page is addressed by its name. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. In the per-run **Transcribe audio** dialog you choose which profile to apply for that run, or **None**; the last choice is remembered and becomes the default for the next dialog and for transcribe-on-save.
 
-**A profile can be read from a note.** A glossary of a hundred terms is easier to keep as an ordinary note: it is edited in the normal editor, synced and versioned with the vault, linked to the project it belongs to, and editable from a phone without opening the plugin settings. Below its use-by-default switch, every profile page has a **Source** row that chooses where the profile's text comes from. **Typed text** keeps the terms field, and **Note** replaces it with a **Note** row that suggests the vault's notes; an **Open note** action joins it once a note is picked. The description under **Source** names the text the profile applies, `Uses the text typed in the settings.` or `Uses the text of Glossaries/Standup.md.`, and while **Note** is chosen with no note picked yet it opens with `No note picked yet.`, because the typed text still applies. Nothing is stored for that choice until a note is picked, so closing the settings first returns the page to **Typed text**. Picking a note for a profile that holds typed text asks first, because the note's text takes its place: an empty note is offered the typed text, which is added to it, and any other note is confirmed before the typed text is lost. A note that cannot be read is not picked, and a notice says so. The line is drawn with the page, so a note renamed or deleted while the settings stay open is reflected the next time the page is opened. Once a note is picked, the profile's text becomes the note's text below its frontmatter. A transcription and a chapter generation read the note again as they start, and the **Rename speakers** dialog reads it as it opens, from the note's editor when it is open, so an edit made a moment before applies, and an edit saved during a run applies to the next one. List markup is read the way a list is meant: a glossary written as bullets, a numbered list, or checkboxes, inside a callout or not, yields the terms without the markers, and a link yields the name it shows (its alias, or else the name of the linked note). Bold, italic, highlighted text, and inline code yield the text inside them, a Markdown link yields its label, and struck-through text and embeds yield nothing. Headings, horizontal rules, tables, code blocks, `%%` comments, and the title line of a callout are skipped. Each line is one term, so a definition written after a term on its line is sent with it. Both rules hold for terms typed into the settings as well. Renaming or moving the note, or the folder holding it, inside Obsidian keeps the profile pointed at it. When the note disappears (deleted, moved outside Obsidian, or not yet delivered by sync), the profile keeps the text last read from it, **Source** says `Uses the text last read from Glossaries/Standup.md, which is missing.`, and a run that applies it names the note in a notice and goes ahead with that text. A note that is in the vault and cannot be read, for example while another program holds it locked, is handled the same way: a run, and the **Rename speakers** dialog under its profile picker, say that the note could not be read and use the text last read from it. Every catalogue entry names where its text comes from beside what it holds and whether a run uses it, for example `In use, note, 12 terms`, `Typed text, 3 terms`, or `Note missing, 12 terms`. The picker of the profile in use repeats the line from **Source** under its description, and the profile pickers of the **Transcribe audio**, **Generate chapters**, and **Rename speakers** dialogs show the same line for the profile picked there. Choosing **Typed text** again detaches the profile and leaves the note's current text in its terms field, ready to edit (or the text last read from it, with a notice, when the note cannot be read), while emptying the **Note** field keeps the page on a note until another one is picked. Participant rosters, chapter guidance, and post-processing prompts can be read from notes the same way, and a prompt is sent exactly as the note holds it, Markdown included.
+**A profile can be read from a note.** A glossary of a hundred terms is easier to keep as an ordinary note: it is edited in the normal editor, synced and versioned with the vault, linked to the project it belongs to, and editable from a phone without opening the plugin settings. Below that switch, every profile page has a **Source** row that chooses where the profile's text comes from. **Typed text** keeps the terms field, and **Note** replaces it with a **Note** row that suggests the vault's notes; an **Open note** action joins it once a note is picked. The description under **Source** names the text the profile applies, `Uses the text typed in the settings.` or `Uses the text of Glossaries/Standup.md.`, and while **Note** is chosen with no note picked yet it opens with `No note picked yet.`, because the typed text still applies. Nothing is stored for that choice until a note is picked, so closing the settings first returns the page to **Typed text**. Picking a note for a profile that holds typed text asks first, because the note's text takes its place: an empty note is offered the typed text, which is added to it, and any other note is confirmed before the typed text is lost. A note that cannot be read is not picked, and a notice says so. The line is drawn with the page, so a note renamed or deleted while the settings stay open is reflected the next time the page is opened. Once a note is picked, the profile's text becomes the note's text below its frontmatter. A transcription and a chapter generation read the note again as they start, and the **Rename speakers** dialog reads it as it opens, from the note's editor when it is open, so an edit made a moment before applies, and an edit saved during a run applies to the next one. List markup is read the way a list is meant: a glossary written as bullets, a numbered list, or checkboxes, inside a callout or not, yields the terms without the markers, and a link yields the name it shows (its alias, or else the name of the linked note). Bold, italic, highlighted text, and inline code yield the text inside them, a Markdown link yields its label, and struck-through text and embeds yield nothing. Headings, horizontal rules, tables, code blocks, `%%` comments, and the title line of a callout are skipped. Each line is one term, so a definition written after a term on its line is sent with it. Both rules hold for terms typed into the settings as well. Renaming or moving the note, or the folder holding it, inside Obsidian keeps the profile pointed at it. When the note disappears (deleted, moved outside Obsidian, or not yet delivered by sync), the profile keeps the text last read from it, **Source** says `Uses the text last read from Glossaries/Standup.md, which is missing.`, and a run that applies it names the note in a notice and goes ahead with that text. A note that is in the vault and cannot be read, for example while another program holds it locked, is handled the same way: a run, and the **Rename speakers** dialog under its profile picker, say that the note could not be read and use the text last read from it. Every catalogue entry names where its text comes from beside what it holds and whether a run uses it, for example `In use, note, 12 terms`, `Typed text, 3 terms`, or `Note missing, 12 terms`. The picker of the profile in use repeats the line from **Source** under its description, and the profile pickers of the **Transcribe audio**, **Generate chapters**, and **Rename speakers** dialogs show the same line for the profile picked there. Choosing **Typed text** again detaches the profile and leaves the note's current text in its terms field, ready to edit (or the text last read from it, with a notice, when the note cannot be read), while emptying the **Note** field keeps the page on a note until another one is picked. Participant rosters, chapter guidance, and post-processing prompts can be read from notes the same way, and a prompt is sent exactly as the note holds it, Markdown included.
 
 ![A dictionary profile page with Source set to Typed text and the terms typed into the settings](images/settings-dictionary-profiles.png)
-_Figure: a profile page whose terms are typed in, under Settings > Advanced Audio Recorder > Transcription > Dictionary profiles._
 
 ![The same page with Source set to Note, the Note row holding the path of the note, and an Open note action below it](images/settings-profile-source-note.png)
-_Figure: the same page once the profile reads its terms from a note; the terms field is edited in the note from then on._
 
 ![The Source row naming the text last read from a note that is missing, with No note at this path under the Note row](images/settings-profile-source-note-missing.png)
-_Figure: a profile whose note has gone from the vault; the terms last read from it still apply, and a run says so._
 
 ![The Dictionary profile row with a line naming the text the profile in use applies](images/settings-profile-picker-note.png)
-_Figure: the row that picks the glossary applied by default, naming where its text comes from._
 
 ![The Transcribe audio dialog rows for the participant and dictionary profiles, each naming the text it applies](images/transcribe-dialog-dictionary.png)
-_Figure: the per-run pickers of the Transcribe audio dialog, which name the text of the profile picked in them._
 
 Each engine consumes the list the way its own API supports:
 
@@ -353,7 +346,7 @@ When you ask for in-note output but the note is not open in an editable view (re
 | **WebVTT (.vtt)**               | `.vtt`             | WebVTT cues with `HH:MM:SS.mmm` timing; speaker as a line prefix.            |
 | **Plain text (.txt)**           | `.txt`             | Readable lines, each prefixed with `[timecode]` and the speaker.             |
 
-The sidecar is written **next to the audio file**, sharing its base name (JSON uses a `.transcript.json` suffix so it is not mistaken for other JSON). If a file with that name already exists, a numeric suffix is appended to avoid overwriting it. **Word-level timestamps** only appear in the **JSON** output, and which engine gives them is not the toggle's to decide: **Whisper API** requests per-word timings when it is on, **Deepgram** returns them on every run whatever it says, and **Google Gemini** and **local whisper.cpp** return segment-level timing only. The toggle is therefore live on Whisper API alone; on the other three it is shown disabled, sitting in the position that engine will actually produce and with that engine's own behaviour named under it, so a run never promises a words array it will not produce. Your choice is kept while another engine is selected and takes effect again on Whisper API.
+The sidecar is written **next to the audio file**, sharing its base name (JSON uses a `.transcript.json` suffix so it is not mistaken for other JSON). If a file with that name already exists, a numeric suffix is appended to avoid overwriting it. **Word-level timestamps** only appear in the **JSON** output, and which engine gives them is not the toggle's to decide: **Whisper API** requests per-word timings when it is on, **Deepgram** returns them on every run whatever it says, and **Google Gemini**, **Mistral Voxtral**, and **local whisper.cpp** return segment-level timing only. The toggle is therefore live on Whisper API alone, and on the other four it is shown disabled, sitting in the position that engine will actually produce and with that engine's own behaviour named under it, so a run never promises a words array it will not produce. Your choice is kept while another engine is selected and takes effect again on Whisper API.
 
 With the default templates and timestamp links on, a diarized transcript renders like this:
 
@@ -403,14 +396,13 @@ When you run **Transcribe audio** from the context menu or the command palette, 
 - **Destination** - Insert into note / Save to file / Note and file / Save to file and link it in the note.
 - **File format** - shown when the destination is not note-only.
 - **Include timestamps** and **Include speakers** - shown only when the destination renders Markdown into the note (Insert into note / Note and file); **Include speakers** is diarization-gated.
-- **LLM post-processing** - toggle it on, and pick the **LLM task** (Clean up / Summarize / Custom) for this run.
+- **LLM post-processing** - toggle it on, and pick the **LLM task** (Clean up / Summarize / Translate / Custom) for this run.
 
 The detailed in-note templates (note heading, timestamp/speaker/line format) stay in the **settings tab**, and so does everything about a service itself, since a credential cannot be entered safely in a transient dialog: each engine's endpoint, key, model catalogue, and token ceiling belong on its page under **Engines**. Whatever you set in those template and provider fields is applied as configured.
 
 Options toggled mid-run do **not** change an in-flight job: the run snapshots its options when you press **Transcribe**, so edits only affect the next attempt after a failure.
 
-![The Transcribe audio dialog with per-run Engine, Language, diarization, Destination, and File format controls](images/transcription-dialog.png)
-_Figure: the Transcribe audio dialog with the per-run overrides above the progress area._
+![The Transcribe audio dialog with its Engine, Language, Speaker diarization, Participant profile, disabled Word-level timestamps, Advanced settings, Dictionary, Advanced two-pass transcription, Destination, File format, Include timestamps, Include speakers, LLM post-processing, LLM task and Generate chapters rows above the cost line and the Transcribe, Minimize and Close buttons](images/transcription-dialog.png)
 
 ---
 
@@ -473,13 +465,13 @@ Cloud transcription is a paid API call, and nobody likes a surprise bill. With *
 - **During a long multi-part run**, a live "Cost so far" line accumulates what the completed transcription parts actually billed.
 - **After the run**, a notice reports the transcription cost together with the running session total, and the dialog shows **"Spent this session"** - a per-session counter of everything transcribed since Obsidian started, kept per engine. The line names what the total is made of: runs that could not be priced at all, and steps whose figure is an estimate rather than a count the vendor reported.
 
-Below the breakdown, a **Check current pricing** line links straight to the pricing page of each provider the run uses, so the built-in rates are one click from the authoritative numbers. The transcription cost is computed from what the provider **actually reported billing for** - Deepgram's and OpenAI's billed audio duration, Gemini's token counts split by modality (audio input and the text prompt are billed at different rates) - and falls back to the duration-based estimate when a provider reports nothing. Estimates use **built-in, approximate pay-as-you-go rates** for the common models (`whisper-1`, Groq's `whisper-large-v3`(-turbo) and `distil-whisper`, Deepgram `nova`/`enhanced`/`base`, Gemini 2.x, and the OpenAI, Anthropic, and Gemini post-processing models); providers change prices, so always verify against the linked pricing page. A model the plugin has no rate for shows "no built-in rate" instead of a wrong number, and such runs are counted separately in the session total rather than silently added as zero. The **local whisper.cpp engine is free** and shows no cost. The LLM steps (context agents, post-processing, auto chapters) are counted in the session total too, and they are priced the same way the transcription is: OpenAI, Anthropic, and Gemini all return the token counts they billed in the same response the text comes from, so a completed step is recorded at **what it cost** rather than at what it was expected to cost. Reasoning tokens, which the models that produce them report separately, are billed at the output rate. The pre-run estimate is the fallback, used for a model with no built-in rate and for a vendor that reported no counts, and the session line says how many steps were priced that way, so an estimate is never presented as a measurement.
+Below the breakdown, a **Check current pricing** line links straight to the pricing page of each provider the run uses, so the built-in rates are one click from the authoritative numbers. The transcription cost is computed from what the provider **actually reported billing for** - Deepgram's and OpenAI's billed audio duration, Gemini's token counts split by modality (audio input and the text prompt are billed at different rates) - and falls back to the duration-based estimate when a provider reports nothing. Estimates use **built-in, approximate pay-as-you-go rates** for the common models (`whisper-1`, Groq's `whisper-large-v3`(-turbo) and `distil-whisper`, Deepgram `nova`/`enhanced`/`base` and its hosted Whisper models, Gemini 2.x and 3.x, the Voxtral models, and the OpenAI, Anthropic, Gemini, and Mistral post-processing models); providers change prices, so always verify against the linked pricing page. A model the plugin has no rate for shows "no built-in rate" instead of a wrong number, and such runs are counted separately in the session total rather than silently added as zero. The **local whisper.cpp engine is free** and shows no cost. The LLM steps (context agents, post-processing, auto chapters) are counted in the session total too, and they are priced the same way the transcription is: OpenAI, Anthropic, and Gemini all return the token counts they billed in the same response the text comes from, so a completed step is recorded at **what it cost** rather than at what it was expected to cost. Reasoning tokens, which the models that produce them report separately, are billed at the output rate. The pre-run estimate is the fallback, used for a model with no built-in rate and for a vendor that reported no counts, and the session line says how many steps were priced that way, so an estimate is never presented as a measurement.
 
 ---
 
 ## LLM post-processing
 
-After transcription, you can optionally pass the transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. The provider defaults to OpenAI (`gpt-5.6-sol`), with Anthropic (`claude-opus-4-8`) and Google Gemini (`gemini-3.5-flash`) also available; the OpenAI and Gemini keys are shared with the matching transcription engines.
+After transcription, you can optionally pass the transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. The provider defaults to OpenAI (`gpt-5.6-sol`), with Anthropic (`claude-opus-4-8`), Google Gemini (`gemini-3.5-flash`), and Mistral (`mistral-medium-latest`) also available. The OpenAI, Gemini, and Mistral keys are shared with the matching transcription engines.
 
 LLM post-processing is **best-effort**: a failure (bad key, network, timeout) falls back to the raw transcript rather than discarding completed work.
 
@@ -524,9 +516,11 @@ All transcription settings live under **Settings > Advanced Audio Recorder > Tra
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | **Enable transcription**            | Master toggle that reveals the rest of the section.                                                     | Off                            |
 | **Transcribe after recording**      | Auto-transcribe each saved recording (first file only).                                                 | Off                            |
+| **Show cost estimates**             | Show an approximate API cost before a run and a running session total (cloud engines only).             | On                             |
 | **Transcription engine**            | Whisper API / Deepgram / Google Gemini / Mistral Voxtral / Local whisper.cpp.                           | Whisper API                    |
 | **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`). Ignored by Voxtral, which detects it itself.       | `auto`                         |
 | **Speaker diarization**             | Request speaker labels (Deepgram, Gemini, and Voxtral only).                                            | Off                            |
+| **Translate speech to English**     | Write the recording down in English whatever was spoken (Whisper API only).                             | Off                            |
 | **Word-level timestamps**           | Per-word timing in JSON file output. Selectable on Whisper API, the one engine that reads the request.  | Off                            |
 | **Request timeout**                 | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.                    | 10                             |
 | **Local run timeout**               | Minutes before the local whisper.cpp process is stopped (that engine only). Range 1-720.                | 120                            |

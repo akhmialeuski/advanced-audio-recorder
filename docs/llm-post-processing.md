@@ -31,13 +31,13 @@ When **Enable LLM post-processing** is on, the plugin runs the LLM pass at the v
 
 It changes the **text** of the transcript, not the audio. It runs on every transcription while it is enabled - automatic [transcribe-after-recording](use-cases/transcribe-after-recording.md) runs, the **Transcribe audio** command, and the right-click **Transcribe audio** action all go through the same step.
 
-> **It is a separate, paid API call.** The cloud providers (OpenAI, Anthropic, Google Gemini) bill for the tokens this step uses, on top of the transcription engine's cost. The local whisper.cpp transcription engine is offline, but LLM post-processing always uses one of the three cloud LLM providers.
+> **It is a separate, paid API call.** The cloud providers (OpenAI, Anthropic, Google Gemini, Mistral) bill for the tokens this step uses, on top of the transcription engine's cost. The local whisper.cpp transcription engine is offline, but LLM post-processing always uses one of the four cloud LLM providers.
 
 ---
 
 ## Enabling it
 
-LLM post-processing lives at the bottom of the transcription settings, after the **Transcript output** section.
+LLM post-processing has a block of its own in the transcription settings, below **Transcript output** and **Auto chapters** and above **Advanced**.
 
 1. Open **Settings > Advanced Audio Recorder**.
 2. Turn on **Enable transcription** (the whole **Transcription** section only appears when it is on).
@@ -91,27 +91,26 @@ Each task has its own catalogue of named prompts, shown below the **Task** dropd
 | ------------- | ------------------------------- | --------------------------------------------------------------------------------------------------- |
 | **Clean up**  | **Cleanup prompt profiles**     | The transcript language is **appended automatically** at request time - you do not add it yourself. |
 | **Summarize** | **Summary prompt profiles**     | The transcript language is **appended automatically** at request time - you do not add it yourself. |
+| **Translate** | **Translation prompt profiles** | The **Translate into** language is **appended automatically** at request time.                      |
 | **Custom**    | **Custom instruction profiles** | **Not** appended - sent verbatim. Include your own language directive.                              |
 
-A profile is a named prompt on a page of its own, with the prompt text, a use-by-default switch, and rename and delete - the same catalogue the dictionary, participant, and chapter guidance profiles use. Every task starts with one **Default** profile holding the built-in prompt shown below, and an upgrade from an earlier version moves whatever you had in the single prompt field into that profile, still in use. Add profiles for the cases you actually run: a cleanup for interviews and another for lectures, a summary for standups and another for client calls, and pick the one you want before a run.
+A profile is a named prompt on a page of its own, with the prompt text, a switch named after the task that makes it the profile in use, and rename and delete - the same catalogue the dictionary, participant, and chapter guidance profiles use. Every task starts with one **Default** profile holding the built-in prompt shown below, and an upgrade from an earlier version moves whatever you had in the single prompt field into that profile, still in use. Add profiles for the cases you actually run: a cleanup for interviews and another for lectures, a summary for standups and another for client calls, and pick the one you want before a run.
 
 A prompt profile can also be read from a note. Set the profile's **Source** row to **Note**, and the page replaces the prompt field with a **Note** row; once a note is picked there, an **Open note** action joins it. The prompt then becomes the note's text below its frontmatter, sent verbatim with its Markdown intact and read again as each run starts, from its editor when the note is open, so an edit made a moment before the run applies to it. The description under **Source** names the text the profile applies, such as `Uses the text of Prompts/Cleanup.md.` The profile follows the note through renames and moves inside Obsidian. When the note goes missing, the profile keeps the last text read from it, its entry says **Note missing** (after **In use** when it is the profile in use), and the run names the note in a notice. A note that cannot be read is handled the same way, and the notice says that it could not be read. The same mechanism serves every kind of profile, as described under [Biasing recognition toward your own terms](transcription.md#biasing-recognition-toward-your-own-terms).
 
-Setting a **Clean up** or **Summarize** catalogue to **None** falls back to that task's built-in default, so the pass always has a real prompt to run with. **Custom** ships no default of its own: with None (or an empty profile) the model is only told `Process the following transcript as instructed.`, which is rarely what you want - keep a profile selected there. For **Clean up** and **Summarize**, the plugin appends a sentence telling the model to respond in the transcript's language (using the detected/declared language when known, e.g. `Respond in the same language as the transcript.` or `The transcript language is en; respond in that same language.`). That is why these two base prompts carry no language directive - adding one yourself would duplicate it.
+Setting a **Clean up**, **Summarize**, or **Translate** catalogue to **None** falls back to that task's built-in default, so the pass always has a real prompt to run with. **Custom** ships no default of its own: with None (or an empty profile) the model is only told `Process the following transcript as instructed.`, which is rarely what you want - keep a profile selected there. For **Clean up** and **Summarize**, the plugin appends a sentence telling the model to respond in the transcript's language (using the detected/declared language when known, e.g. `Respond in the same language as the transcript.` or `The transcript language is en; respond in that same language.`). **Translate** has its target language appended the same way, taken from **Translate into** or from English when that field is empty. That is why those three base prompts carry no language directive - adding one yourself would duplicate it.
 
 For **Custom**, nothing is added: the instruction in the selected profile is the entire system prompt. A profile with an empty body, like None, leaves only the generic instruction above - write a real one.
 
 ![A cleanup prompt profile page with Source set to Typed text and the prompt typed into the settings](images/settings-llm-prompt-editor.png)
-_Figure: a prompt profile's page; the instruction is sent verbatim._
 
 ![The same page with Source set to Note, naming the note the prompt is read from](images/settings-llm-prompt-source-note.png)
-_Figure: the same page once the prompt is read from a note, which every run reads again as it starts._
 
 ---
 
 ## Default prompts
 
-These ship with the plugin as the **Default** profile of each task, and are used whenever no profile is selected for it or the selected profile is empty. The transcript-language sentence is appended to the cleanup and summary prompts automatically. The cleanup prompt also gets a glossary clause automatically whenever the selected dictionary profile has terms: the canonical spellings are listed so the model corrects garbled names and acronyms ("кубернетис" to `Kubernetes`) without inserting terms that were not spoken.
+These ship with the plugin as the **Default** profile of each task, and are used whenever no profile is selected for it or the selected profile is empty. The transcript-language sentence is appended to the cleanup and summary prompts automatically, and the target-language sentence to the translation one. The cleanup prompt also gets a glossary clause automatically whenever the selected dictionary profile has terms: the canonical spellings are listed so the model corrects garbled names and acronyms ("кубернетис" to `Kubernetes`) without inserting terms that were not spoken.
 
 **Default Clean up prompt:**
 
@@ -120,6 +119,10 @@ These ship with the plugin as the **Default** profile of each task, and are used
 **Default Summarize prompt:**
 
 > You are an expert analyst. Summarize the following transcript into a concise set of key points and any action items, as Markdown bullet lists under short headings. Be faithful to the content and do not invent details. Return only the summary with no preamble.
+
+**Default Translate prompt:**
+
+> You are an expert translator. You are given a machine-generated transcript, one line per spoken segment, in the form number|speaker|text. Translate the text field of every line faithfully, keeping the register and meaning of the original; do NOT summarize, merge, split, reorder, or omit lines. Return exactly one line per input line, in the same order and the same form, with the number and the speaker label copied over unchanged and only the text translated. Add no timestamps and no commentary, and return only the lines with no preamble.
 
 **Default Custom instruction** (shown as a starting point; you are expected to replace it):
 
@@ -138,22 +141,20 @@ LLM post-processing supports four providers, chosen from its own **Post-processi
 | **Google Gemini**      | `Google Gemini`      | `gemini-3.5-flash`      | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                        |
 | **Mistral**            | `Mistral`            | `mistral-medium-latest` | [Mistral models](https://docs.mistral.ai/getting-started/models/models_overview)     |
 
-The **Model** picker on the engine's page is the same control used for transcription models: pick one from the saved list, add an id with the button on the catalogue that entry opens, delete one with the button on its row, and follow the catalogue link in that page's description to the provider's model list. The list is seeded with common models for the provider:
+The **Model** row on the engine's page is the same control used for transcription models: pick an id from its dropdown, add one with the button on the **Model catalogue** entry below it, delete one with the button on a catalogue row, and follow the link at the end of the **Model** row's description to the provider's model list. The list is seeded with common models for the provider:
 
-| Provider      | Seeded model ids                                                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| **OpenAI**    | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`                                                                                 |
-| **Anthropic** | `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`, `claude-fable-5`                                                     |
-| **Gemini**    | `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite` |
-| **Mistral**   | `mistral-medium-latest`, `mistral-small-latest`, `mistral-large-latest`                                                        |
+| Provider      | Seeded model ids                                                                                                                                   |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OpenAI**    | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`                                                                                                     |
+| **Anthropic** | `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`, `claude-fable-5`                                                                         |
+| **Gemini**    | `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite`, `gemini-2.0-flash` |
+| **Mistral**   | `mistral-medium-latest`, `mistral-small-latest`, `mistral-large-latest`                                                                            |
 
 The model list belongs to the provider rather than to the job, so each provider's page keeps its own picker contents and its own selected model, and your OpenAI choice is remembered separately from your Anthropic, Gemini, and Mistral choices whichever job calls them.
 
 ![OpenAI engine settings with the base URL, API key, model picker and max output tokens rows](images/settings-llm-provider-model.png)
-_Figure: an engine page under Engines, where the model picker and the token ceiling belong to that provider alone._
 
 ![Anthropic engine settings with the base URL, API key, model picker and max output tokens rows](images/settings-engine-anthropic.png)
-_Figure: the Anthropic page, which carries its own key, its own model list and its own token ceiling._
 
 ---
 
@@ -269,7 +270,7 @@ The exact headings come from the model following the summary prompt; the `### Su
 
 - **Best-effort.** Post-processing never throws away a transcript you already paid to produce. If the LLM call fails (bad key, network error, timeout, or a blocked/empty response), the plugin keeps the **raw transcript**, shows a notice (`LLM post-processing failed; saving the raw transcript.`), and continues. The transcript is still saved.
 - **Request timeout.** Each LLM request is bounded by a fixed 5-minute timeout (longer than the transcription floor, because cleaning or summarizing a long transcript can legitimately take minutes). This is separate from the transcription **Request timeout** setting.
-- **Cancellation.** Cancel reaches the LLM request itself, so pressing it during post-processing aborts the call in flight instead of leaving it to run out its 5-minute timeout and be billed in full. A run stopped that way is reported as the cancellation it is and writes nothing, rather than being reported as a failed pass that falls back to the raw transcript. The same signal reaches every other model call the run makes, including the [advanced context agents](transcription.md#advanced-context-two-pass) and [auto chapters](transcription.md#auto-chapters). Closing the dialog cancels the job exactly as the button does, while [Minimize](transcription.md#progress-and-minimizing) keeps it running in the status bar.
+- **Cancellation.** Cancel reaches the LLM request itself, so pressing it during post-processing aborts the call in flight instead of leaving it to run out its 5-minute timeout and be billed in full. A run stopped that way is reported as the cancellation it is and writes nothing, rather than being reported as a failed pass that falls back to the raw transcript. The same signal reaches every other model call the run makes, including the [advanced context agents](transcription.md#advanced-two-pass-transcription) and [auto chapters](transcription.md#auto-chapters). Closing the dialog cancels the job exactly as the button does, while [Minimize](transcription.md#progress-and-minimizing) keeps it running in the status bar.
 - **Token truncation is surfaced.** On Gemini, a response cut off by the output-token limit (or blocked by a safety policy) fails the post-processing step loudly rather than silently replacing the transcript with a partial result - so you fall back to the raw transcript instead of getting a half-cleaned one. Raise **Max output tokens** or shorten the input if this happens.
 - **Incomplete-transcription warnings survive.** If part of a long recording could not be transcribed, the plugin prepends its warning callout **after** post-processing, so a cleanup/custom pass that replaces the body cannot strip it.
 
@@ -279,22 +280,25 @@ The exact headings come from the model following the summary prompt; the `### Su
 
 All controls live under **Settings > Advanced Audio Recorder > Transcription > LLM post-processing**.
 
-| Setting                         | Description                                                                                                       | Default         |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------- |
-| **Enable LLM post-processing**  | Run an LLM pass over the transcript after transcription. Reveals the controls below.                              | Off             |
-| **Task**                        | `Clean up`, `Summarize`, or `Custom`.                                                                             | Clean up        |
-| **Cleanup prompt profiles**     | Named prompts for Clean up (language clause appended). None = built-in default. Shown when Task is Clean up.      | Default profile |
-| **Summary prompt profiles**     | Named prompts for Summarize (language clause appended). None = built-in default. Shown when Task is Summarize.    | Default profile |
-| **Custom instruction profiles** | Named instructions sent verbatim. Shown when Task is Custom.                                                      | Default profile |
-| **Post-processing engine**      | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`. Only the choice; the service is configured under **Engines**. | OpenAI          |
+| Setting                         | Description                                                                                                                        | Default         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Enable LLM post-processing**  | Run an LLM pass over the transcript after transcription. Reveals the controls below.                                               | Off             |
+| **Task**                        | `Clean up`, `Summarize`, `Translate`, or `Custom`.                                                                                 | Clean up        |
+| **Translate into**              | Language the translation is written in, English when it is empty. Shown when Task is Translate.                                    | empty           |
+| **Cleanup prompt profiles**     | Named prompts for Clean up (language clause appended). None = built-in default. Shown when Task is Clean up.                       | Default profile |
+| **Summary prompt profiles**     | Named prompts for Summarize (language clause appended). None = built-in default. Shown when Task is Summarize.                     | Default profile |
+| **Translation prompt profiles** | Named prompts for Translate (target language appended). None = built-in default. Shown when Task is Translate.                     | Default profile |
+| **Custom instruction profiles** | Named instructions sent verbatim. Shown when Task is Custom.                                                                       | Default profile |
+| **Post-processing engine**      | `OpenAI`, `Anthropic (Claude)`, `Google Gemini`, or `Mistral`. Only the choice, since the service is configured under **Engines**. | OpenAI          |
 
 The rows that describe the service itself sit on its page under **Engines**, shared by every job that calls it:
 
-| Setting               | What it does                                                                   | Default          |
-| --------------------- | ------------------------------------------------------------------------------ | ---------------- |
-| **Base URL**          | API endpoint for that provider.                                                | Provider default |
-| **API key**           | Entered once per provider, so a service that also transcribes reuses it.       | -                |
-| **Model**             | The provider's model picker, opening the saved ids and its catalogue link.     | See table above  |
+| Setting               | What it does                                                                                                                        | Default          |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| **Base URL**          | API endpoint for that provider.                                                                                                     | Provider default |
+| **API key**           | Entered once per provider, so a service that also transcribes reuses it.                                                            | -                |
+| **Model**             | Dropdown over the saved ids, with the provider's catalogue link at the end of its description.                                      | See table above  |
+| **Model catalogue**   | The saved ids themselves, where one is added, removed, or put to work.                                                              | Seeded list      |
 | **Max output tokens** | Upper bound on the reply length (truncation guard). Any whole number from 512 to 200000; the model's own maximum is the real limit. | 4096             |
 
 ---

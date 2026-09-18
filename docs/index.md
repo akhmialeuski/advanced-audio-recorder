@@ -3,7 +3,6 @@
 **Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with five engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, Mistral Voxtral, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6 or newer**; a few features are desktop-only (see [Mobile support](mobile-support.md)).
 
 ![The enhanced audio player embedded in a note, showing the waveform seek bar, transport controls, and a marker list](images/player-overview.png)
-_Figure: A recording playing back in the enhanced waveform player with markers and chapters._
 
 - [What is Advanced Audio Recorder?](#what-is-advanced-audio-recorder)
 - [Highlights](#highlights)
@@ -39,7 +38,7 @@ It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.
 - **Multi-track capture** - record up to 8 devices at once, mixed or per-track. See [Multi-track recording](multi-track-recording.md).
 - **Eight output formats** - pick the right balance of quality, size, and compatibility. See [Formats](formats.md).
 - **Convert, split, and manage files** - transcode, divide into parts, and update note links from the context menu. See [File operations](file-operations.md) and [Splitting](splitting.md).
-- **Enhanced waveform player** - waveform seek bar, speed presets, skip ±10s, volume, loop, timecode links, and per-file markers and chapters. See [Audio player](audio-player.md).
+- **Enhanced waveform player** - waveform seek bar, speed presets, a configurable skip step (10 seconds by default), volume, loop, timecode links, and per-file markers and chapters. See [Audio player](audio-player.md).
 - **On-demand audio cleanup** - remove rumble and hiss and even out loudness with a single right-click. See [Audio cleanup](audio-cleanup.md).
 - **Speech-to-text with five engines** - Whisper API, Deepgram, Gemini, Mistral Voxtral, or offline local whisper.cpp, with speaker diarization on Deepgram, Gemini, and Voxtral. See [Transcription](transcription.md).
 - **LLM post-processing** - clean up, summarize, or run a custom instruction over the transcript. See [LLM post-processing](llm-post-processing.md).

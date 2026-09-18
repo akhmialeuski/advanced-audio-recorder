@@ -27,8 +27,7 @@ Use it when:
 
 ## How to run it
 
-![The Clean up audio dialog with its stage toggles](images/modal-clean-up-audio.png)
-_Figure: the Clean up audio dialog with per-stage toggles and parameters._
+![The Clean up audio dialog with the high-pass filter, noise gate and loudness leveling rows, each a toggle beside its number, then the Channels dropdown and Delete source after processing](images/modal-clean-up-audio.png)
 
 1. Right-click the target audio in any of these places:
     - the **File Explorer**,
@@ -101,7 +100,6 @@ The compressor itself uses fixed, speech-friendly settings (threshold -24 dB, ra
 ## Defaults and settings
 
 ![The Audio cleanup defaults settings section](images/settings-audio-cleanup-defaults.png)
-_Figure: the Audio cleanup defaults section in plugin settings._
 
 Under **Settings > Advanced Audio Recorder > Audio cleanup defaults**, set the values the dialog starts from each time:
 
@@ -127,14 +125,15 @@ Start conservative and re-run with stronger settings if needed - the original is
 ## Limitations
 
 - **Output is always WAV.** Convert it afterwards with **Convert audio format** from the context menu if you need a compressed format.
-- **Size and length caps.** Cleanup decodes the whole file into memory, then processes it one time segment at a time so memory stays bounded regardless of the recording length - a roughly 45-minute stereo recording is cleaned up in memory without splitting it first. A file is still refused with a clear message when it is larger than 1 GB (checked before decoding), longer than two hours, or decodes to more samples than the working set allows (checked right after decoding). The decoded-size cap catches a heavily compressed file that is small on disk yet expands to several gigabytes once decoded. For a file over the cap, split it first (**Split audio into parts**) and clean each part.
-- **Desktop and mobile.** Cleanup runs in both the desktop and the mobile app, but the mobile app applies tighter size and length caps so it stays within its smaller memory budget; a file over the mobile cap can be cleaned up on desktop. Processing a long file briefly uses significant memory and CPU. See [Mobile support](mobile-support.md).
+- **Size and length caps.** Cleanup decodes the whole file into memory, then processes it one time segment at a time so memory stays bounded regardless of the recording length. A file is refused with a clear message when it is larger than the on-disk ceiling (checked before decoding), longer than the duration ceiling, or decodes to more samples than the working set allows (checked right after decoding). On the desktop those three are **1 GB**, **two hours** and **256 M samples**, which is roughly a four-hour stereo recording at 48 kHz. In the mobile app they are **256 MB**, **45 minutes** and **64 M samples**, because the WebView runs on a far smaller memory budget. The decoded-size cap catches a heavily compressed file that is small on disk yet expands to several gigabytes once decoded. For a file over any of the three, split it first (**Split audio into parts**) and clean each part.
+- **Desktop and mobile.** Cleanup runs in both the desktop and the mobile app under the caps above, so a recording over the mobile cap is cleaned up on the desktop instead. Processing a long file briefly uses significant memory and CPU. See [Mobile support](mobile-support.md).
 - **Not real-time.** This is post-processing. To shape the signal _during_ recording, use the browser input toggles under **Audio processing & feedback** instead.
 
 ## Troubleshooting
 
-- **"Audio file is too large to clean up here"** - the file exceeds the 1 GB on-disk limit, or it decodes to more samples than the working set allows (roughly a 45-minute stereo recording). Split it into parts and process each part.
-- **"Audio is too long to clean up here"** - the file exceeds the two-hour limit. Split it into parts and process each part.
+- **"File is too large to clean up"** - the file is over the on-disk ceiling of 1 GB on the desktop. In the mobile app the same refusal reads **"File is too large to clean up on this device. Convert or split it on desktop instead."** and the ceiling is 256 MB. Split it into parts and process each part.
+- **"Audio file is too large to clean up here"** - the file passed the on-disk check and still decodes to more samples than the working set allows. Split it into parts and process each part.
+- **"Audio is too long to clean up here"** - the file is over the duration ceiling, which is two hours on the desktop and 45 minutes in the mobile app. Split it into parts and process each part.
 - **"The file contains no decodable audio data"** - the file is empty or its container/codec can't be decoded by the app. Check the file with **Audio file info**, or convert it first.
 - **"Audio processing failed: …"** - decoding or writing failed; the message carries the cause. Verify the file is a valid audio file and that there is free space in the vault.
 - **The voice sounds thin** - lower or disable the high-pass cutoff.

@@ -22,7 +22,7 @@ A two-hour lecture or an all-day meeting recorded as one file is awkward to work
 - **Navigate long material.** Shorter parts are quicker to open, scrub, and share. You can link to the exact part of a meeting that matters instead of one giant file.
 - **Process big files in pieces.** Some actions (for example [Audio cleanup](audio-cleanup.md)) work better on shorter inputs. Split first, then clean or convert each part.
 - **Keep recording reliably.** With automatic splitting on, each finished part is flushed to disk while recording continues, so a crash costs you at most the unfinished last part rather than the whole session. This matters most on a phone, where the operating system can close a backgrounded app without warning. See [Crash recovery](recording.md#crash-recovery).
-- **Record WAV past the format's own ceiling.** A WAV file cannot describe more than 4 GB, which at 48 kHz stereo 16-bit is roughly six hours, and a session that reaches it is refused at the moment you stop. Automatic splitting keeps every part well inside the limit, so it is what makes a WAV session of that length possible at all. See [Audio formats](formats.md#choosing-a-format).
+- **Record WAV past the format's own ceiling.** A WAV file cannot describe more than 4 GB, which at 48 kHz stereo 16-bit is roughly six hours. A notice warns at 90 percent of that, and a session that reaches the ceiling is refused at the moment you stop. Automatic splitting keeps every part well inside the limit, so it is what makes a WAV session of that length possible at all. See [Audio formats](formats.md#choosing-a-format).
 
 ---
 
@@ -31,7 +31,6 @@ A two-hour lecture or an all-day meeting recorded as one file is awkward to work
 When **Split recordings automatically** is enabled, a recording is saved as a series of fixed-duration part files (`recording-…-part1.webm`, `recording-…-part2.webm`, …) instead of one long file. Each finished part is written to disk while the recording continues, and the remainder recorded after the last boundary becomes the final part. Links to **all** parts are inserted into the note when the recording stops.
 
 ![Settings panel showing the Split recordings automatically toggle, Part duration number field, Part name suffix field, and Delete source after split toggle](images/settings-audio-splitting.png)
-_Figure: the Audio splitting section of the plugin settings, where automatic splitting is enabled and the part duration and suffix are configured._
 
 ### Enabling it
 
@@ -82,8 +81,7 @@ To open the split dialog, right-click the target audio in any of these places an
 
 ### The split dialog
 
-![The Split audio into parts dialog showing the source file name, Part duration number field, Part name suffix field, Bitrate dropdown, Delete source toggle, Update links dropdown, and the Split button](images/modal-split-audio.png)
-_Figure: the Split audio into parts dialog, with the per-run options that override your saved defaults for a single split._
+![The Split audio into parts dialog showing the source file name, Part duration number field, Part name suffix field, Bitrate dropdown, Delete source toggle, Update links dropdown, the Cut at chapters toggle, and the Split button](images/modal-split-audio.png)
 
 The dialog header shows the **Source** file name and exposes these options. Each starts from your saved settings but can be changed for this one run:
 
@@ -92,7 +90,7 @@ The dialog header shows the **Source** file name and exposes these options. Each
 | **Part duration**         | Length of each part in minutes. Type the value directly or adjust it with the up/down stepper.                                                                                 | `1`-`180` minutes                                                 | Your **Part duration** setting (`15`)                                  |
 | **Part name suffix**      | Text appended with the part number to name each file. The description previews the resulting file name as you type. Invalid characters mark the field red and block the split. | Letters, digits, hyphens, and underscores only                    | Your **Part name suffix** setting (`part`)                             |
 | **Bitrate**               | Bitrate used when re-encoding parts of a lossy source. **Hidden for WAV and FLAC sources**: WAV is split without re-encoding, and FLAC carries no bitrate.                     | `24` to `320` kbps, cut to what the source format writes          | Your **Audio bitrate** setting (`128`)                                 |
-| **Delete source file**    | Move the original file to the system trash after a successful split.                                                                                                           | On / Off                                                          | Your **Delete source after split** setting (`Off`)                     |
+| **Delete source file**    | Remove the original file after a successful split, through Obsidian's own **Deleted files** handling.                                                                          | On / Off                                                          | Your **Delete source after split** setting (`Off`)                     |
 | **Update links in notes** | How to rewrite the links that point at the source file across your vault - see [How link updating works](#how-link-updating-works).                                            | `Do nothing` / `Replace source link` / `Insert after source link` | Your **Update links after conversion** setting (`Replace source link`) |
 
 Click **Split** to run. The dialog shows live progress text (`Reading source file…`, `Decoding audio…`, `Writing part N of M…`, `Updating links…`, `Removing source file…`). When it finishes, a notice reports the number of parts and the first part's name.

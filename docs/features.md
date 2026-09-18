@@ -19,13 +19,15 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 - [On-demand audio cleanup](#on-demand-audio-cleanup)
 - [Input processing and live feedback](#input-processing-and-live-feedback)
 - [Transcription](#transcription)
+- [Exporting chapters and markers](#exporting-chapters-and-markers)
+- [Transcription queue](#transcription-queue)
+- [Transcribing the parts that failed](#transcribing-the-parts-that-failed)
 - [LLM post-processing](#llm-post-processing)
 - [Auto chapters](#auto-chapters)
 - [Diagnostics](#diagnostics)
 - [Feature matrix](#feature-matrix)
 
 ![The plugin settings tab with the documentation callout, the audio input, output format and file storage rows, and one entry per section below them](images/features-settings-overview.png)
-_Figure: The plugin settings tab, where every feature below is configured._
 
 ---
 
@@ -105,10 +107,9 @@ Learn more: [File operations](file-operations.md#delete-recording)
 
 ## Enhanced audio player
 
-When **Enhanced audio player** is enabled, the plugin replaces Obsidian's built-in audio embed with a richer player anywhere an audio file is embedded. It adds a **waveform seek bar** (click, drag, or use the keyboard to seek; the played portion uses the theme accent), **playback speed** presets (0.5×-3×), **skip** buttons whose step is a setting, **volume** and **mute**, a **loop** toggle, a **repeat chapter** toggle, a **time display** (elapsed/total), and a **copy timestamp link** button. A recording you leave part-heard **resumes where you stopped** the next time you open it, unless the embed names a position of its own. Playback is also announced to the **operating system**, so the lock screen, the media keys, and a headset button drive the same recording, with chapter jumps mapped to previous and next track. The command **Search markers and chapters** finds any marker in the **whole vault** by its name, its recording, or its note, and plays the recording from it. While a recording plays, the same transport, volume, marker, chapter, and time controls also appear in the **status bar**, and they dismiss when playback stops. Each of those actions, plus the speed steps and the chapter jumps, is also a **command**, so any of them can carry a hotkey; the commands are offered only while a recording is playing. Timecode links (`#t=90`, `#t=1:30`, `#t=1:02:03`) jump a visible player to that position, so clicking a transcript timestamp moves playback straight to that line. The enhanced player takes over audio-only files; files with a video track and undecodable files keep Obsidian's built-in player.
+When **Enhanced audio player** is enabled, the plugin replaces Obsidian's built-in audio embed with a richer player anywhere an audio file is embedded. It adds a **waveform seek bar** (click, drag, or use the keyboard to seek; the played portion uses the theme accent), **playback speed** presets (0.5x-3x), **skip** buttons whose step is a setting, **volume** and **mute**, a **loop** toggle, a **repeat chapter** toggle, a **time display** (elapsed/total), and a **copy timestamp link** button. A recording you leave part-heard **resumes where you stopped** the next time you open it, unless the embed names a position of its own. Playback is also announced to the **operating system**, so the lock screen, the media keys, and a headset button drive the same recording, with chapter jumps mapped to previous and next track. The command **Search markers and chapters** finds any marker in the **whole vault** by its name, its recording, or its note, and plays the recording from it. While a recording plays, the same transport, volume, marker, chapter, and time controls also appear in the **status bar**, and they dismiss when playback stops. Each of those actions, plus the speed steps and the chapter jumps, is also a **command**, so any of them can carry a hotkey; the commands are offered only while a recording is playing. Timecode links (`#t=90`, `#t=1:30`, `#t=1:02:03`) jump a visible player to that position, so clicking a transcript timestamp moves playback straight to that line. The enhanced player takes over audio-only files; files with a video track and undecodable files keep Obsidian's built-in player.
 
 ![Enhanced audio player with waveform seek bar, speed, skip, volume, loop, and time display](images/player-overview.png)
-_Figure: The enhanced player replaces the built-in audio embed._
 
 Learn more: [Audio player](audio-player.md)
 
@@ -116,8 +117,7 @@ Learn more: [Audio player](audio-player.md)
 
 With **Markers and chapters** enabled, each recording carries per-file **bookmarks** (jump points) and **chapters** (named segments). Add a bookmark with the bookmark button or by double-clicking the waveform; add a chapter with the chapter button. Markers and chapters render on the seek bar (ticks and labelled boundaries), an optional **marker list** below the player lets you jump to, rename, move, note, colour, or delete each entry, and prev/next chapter buttons navigate between boundaries. A marker is moved by typing a new time or by taking the current playback position, which is the usual correction for one pressed a beat late; its note holds the reason a short label cannot, and its colour tells apart what different markers are for, on the row and on the seek bar alike. Markers are stored in a sidecar file next to the recording (e.g. `recording.webm.markers.json`), so they travel with the vault and follow rename, move, and delete. Editing is allowed in Live Preview; markers are read-only (still clickable) in Reading view.
 
-![Enhanced player with the marker list open below it, showing bookmarks and chapters](images/player-marker-list.png)
-_Figure: The marker list lets you jump to, rename, or delete each entry._
+![The waveform seek bar with marker ticks above a marker list whose rows carry a time, a title, a note, a length, a colour and a delete button](images/player-marker-list.png)
 
 Learn more: [Audio player](audio-player.md#markers-and-chapters)
 
@@ -137,8 +137,7 @@ Learn more: [Recording](recording.md#live-feedback)
 
 When **Enable transcription** is on, recordings and existing audio files can be converted to text. Run it from the **Transcribe audio** context-menu action, the identically named palette command, or automatically with **Transcribe after recording**. Five engines are available: **Whisper API (OpenAI-compatible)**, **Deepgram**, **Google Gemini**, **Mistral Voxtral**, and **Local whisper.cpp (desktop)**. **Speaker diarization** is supported on Deepgram, Gemini, and Voxtral, and the **Rename speakers** action turns `Speaker 1` into real names - playing a sample of each speaker so you can tell who is who, and keeping the participant roster with the recording. Output can be inserted into the note, saved to a sidecar file (JSON / SRT / WebVTT / TXT), or both, with fully configurable in-note formatting. While a job runs, a progress dialog shows a progress bar, elapsed timer, **Cancel**, and **Minimize** (sends the job to the status bar so you can keep working).
 
-![Transcription dialog with engine, diarization, and output options](images/transcription-dialog.png)
-_Figure: The transcription dialog before a job starts._
+![The Transcribe audio dialog with its per-run rows for engine, language, speaker diarization, the participant and dictionary profiles, the two-pass mode, the destination and file format, LLM post-processing and chapter generation](images/transcription-dialog.png)
 
 Learn more: [Transcription](transcription.md)
 
@@ -164,7 +163,7 @@ Learn more: [Transcription](transcription.md)
 
 ## LLM post-processing
 
-Optionally pass a finished transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. A translation is written beside the original rather than over it, one line per spoken segment, so it carries the recording's own timings and the SubRip and WebVTT outputs come out translated with matching timecodes. The Whisper API additionally offers its own operation for translating the speech into English during recognition. Each task has its own editable prompt. Engines are **OpenAI** (default `gpt-5.6-sol`), **Anthropic (Claude)** (default `claude-opus-4-8`), and **Google Gemini** (default `gemini-3.5-flash`), each configured once on its own page; the OpenAI and Gemini pages are shared with the matching transcription engines, while Anthropic keeps its own. Auto chapters and the advanced two-pass agents each pick an engine of their own, so a run can summarize with one service and title its chapters with another.
+Optionally pass a finished transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. A translation is written beside the original rather than over it, one line per spoken segment, so it carries the recording's own timings and the SubRip and WebVTT outputs come out translated with matching timecodes. The Whisper API additionally offers its own operation for translating the speech into English during recognition. Each task keeps a catalogue of named prompt profiles, so a standup and a client call can be summarized on their own terms. Engines are **OpenAI** (default `gpt-5.6-sol`), **Anthropic (Claude)** (default `claude-opus-4-8`), **Google Gemini** (default `gemini-3.5-flash`), and **Mistral** (default `mistral-medium-latest`), each configured once on its own page. The OpenAI, Gemini and Mistral pages are shared with the matching transcription engines, while Anthropic keeps its own. Auto chapters and the advanced two-pass agents each pick an engine of their own, so a run can summarize with one service and title its chapters with another.
 
 Learn more: [LLM post-processing](llm-post-processing.md)
 
@@ -176,15 +175,13 @@ Learn more: [Transcription](transcription.md#auto-chapters)
 
 ## Diagnostics
 
-Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian, Electron and Chromium versions, platform, devices, supported formats and codecs, active configuration, and all settings) plus a **Copy to clipboard** button. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
+Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian, Electron and Chromium versions, platform, devices, supported formats and codecs, active configuration, and the recording-related settings) plus a **Copy to clipboard** button. API keys and the transcription, player and cleanup settings are left out of it. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
 
-![System info modal with versions, devices, supported formats, and settings](images/modal-system-info.png)
-_Figure: The System info modal collects full diagnostics with a copy button._
+![The System diagnostics modal with the Copy to clipboard button above the JSON snapshot of plugin settings and environment](images/modal-system-info.png)
 
 Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_REPORTING_GUIDE.md)
 
-![Audio file context menu showing Audio file info, Convert audio format, Split audio into parts, Clean up audio, Transcribe audio, and Delete actions](images/context-menu-file-explorer.png)
-_Figure: The right-click context menu collects most per-file actions in one place._
+![The plugin's ten entries in the context menu of an audio file, from Audio file info through to Delete recording, with transcription, rename speakers and auto chapters all enabled](images/context-menu-file-explorer.png)
 
 ---
 
@@ -210,7 +207,7 @@ _Figure: The right-click context menu collects most per-file actions in one plac
 | Markers and chapters          | Per-file bookmarks and chapters stored in a sidecar                 | Settings > Audio player                         | [Audio player](audio-player.md#markers-and-chapters)           |
 | On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy           | Context menu / palette > Clean up audio         | [Audio cleanup](audio-cleanup.md)                              |
 | Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner           | Settings > Audio processing & feedback          | [Recording](recording.md#live-feedback)                        |
-| Transcription                 | Speech-to-text via 4 engines, diarization, output formats           | Settings > Transcription                        | [Transcription](transcription.md)                              |
+| Transcription                 | Speech-to-text via 5 engines, diarization, output formats           | Settings > Transcription                        | [Transcription](transcription.md)                              |
 | LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM     | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
 | Auto chapters                 | LLM-generated titled chapters from an existing transcript           | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
 | Diagnostics                   | Test recording, system info, debug mode                             | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
