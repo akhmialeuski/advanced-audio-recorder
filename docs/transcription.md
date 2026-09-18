@@ -263,6 +263,8 @@ The names you assign are **remembered in the recording's sidecar file** (`<recor
     - You can still create a profile and add names to it right in the dialog.
 - When a transcript has no timecode links to identify the recording (for example with timestamp links turned off), the dialog cannot pin its lines to this audio. It warns you, and only after you opt in does it rewrite every matching label in those notes.
 
+![The Merge speakers confirmation, naming the two labels about to share one name and saying that merged lines cannot be told apart again, above its Merge and Cancel buttons](images/dialog-merge-speakers.png)
+
 ![The Participant profile row of the Rename speakers dialog, naming the text last read from a roster note that could not be read](images/dialog-rename-speakers-roster.png)
 
 ---
