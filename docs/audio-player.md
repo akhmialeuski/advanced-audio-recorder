@@ -1,8 +1,8 @@
 # Enhanced audio player
 
-The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a chapter repeat, a time display, per-file markers and chapters, and a copy-timestamp-link action. A recording left part-heard resumes where it stopped, and playback is announced to the operating system so the lock screen and the media keys can drive it. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed, and every one of those actions is also a command you can bind to a hotkey. The takeover is opt-in, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is off.
+The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a chapter repeat, a time display, per-file markers and chapters, and a copy-timestamp-link action. A recording left part-heard resumes where it stopped, and playback is announced to the operating system so the lock screen and the media keys can drive it. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed, and every one of those actions is also a command you can bind to a hotkey. The takeover is on by default, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is turned off.
 
-- [Enabling the player](#enabling-the-player)
+- [Where the player is switched](#where-the-player-is-switched)
 - [How the takeover works](#how-the-takeover-works)
 - [The controls](#the-controls)
     - [Waveform seek bar](#waveform-seek-bar)
@@ -27,17 +27,17 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
 ![Enhanced audio player embedded in a note with the waveform seek bar and control row](images/player-overview.png)
 _Figure: the enhanced player rendered in place of an audio embed, with the waveform seek bar above the control row._
 
-## Enabling the player
+## Where the player is switched
 
-The enhanced player is off by default. Turn it on under **Settings > Advanced Audio Recorder > Audio player > Enhanced audio player**.
+The enhanced player is on by default, so an embedded recording already plays in it. Its three switches live together:
 
 1. Open **Settings > Advanced Audio Recorder**.
-2. Scroll to the **Audio player** section.
-3. Enable **Enhanced audio player**.
-4. Two more options appear below it - **Show waveform** (on by default) and **Markers and chapters** (on by default).
+2. Open the **Audio player** section.
+3. **Enhanced audio player** is the master switch. Turning it off gives every embed back to Obsidian's built-in player.
+4. **Show waveform** and **Markers and chapters**, both on by default, are the two windows the player draws. They are offered only while the master switch is on.
 
-![Audio player settings section with the Enhanced audio player, Show waveform, and Markers and chapters toggles](images/settings-audio-player.png)
-_Figure: the Audio player settings section, with the master toggle and its two windows._
+![Audio player settings with the enhanced player, show waveform and markers and chapters toggles all on, and the skip step field](images/settings-audio-player.png)
+_Figure: the Audio player settings section, with the master toggle, its two windows and the skip step._
 
 The change applies to notes that are **rendered after** the change. Toggling the master switch flips what every embed is (native versus enhanced), so the plugin re-renders open notes to rebuild their embeds. Disabling **Enhanced audio player** restores Obsidian's built-in embed on the next render.
 
@@ -350,7 +350,7 @@ Those settings live under **Settings > Advanced Audio Recorder > Audio player**,
 
 | Setting                   | Description                                                                                                                                                | Default |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| **Enhanced audio player** | Replace the built-in audio embed with the enhanced player. Enabling it reveals the two options below. Applies to notes rendered after the change.          | Off     |
+| **Enhanced audio player** | Replace the built-in audio embed with the enhanced player. Enabling it reveals the two options below. Applies to notes rendered after the change.          | On      |
 | **Show waveform**         | Draw a waveform behind the seek bar. When off, a plain (still seekable) progress bar is shown and no audio is decoded. Applies in place to open players.   | On      |
 | **Markers and chapters**  | Show the markers and chapters list and the add/jump/rename/delete and chapter-navigation controls. Markers are stored in a sidecar next to each recording. | On      |
 

@@ -18,8 +18,8 @@ import {
 } from 'src/player/playerSettings';
 
 describe('enhanced player settings', () => {
-	it('ships disabled with both windows on by default', () => {
-		expect(DEFAULT_SETTINGS.enhancedPlayerEnabled).toBe(false);
+	it('ships enabled with both windows on by default', () => {
+		expect(DEFAULT_SETTINGS.enhancedPlayerEnabled).toBe(true);
 		expect(DEFAULT_SETTINGS.playerShowWaveform).toBe(true);
 		expect(DEFAULT_SETTINGS.playerEnableMarkers).toBe(true);
 	});

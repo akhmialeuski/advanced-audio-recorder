@@ -86,7 +86,7 @@ When diarization is on, several speaker-related options unlock further down in t
 | **Merge speaker turns** | On              | Combines consecutive lines from the same speaker into one block. |
 | **Speaker format**      | `**{speaker}**` | The template that renders each label (bold by default).          |
 
-![Speaker diarization toggle turned on in the Transcription settings, with the speaker-related output options visible below](../images/settings-transcription-diarization.png)
+![Speaker diarization turned on in the Transcription settings, with Deepgram selected as the engine](../images/settings-transcription-diarization.png)
 _Figure: With diarization on, the Include speakers, Merge speaker turns, and Speaker format options become available._
 
 ### 3. Choose where the transcript goes

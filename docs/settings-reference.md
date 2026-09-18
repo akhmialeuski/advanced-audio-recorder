@@ -57,8 +57,8 @@ At the very top of the settings tab is a callout with a book icon linking to the
 
 Pick the microphone, sample rate, and channel layout used for recordings. The device dropdown auto-refreshes when you plug or unplug a device while the tab is open. See [Recording](recording.md) for how these are used.
 
-![Audio input settings section showing the input device dropdown and the sample rate dropdown](images/features-settings-overview.png)
-_Figure: The Audio input section with the device picker and sample-rate selector._
+![Audio input settings with the input device dropdown, the sample rate stepper and the recording channels dropdown](images/settings-audio-input.png)
+_Figure: The Audio input section, with a stereo microphone selected._
 
 | Setting                | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Options / range                                                                             | Default                                                                                                                |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -72,8 +72,8 @@ _Figure: The Audio input section with the device picker and sample-rate selector
 
 Choose the final file format and quality for recordings, and how conversions handle the source file and its links. Offline formats are labelled `(offline)` in the dropdown. See [Formats and containers](formats.md) and [File operations](file-operations.md).
 
-![Output format settings section with recording format dropdown, bitrate dropdown, read-only output summary, and conversion toggles](images/features-settings-overview.png)
-_Figure: The Output format section, including the read-only Output summary line._
+![Output format settings with the recording format and audio bitrate dropdowns, the read-only output summary, and the two conversion rows](images/settings-output-format.png)
+_Figure: The Output format section, whose Output summary spells out what the two rows above it produce._
 
 | Setting                            | What it does                                                                                                                                                                                                                 | Options / range                                             | Default             |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------- |
@@ -89,8 +89,8 @@ _Figure: The Output format section, including the read-only Output summary line.
 
 Decide where recordings are saved, what they are named, and where the embed link is inserted. See [Recording](recording.md) and [File operations](file-operations.md).
 
-![File storage settings section showing save folder, save near active file toggle, file prefix, and insert at original position toggle](images/features-settings-overview.png)
-_Figure: The File storage section. The Active file subfolder field appears only when Save near active file is on._
+![File storage settings with the save folder field, the save near active file toggle, the active file subfolder and file prefix fields, and the insert at original position toggle](images/settings-file-storage.png)
+_Figure: The File storage section with Save recordings near active file on, which is what reveals Active file subfolder._
 
 | Setting                              | What it does                                                                                                                                                                      | Options / range                      | Default     |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ----------- |
@@ -105,6 +105,9 @@ _Figure: The File storage section. The Active file subfolder field appears only 
 ## Audio splitting
 
 Split a long recording into fixed-duration parts, and set the defaults the manual split dialog starts from. Auto-split is not applied to merged multi-track recordings. See [Splitting](splitting.md).
+
+![Audio splitting settings with the automatic split toggle on, the part duration field, the part name suffix field and the delete source toggle](images/settings-audio-splitting.png)
+_Figure: The Audio splitting section with automatic splitting on._
 
 | Setting                            | What it does                                                                                                                                                                                                 | Options / range                          | Default |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | ------- |
@@ -144,12 +147,12 @@ _Figure: Track N processing set per track, Voice on the microphone and Raw on th
 
 Replace Obsidian's built-in audio embed with the enhanced player. The two window toggles (**Show waveform**, **Markers and chapters**) only appear once **Enhanced audio player** is on. The player's other controls - playback speed (0.5×-3×), volume, mute, loop, time display, and the copy-timestamp-link button - are fixed and not configurable here. See [Audio player](audio-player.md).
 
-![Audio player settings section with the enhanced player toggle, show waveform toggle, and markers and chapters toggle](images/settings-audio-player.png)
-_Figure: The Audio player section with the two window toggles revealed._
+![Audio player settings with the enhanced player, show waveform and markers and chapters toggles all on, and the skip step field](images/settings-audio-player.png)
+_Figure: The Audio player section. The two window toggles and the skip step appear once the enhanced player is on._
 
 | Setting                   | What it does                                                                                                                                                                                                                 | Options / range | Default |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------- |
-| **Enhanced audio player** | Replace the built-in embed with the richer player (waveform, speed, skip, volume, mute, loop, time display, timecode links, markers, chapters). Video files keep the built-in player. Reveals the two options below.         | On / Off        | Off     |
+| **Enhanced audio player** | Replace the built-in embed with the richer player (waveform, speed, skip, volume, mute, loop, time display, timecode links, markers, chapters). Video files keep the built-in player. Reveals the two options below.         | On / Off        | On      |
 | **Show waveform**         | Draw a waveform behind the seek bar. When off, a plain (still seekable) bar is shown and no audio is decoded. **Only shown when the enhanced player is on.**                                                                 | On / Off        | On      |
 | **Markers and chapters**  | Show the markers and chapters list below the player, with add, jump, rename, delete, and chapter-navigation controls. Markers are stored in a sidecar next to each recording. **Only shown when the enhanced player is on.** | On / Off        | On      |
 | **Skip step**             | Seconds the skip-forward and skip-back controls move by, in the player, in the status bar, and from their commands. Five suits picking apart speech, thirty suits a lecture. **Only shown when the enhanced player is on.**  | 1-120 seconds   | 10      |
@@ -161,6 +164,9 @@ _Figure: The Audio player section with the two window toggles revealed._
 Turn recordings (and existing audio files) into text. Only **Enable transcription** is visible until you turn it on; then the engine fields, transcript output, and LLM sub-section appear. The fields below the engine dropdown change with the selected **Transcription engine**. See [Transcription](transcription.md) for the full feature guide and [Speakers and diarization](transcription.md#speakers-and-diarization) for diarization behavior.
 
 These controls are shown for every engine (once transcription is enabled), except the two time limits: **Request timeout** is shown for the cloud engines and **Local run timeout** for Local whisper.cpp, so exactly one of them is always on screen and it is the one that bounds the work the chosen engine does.
+
+![Transcription settings with the enable toggle on, Deepgram as the engine, and the language, diarization, participant profile and request timeout rows](images/settings-transcription-diarization.png)
+_Figure: The Transcription block on an engine that returns speaker labels, which is what makes Speaker diarization available._
 
 | Setting                         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Options / range                                                                                            | Default     |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------- |
@@ -183,6 +189,9 @@ Whether a key is required is a question about the endpoint rather than about the
 
 One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Works with OpenAI and any compatible host (for example Groq) by setting the base URL, key, and model. The 25 MB per-request limit is enforced by the API; files at or under it are uploaded in their original container, while larger files are resampled to 16 kHz mono, split into upload-sized WAV chunks, and stitched onto one timeline. No diarization. See [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) and [Groq Whisper setup](use-cases/groq-whisper-setup.md).
 
+![Whisper API engine settings with the base URL, API key, model and upload chunk size rows](images/settings-engine-whisper-api.png)
+_Figure: The Whisper API engine page, whose base URL also serves an OpenAI-compatible host._
+
 | Setting               | What it does                                                                                                                             | Options / range                                                                                                 | Default                     |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------- |
 | **Base URL**          | OpenAI-compatible endpoint base (for example `https://api.openai.com/v1`, or a Groq URL). Shared with the OpenAI engine.                 | URL                                                                                                             | `https://api.openai.com/v1` |
@@ -194,6 +203,9 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 
 One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Deepgram's official pre-recorded API. Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free account includes a starter credit, then pay-as-you-go. See [Deepgram API key](use-cases/deepgram-api-key.md).
 
+![Deepgram engine settings with the base URL, API key and model rows](images/settings-engine-deepgram.png)
+_Figure: The Deepgram engine page._
+
 | Setting              | What it does                                                                                                                                               | Options / range                                                 | Default                       |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------- |
 | **Base URL**         | Deepgram API base.                                                                                                                                         | URL                                                             | `https://api.deepgram.com/v1` |
@@ -203,6 +215,9 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 ### Engine: Google Gemini
 
 One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on, and also the page the post-processing prompts are configured on when they run through Gemini. Google's multimodal `generateContent` plus the File API. Files up to 2 GB are uploaded whole. Containers Gemini does not accept (for example `webm`, `m4a`) are decoded to 16 kHz mono WAV first. Recordings longer than 15 minutes are split into parts and stitched; a diarized split resets speaker numbering and surfaces a warning. See [Gemini API key](use-cases/gemini-api-key.md).
+
+![Google Gemini engine settings with the base URL, API key, model and max output tokens rows](images/settings-llm-gemini-provider.png)
+_Figure: The Google Gemini engine page, shared by transcription and by the prompt jobs._
 
 | Setting                   | What it does                                                                                                                                                              | Options / range                                                                                                                                                            | Default                                     |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
@@ -215,6 +230,9 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 
 One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Mistral's batch transcription endpoint. A recording of up to three hours goes in one request, so diarization keeps consistent speaker numbering across the whole file, and files are sent whole up to 1 GB. MP3, WAV, M4A, FLAC, and OGG are uploaded untouched, while any other container, including the `webm` this plugin records by default, is decoded to 16 kHz mono WAV first and uploaded under a matching name. A recording past three hours is refused before it is uploaded whenever the plugin decodes it, which is how it learns the length. The language hint is never sent, because Mistral refuses it alongside the timestamp granularity that makes the response carry timed segments, and only the segment level is asked for, because the response carries no timed segments without it and the endpoint refuses a request naming two levels at once.
 
+![Mistral Voxtral engine settings with the base URL, API key and model rows](images/settings-engine-voxtral.png)
+_Figure: The Mistral Voxtral engine page, whose key and base URL are shared with the Mistral engine._
+
 | Setting             | What it does                                                                                                                                                                          | Options / range                               | Default                     |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------- |
 | **Base URL**        | Mistral API base. Shared with the Mistral engine, which serves the chat models over the same account.                                                                                 | URL                                           | `https://api.mistral.ai/v1` |
@@ -224,6 +242,9 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 ### Engine: Mistral
 
 The page the post-processing prompts are configured on when they run through Mistral. It holds no transcription fields of its own: the speech models live on the **Mistral Voxtral** page above, and the two pages share one endpoint and one key because they are two catalogues over one account.
+
+![Mistral engine settings with the base URL, API key, model and max output tokens rows](images/settings-engine-mistral.png)
+_Figure: The Mistral engine page, which answers the prompt jobs._
 
 | Setting               | What it does                                                                                                                                                                     | Options / range                                                                                 | Default                     |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------- |
@@ -236,6 +257,9 @@ The page the post-processing prompts are configured on when they run through Mis
 
 One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Runs a local `whisper.cpp` binary fully offline. There is no network request, so **Request timeout** is hidden and **Local run timeout** bounds the process instead, and there is no diarization. See [Local whisper.cpp](use-cases/local-whisper-cpp.md).
 
+![Local whisper.cpp engine settings with the binary path, model path and extra arguments fields](images/local-whisper-settings-engine.png)
+_Figure: The local whisper.cpp engine page, the one engine that needs no key and no network._
+
 | Setting                     | What it does                                                                                                                           | Options / range                                                                                                                         | Default   |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | **whisper.cpp binary path** | Absolute path to the `whisper.cpp` executable.                                                                                         | File path                                                                                                                               | - (empty) |
@@ -245,6 +269,9 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 ### Advanced settings
 
 Sub-section inside Transcription, gated behind the **Advanced settings** master switch that is off by default. While off, a recording transcribes in one plain pass with no term biasing, and turning it on reveals the **Dictionary profiles** and the two-pass toggle below. The two-pass mode is the advanced form of the same dictionary biasing, so it reuses the terms from the selected Dictionary profile as its context candidates rather than a separate glossary. That experimental mode transcribes each recording twice: LLM agents mine the first draft for the meeting's proper names, jargon, and English terms and acronyms, and the second pass re-decodes the audio biased toward them, asking for the language the first pass detected and discarding a pass that came back in another one anyway. **Roughly 2x the engine cost and time plus several LLM calls per file**, made on the engine its own **Context agents engine** row names, which appears beside the two-pass toggle and is configured under **Engines**. Best-effort: any failure, and a second pass shorter than the safeguard ratio, keep the first pass's transcript. See [Advanced two-pass transcription](transcription.md#advanced-two-pass-transcription).
+
+![Advanced transcription settings with the advanced toggle on, the two-pass toggle, the context agents engine, the second-pass safeguard and the dictionary profile row](images/settings-transcription-advanced.png)
+_Figure: The Advanced block with two-pass transcription on._
 
 | Setting                                            | What it does                                                                                                                                                                                                                                                                                                                                                                           | Options / range                                       | Default                                                 |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
@@ -257,6 +284,9 @@ Sub-section inside Transcription, gated behind the **Advanced settings** master 
 ### Transcript output
 
 Shown for every engine, below the engine fields. Controls where the transcript goes and how it is formatted in the note. The **File format** dropdown appears only when **Destination** is not "Insert into note". The speaker-related controls (**Include speakers**, **Merge speaker turns**, **Speaker format**) are disabled and greyed out whenever diarization is not in effect - that is, with an engine that cannot diarize, or with diarization turned off - because there are no speaker labels for them to act on.
+
+![Transcript output settings with the destination dropdown, note heading, timestamp and speaker toggles, the three format fields and the rename speakers toggle](images/settings-transcript-output.png)
+_Figure: The Transcript output block, which decides where a transcript lands and how each line reads._
 
 | Setting                        | What it does                                                                                                                                                                                                                                            | Options / range                                                                        | Default                        |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ |
@@ -276,6 +306,9 @@ Shown for every engine, below the engine fields. Controls where the transcript g
 
 Sub-section inside Transcription, between Transcript output and LLM post-processing. Asks the configured LLM to divide a transcribed recording into titled chapters, written to the recording's marker sidecar and shown in the enhanced player's [markers and chapters](audio-player.md#markers-and-chapters) window. The action refuses to run when the recording has no transcript yet (sidecar file or in-note transcript with timecode links) and asks you to transcribe first. Re-running replaces only previously generated chapters; bookmarks and manually added chapters are kept. Chapters name their own engine on the **Chapters engine** row below the switch, so they can run on a different service from post-processing, and that service is set up on its page under **Engines**. How the recording is split is steered by a selectable **chapter guidance profile**: a built-in **Default** profile is seeded and editable, and you can add profiles for specific cases (a meeting by agenda item, a lecture by topic, an interview by question) and pick the right one before generating.
 
+![Auto chapters settings with the feature toggle on, the chapters engine dropdown, the generate after transcription toggle and the chapter guidance profile row](images/settings-auto-chapters.png)
+_Figure: The Auto chapters block._
+
 | Setting                          | What it does                                                                                                                                                                                                                                                                        | Options / range                                       | Default                                                 |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
 | **Auto chapters**                | Add a **Generate chapters from transcript** action (context menu, editor menu, command palette). Reveals the options below.                                                                                                                                                         | On / Off                                              | Off                                                     |
@@ -286,6 +319,9 @@ Sub-section inside Transcription, between Transcript output and LLM post-process
 ### LLM post-processing
 
 Sub-section inside Transcription, below Auto chapters. Optionally pass the transcript through an LLM to clean up, summarize, or apply a custom instruction. Only **Enable LLM post-processing** is visible until it is on; then its **Post-processing engine** row, the **Task**, and that task's prompt profiles appear; the catalogue shown changes with the **Task**. Everything about the service itself lives on its page under **Engines**, so the endpoint, the key, the model catalogue, and the token ceiling are entered once there and read by every job that calls it. See [LLM post-processing](llm-post-processing.md) and [Anthropic API key](use-cases/anthropic-api-key.md).
+
+![LLM post-processing settings with the enable toggle on, the post-processing engine dropdown, the task dropdown and the cleanup prompt profile row](images/settings-llm-post-processing.png)
+_Figure: The LLM post-processing block on the Clean up task._
 
 | Setting                         | What it does                                                                                                                                                                                                                                                                                                                                | Options / range                                       | Default         |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | --------------- |
@@ -303,6 +339,9 @@ Sub-section inside Transcription, below Auto chapters. Optionally pass the trans
 
 Control the browser's input processing applied while recording, plus the live recording feedback shown in the status bar and on mobile. These input filters are applied during recording (and to the diagnostics test recording), unlike the after-the-fact [Audio cleanup](audio-cleanup.md) action. See [Recording](recording.md).
 
+![Audio processing and feedback settings with the three input filters, the input level meter, recording stats, silent channel detection and mobile banner toggles](images/settings-audio-processing.png)
+_Figure: The Audio processing & feedback section, whose three filters are what a per-track processing profile overrides._
+
 | Setting                                   | What it does                                                                                                                                                                                                                                                                                                                                                          | Options / range | Default |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------- |
 | **Noise suppression**                     | Apply the browser noise-suppression filter to the microphone input.                                                                                                                                                                                                                                                                                                   | On / Off        | On      |
@@ -319,8 +358,8 @@ Control the browser's input processing applied while recording, plus the live re
 
 Sub-heading at the end of **Audio processing & feedback**. These values prefill the on-demand **Clean up audio** dialog opened from the file/embed context menu; each run can override them. Cleanup writes a processed copy and never changes live recording. Each row pairs a number field (the parameter value) with a toggle (default on/off). See the full [Audio cleanup guide](audio-cleanup.md).
 
-![Audio cleanup defaults settings with high-pass filter, noise gate, and loudness leveling each as a number field plus a toggle](images/settings-audio-cleanup-defaults.png)
-_Figure: The Audio cleanup defaults, each a number field paired with a toggle._
+![Audio cleanup defaults with the high-pass filter, noise gate and loudness leveling toggles each followed by its own number field](images/settings-audio-cleanup-defaults.png)
+_Figure: The Audio cleanup defaults section with all three stages on, which is what reveals their number fields._
 
 | Setting               | What it does                                                                                | Options / range                                | Default       |
 | --------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- | ------------- |
@@ -333,6 +372,9 @@ _Figure: The Audio cleanup defaults, each a number field paired with a toggle._
 ## Diagnostics
 
 Tools for verifying your setup and gathering information for bug reports. See [Troubleshooting](troubleshooting.md) and the [Bug reporting guide](BUG_REPORTING_GUIDE.md).
+
+![Diagnostics settings with the test recording row and its Start test button, the system info row and the debug mode toggle](images/settings-diagnostics.png)
+_Figure: The Diagnostics section._
 
 | Setting            | What it does                                                                                                                                                                                                                                                                                                                                                                                                       | Options / range         | Default |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ------- |

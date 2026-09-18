@@ -85,7 +85,7 @@ export const MARKER = {
 		'div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-note:placeholder-shown',
 	/** The page icon of that empty note, for its CSS rule. */
 	idleEmptyNoteIcon:
-		'div.aar-player-marker-row:not(.aar-player-marker-row-open):has(.aar-player-marker-note:placeholder-shown) .aar-player-marker-note-icon',
+		'div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-note:placeholder-shown + .aar-player-marker-note-icon',
 	/** An edit-mode row, which is a block rather than a button. */
 	editableRow: 'div.aar-player-marker-row',
 	/** A row being worked in, which shows its note line even when empty. */

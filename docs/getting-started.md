@@ -43,6 +43,11 @@ You can install the plugin from Obsidian's built-in plugin browser (recommended)
 
 Once enabled, a **microphone icon** appears in the left ribbon and a new **Advanced Audio Recorder** entry appears in your settings.
 
+> **Turn Obsidian's own Audio recorder off.** Obsidian ships a core plugin of that name which puts its own microphone button in the same ribbon, and two recording buttons side by side are easy to confuse. Switch it off under **Settings > Core plugins**. To keep the core plugin and drop only its button, right-click an empty part of the ribbon strip instead and untick its entry, which leaves its commands in the palette. Hovering this plugin's button always names it in full, **Advanced Audio Recorder: start/stop recording**.
+
+![The Audio recorder core plugin with its toggle switched off in Settings, Core plugins](images/settings-core-audio-recorder-off.png)
+_Figure: the core Audio recorder turned off, which leaves one recording button in the ribbon._
+
 ### Manual installation
 
 Use this method to install a specific release or a build you compiled yourself.
@@ -86,7 +91,7 @@ With the plugin enabled and your microphone allowed, record your first clip:
 1. Open or create a note where you want the audio link to land, and place your cursor there.
 2. Click the **microphone icon** in the left ribbon, or open the command palette (`Ctrl/Cmd + P`) and run **Start/stop recording**. The plugin assigns no default hotkeys; you can add your own under **Settings > Hotkeys**.
 3. Speak (or play audio) into your microphone. While recording:
-    - The **ribbon icon** changes from a microphone to an active recording indicator.
+    - The **ribbon icon** turns red and pulses while the session is live.
     - The **status bar** shows `Recording...` with **Pause** and **Stop** buttons. If you enabled **Markers and chapters**, an **Add marker** button appears too.
     - When enabled, a live **input level meter** and **recording stats** (elapsed time and total recorded size) appear in the status bar.
 4. To pause, click **Pause** in the status bar (or run **Pause/resume recording**); the status bar then reads `Recording paused`. Click **Resume** to continue.

@@ -808,7 +808,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	splitChunkMinutes: DEFAULT_SPLIT_CHUNK_MINUTES,
 	splitPartSuffix: DEFAULT_SPLIT_PART_SUFFIX,
 	deleteSourceAfterSplit: false,
-	enhancedPlayerEnabled: false,
+	enhancedPlayerEnabled: true,
 	playerShowWaveform: true,
 	playerEnableMarkers: true,
 	playerSkipSeconds: PLAYER_SKIP_SECONDS,

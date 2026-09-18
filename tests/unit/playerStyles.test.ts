@@ -183,8 +183,9 @@ describe('read-only player styles', () => {
 		expect(note).toMatch(/border-block-width:\s*0/);
 		expect(ruleBody(MARKER.idleEmptyNoteIcon)).toMatch(/display:\s*none/);
 
-		// A gap between the lines would stay behind the hidden note
-		expect(ruleBody(MARKER.editableRow)).toMatch(/row-gap:\s*0/);
+		// A gap between the lines would stay behind the hidden note, so the
+		// row spaces its cells and not its lines
+		expect(ruleBody(MARKER.editableRow)).toMatch(/gap:\s*0\s+\d/);
 	});
 
 	// A field taken out of the layout is taken out of the tab order too, so
