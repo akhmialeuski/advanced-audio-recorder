@@ -58,6 +58,24 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 	// bitrate row went imperative once its options started depending on the
 	// format and the rate.
 	sampleRate: { numeric: true },
+	// The channel layout a recording will have is settled by these three
+	// between them: the layout a single capture is reduced to, the per-track
+	// configuration that replaces it, and the system output paired with the
+	// microphone, which is captured in stereo whatever the microphone is. Two
+	// rows of the Output format section are built from that layout rather than
+	// from a key of their own - an encoder accepts its own set of bitrates per
+	// layout, and answers per layout whether it can write a format at all - so
+	// they keep the previous answer until the tree is read again.
+	recordingChannels: { reshapesTree: true },
+	enableMultiTrack: { reshapesTree: true },
+	includeSystemAudio: { reshapesTree: true },
+	// The track count decides which tracks that layout is taken from, and the
+	// output mode decides whether a track placed off centre takes the combined
+	// file to stereo, so both move the same answer. The per-track rows move it
+	// too and are answered in the tab's own write path, which reaches them
+	// before this table.
+	maxTracks: { reshapesTree: true },
+	outputMode: { reshapesTree: true },
 	// Picking another transcription engine rewrites the descriptions the
 	// speaker rows carry, which are built from the engine rather than
 	// re-evaluated per pass. The three rows that pick an engine for an LLM job
