@@ -100,7 +100,6 @@ Behavior and limits:
 Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The catalogue link next to the model picker points at the [OpenAI speech-to-text guide](https://platform.openai.com/docs/guides/speech-to-text).
 
 ![Whisper API engine settings: upload chunk size number field, base URL, API key, and model picker](images/settings-transcription-whisper.png)
-_Figure: the Whisper API engine fields, with the upload chunk-size number field and the model picker._
 
 ### Deepgram
 
@@ -125,7 +124,6 @@ Behavior and limits:
 Getting a key: [Deepgram API key](use-cases/deepgram-api-key.md). The catalogue link points at the [Deepgram model list](https://developers.deepgram.com/docs/model).
 
 ![Deepgram engine settings: base URL, API key, and the Deepgram model picker](images/settings-transcription-deepgram.png)
-_Figure: the Deepgram engine fields with the model picker seeded with the Nova family._
 
 ### Google Gemini
 
@@ -149,7 +147,6 @@ Behavior and limits:
 Getting a key: [Gemini API key](use-cases/gemini-api-key.md). The catalogue link points at the [Gemini model list](https://ai.google.dev/gemini-api/docs/models).
 
 ![Google Gemini engine settings: base URL, API key, and the Gemini model picker](images/settings-transcription-gemini.png)
-_Figure: the Google Gemini engine fields with the Flash and Pro models in the picker._
 
 ### Mistral Voxtral
 
@@ -198,7 +195,6 @@ Behavior and limits:
 Setup walkthrough: [Local whisper.cpp](use-cases/local-whisper-cpp.md). The download link in the model-path description points at the [whisper.cpp models on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp).
 
 ![Local whisper.cpp engine settings: binary path, model path, and extra arguments fields](images/local-whisper-settings-engine.png)
-_Figure: the local whisper.cpp engine fields for an offline transcription setup._
 
 ---
 
@@ -239,7 +235,6 @@ Because there are no labels to act on without diarization, these output controls
 - **Speaker format**
 
 ![Speaker diarization toggle enabled for Deepgram, with the speaker output controls active below](images/settings-transcription-diarization.png)
-_Figure: with Deepgram and diarization on, the speaker-related output controls become editable._
 
 ### Naming speakers
 
@@ -264,7 +259,6 @@ The names you assign are **remembered in the recording's sidecar file** (`<recor
 - When a transcript has no timecode links to identify the recording (for example with timestamp links turned off), the dialog cannot pin its lines to this audio. It warns you, and only after you opt in does it rewrite every matching label in those notes.
 
 ![The Participant profile row of the Rename speakers dialog, naming the text last read from a roster note that could not be read](images/dialog-rename-speakers-roster.png)
-_Figure: the picker of the Rename speakers dialog, which names the roster its suggestions come from; here the note holding it could not be read._
 
 ---
 
@@ -275,19 +269,14 @@ Names, abbreviations, and domain jargon are the words an engine mishears most of
 **A profile can be read from a note.** A glossary of a hundred terms is easier to keep as an ordinary note: it is edited in the normal editor, synced and versioned with the vault, linked to the project it belongs to, and editable from a phone without opening the plugin settings. Below its use-by-default switch, every profile page has a **Source** row that chooses where the profile's text comes from. **Typed text** keeps the terms field, and **Note** replaces it with a **Note** row that suggests the vault's notes; an **Open note** action joins it once a note is picked. The description under **Source** names the text the profile applies, `Uses the text typed in the settings.` or `Uses the text of Glossaries/Standup.md.`, and while **Note** is chosen with no note picked yet it opens with `No note picked yet.`, because the typed text still applies. Nothing is stored for that choice until a note is picked, so closing the settings first returns the page to **Typed text**. Picking a note for a profile that holds typed text asks first, because the note's text takes its place: an empty note is offered the typed text, which is added to it, and any other note is confirmed before the typed text is lost. A note that cannot be read is not picked, and a notice says so. The line is drawn with the page, so a note renamed or deleted while the settings stay open is reflected the next time the page is opened. Once a note is picked, the profile's text becomes the note's text below its frontmatter. A transcription and a chapter generation read the note again as they start, and the **Rename speakers** dialog reads it as it opens, from the note's editor when it is open, so an edit made a moment before applies, and an edit saved during a run applies to the next one. List markup is read the way a list is meant: a glossary written as bullets, a numbered list, or checkboxes, inside a callout or not, yields the terms without the markers, and a link yields the name it shows (its alias, or else the name of the linked note). Bold, italic, highlighted text, and inline code yield the text inside them, a Markdown link yields its label, and struck-through text and embeds yield nothing. Headings, horizontal rules, tables, code blocks, `%%` comments, and the title line of a callout are skipped. Each line is one term, so a definition written after a term on its line is sent with it. Both rules hold for terms typed into the settings as well. Renaming or moving the note, or the folder holding it, inside Obsidian keeps the profile pointed at it. When the note disappears (deleted, moved outside Obsidian, or not yet delivered by sync), the profile keeps the text last read from it, **Source** says `Uses the text last read from Glossaries/Standup.md, which is missing.`, and a run that applies it names the note in a notice and goes ahead with that text. A note that is in the vault and cannot be read, for example while another program holds it locked, is handled the same way: a run, and the **Rename speakers** dialog under its profile picker, say that the note could not be read and use the text last read from it. Every catalogue entry names where its text comes from beside what it holds and whether a run uses it, for example `In use, note, 12 terms`, `Typed text, 3 terms`, or `Note missing, 12 terms`. The picker of the profile in use repeats the line from **Source** under its description, and the profile pickers of the **Transcribe audio**, **Generate chapters**, and **Rename speakers** dialogs show the same line for the profile picked there. Choosing **Typed text** again detaches the profile and leaves the note's current text in its terms field, ready to edit (or the text last read from it, with a notice, when the note cannot be read), while emptying the **Note** field keeps the page on a note until another one is picked. Participant rosters, chapter guidance, and post-processing prompts can be read from notes the same way, and a prompt is sent exactly as the note holds it, Markdown included.
 
 ![A dictionary profile page with Source set to Typed text and the terms typed into the settings](images/settings-dictionary-profiles.png)
-_Figure: a profile page whose terms are typed in, under Settings > Advanced Audio Recorder > Transcription > Dictionary profiles._
 
 ![The same page with Source set to Note, the Note row holding the path of the note, and an Open note action below it](images/settings-profile-source-note.png)
-_Figure: the same page once the profile reads its terms from a note; the terms field is edited in the note from then on._
 
 ![The Source row naming the text last read from a note that is missing, with No note at this path under the Note row](images/settings-profile-source-note-missing.png)
-_Figure: a profile whose note has gone from the vault; the terms last read from it still apply, and a run says so._
 
 ![The Dictionary profile row with a line naming the text the profile in use applies](images/settings-profile-picker-note.png)
-_Figure: the row that picks the glossary applied by default, naming where its text comes from._
 
 ![The Transcribe audio dialog rows for the participant and dictionary profiles, each naming the text it applies](images/transcribe-dialog-dictionary.png)
-_Figure: the per-run pickers of the Transcribe audio dialog, which name the text of the profile picked in them._
 
 Each engine consumes the list the way its own API supports:
 
@@ -410,7 +399,6 @@ The detailed in-note templates (note heading, timestamp/speaker/line format) sta
 Options toggled mid-run do **not** change an in-flight job: the run snapshots its options when you press **Transcribe**, so edits only affect the next attempt after a failure.
 
 ![The Transcribe audio dialog with per-run Engine, Language, diarization, Destination, and File format controls](images/transcription-dialog.png)
-_Figure: the Transcribe audio dialog with the per-run overrides above the progress area._
 
 ---
 

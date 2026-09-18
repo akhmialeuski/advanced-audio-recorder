@@ -102,10 +102,8 @@ Setting a **Clean up** or **Summarize** catalogue to **None** falls back to that
 For **Custom**, nothing is added: the instruction in the selected profile is the entire system prompt. A profile with an empty body, like None, leaves only the generic instruction above - write a real one.
 
 ![A cleanup prompt profile page with Source set to Typed text and the prompt typed into the settings](images/settings-llm-prompt-editor.png)
-_Figure: a prompt profile's page; the instruction is sent verbatim._
 
 ![The same page with Source set to Note, naming the note the prompt is read from](images/settings-llm-prompt-source-note.png)
-_Figure: the same page once the prompt is read from a note, which every run reads again as it starts._
 
 ---
 
@@ -150,10 +148,8 @@ The **Model** picker on the engine's page is the same control used for transcrip
 The model list belongs to the provider rather than to the job, so each provider's page keeps its own picker contents and its own selected model, and your OpenAI choice is remembered separately from your Anthropic, Gemini, and Mistral choices whichever job calls them.
 
 ![OpenAI engine settings with the base URL, API key, model picker and max output tokens rows](images/settings-llm-provider-model.png)
-_Figure: an engine page under Engines, where the model picker and the token ceiling belong to that provider alone._
 
 ![Anthropic engine settings with the base URL, API key, model picker and max output tokens rows](images/settings-engine-anthropic.png)
-_Figure: the Anthropic page, which carries its own key, its own model list and its own token ceiling._
 
 ---
 

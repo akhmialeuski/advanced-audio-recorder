@@ -46,7 +46,6 @@ Once enabled, a **microphone icon** appears in the left ribbon and a new **Advan
 > **Turn Obsidian's own Audio recorder off.** Obsidian ships a core plugin of that name which puts its own microphone button in the same ribbon, and two recording buttons side by side are easy to confuse. Switch it off under **Settings > Core plugins**. To keep the core plugin and drop only its button, right-click an empty part of the ribbon strip instead and untick its entry, which leaves its commands in the palette. Hovering this plugin's button always names it in full, **Advanced Audio Recorder: start/stop recording**.
 
 ![The Audio recorder core plugin with its toggle switched off in Settings, Core plugins](images/settings-core-audio-recorder-off.png)
-_Figure: the core Audio recorder turned off, which leaves one recording button in the ribbon._
 
 ### Manual installation
 
@@ -98,7 +97,6 @@ With the plugin enabled and your microphone allowed, record your first clip:
 5. To finish, click the ribbon icon again (or run **Start/stop recording** again), or click **Stop** in the status bar.
 
 ![Status bar reading Recording with Pause, Stop, and Add marker buttons and a live input level meter](images/status-bar-recording.png)
-_Figure: The status bar while a recording is in progress._
 
 When you stop, the plugin flushes the audio buffers, assembles the final file, writes it to your save location, and inserts an embed link (`![[filename.ext]]`) into the active note. For longer recordings, saving can take a moment; the status bar shows a progress bar that walks through `Saving... > Flushing buffers... > Assembling audio... > Writing file... > Cleaning up... > Saved`, and the ribbon switches to a **save** icon while saving runs.
 
@@ -119,7 +117,6 @@ For a richer experience, turn on the **Enhanced audio player**:
 The enhanced player applies to **audio-only** files. Files that carry a video track, and any file the app cannot decode, keep Obsidian's built-in player. See [Audio player](audio-player.md) for the full control reference, markers and chapters, and timecode links.
 
 ![Enhanced audio player showing the waveform seek bar and the transport controls](images/player-overview.png)
-_Figure: The enhanced audio player with its waveform seek bar._
 
 ---
 

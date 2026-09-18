@@ -31,7 +31,6 @@ A two-hour lecture or an all-day meeting recorded as one file is awkward to work
 When **Split recordings automatically** is enabled, a recording is saved as a series of fixed-duration part files (`recording-…-part1.webm`, `recording-…-part2.webm`, …) instead of one long file. Each finished part is written to disk while the recording continues, and the remainder recorded after the last boundary becomes the final part. Links to **all** parts are inserted into the note when the recording stops.
 
 ![Settings panel showing the Split recordings automatically toggle, Part duration number field, Part name suffix field, and Delete source after split toggle](images/settings-audio-splitting.png)
-_Figure: the Audio splitting section of the plugin settings, where automatic splitting is enabled and the part duration and suffix are configured._
 
 ### Enabling it
 
@@ -83,7 +82,6 @@ To open the split dialog, right-click the target audio in any of these places an
 ### The split dialog
 
 ![The Split audio into parts dialog showing the source file name, Part duration number field, Part name suffix field, Bitrate dropdown, Delete source toggle, Update links dropdown, and the Split button](images/modal-split-audio.png)
-_Figure: the Split audio into parts dialog, with the per-run options that override your saved defaults for a single split._
 
 The dialog header shows the **Source** file name and exposes these options. Each starts from your saved settings but can be changed for this one run:
 

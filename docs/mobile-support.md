@@ -12,7 +12,6 @@ Advanced Audio Recorder runs in the **Obsidian mobile app** (iOS and Android) as
 - [Related pages](#related-pages)
 
 ![Two enhanced audio players on a phone, each showing a waveform, playback controls, and a chapter list](images/mobile-audio-player.png)
-_Figure: two recordings on Android, each rendered in the enhanced waveform player with its own chapters._
 
 ## What works on mobile
 

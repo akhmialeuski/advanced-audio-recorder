@@ -47,10 +47,8 @@ Multi-track recording is configured under **Settings > Advanced Audio Recorder >
 8. Optionally set **Track N processing** - the browser filtering that track is captured with, overriding the three session-wide toggles under **Audio processing & feedback**. `Same as global settings` is the default and leaves the behaviour these toggles have always had. `Voice` turns noise suppression, echo cancellation and automatic gain control all on, which is what a microphone in a room wants. `Raw` turns all three off, which is what a system-loopback input, a line input or an already-processed headset wants. The distinction matters most when one session holds both kinds: echo cancellation treats the far end of a call arriving on a loopback input as this machine's own speaker output and suppresses it, so a meeting recorded with the global default loses the remote participants. The selector is disabled when the track has no device yet, and absent altogether on a system-audio track, whose capture is granted by the host and passes through none of these filters.
 
 ![Multi-track recording settings with the enable toggle on, the Maximum tracks number field, the Output mode and Match track levels rows, and the Track 1 source and Track 1 input dropdowns](images/settings-multi-track.png)
-_Figure: the head of the Multi-track recording section, down to the first track's source and input._
 
 ![Track 1 input set to a microphone with Track 1 processing on Voice, and Track 2 input set to a Stereo Mix loopback marked "(system audio)" with Track 2 processing on Raw](images/settings-multi-track-processing.png)
-_Figure: the two processing rows of a meeting session, with the microphone on Voice and the loopback input on Raw._
 
 Once configured, start recording exactly as you normally do - the **microphone ribbon icon** or the **Start/stop recording** command. All assigned tracks begin together. See [Recording](recording.md) for the recording workflow, status bar, and save behavior.
 
@@ -74,7 +72,6 @@ Every track is combined into a single mixed file at your configured [format](for
 Because the tracks are mixed only once at stop, **merged output cannot be auto-split** - see [Interaction with automatic splitting](#interaction-with-automatic-splitting). For very long mixed sessions, mind the [memory notes](#memory-notes-for-merged-output) below.
 
 ![Output mode set to Single file, with the Match track levels toggle below it turned off](images/settings-multi-track-single.png)
-_Figure: the Output mode dropdown set to Single file, which is what reveals Match track levels._
 
 ### Placing a track in the mix
 

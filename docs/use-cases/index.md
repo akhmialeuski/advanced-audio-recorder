@@ -47,7 +47,6 @@ Every API-key guide follows the same shape: generate the key on the provider's s
 The **Local whisper.cpp** engine runs a binary you install yourself and a GGML model file you download once. Nothing leaves your machine. This guide covers the binary path, the model path (an absolute path to a GGML `.bin` file), extra CLI arguments, and which model size to pick.
 
 ![The Transcription settings with the Local whisper.cpp engine selected, showing the binary path, model path, and extra CLI args fields](../images/local-whisper-settings-engine.png)
-_Figure: The Local whisper.cpp engine adds binary-path, model-path, and extra-args fields instead of an API key._
 
 ---
 

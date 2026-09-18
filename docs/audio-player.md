@@ -25,7 +25,6 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
 - [Related settings](#related-settings)
 
 ![Enhanced audio player embedded in a note with the waveform seek bar and control row](images/player-overview.png)
-_Figure: the enhanced player rendered in place of an audio embed, with the waveform seek bar above the control row._
 
 ## Where the player is switched
 
@@ -37,7 +36,6 @@ The enhanced player is on by default, so an embedded recording already plays in 
 4. **Show waveform** and **Markers and chapters**, both on by default, are the two windows the player draws. They are offered only while the master switch is on.
 
 ![Audio player settings with the enhanced player, show waveform and markers and chapters toggles all on, and the skip step field](images/settings-audio-player.png)
-_Figure: the Audio player settings section, with the master toggle, its two windows and the skip step._
 
 The change applies to notes that are **rendered after** the change. Toggling the master switch flips what every embed is (native versus enhanced), so the plugin re-renders open notes to rebuild their embeds. Disabling **Enhanced audio player** restores Obsidian's built-in embed on the next render.
 
@@ -66,7 +64,6 @@ The player also keeps working in **pop-out windows**: moving a note that embeds 
 Every control below is **fixed** in what it does. Only the master **Enhanced audio player** toggle, the two windows (**Show waveform**, **Markers and chapters**), and the **Skip step** can be changed in settings.
 
 ![Enhanced player control row showing play, skip back, skip forward, speed, mute, volume, loop, chapter navigation, time, and copy-link buttons](images/player-controls.png)
-_Figure: the full control row of the enhanced player._
 
 ### Waveform seek bar
 
@@ -81,10 +78,8 @@ The recording is drawn as a waveform that doubles as the seek bar.
 - **Disabling the waveform.** Turn off **Show waveform** in settings to always use the plain bar. No audio is decoded in that mode at all.
 
 ![Waveform seek bar with the played portion highlighted in the theme accent color and a position thumb](images/player-waveform-seek.png)
-_Figure: the waveform seek bar, with the played portion in the theme accent and the current position marked._
 
 ![Plain seekable progress bar shown when the waveform is disabled or the file is too large to decode](images/player-plain-bar.png)
-_Figure: the plain (still seekable) bar shown when Show waveform is off or the file exceeds the decode ceiling._
 
 ### Playback speed
 
@@ -93,7 +88,6 @@ Click the **speed** button to open a dropdown of presets and pick any one (the c
 New players start at `1×`. The button always shows the current rate.
 
 ![Playback-speed dropdown menu listing the speed presets with the current rate checked](images/player-speed-menu.png)
-_Figure: the playback-speed dropdown, opened from the speed button._
 
 ### Skip forward and back
 
@@ -143,7 +137,6 @@ A [timecode link](#timecode-links) outranks the remembered position. An embed th
 Whenever an enhanced player is playing, a compact set of **playback controls appears in the status bar** at the bottom-right of the Obsidian window, so you can drive the recording without scrolling back up to the embed. This is the same status-bar slot that shows `Recording...` while you capture; during playback it switches to the transport strip shown below.
 
 ![Status-bar playback controls with skip back, play or pause, stop, skip forward, mute, a volume slider, add marker, add chapter, and the elapsed over total time](images/status-bar-playback-controls.png)
-_Figure: the status-bar playback controls shown while a recording plays, with transport, volume, marker, chapter, and time._
 
 The strip carries:
 
@@ -207,7 +200,6 @@ The speed commands move between the same presets the embed's speed button lists,
 With **Markers and chapters** enabled, each recording can carry per-file **bookmarks** (jump points) and **chapters** (named segments). These are extra navigation aids stored alongside the recording; they do not change the audio.
 
 ![Enhanced player with a marker list below the controls and bookmark and chapter ticks on the seek bar](images/player-marker-list.png)
-_Figure: the marker list under the player, with bookmark ticks and chapter boundaries on the seek bar._
 
 **Adding markers**
 
@@ -222,7 +214,6 @@ _Figure: the marker list under the player, with bookmark ticks and chapter bound
 - Clicking either one jumps playback to it (without forcing play/pause to change).
 
 ![Seek bar with bookmark ticks and labelled chapter boundary lines](images/player-seek-ticks.png)
-_Figure: bookmark ticks and chapter boundaries rendered on the seek bar._
 
 **The marker list**
 
@@ -251,7 +242,6 @@ The **previous chapter** and **next chapter** buttons move between chapter bound
 Right-click the player to add a **marker** or **chapter**, or copy a **timestamp link**, **at the clicked position** - alongside the usual audio file actions (info, convert, split, delete). Position-aware actions use the spot under the cursor. The **add marker** and **add chapter** items appear only when **Markers and chapters** is enabled and the note is open for editing (Live Preview); **copy timestamp link** is always available.
 
 ![Right-click context menu on the player offering add marker, add chapter, copy timestamp link, and file actions](images/player-context-menu.png)
-_Figure: the right-click menu on the player, with position-aware marker, chapter, and timestamp actions._
 
 **Editing versus read-only**
 

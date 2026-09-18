@@ -73,7 +73,6 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 7. (Optional) Choose where the transcript goes under **Transcript output > Destination**. The default is **Insert into note**.
 
 ![The plugin Transcription settings with the Whisper API engine selected and the key, base URL, and model fields](../images/settings-transcription-whisper-api.png)
-_Figure: the Transcription settings configured for the OpenAI Whisper API engine._
 
 > **Speaker diarization** stays greyed out and off for the Whisper API engine - OpenAI's Whisper does not return speaker labels. The speaker-related output controls (Include speakers, Merge speaker turns, Speaker format) are disabled to match.
 

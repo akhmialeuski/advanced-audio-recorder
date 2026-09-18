@@ -45,7 +45,6 @@ What it tells you:
 The test uses exactly the same input device, sample rate, bitrate, and browser input processing (noise suppression, echo cancellation, automatic gain control) as a real recording, so it is a faithful preview. Nothing is written to disk - when you leave the section the clip is discarded.
 
 ![Test recording control after a successful 5-second clip, showing the inline playback player](images/diagnostics-test-recording.png)
-_Figure: a completed test recording with the inline audio player ready to play the captured clip back._
 
 ### System info
 
@@ -70,7 +69,6 @@ The snapshot contains the following groups:
 The snapshot never contains your API keys, transcripts, or note contents - only the technical configuration listed above. It is safe to share in a public issue.
 
 ![The System diagnostics modal showing the formatted JSON snapshot and the Copy to clipboard button](images/modal-system-info.png)
-_Figure: the System diagnostics modal with the full JSON snapshot and the Copy to clipboard button._
 
 ### Debug mode
 

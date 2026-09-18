@@ -33,7 +33,6 @@ Gemini reads the audio itself rather than running a dedicated speech model, whic
 | Reused for              | Gemini [LLM post-processing](../llm-post-processing.md) (same key) |
 
 ![Transcription settings with the engine set to Google Gemini, showing the Gemini base URL, API key, and model fields](../images/settings-transcription-gemini.png)
-_Figure: The Transcription settings section after you pick Google Gemini as the engine._
 
 ---
 
@@ -63,7 +62,6 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 8. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
 
 ![Gemini model picker showing gemini-2.5-flash selected, with the saved model list and a catalogue link](../images/settings-gemini-model-picker.png)
-_Figure: The Gemini model picker with the default model selected and the catalogue link._
 
 The table below summarizes the fields you set:
 
@@ -105,7 +103,6 @@ To enable it:
 5. Open **Engines** and then **Google Gemini** to confirm the **Base URL** reads `https://generativelanguage.googleapis.com`, pick a **Model** (default `gemini-3.5-flash`), and adjust **Max output tokens** if needed (default 4096, range 512-200000, with the model's own maximum as the real limit). One catalogue serves transcription and prompts alike, because Gemini answers both with the same family of ids.
 
 ![Google Gemini engine settings with the base URL, API key, model and max output tokens rows](../images/settings-llm-gemini-provider.png)
-_Figure: The Google Gemini engine page. One key and one model list serve transcription and the prompt jobs alike._
 
 See the [LLM post-processing guide](../llm-post-processing.md) for the full set of tasks, prompts, and provider options.
 

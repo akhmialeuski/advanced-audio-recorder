@@ -22,7 +22,6 @@ The plugin adds its actions to the context menu of any audio file. You can open 
 The plugin recognizes a file as audio by its extension. Supported extensions are `webm`, `ogg`, `wav`, `mp3`, `flac`, `mp4`, `m4a`, and `aac` - see [Formats](formats.md) for what each one is.
 
 ![Right-click context menu on an audio file in the File Explorer showing the Advanced Audio Recorder actions](images/context-menu-file-explorer.png)
-_Figure: The plugin's actions grouped together in the File Explorer context menu._
 
 Which actions appear depends on where you click and on your settings:
 
@@ -47,7 +46,6 @@ Every action in the table is also registered as a **command palette** command of
 **Audio file info** opens a read-only modal that reads the file and reports its technical properties. Use it to confirm what was actually recorded - the container, the codec, the sample rate, and so on - without opening an external tool.
 
 ![Audio file info modal listing file name, size, duration, container, codec, bitrate, sample rate, and channels, with a Copy as Markdown button](images/modal-audio-file-info.png)
-_Figure: The Audio file info modal with the Copy as Markdown button._
 
 The modal lists the following fields:
 
@@ -98,7 +96,6 @@ The copied text looks like this:
 **Convert audio format** transcodes the file to a different format. It opens a dialog seeded with your defaults, writes the converted file next to the source, and (optionally) updates the links in your notes and removes the original.
 
 ![Convert audio format dialog with Target format, Bitrate, Delete source file, and Update links in notes controls and a Convert button](images/modal-convert-audio.png)
-_Figure: The Convert audio format dialog._
 
 The dialog header shows the source file name. Below it are these controls:
 
@@ -155,7 +152,6 @@ WAV files are split losslessly at the byte level without re-encoding; compressed
 The full reference - duration ranges, naming rules, link handling, and limits - lives in [Splitting](splitting.md).
 
 ![Split audio into parts dialog with part duration, suffix, bitrate, delete-source, and link-update controls](images/modal-split-audio.png)
-_Figure: The Split audio into parts dialog (see Splitting for full detail)._
 
 ---
 
@@ -166,7 +162,6 @@ _Figure: The Split audio into parts dialog (see Splitting for full detail)._
 This is post-processing you invoke on demand; it never changes how live recording works. The complete reference - every stage, its parameters and ranges, recommended settings, and size/length limits - is in [Audio cleanup](audio-cleanup.md).
 
 ![Clean up audio dialog with high-pass filter, noise gate, and loudness leveling toggles and a Process button](images/modal-clean-up-audio.png)
-_Figure: The Clean up audio dialog (see Audio cleanup for full detail)._
 
 ---
 
@@ -177,7 +172,6 @@ _Figure: The Clean up audio dialog (see Audio cleanup for full detail)._
 A progress dialog shows the elapsed timer and lets you **Cancel** or **Minimize** the job to the status bar. The full reference - engines, language, diarization, output formats, and setup - is in [Transcription](transcription.md). For step-by-step provider setup, see the [use-case guides](use-cases/index.md).
 
 ![Transcribe audio progress dialog with a progress bar, elapsed timer, Cancel, and Minimize buttons](images/transcription-dialog.png)
-_Figure: The transcription progress dialog (see Transcription for full detail)._
 
 ---
 
@@ -189,7 +183,6 @@ Two delete actions move the file to the **system trash** (not Obsidian's `.trash
 - **Delete recording & link to file** - trashes the audio file **and** removes the embed link from the editor in the same step. Available only when you right-click a **link** in the editor or an **embedded player**, because that variant needs a link at the click position to remove.
 
 ![Delete recording and Delete recording & link to file actions in the context menu of an embedded audio player](images/context-menu-delete.png)
-_Figure: The two delete actions on an embedded player._
 
 If a recording has marker or chapter data, its sidecar (`recording.webm.markers.json`) is moved or removed automatically with the file - see [Audio player](audio-player.md#markers-and-chapters).
 

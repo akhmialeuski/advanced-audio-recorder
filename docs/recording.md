@@ -107,7 +107,6 @@ The active recording duration is checked before the file is read, so long sessio
 Once a session is active, the ribbon icon changes from a plain microphone to an active recording indicator, and the **status bar** (bottom-right of the Obsidian window) shows the live recording controls.
 
 ![Status bar showing Recording with Add marker, Pause, and Stop buttons](images/status-bar-recording.png)
-_Figure: The recording status bar with the live label, control buttons, stats, and input meter._
 
 The status bar shows a label and a row of icon buttons:
 
@@ -151,7 +150,6 @@ To drop a marker:
 If you always drop the same kind, two dedicated commands skip the kind selector: **Add bookmark at current recording position** and **Add chapter at current recording position**. They obey the same recording-or-paused gate and can each be bound to a hotkey, so a single keypress drops a pre-typed marker and only the name is left to fill in.
 
 ![Marker naming dialog with a name field and a bookmark/chapter kind selector](images/dialog-add-marker.png)
-_Figure: The naming dialog that opens when you add a marker while recording._
 
 Two details make this reliable:
 

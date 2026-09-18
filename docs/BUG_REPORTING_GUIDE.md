@@ -37,7 +37,6 @@ Describe what you expected to happen and what actually happened instead.
 The plugin includes a built-in diagnostics tool that collects all relevant environment information in one step.
 
 ![System info modal showing diagnostics output and a Copy to clipboard button](images/modal-system-info.png)
-_Figure: The System info modal opened from the Diagnostics settings section._
 
 **How to collect:**
 
@@ -60,7 +59,6 @@ The diagnostics output includes:
 If the bug involves a specific audio file (e.g., playback issues, corruption, wrong format), collect the file metadata:
 
 ![Audio file info modal showing file metadata and a Copy as Markdown button](images/modal-audio-file-info.png)
-_Figure: The Audio file info modal opened from the file context menu._
 
 1. In the **File Explorer** or in the **Editor**, right-click on the audio file.
 2. Select **Audio file info** from the context menu.

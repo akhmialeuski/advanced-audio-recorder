@@ -87,7 +87,6 @@ When diarization is on, several speaker-related options unlock further down in t
 | **Speaker format**      | `**{speaker}**` | The template that renders each label (bold by default).          |
 
 ![Speaker diarization turned on in the Transcription settings, with Deepgram selected as the engine](../images/settings-transcription-diarization.png)
-_Figure: With diarization on, the Include speakers, Merge speaker turns, and Speaker format options become available._
 
 ### 3. Choose where the transcript goes
 
@@ -171,7 +170,6 @@ With the routing in place, configure the session under **Settings > Advanced Aud
 6. If the remote side comes in louder or quieter than your own voice, correct it with **Track 2 level** rather than at the operating system.
 
 ![Track 1 input set to a microphone with Track 1 processing on Voice, and Track 2 input set to a Stereo Mix loopback marked "(system audio)" with Track 2 processing on Raw](../images/settings-multi-track-processing.png)
-_Figure: the configured pair, with the microphone on Voice and the loopback input on Raw._
 
 From there the workflow is the one above: record, and the diarized transcript plus the LLM summary cover both sides of the call. The **System info** report (**Settings > Diagnostics**) lists any loopback input it found, which is the quickest way to confirm the routing before a meeting rather than after it.
 
@@ -205,7 +203,6 @@ Once the setup above is done, each meeting is fast.
     Start the recording playing and then click any later timestamp to jump playback straight to that line, so you can skim the transcript and drop into the audio wherever something needs a second listen. While it plays, the **status-bar playback controls** appear at the bottom-right of the window, letting you pause, skip 10 seconds either way, stop, adjust volume, or drop a marker or chapter without scrolling back to the embed. The controls dismiss when you stop playback. See [Playback controls in the status bar](../audio-player.md#playback-controls-in-the-status-bar).
 
     ![Status-bar playback controls shown while reviewing a meeting recording, with skip, play or pause, stop, volume, marker, chapter, and the elapsed over total time](../images/status-bar-playback-controls.png)
-    _Figure: reviewing the transcript, the status-bar controls drive playback while you read and click timestamps._
 
 8. **Put real names on the speakers.** With **Rename speakers** enabled (Settings > Transcription), right-click the recording and choose **Rename speakers**. Each speaker is one row: its label, a name field, and a **▶ button that plays where that speaker first talks** - so you identify `Speaker 2` by listening rather than by remembering, which matters because the dialog is covering the transcript. Press ▶ to hear the opening turn, ■ (the same button) to stop, type the name, and press **Apply**: every line in the note and in the transcript files is rewritten, and re-transcribing this recording later re-applies the names automatically.
 

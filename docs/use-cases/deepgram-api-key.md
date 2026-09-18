@@ -61,7 +61,6 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 | **Deepgram model**    | `nova-3` (or a named variant)              | `nova-3`                      |
 
 ![Transcription settings with Engine set to Deepgram, the base URL, API key, and model picker](../images/settings-transcription-deepgram.png)
-_Figure: The Deepgram engine fields under Settings > Transcription._
 
 The model picker lets you pick from a seeded list, and the list below it adds an id Deepgram supports or drops one you do not use. A link to Deepgram's authoritative model catalogue - [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model) - sits next to the picker.
 
@@ -75,7 +74,6 @@ Diarization is what separates each voice into a labelled speaker. It is **off by
 **Speaker diarization** is enabled only for engines that support it - **Deepgram** and **Google Gemini**. With the Whisper API or local whisper.cpp selected, the toggle is greyed out and reads _"Not supported by the selected engine. Use Deepgram for speaker labels."_ Because you selected Deepgram in Step 3, the toggle is active.
 
 ![Speaker diarization toggle turned on in the Transcription settings](../images/settings-transcription-diarization.png)
-_Figure: The Speaker diarization toggle, enabled because Deepgram is the selected engine._
 
 When diarization is on, the speaker-related output options unlock further down the **Transcript output** area: **Include speakers** (default on) and **Merge speaker turns** (default on, which combines consecutive lines from the same speaker into one block). The **Speaker format** template (default `**{speaker}**`) controls how each label is rendered. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for the full behavior.
 

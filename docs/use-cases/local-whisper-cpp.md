@@ -133,7 +133,6 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 Both paths must be **absolute** (full) paths. Use the OS-native form: backslashes on Windows, forward slashes on macOS/Linux. The **Model path** field also shows a **Download whisper.cpp models** link to the same Hugging Face repository from Step 2.
 
 ![Transcription settings with Engine set to Local whisper.cpp and the binary path, model path, and extra arguments fields](../images/local-whisper-settings-engine.png)
-_Figure: the Transcription settings with the local engine selected._
 
 You can also set **Language** (an ISO code like `en`, `ru`, `es`, or `auto` to detect) here - it is shared with the other engines. The plugin passes a chosen language to the binary; with `auto` it lets `whisper.cpp` detect the language.
 

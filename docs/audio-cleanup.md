@@ -28,7 +28,6 @@ Use it when:
 ## How to run it
 
 ![The Clean up audio dialog with its stage toggles](images/modal-clean-up-audio.png)
-_Figure: the Clean up audio dialog with per-stage toggles and parameters._
 
 1. Right-click the target audio in any of these places:
     - the **File Explorer**,
@@ -101,7 +100,6 @@ The compressor itself uses fixed, speech-friendly settings (threshold -24 dB, ra
 ## Defaults and settings
 
 ![The Audio cleanup defaults settings section](images/settings-audio-cleanup-defaults.png)
-_Figure: the Audio cleanup defaults section in plugin settings._
 
 Under **Settings > Advanced Audio Recorder > Audio cleanup defaults**, set the values the dialog starts from each time:
 
