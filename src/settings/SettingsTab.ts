@@ -46,6 +46,8 @@ import {
 } from './settingsDefinitions';
 import { LegacySettingsRenderer } from './legacySettingsRenderer';
 import {
+	TrackProcessingMode,
+	TrackSourceKind,
 	normalizeTrackProcessingMode,
 	normalizeTrackSourceKind,
 	type AudioRecorderSettings,
@@ -460,10 +462,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				return source?.channelMode ?? CHANNEL_MODE_SOURCE;
 			}
 			if (track.field === 'processing') {
-				return source?.processing ?? 'global';
+				return source?.processing ?? TrackProcessingMode.Global;
 			}
 			if (track.field === 'kind') {
-				return source?.kind ?? 'input-device';
+				return source?.kind ?? TrackSourceKind.InputDevice;
 			}
 			// A track placed nowhere in particular sits at the centre, at the
 			// level it was captured at.
@@ -712,7 +714,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// system output is the whole configuration of such a track, and
 			// there is no device to bind it to.
 			const kind = normalizeTrackSourceKind(value);
-			if (kind === 'input-device' && !current?.deviceId) {
+			if (kind === TrackSourceKind.InputDevice && !current?.deviceId) {
 				// A device track without a device is the unconfigured state,
 				// and an unconfigured track has no entry - the same rule the
 				// device dropdown applies when it is cleared. Written anyway,

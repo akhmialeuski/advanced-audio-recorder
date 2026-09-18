@@ -37,6 +37,8 @@ import {
 import {
 	DEFAULT_SETTINGS,
 	createPlatformScopedDefaults,
+	TrackProcessingMode,
+	TrackSourceKind,
 	normalizeTrackProcessingMode,
 	normalizeTrackSourceKind,
 	type AudioRecorderSettings,
@@ -111,8 +113,8 @@ function normalizeTrackAudioSources(
 				channelMode: normalizeChannelMode(undefined),
 				gainDb: 0,
 				pan: 0,
-				processing: 'global',
-				kind: 'input-device',
+				processing: TrackProcessingMode.Global,
+				kind: TrackSourceKind.InputDevice,
 			});
 			continue;
 		}
@@ -156,8 +158,8 @@ export function serializeTrackAudioSources(
 			channelMode: source.channelMode,
 			gainDb: source.gainDb ?? 0,
 			pan: source.pan ?? 0,
-			processing: source.processing ?? 'global',
-			kind: source.kind ?? 'input-device',
+			processing: source.processing ?? TrackProcessingMode.Global,
+			kind: source.kind ?? TrackSourceKind.InputDevice,
 		};
 	}
 	return serialized;

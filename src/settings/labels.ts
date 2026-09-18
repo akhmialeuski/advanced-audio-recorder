@@ -18,10 +18,9 @@ import type { LlmTask } from '../transcription/llmPostProcess';
 import type {
 	ConversionLinkAction,
 	LlmProviderId,
-	TrackProcessingMode,
-	TrackSourceKind,
 	TranscriptionProviderId,
 } from './settingsSchema';
+import { TrackProcessingMode, TrackSourceKind } from './settingsSchema';
 
 /**
  * Display labels for each transcription engine, derived from the engine
@@ -183,9 +182,9 @@ export const CHANNEL_MODE_LABELS: Record<ChannelMode, string> = {
  * makes is about what the track is plugged into.
  */
 export const TRACK_PROCESSING_LABELS: Record<TrackProcessingMode, string> = {
-	global: 'Same as global settings',
-	voice: 'Voice (microphone in a room)',
-	raw: 'Raw (system audio or line input)',
+	[TrackProcessingMode.Global]: 'Same as global settings',
+	[TrackProcessingMode.Voice]: 'Voice (microphone in a room)',
+	[TrackProcessingMode.Raw]: 'Raw (system audio or line input)',
 };
 
 /**
@@ -194,6 +193,6 @@ export const TRACK_PROCESSING_LABELS: Record<TrackProcessingMode, string> = {
  * is choosing what goes into the file.
  */
 export const TRACK_SOURCE_KIND_LABELS: Record<TrackSourceKind, string> = {
-	'input-device': 'Input device',
-	'system-audio': 'System audio (this computer)',
+	[TrackSourceKind.InputDevice]: 'Input device',
+	[TrackSourceKind.SystemAudio]: 'System audio (this computer)',
 };

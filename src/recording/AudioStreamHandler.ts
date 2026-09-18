@@ -6,12 +6,12 @@
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioStreamError } from '../errors';
 import { delay } from '../utils/TimeUtils';
-import type {
-	AudioRecorderSettings,
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import {
 	TrackProcessingMode,
 	TrackSourceKind,
 } from '../settings/settingsSchema';
-import type { OutputMode } from '../types';
+import { OutputMode } from '../types';
 import { captureSystemAudioStream } from './systemAudioSupport';
 import {
 	CHANNEL_MODE_SOURCE,
@@ -481,7 +481,7 @@ export function effectiveOutputMode(
 	settings: AudioRecorderSettings,
 ): OutputMode {
 	return isSystemAudioPairingEnabled(settings)
-		? 'single'
+		? OutputMode.Single
 		: settings.outputMode;
 }
 
@@ -564,7 +564,7 @@ export async function getAudioStreams(
 			);
 		}
 		const streamPromises = trackOrder.map((source) =>
-			source.kind === 'system-audio'
+			source.kind === TrackSourceKind.SystemAudio
 				? captureSystemAudioStream()
 				: getAudioStream(
 						source.deviceId,
@@ -633,7 +633,8 @@ export function recordingEncodingFor(
 			? tracks.map((source) => source.channelMode)
 			: [normalizeChannelMode(settings.recordingChannels)];
 	const mergesTracks =
-		effectiveOutputMode(settings) === 'single' && tracks.length > 1;
+		effectiveOutputMode(settings) === OutputMode.Single &&
+		tracks.length > 1;
 	const panned = tracks.some((source) => (source.pan ?? 0) !== 0);
 	return {
 		sampleRate: offlineEncodeSampleRate(settings.sampleRate),
@@ -669,8 +670,8 @@ function systemAudioPairSources(
 			channelMode: normalizeChannelMode(settings.recordingChannels),
 			gainDb: 0,
 			pan: 0,
-			processing: 'global',
-			kind: 'input-device',
+			processing: TrackProcessingMode.Global,
+			kind: TrackSourceKind.InputDevice,
 		},
 		{
 			trackNumber: 2,
@@ -682,7 +683,7 @@ function systemAudioPairSources(
 			// than opened through getUserMedia, so none of those filters is on
 			// the path at all and naming one would describe something that
 			// never happens.
-			kind: 'system-audio',
+			kind: TrackSourceKind.SystemAudio,
 		},
 	];
 }
@@ -705,11 +706,14 @@ export function getOrderedTrackSources(
 	}
 	for (let i = 1; i <= settings.maxTracks; i++) {
 		const source = settings.trackAudioSources.get(i);
-		const kind = source?.kind ?? 'input-device';
+		const kind = source?.kind ?? TrackSourceKind.InputDevice;
 		// A device track is configured by naming a device; a system-audio
 		// track is configured by being one, and never carries an id.
-		if (source && (kind === 'system-audio' || source.deviceId)) {
-			const systemAudio = kind === 'system-audio';
+		if (
+			source &&
+			(kind === TrackSourceKind.SystemAudio || source.deviceId)
+		) {
+			const systemAudio = kind === TrackSourceKind.SystemAudio;
 			sources.push({
 				trackNumber: i,
 				deviceId: systemAudio ? '' : source.deviceId,
@@ -723,7 +727,7 @@ export function getOrderedTrackSources(
 					: normalizeChannelMode(source.channelMode),
 				gainDb: source.gainDb ?? 0,
 				pan: source.pan ?? 0,
-				processing: source.processing ?? 'global',
+				processing: source.processing ?? TrackProcessingMode.Global,
 				kind,
 			});
 		}
@@ -749,7 +753,7 @@ export function surplusSystemAudioTracks(
 	tracks: readonly TrackAudioSource[],
 ): number[] {
 	return tracks
-		.filter((source) => source.kind === 'system-audio')
+		.filter((source) => source.kind === TrackSourceKind.SystemAudio)
 		.slice(1)
 		.map((source) => source.trackNumber);
 }
@@ -873,7 +877,7 @@ export async function validateSelectedDevices(
 			// nothing to say about it; asked anyway, it refuses every start.
 			.filter(
 				(source) =>
-					source.kind !== 'system-audio' &&
+					source.kind !== TrackSourceKind.SystemAudio &&
 					!available.has(source.deviceId),
 			)
 			.map((source) => source.trackNumber);

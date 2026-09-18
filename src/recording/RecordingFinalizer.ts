@@ -18,6 +18,7 @@ import type {
 	TrackFileGroup,
 } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { OutputMode } from '../types';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
@@ -156,7 +157,7 @@ export class RecordingFinalizer {
 		this.reportProgress(20, 'Flushing buffers...');
 
 		const soloTarget = targets.length === 1 ? targets[0] : undefined;
-		if (session.outputMode === 'single') {
+		if (session.outputMode === OutputMode.Single) {
 			if (soloTarget) {
 				const paths = await this.finalizeTrackFiles(soloTarget);
 				const files = [...soloTarget.partPaths, ...paths];

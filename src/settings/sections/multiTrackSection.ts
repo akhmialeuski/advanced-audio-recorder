@@ -16,6 +16,8 @@ import {
 } from '../labels';
 import { multiTrackStatus, type PageStatus } from '../settingsAttention';
 import type { AudioRecorderSettings } from '../settingsSchema';
+import { TrackSourceKind } from '../settingsSchema';
+import { OutputMode } from '../../types';
 import { type DeviceOptions, TRACK_ROWS_CLASS } from './context';
 import { MAX_TRACK_COUNT, trackControlKey } from './controlKeys';
 import { deviceRowDesc, sectionItems } from './rowHelpers';
@@ -73,7 +75,7 @@ export function multiTrackPage(
 			// Where a track sits in the mix is only a question when there is a
 			// mix: one file per track keeps every track exactly as captured.
 			const mixed = (): boolean =>
-				offered() && settings.outputMode === 'single';
+				offered() && settings.outputMode === OutputMode.Single;
 			// A place in the mix is bound to the track's device, exactly as
 			// its channel layout is: the writer refuses one for a track with
 			// no input, so a row that took the edit anyway accepted a number
@@ -84,7 +86,8 @@ export function multiTrackPage(
 			// device row and its placement rows are never blocked for want
 			// of a device.
 			const systemAudio = (): boolean =>
-				settings.trackAudioSources.get(track)?.kind === 'system-audio';
+				settings.trackAudioSources.get(track)?.kind ===
+				TrackSourceKind.SystemAudio;
 			const unconfigured = (): boolean => !systemAudio() && unassigned();
 			rows.push(
 				{
@@ -230,8 +233,8 @@ export function multiTrackPage(
 						type: 'dropdown',
 						key: 'outputMode',
 						options: {
-							single: 'Single file',
-							multiple: 'Multiple files',
+							[OutputMode.Single]: 'Single file',
+							[OutputMode.Multiple]: 'Multiple files',
 						},
 					},
 				},
@@ -240,7 +243,7 @@ export function multiTrackPage(
 					aliases: ['normalize', 'balance', 'levelling'],
 					desc: 'Bring the tracks to a common level before combining them, so a quiet participant is not lost behind a loud one. Off by default: it is a judgement about the recording, and a session combined twice has to come out the same both times.',
 					visible: (): boolean =>
-						active() && settings.outputMode === 'single',
+						active() && settings.outputMode === OutputMode.Single,
 					control: { type: 'toggle', key: 'mixAlignTrackLevels' },
 				},
 				...trackRows(),

@@ -21,6 +21,7 @@ import {
 	FORMAT_WEBM,
 } from '../constants';
 import type { RecordingSessionConfig, TrackMix } from '../types';
+import { OutputMode } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	effectiveOutputMode,
@@ -124,7 +125,7 @@ export function createCaptureSession(
 	const alignTrackLevels = effectiveTrackLevelAlignment(settings);
 	// A session writing one file per track never mixes, so it carries no
 	// placement at all rather than a set of neutral ones nothing reads.
-	const merging = outputMode === 'single' && trackOrder.length > 1;
+	const merging = outputMode === OutputMode.Single && trackOrder.length > 1;
 	const trackMix: readonly TrackMix[] = merging
 		? Object.freeze(
 				trackOrder.map(
@@ -137,7 +138,7 @@ export function createCaptureSession(
 		: Object.freeze([]);
 	const requestedSplit = settings.autoSplitEnabled;
 	const autoSplitSkipped =
-		requestedSplit && outputMode === 'single' && streamCount > 1;
+		requestedSplit && outputMode === OutputMode.Single && streamCount > 1;
 	const session: CaptureSession = Object.freeze({
 		// Platforms that must not leave raw mid-stream segments behind run
 		// their buffer flushes as full part rotations at this size boundary.
@@ -180,7 +181,7 @@ export const IDLE_CAPTURE_SESSION: CaptureSession = Object.freeze({
 	recorderFormat: FORMAT_WEBM,
 	recorderMimeType: buildMimeType(FORMAT_WEBM),
 	outputFormat: FORMAT_WEBM,
-	outputMode: 'multiple' as const,
+	outputMode: OutputMode.Multiple,
 	bitrate: 0,
 	splitEnabled: false,
 	partMinutes: DEFAULT_SPLIT_CHUNK_MINUTES,
