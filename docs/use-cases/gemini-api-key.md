@@ -104,8 +104,8 @@ To enable it:
 4. Set its **Post-processing engine** to **Google Gemini**, which settles only which service does the work.
 5. Open **Engines** and then **Google Gemini** to confirm the **Base URL** reads `https://generativelanguage.googleapis.com`, pick a **Model** (default `gemini-3.5-flash`), and adjust **Max output tokens** if needed (default 4096, range 512-200000, with the model's own maximum as the real limit). One catalogue serves transcription and prompts alike, because Gemini answers both with the same family of ids.
 
-![LLM post-processing subsection set to the Google Gemini provider with the shared-key notice](../images/settings-llm-gemini-provider.png)
-_Figure: The LLM post-processing subsection with Google Gemini selected; the API key is shared with transcription._
+![Google Gemini engine settings with the base URL, API key, model and max output tokens rows](../images/settings-llm-gemini-provider.png)
+_Figure: The Google Gemini engine page. One key and one model list serve transcription and the prompt jobs alike._
 
 See the [LLM post-processing guide](../llm-post-processing.md) for the full set of tasks, prompts, and provider options.
 

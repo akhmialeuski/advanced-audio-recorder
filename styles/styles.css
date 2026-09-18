@@ -743,9 +743,13 @@ div.aar-player-marker-row {
         'kind time label length jump here color delete'
         '. . note note note note note note';
     align-items: center;
-    column-gap: 4px;
-    /* No gap between the lines: a hidden empty note must leave none behind */
-    row-gap: 0;
+    /*
+     * Cells are spaced, lines are not: a hidden empty note must leave no gap
+     * behind. Written as the grid shorthand because a bare column-gap reads
+     * to Obsidian's plugin validator as the multi-column property of the same
+     * name, which its oldest supported app version only partly implements.
+     */
+    gap: 0 4px;
 }
 
 .aar-player-marker-kind {
@@ -1014,7 +1018,13 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-no
     overflow: hidden;
 }
 
-div.aar-player-marker-row:not(.aar-player-marker-row-open):has(.aar-player-marker-note:placeholder-shown) .aar-player-marker-note-icon {
+/*
+ * The icon is built directly after the field it marks, so the empty note is
+ * reached through the sibling rather than through :has on the row. The row
+ * selector would make every marker list re-evaluate the whole subtree on each
+ * keystroke in a note, which is the cost Obsidian's validator warns about.
+ */
+div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-note:placeholder-shown + .aar-player-marker-note-icon {
     display: none;
 }
 

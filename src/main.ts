@@ -40,7 +40,11 @@ import {
 	renderTranscriptionStatusBar,
 } from './ui/StatusBar';
 import { RecordingBanner } from './ui/RecordingBanner';
-import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
+import {
+	ICON_MIC,
+	updateRibbonIcon,
+	initializeRibbonIcon,
+} from './ui/RibbonIcon';
 import { ContextMenu } from './ui/ContextMenu';
 import type { ActionServices, SessionServices } from './actions/PluginAction';
 import { activeAudioFile, FILE_ACTIONS } from './actions/fileActions';
@@ -278,9 +282,15 @@ export default class AudioRecorderPlugin extends Plugin {
 		// registered, which is what the CLI-less platforms and the Obsidians
 		// below 1.12.2 answer.
 		registerCliCommands(this, this.createCliHost());
+		// Named after the plugin, because Obsidian's own Audio recorder puts a
+		// button with the same job in the same ribbon under the tooltip
+		// "Start/stop recording", and the ribbon's context menu, where a
+		// button is hidden, lists every button by exactly that text. The name
+		// comes from the manifest so it cannot drift from the one Obsidian
+		// shows everywhere else.
 		this.ribbonIconEl = this.addRibbonIcon(
-			'microphone',
-			'Start/stop recording',
+			ICON_MIC,
+			`${this.manifest.name}: start/stop recording`,
 			() => {
 				void this.recordingManager.toggleRecording();
 			},

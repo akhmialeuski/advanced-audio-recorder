@@ -170,7 +170,7 @@ See also: [Recording](recording.md), [Splitting recordings](splitting.md).
 
 You see Obsidian's plain audio bar, or the enhanced player loads but the waveform is missing.
 
-- The enhanced player is opt-in. Turn on **Enhanced audio player** under **Settings > Audio player**, and make sure **Show waveform** is on.
+- The enhanced player can be turned off. Check that **Enhanced audio player** is on under **Settings > Audio player**, and that **Show waveform** is on with it.
 - The enhanced player applies to **audio-only** files. A file that contains a **video track**, or a file the app cannot decode, keeps Obsidian's built-in player. Files are classified by their container metadata, not by extension, so renaming a file does not change this.
 - For very large or slowly decoding files, the player **falls back to a plain seekable bar** above a certain size or when the audio cannot be decoded. This is expected behaviour, not a bug - playback and seeking still work.
 - The waveform is **decoded lazily** as it scrolls into view and is cached per file revision, so it may appear progressively on long files rather than all at once.

@@ -122,7 +122,7 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 
 A 30-second quick start. For the full walkthrough, see [Getting started](getting-started.md).
 
-1. Install **Advanced Audio Recorder** from **Settings > Community plugins > Browse**, then enable it.
+1. Install **Advanced Audio Recorder** from **Settings > Community plugins > Browse**, then enable it. Turn Obsidian's own **Audio recorder** core plugin off while you are there, so only one recording button is left in the ribbon. See [Getting started](getting-started.md).
 2. Click the **microphone icon** in the left ribbon, or run **Start/stop recording** from the command palette (`Ctrl/Cmd + P`).
 3. Speak or play audio. The status bar shows `Recording...` with **Pause** and **Stop** buttons.
 4. Click the ribbon icon (or run the command) again to stop and save.

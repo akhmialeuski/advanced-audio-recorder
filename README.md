@@ -43,6 +43,10 @@ Everything else keeps your audio tidy. Convert recordings between WAV, WebM, OGG
 2. Click Browse, then search for "Advanced Audio Recorder".
 3. Click Install, then Enable.
 
+> **Turn Obsidian's own Audio recorder off.** Obsidian ships a core plugin of that name which puts its own microphone button in the same ribbon, and two recording buttons side by side are easy to confuse. Switch it off under **Settings > Core plugins**. To keep the core plugin and drop only its button, right-click an empty part of the ribbon strip instead and untick its entry. See [Getting started](docs/getting-started.md).
+
+![The Audio recorder core plugin with its toggle switched off in Settings, Core plugins](docs/images/settings-core-audio-recorder-off.png)
+
 ## Quick start
 
 1. Click the microphone icon in the left ribbon, or run "Start/stop recording" from the command palette.

@@ -149,8 +149,11 @@ The **Model** picker on the engine's page is the same control used for transcrip
 
 The model list belongs to the provider rather than to the job, so each provider's page keeps its own picker contents and its own selected model, and your OpenAI choice is remembered separately from your Anthropic, Gemini, and Mistral choices whichever job calls them.
 
-![LLM provider dropdown and model picker showing the per-provider catalogue link](images/settings-llm-provider-model.png)
-_Figure: the LLM provider dropdown and the per-provider model picker with its saved-model list and a catalogue link._
+![OpenAI engine settings with the base URL, API key, model picker and max output tokens rows](images/settings-llm-provider-model.png)
+_Figure: an engine page under Engines, where the model picker and the token ceiling belong to that provider alone._
+
+![Anthropic engine settings with the base URL, API key, model picker and max output tokens rows](images/settings-engine-anthropic.png)
+_Figure: the Anthropic page, which carries its own key, its own model list and its own token ceiling._
 
 ---
 
