@@ -18,14 +18,14 @@ Advanced Audio Recorder runs in the **Obsidian mobile app** (iOS and Android) as
 Most of the plugin works the same on a phone or tablet as on the desktop:
 
 - **Recording.** Capture a single track from the device's microphone, with pause and resume, live status feedback, and markers dropped while you record. See [Recording](recording.md#recording-on-mobile).
-- **The enhanced audio player.** Every embedded recording plays back in the enhanced waveform player - the waveform seek bar, playback-speed presets, skip, volume, mute, loop, the time display, timecode links, and per-file **markers and chapters** all work. The screenshot above is two of these players side by side on Android. See [Audio player](audio-player.md).
+- **The enhanced audio player.** Every embedded recording plays back in the enhanced waveform player - the waveform seek bar, playback-speed presets, skip, volume, mute, loop, the time display, timecode links, and per-file **markers and chapters** all work. The waveform itself is drawn for files up to **256 MB**, a quarter of the desktop ceiling, and a larger recording falls back to the plain seekable bar. The screenshot above is two of these players side by side on Android. See [Audio player](audio-player.md).
 - **Markers and chapters.** Add, rename, and jump to bookmarks and chapters, stored in the same sidecar file next to each recording, so they travel with the vault across devices. See [Markers and chapters](audio-player.md#markers-and-chapters).
 - **Format conversion.** Transcode a file to another format and bitrate from the right-click menu, up to the **256 MB** source ceiling every whole-file read on mobile is held to. A larger file is refused with a message naming the operation, which is what the phone can do about it, since exceeding the budget is the operating system killing the app rather than an error the plugin could catch. Preparing an oversized recording for transcription is refused the same way. See [Convert audio format](file-operations.md#convert-audio-format).
 - **Manual splitting.** Split an existing recording into fixed-duration parts, within a size the device can hold in memory. See [Splitting](splitting.md).
 - **Automatic splitting.** A live recording is saved as fixed-duration part files, which on a phone is also what bounds the loss when the operating system closes the app. See [Splitting](splitting.md#automatic-splitting-during-recording).
 - **Crash recovery.** A session the operating system interrupted is offered back on the next launch, with the part files it already wrote. See [Crash recovery on mobile](#crash-recovery-on-mobile).
 - **On-demand audio cleanup.** Run the high-pass filter, noise gate, and loudness leveling on an existing file, with tighter size and length limits than the desktop so the app stays within its memory budget. See [Audio cleanup](audio-cleanup.md).
-- **Cloud transcription.** Transcribe recordings with the Whisper API, Deepgram, or Google Gemini, with optional LLM post-processing. See [Transcription on mobile](#transcription-on-mobile) below.
+- **Cloud transcription.** Transcribe recordings with the Whisper API, Deepgram, Google Gemini, or Mistral Voxtral, with optional LLM post-processing. See [Transcription on mobile](#transcription-on-mobile) below.
 - **File actions.** Audio file info, delete, and delete-and-link all work from the context menu. See [File operations](file-operations.md).
 
 ## Platform-specific limitations
@@ -67,6 +67,7 @@ Transcription works on mobile with the **cloud engines**:
 - **Whisper API** (OpenAI-compatible, including Groq)
 - **Deepgram** (with speaker diarization)
 - **Google Gemini** (with speaker diarization)
+- **Mistral Voxtral** (with speaker diarization)
 
 Optional [LLM post-processing](llm-post-processing.md) - clean up, summarize, or run a custom instruction over the transcript - also works, because it too calls a cloud provider.
 

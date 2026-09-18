@@ -6,7 +6,7 @@ Use it for voice notes, meetings, interviews, lectures, and dictation. [Record](
 
 The plugin also includes [built-in transcription](docs/transcription.md). You can transcribe recordings or existing audio files in your vault using the OpenAI-compatible Whisper API (OpenAI, Groq, and other hosts), Deepgram, Google Gemini, Mistral Voxtral, or a local offline whisper.cpp model. Transcripts can include speaker labels, clickable timestamps, and an optional [AI summary](docs/llm-post-processing.md) saved next to your note.
 
-All audio and generated files stay in your vault. API keys are stored locally and are never sent anywhere except to the transcription provider you choose.
+All audio and generated files stay in your vault. API keys are stored locally and are never sent anywhere except to the providers you choose, which are the transcription engine a run uses and, when post-processing is on, the LLM vendor it calls.
 
 Works on desktop and mobile (iOS and Android). Some features are desktop-only (multi-track recording, local whisper.cpp transcription, input device selection); see [Mobile support](docs/mobile-support.md) for the platform differences. Requires Obsidian 1.6.6 or newer. MIT licensed.
 

@@ -8,6 +8,7 @@ This guide helps you diagnose and fix problems with Advanced Audio Recorder. It 
     - [Debug mode](#debug-mode)
 - [Common problems and fixes](#common-problems-and-fixes)
     - [No sound is recorded](#no-sound-is-recorded)
+    - [Voice only in one channel (hard-panned left or right)](#voice-only-in-one-channel-hard-panned-left-or-right)
     - [A recording format is not available](#a-recording-format-is-not-available)
     - [Conversion fails](#conversion-fails)
     - [Recording is slow to save](#recording-is-slow-to-save)
@@ -51,7 +52,7 @@ The test uses exactly the same input device, sample rate, bitrate, and browser i
 **System info** gathers everything needed to diagnose an environment problem into a single JSON snapshot you can paste into a bug report.
 
 1. Open **Settings > Advanced Audio Recorder** and scroll to **Diagnostics**.
-2. Click **Show info** next to **System info**.
+2. Click the **System info** row.
 3. A modal titled **System diagnostics** opens with the full JSON.
 4. Click **Copy to clipboard** (the button briefly reads **Copied!**).
 5. Paste the JSON into your bug report or wherever you need it.
@@ -180,20 +181,20 @@ See also: [Enhanced audio player](audio-player.md), [Settings reference](setting
 
 Transcription stops with an error, or the progress dialog reports a failure.
 
-| Symptom                                                        | Cause and fix                                                                                                                                                                                                                                         |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Set the … API key in settings to transcribe.`                 | The selected engine has no API key. Open **Settings > Transcription**, select your engine, and paste the key. See the per-engine setup guides below.                                                                                                  |
-| `Authentication failed.` / 401 / 403                           | The API key is wrong, expired, or not authorized for this provider/model. Re-copy the key from the provider console and confirm your account has access.                                                                                              |
-| `Rate limit reached. Wait a moment and try again.`             | You hit the provider's rate limit. Wait and retry; for free tiers, consider a paid plan or a different engine.                                                                                                                                        |
-| `Request … timed out after … ms.`                              | The request exceeded the configured **Request timeout** (default 10 minutes, range 1-60). Raise the timeout for long files, or split the recording first.                                                                                             |
-| File too large                                                 | The **Whisper API** caps each request at **25 MB**. Files over that are automatically resampled to 16 kHz mono and split into upload-sized chunks. **Deepgram** and **Gemini** accept up to **2 GB**.                                                 |
-| `Speaker diarization` greyed out                               | Diarization is only supported by **Deepgram** and **Google Gemini**. It is disabled and greyed for **Whisper API** and **Local whisper.cpp** - switch engines if you need speaker labels.                                                             |
-| `Word-level timestamps` greyed out                             | Only **Whisper API** reads that request. **Deepgram** returns per-word timing on every run, and **Gemini** and **Local whisper.cpp** return segment-level timing only, so on those three the switch shows what the engine does and cannot be changed. |
-| Gemini diarization warning on long files                       | Gemini splits recordings longer than 15 minutes into parts and stitches them; diarized splits reset speaker numbering, which the plugin surfaces as a warning.                                                                                        |
-| Play buttons greyed out in **Rename speakers**                 | That recording's roster was stored before speaker samples existed, so it carries no timings. Transcribe it once more with **Speaker diarization** on and the buttons come back.                                                                       |
-| Local `whisper.cpp` fails to start                             | Check the **binary path** and **model path** (an absolute path to a GGML `.bin` file). Make sure the binary is executable and the model file exists.                                                                                                  |
-| Local `whisper.cpp` run stopped before it finished             | The process outlived **Local run timeout** (default 120 minutes, range 1-720). Raise it, or point the engine at a smaller model: a large model on a slow CPU can take longer than the recording itself.                                               |
-| Local `whisper.cpp` wrote more output than the plugin can read | The transcript outgrew the 64 MB the plugin buffers from the process. Split the recording and transcribe the parts separately.                                                                                                                        |
+| Symptom                                                        | Cause and fix                                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Set the … API key in settings to transcribe.`                 | The selected engine has no API key. Open **Settings > Transcription**, select your engine, and paste the key. See the per-engine setup guides below.                                                                                                                      |
+| `Authentication failed.` / 401 / 403                           | The API key is wrong, expired, or not authorized for this provider/model. Re-copy the key from the provider console and confirm your account has access.                                                                                                                  |
+| `Rate limit reached. Wait a moment and try again.`             | You hit the provider's rate limit. Wait and retry; for free tiers, consider a paid plan or a different engine.                                                                                                                                                            |
+| `Request … timed out after … ms.`                              | The request exceeded the configured **Request timeout** (default 10 minutes, range 1-60). Raise the timeout for long files, or split the recording first.                                                                                                                 |
+| File too large                                                 | The **Whisper API** caps each request at **25 MB**. Files over that are automatically resampled to 16 kHz mono and split into upload-sized chunks. **Deepgram** and **Gemini** accept up to **2 GB**.                                                                     |
+| `Speaker diarization` greyed out                               | Diarization is only supported by **Deepgram**, **Google Gemini** and **Mistral Voxtral**. It is disabled and greyed for **Whisper API** and **Local whisper.cpp** - switch engines if you need speaker labels.                                                            |
+| `Word-level timestamps` greyed out                             | Only **Whisper API** reads that request. **Deepgram** returns per-word timing on every run, and **Gemini**, **Mistral Voxtral** and **Local whisper.cpp** return segment-level timing only, so on those four the switch shows what the engine does and cannot be changed. |
+| Gemini diarization warning on long files                       | Gemini splits recordings longer than 15 minutes into parts and stitches them; diarized splits reset speaker numbering, which the plugin surfaces as a warning.                                                                                                            |
+| Play buttons greyed out in **Rename speakers**                 | That recording's roster was stored before speaker samples existed, so it carries no timings. Transcribe it once more with **Speaker diarization** on and the buttons come back.                                                                                           |
+| Local `whisper.cpp` fails to start                             | Check the **binary path** and **model path** (an absolute path to a GGML `.bin` file). Make sure the binary is executable and the model file exists.                                                                                                                      |
+| Local `whisper.cpp` run stopped before it finished             | The process outlived **Local run timeout** (default 120 minutes, range 1-720). Raise it, or point the engine at a smaller model: a large model on a slow CPU can take longer than the recording itself.                                                                   |
+| Local `whisper.cpp` wrote more output than the plugin can read | The transcript outgrew the 64 MB the plugin buffers from the process. Split the recording and transcribe the parts separately.                                                                                                                                            |
 
 Other tips:
 
@@ -237,7 +238,7 @@ When you open an issue, attach the diagnostics below so the problem can be repro
 1. **Update and isolate.** Update the plugin to the latest version, restart Obsidian, and (if you can) temporarily disable other plugins to rule out conflicts.
 2. **Write reproduction steps.** Note the exact format and bitrate, single- vs multi-track, recording length, and what you clicked or which command you ran.
 3. **State expected vs actual** behaviour.
-4. **Capture System info.** Open **Settings > Advanced Audio Recorder > Diagnostics > System info > Show info**, click **Copy to clipboard**, and paste the JSON into the report.
+4. **Capture System info.** Open **Settings > Advanced Audio Recorder > Diagnostics** and click the **System info** row, then click **Copy to clipboard** and paste the JSON into the report.
 5. **Capture Audio file info** (when a specific file is involved). Right-click the file, choose **Audio file info**, click **Copy as Markdown**, and paste it in.
 6. **Capture console logs** (optional, advanced). Enable **Debug mode**, reproduce the issue, open **View > Toggle Developer Tools**, and copy the `[AudioRecorder]` log lines.
 7. **Attach a screenshot or screen recording** if the problem is visual.

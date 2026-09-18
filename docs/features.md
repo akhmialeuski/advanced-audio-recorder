@@ -19,6 +19,9 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 - [On-demand audio cleanup](#on-demand-audio-cleanup)
 - [Input processing and live feedback](#input-processing-and-live-feedback)
 - [Transcription](#transcription)
+- [Exporting chapters and markers](#exporting-chapters-and-markers)
+- [Transcription queue](#transcription-queue)
+- [Transcribing the parts that failed](#transcribing-the-parts-that-failed)
 - [LLM post-processing](#llm-post-processing)
 - [Auto chapters](#auto-chapters)
 - [Diagnostics](#diagnostics)
@@ -114,7 +117,7 @@ Learn more: [Audio player](audio-player.md)
 
 With **Markers and chapters** enabled, each recording carries per-file **bookmarks** (jump points) and **chapters** (named segments). Add a bookmark with the bookmark button or by double-clicking the waveform; add a chapter with the chapter button. Markers and chapters render on the seek bar (ticks and labelled boundaries), an optional **marker list** below the player lets you jump to, rename, move, note, colour, or delete each entry, and prev/next chapter buttons navigate between boundaries. A marker is moved by typing a new time or by taking the current playback position, which is the usual correction for one pressed a beat late; its note holds the reason a short label cannot, and its colour tells apart what different markers are for, on the row and on the seek bar alike. Markers are stored in a sidecar file next to the recording (e.g. `recording.webm.markers.json`), so they travel with the vault and follow rename, move, and delete. Editing is allowed in Live Preview; markers are read-only (still clickable) in Reading view.
 
-![Enhanced player with the marker list open below it, showing bookmarks and chapters](images/player-marker-list.png)
+![The waveform seek bar with marker ticks above a marker list whose rows carry a time, a title, a note, a length, a colour and a delete button](images/player-marker-list.png)
 
 Learn more: [Audio player](audio-player.md#markers-and-chapters)
 
@@ -160,7 +163,7 @@ Learn more: [Transcription](transcription.md)
 
 ## LLM post-processing
 
-Optionally pass a finished transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. A translation is written beside the original rather than over it, one line per spoken segment, so it carries the recording's own timings and the SubRip and WebVTT outputs come out translated with matching timecodes. The Whisper API additionally offers its own operation for translating the speech into English during recognition. Each task has its own editable prompt. Engines are **OpenAI** (default `gpt-5.6-sol`), **Anthropic (Claude)** (default `claude-opus-4-8`), and **Google Gemini** (default `gemini-3.5-flash`), each configured once on its own page; the OpenAI and Gemini pages are shared with the matching transcription engines, while Anthropic keeps its own. Auto chapters and the advanced two-pass agents each pick an engine of their own, so a run can summarize with one service and title its chapters with another.
+Optionally pass a finished transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. A translation is written beside the original rather than over it, one line per spoken segment, so it carries the recording's own timings and the SubRip and WebVTT outputs come out translated with matching timecodes. The Whisper API additionally offers its own operation for translating the speech into English during recognition. Each task keeps a catalogue of named prompt profiles, so a standup and a client call can be summarized on their own terms. Engines are **OpenAI** (default `gpt-5.6-sol`), **Anthropic (Claude)** (default `claude-opus-4-8`), **Google Gemini** (default `gemini-3.5-flash`), and **Mistral** (default `mistral-medium-latest`), each configured once on its own page. The OpenAI, Gemini and Mistral pages are shared with the matching transcription engines, while Anthropic keeps its own. Auto chapters and the advanced two-pass agents each pick an engine of their own, so a run can summarize with one service and title its chapters with another.
 
 Learn more: [LLM post-processing](llm-post-processing.md)
 
@@ -172,9 +175,9 @@ Learn more: [Transcription](transcription.md#auto-chapters)
 
 ## Diagnostics
 
-Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian, Electron and Chromium versions, platform, devices, supported formats and codecs, active configuration, and all settings) plus a **Copy to clipboard** button. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
+Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian, Electron and Chromium versions, platform, devices, supported formats and codecs, active configuration, and the recording-related settings) plus a **Copy to clipboard** button. API keys and the transcription, player and cleanup settings are left out of it. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
 
-![System info modal with versions, devices, supported formats, and settings](images/modal-system-info.png)
+![The System diagnostics modal with the Copy to clipboard button above the JSON snapshot of plugin settings and environment](images/modal-system-info.png)
 
 Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_REPORTING_GUIDE.md)
 
@@ -204,7 +207,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | Markers and chapters          | Per-file bookmarks and chapters stored in a sidecar                 | Settings > Audio player                         | [Audio player](audio-player.md#markers-and-chapters)           |
 | On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy           | Context menu / palette > Clean up audio         | [Audio cleanup](audio-cleanup.md)                              |
 | Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner           | Settings > Audio processing & feedback          | [Recording](recording.md#live-feedback)                        |
-| Transcription                 | Speech-to-text via 4 engines, diarization, output formats           | Settings > Transcription                        | [Transcription](transcription.md)                              |
+| Transcription                 | Speech-to-text via 5 engines, diarization, output formats           | Settings > Transcription                        | [Transcription](transcription.md)                              |
 | LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM     | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
 | Auto chapters                 | LLM-generated titled chapters from an existing transcript           | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
 | Diagnostics                   | Test recording, system info, debug mode                             | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |

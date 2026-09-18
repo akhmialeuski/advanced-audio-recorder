@@ -36,7 +36,7 @@ Describe what you expected to happen and what actually happened instead.
 
 The plugin includes a built-in diagnostics tool that collects all relevant environment information in one step.
 
-![System info modal showing diagnostics output and a Copy to clipboard button](images/modal-system-info.png)
+![The System diagnostics modal showing the JSON snapshot and a Copy to clipboard button](images/modal-system-info.png)
 
 **How to collect:**
 

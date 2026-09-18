@@ -22,7 +22,7 @@ Record audio on a phone or tablet, have the file saved into your vault with an e
 
 1. **Install and enable the plugin** in the Obsidian mobile app. Open **Settings > Community plugins**, turn off **Restricted mode** if it is on, tap **Browse**, search for **Advanced Audio Recorder**, then **Install** and **Enable**. See [Getting started](../getting-started.md#from-community-plugins).
 2. **Allow microphone access.** The first time you record, the operating system asks to let Obsidian use the microphone - choose **Allow**. If capture stays silent, enable microphone access for Obsidian in your phone's system settings.
-3. **(Only for transcription) Pick a cloud engine and add its key.** Local `whisper.cpp` is desktop-only, so on mobile use the **Whisper API**, **Deepgram**, or **Google Gemini** engine. Each has a setup guide: [OpenAI / Whisper API key](openai-whisper-api-key.md), [Groq (free tier)](groq-whisper-setup.md), [Deepgram API key](deepgram-api-key.md), or [Gemini API key](gemini-api-key.md).
+3. **(Only for transcription) Pick a cloud engine and add its key.** Local `whisper.cpp` is desktop-only, so on mobile use the **Whisper API**, **Deepgram**, **Google Gemini**, or **Mistral Voxtral** engine. Each has a setup guide: [OpenAI / Whisper API key](openai-whisper-api-key.md), [Groq (free tier)](groq-whisper-setup.md), [Deepgram API key](deepgram-api-key.md), [Gemini API key](gemini-api-key.md), or [Mistral API key](mistral-api-key.md).
 
 > If you only want to record and play back, you can skip prerequisite 3 entirely - transcription is optional.
 
@@ -46,7 +46,7 @@ If **Markers and chapters** is enabled, you can drop a bookmark or chapter at th
 
 ### 3. Stop and save
 
-Tap the **stop** button on the recording banner, or run **Start/stop recording** again. The plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[recording-….m4a]]`) into your note. A long recording is saved as several self-contained part files (`...-part1`, `...-part2`, and so on) when it exceeds the in-memory buffer limit, with a link to each part inserted into the note.
+Tap the **stop** button on the recording banner, or run **Start/stop recording** again. The plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[recording-….mp4]]` on a default-configured iPhone) into your note. A long recording is saved as several self-contained part files (`...-part1`, `...-part2`, and so on) when it exceeds the in-memory buffer limit, with a link to each part inserted into the note.
 
 ### 4. Play it back
 
@@ -71,7 +71,7 @@ Recording on a phone follows the same workflow as the desktop, with a few platfo
 - **One microphone, one track.** Input device selection and multi-track recording are desktop-only; the phone records a single track from its default microphone.
 - **The format follows the device.** iOS records AAC (`mp4` / `m4a`); Android records Opus (`webm` / `ogg`). If the stored format cannot be recorded on this device, the plugin falls back to the platform's best recordable format and says so.
 - **Sample rate and recording channels are fixed.** The mobile OS sets the sample rate, and the mono/channel-pick options need a multi-channel input device that only the desktop exposes.
-- **Long recordings become parts automatically.** Time-based automatic splitting is desktop-only, but a mobile recording is still rotated into part files by size so no single file grows too large.
+- **Long recordings become parts automatically.** A mobile recording is rotated into part files by size so no single file grows too large, and turning on **Split recordings automatically** adds the fixed-duration rotation on top, which works on a phone exactly as it does on the desktop.
 - **Keep the app in the foreground.** Locking the screen, switching apps, or an incoming call can suspend Obsidian and interrupt the capture. This is a mobile operating-system limit, not a plugin setting.
 
 For the full list, see [Mobile support](../mobile-support.md) and [Recording on mobile](../recording.md#recording-on-mobile).
@@ -88,5 +88,5 @@ For the full list, see [Mobile support](../mobile-support.md) and [Recording on 
 - **No `Start/stop recording` in the palette.** Confirm the plugin is enabled under **Settings > Community plugins**. On mobile there is no ribbon icon, so the command palette (or a toolbar button) is how you start a recording.
 - **Recording is silent.** Grant microphone access to Obsidian in the phone's system settings, and make sure no other app is holding the microphone.
 - **The file saved in a different format than I set.** The device could not record the configured format, so the plugin fell back to the platform's best recordable format and showed a notice. See [Recording formats and automatic fallback](../mobile-support.md#recording-formats-and-automatic-fallback).
-- **Transcription is skipped or blocked.** The **Local whisper.cpp** engine is desktop-only. Select **Whisper API**, **Deepgram**, or **Google Gemini** under **Settings > Advanced Audio Recorder > Transcription**. See [Transcription on mobile](../mobile-support.md#transcription-on-mobile).
+- **Transcription is skipped or blocked.** The **Local whisper.cpp** engine is desktop-only. Select **Whisper API**, **Deepgram**, **Google Gemini**, or **Mistral Voxtral** under **Settings > Advanced Audio Recorder > Transcription**. See [Transcription on mobile](../mobile-support.md#transcription-on-mobile).
 - **The recording stopped when I switched apps.** The mobile operating system suspended Obsidian in the background. Keep the app in the foreground and the screen on for long recordings; parts already saved to disk are kept.

@@ -111,8 +111,8 @@ The inserted embed link plays your recording directly in the note. Out of the bo
 For a richer experience, turn on the **Enhanced audio player**:
 
 1. Open **Settings > Advanced Audio Recorder > Audio player**.
-2. Enable **Enhanced audio player**. Two extra options appear: **Show waveform** (on by default) and **Markers and chapters** (on by default).
-3. Reopen or re-render the note. The embed is now a waveform player with playback-speed presets, ±10-second skip, volume and mute, a loop toggle, an elapsed/total time display, and a copy-timestamp-link button.
+2. Enable **Enhanced audio player**. Three rows appear below it: **Show waveform** (on by default), **Markers and chapters** (on by default), and **Skip step**, the number of seconds the skip controls move by.
+3. Reopen or re-render the note. The embed is now a waveform player with playback-speed presets, skip buttons moving by the **Skip step** (10 seconds unless you change it), volume and mute, a loop toggle, an elapsed/total time display, and a copy-timestamp-link button.
 
 The enhanced player applies to **audio-only** files. Files that carry a video track, and any file the app cannot decode, keep Obsidian's built-in player. See [Audio player](audio-player.md) for the full control reference, markers and chapters, and timecode links.
 

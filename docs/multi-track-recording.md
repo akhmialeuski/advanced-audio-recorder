@@ -67,7 +67,7 @@ The **Output mode** dropdown decides what happens when you stop the session.
 
 ### Single file (mixed)
 
-Every track is combined into a single mixed file at your configured [format](formats.md) and bitrate. Mono inputs are duplicated into both channels; the output is mono only when every input is mono, and stereo otherwise. Tracks reduced to mono by their **Track N channels** setting count as mono inputs here - give every track a mono mode and the merged file is mono too. The mix runs **after** you stop recording, so a longer session takes a moment to assemble (the status bar shows the [save progress](recording.md#save-progress-in-the-status-bar)). One embed link is inserted into your note.
+Every track is combined into a single mixed file at your configured [format](formats.md) and bitrate. The merged file names no device, since it holds them all, and is written as `<file prefix>-multitrack-<timestamp>.<ext>`, for example `recording-multitrack-2026-09-18T09-12-44-031Z.webm`. Mono inputs are duplicated into both channels; the output is mono only when every input is mono, and stereo otherwise. Tracks reduced to mono by their **Track N channels** setting count as mono inputs here - give every track a mono mode and the merged file is mono too. The mix runs **after** you stop recording, so a longer session takes a moment to assemble (the status bar shows the [save progress](recording.md#save-progress-in-the-status-bar)). One embed link is inserted into your note.
 
 Because the tracks are mixed only once at stop, **merged output cannot be auto-split** - see [Interaction with automatic splitting](#interaction-with-automatic-splitting). For very long mixed sessions, mind the [memory notes](#memory-notes-for-merged-output) below.
 
@@ -77,8 +77,8 @@ Because the tracks are mixed only once at stop, **merged output cannot be auto-s
 
 A laptop microphone beside a proper interface is many decibels quieter, and a mix that just sums them buries one participant behind the other. Three controls decide how each track lands in the combined file. They appear only in **Single file** mode, because **Multiple files** never mixes and keeps every track exactly as it was captured.
 
-- **Track N level** raises or lowers that track before it is summed, from **-24 to +24 dB** (default **0**, the track as captured). Six decibels down is half the amplitude.
-- **Track N position** places the track between **-1** (fully left) and **1** (fully right), default **0** (centre). A track placed off centre makes the combined file **stereo** even when every input is mono, which is what lets two mono microphones sit one to each side.
+- **Track N level** raises or lowers that track before it is summed, from **-24 to +24 dB** in whole decibels (default **0**, the track as captured). Six decibels down is half the amplitude.
+- **Track N position** places the track between **-1** (fully left) and **1** (fully right), default **0** (centre), on a grid of **0.25**, so the nine positions run -1, -0.75 and so on up to 1. A value off the grid is refused with a message naming the step. A track placed off centre makes the combined file **stereo** even when every input is mono, which is what lets two mono microphones sit one to each side.
 - **Match track levels** brings every track to a common level before summing, so a quiet participant is not lost behind a loud one. It is **off by default**: it is a judgement about the recording rather than a property of it, and a session combined twice has to come out the same both times. A track that is only noise - a muted microphone, someone who never spoke - is left alone rather than amplified into audibility.
 
 All three are snapshotted when recording starts, alongside the devices and the channel layouts, so editing them mid-session takes effect on the **next** recording and a session interrupted by a crash is rebuilt with the placement it was recorded under.

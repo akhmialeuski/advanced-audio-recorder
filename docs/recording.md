@@ -69,7 +69,7 @@ You do not have to open the settings tab to change which microphone records. Run
 
 This is the quickest way to switch mics between recordings - for example, moving from a laptop's built-in microphone to a headset before a meeting. The same choice is also available, alongside the sample rate, under [Audio input settings](settings-reference.md#audio-input).
 
-A multi-track track can record this machine's own output directly, through **Track N source**, which Electron grants on Windows only. Everywhere else, inputs that carry that output are marked `(system audio)` in both dropdowns. Such an input exists only where the operating system or an installed virtual cable publishes one, and it is how a call's remote participants reach a recording. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
+A multi-track track can record this machine's own output directly, through **Track N source**, which Electron grants on Windows only. An input that carries that output, such as a Stereo Mix device or a virtual cable, is marked `(system audio)` in both dropdowns on every platform, so it can be told apart from a microphone. Such an input exists only where the operating system or an installed virtual cable publishes one, and it is how a call's remote participants reach a recording. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
 
 ---
 
@@ -104,7 +104,7 @@ The active recording duration is checked before the file is read, so long sessio
 
 ## The status bar while recording
 
-Once a session is active, the ribbon icon changes from a plain microphone to an active recording indicator, and the **status bar** (bottom-right of the Obsidian window) shows the live recording controls.
+Once a session is active, the ribbon microphone turns red and pulses, and the **status bar** (bottom-right of the Obsidian window) shows the live recording controls.
 
 ![Status bar showing Recording with Add marker, Pause, and Stop buttons](images/status-bar-recording.png)
 
@@ -199,7 +199,7 @@ For longer recordings the save can take a noticeable moment. The status bar show
 | 80%      | `Cleaning up...`      |
 | 100%     | `Saved`               |
 
-While saving is in progress the ribbon icon switches from the recording indicator to a **save** icon, then returns to the plain microphone once the file is written.
+While saving is in progress the ribbon icon switches to a **save** icon, then returns to the microphone, no longer red, once the file is written.
 
 A recording that is slow to save is expected behaviour for long captures, not an error. For multi-part recordings, see [Automatic splitting](#automatic-splitting); for the full list of output formats and how each is encoded, see [Formats](formats.md).
 
