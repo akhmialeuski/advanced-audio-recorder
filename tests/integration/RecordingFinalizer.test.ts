@@ -262,7 +262,13 @@ describe('RecordingFinalizer', () => {
 			// segment list and the track's PCM layout
 			expect(
 				jest.mocked(assembleWavFromPcmSegmentFiles),
-			).toHaveBeenCalledWith(['pcm1.tmp', 'pcm2.tmp'], 2, 48000, mockApp);
+			).toHaveBeenCalledWith(
+				['pcm1.tmp', 'pcm2.tmp'],
+				2,
+				48000,
+				mockApp,
+				'int16',
+			);
 			// What the assembler returned is what gets written, unchanged.
 			const written = at(
 				at(jest.mocked(mockApp.vault.createBinary).mock.calls, 0),

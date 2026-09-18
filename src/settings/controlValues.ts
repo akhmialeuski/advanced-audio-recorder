@@ -67,6 +67,9 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 	// layout, and answers per layout whether it can write a format at all - so
 	// they keep the previous answer until the tree is read again.
 	recordingChannels: { reshapesTree: true },
+	// The output summary names the width a WAV recording is written at, so
+	// moving the width leaves that line saying something else.
+	recordingBitDepth: { reshapesTree: true },
 	enableMultiTrack: { reshapesTree: true },
 	includeSystemAudio: { reshapesTree: true },
 	// The track count decides which tracks that layout is taken from, and the

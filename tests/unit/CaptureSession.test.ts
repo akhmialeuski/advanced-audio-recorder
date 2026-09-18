@@ -245,3 +245,53 @@ describe('createCaptureSession', () => {
 		expect(session.alignTrackLevels).toBe(true);
 	});
 });
+
+// The width is fixed with everything else the session is: the capture
+// worklet writes it, the segments hold it and the header declares it, so a
+// settings edit half way through a two-hour recording must not leave the
+// three disagreeing.
+describe('the width a session records at', () => {
+	/** A PCM session over settings that name one bit depth. */
+	function pcmSessionWith(recordingBitDepth: unknown): CaptureSession {
+		return createCaptureSession({
+			settings: {
+				...DEFAULT_SETTINGS,
+				recordingBitDepth,
+			} as AudioRecorderSettings,
+			streamCount: 1,
+			trackOrder: [],
+			outputFormat: 'wav',
+			recorderFormat: 'wav',
+			isWavPcm: true,
+		}).session;
+	}
+
+	it.each(['int16', 'int24', 'float32'])(
+		'fixes the session at %s when the settings name it',
+		(depth) => {
+			expect(pcmSessionWith(depth).pcmFormat).toBe(depth);
+		},
+	);
+
+	// A hand-edited data.json, or one synced from a version that had no
+	// choice, names a width nothing can honour.
+	it.each([undefined, 'int32'])(
+		'falls back to sixteen bits for %p',
+		(depth) => {
+			expect(pcmSessionWith(depth).pcmFormat).toBe('int16');
+		},
+	);
+
+	it('carries the width even where the session is not a PCM one', () => {
+		// The field is read wherever a WAV header is written, and a session
+		// that falls back to a compressed intermediate still answers it.
+		const session = createCaptureSession(
+			requestWith({
+				bitrate: DEFAULT_BITRATE,
+				outputFormat: FORMAT_WEBM,
+			}),
+		).session;
+
+		expect(session.pcmFormat).toBe('int16');
+	});
+});

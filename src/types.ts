@@ -3,6 +3,8 @@
  * @module types
  */
 
+import type { PcmSampleFormat } from './audio/pcm';
+
 /**
  * How a session's tracks become files.
  *
@@ -154,6 +156,14 @@ export interface RecordingSessionConfig {
 	chunkRotationBytes: number | null;
 	/** Whether the session captures raw PCM for WAV output (desktop). */
 	isWavPcm: boolean;
+	/**
+	 * How one captured sample is stored on the raw PCM path, fixed at the
+	 * session's start like everything else here: the worklet writes it, the
+	 * segments hold it, and the WAV header declares it, so a settings edit
+	 * half way through a recording must not leave the file describing one
+	 * representation and holding another.
+	 */
+	pcmFormat: PcmSampleFormat;
 	/** Container format produced by the MediaRecorders. */
 	recorderFormat: string;
 	/**
@@ -205,6 +215,13 @@ export type RecordingTarget = {
 	pcmBufferedBytes: number;
 	pcmChannels: number;
 	pcmSampleRate: number;
+	/**
+	 * How one sample of this track's PCM is stored. Kept beside the channel
+	 * count and the rate because the three together are what the WAV header
+	 * written for this track has to state, and what a recovery reading its
+	 * segments back off disk has to be told.
+	 */
+	pcmFormat: PcmSampleFormat;
 	/** Number of auto-split parts already finalized for this track. */
 	partIndex: number;
 	/** Saved auto-split part file paths in order of creation. */

@@ -30,6 +30,7 @@ import {
 	type TrackAudioSource,
 } from './AudioStreamHandler';
 import { normalizeChannelMode, type ChannelMode } from '../audio/downmix';
+import { normalizePcmSampleFormat, PcmSampleFormat } from '../audio/pcm';
 import { clampSplitMinutes, sanitizePartSuffix } from './AudioSplitter';
 import {
 	buildMimeType,
@@ -146,6 +147,11 @@ export function createCaptureSession(
 			? null
 			: getChunkFlushThresholdBytes(),
 		isWavPcm: request.isWavPcm,
+		// Normalized here for the same reason the channel modes are: the
+		// capture worklet, the header writer and the mixer all branch on it,
+		// and a hand-edited data.json must not leave one of them writing a
+		// width the other two do not expect.
+		pcmFormat: normalizePcmSampleFormat(settings.recordingBitDepth),
 		recorderFormat: request.recorderFormat,
 		recorderMimeType:
 			request.recorderMimeType ?? buildMimeType(request.recorderFormat),
@@ -178,6 +184,7 @@ export function createCaptureSession(
 export const IDLE_CAPTURE_SESSION: CaptureSession = Object.freeze({
 	chunkRotationBytes: null,
 	isWavPcm: false,
+	pcmFormat: PcmSampleFormat.Int16,
 	recorderFormat: FORMAT_WEBM,
 	recorderMimeType: buildMimeType(FORMAT_WEBM),
 	outputFormat: FORMAT_WEBM,

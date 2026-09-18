@@ -342,6 +342,7 @@ describe('RecoveryService', () => {
 				2,
 				48000,
 				mockApp,
+				'int16',
 			);
 			expect(result.recoveredPaths).toEqual([
 				'Audio/recording-Track1-stamp-recovered.wav',
@@ -351,6 +352,41 @@ describe('RecoveryService', () => {
 			expect(binaryFiles.has('Audio/rec-pcm-part1.tmp')).toBe(false);
 			expect(readStoredJournal()).toBeNull();
 		});
+
+		// The segments hold whatever width the interrupted session captured
+		// at, and only the journal remembers which: the settings may have
+		// moved between the crash and the next launch, and reading a
+		// twenty-four bit segment as sixteen produces noise.
+		it.each(['int24', 'float32'])(
+			'assembles a recovered %s track at the width it was captured',
+			async (pcmFormat) => {
+				binaryFiles.set('Audio/rec-pcm-part1.tmp', new ArrayBuffer(6));
+				const session = createJournalSession({
+					tracks: [
+						createTrack({
+							isPcm: true,
+							pcmChannels: 1,
+							pcmSampleRate: 44100,
+							pcmFormat: pcmFormat as never,
+							segmentPaths: ['Audio/rec-pcm-part1.tmp'],
+						}),
+					],
+				});
+				storeJournal([session]);
+
+				await recoverSession(session, journal, mockApp);
+
+				expect(
+					jest.mocked(assembleWavFromPcmSegmentFiles),
+				).toHaveBeenCalledWith(
+					['Audio/rec-pcm-part1.tmp'],
+					1,
+					44100,
+					mockApp,
+					pcmFormat,
+				);
+			},
+		);
 
 		it('bytes-concatenate media tracks in capture order', async () => {
 			binaryFiles.set(

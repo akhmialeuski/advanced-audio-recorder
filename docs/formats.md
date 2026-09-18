@@ -1,12 +1,13 @@
 # Formats and containers
 
-Advanced Audio Recorder can record to **eight output formats**: WebM, OGG, WAV, MP3, FLAC, MP4, M4A, and AAC. Which ones you can actually pick depends on what your platform's **MediaRecorder** supports and which encoders the plugin can register at runtime - so the list you see in settings is detected on the machine you are using, not hard-coded. This page explains how that detection works, what each format is for, the difference between online and offline encoding, and how to choose a format and bitrate.
+Advanced Audio Recorder can record to **eight output formats**: WebM, OGG, WAV, MP3, FLAC, MP4, M4A, and AAC. Which ones you can actually pick depends on what your platform's **MediaRecorder** supports and which encoders the plugin can register at runtime - so the list you see in settings is detected on the machine you are using, not hard-coded. This page explains how that detection works, what each format is for, the difference between online and offline encoding, and how to choose a format, a bitrate and, for WAV, a bit depth.
 
 - [How format availability is detected](#how-format-availability-is-detected)
 - [The formats table](#the-formats-table)
 - [Online vs offline encoding](#online-vs-offline-encoding)
 - [Choosing a format](#choosing-a-format)
 - [Bitrate guidance](#bitrate-guidance)
+- [Bit depth](#bit-depth)
 - [The output summary line](#the-output-summary-line)
 - [Where to set the format](#where-to-set-the-format)
 - [Related pages](#related-pages)
@@ -31,18 +32,18 @@ If the format you want is blocked:
 
 All eight formats, with the codec each uses, whether it is encoded online or offline, and the key behavior to know.
 
-| Format   | Codec       | Encoding                          | Notes                                                                                                                                        |
-| -------- | ----------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **WebM** | Opus        | Online                            | Default format. Widely supported on desktop. Small files at good quality.                                                                    |
-| **OGG**  | Opus/Vorbis | Online                            | Good compatibility on most systems.                                                                                                          |
-| **WAV**  | PCM         | Online (streaming)                | Uncompressed. Captured as raw PCM in real time and assembled into a WAV file on save. Reliable for long recordings, with no memory pressure. |
-| **MP3**  | MP3         | Offline (Mediabunny MP3 Encoder)  | Encoded after recording stops using the bundled Mediabunny MP3 encoder. Maximum compatibility with old players and devices.                  |
-| **FLAC** | FLAC        | Offline (Mediabunny FLAC Encoder) | Lossless compression. Encoded after recording stops using the bundled Mediabunny FLAC encoder. Smaller than WAV, no quality loss.            |
-| **MP4**  | AAC         | Online/Offline                    | Browser-dependent. May use offline encoding via Mediabunny when MediaRecorder cannot write it directly.                                      |
-| **M4A**  | AAC         | Online/Offline                    | Same codec as MP4, different container extension. Common in the Apple ecosystem.                                                             |
-| **AAC**  | AAC         | Online/Offline                    | Raw AAC stream. Browser-dependent support, offered when an AAC encoder is available.                                                         |
+| Format   | Codec       | Encoding                          | Notes                                                                                                                                                                                   |
+| -------- | ----------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **WebM** | Opus        | Online                            | Default format. Widely supported on desktop. Small files at good quality.                                                                                                               |
+| **OGG**  | Opus/Vorbis | Online                            | Good compatibility on most systems.                                                                                                                                                     |
+| **WAV**  | PCM         | Online (streaming)                | Uncompressed. Captured as raw PCM in real time, at the width the **Bit depth** row names, and assembled into a WAV file on save. Reliable for long recordings, with no memory pressure. |
+| **MP3**  | MP3         | Offline (Mediabunny MP3 Encoder)  | Encoded after recording stops using the bundled Mediabunny MP3 encoder. Maximum compatibility with old players and devices.                                                             |
+| **FLAC** | FLAC        | Offline (Mediabunny FLAC Encoder) | Lossless compression. Encoded after recording stops using the bundled Mediabunny FLAC encoder. Smaller than WAV, no quality loss.                                                       |
+| **MP4**  | AAC         | Online/Offline                    | Browser-dependent. May use offline encoding via Mediabunny when MediaRecorder cannot write it directly.                                                                                 |
+| **M4A**  | AAC         | Online/Offline                    | Same codec as MP4, different container extension. Common in the Apple ecosystem.                                                                                                        |
+| **AAC**  | AAC         | Online/Offline                    | Raw AAC stream. Browser-dependent support, offered when an AAC encoder is available.                                                                                                    |
 
-Codec mapping is consistent across recording and conversion: WebM and OGG use **Opus**, MP4/M4A/AAC use **AAC**, FLAC uses **FLAC**, MP3 uses **MP3**, and WAV uses **16-bit PCM** (`pcm-s16`).
+Codec mapping is consistent across recording and conversion: WebM and OGG use **Opus**, MP4/M4A/AAC use **AAC**, FLAC uses **FLAC**, MP3 uses **MP3**, and WAV uses **PCM**. A WAV recorded through the desktop capture uses the width the **Bit depth** row names, which is **16-bit PCM** (`pcm-s16`) until you change it; a WAV produced by a conversion is always 16-bit, because the converter's encoder writes that width.
 
 ---
 
@@ -64,14 +65,14 @@ Offline encoding needs a working intermediate format. WebM, OGG and MP4 can all 
 There is no single best format - it depends on what you do with the recording. Practical guidance:
 
 - **WebM (default)** - the best all-round choice. Opus is efficient, so files are small at high quality, and WebM has the broadest support. Use it unless you have a specific reason not to.
-- **WAV** - choose it for **long recordings**, **lossless** capture, and **reliability**. WAV is captured as raw PCM and streamed to disk, so an hour-long session never risks a memory problem. It is uncompressed, so files are large, and a single file cannot exceed **4 GB** (see below).
+- **WAV** - choose it for **long recordings**, **lossless** capture, and **reliability**. WAV is captured as raw PCM and streamed to disk, so an hour-long session never risks a memory problem. It is uncompressed, so files are large, and a single file cannot exceed **4 GB** (see below). It is also the one format whose sample width you choose, through [Bit depth](#bit-depth).
 - **FLAC** - **lossless but compressed**, at roughly half the size of WAV. What it is lossless about is the step after capture, because no browser records FLAC directly and the audio therefore arrives through an Opus intermediate at your chosen bitrate, so a FLAC recording preserves that intermediate perfectly rather than the microphone. Choose WAV on the desktop when you want capture itself to be lossless, and choose FLAC to archive a smaller file whose quality you set with the **Audio bitrate** row.
 - **MP3** - choose it for **maximum compatibility** with older players, hardware devices, and software that does not understand Opus or AAC.
 - **MP4 / M4A** - AAC in a standard container, well suited to **Apple ecosystems** (macOS, iOS, iTunes/Music) and many video tools. M4A is the same codec with the Apple-conventional extension.
 - **AAC** - a raw AAC stream, so pick it only when a downstream tool specifically expects a bare `.aac` file. Its availability is browser-dependent.
 - **OGG** - Opus or Vorbis in an Ogg container, and a good alternative when a tool prefers Ogg over WebM.
 
-A WAV file states its own size in two 32-bit fields, so **no WAV file can be larger than 4 GB**, which at 48 kHz stereo 16-bit arrives at roughly the sixth hour of continuous recording. Turn on **auto-split** in the recording settings before a session that long: the recording is then written as a series of part files, each well inside the limit, and nothing about the capture changes. You are warned before it comes to that: once a WAV session passes **90 percent** of the ceiling, a notice says the recording is approaching the 4 GB limit and asks you either to turn auto-split on or to stop and start a new recording, which is early enough to act on. Without auto-split a recording that does reach the ceiling is refused at the moment you press stop, with a message naming the limit and pointing at auto-split. The captured PCM segments stay on disk when that happens, but nothing the plugin offers turns them into one WAV: the recovery prompt on the next start assembles them through the same encoder, meets the same refusal, and reports the track as one it could not recover. Recording in parts is what avoids the situation rather than what repairs it, so it is worth deciding before a long session rather than after it.
+A WAV file states its own size in two 32-bit fields, so **no WAV file can be larger than 4 GB**, which at 48 kHz stereo 16-bit arrives at roughly the sixth hour of continuous recording, and proportionally sooner at a wider bit depth: four hours at 24-bit and three at 32-bit float. Turn on **auto-split** in the recording settings before a session that long: the recording is then written as a series of part files, each well inside the limit, and nothing about the capture changes. You are warned before it comes to that: once a WAV session passes **90 percent** of the ceiling, a notice says the recording is approaching the 4 GB limit and asks you either to turn auto-split on or to stop and start a new recording, which is early enough to act on. Without auto-split a recording that does reach the ceiling is refused at the moment you press stop, with a message naming the limit and pointing at auto-split. The captured PCM segments stay on disk when that happens, but nothing the plugin offers turns them into one WAV: the recovery prompt on the next start assembles them through the same encoder, meets the same refusal, and reports the track as one it could not recover. Recording in parts is what avoids the situation rather than what repairs it, so it is worth deciding before a long session rather than after it.
 
 RF64 is the standard extension of RIFF that moves those size fields to 64 bits, and the plugin deliberately does not write it. Auto-split already answers the long recording end to end, from the recorder through the player to the splitter, while none of the transcription engines these files are handed to afterwards reads RF64, so an RF64 recording would be unplayable in the very workflow it was made for.
 
@@ -111,22 +112,38 @@ The encoder is asked about the bitrate only for a recording it will actually enc
 
 **A lossless recording format still spends the bitrate**, because a lossless recording is not captured losslessly. No browser writes FLAC through MediaRecorder, so a FLAC recording is captured as Opus at the bitrate you choose and only wrapped in FLAC once you stop, which makes the setting a real decision about the audio the file ends up holding rather than about the container. WAV behaves the same way wherever direct PCM capture is unavailable, which is the whole of the mobile app. In both of those cases the bitrate row stays, and it offers the values the intermediate codec reaches rather than the ones the finished container would suggest, so a FLAC recording at 24 kbps is a lossless file wrapped around 24 kbps speech audio. The **Output summary** line names the intermediate for exactly this reason, reading `Output: FLAC, 24 kbps captured as WEBM` instead of implying that a FLAC file has a bitrate you picked.
 
-The setting disappears only for **WAV recorded as raw PCM**, which is the desktop app, because nothing there is encoded at any rate: the samples reach the file as they were captured, so the size follows from the sample rate and the channel count alone.
+The setting disappears only for **WAV recorded as raw PCM**, which is the desktop app, because nothing there is encoded at any rate: the samples reach the file as they were captured, so the size follows from the sample rate, the channel count and the bit depth alone. The **Bit depth** row is the decision about quality and size that replaces it there.
 
 In the split and convert dialogs the rule is the container's, not the capture's, because those two decode a finished file and encode it once. A **WAV** or **FLAC** target there carries no bitrate at all, so the row is hidden: WAV is uncompressed 16-bit PCM, and FLAC compresses without loss to whatever size the signal needs, which makes the bitrate such a file reports a result rather than a choice.
 
 ![The Audio bitrate dropdown.](images/settings-output-bitrate.png)
 
+## Bit depth
+
+**Bit depth** decides how much of each individual sample a WAV recording keeps, and it applies only where WAV is captured as raw PCM, which is the desktop app. Everywhere else the width belongs to the encoder that writes the file, so on mobile the row is shown greyed out with its stored value intact rather than hidden, because a vault synced from a desktop machine carries the setting and you have to be able to see what it is set to.
+
+Three widths are offered, and the difference between them is headroom rather than fidelity at a level you already set correctly:
+
+- **16-bit integer** is the default and what every recording used before the row existed. It is enough for speech whenever the input level is set carefully in advance, and it is the width every tool reads without question.
+- **24-bit integer** puts eight more bits under the signal, which is what a recording made at a cautious level needs: a quiet speaker recorded 30 dB down still has as much resolution left as a 16-bit file recorded near full scale, so raising the level afterwards does not bring the noise floor up with it.
+- **32-bit float** stores each sample as a floating point number whose full scale is 1.0 and which is **not clipped** when the signal runs past it. A take that overloaded the input is therefore still recoverable: normalizing the finished file brings the peaks back down with the waveform intact, where a 16-bit or 24-bit file would already have flattened them against the rails.
+
+The cost is file size in direct proportion: 24-bit is half again the size of 16-bit and 32-bit float is double it, and the 4 GB ceiling of the WAV container arrives correspondingly sooner. Nothing else about the recording changes, because the width travels with the audio through the whole pipeline. Auto-split cuts parts on whole sample frames at the chosen width, a multi-track session is mixed at that width and written out at it, and [splitting a finished file](splitting.md) still copies its bytes without decoding them, because the splitter reads the width out of the file's own header.
+
+A 32-bit float file is written with the format tag and the `fact` chunk the WAVE specification requires of a non-PCM representation, so players, editors and the transcription engines read it as what it is. Conversion and audio cleanup still write 16-bit WAV output whatever the source is, since both encode a finished file rather than capture one.
+
+![Output format settings recording WAV at 32-bit float, where the bitrate row is gone and the output summary reads Output: WAV. Uncompressed WAV at 32-bit float (larger size). Encoder: PCM (built-in).](images/settings-output-bit-depth.png)
+
 ## The output summary line
 
 Directly under the format and bitrate controls, **Settings > Output format** shows a read-only **Output summary** line that confirms exactly what your recordings will be. It combines four pieces of information:
 
-| Part                 | What it tells you                                                                                                                                         |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Format**           | The container/extension you selected (for example `webm`, `wav`, `mp3`).                                                                                  |
-| **Bitrate (kbps)**   | The compression bitrate that will be applied (omitted or shown as not applicable for WAV).                                                                |
-| **Compression type** | One of three sentences: uncompressed WAV, compressed audio via offline encoding, or compressed audio saved directly from the recorder output.             |
-| **Encoder**          | The encoder that will be used - for example `PCM (built-in)`, `Mediabunny MP3 Encoder`, `Mediabunny FLAC Encoder`, or `AudioEncoder (Opus) + Mediabunny`. |
+| Part                 | What it tells you                                                                                                                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Format**           | The container/extension you selected (for example `webm`, `wav`, `mp3`).                                                                                                                                   |
+| **Bitrate (kbps)**   | The compression bitrate that will be applied (omitted or shown as not applicable for WAV).                                                                                                                 |
+| **Compression type** | One of three sentences: uncompressed WAV, which also names the bit depth where the capture decides it, compressed audio via offline encoding, or compressed audio saved directly from the recorder output. |
+| **Encoder**          | The encoder that will be used - for example `PCM (built-in)`, `Mediabunny MP3 Encoder`, `Mediabunny FLAC Encoder`, or `AudioEncoder (Opus) + Mediabunny`.                                                  |
 
 Use it as a quick sanity check before recording: if the encoder or compression type is not what you expected, adjust the format or bitrate above it.
 

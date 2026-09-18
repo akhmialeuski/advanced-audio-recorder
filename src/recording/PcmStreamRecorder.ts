@@ -1,8 +1,9 @@
 /**
  * Real-time PCM audio capture using AudioWorkletNode.
- * Captures raw interleaved int16 PCM data from a MediaStream
- * for direct WAV encoding, avoiding memory-intensive post-hoc
- * decoding of compressed formats for long recordings.
+ * Captures raw interleaved PCM data from a MediaStream, in the sample
+ * representation the session records in, for direct WAV encoding - avoiding
+ * memory-intensive post-hoc decoding of compressed formats for long
+ * recordings.
  * @module recording/PcmStreamRecorder
  */
 
@@ -12,9 +13,10 @@ import {
 	PLUGIN_LOG_PREFIX,
 } from '../constants';
 import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
+import { PCM_SAMPLE_BYTES, PcmSampleFormat } from '../audio/pcm';
 
 /**
- * Number of interleaved int16 samples to accumulate before posting.
+ * Number of interleaved samples to accumulate before posting.
  * 4096 at 44100 Hz ~ 93 ms (~11 posts/sec), matching the old
  * ScriptProcessorNode cadence and avoiding main-thread overload
  * from the 128-sample render quantum (~344 calls/sec).
@@ -23,27 +25,43 @@ const WORKLET_BUFFER_SIZE = 4096;
 
 /**
  * Inline AudioWorklet processor source code.
- * Runs on the audio rendering thread, converts float32 input
- * to interleaved int16 PCM, buffers it, and posts full chunks
- * back via MessagePort. Supports pause/resume/flush via port
- * messages. A mono channel mode (via processorOptions.channelMode)
- * downmixes during capture: averaging all input channels or keeping
- * one picked channel, so segments and the final WAV are mono at the
- * source. Exported for the worklet-logic unit tests, which evaluate
- * this source against a stub AudioWorkletProcessor.
+ * Runs on the audio rendering thread, converts the float32 input to the
+ * interleaved PCM representation the session records in (via
+ * processorOptions.sampleFormat), buffers it, and posts full chunks back via
+ * MessagePort. Supports pause/resume/flush via port messages. A mono channel
+ * mode (via processorOptions.channelMode) downmixes during capture: averaging
+ * all input channels or keeping one picked channel, so segments and the final
+ * WAV are mono at the source. Exported for the worklet-logic unit tests, which
+ * evaluate this source against a stub AudioWorkletProcessor.
+ *
+ * The buffer is a plain byte array with a DataView over it rather than a typed
+ * array of samples, because one of the three representations - twenty-four bit
+ * integers - has no typed array at all, and because a DataView states the
+ * little-endian byte order a WAV file needs instead of inheriting whatever the
+ * machine happens to use.
  */
 export const WORKLET_PROCESSOR_SOURCE = `
 const BUFFER_SIZE = ${String(WORKLET_BUFFER_SIZE)};
+const SAMPLE_WIDTH = {
+	'${PcmSampleFormat.Int16}': ${String(PCM_SAMPLE_BYTES[PcmSampleFormat.Int16])},
+	'${PcmSampleFormat.Int24}': ${String(PCM_SAMPLE_BYTES[PcmSampleFormat.Int24])},
+	'${PcmSampleFormat.Float32}': ${String(PCM_SAMPLE_BYTES[PcmSampleFormat.Float32])},
+};
 
 class PcmCaptureProcessor extends AudioWorkletProcessor {
 	constructor(options) {
 		super();
 		this._paused = false;
-		this._buffer = null;
+		this._bytes = null;
+		this._view = null;
 		this._writeIndex = 0;
 		this._channels = 0;
 		const opts = (options && options.processorOptions) || {};
 		this._mode = opts.channelMode || '${ChannelMode.Source}';
+		this._format = SAMPLE_WIDTH[opts.sampleFormat]
+			? opts.sampleFormat
+			: '${PcmSampleFormat.Int16}';
+		this._width = SAMPLE_WIDTH[this._format];
 		this.port.onmessage = (e) => {
 			if (e.data.type === 'pause') this._paused = true;
 			if (e.data.type === 'resume') this._paused = false;
@@ -51,18 +69,60 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 		};
 	}
 
+	_allocate(outChannels) {
+		this._channels = outChannels;
+		this._bytes = new Uint8Array(BUFFER_SIZE * outChannels * this._width);
+		this._view = new DataView(this._bytes.buffer);
+		this._writeIndex = 0;
+	}
+
 	_flush() {
-		if (this._buffer && this._writeIndex > 0) {
-			const chunk = this._buffer.slice(0, this._writeIndex);
+		if (this._bytes && this._writeIndex > 0) {
+			const chunk = this._bytes.slice(0, this._writeIndex);
 			this.port.postMessage(chunk.buffer, [chunk.buffer]);
 			this._writeIndex = 0;
 		}
 		this.port.postMessage({ type: 'flushed' });
 	}
 
-	_toInt16(sample) {
+	_postFull() {
+		this.port.postMessage(this._bytes.buffer, [this._bytes.buffer]);
+		this._allocate(this._channels);
+	}
+
+	// The one place a captured float becomes a stored sample. Every channel
+	// mode below hands its samples here, so the representation is applied
+	// once however the channels were reduced to reach it.
+	_write(sample) {
+		// A render quantum that does not divide the buffer would otherwise
+		// run a sample off the end of it, which a DataView answers by
+		// throwing on the audio thread. The quantum is 128 frames today and
+		// the buffer a whole number of those, so this costs a comparison.
+		if (this._writeIndex + this._width > this._bytes.length) {
+			this._postFull();
+		}
+		const at = this._writeIndex;
+		this._writeIndex = at + this._width;
+		if (this._format === '${PcmSampleFormat.Float32}') {
+			// Written past full scale on purpose: keeping an overloaded take
+			// recoverable by normalizing it later is what this format is for.
+			this._view.setFloat32(at, sample, true);
+			return;
+		}
 		const clamped = Math.max(-1, Math.min(1, sample));
-		return clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+		if (this._format === '${PcmSampleFormat.Int24}') {
+			const value =
+				(clamped < 0 ? clamped * 0x800000 : clamped * 0x7fffff) | 0;
+			this._view.setUint8(at, value & 0xff);
+			this._view.setUint8(at + 1, (value >> 8) & 0xff);
+			this._view.setUint8(at + 2, (value >> 16) & 0xff);
+			return;
+		}
+		this._view.setInt16(
+			at,
+			clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff,
+			true,
+		);
 	}
 
 	process(inputs) {
@@ -75,17 +135,14 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 		const outChannels =
 			this._mode === '${ChannelMode.Source}' ? numChannels : 1;
 
-		if (!this._buffer || this._channels !== outChannels) {
-			this._channels = outChannels;
-			this._buffer = new Int16Array(BUFFER_SIZE * outChannels);
-			this._writeIndex = 0;
+		if (!this._bytes || this._channels !== outChannels) {
+			this._allocate(outChannels);
 		}
 
 		if (this._mode === '${ChannelMode.Source}') {
 			for (let i = 0; i < numSamples; i++) {
 				for (let ch = 0; ch < numChannels; ch++) {
-					this._buffer[this._writeIndex++] =
-						this._toInt16(input[ch][i]);
+					this._write(input[ch][i]);
 				}
 			}
 		} else if (this._mode === '${ChannelMode.MonoMix}') {
@@ -94,8 +151,7 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 				for (let ch = 0; ch < numChannels; ch++) {
 					sum += input[ch][i];
 				}
-				this._buffer[this._writeIndex++] =
-					this._toInt16(sum / numChannels);
+				this._write(sum / numChannels);
 			}
 		} else {
 			// Picked channel, clamped so a right pick on a mono
@@ -106,14 +162,12 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 			);
 			const channel = input[pick];
 			for (let i = 0; i < numSamples; i++) {
-				this._buffer[this._writeIndex++] = this._toInt16(channel[i]);
+				this._write(channel[i]);
 			}
 		}
 
-		if (this._writeIndex >= this._buffer.length) {
-			this.port.postMessage(this._buffer.buffer, [this._buffer.buffer]);
-			this._buffer = new Int16Array(BUFFER_SIZE * outChannels);
-			this._writeIndex = 0;
+		if (this._writeIndex >= this._bytes.length) {
+			this._postFull();
 		}
 
 		return true;
@@ -127,7 +181,7 @@ registerProcessor('pcm-capture-processor', PcmCaptureProcessor);
 const PROCESSOR_NAME = 'pcm-capture-processor';
 
 /**
- * Callback type for receiving interleaved int16 PCM data chunks.
+ * Callback type for receiving interleaved PCM data chunks.
  */
 export type PcmChunkCallback = (data: ArrayBuffer) => void;
 
@@ -135,9 +189,10 @@ export type PcmChunkCallback = (data: ArrayBuffer) => void;
  * Captures raw PCM audio from a MediaStream in real-time.
  *
  * Uses AudioWorkletNode to intercept audio samples on the audio
- * rendering thread, converts float32 to interleaved int16, and
- * delivers chunks to the main thread via MessagePort. Output is
- * muted through a zero-gain node to prevent speaker playback.
+ * rendering thread, converts the float32 render quantum to the
+ * interleaved representation the session records in, and delivers
+ * chunks to the main thread via MessagePort. Output is muted through
+ * a zero-gain node to prevent speaker playback.
  */
 export class PcmStreamRecorder {
 	private audioContext: AudioContext | null = null;
@@ -152,15 +207,18 @@ export class PcmStreamRecorder {
 	 * Creates a new PcmStreamRecorder.
 	 * @param stream - MediaStream to capture audio from
 	 * @param requestedSampleRate - Desired sample rate in Hz
-	 * @param onChunk - Callback for receiving interleaved int16 PCM data
+	 * @param onChunk - Callback for receiving interleaved PCM data
 	 * @param channelMode - Channel layout: pass the source through or
 	 * downmix to mono in the capture worklet
+	 * @param sampleFormat - How one captured sample is stored, which is what
+	 * the WAV assembled from these chunks will declare
 	 */
 	constructor(
 		private stream: MediaStream,
 		private requestedSampleRate: number,
 		private onChunk: PcmChunkCallback,
 		private readonly channelMode: ChannelMode = ChannelMode.Source,
+		private readonly sampleFormat: PcmSampleFormat = PcmSampleFormat.Int16,
 	) {}
 
 	/**
@@ -226,7 +284,10 @@ export class PcmStreamRecorder {
 					numberOfInputs: 1,
 					numberOfOutputs: 1,
 					channelCount: sourceChannels,
-					processorOptions: { channelMode: this.channelMode },
+					processorOptions: {
+						channelMode: this.channelMode,
+						sampleFormat: this.sampleFormat,
+					},
 				},
 			);
 

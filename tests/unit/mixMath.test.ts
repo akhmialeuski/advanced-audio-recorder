@@ -15,7 +15,39 @@ import {
 	windowRms,
 	writeScaled,
 } from 'src/recording/mixMath';
-import { INT16_MAX } from 'src/audio/pcm';
+import {
+	INT16_MAX,
+	INT24_MAX,
+	PCM_SAMPLE_BYTES,
+	PcmSampleFormat,
+	readPcmSample,
+} from 'src/audio/pcm';
+
+/**
+ * Reads a written window back, so a test states what landed in the file
+ * rather than what a typed array happened to hold.
+ */
+function samplesOf(
+	view: DataView,
+	format: PcmSampleFormat,
+	count: number,
+): number[] {
+	const width = PCM_SAMPLE_BYTES[format];
+	return Array.from({ length: count }, (_value, index) =>
+		readPcmSample(view, index * width, format),
+	);
+}
+
+/** A window of the given sample count, ready to be written into. */
+function writeTarget(
+	format: PcmSampleFormat,
+	samples: number,
+): { view: DataView; format: PcmSampleFormat } {
+	return {
+		view: new DataView(new ArrayBuffer(samples * PCM_SAMPLE_BYTES[format])),
+		format,
+	};
+}
 
 describe('the multiplier a gain means', () => {
 	it('leaves a track alone at zero', () => {
@@ -57,15 +89,15 @@ describe('where a pan puts a track', () => {
 
 describe('how loud a window is', () => {
 	it('measures the root mean square of what it holds', () => {
-		expect(windowRms(new Int16Array([3, 4]), 2)).toBeCloseTo(3.536, 3);
+		expect(windowRms(new Float32Array([3, 4]), 2)).toBeCloseTo(3.536, 3);
 	});
 
 	it('reads only the count it was given', () => {
-		expect(windowRms(new Int16Array([100, 0, 0, 0]), 1)).toBe(100);
+		expect(windowRms(new Float32Array([100, 0, 0, 0]), 1)).toBe(100);
 	});
 
 	it('reports silence for an empty window', () => {
-		expect(windowRms(new Int16Array(4), 0)).toBe(0);
+		expect(windowRms(new Float32Array(4), 0)).toBe(0);
 	});
 });
 
@@ -107,33 +139,79 @@ describe('bringing a sum onto the output scale', () => {
 
 describe('writing a window out', () => {
 	it('applies the scale to every sample', () => {
-		const output = new Int16Array(2);
+		const output = writeTarget(PcmSampleFormat.Int16, 2);
 
-		writeScaled(new Int32Array([1000, -2000]), output, 0, 2, 0.5);
+		writeScaled(new Float64Array([1000, -2000]), output, 0, 2, 0.5);
 
-		expect(Array.from(output)).toEqual([500, -1000]);
+		expect(samplesOf(output.view, PcmSampleFormat.Int16, 2)).toEqual([
+			500, -1000,
+		]);
 	});
 
 	it('writes at the offset it was given', () => {
-		const output = new Int16Array(4);
+		const output = writeTarget(PcmSampleFormat.Int16, 4);
 
-		writeScaled(new Int32Array([100]), output, 2, 1, 1);
+		writeScaled(new Float64Array([100]), output, 2, 1, 1);
 
-		expect(Array.from(output)).toEqual([0, 0, 100, 0]);
+		expect(samplesOf(output.view, PcmSampleFormat.Int16, 4)).toEqual([
+			0, 0, 100, 0,
+		]);
 	});
 
 	it('clamps what the scale did not catch', () => {
-		const output = new Int16Array(2);
+		const output = writeTarget(PcmSampleFormat.Int16, 2);
 
 		writeScaled(
-			new Int32Array([INT16_MAX * 4, -INT16_MAX * 4]),
+			new Float64Array([INT16_MAX * 4, -INT16_MAX * 4]),
 			output,
 			0,
 			2,
 			1,
 		);
 
-		expect(Array.from(output)).toEqual([32767, -32768]);
+		expect(samplesOf(output.view, PcmSampleFormat.Int16, 2)).toEqual([
+			32767, -32768,
+		]);
+	});
+
+	// The sum carries fractions now that no track is rounded on the way in,
+	// so the one quantization a mix pays happens here.
+	it('rounds a fractional sum onto the twenty-four bit scale', () => {
+		const output = writeTarget(PcmSampleFormat.Int24, 2);
+
+		writeScaled(new Float64Array([1000.4, -1000.6]), output, 0, 2, 1);
+
+		expect(samplesOf(output.view, PcmSampleFormat.Int24, 2)).toEqual([
+			1000, -1001,
+		]);
+	});
+
+	it('holds a twenty-four bit sum to its own rails', () => {
+		const output = writeTarget(PcmSampleFormat.Int24, 2);
+
+		writeScaled(
+			new Float64Array([INT24_MAX * 4, -INT24_MAX * 4]),
+			output,
+			0,
+			2,
+			1,
+		);
+
+		expect(samplesOf(output.view, PcmSampleFormat.Int24, 2)).toEqual([
+			8388607, -8388608,
+		]);
+	});
+
+	// Nothing is rounded and nothing is clipped: a float file keeps what the
+	// sum reached, which is what makes an overloaded take recoverable.
+	it('writes a floating point sum through untouched', () => {
+		const output = writeTarget(PcmSampleFormat.Float32, 2);
+
+		writeScaled(new Float64Array([0.25, -1.5]), output, 0, 2, 1);
+
+		expect(samplesOf(output.view, PcmSampleFormat.Float32, 2)).toEqual([
+			0.25, -1.5,
+		]);
 	});
 });
 
@@ -144,9 +222,9 @@ describe('resampling a track to another rate', () => {
 		outputFrames: number,
 		ratio: number,
 	): number[] {
-		const target = new Int16Array(outputFrames);
+		const target = new Float32Array(outputFrames);
 		resampleWindow(
-			new Int16Array(source),
+			Float32Array.from(source),
 			source.length,
 			target,
 			outputFrames,
@@ -184,9 +262,9 @@ describe('resampling a track to another rate', () => {
 		const whole = resampleAll([0, 100, 200, 300, 400, 500], 4, 1.5);
 
 		const state = newResampleState(1);
-		const first = new Int16Array(2);
+		const first = new Float32Array(2);
 		resampleWindow(
-			new Int16Array([0, 100, 200]),
+			new Float32Array([0, 100, 200]),
 			3,
 			first,
 			2,
@@ -194,9 +272,9 @@ describe('resampling a track to another rate', () => {
 			1.5,
 			state,
 		);
-		const second = new Int16Array(2);
+		const second = new Float32Array(2);
 		resampleWindow(
-			new Int16Array([300, 400, 500]),
+			new Float32Array([300, 400, 500]),
 			3,
 			second,
 			2,
@@ -213,9 +291,9 @@ describe('resampling a track to another rate', () => {
 		// the next window interpolates from is then behind its own start
 		const state = newResampleState(1);
 		resampleWindow(
-			new Int16Array([0, 100, 200]),
+			new Float32Array([0, 100, 200]),
 			3,
-			new Int16Array(2),
+			new Float32Array(2),
 			2,
 			1,
 			1,
@@ -223,8 +301,8 @@ describe('resampling a track to another rate', () => {
 		);
 		expect(state.position).toBe(-1);
 
-		const second = new Int16Array(2);
-		resampleWindow(new Int16Array([300, 400]), 2, second, 2, 1, 1, state);
+		const second = new Float32Array(2);
+		resampleWindow(new Float32Array([300, 400]), 2, second, 2, 1, 1, state);
 
 		// The frame at global index 2 is 200, which only the carry knows
 		expect(Array.from(second)).toEqual([200, 300]);
@@ -239,9 +317,9 @@ describe('resampling a track to another rate', () => {
 		// most of the way to silence.
 		const state = newResampleState(1);
 		resampleWindow(
-			new Int16Array([0, 100, 200]),
+			new Float32Array([0, 100, 200]),
 			3,
-			new Int16Array(3),
+			new Float32Array(3),
 			3,
 			1,
 			0.5,
@@ -249,8 +327,8 @@ describe('resampling a track to another rate', () => {
 		);
 		expect(state.position).toBe(-1.5);
 
-		const second = new Int16Array(3);
-		resampleWindow(new Int16Array([300]), 1, second, 3, 1, 0.5, state);
+		const second = new Float32Array(3);
+		resampleWindow(new Float32Array([300]), 1, second, 3, 1, 0.5, state);
 
 		// The ramp continues: source positions 1.5, 2.0 and 2.5 on a signal
 		// whose frame n is worth 100n.
@@ -273,13 +351,13 @@ describe('resampling a track to another rate', () => {
 
 		for (let window = 0; window < windowCount; window++) {
 			const needed = sourceFramesNeeded(windowFrames, ratio, state);
-			const source = new Int16Array(needed);
+			const source = new Float32Array(needed);
 			for (let frame = 0; frame < needed; frame++) {
 				// Frame n is worth n, so the value at a source position is
 				// that position and the ideal output needs no second model.
 				source[frame] = sourceCursor + frame;
 			}
-			const target = new Int16Array(windowFrames);
+			const target = new Float32Array(windowFrames);
 			const firstOutput = window * windowFrames;
 
 			resampleWindow(
@@ -302,15 +380,16 @@ describe('resampling a track to another rate', () => {
 			sourceCursor += needed;
 		}
 
-		// Rounding to int16 is the only error a correct resampler leaves here.
-		expect(worstError).toBeLessThanOrEqual(0.5);
+		// The window carries the interpolated value in full precision, so a
+		// correct resampler leaves no error here at all.
+		expect(worstError).toBeLessThanOrEqual(1e-3);
 	});
 
 	it('interpolates a stereo frame channel by channel', () => {
-		const target = new Int16Array(4);
+		const target = new Float32Array(4);
 
 		resampleWindow(
-			new Int16Array([0, 1000, 100, 1100]),
+			new Float32Array([0, 1000, 100, 1100]),
 			2,
 			target,
 			2,

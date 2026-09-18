@@ -65,6 +65,8 @@ import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
 import { recordingBitrateFormat } from '../audio/AudioFormatConverter';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { ChannelMode, normalizeChannelMode } from '../audio/downmix';
+import { normalizePcmSampleFormat } from '../audio/pcm';
+import { PCM_SAMPLE_FORMAT_LABELS } from './labels';
 import {
 	audioDeviceApi,
 	channelSelectionAvailable,
@@ -118,7 +120,10 @@ import { ModelIdModal } from '../ui/ModelIdModal';
 import { fillBitrateDropdown } from './settingControls';
 import type { SettingsSectionContext } from './settingControls';
 import { BITRATE_ROW_DESC } from './sections/outputFormatSection';
-import { isMultiTrackCaptureSupported } from '../platform/capabilities';
+import {
+	isMultiTrackCaptureSupported,
+	isPcmWavCaptureSupported,
+} from '../platform/capabilities';
 import { effectiveWordTimestamps } from '../transcription/providers/capabilities';
 
 /** Debounce delay for saving text settings, in milliseconds. */
@@ -633,7 +638,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private getCompressionDescription(format: string): string {
 		const encoder = getEncoderDescription(format);
 		if (format === FORMAT_WAV) {
-			return `Uncompressed WAV (larger size). Encoder: ${encoder}.`;
+			// The width is named only where the capture is what decides it.
+			// Where WAV goes through a compressed intermediate, the encoder
+			// states the width and the setting above has no say in it, so
+			// reporting the setting's value here would be a claim about the
+			// file that the file does not honour.
+			const depth = isPcmWavCaptureSupported()
+				? ` at ${PCM_SAMPLE_FORMAT_LABELS[normalizePcmSampleFormat(this.plugin.settings.recordingBitDepth)]}`
+				: '';
+			return `Uncompressed WAV${depth} (larger size). Encoder: ${encoder}.`;
 		}
 		if (
 			isOfflineEncodingSupported(format) &&

@@ -460,6 +460,7 @@ export class RecordingManager {
 					isPcm: this.session.isWavPcm,
 					pcmChannels: target.pcmChannels,
 					pcmSampleRate: target.pcmSampleRate,
+					pcmFormat: target.pcmFormat,
 					segmentPaths: [],
 					partPaths: [],
 					...(this.session.trackMix[index] ?? {}),
@@ -621,6 +622,7 @@ export class RecordingManager {
 			pcmBufferedBytes: 0,
 			pcmChannels: 1,
 			pcmSampleRate: this.settings.sampleRate,
+			pcmFormat: this.session.pcmFormat,
 			partIndex: 0,
 			partPaths: [],
 			partPcmBytes: 0,
@@ -652,6 +654,7 @@ export class RecordingManager {
 						void this.handlePcmChunk(index, data);
 					},
 					this.session.channelModes,
+					this.session.pcmFormat,
 				).map((recorder) => new PcmCaptureTrack(recorder))
 			: this.streams.map(
 					(stream, index) =>
@@ -1034,6 +1037,7 @@ export class RecordingManager {
 					this.session.partMinutes,
 					target.pcmSampleRate,
 					target.pcmChannels,
+					target.pcmFormat,
 				);
 				if (target.partPcmBytes >= partLimitBytes) {
 					await this.rotation.finalizePcmPart(target, partLimitBytes);
@@ -1128,6 +1132,7 @@ export class RecordingManager {
 						this.chunkTargets.indexOf(chunkTarget)
 					]?.pan ?? 0,
 			})),
+			this.session.pcmFormat,
 		).pcmByteLength;
 	}
 

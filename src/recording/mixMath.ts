@@ -8,7 +8,12 @@
  * @module recording/mixMath
  */
 
-import { INT16_MAX, INT16_MIN } from '../audio/pcm';
+import {
+	INT16_MAX,
+	PCM_SAMPLE_BYTES,
+	writePcmSample,
+	type PcmSampleFormat,
+} from '../audio/pcm';
 
 /** Loudest a normalised track is raised to, as a share of full scale. */
 const NORMALIZE_TARGET = 0.25;
@@ -23,8 +28,14 @@ const NORMALIZE_TARGET = 0.25;
  */
 const MAX_NORMALIZE_GAIN = 8;
 
-/** Quietest track level worth aligning; below it the track is silence. */
-const SILENCE_RMS = 1;
+/**
+ * Quietest track level worth aligning, as a share of full scale.
+ *
+ * One unit of a sixteen-bit sample, which is the quietest thing that
+ * representation can express at all. A track below it carries no signal in any
+ * representation, and raising it only raises its noise floor.
+ */
+const SILENCE_RMS_SHARE = 1 / INT16_MAX;
 
 /**
  * The multiplier a gain in decibels means.
@@ -54,13 +65,13 @@ export function panGains(pan: number): { left: number; right: number } {
 }
 
 /**
- * The root mean square of an int16 window, which is what "how loud is this
- * track" means for the purpose of levelling two of them against each other.
- * @param samples - Interleaved int16 samples
+ * The root mean square of a window, which is what "how loud is this track"
+ * means for the purpose of levelling two of them against each other.
+ * @param samples - Interleaved samples, on their representation's own scale
  * @param count - How many of them to read
- * @returns The RMS, on the int16 scale
+ * @returns The RMS, on that same scale
  */
-export function windowRms(samples: Int16Array, count: number): number {
+export function windowRms(samples: Float32Array, count: number): number {
 	if (count <= 0) {
 		return 0;
 	}
@@ -78,14 +89,24 @@ export function windowRms(samples: Int16Array, count: number): number {
  * A track quieter than the noise it carries is left alone, and no track is
  * raised past the ceiling: both cases are a microphone that captured nothing
  * worth hearing, and multiplying it up only makes its hiss audible.
- * @param rms - The track's measured level, on the int16 scale
+ *
+ * The level and the scale it is measured against have to be the same one, and
+ * which one that is differs per route: the streaming mixer reads samples on the
+ * scale its representation works in, while a decoded buffer is already a share
+ * of full scale. The default keeps the sixteen-bit scale every caller spoke
+ * before the width became a choice.
+ * @param rms - The track's measured level
+ * @param fullScale - The value a sample at full scale carries on that scale
  * @returns The multiplier to apply to it
  */
-export function normalizeFactor(rms: number): number {
-	if (rms <= SILENCE_RMS) {
+export function normalizeFactor(
+	rms: number,
+	fullScale: number = INT16_MAX,
+): number {
+	if (rms <= SILENCE_RMS_SHARE * fullScale) {
 		return 1;
 	}
-	return Math.min(MAX_NORMALIZE_GAIN, (INT16_MAX * NORMALIZE_TARGET) / rms);
+	return Math.min(MAX_NORMALIZE_GAIN, (fullScale * NORMALIZE_TARGET) / rms);
 }
 
 /**
@@ -95,41 +116,64 @@ export function normalizeFactor(rms: number): number {
  * is what turns two people talking at once into distortion. Scaling the whole
  * file by one factor instead keeps the balance between the tracks and costs
  * only level, which is the trade every mixer makes here.
+ *
+ * The floating point representation would survive a sum past full scale, and is
+ * scaled all the same: full scale is where a player stops, so a mix left above
+ * it plays as distortion however faithfully the file holds it.
  * @param peak - The largest absolute value the sum reached
+ * @param fullScale - The value a sample at full scale carries on that scale
  * @returns The multiplier, never above 1
  */
-export function outputScale(peak: number): number {
-	return peak <= INT16_MAX ? 1 : INT16_MAX / peak;
+export function outputScale(
+	peak: number,
+	fullScale: number = INT16_MAX,
+): number {
+	return peak <= fullScale ? 1 : fullScale / peak;
+}
+
+/** The sample data a mixed window is written into, and how it is stored. */
+export interface PcmWriteTarget {
+	/** View over the sample region of the file being written. */
+	readonly view: DataView;
+	/** How one sample is stored there. */
+	readonly format: PcmSampleFormat;
 }
 
 /**
- * Writes an accumulated window onto the output scale, clamping whatever the
- * scale did not catch.
+ * Writes an accumulated window onto the output scale.
  *
- * The clamp is a floor under a rounding error rather than the level control:
- * with the scale applied, a sample can still land a unit past the edge.
+ * The window is summed in full precision and quantized once, here: rounding
+ * each track's contribution on the way in would put a rounding error under
+ * every sample of every track instead of one under each sample of the mix.
+ * Holding a sample to the rails of an integer representation is
+ * {@link module:audio/pcm.writePcmSample}'s job, and is a floor under a
+ * rounding error rather than the level control: with the scale applied, a
+ * sample can still land a unit past the edge.
  * @param accumulator - The summed window
- * @param output - Where to write, at the given offset
- * @param outputOffset - First index to write in the output
+ * @param target - Where to write, and the representation to write in
+ * @param outputOffset - First sample index to write in the output
  * @param count - How many samples to write
  * @param scale - The output multiplier from {@link outputScale}
  */
 export function writeScaled(
-	accumulator: Int32Array,
-	output: Int16Array,
+	accumulator: Float64Array,
+	target: PcmWriteTarget,
 	outputOffset: number,
 	count: number,
 	scale: number,
 ): void {
-	for (let i = 0; i < count; i++) {
-		const scaled = Math.round((accumulator[i] ?? 0) * scale);
-		output[outputOffset + i] =
-			scaled > INT16_MAX
-				? INT16_MAX
-				: scaled < INT16_MIN
-					? INT16_MIN
-					: scaled;
-	}
+	const width = PCM_SAMPLE_BYTES[target.format];
+	// Walked as a view rather than by index: iterating a typed array yields a
+	// number, where an indexed read yields one that might be missing and needs
+	// a fallback no sample can ever reach.
+	accumulator.subarray(0, count).forEach((value, index) => {
+		writePcmSample(
+			target.view,
+			(outputOffset + index) * width,
+			target.format,
+			value * scale,
+		);
+	});
 }
 
 /**
@@ -162,7 +206,7 @@ export interface ResampleState {
 	 * The last {@link CARRIED_FRAMES} frames of the previous window,
 	 * interleaved: the older frame first, then the last one.
 	 */
-	previous: Int16Array;
+	previous: Float32Array;
 }
 
 /**
@@ -173,7 +217,7 @@ export interface ResampleState {
 export function newResampleState(channels: number): ResampleState {
 	return {
 		position: 0,
-		previous: new Int16Array(channels * CARRIED_FRAMES),
+		previous: new Float32Array(channels * CARRIED_FRAMES),
 	};
 }
 
@@ -194,7 +238,7 @@ export function newResampleState(channels: number): ResampleState {
  * @returns The sample, or the oldest carried one where the index runs past it
  */
 function frameAt(
-	source: Int16Array,
+	source: Float32Array,
 	state: ResampleState,
 	index: number,
 	channel: number,
@@ -258,9 +302,9 @@ export function sourceFramesNeeded(
  * @param state - Carried between windows; updated in place
  */
 export function resampleWindow(
-	source: Int16Array,
+	source: Float32Array,
 	sourceFrames: number,
-	target: Int16Array,
+	target: Float32Array,
 	outputFrames: number,
 	channels: number,
 	ratio: number,
@@ -279,9 +323,11 @@ export function resampleWindow(
 				index + 1 < sourceFrames
 					? frameAt(source, state, index + 1, channel, channels)
 					: before;
-			target[frame * channels + channel] = Math.round(
-				before + (after - before) * fraction,
-			);
+			// Not quantized here: the window it feeds is summed with the other
+			// tracks and written once, and rounding a track on the way into
+			// that sum only puts an error under it that the sum then carries.
+			target[frame * channels + channel] =
+				before + (after - before) * fraction;
 		}
 	}
 	// Where the next window starts, expressed against ITS first frame. The

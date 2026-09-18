@@ -10,10 +10,23 @@ import {
 	createWavFileBuffer,
 	assembleWavFromPcmSegments,
 	assembleWavFromPcmSegmentFiles,
+	wavHeaderSize,
+	wavMaxPcmBytes,
 	WAV_MAX_PCM_BYTES,
 	WAV_SIZE_LIMIT_MESSAGE,
 } from 'src/audio/WavEncoder';
+import { PcmSampleFormat } from 'src/audio/pcm';
 import { createMockApp } from '../helpers/createApp';
+
+/** Reads a four-character chunk id at an offset. */
+function chunkId(view: DataView, offset: number): string {
+	return String.fromCharCode(
+		view.getUint8(offset),
+		view.getUint8(offset + 1),
+		view.getUint8(offset + 2),
+		view.getUint8(offset + 3),
+	);
+}
 
 describe('WavEncoder', () => {
 	describe('getWavHeaderInfo', () => {
@@ -405,5 +418,131 @@ describe('the WAV container ceiling', () => {
 		expect(() => assembleWavFromPcmSegments(oversize, 2, 48000)).toThrow(
 			/cannot exceed 4 GB/,
 		);
+	});
+});
+
+// The header is what tells every reader - a player, a splitter, a
+// transcription engine - how wide a sample is and how to interpret it. It is
+// the one place the choice of representation becomes a property of the file
+// rather than of the plugin, so each is checked field by field.
+describe('the header of each representation', () => {
+	it.each([
+		[PcmSampleFormat.Int16, 44, 16, 1, 2, 4],
+		[PcmSampleFormat.Int24, 44, 24, 1, 3, 6],
+		[PcmSampleFormat.Float32, 58, 32, 3, 4, 8],
+	])(
+		'states width, tag, rate and block align for %s',
+		(format, headerBytes, bits, tag, width, blockAlign) => {
+			const header = createWavHeader(2, 48000, 1200, format);
+			const view = new DataView(header);
+
+			expect(header.byteLength).toBe(headerBytes);
+			expect(wavHeaderSize(format)).toBe(headerBytes);
+			expect(view.getUint16(20, true)).toBe(tag);
+			expect(view.getUint16(22, true)).toBe(2);
+			expect(view.getUint32(24, true)).toBe(48000);
+			expect(view.getUint32(28, true)).toBe(48000 * blockAlign);
+			expect(view.getUint16(32, true)).toBe(blockAlign);
+			expect(view.getUint16(34, true)).toBe(bits);
+			expect(blockAlign).toBe(2 * width);
+		},
+	);
+
+	it.each([PcmSampleFormat.Int16, PcmSampleFormat.Int24])(
+		'leaves the %s header at the canonical 44 bytes with no fact chunk',
+		(format) => {
+			const view = new DataView(createWavHeader(1, 44100, 800, format));
+
+			expect(view.getUint32(16, true)).toBe(16);
+			expect(chunkId(view, 36)).toBe('data');
+			expect(view.getUint32(40, true)).toBe(800);
+		},
+	);
+
+	// The WAVE specification counts floating point samples as a non-PCM
+	// representation, which has to carry the cbSize field and state its length
+	// a second time in a fact chunk. A reader that takes the length from there
+	// otherwise reads the file as empty.
+	it('gives the floating point header its cbSize and fact chunk', () => {
+		const frames = 150;
+		const pcmBytes = frames * 2 * 4;
+		const view = new DataView(
+			createWavHeader(2, 48000, pcmBytes, PcmSampleFormat.Float32),
+		);
+
+		expect(view.getUint32(16, true)).toBe(18);
+		expect(view.getUint16(36, true)).toBe(0);
+		expect(chunkId(view, 38)).toBe('fact');
+		expect(view.getUint32(42, true)).toBe(4);
+		expect(view.getUint32(46, true)).toBe(frames);
+		expect(chunkId(view, 50)).toBe('data');
+		expect(view.getUint32(54, true)).toBe(pcmBytes);
+	});
+
+	it.each([
+		[PcmSampleFormat.Int16, 44],
+		[PcmSampleFormat.Int24, 44],
+		[PcmSampleFormat.Float32, 58],
+	])(
+		'sizes a %s file buffer as header plus payload',
+		(format, headerBytes) => {
+			const buffer = createWavFileBuffer(1, 44100, 900, format);
+
+			expect(buffer.byteLength).toBe(headerBytes + 900);
+		},
+	);
+
+	it.each([
+		[PcmSampleFormat.Int16, 2],
+		[PcmSampleFormat.Int24, 3],
+		[PcmSampleFormat.Float32, 4],
+	])('assembles %s segments behind their own header', (format, width) => {
+		const segment = new ArrayBuffer(12 * width);
+
+		const wav = assembleWavFromPcmSegments(
+			[segment, segment],
+			1,
+			44100,
+			format,
+		);
+
+		expect(wav.byteLength).toBe(wavHeaderSize(format) + 24 * width);
+		expect(new DataView(wav).getUint16(34, true)).toBe(
+			format === PcmSampleFormat.Int16 ? 16 : width * 8,
+		);
+	});
+
+	// Every caller that predates the choice of width asks without naming one,
+	// and has to keep getting the canonical header it has always written.
+	it('answers for the sixteen-bit representation when none is named', () => {
+		expect(wavHeaderSize()).toBe(44);
+		expect(wavMaxPcmBytes()).toBe(WAV_MAX_PCM_BYTES);
+	});
+
+	// mixLayout answers a set of no tracks with no channels at all, and a
+	// header built from that answer has no frame size to count frames with.
+	it('states a zero frame count for a header with no channels', () => {
+		const view = new DataView(
+			createWavHeader(0, 0, 0, PcmSampleFormat.Float32),
+		);
+
+		expect(view.getUint16(32, true)).toBe(0);
+		expect(view.getUint32(46, true)).toBe(0);
+	});
+
+	// A longer header leaves correspondingly less room under the same 32-bit
+	// size field, and a payload sized to the shorter one would overflow it.
+	it('takes the floating point header out of the payload ceiling', () => {
+		expect(wavMaxPcmBytes(PcmSampleFormat.Float32)).toBe(
+			WAV_MAX_PCM_BYTES - 14,
+		);
+		expect(() =>
+			createWavHeader(
+				2,
+				48000,
+				wavMaxPcmBytes(PcmSampleFormat.Float32) + 1,
+				PcmSampleFormat.Float32,
+			),
+		).toThrow(/cannot exceed 4 GB/);
 	});
 });

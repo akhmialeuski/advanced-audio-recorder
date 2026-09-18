@@ -16,6 +16,7 @@ import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
 import { concatArrayBuffers } from '../utils/buffers';
 import { directoryOf } from '../utils/paths';
 import { assembleWavFromPcmSegmentFiles } from '../audio/WavEncoder';
+import { normalizePcmSampleFormat } from '../audio/pcm';
 import {
 	removeTemporaryArtifacts,
 	resolveUniquePathInDirectory,
@@ -219,6 +220,9 @@ export async function recoverSession(
 					track.pcmChannels,
 					track.pcmSampleRate,
 					app,
+					// A journal written before the width became a choice
+					// names none, and every such session was sixteen bits.
+					normalizePcmSampleFormat(track.pcmFormat),
 				);
 				extension = FORMAT_WAV;
 			} else {

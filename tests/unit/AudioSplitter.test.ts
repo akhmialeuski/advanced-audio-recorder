@@ -21,8 +21,14 @@ import {
 	type WavLayout,
 } from 'src/recording/AudioSplitter';
 import { at, defined } from '../helpers/assertions';
-import { PCM_BYTES_PER_SAMPLE } from 'src/audio/pcm';
-import { createWavHeader } from 'src/audio/WavEncoder';
+import {
+	PCM_BYTES_PER_SAMPLE,
+	PCM_SAMPLE_BYTES,
+	PcmSampleFormat,
+	readPcmSample,
+} from 'src/audio/pcm';
+import { encodePcmSamples } from '../helpers/pcmFixtures';
+import { createWavHeader, wavHeaderSize } from 'src/audio/WavEncoder';
 import { partial } from '../helpers/doubles';
 
 /** WAV header size produced by createWavHeader. */
@@ -327,6 +333,7 @@ describe('computeWavPartBytes', () => {
 			dataLength: 16000,
 			byteRate: 4000,
 			blockAlign: 4,
+			factOffset: null,
 		};
 
 		// 1.5005 s -> raw 6002 B, aligned down to 6000
@@ -339,6 +346,7 @@ describe('computeWavPartBytes', () => {
 			dataLength: 1000,
 			byteRate: 2000,
 			blockAlign: 2,
+			factOffset: null,
 		};
 
 		expect(computeWavPartBytes(layout, 0)).toBe(0);
@@ -565,6 +573,19 @@ describe('computePcmPartLimitBytes', () => {
 		expect(computePcmPartLimitBytes(2, 48000, 2)).toBe(
 			2 * 60 * 48000 * 2 * PCM_BYTES_PER_SAMPLE,
 		);
+	});
+
+	// A part boundary that is not a whole number of frames puts every later
+	// sample one channel out, which plays as noise for the rest of the part.
+	it.each([
+		[PcmSampleFormat.Int16, 2],
+		[PcmSampleFormat.Int24, 3],
+		[PcmSampleFormat.Float32, 4],
+	])('scales with the width of a %s sample', (format, width) => {
+		const limit = computePcmPartLimitBytes(1, 48000, 2, format);
+
+		expect(limit).toBe(60 * 48000 * 2 * width);
+		expect(limit % (2 * width)).toBe(0);
 	});
 });
 
@@ -879,5 +900,126 @@ describe('cutting a WAV at arbitrary points', () => {
 				new Uint8Array(buildWavPartRange(bytes, layout, 2000, 3000)),
 			);
 		});
+	});
+});
+
+/**
+ * Builds a WAV of the given representation whose samples run 0, 1, 2, ... so
+ * a part can be checked against the frames it should have carried.
+ */
+function buildRampWav(
+	format: PcmSampleFormat,
+	channels: number,
+	sampleRate: number,
+	frames: number,
+): ArrayBuffer {
+	const width = PCM_SAMPLE_BYTES[format];
+	const headerSize = wavHeaderSize(format);
+	const pcmBytes = frames * channels * width;
+	const wav = new Uint8Array(headerSize + pcmBytes);
+	wav.set(
+		new Uint8Array(createWavHeader(channels, sampleRate, pcmBytes, format)),
+		0,
+	);
+	wav.set(
+		new Uint8Array(
+			encodePcmSamples(
+				format,
+				Array.from({ length: frames * channels }, (_value, index) =>
+					// Eighths, which a float32 sample holds exactly, so a part
+					// can be compared with the frames it should have carried
+					// rather than with what the representation rounded them to.
+					format === PcmSampleFormat.Float32 ? index / 8 : index,
+				),
+			),
+		),
+		headerSize,
+	);
+	return wav.buffer;
+}
+
+/** Every sample a part carries, read back through its own header. */
+function partSamples(part: ArrayBuffer, format: PcmSampleFormat): number[] {
+	const layout = defined(parseWavLayout(part));
+	const width = PCM_SAMPLE_BYTES[format];
+	const view = new DataView(part, layout.dataOffset, layout.dataLength);
+	return Array.from({ length: layout.dataLength / width }, (_value, index) =>
+		readPcmSample(view, index * width, format),
+	);
+}
+
+// Splitting without decoding is what makes a part of a multi-gigabyte
+// recording cost nothing but the bytes it holds, and it works by reading the
+// width out of the header rather than assuming one. A representation the
+// parser does not describe correctly produces parts that start mid-frame.
+describe('splitting a file of any representation without decoding it', () => {
+	it.each([
+		[PcmSampleFormat.Int16, 2],
+		[PcmSampleFormat.Int24, 3],
+		[PcmSampleFormat.Float32, 4],
+	])('reads the layout of a %s file from its header', (format, width) => {
+		const wav = buildRampWav(format, 2, 48000, 100);
+
+		const layout = defined(parseWavLayout(wav));
+
+		expect(layout.dataOffset).toBe(wavHeaderSize(format));
+		expect(layout.blockAlign).toBe(2 * width);
+		expect(layout.byteRate).toBe(48000 * 2 * width);
+		expect(layout.dataLength).toBe(100 * 2 * width);
+	});
+
+	// The case the Definition of Done names: twenty-four bit samples have no
+	// typed array of their own, so a splitter that reasoned in int16 frames
+	// would cut one and a half samples per frame.
+	it('carries twenty-four bit frames through a split intact', () => {
+		const format = PcmSampleFormat.Int24;
+		const wav = buildRampWav(format, 2, 1000, 12);
+		const layout = defined(parseWavLayout(wav));
+
+		// 1000 Hz stereo, six bytes a frame: four frames of audio a part
+		const partBytes = computeWavPartBytes(layout, 0.004);
+		const first = buildWavPart(wav, layout, partBytes, 0);
+		const second = buildWavPart(wav, layout, partBytes, 1);
+
+		expect(partBytes).toBe(4 * 6);
+		expect(partSamples(first, format)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+		expect(partSamples(second, format)).toEqual([
+			8, 9, 10, 11, 12, 13, 14, 15,
+		]);
+	});
+
+	it('keeps the twenty-four bit header of every part', () => {
+		const wav = buildRampWav(PcmSampleFormat.Int24, 1, 1000, 30);
+		const layout = defined(parseWavLayout(wav));
+
+		const part = buildWavPart(wav, layout, 30, 0);
+
+		const view = new DataView(part);
+		expect(view.getUint16(20, true)).toBe(1);
+		expect(view.getUint16(34, true)).toBe(24);
+		expect(view.getUint32(4, true)).toBe(part.byteLength - 8);
+	});
+
+	// A part inherits the whole header, fact chunk included, so the length it
+	// states there has to be brought down to the part's own.
+	it('restates the length of a floating point part in its fact chunk', () => {
+		const format = PcmSampleFormat.Float32;
+		const wav = buildRampWav(format, 2, 1000, 20);
+		const layout = defined(parseWavLayout(wav));
+		expect(layout.factOffset).toBe(46);
+		expect(new DataView(wav).getUint32(46, true)).toBe(20);
+
+		const part = buildWavPartRange(wav, layout, 0, 5 * 2 * 4);
+
+		expect(new DataView(part).getUint32(46, true)).toBe(5);
+		expect(partSamples(part, format)).toEqual([
+			0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1, 1.125,
+		]);
+	});
+
+	it('reports no fact chunk for a file that carries none', () => {
+		const layout = parseWavLayout(buildTestWav(1, 8000, 100));
+
+		expect(layout?.factOffset).toBeNull();
 	});
 });

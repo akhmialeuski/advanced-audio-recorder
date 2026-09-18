@@ -28,7 +28,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 - [Diagnostics](#diagnostics)
 - [Feature matrix](#feature-matrix)
 
-![The plugin settings tab with the documentation callout, the audio input, output format and file storage rows, and one entry per section below them](images/features-settings-overview.png)
+![The plugin settings tab with the documentation callout and the audio input, output format and file storage rows, the output format section showing recording format, bit depth, audio bitrate and the read-only output summary](images/features-settings-overview.png)
 
 ---
 

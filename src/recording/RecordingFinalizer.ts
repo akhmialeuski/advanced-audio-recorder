@@ -524,6 +524,7 @@ export class RecordingFinalizer {
 			target.pcmChannels,
 			target.pcmSampleRate,
 			this.app,
+			target.pcmFormat,
 		);
 
 		await this.app.vault.createBinary(filePath, wavBuffer);
@@ -577,8 +578,10 @@ export class RecordingFinalizer {
 	 * again, so a session is placed the same by either route: the level in
 	 * decibels through {@link gainFactor}, the position through the balance law
 	 * of {@link panGains}, and the alignment through {@link normalizeFactor}.
-	 * Only the unit differs, because the mixer reads a level on the int16 scale
-	 * the capture works in while a decoded buffer is a share of full scale.
+	 * Only the unit differs, because the mixer reads a level on the scale the
+	 * captured representation works in while a decoded buffer is always a share
+	 * of full scale, which is why the level is put on the sixteen-bit scale
+	 * {@link normalizeFactor} answers on by default.
 	 *
 	 * The placement is the same; the final level is not, once levels are
 	 * aligned. This route renders the mix and measures the peak it actually
@@ -648,6 +651,7 @@ export class RecordingFinalizer {
 					);
 				},
 				alignLevels: session.alignTrackLevels,
+				format: session.pcmFormat,
 			});
 			this.debugLogger.log('Mixed through the streaming route', {
 				tracks: tracks.length,
@@ -703,6 +707,7 @@ export class RecordingFinalizer {
 			target.pcmChannels,
 			target.pcmSampleRate,
 			this.app,
+			target.pcmFormat,
 		);
 		return new Blob([wavBuffer], {
 			type: audioMimeForExtension(FORMAT_WAV),
