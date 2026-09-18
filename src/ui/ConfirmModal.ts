@@ -18,12 +18,25 @@ export interface ConfirmModalOptions {
 	confirmText: string;
 	/** Called once when the user confirms. */
 	onConfirm: () => void;
+	/**
+	 * Called once when the dialog closes without a confirmation, whether the
+	 * user pressed Cancel, Escape, or the window's close button. Optional: a
+	 * caller that only acts on a yes has nothing to do here, while one that
+	 * awaits an answer needs the no as much as the yes.
+	 */
+	onCancel?: () => void;
 }
 
 /**
  * Yes/no confirmation dialog.
  */
 export class ConfirmModal extends PluginModal {
+	/**
+	 * Whether the confirm button was pressed, so closing the dialog any other
+	 * way - Cancel, Escape, the window chrome - reports the no exactly once.
+	 */
+	private confirmed = false;
+
 	constructor(
 		app: App,
 		private readonly options: ConfirmModalOptions,
@@ -39,6 +52,7 @@ export class ConfirmModal extends PluginModal {
 				text: this.options.confirmText,
 				destructive: true,
 				onClick: () => {
+					this.confirmed = true;
 					this.close();
 					this.options.onConfirm();
 				},
@@ -50,5 +64,12 @@ export class ConfirmModal extends PluginModal {
 				},
 			},
 		);
+	}
+
+	override onClose(): void {
+		super.onClose();
+		if (!this.confirmed) {
+			this.options.onCancel?.();
+		}
 	}
 }

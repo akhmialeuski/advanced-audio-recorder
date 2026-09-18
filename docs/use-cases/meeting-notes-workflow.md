@@ -264,6 +264,7 @@ Use this once to confirm your setup, then just record.
 
 - **The Speaker diarization toggle is greyed out** - the selected engine cannot diarize. Switch **Transcription engine** to **Deepgram**, **Google Gemini**, or **Mistral Voxtral**.
 - **Speaker numbers reset partway through a long Gemini transcript** - Gemini splits recordings longer than 15 minutes into parts, and diarized splits restart speaker numbering at each boundary (surfaced as a warning). Use **Deepgram** for consistent labels across a long meeting.
+- **One person came back as two speakers** - diarization split them across labels (a changed microphone position, a long pause, a phone joining). In **Rename speakers**, type the same name into both rows and confirm the merge: their lines become one speaker everywhere. Do it before anyone edits the note, since merged lines read identically afterwards and only a new transcription can separate them again.
 - **The play buttons in Rename speakers are greyed out** - that recording's roster predates speaker samples. Transcribe it once more with **Speaker diarization** on and the samples appear.
 - **No summary appeared** - confirm **Enable LLM post-processing** is on, **Task** is **Summarize**, and the chosen engine's **API key** is set on its page under **Engines** (the OpenAI, Gemini, and Mistral accounts are shared with transcription, while Anthropic keeps its own).
 - **The summary is cut off** - raise **Max output tokens** (default 4096), up to whatever your model allows; the service refuses a larger budget and names its own maximum.

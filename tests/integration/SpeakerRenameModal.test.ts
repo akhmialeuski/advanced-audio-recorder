@@ -26,8 +26,9 @@ import {
 	hasUnscopableRecordedNote,
 } from 'src/speakers/applySpeakerRenames';
 import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
-import { noticeMessages } from '../mocks/obsidian';
+import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import { internalsOf, partial } from '../helpers/doubles';
+import { applyAnsweringMerge, typeSpeakerNames } from '../helpers/speakerRows';
 import { createMockApp } from '../helpers/createApp';
 import { rowDescription, rowSelect, settingRow } from '../helpers/settingRows';
 import { installControlledAudio } from '../helpers/mediaMocks';
@@ -120,6 +121,13 @@ function rosterSection(
 	};
 }
 
+/** A section whose two speakers are both still unnamed. */
+function unnamedRosterSection(): TranscriptSection {
+	return rosterSection({
+		speakers: [{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
+	});
+}
+
 /**
  * The picked roster "Weekly sync" holding Maria, over a recording whose own
  * roster is Alex and whose two speakers are still unnamed.
@@ -171,6 +179,22 @@ async function nameSecondSpeaker(
 	second.value = name;
 	meanwhile();
 	await dialog.internals.apply();
+}
+
+/**
+ * Opens the dialog over a stored section and presses Undo last rename.
+ * @param section - The section the sidecar hands the dialog
+ * @returns The sidecar stub, for asserting what the undo wrote through it
+ */
+async function undoOver(
+	section: TranscriptSection,
+): Promise<ReturnType<typeof makeSidecar>> {
+	const sidecar = makeSidecar(section);
+	const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+	modal.open();
+	await internals.render();
+	await internals.undo();
+	return sidecar;
 }
 
 const cleanApplyResult = {
@@ -258,13 +282,10 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		const second = internals.inputs.get('Speaker 2');
-		if (!first || !second) {
-			throw new Error('missing inputs');
-		}
-		first.value = 'Bob';
-		second.value = ' Cleo ';
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Bob',
+			'Speaker 2': ' Cleo ',
+		});
 		await internals.apply();
 
 		expect(sidecar.commitRename).toHaveBeenCalledWith(
@@ -308,11 +329,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		const applyOrder = applyMock.mock.invocationCallOrder[0] ?? 0;
@@ -329,11 +346,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		expect(sidecar.commitRename).not.toHaveBeenCalled();
@@ -348,11 +361,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = '';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': '' });
 		await internals.apply();
 
 		expect(sidecar.commitRename).toHaveBeenCalledWith(
@@ -370,42 +379,156 @@ describe('SpeakerRenameModal', () => {
 		);
 	});
 
-	it('rejects assigning one name to two speakers', async () => {
-		const sidecar = makeSidecar(rosterSection());
+	it('merges two speakers into one name once the merge is confirmed', async () => {
+		// Diarization routinely splits one person across two labels; naming
+		// both of them is the fix, and the only way to repair such a note.
+		const sidecar = makeSidecar(unnamedRosterSection());
 		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
 		modal.open();
 		await internals.render();
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Alex',
+			'Speaker 2': 'Alex',
+		});
 
-		const first = internals.inputs.get('Speaker 1');
-		const second = internals.inputs.get('Speaker 2');
-		if (!first || !second) {
-			throw new Error('missing inputs');
-		}
-		first.value = 'Alex';
-		second.value = 'Alex';
-		await internals.apply();
+		await applyAnsweringMerge(() => internals.apply(), 'Merge');
+
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			[
+				{ from: 'Speaker 1', to: 'Alex' },
+				{ from: 'Speaker 2', to: 'Alex' },
+			],
+			{ allowBroad: false },
+		);
+		expect(sidecar.commitRename).toHaveBeenCalledWith(
+			'audio/rec.wav',
+			[
+				{ label: 'Speaker 1', name: 'Alex' },
+				{ label: 'Speaker 2', name: 'Alex' },
+			],
+			{ 'Speaker 1': 'Alex', 'Speaker 2': 'Alex' },
+			{ names: ['Alex', 'Alex'], profileId: '' },
+		);
+	});
+
+	it('names the speakers it is about to merge', async () => {
+		const { modal, internals } = makeModal(
+			mergeSettings({}),
+			makeSidecar(unnamedRosterSection()),
+		);
+		modal.open();
+		await internals.render();
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Alex',
+			'Speaker 2': 'Alex',
+		});
+
+		const asked = await applyAnsweringMerge(
+			() => internals.apply(),
+			'Cancel',
+		);
+
+		expect(asked).toContain('Speaker 1, Speaker 2 become Alex.');
+	});
+
+	it('writes nothing when the merge is not confirmed', async () => {
+		const sidecar = makeSidecar(unnamedRosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Alex',
+			'Speaker 2': 'Alex',
+		});
+
+		await applyAnsweringMerge(() => internals.apply(), 'Cancel');
 
 		expect(applyMock).not.toHaveBeenCalled();
 		expect(sidecar.commitRename).not.toHaveBeenCalled();
+	});
+
+	it('asks nothing when the stored roster already carries the merge', async () => {
+		// A repeat only heals the outputs; asking again for a merge already
+		// applied would nag on every press.
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [
+					{ label: 'Speaker 1', name: 'Alex' },
+					{ label: 'Speaker 2', name: 'Alex' },
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		const before = modalInstances.length;
+
+		await internals.apply();
+
+		expect(modalInstances).toHaveLength(before);
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			[
+				{ from: 'Speaker 1', to: 'Alex' },
+				{ from: 'Speaker 2', to: 'Alex' },
+			],
+			{ allowBroad: false },
+		);
+	});
+
+	it('leaves a merged name alone when the speakers are given separate names again', async () => {
+		// Both speakers already render as "Alex", so nothing in the outputs
+		// says which of them a line belonged to.
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [
+					{ label: 'Speaker 1', name: 'Alex' },
+					{ label: 'Speaker 2', name: 'Alex' },
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		typeSpeakerNames(internals.inputs, {
+			'Speaker 1': 'Alex',
+			'Speaker 2': 'Bob',
+		});
+
+		await internals.apply();
+
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			[
+				{ from: 'Speaker 1', to: 'Alex' },
+				{ from: 'Speaker 2', to: 'Bob' },
+			],
+			{ allowBroad: false },
+		);
 		expect(Notice).toHaveBeenCalledWith(
-			expect.stringContaining('Two speakers cannot share a name'),
+			expect.stringContaining(
+				'Left as it is: "Alex" - shown by more than one speaker',
+			),
 		);
 	});
 
 	it("explains why a name equal to another speaker's label is rejected", async () => {
-		// Swapping raw engine labels (or naming one speaker after another's
-		// label) would make their lines textually indistinguishable forever,
-		// so the block is deliberate - and the message says which collision.
+		// Naming one speaker after another's engine label says nothing about
+		// which of the two a written occurrence belonged to, so the block is
+		// deliberate - and the message points at the merge that does work.
 		const sidecar = makeSidecar(rosterSection());
 		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Speaker 2';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Speaker 2' });
 		await internals.apply();
 
 		expect(applyMock).not.toHaveBeenCalled();
@@ -529,11 +652,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
@@ -556,11 +675,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
@@ -583,11 +698,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		expect(Notice).toHaveBeenCalledWith(
@@ -609,11 +720,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		expect(Notice).toHaveBeenCalledWith(
@@ -693,11 +800,8 @@ describe('SpeakerRenameModal', () => {
 				{ at: 't2', names: { 'Speaker 1': 'Bob' } },
 			],
 		});
-		const sidecar = makeSidecar(section);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
-		await internals.undo();
+
+		const sidecar = await undoOver(section);
 
 		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
 			{ label: 'Speaker 1', name: 'Alex' },
@@ -722,11 +826,8 @@ describe('SpeakerRenameModal', () => {
 		const section = rosterSection({
 			history: [{ at: 't1', names: { 'Speaker 1': 'Alex' } }],
 		});
-		const sidecar = makeSidecar(section);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
-		await internals.undo();
+
+		const sidecar = await undoOver(section);
 
 		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
 			{ label: 'Speaker 1' },
@@ -755,11 +856,8 @@ describe('SpeakerRenameModal', () => {
 				{ at: 't2', names: { 'Speaker 1': 'Alex' } },
 			],
 		});
-		const sidecar = makeSidecar(section);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
-		await internals.undo();
+
+		const sidecar = await undoOver(section);
 
 		expect(applyMock).toHaveBeenCalledWith(
 			app,
@@ -782,16 +880,13 @@ describe('SpeakerRenameModal', () => {
 			updatedNotes: 0,
 			unscopableNotes: 1,
 		});
-		const sidecar = makeSidecar(
+
+		await undoOver(
 			rosterSection({
 				speakers: [{ label: 'Speaker 1', name: 'Alex' }],
 				history: [{ at: 't1', names: { 'Speaker 1': 'Alex' } }],
 			}),
 		);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
-		await internals.undo();
 
 		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
 		expect(notice).toContain(
@@ -799,6 +894,49 @@ describe('SpeakerRenameModal', () => {
 				'left as they are.',
 		);
 		expect(notice).not.toContain('apply again');
+	});
+
+	it('undo of a merge steps the roster back and leaves the merged name', async () => {
+		// Undo is the first thing pressed after a merge made by mistake, and
+		// it is the one rename that cannot be walked back: both speakers
+		// render as "Alex" by now, so no rule can tell their lines apart. The
+		// roster reverts, the shared text stays, and the notice says so
+		// instead of dragging both speakers' lines onto one of the names.
+		const section = rosterSection({
+			speakers: [
+				{ label: 'Speaker 1', name: 'Alex' },
+				{ label: 'Speaker 2', name: 'Alex' },
+			],
+			history: [
+				{ at: 't1', names: { 'Speaker 1': 'Alex' } },
+				{
+					at: 't2',
+					names: { 'Speaker 1': 'Alex', 'Speaker 2': 'Alex' },
+				},
+			],
+		});
+
+		const sidecar = await undoOver(section);
+
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
+			{ label: 'Speaker 1', name: 'Alex' },
+			{ label: 'Speaker 2' },
+		]);
+		// Only the healing rule for the label of the speaker that keeps its
+		// name survives. The shared name is claimed by both speakers, so it
+		// is rewritten for neither.
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			section,
+			[{ from: 'Speaker 1', to: 'Alex' }],
+			{ allowBroad: false },
+		);
+		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
+		expect(notice).toContain(
+			'Left as it is: "Alex" - shown by more than one speaker',
+		);
+		expect(sidecar.popHistory).toHaveBeenCalledWith('audio/rec.wav');
 	});
 
 	it('reports a note that already uses these names without alarm', async () => {
@@ -813,11 +951,7 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Bob';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Bob' });
 		await internals.apply();
 
 		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
@@ -1405,11 +1539,7 @@ describe('SpeakerRenameModal', () => {
 		);
 		await internals.render();
 		internals.selectedProfileId = 'p1';
-		const first = internals.inputs.get('Speaker 1');
-		if (!first) {
-			throw new Error('missing input');
-		}
-		first.value = 'Maria';
+		typeSpeakerNames(internals.inputs, { 'Speaker 1': 'Maria' });
 
 		await internals.apply();
 

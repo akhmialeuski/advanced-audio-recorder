@@ -35,6 +35,7 @@ import type { TranscriptionProvider } from 'src/transcription/providers/Transcri
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import { internalsOf, partial } from '../helpers/doubles';
+import { typeSpeakerNames } from '../helpers/speakerRows';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
 import { completed } from '../helpers/llmDoubles';
@@ -358,13 +359,7 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 		const offeredBroad = (modal.contentEl.textContent ?? '').includes(
 			'Rename in notes without timecodes',
 		);
-		for (const [label, name] of Object.entries(names)) {
-			const input = internals.inputs.get(label);
-			if (!input) {
-				throw new Error(`missing input for ${label}`);
-			}
-			input.value = name;
-		}
+		typeSpeakerNames(internals.inputs, names);
 		internals.allowBroad = options.allowBroad ?? false;
 		await internals.apply();
 		modal.close();
