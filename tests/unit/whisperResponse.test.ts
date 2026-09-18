@@ -191,6 +191,24 @@ describe('mapWhisperResponse', () => {
 				end: 0,
 			});
 		});
+
+		it.each([
+			{ name: 'no end at all', word: { word: 'hi', start: 4 } },
+			{ name: 'a null end', word: { word: 'hi', start: 4, end: null } },
+			{
+				name: 'an end written as a string',
+				word: { word: 'hi', start: 4, end: '5' },
+			},
+		])('ends a word at its own start when it reports $name', ({ word }) => {
+			// Zero would point the word's interval backwards: a negative
+			// duration, a sort key before every word that came earlier, and a
+			// playback position at the start of the file.
+			const result = mapWhisperResponse({
+				segments: [{ start: 4, end: 5, text: 'hi', words: [word] }],
+			});
+
+			expect(at(defined(at(result.segments, 0).words), 0).end).toBe(4);
+		});
 	});
 
 	describe('the flat-transcript fallback', () => {
