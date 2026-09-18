@@ -407,8 +407,12 @@ export class RecordingManager {
 			});
 			this.session = plan.session;
 			if (plan.autoSplitSkipped) {
+				// Said in terms of the session rather than of the feature that
+				// configured it. Two configurations reach this line now, and
+				// naming the multi-track page told a user who had only turned
+				// the system-audio switch on about a page they never opened.
 				new Notice(
-					'Auto-split is skipped for merged multi-track recordings.',
+					"Auto-split is skipped: this session's tracks are mixed into one file.",
 				);
 			}
 			if (this.session.splitEnabled) {

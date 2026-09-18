@@ -24,6 +24,7 @@ import type { RecordingSessionConfig, TrackMix } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	effectiveOutputMode,
+	effectiveTrackLevelAlignment,
 	recordingEncodingFor,
 	type TrackAudioSource,
 } from './AudioStreamHandler';
@@ -115,10 +116,12 @@ export function createCaptureSession(
 			: Array.from({ length: streamCount }, () =>
 					normalizeChannelMode(settings.recordingChannels),
 				);
-	// Read once here, from the one place that answers it: the stored mode is
-	// the multi-track page's, and a session pairing the microphone with the
-	// system output is mixed whatever that page was last left on.
+	// Read here, from the one place that answers them: both are rows of the
+	// multi-track page, and a session pairing the microphone with the system
+	// output shows none of that page, so it is mixed into one file and left at
+	// the levels it was recorded at whatever those rows were last set to.
 	const outputMode = effectiveOutputMode(settings);
+	const alignTrackLevels = effectiveTrackLevelAlignment(settings);
 	// A session writing one file per track never mixes, so it carries no
 	// placement at all rather than a set of neutral ones nothing reads.
 	const merging = outputMode === 'single' && trackOrder.length > 1;
@@ -165,7 +168,7 @@ export function createCaptureSession(
 		partSuffix: sanitizePartSuffix(settings.splitPartSuffix),
 		channelModes: Object.freeze(channelModes),
 		trackMix,
-		alignTrackLevels: merging && settings.mixAlignTrackLevels,
+		alignTrackLevels: merging && alignTrackLevels,
 	});
 	return { session, autoSplitSkipped };
 }

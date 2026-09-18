@@ -66,7 +66,7 @@ Learn more: [Recording](recording.md#crash-recovery)
 
 ## Automatic splitting
 
-Enable **Split recordings automatically** to save a recording as separate part files of a fixed duration (`...-part1.webm`, `...-part2.webm`, ...) instead of one long file. Each finished part is written to disk while recording continues, and links to all parts are inserted into the note when you stop. WAV is split sample-exactly; compressed formats restart the recorder at each boundary, so parts are approximately the configured length. It works on mobile as well, where it also bounds how much an interrupted session can lose. Auto-split is not applied to merged multi-track recordings.
+Enable **Split recordings automatically** to save a recording as separate part files of a fixed duration (`...-part1.webm`, `...-part2.webm`, ...) instead of one long file. Each finished part is written to disk while recording continues, and links to all parts are inserted into the note when you stop. WAV is split sample-exactly; compressed formats restart the recorder at each boundary, so parts are approximately the configured length. It works on mobile as well, where it also bounds how much an interrupted session can lose. Auto-split is not applied to a session that mixes several tracks into one file.
 
 Learn more: [Splitting](splitting.md#automatic-splitting-during-recording)
 

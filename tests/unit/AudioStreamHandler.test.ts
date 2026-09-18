@@ -7,6 +7,7 @@ import {
 	channelSelectionAvailable,
 	deviceMaxChannels,
 	effectiveOutputMode,
+	effectiveTrackLevelAlignment,
 	getAudioInputDeviceSnapshot,
 	getAudioStreams,
 	getAudioSourceName,
@@ -1039,6 +1040,44 @@ describe('the system-audio pairing', () => {
 				outputMode: 'multiple',
 			}),
 		).toBe('multiple');
+	});
+
+	// The state of a vault that never opened the device row, which is the one
+	// the settings reference calls the default. The microphone track carries
+	// no id there, the same way the single-track capture carries none, and a
+	// capture asked for an empty id would open nothing at all.
+	it('pairs the default microphone where no device was picked', () => {
+		const [microphone] = getOrderedTrackSources({
+			...paired,
+			audioDeviceId: '',
+		});
+
+		expect(microphone).toMatchObject({
+			deviceId: '',
+			kind: 'input-device',
+		});
+	});
+
+	// Match track levels is declared on the multi-track page under a predicate
+	// that hides it while multi-track is off, so the pairing can neither show
+	// it nor be configured through it.
+	it('leaves its tracks at the levels they were recorded at', () => {
+		expect(
+			effectiveTrackLevelAlignment({
+				...paired,
+				mixAlignTrackLevels: true,
+			}),
+		).toBe(false);
+	});
+
+	it('leaves the stored levelling to a session that configured tracks', () => {
+		expect(
+			effectiveTrackLevelAlignment({
+				...DEFAULT_SETTINGS,
+				enableMultiTrack: true,
+				mixAlignTrackLevels: true,
+			}),
+		).toBe(true);
 	});
 });
 

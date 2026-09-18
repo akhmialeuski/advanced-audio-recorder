@@ -44,5 +44,8 @@ const actual = jest.requireActual<
 export const recordingEncodingFor = actual.recordingEncodingFor;
 // Read by the session builder for the same kind of reason: which mode a
 // session writes in is a question about the settings, and a double would have
-// to restate when the system-audio pairing overrules the stored mode.
+// to restate when the system-audio pairing overrules the stored mode. The
+// switch beside that row is answered by the same rule and comes from the same
+// place, so the two can never disagree here either.
 export const effectiveOutputMode = actual.effectiveOutputMode;
+export const effectiveTrackLevelAlignment = actual.effectiveTrackLevelAlignment;

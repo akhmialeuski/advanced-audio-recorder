@@ -448,7 +448,10 @@ export function isSystemAudioPairingEnabled(
  * Two configurations produce one: the multi-track page's, and the pairing
  * that stands in for it. Asked as one question wherever the answer decides
  * between the track path and the single capture, so a third way of reaching
- * that path cannot be added to one caller and missed by the other.
+ * that path cannot be added to one caller and missed by the other. The one
+ * fork that stays on {@link isMultiTrackSessionEnabled} is
+ * {@link validateSelectedDevices}, which chooses a sentence rather than a
+ * path, and says why there.
  *
  * A multi-track session with no track configured answers true and opens
  * nothing, which is the session the settings entry warns about rather than
@@ -480,6 +483,33 @@ export function effectiveOutputMode(
 	return isSystemAudioPairingEnabled(settings)
 		? 'single'
 		: settings.outputMode;
+}
+
+/**
+ * Whether the mixer brings this session's tracks to a common level before it
+ * combines them.
+ *
+ * The same question as {@link effectiveOutputMode}, asked of the switch beside
+ * that row: Match track levels is declared on the multi-track page, under a
+ * visible predicate that hides it while multi-track is off, so the pairing can
+ * neither show it nor be configured through it. A stored value left behind by
+ * an earlier multi-track session would otherwise keep correcting the levels of
+ * a call nothing on screen says is being corrected, and the pairing's own
+ * documentation sends a user who wants that correction to the multi-track page
+ * to get it.
+ *
+ * Every value the multi-track page owns is answered here rather than read off
+ * the settings at the point of use, so a row added to that page arrives with
+ * one place to say what the pairing does with it.
+ * @param settings - Plugin settings
+ * @returns True when the mixer levels the tracks against each other
+ */
+export function effectiveTrackLevelAlignment(
+	settings: AudioRecorderSettings,
+): boolean {
+	return (
+		!isSystemAudioPairingEnabled(settings) && settings.mixAlignTrackLevels
+	);
 }
 
 /**
@@ -819,6 +849,14 @@ export async function missingCaptureIndexes(
  * used for capture there (see {@link resolveCaptureDeviceId}), so their
  * absence - e.g. desktop ids arriving through a synced data.json - must not
  * block recording on the default microphone.
+ *
+ * The one fork here that asks {@link isMultiTrackSessionEnabled} rather than
+ * {@link isTrackListSession}, because the question is which sentence the user
+ * reads and not which path the capture takes. The system-audio pairing opens
+ * a track list, and the only device in it is the single-track microphone, so
+ * the second branch checks exactly the same id; sent down the first one it
+ * would answer a user who never opened the multi-track page with a track
+ * number instead of the row they set.
  * @param settings - Plugin settings holding the configured inputs
  * @throws Error naming what is missing, when anything is
  */

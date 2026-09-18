@@ -438,6 +438,30 @@ describe('RecordingManager', () => {
 			);
 		}
 
+		/** What a session mixing its tracks into one file says about splitting. */
+		const AUTO_SPLIT_SKIPPED =
+			"Auto-split is skipped: this session's tracks are mixed into one file.";
+
+		/**
+		 * A two-stream session that asked for auto-split, started.
+		 *
+		 * Two configurations mix their tracks into one file and so reach the
+		 * same refusal, and what a case differs on is which of them it sets.
+		 * @param merges - The setting that makes this session mix its tracks
+		 */
+		async function startMergedSessionWithSplitOn(
+			merges: Partial<AudioRecorderSettings>,
+		): Promise<void> {
+			stubAudioStreams({ count: 2 });
+			createManagerWithSettings({
+				recordingFormat: 'webm',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+				...merges,
+			});
+			await manager.startRecording();
+		}
+
 		/**
 		 * A manager configured to rotate a WebM part every minute, with the
 		 * clock frozen at zero so a test moves it by hand.
@@ -817,20 +841,21 @@ describe('RecordingManager', () => {
 			expect(global.MediaRecorder).toHaveBeenCalledTimes(2);
 		});
 
-		it('skips auto-split for merged multi-track recordings', async () => {
-			stubAudioStreams({ count: 2 });
-			createManagerWithSettings({
-				recordingFormat: 'webm',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 1,
-				outputMode: 'single',
-			});
+		it('skips auto-split for a session whose tracks are merged', async () => {
+			await startMergedSessionWithSplitOn({ outputMode: 'single' });
 
-			await manager.startRecording();
+			expect(Notice).toHaveBeenCalledWith(AUTO_SPLIT_SKIPPED);
+		});
 
-			expect(Notice).toHaveBeenCalledWith(
-				'Auto-split is skipped for merged multi-track recordings.',
-			);
+		// The second configuration that reaches the same refusal, and the
+		// reason the sentence names neither feature: a user who turned one
+		// switch on under Audio input never opened the multi-track page, so a
+		// notice about merged multi-track recordings sent them looking for a
+		// setting they have not got.
+		it('says the same of a session that only paired the system audio', async () => {
+			await startMergedSessionWithSplitOn({ includeSystemAudio: true });
+
+			expect(Notice).toHaveBeenCalledWith(AUTO_SPLIT_SKIPPED);
 		});
 
 		it('keeps recording when part finalization fails', async () => {

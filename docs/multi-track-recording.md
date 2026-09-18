@@ -142,7 +142,7 @@ Mixing tracks into a **Single file** has to bring audio together in memory, and 
 
 ## Interaction with automatic splitting
 
-**Merged multi-track output is not automatically split.** When **Single file** mode is active with more than one track and **Split recordings automatically** is also enabled, auto-split is skipped for that session: the plugin shows the notice **"Auto-split is skipped for merged multi-track recordings."** and saves **one merged file** instead of parts. The tracks are mixed only once at stop, which is incompatible with writing parts during recording.
+**Merged multi-track output is not automatically split.** When **Single file** mode is active with more than one track and **Split recordings automatically** is also enabled, auto-split is skipped for that session: the plugin shows the notice **"Auto-split is skipped: this session's tracks are mixed into one file."** and saves **one merged file** instead of parts. The tracks are mixed only once at stop, which is incompatible with writing parts during recording.
 
 Auto-split **does** work in these cases:
 
