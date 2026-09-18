@@ -29,6 +29,8 @@ Use it when:
 
 If you only ever record from one device, leave multi-track off - single-device recording is the default and needs no setup. See [Recording](recording.md) for the basics.
 
+If all you want beside your microphone is **this computer's own output**, so a call arrives with its remote participants, there is a shorter way than this page: the **Include system audio** switch under [Audio input](settings-reference.md#audio-input) records exactly those two tracks and mixes them into one file, with nothing else to configure. Come here when its fixed answers are not the ones you want - a third track, one file per track, or a level correction on the remote side - since turning multi-track on hands every one of those answers back to you and the switch stands down.
+
 > **Desktop only.** Multi-track recording runs only in the Obsidian desktop app; the mobile app records a single track from its default microphone. See [Mobile support](mobile-support.md).
 
 ---
@@ -170,6 +172,7 @@ All multi-track controls live under **Settings > Advanced Audio Recorder > Multi
 
 Settings that also shape multi-track output:
 
+- **Include system audio**, under [Audio input](settings-reference.md#audio-input), is the two-track pairing named at the top of this page. It applies only while multi-track recording is off, and the switch is disabled while it is on.
 - **Recording format** and **Audio bitrate** apply to **every** track - see [Formats](formats.md) and the [Settings reference](settings-reference.md#output-format).
 - **File prefix**, **Save folder**, and the near-active-file options control where files land and how they are named - see [File operations](file-operations.md).
 - **Split recordings automatically** interacts with merged output as described above - see [Splitting](splitting.md).

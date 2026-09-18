@@ -475,8 +475,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// A feature switched on where the platform cannot honour it reads as
 		// off, so the control never claims a result this device cannot give.
 		// The stored value is left alone, so the setting survives a sync back
-		// to a device that can.
-		if (key === 'enableMultiTrack') {
+		// to a device that can. The system-audio pairing answers here for the
+		// same reason and to the same fact: it opens two captures at once,
+		// which is the ability the multi-track switch needs as well.
+		if (key === 'enableMultiTrack' || key === 'includeSystemAudio') {
 			return stored === true && isMultiTrackCaptureSupported();
 		}
 		// The same rule with an engine in the platform's place, and the row

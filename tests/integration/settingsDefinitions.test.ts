@@ -900,6 +900,23 @@ describe('settings definitions', () => {
 			expect(host.probeCount()).toBe(2);
 		});
 
+		// That one answer is also what the audio-input switch reports, so a
+		// row offering the system output cannot sit in the same tab as one
+		// saying this build has not got it.
+		it('reports the host the same way on the audio-input switch', () => {
+			withGrantingHost();
+			settings.enableMultiTrack = true;
+
+			const definitions = build();
+
+			expect(
+				rowOf(definitions, MULTI, 'Track 1 source').desc,
+			).not.toMatch(/unavailable on this build/);
+			expect(
+				rowOf(definitions, 'Audio input', 'Include system audio').desc,
+			).not.toMatch(/Windows only/);
+		});
+
 		it('offers the source row for every track it offers an input for', () => {
 			settings.enableMultiTrack = true;
 			const control = rowOf(build(), MULTI, 'Track 1 source').control;
@@ -1012,6 +1029,47 @@ describe('settings definitions', () => {
 				);
 			},
 		);
+	});
+
+	// The one switch that records a call without a track being configured for
+	// it. It sits on the audio-input block, beside the microphone it pairs the
+	// system output with, rather than on the page it stands in for.
+	describe('the system-audio switch', () => {
+		const INPUT = 'Audio input';
+		const SWITCH = 'Include system audio';
+
+		it('pairs the microphone with the system output from one row', () => {
+			const control = rowOf(build(), INPUT, SWITCH).control;
+
+			expect(control?.type).toBe('toggle');
+			expect(control?.key).toBe('includeSystemAudio');
+		});
+
+		// A per-track configuration already says what every track records, so
+		// the pairing stands down for it - and a switch still taking edits
+		// would report a second system-audio track no session would open.
+		it('stands down while the tracks are configured by hand', () => {
+			expect(disabledOf(rowOf(build(), INPUT, SWITCH).control)).toBe(
+				false,
+			);
+
+			settings.enableMultiTrack = true;
+
+			expect(disabledOf(rowOf(build(), INPUT, SWITCH).control)).toBe(
+				true,
+			);
+		});
+
+		// Said on the row rather than left to the first refused recording, and
+		// said without taking the switch away: a vault synced from a machine
+		// that can record the system output has to show the setting it carries
+		// on one that cannot, or it cannot be turned off there either.
+		it('says where this build cannot be granted the system output', () => {
+			const row = rowOf(build(), INPUT, SWITCH);
+
+			expect(row.desc).toMatch(/Windows only/);
+			expect(disabledOf(row.control)).toBe(false);
+		});
 	});
 
 	describe('the audio splitting section', () => {

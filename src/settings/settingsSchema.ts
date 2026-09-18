@@ -303,6 +303,23 @@ export interface AudioRecorderSettings {
 	recordingChannels: ChannelMode;
 	/** Audio bitrate in bps */
 	bitrate: number;
+	/**
+	 * Record this computer's own output beside the microphone, without
+	 * configuring a track for it.
+	 *
+	 * A session started this way captures two tracks - the single-track
+	 * microphone as it always was, and the system output granted by the host -
+	 * and mixes them into one file. It is the whole configuration of that
+	 * second track: the pairing chooses what the advanced page would have been
+	 * used to choose, so a call can be recorded with its remote participants by
+	 * turning one switch on.
+	 *
+	 * Ignored while {@link enableMultiTrack} is on, because a per-track
+	 * configuration already says what every track records and one session can
+	 * capture the system output only once. That is the way round to reach for
+	 * when the pairing's answers are not the wanted ones.
+	 */
+	includeSystemAudio: boolean;
 	/** Enable multi-track recording */
 	enableMultiTrack: boolean;
 	/** Maximum number of tracks */
@@ -793,6 +810,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	sampleRate: DEFAULT_SAMPLE_RATE,
 	recordingChannels: CHANNEL_MODE_SOURCE,
 	bitrate: DEFAULT_BITRATE,
+	includeSystemAudio: false,
 	enableMultiTrack: false,
 	maxTracks: 2,
 	mixAlignTrackLevels: false,

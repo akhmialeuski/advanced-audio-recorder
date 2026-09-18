@@ -6,12 +6,14 @@
 import {
 	channelSelectionAvailable,
 	deviceMaxChannels,
+	effectiveOutputMode,
 	getAudioInputDeviceSnapshot,
 	getAudioStreams,
 	getAudioSourceName,
 	getOrderedTrackSources,
 	isLoopbackInputLabel,
 	isMultiTrackSessionEnabled,
+	isSystemAudioPairingEnabled,
 	missingCaptureIndexes,
 	recordingEncodingFor,
 	resolveCaptureDeviceId,
@@ -925,6 +927,118 @@ describe('a system-audio track', () => {
 
 		expect(captureSystemAudioStream).not.toHaveBeenCalled();
 		expect(getUserMedia).not.toHaveBeenCalled();
+	});
+});
+
+// One switch standing in for a whole track: the tracks it describes are
+// never stored, so the capture, the encoder and the session snapshot all have
+// to read them from the same place.
+describe('the system-audio pairing', () => {
+	/** The single-track session of a vault that asked for the system output. */
+	const paired: AudioRecorderSettings = {
+		...DEFAULT_SETTINGS,
+		includeSystemAudio: true,
+		audioDeviceId: 'mic-1',
+		recordingChannels: 'mono-mix',
+	};
+
+	const devices = withMediaDevices(() => ({
+		getUserMedia: jest.fn(),
+		enumerateDevices: jest.fn().mockResolvedValue([]),
+	}));
+
+	beforeEach(() => {
+		useDesktopPlatform();
+	});
+
+	// The capture opens a track list only where the settings describe one, and
+	// the pairing stores no tracks at all: the switch alone has to take the
+	// session down that path, or the recording is the microphone by itself.
+	it('opens both captures of a session that configured no tracks', async () => {
+		const fromHost = partial<MediaStream>({ getTracks: () => [] });
+		const fromMicrophone = partial<MediaStream>({ getTracks: () => [] });
+		jest.mocked(captureSystemAudioStream).mockResolvedValue(fromHost);
+		devices().getUserMedia.mockResolvedValue(fromMicrophone);
+
+		const { streams } = await getAudioStreams(paired);
+
+		expect(streams).toEqual([fromMicrophone, fromHost]);
+	});
+
+	// The microphone track is the single-track session as it stands - the
+	// input the device row names and the layout the channel row picks - so
+	// turning the switch on adds a track beside that recording rather than
+	// changing it.
+	it('records the single-track microphone beside the system output', () => {
+		expect(getOrderedTrackSources(paired)).toEqual([
+			{
+				trackNumber: 1,
+				deviceId: 'mic-1',
+				channelMode: 'mono-mix',
+				gainDb: 0,
+				pan: 0,
+				processing: 'global',
+				kind: 'input-device',
+			},
+			{
+				trackNumber: 2,
+				deviceId: '',
+				channelMode: 'source',
+				gainDb: 0,
+				pan: 0,
+				kind: 'system-audio',
+			},
+		]);
+	});
+
+	// A per-track configuration already says what every track records, and
+	// one session can capture the system output once: a pairing added to it
+	// would refuse the very sessions the switch exists to make easy.
+	it('stands down where the tracks are configured by hand', () => {
+		const configured = getOrderedTrackSources({
+			...paired,
+			enableMultiTrack: true,
+			maxTracks: 1,
+			trackAudioSources: new Map([
+				[1, { deviceId: 'iface-1', channelMode: 'source' as const }],
+			]),
+		});
+
+		expect(isSystemAudioPairingEnabled(paired)).toBe(true);
+		expect(configured.map((source) => source.kind)).toEqual([
+			'input-device',
+		]);
+	});
+
+	// Two captures at once is the ability the mobile app has not got, so a
+	// switch reaching it through a synced vault degrades to the single-track
+	// session it always was, exactly as the multi-track one does.
+	it('records one track where two captures cannot be opened', () => {
+		setPlatform({ isMobile: true, isMobileApp: true });
+
+		expect(getOrderedTrackSources(paired)).toEqual([]);
+	});
+
+	// The stored output mode belongs to the multi-track page, which the
+	// pairing shows nothing of: what it exists to produce is one recording of
+	// a call rather than a microphone file and a loudspeaker file.
+	it('mixes its tracks into one file whatever the page was left on', () => {
+		const separately: AudioRecorderSettings = {
+			...paired,
+			outputMode: 'multiple',
+		};
+
+		expect(effectiveOutputMode(separately)).toBe('single');
+		expect(recordingEncodingFor(separately).mergesTracks).toBe(true);
+	});
+
+	it('leaves the stored output mode to a session that configured tracks', () => {
+		expect(
+			effectiveOutputMode({
+				...DEFAULT_SETTINGS,
+				outputMode: 'multiple',
+			}),
+		).toBe('multiple');
 	});
 });
 

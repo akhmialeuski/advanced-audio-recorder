@@ -23,6 +23,7 @@ import {
 import type { RecordingSessionConfig, TrackMix } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
+	effectiveOutputMode,
 	recordingEncodingFor,
 	type TrackAudioSource,
 } from './AudioStreamHandler';
@@ -114,9 +115,13 @@ export function createCaptureSession(
 			: Array.from({ length: streamCount }, () =>
 					normalizeChannelMode(settings.recordingChannels),
 				);
+	// Read once here, from the one place that answers it: the stored mode is
+	// the multi-track page's, and a session pairing the microphone with the
+	// system output is mixed whatever that page was last left on.
+	const outputMode = effectiveOutputMode(settings);
 	// A session writing one file per track never mixes, so it carries no
 	// placement at all rather than a set of neutral ones nothing reads.
-	const merging = settings.outputMode === 'single' && trackOrder.length > 1;
+	const merging = outputMode === 'single' && trackOrder.length > 1;
 	const trackMix: readonly TrackMix[] = merging
 		? Object.freeze(
 				trackOrder.map(
@@ -129,7 +134,7 @@ export function createCaptureSession(
 		: Object.freeze([]);
 	const requestedSplit = settings.autoSplitEnabled;
 	const autoSplitSkipped =
-		requestedSplit && settings.outputMode === 'single' && streamCount > 1;
+		requestedSplit && outputMode === 'single' && streamCount > 1;
 	const session: CaptureSession = Object.freeze({
 		// Platforms that must not leave raw mid-stream segments behind run
 		// their buffer flushes as full part rotations at this size boundary.
@@ -141,7 +146,7 @@ export function createCaptureSession(
 		recorderMimeType:
 			request.recorderMimeType ?? buildMimeType(request.recorderFormat),
 		outputFormat: request.outputFormat,
-		outputMode: settings.outputMode,
+		outputMode,
 		// Snapped onto the output format's own rates here, at the one point
 		// every recorder, merge and conversion of the session reads it from: a
 		// rate the codec cannot write would otherwise be raised silently by

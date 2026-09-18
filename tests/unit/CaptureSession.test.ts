@@ -152,4 +152,36 @@ describe('createCaptureSession', () => {
 
 		expect(session.bitrate).toBe(DEFAULT_BITRATE);
 	});
+
+	// The stored mode is the multi-track page's, and a session that paired the
+	// microphone with the system output configured no tracks there: what it
+	// records is one call, so the snapshot every writer reads says one file
+	// however that page was last left.
+	it('writes a system-audio pairing as one file', () => {
+		const request = requestWith({
+			bitrate: DEFAULT_BITRATE,
+			outputFormat: FORMAT_WEBM,
+		});
+		const { session } = createCaptureSession({
+			...request,
+			settings: {
+				...request.settings,
+				includeSystemAudio: true,
+				outputMode: 'multiple',
+			},
+			streamCount: 2,
+			trackOrder: [
+				{ trackNumber: 1, deviceId: 'mic-1', channelMode: 'source' },
+				{
+					trackNumber: 2,
+					deviceId: '',
+					channelMode: 'source',
+					kind: 'system-audio',
+				},
+			],
+		});
+
+		expect(session.outputMode).toBe('single');
+		expect(session.trackMix).toHaveLength(2);
+	});
 });

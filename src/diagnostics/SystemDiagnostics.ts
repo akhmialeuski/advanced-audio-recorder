@@ -43,6 +43,7 @@ export interface DiagnosticsPluginSettings {
 	saveNearActiveFile: boolean;
 	activeFileSubfolder: string;
 	filePrefix: string;
+	includeSystemAudio: boolean;
 	enableMultiTrack: boolean;
 	maxTracks: number;
 	outputMode: string;
@@ -195,6 +196,7 @@ export class SystemDiagnostics {
 			saveNearActiveFile: settings.saveNearActiveFile,
 			activeFileSubfolder: settings.activeFileSubfolder,
 			filePrefix: settings.filePrefix,
+			includeSystemAudio: settings.includeSystemAudio,
 			enableMultiTrack: settings.enableMultiTrack,
 			maxTracks: settings.maxTracks,
 			outputMode: settings.outputMode,

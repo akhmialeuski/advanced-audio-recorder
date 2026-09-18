@@ -9,7 +9,6 @@ import {
 	isMultiTrackCaptureSupported,
 } from '../../platform/capabilities';
 import { MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB } from '../../constants';
-import { isSystemAudioLoopbackAvailable } from '../../recording/systemAudioSupport';
 import {
 	CHANNEL_MODE_LABELS,
 	TRACK_PROCESSING_LABELS,
@@ -30,11 +29,12 @@ import type { SettingGroupItem } from 'obsidian';
  * offering a choice that would fail at the start of a recording. The option
  * stays selectable either way: a configuration synced from a machine that can
  * do it must survive a visit to a machine that cannot.
+ * @param grantAvailable - Whether this build can be granted the system output
  * @returns The row's description
  */
-function systemAudioSourceDesc(): string {
+function systemAudioSourceDesc(grantAvailable: boolean): string {
 	const base = 'What this track records.';
-	return isSystemAudioLoopbackAvailable()
+	return grantAvailable
 		? `${base} System audio captures this computer's own output, so the other participants of a call reach the recording.`
 		: `${base} System audio is unavailable on this build, which grants it on Windows only. Record a loopback input device instead, such as Stereo Mix, VB-CABLE or a PipeWire monitor.`;
 }
@@ -49,19 +49,22 @@ function systemAudioSourceDesc(): string {
  * rebuilding the tab.
  * @param settings - Live settings, read by the predicates
  * @param devices - Input devices as last enumerated
+ * @param systemAudioAvailable - Whether this build can be granted the system
+ *   output, asked once for the whole tree
  */
 export function multiTrackPage(
 	settings: AudioRecorderSettings,
 	devices: DeviceOptions,
+	systemAudioAvailable: boolean,
 ): SettingGroupItem {
 	const available = isMultiTrackCaptureSupported();
 	const active = (): boolean => settings.enableMultiTrack && available;
-	// Read once for the whole section, as the capture support beside it is.
-	// The answer is a fact of the platform and the installed build, identical
-	// on all eight rows, and asking it costs a synchronous trip through the
-	// remote module - which the framework would then pay per track, on every
-	// rebuild of the settings tree.
-	const sourceDesc = systemAudioSourceDesc();
+	// Said once for the whole section, as the capture support beside it is
+	// read once. The answer is a fact of the platform and the installed build,
+	// identical on all eight rows, and asking it costs a synchronous trip
+	// through the remote module - which the framework would otherwise pay per
+	// track, on every rebuild of the settings tree.
+	const sourceDesc = systemAudioSourceDesc(systemAudioAvailable);
 	const trackRows = (): SettingGroupItem[] => {
 		const rows: SettingGroupItem[] = [];
 		for (let track = 1; track <= MAX_TRACK_COUNT; track++) {
