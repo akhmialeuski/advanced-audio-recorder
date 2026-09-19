@@ -132,7 +132,22 @@ describe('RELEASE_NOTES', () => {
 	it('holds the versions newest first, as the dialog shows them', () => {
 		const stored = Object.keys(RELEASE_NOTES);
 
-		expect(stored).toEqual(headings(releaseNotesSince('')));
+		// Compared against what the dialog shows, which is capped: the size of
+		// the catalogue is the test below, and asking it here would report an
+		// entry too many as a heading in the wrong order.
+		expect(stored.slice(0, MAX_SHOWN_VERSIONS)).toEqual(
+			headings(releaseNotesSince('')),
+		);
+	});
+
+	it('keeps no more versions than one dialog shows', () => {
+		// Every entry is bytes in main.js that every install carries. Past the
+		// tenth an entry can no longer be reached by an update, which is the
+		// way most readers ever meet this text, so the oldest are pruned as
+		// new ones are added rather than kept for the palette command alone.
+		expect(Object.keys(RELEASE_NOTES).length).toBeLessThanOrEqual(
+			MAX_SHOWN_VERSIONS,
+		);
 	});
 
 	it('gives every version notes to show', () => {

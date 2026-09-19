@@ -39,6 +39,39 @@ import type { ActionServices } from 'src/actions/PluginAction';
 import type { TFolder } from 'obsidian';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
+/**
+ * The catalogue the announcement tests run against, named here rather than
+ * read from the module.
+ *
+ * Reading the real one would tie these tests to which releases are currently
+ * bundled, and that catalogue drops its oldest entries as new ones arrive. The
+ * pruning would then break a test about the plugin's lifecycle, several files
+ * away from its cause. Which versions the shipped catalogue holds is asserted
+ * where it belongs, in tests/unit/releaseNotes.test.ts.
+ *
+ * The fixture lives inside the factory because jest hoists the call above every
+ * declaration in this file, and src/main.ts reads the module as it is imported.
+ */
+jest.mock('src/release/releaseNotes', () => {
+	const actual = jest.requireActual<
+		typeof import('src/release/releaseNotes')
+	>('src/release/releaseNotes');
+	const notes = {
+		'1.0.2': 'notes of 1.0.2',
+		'1.0.1': 'notes of 1.0.1',
+		'1.0.0': 'notes of 1.0.0',
+	};
+	return {
+		...actual,
+		RELEASE_NOTES: notes,
+		// The selection itself is the real one, run over the fixture: its
+		// default argument closes over the module's own catalogue, which
+		// replacing the export does not reach.
+		releaseNotesSince: (previousVersion: string): string =>
+			actual.releaseNotesSince(previousVersion, notes),
+	};
+});
+
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
 		toggleRecording: jest.fn(),
@@ -1542,7 +1575,7 @@ describe('AudioRecorderPlugin transcription queue', () => {
 // matters as much as the dialog that opens.
 describe('AudioRecorderPlugin announcing what changed', () => {
 	/** The version the tests run the plugin as. */
-	const RUNNING_VERSION = '2.3.2';
+	const RUNNING_VERSION = '1.0.2';
 
 	/**
 	 * Loads a plugin and lets the announcement settle.
@@ -1595,14 +1628,14 @@ describe('AudioRecorderPlugin announcing what changed', () => {
 	}
 
 	it('shows what changed since the version last announced', async () => {
-		await announceOver({ lastReleaseNotesVersion: '2.3.0' });
+		await announceOver({ lastReleaseNotesVersion: '1.0.0' });
 
-		expect(announcedNotes()).toContain('# 2.3.1');
+		expect(announcedNotes()).toContain('# 1.0.1');
 	});
 
 	it('records the version it announced, so the next start is quiet', async () => {
 		const { saveData } = await announceOver({
-			lastReleaseNotesVersion: '2.3.0',
+			lastReleaseNotesVersion: '1.0.0',
 		});
 
 		expect(modalInstances).toHaveLength(1);
@@ -1614,14 +1647,14 @@ describe('AudioRecorderPlugin announcing what changed', () => {
 		// what the update was about, and the bookkeeping failing is no reason
 		// to withhold it.
 		const harness = createPlugin(
-			[{ lastReleaseNotesVersion: '2.3.0' }],
+			[{ lastReleaseNotesVersion: '1.0.0' }],
 			RUNNING_VERSION,
 		);
 		harness.saveData.mockRejectedValue(new Error('disk full'));
 
 		await settle(harness.plugin);
 
-		expect(announcedNotes()).toContain('# 2.3.1');
+		expect(announcedNotes()).toContain('# 1.0.1');
 	});
 
 	it('says nothing when the running version is the one on record', async () => {
@@ -1656,7 +1689,7 @@ describe('AudioRecorderPlugin announcing what changed', () => {
 		// Otherwise turning it back on months later opens on every release
 		// since, which is the flood the switch was thrown to avoid.
 		const { saveData } = await announceOver({
-			lastReleaseNotesVersion: '2.3.0',
+			lastReleaseNotesVersion: '1.0.0',
 			showReleaseNotes: false,
 		});
 
