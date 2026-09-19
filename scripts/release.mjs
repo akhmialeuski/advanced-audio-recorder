@@ -8,8 +8,9 @@
  *
  * The steps are separate commands because two of them cannot be taken back in
  * public: the push of the tag and the release built from it. Each command
- * re-checks the state it needs rather than trusting the one before it, so an
- * interrupted release is resumed by running the next command again.
+ * re-checks the state it needs rather than trusting the one before it, and
+ * asks of each step it takes whether that step still has work to do, so an
+ * interrupted release is resumed by running the same command again.
  *
  * Usage:
  *   node scripts/release.mjs preflight <version>
@@ -30,6 +31,12 @@ const ROOT = process.cwd();
 /** The branch a release is cut from. This repo's default branch is master. */
 const RELEASE_BRANCH = 'master';
 const REMOTE = 'origin';
+
+/**
+ * npm ships as a batch file on Windows, which spawn cannot start by its bare
+ * name without a shell. git and gh are executables and resolve either way.
+ */
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 /** The four files a version bump is allowed to touch, in git's own order. */
 const BUMP_FILES = [
@@ -142,12 +149,43 @@ function sleep(ms) {
 }
 
 /**
+ * Reads a file, ending in {@link fail} rather than in a stack trace when it
+ * cannot be read. A release that stops needs its reason on one line as much as
+ * a refused check does.
+ * @param file - Path to read, absolute or relative to the repository root
+ * @param what - What the file holds, named in the message
+ * @returns The file's contents
+ */
+function readOrFail(file, what) {
+	try {
+		return fs.readFileSync(path.resolve(ROOT, file), 'utf8');
+	} catch (error) {
+		return fail(`${what} could not be read from ${file}: ${error.message}`);
+	}
+}
+
+/**
+ * Reads a JSON file of the repository, ending in {@link fail} on either step.
+ * @param file - Repo-relative path
+ * @param what - What the file holds, named in the message
+ * @returns The parsed contents
+ */
+function readJsonOrFail(file, what) {
+	const text = readOrFail(file, what);
+	try {
+		return JSON.parse(text);
+	} catch (error) {
+		return fail(`${what} in ${file} is not valid JSON: ${error.message}`);
+	}
+}
+
+/**
  * The version a JSON file of the repository states.
  * @param file - Repo-relative path to a file carrying a `version` field
  * @returns The stored version
  */
 function storedVersion(file) {
-	return JSON.parse(fs.readFileSync(path.join(ROOT, file), 'utf8')).version;
+	return readJsonOrFail(file, 'the stored version').version;
 }
 
 /** One release, and every step that takes it from a clean master to a page. */
@@ -194,10 +232,47 @@ class Release {
 		}
 	}
 
-	/** Refuses a version that has already been tagged here or on the remote. */
-	assertTagFree() {
-		if (capture('git', ['tag', '--list', this.version])) {
-			fail(`tag ${this.version} already exists locally`);
+	/**
+	 * Refuses a branch the remote has moved past.
+	 *
+	 * After the bump this branch is one commit ahead of the remote by design,
+	 * so the stricter check above no longer applies. What still cannot hold is
+	 * the remote carrying a commit this branch does not: the branch push then
+	 * fails, and by that point the tag has been cut.
+	 */
+	assertRemoteNotAhead() {
+		run('git', ['fetch', REMOTE, RELEASE_BRANCH, '--tags']);
+		const behind = capture('git', [
+			'rev-list',
+			'--count',
+			`HEAD..${REMOTE}/${RELEASE_BRANCH}`,
+		]);
+		if (behind !== '0') {
+			fail(
+				`${REMOTE}/${RELEASE_BRANCH} carries ${behind} commit(s) this ` +
+					'branch does not; pull before publishing',
+			);
+		}
+	}
+
+	/**
+	 * Where this version's tag stands, refusing one that names another commit.
+	 *
+	 * An existing tag is not by itself a reason to stop. A release interrupted
+	 * after the tag was cut has to be resumable, and the tag it left behind
+	 * points at the very commit being released. A tag on any other commit is a
+	 * different release wearing this version's name, which nothing here can
+	 * resolve.
+	 * @returns Whether the tag exists here, and whether it is on the remote
+	 */
+	tagState() {
+		const head = capture('git', ['rev-parse', 'HEAD']);
+		const local = tryCapture('git', ['rev-list', '-n', '1', this.version]);
+		if (local && local !== head) {
+			fail(
+				`tag ${this.version} is already here on ${local.slice(0, 7)}, ` +
+					`and HEAD is ${head.slice(0, 7)}`,
+			);
 		}
 		const remote = tryCapture('git', [
 			'ls-remote',
@@ -205,8 +280,25 @@ class Release {
 			REMOTE,
 			this.version,
 		]);
-		if (remote) {
-			fail(`tag ${this.version} already exists on ${REMOTE}`);
+		// An annotated tag answers with its own object as well as the commit,
+		// so the question is whether any line names this commit.
+		const onThisCommit = (remote ?? '')
+			.split('\n')
+			.some((line) => line.startsWith(head));
+		if (remote && !onThisCommit) {
+			fail(
+				`tag ${this.version} already exists on ${REMOTE} on another ` +
+					`commit:\n${remote}`,
+			);
+		}
+		return { tagged: Boolean(local), pushed: Boolean(remote) };
+	}
+
+	/** Refuses a version already tagged, which no bump can be cut for again. */
+	assertNotTagged() {
+		const { tagged, pushed } = this.tagState();
+		if (tagged || pushed) {
+			fail(`${this.version} is already tagged; it cannot be cut again`);
 		}
 	}
 
@@ -274,13 +366,13 @@ class Release {
 	async preflight() {
 		this.assertOnCleanReleaseBranch();
 		this.assertInSyncWithRemote();
-		this.assertTagFree();
+		this.assertNotTagged();
 		this.assertVersionAhead();
 		await this.assertNotesBundled();
 		this.assertGhReady();
-		run('npm', ['run', 'build']);
-		run('npm', ['run', 'lint']);
-		run('npm', ['test', '--', '--no-coverage']);
+		run(NPM, ['run', 'build']);
+		run(NPM, ['run', 'lint']);
+		run(NPM, ['test', '--', '--no-coverage']);
 		const stats = this.suiteStats();
 		const size = stats
 			? `${stats.tests} tests across ${stats.suites} suites`
@@ -301,7 +393,7 @@ class Release {
 		if (!fs.existsSync(file)) {
 			return null;
 		}
-		return JSON.parse(fs.readFileSync(file, 'utf8'));
+		return readJsonOrFail(file, 'the suite size');
 	}
 
 	/**
@@ -312,12 +404,12 @@ class Release {
 	async bump(trailers) {
 		this.assertOnCleanReleaseBranch();
 		this.assertInSyncWithRemote();
-		this.assertTagFree();
+		this.assertNotTagged();
 		this.assertVersionAhead();
 		await this.assertNotesBundled();
 		// The `version` npm script writes manifest.json and versions.json and
 		// stages them, so this one command covers all four files.
-		run('npm', ['version', this.version, '--no-git-tag-version']);
+		run(NPM, ['version', this.version, '--no-git-tag-version']);
 		this.assertBumpFilesOnly();
 		const message = `chore: bump version to ${this.version}`;
 		const args = ['commit', '-m', message];
@@ -372,8 +464,9 @@ class Release {
 				fail(`${file} states ${storedVersion(file)} after the bump`);
 			}
 		}
-		const versions = JSON.parse(
-			fs.readFileSync(path.join(ROOT, 'versions.json'), 'utf8'),
+		const versions = readJsonOrFail(
+			'versions.json',
+			'the minimum app version per release',
 		);
 		if (!versions[this.version]) {
 			fail(`versions.json has no entry for ${this.version}`);
@@ -387,14 +480,31 @@ class Release {
 	/**
 	 * Tags the bump commit, pushes both, waits for the workflow, and checks
 	 * that the release it built carries its three assets.
+	 *
+	 * Every step here asks whether it still has work to do, because the ones
+	 * after the tag can fail on their own: the push can be refused, the run
+	 * can be slow to appear, the workflow can go red. Running this command
+	 * again then carries on from where it stopped rather than refusing over
+	 * the tag the interrupted run left behind.
 	 */
 	async publish() {
 		this.assertOnCleanReleaseBranch();
 		this.assertBumpCommit();
-		this.assertTagFree();
-		run('git', ['tag', this.version]);
+		// Asked before the fetch below, which reads the remote tags: a tag of
+		// this version sitting on another commit makes that fetch refuse to
+		// clobber it, and git's message for that names no release at all.
+		const { tagged, pushed } = this.tagState();
+		// Before the tag rather than after it: the remote moving on is what
+		// makes the branch push fail, and it is the one failure here that is
+		// still answered by pulling.
+		this.assertRemoteNotAhead();
+		if (!tagged) {
+			run('git', ['tag', this.version]);
+		}
 		run('git', ['push', REMOTE, RELEASE_BRANCH]);
-		run('git', ['push', REMOTE, this.version]);
+		if (!pushed) {
+			run('git', ['push', REMOTE, this.version]);
+		}
 		const runId = await this.awaitWorkflowRun();
 		run('gh', ['run', 'watch', runId, '--exit-status']);
 		this.assertReleaseAssets();
@@ -461,7 +571,10 @@ class Release {
 	 */
 	async notesToPublish(file) {
 		if (file) {
-			return { text: fs.readFileSync(file, 'utf8').trim(), origin: file };
+			return {
+				text: readOrFail(file, 'the release notes').trim(),
+				origin: file,
+			};
 		}
 		const bundled = await this.bundledNotes();
 		return {
@@ -568,36 +681,69 @@ class Release {
 
 const STEPS = ['preflight', 'bump', 'publish', 'notes', 'status'];
 
+/**
+ * The trailer lines a bump commit carries, read from `--trailer <line>` pairs.
+ *
+ * Anything else is a typo, and this repository's commits carry attribution
+ * through these lines: a mistyped flag that was quietly skipped would land a
+ * commit missing them, in history, with nothing said about it.
+ * @param args - Arguments given after the version
+ * @returns The lines, in the order they were given
+ */
+function trailersFrom(args) {
+	const trailers = [];
+	for (let index = 0; index < args.length; index += 2) {
+		if (args[index] !== '--trailer') {
+			fail(
+				`unknown argument "${args[index]}"; bump takes --trailer <line>`,
+			);
+		}
+		if (!args[index + 1]) {
+			fail('--trailer needs the line to append');
+		}
+		trailers.push(args[index + 1]);
+	}
+	return trailers;
+}
+
+/**
+ * Refuses arguments a step does not take, rather than acting on the version
+ * and ignoring the rest.
+ * @param step - The step being run
+ * @param args - Arguments given after the version
+ */
+function assertNoExtraArguments(step, args) {
+	if (args.length > 0) {
+		fail(`${step} takes the version alone; got "${args.join(' ')}"`);
+	}
+}
+
 const [step, version, ...rest] = process.argv.slice(2);
 if (!STEPS.includes(step)) {
 	fail(`unknown step "${step ?? ''}"; the steps are ${STEPS.join(', ')}`);
 }
 const release = new Release(version);
-const trailers = [];
-for (let index = 0; index < rest.length; index += 1) {
-	if (rest[index] === '--trailer') {
-		index += 1;
-		if (!rest[index]) {
-			fail('--trailer needs the line to append');
-		}
-		trailers.push(rest[index]);
-	}
-}
 
 switch (step) {
 	case 'preflight':
+		assertNoExtraArguments(step, rest);
 		await release.preflight();
 		break;
 	case 'bump':
-		await release.bump(trailers);
+		await release.bump(trailersFrom(rest));
 		break;
 	case 'publish':
+		assertNoExtraArguments(step, rest);
 		await release.publish();
 		break;
 	case 'notes':
+		if (rest.length > 1) {
+			fail(`notes takes one optional file; got "${rest.join(' ')}"`);
+		}
 		await release.notes(rest[0]);
 		break;
 	case 'status':
+		assertNoExtraArguments(step, rest);
 		release.status();
 		break;
 }
