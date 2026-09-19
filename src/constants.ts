@@ -1351,4 +1351,5 @@ export const COMMAND_IDS = {
 	exportChapters: 'export-chapters-and-markers',
 	addPlaybackBookmark: 'add-playback-bookmark',
 	addPlaybackChapter: 'add-playback-chapter',
+	showReleaseNotes: 'show-release-notes',
 } as const;

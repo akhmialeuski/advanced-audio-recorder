@@ -51,6 +51,7 @@ import { activeAudioFile, FILE_ACTIONS } from './actions/fileActions';
 import { SESSION_ACTIONS } from './actions/sessionActions';
 import { PLAYBACK_ACTIONS } from './actions/playbackActions';
 import { SEARCH_ACTIONS } from './actions/searchActions';
+import { HELP_ACTIONS } from './actions/helpActions';
 import { registerActionCommands } from './actions/registerActionCommands';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
@@ -79,6 +80,8 @@ import {
 } from './transcription/TranscriptionQueue';
 import { QUEUE_ASSUMED_RECORDING_SECONDS } from './constants';
 import { transcribeFile } from './transcription/runTranscription';
+import { releaseNotesSince } from './release/releaseNotes';
+import { ReleaseNotesModal } from './ui/ReleaseNotesModal';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
 const SETTINGS_READ_RETRY_DELAY_MS = 250;
@@ -380,6 +383,10 @@ export default class AudioRecorderPlugin extends Plugin {
 		// Recovery runs after the workspace is ready so plugin load is
 		// never delayed; a failure here must not break the plugin
 		this.app.workspace.onLayoutReady(() => {
+			// Announced before the recovery check rather than after it: both
+			// can open a dialog, and a recording the app lost is the one the
+			// user has to answer first, so it belongs on top of the stack.
+			this.announceReleaseNotes();
 			void this.checkForInterruptedSessions();
 		});
 	}
@@ -904,6 +911,57 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.transcriptionQueue?.open();
 			},
 		}));
+
+		// Asked for deliberately rather than met after an update, so it shows
+		// every release the bundle carries notes for instead of only the ones
+		// since the last announcement.
+		registerActionCommands(this, HELP_ACTIONS, () => ({
+			showReleaseNotes: () => {
+				new ReleaseNotesModal(this.app, releaseNotesSince('')).open();
+			},
+		}));
+	}
+
+	/**
+	 * Shows what changed when the running version is not the one whose notes
+	 * were last announced.
+	 *
+	 * The version is recorded whether or not the dialog opens. A user who
+	 * turned the dialog off is therefore not shown two releases at once when
+	 * they turn it back on, and an install that has announced nothing yet -
+	 * a first install, or a config written before this field existed - starts
+	 * from the version it is running rather than from the whole history.
+	 */
+	private announceReleaseNotes(): void {
+		if (this.settingsLoadFailed) {
+			// Recording the version would be refused and would report that
+			// refusal as a Notice, which says nothing about what the user was
+			// doing. The unreadable settings file is reported on its own.
+			return;
+		}
+		const current = this.manifest.version;
+		const announced = this.settings.lastReleaseNotesVersion;
+		if (announced === current) {
+			return;
+		}
+		this.settings.lastReleaseNotesVersion = current;
+		void this.saveSettings().catch((error: unknown) => {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Recording the announced version failed:`,
+				error,
+			);
+		});
+		if (announced === '' || !this.settings.showReleaseNotes) {
+			return;
+		}
+		const notes = releaseNotesSince(announced);
+		if (notes === '') {
+			// An update with nothing on record to say about it: a build from
+			// between releases, or a version so old its entry has since been
+			// pruned. A dialog saying nothing is worse than no dialog.
+			return;
+		}
+		new ReleaseNotesModal(this.app, notes).open();
 	}
 
 	/**

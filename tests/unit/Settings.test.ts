@@ -48,6 +48,10 @@ describe('Settings', () => {
 			{ key: 'outputMode', value: 'single' },
 			{ key: 'useSourceNamesForTracks', value: true },
 			{ key: 'debug', value: false },
+			{ key: 'showReleaseNotes', value: true },
+			// Nothing has been announced in a fresh config, which is what
+			// keeps a first install from being greeted with the history.
+			{ key: 'lastReleaseNotesVersion', value: '' },
 			{ key: 'insertAtOriginalPosition', value: false },
 			{ key: 'autoSplitEnabled', value: false },
 			{ key: 'splitChunkMinutes', value: 15 },

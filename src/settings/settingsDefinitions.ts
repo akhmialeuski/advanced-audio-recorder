@@ -114,6 +114,16 @@ export function buildSettingsDefinitions(
 					ctx.renderDocumentationLink(host);
 				},
 			},
+			{
+				// Beside the documentation link rather than under Diagnostics:
+				// both rows are about the plugin itself rather than about the
+				// recording being configured, and this is the one place a
+				// reader looks for them before they have a session in mind.
+				name: 'Release notes',
+				aliases: ['changelog', 'updates', 'what is new'],
+				desc: "Show what changed the first time a new version runs. The notes stay available through the Show what's new command.",
+				control: { type: 'toggle', key: 'showReleaseNotes' },
+			},
 		]),
 		audioInputGroup(
 			ctx.settings,

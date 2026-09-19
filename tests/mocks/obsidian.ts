@@ -1011,6 +1011,35 @@ export class MarkdownRenderChild extends Component {
 }
 
 /**
+ * Mock MarkdownRenderer. Obsidian's Markdown parser is not modelled, and
+ * asserting on the HTML it would produce would be asserting on Obsidian rather
+ * than on the plugin. What a caller owns is the source it hands over, the
+ * element it renders into, and the component the rendered children are
+ * attached to, so the mock writes the source into the element as text and
+ * registers a child on the component. A dialog that forgets to unload that
+ * component therefore leaves an observably loaded child behind.
+ */
+export const MarkdownRenderer = {
+	render: jest.fn(
+		async (
+			_app: App,
+			markdown: string,
+			el: HTMLElement,
+			_sourcePath: string,
+			component: Component,
+		): Promise<void> => {
+			const rendered = addObsidianDomExtensions(
+				document.createElement('div'),
+			);
+			rendered.setText(markdown);
+			el.appendChild(rendered);
+			component.addChild(new MarkdownRenderChild(rendered));
+			await Promise.resolve();
+		},
+	),
+};
+
+/**
  * Mock Modal class.
  */
 /**

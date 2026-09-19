@@ -6,6 +6,7 @@ This guide takes you from zero to your first recording with **Advanced Audio Rec
 - [Installation](#installation)
     - [From Community Plugins](#from-community-plugins)
     - [Manual installation](#manual-installation)
+- [After an update](#after-an-update)
 - [Granting microphone access](#granting-microphone-access)
 - [Your first recording](#your-first-recording)
 - [Playing it back](#playing-it-back)
@@ -62,6 +63,18 @@ Use this method to install a specific release or a build you compiled yourself.
 The `.obsidian` folder is hidden by default; enable hidden files in your file manager if you cannot see it.
 
 Enabling the plugin opens its settings tab straight away (Obsidian 1.7.2 and later), which is where the documentation link and the three settings a first recording needs - input device, output format, and save folder - live.
+
+---
+
+## After an update
+
+The first time a new version of the plugin runs, a **What's new** dialog opens with everything that changed since the version you were on, newest release first. Each release is headed by its version number, and the text is the release note written for it, so an upgrade that skipped three releases reads as three sections rather than one.
+
+![The What's new dialog after an update, showing the release headed by its version number above the notes written for it](images/modal-release-notes.png)
+
+The dialog appears once per version. It never appears on a fresh install, and it never appears the first time you run a version of the plugin that has this dialog at all: in both cases there is nothing on record to compare against, so the plugin remembers the version you are on and shows the notes from the next update onwards.
+
+To stop it appearing, turn **Release notes** off at the top of **Settings > Advanced Audio Recorder**. The version is remembered either way, so turning the dialog back on shows the next update rather than every release you missed while it was off. The notes stay reachable at any time through the **Advanced Audio Recorder: Show what's new** command, which shows every release the installed version carries notes for, and the full history is on the [releases page](https://github.com/akhmialeuski/advanced-audio-recorder/releases).
 
 ---
 

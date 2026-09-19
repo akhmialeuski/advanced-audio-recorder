@@ -13,10 +13,12 @@ import type { PlaybackControlsState } from 'src/player/playbackControls';
 import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
 import type { PluginManifest, TFile } from 'obsidian';
 import { createFile } from '../helpers/createApp';
-import { allEls, el } from '../helpers/dom';
+import { allEls, el, textOf } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
 import { asMockPlugin, asMockVault } from '../helpers/obsidianMock';
+import { modalInstances } from '../mocks/obsidian';
+import { ReleaseNotesModal } from 'src/ui/ReleaseNotesModal';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import { COMMAND_IDS } from 'src/constants';
 import { RecordingManager } from 'src/recording/RecordingManager';
@@ -175,12 +177,17 @@ interface PluginHarness {
  * data.json does not exist by default; tests that model an existing
  * but unreadable file flip adapterExists to true.
  * @param loadDataResults - Sequence of loadData results per call
+ * @param version - The version the manifest carries, for the tests that turn
+ * on which version is running
  */
-function createPlugin(loadDataResults: LoadDataResult[]): PluginHarness {
+function createPlugin(
+	loadDataResults: LoadDataResult[],
+	version: string = MANIFEST.version,
+): PluginHarness {
 	const app = new App();
 	const plugin = new AudioRecorderPlugin(
 		app,
-		partial<PluginManifest>(MANIFEST),
+		partial<PluginManifest>({ ...MANIFEST, version }),
 	);
 
 	const loadData = jest.fn();
@@ -218,6 +225,24 @@ async function onloadWithTimers(plugin: AudioRecorderPlugin): Promise<void> {
 	await promise;
 }
 
+/**
+ * Drives a settings save and asserts exactly one write reached data.json.
+ *
+ * The first run of a version records it as announced, which is a write of its
+ * own during load. Forgetting that one is what leaves the count belonging to
+ * the save the test drives.
+ * @param plugin - The loaded plugin
+ * @param saveData - Its persistence spy
+ */
+async function expectSaveReachesDisk(
+	plugin: AudioRecorderPlugin,
+	saveData: jest.Mock,
+): Promise<void> {
+	saveData.mockClear();
+	await plugin.saveSettings();
+	expect(saveData).toHaveBeenCalledTimes(1);
+}
+
 describe('AudioRecorderPlugin settings persistence', () => {
 	beforeEach(() => {
 		jest.useFakeTimers();
@@ -253,8 +278,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		expect(plugin.settings.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
 
-		await plugin.saveSettings();
-		expect(saveData).toHaveBeenCalledTimes(1);
+		await expectSaveReachesDisk(plugin, saveData);
 	});
 
 	it('allows saving when a missing data.json is reported as a failed read', async () => {
@@ -273,8 +297,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(loadData).toHaveBeenCalledTimes(1);
 		expect(plugin.settings.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
 
-		await plugin.saveSettings();
-		expect(saveData).toHaveBeenCalledTimes(1);
+		await expectSaveReachesDisk(plugin, saveData);
 	});
 
 	it('restores settings from the backup when data.json is missing', async () => {
@@ -294,13 +317,11 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(plugin.settings.filePrefix).toBe('from-backup');
 		// The restore is persisted right away: data.json is recreated
 		// so the backup stops being the only copy on disk
-		expect(saveData).toHaveBeenCalledTimes(1);
 		expect(saveData).toHaveBeenCalledWith(
 			expect.objectContaining({ filePrefix: 'from-backup' }),
 		);
 
-		await plugin.saveSettings();
-		expect(saveData).toHaveBeenCalledTimes(2);
+		await expectSaveReachesDisk(plugin, saveData);
 	});
 
 	it('blocks saving when data.json is missing and the backup cannot be read', async () => {
@@ -337,8 +358,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(loadData).toHaveBeenCalledTimes(2);
 		expect(plugin.settings.filePrefix).toBe('recovered');
 
-		await plugin.saveSettings();
-		expect(saveData).toHaveBeenCalledTimes(1);
+		await expectSaveReachesDisk(plugin, saveData);
 	});
 
 	it('uses the backup for the session and blocks saving when data.json is unreadable', async () => {
@@ -555,8 +575,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		// data.json does not exist: defaults apply and saving stays
 		// enabled so the file gets created on the next change
 		expect(plugin.settings.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
-		await plugin.saveSettings();
-		expect(saveData).toHaveBeenCalledTimes(1);
+		await expectSaveReachesDisk(plugin, saveData);
 	});
 
 	it('blocks saving when a rejected read hits an existing data.json', async () => {
@@ -577,6 +596,9 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		await onloadWithTimers(plugin);
 		expect(plugin.settings.filePrefix).toBe('loaded');
+		// The load recorded the running version as announced; what this
+		// test is about is that nothing is written after the reload fails.
+		saveData.mockClear();
 
 		// External change arrives while the file is locked: every
 		// subsequent read fails
@@ -1509,5 +1531,180 @@ describe('AudioRecorderPlugin transcription queue', () => {
 				partial<TFolder>({ path: 'Recordings' }),
 			),
 		).resolves.toBeUndefined();
+	});
+});
+
+// The dialog that says what changed. Most of its outcomes show nothing, and
+// each of them is a different reason, so the version that gets recorded
+// matters as much as the dialog that opens.
+describe('AudioRecorderPlugin announcing what changed', () => {
+	/** The version the tests run the plugin as. */
+	const RUNNING_VERSION = '2.3.2';
+
+	/**
+	 * Loads a plugin and lets the announcement settle.
+	 *
+	 * The version is recorded through saveSettings, which is started and not
+	 * awaited so that a slow write never holds up the workspace.
+	 * @param plugin - The plugin to load
+	 */
+	async function settle(plugin: AudioRecorderPlugin): Promise<void> {
+		await plugin.onload();
+		await Promise.resolve();
+		await Promise.resolve();
+	}
+
+	/**
+	 * Loads the plugin over a stored config and lets the announcement settle.
+	 * @param stored - What data.json holds
+	 * @returns The loaded plugin and its persistence spies
+	 */
+	async function announceOver(
+		stored: Record<string, unknown>,
+	): Promise<PluginHarness> {
+		const harness = createPlugin([stored], RUNNING_VERSION);
+		await settle(harness.plugin);
+		return harness;
+	}
+
+	/**
+	 * The dialog the plugin opened, asserting it is the release notes.
+	 * @returns What the dialog is showing
+	 */
+	function announcedNotes(): string {
+		const dialog = at(modalInstances, modalInstances.length - 1, 'dialog');
+		expect(dialog).toBeInstanceOf(ReleaseNotesModal);
+		return textOf(dialog.contentEl, MODAL.releaseNotes);
+	}
+
+	/**
+	 * Asserts the running version reached data.json as the one announced.
+	 * @param saveData - The persistence spy of the loaded plugin
+	 */
+	function expectVersionRecorded(saveData: jest.Mock): void {
+		expect(saveData).toHaveBeenCalledWith(
+			expect.objectContaining({
+				lastReleaseNotesVersion: RUNNING_VERSION,
+			}),
+		);
+	}
+
+	it('shows what changed since the version last announced', async () => {
+		await announceOver({ lastReleaseNotesVersion: '2.3.0' });
+
+		expect(announcedNotes()).toContain('# 2.3.1');
+	});
+
+	it('records the version it announced, so the next start is quiet', async () => {
+		const { saveData } = await announceOver({
+			lastReleaseNotesVersion: '2.3.0',
+		});
+
+		expect(modalInstances).toHaveLength(1);
+		expectVersionRecorded(saveData);
+	});
+
+	it('still shows what changed when recording the version fails', async () => {
+		// data.json can be unwritable: a full disk, a sync lock. The dialog is
+		// what the update was about, and the bookkeeping failing is no reason
+		// to withhold it.
+		const harness = createPlugin(
+			[{ lastReleaseNotesVersion: '2.3.0' }],
+			RUNNING_VERSION,
+		);
+		harness.saveData.mockRejectedValue(new Error('disk full'));
+
+		await settle(harness.plugin);
+
+		expect(announcedNotes()).toContain('# 2.3.1');
+	});
+
+	it('says nothing when the running version is the one on record', async () => {
+		const { saveData } = await announceOver({
+			lastReleaseNotesVersion: RUNNING_VERSION,
+		});
+
+		expect(modalInstances).toHaveLength(0);
+		expect(saveData).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		// Both look the same from here: nothing has been announced in this
+		// vault yet. Neither is an update, so neither is greeted with the
+		// history of a plugin the user has not been running.
+		{ name: 'a first install', stored: {} },
+		{
+			name: 'a config written before the dialog existed',
+			stored: { recordingFormat: 'mp3' },
+		},
+	])(
+		'shows nothing on $name, and records where it starts',
+		async ({ stored }) => {
+			const { saveData } = await announceOver(stored);
+
+			expect(modalInstances).toHaveLength(0);
+			expectVersionRecorded(saveData);
+		},
+	);
+
+	it('records the version even when the dialog is turned off', async () => {
+		// Otherwise turning it back on months later opens on every release
+		// since, which is the flood the switch was thrown to avoid.
+		const { saveData } = await announceOver({
+			lastReleaseNotesVersion: '2.3.0',
+			showReleaseNotes: false,
+		});
+
+		expect(modalInstances).toHaveLength(0);
+		expectVersionRecorded(saveData);
+	});
+
+	it('opens no dialog when there is nothing on record to say', async () => {
+		// A build from between releases, or a version so old its entry has
+		// since been pruned from the catalogue. Here it is a config naming a
+		// version the installed plugin has never heard of.
+		const { saveData } = await announceOver({
+			lastReleaseNotesVersion: '9.9.9',
+		});
+
+		expect(modalInstances).toHaveLength(0);
+		expectVersionRecorded(saveData);
+	});
+
+	it('stays out of the way while the settings file is unreadable', async () => {
+		// Saving is blocked in that state, so recording the version would fail
+		// and report itself as a Notice about settings, next to a dialog the
+		// user would meet again on the next start anyway.
+		jest.useFakeTimers();
+		try {
+			const harness = createPlugin(
+				[undefined, undefined],
+				RUNNING_VERSION,
+			);
+			harness.adapterExists.mockResolvedValue(true);
+			harness.adapterRead.mockRejectedValue(new Error('locked'));
+
+			await onloadWithTimers(harness.plugin);
+			await jest.advanceTimersByTimeAsync(0);
+
+			expect(modalInstances).toHaveLength(0);
+			expect(harness.saveData).not.toHaveBeenCalled();
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('offers every release on record from the palette', async () => {
+		// Asked for rather than met after an update, so what it shows is not
+		// bounded by what was last announced.
+		const { plugin } = await announceOver({
+			lastReleaseNotesVersion: RUNNING_VERSION,
+		});
+
+		expect(
+			asMockPlugin(plugin).invokeCommand(COMMAND_IDS.showReleaseNotes),
+		).toBe(true);
+
+		expect(announcedNotes()).toContain(`# ${RUNNING_VERSION}`);
 	});
 });

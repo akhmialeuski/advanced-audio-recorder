@@ -174,6 +174,12 @@ export const MODAL = {
 	splitSource: '.aar-split-source',
 	recoverySession: '.aar-recovery-session',
 	silentChannelConvert: '.aar-silent-channel-convert',
+	/**
+	 * The body the release notes are rendered into. Obsidian's own class for
+	 * rendered Markdown rather than one of the plugin's: the dialog adds no
+	 * styling of its own, so this is what it can be found by.
+	 */
+	releaseNotes: '.markdown-rendered',
 } as const;
 
 /** The transcription queue dialog. */

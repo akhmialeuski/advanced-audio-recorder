@@ -373,7 +373,11 @@ describe('the device selection command', () => {
 	});
 
 	it('remembers the device that was picked', async () => {
-		const { plugin } = await loadPlugin();
+		const { plugin, saveData } = await loadPlugin();
+		// The first run of a version records it as announced, which is a write
+		// of its own during load. Forgotten here so the count below belongs to
+		// the choice this test drives.
+		saveData.mockClear();
 		setPlatform({ isMobile: false, isMobileApp: false });
 		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.selectAudioInputDevice);
 		const [, onPicked] = at(
@@ -384,9 +388,7 @@ describe('the device selection command', () => {
 		await onPicked('usb-mic', 'USB Microphone');
 
 		expect(plugin.settings.audioDeviceId).toBe('usb-mic');
-		expect(
-			(plugin as unknown as { saveData: jest.Mock }).saveData,
-		).toHaveBeenCalledTimes(1);
+		expect(saveData).toHaveBeenCalledTimes(1);
 	});
 });
 

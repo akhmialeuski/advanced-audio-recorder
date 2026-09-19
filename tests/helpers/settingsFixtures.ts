@@ -80,6 +80,8 @@ export function fullyPopulatedSettings(): Omit<
 			],
 		]),
 		debug: true,
+		showReleaseNotes: false,
+		lastReleaseNotesVersion: '2.3.1',
 		insertAtOriginalPosition: true,
 		deleteSourceAfterConversion: false,
 		conversionLinkAction: 'after',
