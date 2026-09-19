@@ -15,12 +15,13 @@
  *   node scripts/release.mjs preflight <version>
  *   node scripts/release.mjs bump <version> [--trailer <line>]...
  *   node scripts/release.mjs publish <version>
- *   node scripts/release.mjs notes <version> <file>
+ *   node scripts/release.mjs notes <version> [file]
  *   node scripts/release.mjs status <version>
  */
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import esbuild from 'esbuild';
 
@@ -119,20 +120,16 @@ function run(command, args) {
 /**
  * Compares two versions of three integers. The shape is fixed by the release
  * workflow's tag filter, so this is an ordering of three numbers rather than
- * the semver grammar, and it needs no dependency to state it.
+ * the semver grammar. Numeric collation compares each run of digits as a
+ * number, which is the whole of it, and is what the plugin's own release
+ * notes order themselves by. The locale is named so the answer cannot depend
+ * on the machine cutting the release.
  * @param left - Version to order first
  * @param right - Version to order against
  * @returns True when left names a later release than right
  */
 function isAhead(left, right) {
-	const a = left.split('.').map(Number);
-	const b = right.split('.').map(Number);
-	for (let index = 0; index < 3; index += 1) {
-		if (a[index] !== b[index]) {
-			return a[index] > b[index];
-		}
-	}
-	return false;
+	return left.localeCompare(right, 'en', { numeric: true }) > 0;
 }
 
 /**
@@ -454,19 +451,55 @@ class Release {
 	}
 
 	/**
-	 * Replaces the notes the workflow generated with the written ones, and
-	 * reads the page back to prove the replacement took.
-	 * @param file - Path to the Markdown notes
+	 * The notes to publish, and the name of where they came from.
+	 *
+	 * The bundle is the default, so the release page and the What's new dialog
+	 * cannot say different things about the same version. A file is still
+	 * accepted, for the rare page that has to differ from what ships.
+	 * @param file - Path to Markdown notes, or undefined for the bundled entry
+	 * @returns The text and the origin to name in a message
 	 */
-	notes(file) {
-		if (!file) {
-			fail('name the file holding the release notes');
+	async notesToPublish(file) {
+		if (file) {
+			return { text: fs.readFileSync(file, 'utf8').trim(), origin: file };
 		}
-		const written = fs.readFileSync(file, 'utf8').trim();
-		if (!written) {
-			fail(`${file} is empty`);
+		const bundled = await this.bundledNotes();
+		return {
+			text: (bundled[this.version] ?? '').trim(),
+			origin: RELEASE_NOTES_MODULE,
+		};
+	}
+
+	/**
+	 * Replaces the notes the workflow generated with the ones the release
+	 * ships, and reads the page back to prove the replacement took.
+	 *
+	 * Both origins go to the command line through a file of this script's own,
+	 * which is one path to read and gives the page the same trailing newline
+	 * whichever origin it came from.
+	 * @param file - Path to Markdown notes, or undefined for the bundled entry
+	 */
+	async notes(file) {
+		const { text, origin } = await this.notesToPublish(file);
+		if (!text) {
+			fail(`${origin} holds no notes for ${this.version}`);
 		}
-		run('gh', ['release', 'edit', this.version, '--notes-file', file]);
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), 'aar-release-'),
+		);
+		try {
+			const page = path.join(directory, `${this.version}.md`);
+			fs.writeFileSync(page, `${text}\n`);
+			run('gh', [
+				'release',
+				'edit',
+				this.version,
+				'--notes-file',
+				page,
+			]);
+		} finally {
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
 		const published = capture('gh', [
 			'release',
 			'view',
@@ -476,10 +509,12 @@ class Release {
 			'-q',
 			'.body',
 		]).replace(/\r\n/g, '\n');
-		if (published.trim() !== written) {
-			fail(`the published notes differ from ${file}`);
+		if (published.trim() !== text) {
+			fail(`the published notes differ from ${origin}`);
 		}
-		console.log(`\nrelease: notes of ${this.version} replaced from ${file}`);
+		console.log(
+			`\nrelease: notes of ${this.version} replaced from ${origin}`,
+		);
 	}
 
 	/** Where the release lives. */
@@ -560,7 +595,7 @@ switch (step) {
 		await release.publish();
 		break;
 	case 'notes':
-		release.notes(rest[0]);
+		await release.notes(rest[0]);
 		break;
 	case 'status':
 		release.status();

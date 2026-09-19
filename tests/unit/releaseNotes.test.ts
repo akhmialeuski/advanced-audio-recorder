@@ -3,6 +3,8 @@
  * @module tests/unit/releaseNotes.test
  */
 
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
 	MAX_SHOWN_VERSIONS,
 	RELEASE_NOTES,
@@ -139,5 +141,20 @@ describe('RELEASE_NOTES', () => {
 			.map(([version]) => version);
 
 		expect(empty).toEqual([]);
+	});
+});
+
+describe('the catalogue against the manifest', () => {
+	it('carries notes for the version this build ships', () => {
+		// The dialog reads this map and nothing else, so a version released
+		// without its entry ships a plugin that cannot say what it changed and
+		// announces itself to nobody. scripts/release.mjs refuses such a
+		// version at the tag. This asks the same question on every pull
+		// request, which is where the entry is actually written.
+		const manifest = JSON.parse(
+			readFileSync(join(__dirname, '../..', 'manifest.json'), 'utf8'),
+		) as { version: string };
+
+		expect(Object.keys(RELEASE_NOTES)).toContain(manifest.version);
 	});
 });

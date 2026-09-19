@@ -226,21 +226,24 @@ async function onloadWithTimers(plugin: AudioRecorderPlugin): Promise<void> {
 }
 
 /**
- * Drives a settings save and asserts exactly one write reached data.json.
+ * Drives a settings save and answers how many writes it put on disk.
  *
  * The first run of a version records it as announced, which is a write of its
  * own during load. Forgetting that one is what leaves the count belonging to
- * the save the test drives.
+ * the save the test drives. The count is returned rather than asserted here,
+ * so each test states its own expectation and reads as a test rather than as
+ * a call.
  * @param plugin - The loaded plugin
  * @param saveData - Its persistence spy
+ * @returns Writes that reached data.json because of this save
  */
-async function expectSaveReachesDisk(
+async function writesDrivenBySave(
 	plugin: AudioRecorderPlugin,
 	saveData: jest.Mock,
-): Promise<void> {
+): Promise<number> {
 	saveData.mockClear();
 	await plugin.saveSettings();
-	expect(saveData).toHaveBeenCalledTimes(1);
+	return saveData.mock.calls.length;
 }
 
 describe('AudioRecorderPlugin settings persistence', () => {
@@ -278,7 +281,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		expect(plugin.settings.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
 
-		await expectSaveReachesDisk(plugin, saveData);
+		expect(await writesDrivenBySave(plugin, saveData)).toBe(1);
 	});
 
 	it('allows saving when a missing data.json is reported as a failed read', async () => {
@@ -297,7 +300,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(loadData).toHaveBeenCalledTimes(1);
 		expect(plugin.settings.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
 
-		await expectSaveReachesDisk(plugin, saveData);
+		expect(await writesDrivenBySave(plugin, saveData)).toBe(1);
 	});
 
 	it('restores settings from the backup when data.json is missing', async () => {
@@ -321,7 +324,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 			expect.objectContaining({ filePrefix: 'from-backup' }),
 		);
 
-		await expectSaveReachesDisk(plugin, saveData);
+		expect(await writesDrivenBySave(plugin, saveData)).toBe(1);
 	});
 
 	it('blocks saving when data.json is missing and the backup cannot be read', async () => {
@@ -358,7 +361,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(loadData).toHaveBeenCalledTimes(2);
 		expect(plugin.settings.filePrefix).toBe('recovered');
 
-		await expectSaveReachesDisk(plugin, saveData);
+		expect(await writesDrivenBySave(plugin, saveData)).toBe(1);
 	});
 
 	it('uses the backup for the session and blocks saving when data.json is unreadable', async () => {
@@ -575,7 +578,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		// data.json does not exist: defaults apply and saving stays
 		// enabled so the file gets created on the next change
 		expect(plugin.settings.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
-		await expectSaveReachesDisk(plugin, saveData);
+		expect(await writesDrivenBySave(plugin, saveData)).toBe(1);
 	});
 
 	it('blocks saving when a rejected read hits an existing data.json', async () => {
@@ -1578,15 +1581,17 @@ describe('AudioRecorderPlugin announcing what changed', () => {
 	}
 
 	/**
-	 * Asserts the running version reached data.json as the one announced.
+	 * The version the last write to data.json recorded as announced.
 	 * @param saveData - The persistence spy of the loaded plugin
+	 * @returns What that write stated, so each test asserts it itself
 	 */
-	function expectVersionRecorded(saveData: jest.Mock): void {
-		expect(saveData).toHaveBeenCalledWith(
-			expect.objectContaining({
-				lastReleaseNotesVersion: RUNNING_VERSION,
-			}),
-		);
+	function announcedVersion(saveData: jest.Mock): unknown {
+		const [written] = at(
+			saveData.mock.calls,
+			saveData.mock.calls.length - 1,
+			'write',
+		) as [{ lastReleaseNotesVersion?: unknown }];
+		return written.lastReleaseNotesVersion;
 	}
 
 	it('shows what changed since the version last announced', async () => {
@@ -1601,7 +1606,7 @@ describe('AudioRecorderPlugin announcing what changed', () => {
 		});
 
 		expect(modalInstances).toHaveLength(1);
-		expectVersionRecorded(saveData);
+		expect(announcedVersion(saveData)).toBe(RUNNING_VERSION);
 	});
 
 	it('still shows what changed when recording the version fails', async () => {
@@ -1643,7 +1648,7 @@ describe('AudioRecorderPlugin announcing what changed', () => {
 			const { saveData } = await announceOver(stored);
 
 			expect(modalInstances).toHaveLength(0);
-			expectVersionRecorded(saveData);
+			expect(announcedVersion(saveData)).toBe(RUNNING_VERSION);
 		},
 	);
 
@@ -1656,7 +1661,7 @@ describe('AudioRecorderPlugin announcing what changed', () => {
 		});
 
 		expect(modalInstances).toHaveLength(0);
-		expectVersionRecorded(saveData);
+		expect(announcedVersion(saveData)).toBe(RUNNING_VERSION);
 	});
 
 	it('opens no dialog when there is nothing on record to say', async () => {
@@ -1668,7 +1673,7 @@ describe('AudioRecorderPlugin announcing what changed', () => {
 		});
 
 		expect(modalInstances).toHaveLength(0);
-		expectVersionRecorded(saveData);
+		expect(announcedVersion(saveData)).toBe(RUNNING_VERSION);
 	});
 
 	it('stays out of the way while the settings file is unreadable', async () => {
