@@ -1034,7 +1034,6 @@ export const MarkdownRenderer = {
 			rendered.setText(markdown);
 			el.appendChild(rendered);
 			component.addChild(new MarkdownRenderChild(rendered));
-			await Promise.resolve();
 		},
 	),
 };
