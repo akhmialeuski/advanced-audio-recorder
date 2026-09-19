@@ -381,6 +381,19 @@ export interface AudioRecorderSettings {
 	perPlatform: PlatformScopedSettingsMap;
 	/** Enable debug logging */
 	debug: boolean;
+	/** Show what changed the first time a new version of the plugin runs */
+	showReleaseNotes: boolean;
+	/**
+	 * The version whose release notes have already been announced.
+	 *
+	 * Empty means nothing has been announced yet, which is what both a fresh
+	 * install and a `data.json` written before this field existed look like.
+	 * Neither is an update, so both record the running version without showing
+	 * anything: the alternative would greet a first-time user with the whole
+	 * history, and hand everyone upgrading into the first version that has this
+	 * dialog every release note the bundle carries.
+	 */
+	lastReleaseNotesVersion: string;
 	/** Insert recording link at the note and cursor position where recording started */
 	insertAtOriginalPosition: boolean;
 	/** Delete original file after successful format conversion */
@@ -851,6 +864,8 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	trackAudioSources: new Map(),
 	perPlatform: createPerPlatformDefaults(),
 	debug: false,
+	showReleaseNotes: true,
+	lastReleaseNotesVersion: '',
 	insertAtOriginalPosition: false,
 	deleteSourceAfterConversion: false,
 	conversionLinkAction: ConversionLinkAction.Replace,

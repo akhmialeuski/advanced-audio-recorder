@@ -10,11 +10,14 @@
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PluginModal } from 'src/ui/PluginModal';
-import { el } from '../helpers/dom';
+import { el, maybeEl, textOf } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
 
 /** A concrete dialog exposing the protected frame for assertion. */
 class TestModal extends PluginModal {
+	scrollableBody(): void {
+		this.makeBodyScrollable();
+	}
 	renderTitle(title: string): void {
 		this.setDialogTitle(title);
 	}
@@ -161,5 +164,50 @@ describe('PluginModal shared body pieces', () => {
 		modal.renderEmpty('Nothing to do here.');
 		modal.onClose();
 		expect(modal.contentEl.childElementCount).toBe(0);
+	});
+});
+
+describe('PluginModal scrollable body', () => {
+	it('keeps the action row out of the body that scrolls', () => {
+		// A body longer than the window otherwise scrolls the Close button
+		// away with the content it belongs under, leaving the dialog with no
+		// way out still on screen.
+		const modal = createModal();
+
+		modal.scrollableBody();
+		modal.actions({ text: 'Close', onClick: () => undefined });
+
+		expect(maybeEl(modal.contentEl, 'button')).toBeNull();
+		expect(textOf(el(modal.modalEl, MODAL.actions), 'button')).toBe(
+			'Close',
+		);
+	});
+
+	it('asks Obsidian for the layout rather than styling one', () => {
+		const modal = createModal();
+
+		modal.scrollableBody();
+
+		expect(modal.modalEl.matches(MODAL.scrollableBody)).toBe(true);
+	});
+
+	it('leaves the action row in the body for a dialog that fits', () => {
+		const modal = createModal();
+
+		modal.actions({ text: 'Close', onClick: () => undefined });
+
+		expect(textOf(modal.contentEl, 'button')).toBe('Close');
+		expect(maybeEl(modal.modalEl, MODAL.actions)).toBeNull();
+	});
+
+	it('takes the pinned footer down with the body on close', () => {
+		const modal = createModal();
+		modal.scrollableBody();
+		modal.actions({ text: 'Close', onClick: () => undefined });
+
+		modal.onClose();
+
+		expect(maybeEl(modal.modalEl, MODAL.actions)).toBeNull();
+		expect(modal.modalEl.matches(MODAL.scrollableBody)).toBe(false);
 	});
 });

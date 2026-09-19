@@ -1011,6 +1011,34 @@ export class MarkdownRenderChild extends Component {
 }
 
 /**
+ * Mock MarkdownRenderer. Obsidian's Markdown parser is not modelled, and
+ * asserting on the HTML it would produce would be asserting on Obsidian rather
+ * than on the plugin. What a caller owns is the source it hands over, the
+ * element it renders into, and the component the rendered children are
+ * attached to, so the mock writes the source into the element as text and
+ * registers a child on the component. A dialog that forgets to unload that
+ * component therefore leaves an observably loaded child behind.
+ */
+export const MarkdownRenderer = {
+	render: jest.fn(
+		async (
+			_app: App,
+			markdown: string,
+			el: HTMLElement,
+			_sourcePath: string,
+			component: Component,
+		): Promise<void> => {
+			const rendered = addObsidianDomExtensions(
+				document.createElement('div'),
+			);
+			rendered.setText(markdown);
+			el.appendChild(rendered);
+			component.addChild(new MarkdownRenderChild(rendered));
+		},
+	),
+};
+
+/**
  * Mock Modal class.
  */
 /**
@@ -1027,16 +1055,31 @@ export class Modal {
 	app: App;
 	contentEl: HTMLElement;
 
+	/**
+	 * The dialog's own element, holding the title and the body the way
+	 * Obsidian nests them. A frame that pins a title or a footer classes this
+	 * element and puts the footer beside the body under it, so the mock has to
+	 * carry the same three elements rather than two loose ones.
+	 */
+	modalEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+
+	titleEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+
 	constructor(app: App) {
 		this.app = app;
 		this.contentEl = addObsidianDomExtensions(
 			document.createElement('div'),
 		);
+		this.modalEl.addClass('modal');
+		this.titleEl.addClass('modal-title');
+		this.contentEl.addClass('modal-content');
+		this.modalEl.appendChild(this.titleEl);
+		this.modalEl.appendChild(this.contentEl);
 	}
-
-	titleEl: HTMLElement = addObsidianDomExtensions(
-		document.createElement('div'),
-	);
 
 	// Prototype methods, not instance spies: a test that wants to watch these
 	// spies the instance (or the prototype, to catch a modal it never sees),

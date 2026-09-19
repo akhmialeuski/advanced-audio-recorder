@@ -72,6 +72,7 @@ import { MAX_TRACK_COUNT } from 'src/settings/sections/controlKeys';
 import type { AudioSource } from 'src/settings/settingsSchema';
 import { SETTING } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
+import { at } from '../helpers/assertions';
 
 describe('settings definitions', () => {
 	let settings: AudioRecorderSettings;
@@ -293,6 +294,21 @@ describe('settings definitions', () => {
 				(renderDefinitionOf(build()) as { searchable?: boolean })
 					.searchable,
 			).toBe(false);
+		});
+
+		it('keeps the release notes switch beside the callout', () => {
+			// Both rows are about the plugin itself rather than about the
+			// recording being set up, which is why they share the block above
+			// everything a session is configured with.
+			const top = partial<GroupDefinition>(at(build(), 0, 'block'));
+
+			expect(rowNamesIn(top)).toEqual(['Documentation', 'Release notes']);
+			expect(rowIn(top, 'Release notes').control).toEqual(
+				expect.objectContaining({
+					type: 'toggle',
+					key: 'showReleaseNotes',
+				}),
+			);
 		});
 	});
 

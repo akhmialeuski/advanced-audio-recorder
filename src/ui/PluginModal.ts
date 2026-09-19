@@ -18,6 +18,17 @@
 import { Modal, Notice, Setting } from 'obsidian';
 import type { App, ButtonComponent, TFile } from 'obsidian';
 
+/**
+ * Obsidian's own layout for a dialog whose body can run to any length: the
+ * dialog element stops scrolling, so its title and close button stay put, the
+ * body becomes the scroll container, and a `modal-button-container` beneath it
+ * reads as a footer. Nothing here is the plugin's to style.
+ */
+const SCROLLABLE_CLASS = 'mod-scrollable-content';
+
+/** Obsidian's own class for the footer that layout pins under the body. */
+const ACTIONS_CONTAINER_CLASS = 'modal-button-container';
+
 /** One button in a dialog's action row. */
 export interface DialogAction {
 	/** Button label. */
@@ -48,8 +59,36 @@ export abstract class PluginModal extends Modal {
 	 */
 	protected busy = false;
 
+	/**
+	 * Where {@link renderActions} builds the action row. Null means the body,
+	 * which is where every dialog that fits its window wants it;
+	 * {@link makeBodyScrollable} moves it out so it cannot scroll away with
+	 * the content.
+	 */
+	private actionsHost: HTMLElement | null = null;
+
 	constructor(app: App) {
 		super(app);
+	}
+
+	/**
+	 * Lets the body scroll under a title and an action row that stay put.
+	 *
+	 * By default the dialog element is the scroll container, so a body longer
+	 * than the window takes the title, the close button and the Close action
+	 * out of view with it and leaves Escape as the only way out that is still
+	 * on screen. Obsidian ships the layout that answers this, so the dialog is
+	 * classed rather than styled: the body scrolls, and the action row is
+	 * built into the footer Obsidian pins beneath it.
+	 *
+	 * Called before {@link renderActions}, by a dialog whose content has no
+	 * bound - several releases of notes, a long report.
+	 */
+	protected makeBodyScrollable(): void {
+		this.modalEl.addClass(SCROLLABLE_CLASS);
+		this.actionsHost = this.modalEl.createDiv({
+			cls: ACTIONS_CONTAINER_CLASS,
+		});
 	}
 
 	/**
@@ -95,7 +134,7 @@ export abstract class PluginModal extends Modal {
 	 * @param actions - The buttons, primary action first
 	 */
 	protected renderActions(...actions: DialogAction[]): void {
-		const row = new Setting(this.contentEl);
+		const row = new Setting(this.actionsHost ?? this.contentEl);
 		row.settingEl.addClass('aar-modal-actions');
 		for (const action of actions) {
 			row.addButton((button) => {
@@ -159,5 +198,11 @@ export abstract class PluginModal extends Modal {
 
 	override onClose(): void {
 		this.contentEl.empty();
+		// A pinned footer sits outside the body, so emptying the body leaves
+		// it standing. Obsidian drops the dialog element on close, but a frame
+		// that cleans up after itself must not rely on that.
+		this.actionsHost?.remove();
+		this.actionsHost = null;
+		this.modalEl.removeClass(SCROLLABLE_CLASS);
 	}
 }

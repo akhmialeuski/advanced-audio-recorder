@@ -169,3 +169,15 @@ export interface SearchServices {
  * note, which is exactly why it is not a file action.
  */
 export type SearchAction = PluginCommand<SearchServices>;
+
+/** What an action about the plugin itself needs. */
+export interface HelpServices {
+	/** Shows every release the bundle carries notes for. */
+	readonly showReleaseNotes: () => void;
+}
+
+/**
+ * An action that explains the plugin rather than acting on audio. Its context
+ * always resolves, since it is bound to nothing in the vault at all.
+ */
+export type HelpAction = PluginCommand<HelpServices>;

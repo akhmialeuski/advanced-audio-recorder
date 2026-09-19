@@ -3,7 +3,7 @@
 This is the exhaustive reference for every setting in **Advanced Audio Recorder**. Open **Settings > Advanced Audio Recorder** to reach it. The settings tab is grouped into headed sections; this page covers them in the exact order they appear, with a fully aligned table per section listing what each control does, its options or range, and its default. On Obsidian 1.13 and later the sections that are set once and then read past sit behind an entry that already shows what they hold, so opening one is a choice: transcription, audio splitting, multi-track recording, the audio player, audio processing and feedback, the audio cleanup defaults, and diagnostics. The main tab keeps inline what a recording is configured with before a session, namely the input, the output format, and where the file goes. On older versions every section is inline, and the settings themselves are the same either way. Two more things follow the Obsidian version: from 1.13 the profile catalogues can be dragged into the order you want them offered in, and from 1.13.1 an entry shows a warning marker when something behind it is missing - a transcription engine with no key or model, multi-track recording switched on with no track given an input at all, or more than one track asking for this machine's own output, which one session can capture only once. Conditional controls (ones that only appear once another setting is on) are called out inline. Every catalogue of named profiles is two rows rather than one: a dropdown named in the singular, such as **Dictionary profile**, which picks the profile a run uses by default and offers **None**, and the page named in the plural, such as **Dictionary profiles**, which is where a profile is added, renamed, edited or deleted. For deeper, task-focused walkthroughs, each section links to its own guide.
 
 - [Where settings live and how they apply](#where-settings-live-and-how-they-apply)
-- [Documentation callout](#documentation-callout)
+- [Documentation and release notes](#documentation-and-release-notes)
 - [Audio input](#audio-input)
 - [Output format](#output-format)
 - [File storage](#file-storage)
@@ -49,13 +49,14 @@ Player settings apply live: changing **Show waveform** or **Markers and chapters
 
 ---
 
-## Documentation callout
+## Documentation and release notes
 
-At the very top of the settings tab is a callout with a book icon linking to the online documentation, so the guides and use-case walkthroughs are one click away instead of buried in the GitHub repository.
+At the very top of the settings tab is a callout with a book icon linking to the online documentation, so the guides and use-case walkthroughs are one click away instead of buried in the GitHub repository. Under it is the switch for the dialog that reports what an update changed, described in [After an update](getting-started.md#after-an-update).
 
-| Control                    | What it does                                                                 | Options / range | Default |
-| -------------------------- | ---------------------------------------------------------------------------- | --------------- | ------- |
-| **Open the documentation** | Opens the plugin's `docs/` folder on GitHub in your browser (a static link). | Link            | -       |
+| Control                    | What it does                                                                                                                                                                                                                                                                                                                   | Options / range | Default |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | ------- |
+| **Open the documentation** | Opens the plugin's `docs/` folder on GitHub in your browser (a static link).                                                                                                                                                                                                                                                   | Link            | -       |
+| **Release notes**          | Shows a **What's new** dialog the first time a new version of the plugin runs, listing every release since the one you were on. Off leaves the version recorded anyway, so turning it back on shows the next update rather than everything missed meanwhile. The notes stay reachable through the **Show what's new** command. | On / Off        | On      |
 
 ---
 

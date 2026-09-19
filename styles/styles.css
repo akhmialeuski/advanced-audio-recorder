@@ -1182,6 +1182,17 @@ button.aar-player-marker-row {
 	display: none;
 }
 
+.modal-button-container > .aar-modal-actions {
+	/* Pinned under a scrolling body, the row sits inside Obsidian's own footer,
+	   which already carries the separator and the padding. What the setting
+	   item it is built from brings of its own would draw a second box inside
+	   the first. */
+	margin: 0;
+	padding: 0;
+	background-color: transparent;
+	border: none;
+}
+
 .aar-modal-config {
     color: var(--text-muted);
     font-size: 0.9em;
