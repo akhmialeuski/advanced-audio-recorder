@@ -32,6 +32,7 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 			recordingFormat: 'webm',
 			bitrate: 128000,
 			sampleRate: 44100,
+			recordingBitDepth: 'int16',
 			saveFolder: '',
 			saveNearActiveFile: false,
 			activeFileSubfolder: '',

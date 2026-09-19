@@ -8,6 +8,7 @@ import {
 	PcmStreamRecorder,
 	WORKLET_PROCESSOR_SOURCE,
 } from 'src/recording/PcmStreamRecorder';
+import { decodePcmSamples, PcmSampleFormat } from 'src/audio/pcm';
 import { defined } from '../helpers/assertions';
 import { partial } from '../helpers/doubles';
 
@@ -167,7 +168,10 @@ describe('PcmStreamRecorder', () => {
 					numberOfInputs: 1,
 					numberOfOutputs: 1,
 					channelCount: 1,
-					processorOptions: { channelMode: 'source' },
+					processorOptions: {
+						channelMode: 'source',
+						sampleFormat: 'int16',
+					},
 				},
 			);
 			expect(mockAudioContext.createGain).toHaveBeenCalled();
@@ -214,7 +218,10 @@ describe('PcmStreamRecorder', () => {
 					// All source channels still reach the worklet; the
 					// downmix happens inside it
 					channelCount: 2,
-					processorOptions: { channelMode: 'mono-mix' },
+					processorOptions: {
+						channelMode: 'mono-mix',
+						sampleFormat: 'int16',
+					},
 				},
 			);
 		});
@@ -510,7 +517,10 @@ describe('PcmCaptureProcessor worklet logic', () => {
 		process: (inputs: Float32Array[][]) => boolean;
 	}
 
-	function instantiate(channelMode?: string): {
+	function instantiate(
+		channelMode?: string,
+		sampleFormat?: string,
+	): {
 		processor: WorkletProcessor;
 		posted: unknown[];
 	} {
@@ -546,23 +556,36 @@ describe('PcmCaptureProcessor worklet logic', () => {
 			'processor registered by the worklet source',
 		);
 		const processor = new Registered(
-			channelMode ? { processorOptions: { channelMode } } : undefined,
+			channelMode || sampleFormat
+				? { processorOptions: { channelMode, sampleFormat } }
+				: undefined,
 		);
 		return { processor, posted };
 	}
 
 	/** Feeds one render quantum and flushes, returning the posted PCM. */
-	function captureOnce(
+	function captureBytes(
 		channelMode: string | undefined,
 		input: Float32Array[],
-	): Int16Array {
-		const { processor, posted } = instantiate(channelMode);
+		sampleFormat?: string,
+	): ArrayBuffer {
+		const { processor, posted } = instantiate(channelMode, sampleFormat);
 		expect(processor.process([input])).toBe(true);
 		processor.port.onmessage?.({ data: { type: 'flush' } });
 		const chunk = posted.find((message) => message instanceof ArrayBuffer);
 		expect(chunk).toBeDefined();
 		expect(posted).toContainEqual({ type: 'flushed' });
-		return new Int16Array(chunk ?? new ArrayBuffer(0));
+		return chunk ?? new ArrayBuffer(0);
+	}
+
+	/** The samples one capture wrote, read back in its own representation. */
+	function captureOnce(
+		channelMode: string | undefined,
+		input: Float32Array[],
+		sampleFormat: PcmSampleFormat = PcmSampleFormat.Int16,
+	): number[] {
+		const bytes = captureBytes(channelMode, input, sampleFormat);
+		return Array.from(decodePcmSamples(bytes, sampleFormat));
 	}
 
 	const left = Float32Array.from([0.5, 0.5]);
@@ -632,7 +655,7 @@ describe('PcmCaptureProcessor worklet logic', () => {
 			expected: [16383, 16383],
 		},
 	])('$name', ({ mode, input, expected }) => {
-		expect(Array.from(captureOnce(mode, input))).toEqual(expected);
+		expect(captureOnce(mode, input)).toEqual(expected);
 	});
 
 	it('discards input while paused and resumes cleanly', () => {
@@ -652,8 +675,88 @@ describe('PcmCaptureProcessor worklet logic', () => {
 
 	it('clamps out-of-range samples to the int16 rails', () => {
 		const loud = Float32Array.from([1.5, -1.5]);
-		const pcm = captureOnce('mono-left', [loud]);
 
-		expect(Array.from(pcm)).toEqual([32767, -32768]);
+		expect(captureOnce('mono-left', [loud])).toEqual([32767, -32768]);
+	});
+
+	// The representation is applied once, after the channel modes have
+	// reduced the input, so a wider sample is available in every layout
+	// rather than only in the pass-through one.
+	describe('the representation the capture writes in', () => {
+		const half = Float32Array.from([0.5, -0.5]);
+
+		it.each([
+			[PcmSampleFormat.Int16, 2, [16383, -16384]],
+			[PcmSampleFormat.Int24, 3, [4194303, -4194304]],
+			[PcmSampleFormat.Float32, 4, [0.5, -0.5]],
+		])('writes %s samples of %s bytes', (format, width, expected) => {
+			const bytes = captureBytes('mono-left', [half], format);
+
+			expect(bytes.byteLength).toBe(2 * width);
+			expect(Array.from(decodePcmSamples(bytes, format))).toEqual(
+				expected,
+			);
+		});
+
+		it('interleaves a stereo capture in the chosen representation', () => {
+			const right = Float32Array.from([0.25, 0]);
+
+			expect(
+				captureOnce('source', [half, right], PcmSampleFormat.Int24),
+			).toEqual([4194303, 2097151, -4194304, 0]);
+		});
+
+		it('downmixes to mono before applying the representation', () => {
+			const right = Float32Array.from([-0.5, 0.5]);
+
+			expect(
+				captureOnce('mono-mix', [half, right], PcmSampleFormat.Float32),
+			).toEqual([0, 0]);
+		});
+
+		// The reason the floating point representation is offered at all: a
+		// take recorded too hot stays recoverable instead of being flattened
+		// into the rails.
+		it('keeps a floating point sample that ran past full scale', () => {
+			const loud = Float32Array.from([1.5, -2.25]);
+
+			expect(
+				captureOnce('mono-left', [loud], PcmSampleFormat.Float32),
+			).toEqual([1.5, -2.25]);
+		});
+
+		// The buffer holds a whole number of the 128-frame quanta the spec
+		// defines today, and a build that rendered another size used to run a
+		// sample off the end of it - silently dropped by a typed array
+		// before, and a throw on the audio thread once a DataView writes it.
+		it('keeps every sample of a quantum that does not divide the buffer', () => {
+			const { processor, posted } = instantiate(
+				'mono-left',
+				PcmSampleFormat.Int16,
+			);
+			const quantum = Float32Array.from({ length: 100 }, () => 0.25);
+
+			for (let index = 0; index < 82; index++) {
+				processor.process([[quantum]]);
+			}
+			processor.port.onmessage?.({ data: { type: 'flush' } });
+
+			const written = posted
+				.filter(
+					(message): message is ArrayBuffer =>
+						message instanceof ArrayBuffer,
+				)
+				.reduce((total, chunk) => total + chunk.byteLength, 0);
+			expect(written).toBe(82 * 100 * 2);
+		});
+
+		it('falls back to sixteen bits for a representation it does not know', () => {
+			const bytes = captureBytes('mono-left', [half], 'int32');
+
+			expect(bytes.byteLength).toBe(4);
+			expect(
+				Array.from(decodePcmSamples(bytes, PcmSampleFormat.Int16)),
+			).toEqual([16383, -16384]);
+		});
 	});
 });

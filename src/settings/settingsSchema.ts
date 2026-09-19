@@ -59,6 +59,7 @@ import { LlmTask } from '../transcription/llmPostProcess';
 import { noSelectedProfiles, ProfileKindId } from './profiles';
 import type { Profile, SelectedProfileIds } from './profiles';
 import { ChannelMode } from '../audio/downmix';
+import { PcmSampleFormat } from '../audio/pcm';
 import { PlatformKind } from '../platform/platformKind';
 
 export type { OutputMode } from '../types';
@@ -319,6 +320,18 @@ export interface AudioRecorderSettings {
 	 * Holds the *active* platform's value; persisted under `perPlatform`.
 	 */
 	recordingChannels: ChannelMode;
+	/**
+	 * How one sample is stored in a WAV recorded as raw PCM.
+	 *
+	 * Sixteen bits is enough for speech at a level set carefully in advance,
+	 * which is the one thing a meeting does not allow: twenty-four bits leave
+	 * room under a quiet speaker, and thirty-two floating point keep a sample
+	 * that went past full scale instead of flattening it, so an overloaded
+	 * take is recovered by normalizing the file. It reaches only the raw PCM
+	 * capture path; a WAV produced by a conversion, and every compressed
+	 * format, carry the width their encoder writes.
+	 */
+	recordingBitDepth: PcmSampleFormat;
 	/** Audio bitrate in bps */
 	bitrate: number;
 	/**
@@ -827,6 +840,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	audioDeviceId: '',
 	sampleRate: DEFAULT_SAMPLE_RATE,
 	recordingChannels: ChannelMode.Source,
+	recordingBitDepth: PcmSampleFormat.Int16,
 	bitrate: DEFAULT_BITRATE,
 	includeSystemAudio: false,
 	enableMultiTrack: false,

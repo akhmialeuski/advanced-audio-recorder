@@ -5,6 +5,7 @@
  */
 
 import { ChannelMode } from '../audio/downmix';
+import { PcmSampleFormat } from '../audio/pcm';
 import { LLM_VENDOR_IDS, LLM_VENDORS } from '../transcription/llm/vendors';
 import {
 	TRANSCRIPTION_ENGINE_IDS,
@@ -174,6 +175,18 @@ export const CHANNEL_MODE_LABELS: Record<ChannelMode, string> = {
 	[ChannelMode.MonoMix]: 'Mono (mix all channels)',
 	[ChannelMode.MonoLeft]: 'Mono (left channel)',
 	[ChannelMode.MonoRight]: 'Mono (right channel)',
+};
+
+/**
+ * Sample-representation labels, keyed by format. Named the way audio tools
+ * name them, because the choice is one a user arrives with from elsewhere:
+ * the two numbers are the width, and "float" is the part that says a sample
+ * past full scale survives.
+ */
+export const PCM_SAMPLE_FORMAT_LABELS: Record<PcmSampleFormat, string> = {
+	[PcmSampleFormat.Int16]: '16-bit integer',
+	[PcmSampleFormat.Int24]: '24-bit integer',
+	[PcmSampleFormat.Float32]: '32-bit float',
 };
 
 /**

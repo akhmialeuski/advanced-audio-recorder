@@ -13,7 +13,7 @@ import {
 	SECONDS_PER_MINUTE,
 	SPLIT_PART_SUFFIX_PATTERN,
 } from '../constants';
-import { PCM_BYTES_PER_SAMPLE } from '../audio/pcm';
+import { PCM_SAMPLE_BYTES, PcmSampleFormat } from '../audio/pcm';
 
 /** Byte length of a RIFF chunk header (4-byte id + 4-byte size). */
 const RIFF_CHUNK_HEADER_SIZE = 8;
@@ -40,6 +40,17 @@ export interface WavLayout {
 	byteRate: number;
 	/** Bytes per sample frame across all channels. */
 	blockAlign: number;
+	/**
+	 * Byte offset of the sample-frame count inside a `fact` chunk, or null in
+	 * a file that carries none.
+	 *
+	 * Every representation the WAVE specification counts as non-PCM - which
+	 * here means the floating point one - has to state its length twice, in
+	 * the data chunk and again in a `fact` chunk. A part carved out of such a
+	 * file inherits the whole header, so without this the part would announce
+	 * the length of the recording it came from.
+	 */
+	factOffset: number | null;
 }
 
 /**
@@ -72,6 +83,7 @@ export function parseWavLayout(buffer: ArrayBuffer): WavLayout | null {
 	let byteRate = 0;
 	let blockAlign = 0;
 	let formatCode = 0;
+	let factOffset: number | null = null;
 	let offset = RIFF_FIRST_CHUNK_OFFSET;
 
 	while (offset + RIFF_CHUNK_HEADER_SIZE <= buffer.byteLength) {
@@ -86,6 +98,12 @@ export function parseWavLayout(buffer: ArrayBuffer): WavLayout | null {
 			formatCode = view.getUint16(chunkDataOffset, true);
 			byteRate = view.getUint32(chunkDataOffset + 8, true);
 			blockAlign = view.getUint16(chunkDataOffset + 12, true);
+		} else if (chunkId === 'fact') {
+			// Taken without checking that the four bytes are there: a layout
+			// is only returned once a data chunk has been found after this
+			// one, which puts the count well inside the buffer. A file whose
+			// fact chunk runs off the end never reaches that return.
+			factOffset = chunkDataOffset;
 		} else if (chunkId === 'data') {
 			const dataLength = Math.min(
 				chunkSize,
@@ -103,6 +121,7 @@ export function parseWavLayout(buffer: ArrayBuffer): WavLayout | null {
 				dataLength,
 				byteRate,
 				blockAlign,
+				factOffset,
 			};
 		}
 
@@ -189,6 +208,15 @@ export function buildWavPartRange(
 	view.setUint32(4, headerLength + length - RIFF_CHUNK_HEADER_SIZE, true);
 	// data chunk size: immediately precedes the sample data
 	view.setUint32(headerLength - 4, length, true);
+	if (layout.factOffset !== null) {
+		// The second statement of the same length, which the part inherited
+		// from the whole recording along with the rest of the header.
+		view.setUint32(
+			layout.factOffset,
+			Math.floor(length / layout.blockAlign),
+			true,
+		);
+	}
 
 	return part;
 }
@@ -292,23 +320,25 @@ export function computePartCount(
 }
 
 /**
- * Computes the byte limit of one auto-split part for raw int16 PCM capture.
+ * Computes the byte limit of one auto-split part for raw PCM capture.
  * @param partMinutes - Part duration in minutes
  * @param sampleRate - Sample rate in Hz
  * @param channels - Number of audio channels
+ * @param format - How one captured sample is stored
  * @returns Part size in bytes (always a multiple of the PCM frame size)
  */
 export function computePcmPartLimitBytes(
 	partMinutes: number,
 	sampleRate: number,
 	channels: number,
+	format: PcmSampleFormat = PcmSampleFormat.Int16,
 ): number {
 	return (
 		partMinutes *
 		SECONDS_PER_MINUTE *
 		sampleRate *
 		channels *
-		PCM_BYTES_PER_SAMPLE
+		PCM_SAMPLE_BYTES[format]
 	);
 }
 

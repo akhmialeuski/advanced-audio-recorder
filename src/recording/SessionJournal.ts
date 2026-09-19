@@ -11,6 +11,7 @@
 
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import type { PcmSampleFormat } from '../audio/pcm';
 
 /** Journal file name inside the plugin folder. */
 export const JOURNAL_FILE_NAME = 'recording-journal.json';
@@ -30,6 +31,17 @@ export interface JournalTrack {
 	pcmChannels: number;
 	/** Sample rate of the PCM data in Hz (PCM tracks). */
 	pcmSampleRate: number;
+	/**
+	 * How one sample of the PCM data is stored (PCM tracks).
+	 *
+	 * Absent in journals written before the width became a choice, where it
+	 * was always sixteen bits, which is what a recovery reads such a journal
+	 * as. Adding it deliberately did not bump JOURNAL_VERSION, by the
+	 * precedent captureMode set: an older plugin ignores fields it does not
+	 * know, while a bump would make it skip the whole journal and lose the
+	 * recovery itself.
+	 */
+	pcmFormat?: PcmSampleFormat;
 	/**
 	 * Level and stereo position this track was to be given in a merged file.
 	 * Absent on a session that writes one file per track, and on every

@@ -205,4 +205,26 @@ describe('building the PCM recorders', () => {
 				.channelMode,
 		).toBe(expected);
 	});
+
+	// One representation for the whole session: the tracks are mixed into one
+	// file, which has a single width, and a track captured at another would
+	// be read at the wrong one.
+	it.each([
+		{ name: 'the width the session records in', format: 'int24' },
+		{ name: 'sixteen bits when none was given', format: undefined },
+	])('captures at $name', ({ format }) => {
+		const recorders = createPcmRecorders(
+			[stream('a'), stream('b')],
+			48000,
+			jest.fn(),
+			[],
+			format as never,
+		);
+
+		for (const recorder of recorders) {
+			expect(
+				(recorder as unknown as { sampleFormat: string }).sampleFormat,
+			).toBe(format ?? 'int16');
+		}
+	});
 });

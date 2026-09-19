@@ -27,6 +27,7 @@ import type { ProfileSection } from 'src/settings/profileKinds';
 import {
 	CHANNEL_MODE_LABELS,
 	CONVERSION_LINK_ACTION_LABELS,
+	PCM_SAMPLE_FORMAT_LABELS,
 	LLM_PROVIDER_LABELS,
 	LLM_TASK_LABELS,
 	TRANSCRIPTION_PROVIDER_LABELS,
@@ -2223,6 +2224,30 @@ describe('settings definitions', () => {
 				},
 			);
 		});
+
+		// The width is a property of the raw PCM capture, so on a platform
+		// that records WAV through a compressed intermediate there is nothing
+		// able to honour the choice. The row stays on screen all the same: a
+		// vault synced from a machine that does record raw PCM carries the
+		// setting, and a user who cannot see it cannot move it back either.
+		describe('the bit depth row', () => {
+			it('offers the width on a platform that captures raw PCM', () => {
+				useDesktopPlatform();
+				const row = rowOf(build(), 'Output format', 'Bit depth');
+
+				expect(disabledOf(row.control)).toBe(false);
+				expect(row.control?.key).toBe('recordingBitDepth');
+				expect(row.desc).toMatch(/Applies to WAV recordings only/);
+			});
+
+			it('shows it locked where WAV is not captured as raw PCM', () => {
+				useMobilePlatform();
+				const row = rowOf(build(), 'Output format', 'Bit depth');
+
+				expect(disabledOf(row.control)).toBe(true);
+				expect(row.desc).toMatch(/Not available on this device/);
+			});
+		});
 	});
 
 	describe('dropdown options', () => {
@@ -2242,6 +2267,11 @@ describe('settings definitions', () => {
 				heading: 'Output format',
 				name: 'Update links after conversion',
 				labels: CONVERSION_LINK_ACTION_LABELS,
+			},
+			{
+				heading: 'Output format',
+				name: 'Bit depth',
+				labels: PCM_SAMPLE_FORMAT_LABELS,
 			},
 			{
 				heading: 'Audio input',

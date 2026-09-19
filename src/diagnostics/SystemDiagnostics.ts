@@ -39,6 +39,8 @@ export interface DiagnosticsPluginSettings {
 	recordingFormat: string;
 	bitrate: number;
 	sampleRate: number;
+	/** How one sample of a WAV recorded as raw PCM is stored. */
+	recordingBitDepth: string;
 	saveFolder: string;
 	saveNearActiveFile: boolean;
 	activeFileSubfolder: string;
@@ -192,6 +194,7 @@ export class SystemDiagnostics {
 			recordingFormat: settings.recordingFormat,
 			bitrate: settings.bitrate,
 			sampleRate: settings.sampleRate,
+			recordingBitDepth: settings.recordingBitDepth,
 			saveFolder: settings.saveFolder,
 			saveNearActiveFile: settings.saveNearActiveFile,
 			activeFileSubfolder: settings.activeFileSubfolder,

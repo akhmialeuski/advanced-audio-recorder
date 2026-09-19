@@ -47,6 +47,7 @@ export function fullyPopulatedSettings(): Omit<
 		audioDeviceId: 'test-device',
 		sampleRate: 22050,
 		recordingChannels: 'mono-left',
+		recordingBitDepth: 'float32',
 		bitrate: 64000,
 		includeSystemAudio: true,
 		enableMultiTrack: true,

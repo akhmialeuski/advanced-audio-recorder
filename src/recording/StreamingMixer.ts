@@ -1,6 +1,6 @@
 /**
  * Bounded-memory mixer for multi-track PCM/WAV sessions. The tracks
- * already sit on disk as raw int16 segments, so they are mixed in
+ * already sit on disk as raw PCM segments, so they are mixed in
  * fixed-size windows directly into the preallocated WAV file buffer -
  * peak memory is the output file plus one window per track, instead
  * of decoding every track into float32 AudioBuffers and rendering
@@ -19,8 +19,13 @@
 
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
-import { PCM_BYTES_PER_SAMPLE } from '../audio/pcm';
+import { createWavFileBuffer, wavHeaderSize } from '../audio/WavEncoder';
+import {
+	decodePcmSamples,
+	PCM_FULL_SCALE,
+	PCM_SAMPLE_BYTES,
+	PcmSampleFormat,
+} from '../audio/pcm';
 import {
 	gainFactor,
 	newResampleState,
@@ -34,7 +39,7 @@ import {
 	type ResampleState,
 } from './mixMath';
 
-/** Default mix window in sample frames (~1 MiB stereo int16). */
+/** Default mix window in sample frames (~1 MiB of stereo sixteen-bit PCM). */
 const DEFAULT_WINDOW_FRAMES = 262144;
 
 /**
@@ -55,7 +60,7 @@ export interface PcmMixTrack {
 
 /** One track's captured PCM, as the mix sizing rule reads it. */
 export interface PcmMixSize {
-	/** Raw int16 PCM captured for this track, in bytes. */
+	/** Raw PCM captured for this track, in bytes. */
 	pcmBytes: number;
 	/** Interleaved channel count. */
 	channels: number;
@@ -89,6 +94,13 @@ export interface MixOptions {
 	 * of it, and a session mixed twice must come out the same both times.
 	 */
 	alignLevels?: boolean | undefined;
+	/**
+	 * How one sample is stored, in the segments read and in the file written.
+	 * One answer for the whole mix rather than one per track: the tracks of a
+	 * session are captured by one setting, and the file they are summed into
+	 * has a single width of its own.
+	 */
+	format?: PcmSampleFormat | undefined;
 }
 
 /**
@@ -108,9 +120,13 @@ export interface MixOptions {
  * count: two mono microphones one to each side is the reason panning exists,
  * and a mono file has nowhere to put them.
  * @param tracks - What each track captured, in bytes, channels, and rate
+ * @param format - How one sample is stored, in the segments and in the mix
  * @returns The mixed file's frames, channels, rate, and PCM size
  */
-export function mixLayout(tracks: readonly PcmMixSize[]): MixLayout {
+export function mixLayout(
+	tracks: readonly PcmMixSize[],
+	format: PcmSampleFormat = PcmSampleFormat.Int16,
+): MixLayout {
 	if (tracks.length === 0) {
 		return {
 			totalFrames: 0,
@@ -121,7 +137,7 @@ export function mixLayout(tracks: readonly PcmMixSize[]): MixLayout {
 	}
 	const sampleRate = Math.max(...tracks.map((track) => track.sampleRate));
 	const totalFrames = Math.max(
-		...tracks.map((track) => trackFrames(track, sampleRate)),
+		...tracks.map((track) => trackFrames(track, sampleRate, format)),
 	);
 	const outChannels = tracks.some((track) => (track.pan ?? 0) !== 0)
 		? 2
@@ -130,7 +146,7 @@ export function mixLayout(tracks: readonly PcmMixSize[]): MixLayout {
 		totalFrames,
 		outChannels,
 		sampleRate,
-		pcmByteLength: totalFrames * outChannels * PCM_BYTES_PER_SAMPLE,
+		pcmByteLength: totalFrames * outChannels * PCM_SAMPLE_BYTES[format],
 	};
 }
 
@@ -143,11 +159,16 @@ export function mixLayout(tracks: readonly PcmMixSize[]): MixLayout {
  * rather than audio.
  * @param track - What the track captured, in bytes, channels, and rate
  * @param sampleRate - Rate the mix is written at
+ * @param format - How one sample of it is stored
  * @returns The track's own length in frames, at that rate
  */
-export function trackFrames(track: PcmMixSize, sampleRate: number): number {
+export function trackFrames(
+	track: PcmMixSize,
+	sampleRate: number,
+	format: PcmSampleFormat = PcmSampleFormat.Int16,
+): number {
 	const frames = Math.floor(
-		track.pcmBytes / (PCM_BYTES_PER_SAMPLE * track.channels),
+		track.pcmBytes / (PCM_SAMPLE_BYTES[format] * track.channels),
 	);
 	// A track slower than the output covers the same seconds in fewer frames,
 	// and rounding down would drop its last fraction of a window rather than
@@ -176,13 +197,17 @@ export function canStreamMix(tracks: PcmMixTrack[]): boolean {
 }
 
 /**
- * Sequential reader over the int16 segments of one track. Reads one
+ * Sequential reader over the raw segments of one track. Reads one
  * segment at a time and serves fixed-size frame windows across
  * segment boundaries.
+ *
+ * Samples are served on the scale their representation works in - whole
+ * numbers for the integer ones, a share of full scale for the floating point
+ * one - so the mix sums what was captured rather than a rescaling of it.
  */
 class PcmSegmentReader {
 	private segmentIndex = 0;
-	private current: Int16Array | null = null;
+	private current: Float32Array | null = null;
 	private currentOffset = 0;
 
 	/**
@@ -190,11 +215,13 @@ class PcmSegmentReader {
 	 * @param segmentPaths - Segment files in capture order
 	 * @param channels - Interleaved channel count
 	 * @param app - Obsidian App instance
+	 * @param format - How one sample of the segments is stored
 	 */
 	constructor(
 		private readonly segmentPaths: string[],
 		private readonly channels: number,
 		private readonly app: App,
+		private readonly format: PcmSampleFormat,
 	) {}
 
 	/**
@@ -204,7 +231,7 @@ class PcmSegmentReader {
 	 * @param window - Reusable buffer of at least frames*channels
 	 * @returns Number of samples (not frames) actually read
 	 */
-	async read(frames: number, window: Int16Array): Promise<number> {
+	async read(frames: number, window: Float32Array): Promise<number> {
 		const samplesWanted = frames * this.channels;
 		let written = 0;
 		while (written < samplesWanted) {
@@ -215,12 +242,8 @@ class PcmSegmentReader {
 				}
 				const bytes = await this.app.vault.adapter.readBinary(path);
 				this.segmentIndex += 1;
-				// Whole int16 samples only; a torn trailing byte is dropped
-				this.current = new Int16Array(
-					bytes,
-					0,
-					Math.floor(bytes.byteLength / PCM_BYTES_PER_SAMPLE),
-				);
+				// Whole samples only; a torn trailing one is dropped
+				this.current = decodePcmSamples(bytes, this.format);
 				this.currentOffset = 0;
 			}
 			const available = this.current.length - this.currentOffset;
@@ -256,29 +279,32 @@ class TrackWindowReader {
 	private readonly state: ResampleState | null;
 
 	/** Source frames, for a track being resampled. */
-	private readonly source: Int16Array | null;
+	private readonly source: Float32Array | null;
 
 	/** The window handed to the caller, at the output rate. */
-	readonly window: Int16Array;
+	readonly window: Float32Array;
 
 	/**
 	 * @param track - The track to read
 	 * @param outputRate - Rate the mix is written at
 	 * @param windowFrames - Output frames per window
 	 * @param app - Obsidian App instance
+	 * @param format - How one sample of the track's segments is stored
 	 */
 	constructor(
 		private readonly track: PcmMixTrack,
 		private readonly outputRate: number,
 		windowFrames: number,
 		app: App,
+		format: PcmSampleFormat,
 	) {
 		this.reader = new PcmSegmentReader(
 			track.segmentPaths,
 			track.channels,
 			app,
+			format,
 		);
-		this.window = new Int16Array(windowFrames * track.channels);
+		this.window = new Float32Array(windowFrames * track.channels);
 		if (track.sampleRate === outputRate) {
 			this.state = null;
 			this.source = null;
@@ -287,7 +313,7 @@ class TrackWindowReader {
 		this.state = newResampleState(track.channels);
 		// A source slower than the output needs at most one frame per output
 		// frame, plus the one the last interpolation reaches into.
-		this.source = new Int16Array((windowFrames + 2) * track.channels);
+		this.source = new Float32Array((windowFrames + 2) * track.channels);
 	}
 
 	/** The ratio of the track's rate to the output's. */
@@ -366,19 +392,23 @@ interface MixLane {
  */
 function accumulateLane(
 	lane: MixLane,
-	accumulator: Int32Array,
+	accumulator: Float64Array,
 	frames: number,
 	outChannels: number,
 ): void {
 	const window = lane.reader.window;
+	// Summed in full precision and quantized once, when the window is written:
+	// a lane rounded on the way in carries its own rounding error into every
+	// sample of the mix, and the floating point representation has no whole
+	// number to round to at all.
+	//
 	// The `?? 0` narrows the checked index reads with the mix's neutral
 	// element; every access below is in bounds by construction (the buffers
 	// are sized from windowFrames)
 	if (outChannels === 1) {
 		for (let i = 0; i < frames; i++) {
 			accumulator[i] =
-				(accumulator[i] ?? 0) +
-				Math.round((window[i] ?? 0) * lane.left);
+				(accumulator[i] ?? 0) + (window[i] ?? 0) * lane.left;
 		}
 		return;
 	}
@@ -386,10 +416,10 @@ function accumulateLane(
 		for (let frame = 0; frame < frames; frame++) {
 			accumulator[frame * 2] =
 				(accumulator[frame * 2] ?? 0) +
-				Math.round((window[frame * 2] ?? 0) * lane.left);
+				(window[frame * 2] ?? 0) * lane.left;
 			accumulator[frame * 2 + 1] =
 				(accumulator[frame * 2 + 1] ?? 0) +
-				Math.round((window[frame * 2 + 1] ?? 0) * lane.right);
+				(window[frame * 2 + 1] ?? 0) * lane.right;
 		}
 		return;
 	}
@@ -398,9 +428,9 @@ function accumulateLane(
 	for (let frame = 0; frame < frames; frame++) {
 		const sample = window[frame] ?? 0;
 		accumulator[frame * 2] =
-			(accumulator[frame * 2] ?? 0) + Math.round(sample * lane.left);
+			(accumulator[frame * 2] ?? 0) + sample * lane.left;
 		accumulator[frame * 2 + 1] =
-			(accumulator[frame * 2 + 1] ?? 0) + Math.round(sample * lane.right);
+			(accumulator[frame * 2 + 1] ?? 0) + sample * lane.right;
 	}
 }
 
@@ -454,7 +484,7 @@ async function measureTracks(
 	outChannels: number,
 	onWindow: (framesDone: number) => void,
 ): Promise<number> {
-	const accumulator = new Int32Array(windowFrames * outChannels);
+	const accumulator = new Float64Array(windowFrames * outChannels);
 	let summedPeak = 0;
 	let frameOffset = 0;
 	while (frameOffset < totalFrames) {
@@ -515,28 +545,31 @@ async function measureTracks(
  * @param lanes - The measured tracks, whose multipliers are completed
  * @param alignLevels - Whether to bring the tracks to a common level
  * @param summedPeak - The peak the measuring pass found for the sum
+ * @param fullScale - The value a sample at full scale carries here
  * @returns The multiplier the sum is written at
  */
 function planMix(
 	lanes: readonly MixLane[],
 	alignLevels: boolean,
 	summedPeak: number,
+	fullScale: number,
 ): number {
 	if (!alignLevels) {
-		return outputScale(summedPeak);
+		return outputScale(summedPeak, fullScale);
 	}
 	let leftPeak = 0;
 	let rightPeak = 0;
 	for (const lane of lanes) {
 		const level = normalizeFactor(
 			Math.sqrt(lane.squares / Math.max(1, lane.count)),
+			fullScale,
 		);
 		lane.left *= level;
 		lane.right *= level;
 		leftPeak += lane.peak * lane.left;
 		rightPeak += lane.peak * lane.right;
 	}
-	return outputScale(Math.max(leftPeak, rightPeak));
+	return outputScale(Math.max(leftPeak, rightPeak), fullScale);
 }
 
 /**
@@ -567,6 +600,8 @@ export async function mixPcmTracksToWav(
 		);
 	}
 	const windowFrames = options.windowFrames ?? DEFAULT_WINDOW_FRAMES;
+	const format = options.format ?? PcmSampleFormat.Int16;
+	const fullScale = PCM_FULL_SCALE[format];
 
 	if (tracks.length === 0) {
 		throw new Error('No tracks to mix');
@@ -596,14 +631,19 @@ export async function mixPcmTracksToWav(
 	}
 	const { totalFrames, outChannels, sampleRate, pcmByteLength } = mixLayout(
 		sized.map((entry) => entry.size),
+		format,
 	);
 
 	const wavBuffer = createWavFileBuffer(
 		outChannels,
 		sampleRate,
 		pcmByteLength,
+		format,
 	);
-	const output = new Int16Array(wavBuffer, WAV_HEADER_SIZE);
+	const output = {
+		view: new DataView(wavBuffer, wavHeaderSize(format)),
+		format,
+	};
 
 	// Both passes read the same windows, so each reports half the progress.
 	const reportPass = (pass: number) => (framesDone: number) => {
@@ -612,10 +652,10 @@ export async function mixPcmTracksToWav(
 		);
 	};
 	const newReader = (track: PcmMixTrack): TrackWindowReader =>
-		new TrackWindowReader(track, sampleRate, windowFrames, app);
+		new TrackWindowReader(track, sampleRate, windowFrames, app, format);
 	const lanes: MixLane[] = sized.map(({ track, size }) => ({
 		track,
-		frames: trackFrames(size, sampleRate),
+		frames: trackFrames(size, sampleRate, format),
 		reader: newReader(track),
 		squares: 0,
 		count: 0,
@@ -634,13 +674,18 @@ export async function mixPcmTracksToWav(
 		outChannels,
 		reportPass(0),
 	);
-	const scale = planMix(lanes, options.alignLevels === true, summedPeak);
+	const scale = planMix(
+		lanes,
+		options.alignLevels === true,
+		summedPeak,
+		fullScale,
+	);
 
 	// The readers are sequential and have reached the end of their tracks.
 	for (const lane of lanes) {
 		lane.reader = newReader(lane.track);
 	}
-	const accumulator = new Int32Array(windowFrames * outChannels);
+	const accumulator = new Float64Array(windowFrames * outChannels);
 	const report = reportPass(1);
 
 	let frameOffset = 0;

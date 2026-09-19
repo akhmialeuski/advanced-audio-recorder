@@ -8,10 +8,14 @@ import {
 	canStreamMix,
 	mixLayout,
 	mixPcmTracksToWav,
+	trackFrames,
 } from 'src/recording/StreamingMixer';
 import type { MixOptions, PcmMixTrack } from 'src/recording/StreamingMixer';
 import type { App } from 'obsidian';
 import { createMockApp } from '../helpers/createApp';
+import { decodePcmSamples, PcmSampleFormat } from 'src/audio/pcm';
+import { encodePcmSamples } from '../helpers/pcmFixtures';
+import { wavHeaderSize } from 'src/audio/WavEncoder';
 
 const WAV_HEADER_SIZE = 44;
 
@@ -474,6 +478,150 @@ describe('StreamingMixer', () => {
 			await expect(
 				mixPcmTracksToWav([createTrack(['a.tmp'])], mockApp),
 			).rejects.toThrow('cannot report file sizes');
+		});
+	});
+	// A session records every track in one representation, and the mix it is
+	// summed into has to hold that representation too: a twenty-four bit capture
+	// mixed back down to sixteen would throw away the headroom the setting was
+	// chosen for, and a floating point one read as int16 is noise.
+	describe('mixing tracks of any representation', () => {
+		/** Stores one track's segment, written in the given representation. */
+		const storeWide = (
+			path: string,
+			format: PcmSampleFormat,
+			samples: number[],
+		): void => {
+			segments.set(path, encodePcmSamples(format, samples));
+		};
+
+		/** Mixes the named mono tracks and reads the mixed samples back. */
+		const mixMono = async (
+			format: PcmSampleFormat,
+			paths: string[],
+		): Promise<number[]> => {
+			const wav = await mixPcmTracksToWav(
+				paths.map((path) => ({
+					segmentPaths: [path],
+					channels: 1,
+					sampleRate: 44100,
+				})),
+				mockApp,
+				{ format },
+			);
+			return Array.from(
+				decodePcmSamples(wav.slice(wavHeaderSize(format)), format),
+			);
+		};
+
+		it.each([
+			[PcmSampleFormat.Int16, 2],
+			[PcmSampleFormat.Int24, 3],
+			[PcmSampleFormat.Float32, 4],
+		])(
+			'writes a %s mix behind a header declaring it',
+			async (format, width) => {
+				storeWide('a.tmp', format, [1, 2]);
+
+				const wav = await mixPcmTracksToWav(
+					[
+						{
+							segmentPaths: ['a.tmp'],
+							channels: 1,
+							sampleRate: 48000,
+						},
+					],
+					mockApp,
+					{ format },
+				);
+
+				const view = new DataView(wav);
+				expect(wav.byteLength).toBe(wavHeaderSize(format) + 2 * width);
+				expect(view.getUint16(34, true)).toBe(width * 8);
+				expect(view.getUint32(28, true)).toBe(48000 * width);
+			},
+		);
+
+		it('sums twenty-four bit tracks on their own scale', async () => {
+			storeWide('a.tmp', PcmSampleFormat.Int24, [1000000, -2000000, 3]);
+			storeWide('b.tmp', PcmSampleFormat.Int24, [500000, 1000000, -1]);
+
+			await expect(
+				mixMono(PcmSampleFormat.Int24, ['a.tmp', 'b.tmp']),
+			).resolves.toEqual([1500000, -1000000, 2]);
+		});
+
+		// The scale is taken from the representation's own full scale, so a
+		// twenty-four bit sum is only brought down where it really would clip,
+		// not at the sixteen-bit rail two hundred and fifty-six times lower.
+		it('leaves a twenty-four bit sum past the int16 rail untouched', async () => {
+			storeWide('a.tmp', PcmSampleFormat.Int24, [4000000]);
+			storeWide('b.tmp', PcmSampleFormat.Int24, [4000000]);
+
+			await expect(
+				mixMono(PcmSampleFormat.Int24, ['a.tmp', 'b.tmp']),
+			).resolves.toEqual([8000000]);
+		});
+
+		it('scales a twenty-four bit sum that would clip its own rail', async () => {
+			storeWide('a.tmp', PcmSampleFormat.Int24, [8000000, 800000]);
+			storeWide('b.tmp', PcmSampleFormat.Int24, [8000000, 800000]);
+
+			const samples = await mixMono(PcmSampleFormat.Int24, [
+				'a.tmp',
+				'b.tmp',
+			]);
+
+			expect(samples[0]).toBe(8388607);
+			// The ratio between the loud and the quiet moment survives the scale
+			expect(samples[1]).toBeCloseTo((samples[0] ?? 0) / 10, -1);
+		});
+
+		it('sums floating point tracks as shares of full scale', async () => {
+			storeWide('a.tmp', PcmSampleFormat.Float32, [0.25, -0.5]);
+			storeWide('b.tmp', PcmSampleFormat.Float32, [0.125, 0.25]);
+
+			await expect(
+				mixMono(PcmSampleFormat.Float32, ['a.tmp', 'b.tmp']),
+			).resolves.toEqual([0.375, -0.25]);
+		});
+
+		it('scales a floating point sum back onto full scale', async () => {
+			storeWide('a.tmp', PcmSampleFormat.Float32, [0.8, 0.08]);
+			storeWide('b.tmp', PcmSampleFormat.Float32, [0.8, 0.08]);
+
+			const samples = await mixMono(PcmSampleFormat.Float32, [
+				'a.tmp',
+				'b.tmp',
+			]);
+
+			expect(samples[0]).toBeCloseTo(1, 5);
+			expect(samples[1]).toBeCloseTo(0.1, 5);
+		});
+
+		// The sizing rule answers both the allocation here and the warning a
+		// running recording shows, so it has to count the same bytes a segment of
+		// that representation really holds.
+		// The layout rule and the per-track frame count are both asked without a
+		// width by every caller written before the choice existed.
+		it('counts frames at the sixteen-bit width when none is named', () => {
+			const size = { pcmBytes: 400, channels: 2, sampleRate: 44100 };
+
+			expect(trackFrames(size, 44100)).toBe(100);
+			expect(mixLayout([size]).pcmByteLength).toBe(400);
+		});
+
+		it.each([
+			[PcmSampleFormat.Int16, 2],
+			[PcmSampleFormat.Int24, 3],
+			[PcmSampleFormat.Float32, 4],
+		])('sizes a %s mix by that width', (format, width) => {
+			const layout = mixLayout(
+				[{ pcmBytes: 60 * width, channels: 2, sampleRate: 44100 }],
+				format,
+			);
+
+			expect(layout.totalFrames).toBe(30);
+			expect(layout.pcmByteLength).toBe(30 * 2 * width);
 		});
 	});
 });
