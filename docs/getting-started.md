@@ -70,7 +70,7 @@ Enabling the plugin opens its settings tab straight away (Obsidian 1.7.2 and lat
 
 The first time a new version of the plugin runs, a **What's new** dialog opens with everything that changed since the version you were on, newest release first. Each release is headed by its version number, and the text is the release note written for it, so an upgrade that skipped three releases reads as three sections rather than one.
 
-![The What's new dialog after an update, showing the release headed by its version number above the notes written for it](images/modal-release-notes.png)
+![The What's new dialog after an update, showing the release headed by its version number above the notes written for it, with the dialog title above the notes and the Close button below them, both staying in place while the notes scroll between them](images/modal-release-notes.png)
 
 The dialog appears once per version. It never appears on a fresh install, and it never appears the first time you run a version of the plugin that has this dialog at all: in both cases there is nothing on record to compare against, so the plugin remembers the version you are on and shows the notes from the next update onwards.
 

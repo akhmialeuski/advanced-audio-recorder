@@ -69,9 +69,37 @@ describe('ReleaseNotesModal with notes to show', () => {
 		const modal = openModal(NOTES);
 		const close = jest.spyOn(modal, 'close');
 
-		el<HTMLButtonElement>(modal.contentEl, 'button').click();
+		el<HTMLButtonElement>(modal.modalEl, 'button').click();
 
 		expect(close).toHaveBeenCalledTimes(1);
+	});
+
+	it('scrolls the notes under a title and a Close that stay put', () => {
+		// Three releases of notes are longer than any window. Scrolling the
+		// dialog as one whole would carry its own title, its close button and
+		// its Close action off the top with the text.
+		const modal = openModal(NOTES);
+
+		expect(modal.modalEl.matches(MODAL.scrollableBody)).toBe(true);
+		expect(maybeEl(modal.contentEl, 'button')).toBeNull();
+		expect(textOf(el(modal.modalEl, MODAL.actions), 'button')).toBe(
+			'Close',
+		);
+	});
+
+	it('unloads the renderer while the DOM it built over is still there', () => {
+		// Obsidian's render children tear down against the elements they were
+		// built over, so the unload has to run before the body is emptied.
+		const modal = openModal(NOTES);
+		const body = el(modal.contentEl, MODAL.releaseNotes);
+		const stillAttached = jest.fn();
+		renderedInto()?.register(() => {
+			stillAttached(modal.contentEl.contains(body));
+		});
+
+		modal.onClose();
+
+		expect(stillAttached).toHaveBeenCalledWith(true);
 	});
 
 	it('unloads the component the renderer attached its children to', () => {

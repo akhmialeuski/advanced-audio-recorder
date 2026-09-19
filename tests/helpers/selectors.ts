@@ -180,6 +180,13 @@ export const MODAL = {
 	 * styling of its own, so this is what it can be found by.
 	 */
 	releaseNotes: '.markdown-rendered',
+	/**
+	 * The footer a scrollable dialog pins under its body, holding the action
+	 * row. Obsidian's own class, for the same reason as the one above.
+	 */
+	actions: '.modal-button-container',
+	/** A dialog whose body scrolls under a title and a footer that stay put. */
+	scrollableBody: '.mod-scrollable-content',
 } as const;
 
 /** The transcription queue dialog. */

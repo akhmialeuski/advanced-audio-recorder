@@ -61,6 +61,10 @@ export class ReleaseNotesModal extends PluginModal {
 			);
 			return;
 		}
+		// An upgrade that spanned several releases is longer than any window,
+		// and a dialog that scrolls as one whole carries its own title and its
+		// own Close button off the top with the text.
+		this.makeBodyScrollable();
 		this.renderer.load();
 		const body = this.contentEl.createDiv({ cls: RENDERED_CLASS });
 		// The source path is what the renderer resolves a relative internal
@@ -92,7 +96,10 @@ export class ReleaseNotesModal extends PluginModal {
 	}
 
 	override onClose(): void {
-		super.onClose();
+		// Before the body is emptied, not after: the renderer's children were
+		// built over elements inside it and tear down against them, so an
+		// unload that runs once the DOM is gone unloads them against nothing.
 		this.renderer.unload();
+		super.onClose();
 	}
 }

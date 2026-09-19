@@ -1055,16 +1055,31 @@ export class Modal {
 	app: App;
 	contentEl: HTMLElement;
 
+	/**
+	 * The dialog's own element, holding the title and the body the way
+	 * Obsidian nests them. A frame that pins a title or a footer classes this
+	 * element and puts the footer beside the body under it, so the mock has to
+	 * carry the same three elements rather than two loose ones.
+	 */
+	modalEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+
+	titleEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+
 	constructor(app: App) {
 		this.app = app;
 		this.contentEl = addObsidianDomExtensions(
 			document.createElement('div'),
 		);
+		this.modalEl.addClass('modal');
+		this.titleEl.addClass('modal-title');
+		this.contentEl.addClass('modal-content');
+		this.modalEl.appendChild(this.titleEl);
+		this.modalEl.appendChild(this.contentEl);
 	}
-
-	titleEl: HTMLElement = addObsidianDomExtensions(
-		document.createElement('div'),
-	);
 
 	// Prototype methods, not instance spies: a test that wants to watch these
 	// spies the instance (or the prototype, to catch a modal it never sees),
