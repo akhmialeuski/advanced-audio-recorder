@@ -945,6 +945,13 @@ export default class AudioRecorderPlugin extends Plugin {
 			return;
 		}
 		this.settings.lastReleaseNotesVersion = current;
+		// Through the shared save rather than a bare saveData, although this
+		// writes one bookkeeping field. Everything else saveSettings does is
+		// either wanted here or costs nothing: the backup stays in step with
+		// data.json, the player refresh returns without touching an embed when
+		// no player setting moved, and the profile-note read is idempotent and
+		// swallows its own failures. A second persistence path would drift
+		// from this one the first time the shared one gains a step.
 		void this.saveSettings().catch((error: unknown) => {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Recording the announced version failed:`,
