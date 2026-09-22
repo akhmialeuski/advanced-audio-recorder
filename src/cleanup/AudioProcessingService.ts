@@ -7,7 +7,15 @@
  */
 
 import type { App, TFile } from 'obsidian';
-import { CLEANUP_SEGMENT_SECONDS, CLEANUP_WARMUP_SECONDS } from '../constants';
+import {
+	CLEANUP_LEVELING_ATTACK_SECONDS,
+	CLEANUP_LEVELING_KNEE_DB,
+	CLEANUP_LEVELING_RATIO,
+	CLEANUP_LEVELING_RELEASE_SECONDS,
+	CLEANUP_LEVELING_THRESHOLD_DB,
+	CLEANUP_SEGMENT_SECONDS,
+	CLEANUP_WARMUP_SECONDS,
+} from '../constants';
 import {
 	getMaxCleanupDecodedSamples,
 	getMaxCleanupSeconds,
@@ -60,13 +68,6 @@ function writeWavSegment(
 		}
 	}
 }
-
-/** Loudness-leveling compressor curve, fixed and tuned for speech. */
-const LEVELING_COMPRESSOR_THRESHOLD_DB = -24;
-const LEVELING_COMPRESSOR_KNEE_DB = 30;
-const LEVELING_COMPRESSOR_RATIO = 12;
-const LEVELING_COMPRESSOR_ATTACK_S = 0.003;
-const LEVELING_COMPRESSOR_RELEASE_S = 0.25;
 
 /**
  * Runs the offline audio-cleanup pipeline.
@@ -328,11 +329,16 @@ export class AudioProcessingService {
 		}
 		if (config.leveling.enabled) {
 			const compressor = offline.createDynamicsCompressor();
-			compressor.threshold.value = LEVELING_COMPRESSOR_THRESHOLD_DB;
-			compressor.knee.value = LEVELING_COMPRESSOR_KNEE_DB;
-			compressor.ratio.value = LEVELING_COMPRESSOR_RATIO;
-			compressor.attack.value = LEVELING_COMPRESSOR_ATTACK_S;
-			compressor.release.value = LEVELING_COMPRESSOR_RELEASE_S;
+			// The same curve the live chain applies, from the shared constants
+			// (see module:player/LiveVoiceBoost): the two renderers differ in
+			// how they run the stages, never in what they are tuned to nor in
+			// the order they run in - the live chain gates before the filter
+			// here, so a threshold decides on the same signal in both.
+			compressor.threshold.value = CLEANUP_LEVELING_THRESHOLD_DB;
+			compressor.knee.value = CLEANUP_LEVELING_KNEE_DB;
+			compressor.ratio.value = CLEANUP_LEVELING_RATIO;
+			compressor.attack.value = CLEANUP_LEVELING_ATTACK_SECONDS;
+			compressor.release.value = CLEANUP_LEVELING_RELEASE_SECONDS;
 			node.connect(compressor);
 			const makeup = offline.createGain();
 			makeup.gain.value = dbToGain(config.leveling.makeupDb);

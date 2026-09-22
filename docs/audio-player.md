@@ -1,6 +1,6 @@
 # Enhanced audio player
 
-The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a chapter repeat, a time display, per-file markers and chapters, and a copy-timestamp-link action. A recording left part-heard resumes where it stopped, and playback is announced to the operating system so the lock screen and the media keys can drive it. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed, and every one of those actions is also a command you can bind to a hotkey. The takeover is on by default, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is turned off.
+The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a voice-boost toggle that applies the cleanup chain to the recording as it plays, a loop toggle, a chapter repeat, a time display, per-file markers and chapters, and a copy-timestamp-link action. A recording left part-heard resumes where it stopped, and playback is announced to the operating system so the lock screen and the media keys can drive it. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed, and every one of those actions is also a command you can bind to a hotkey. The takeover is on by default, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is turned off.
 
 - [Where the player is switched](#where-the-player-is-switched)
 - [How the takeover works](#how-the-takeover-works)
@@ -9,6 +9,7 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
     - [Playback speed](#playback-speed)
     - [Skip forward and back](#skip-forward-and-back)
     - [Volume and mute](#volume-and-mute)
+    - [Voice boost](#voice-boost)
     - [Loop](#loop)
     - [Repeat chapter](#repeat-chapter)
     - [Time display](#time-display)
@@ -61,9 +62,9 @@ The player also keeps working in **pop-out windows**: moving a note that embeds 
 
 ## The controls
 
-Every control below is **fixed** in what it does. Only the master **Enhanced audio player** toggle, the two windows (**Show waveform**, **Markers and chapters**), and the **Skip step** can be changed in settings.
+Every control below is **fixed** in what it does. Only the master **Enhanced audio player** toggle, the two windows (**Show waveform**, **Markers and chapters**), and the **Skip step** can be changed in settings. The one control that renders a setting without being one is **Voice boost**, which applies whatever the **Audio cleanup defaults** describe.
 
-![Enhanced player control row showing play, skip back, skip forward, speed, mute, volume, loop, chapter navigation, time, and copy-link buttons](images/player-controls.png)
+![Enhanced player control row showing play, skip back, skip forward, speed, mute, volume, voice boost, loop, chapter navigation, time, and copy-link buttons](images/player-controls.png)
 
 ### Waveform seek bar
 
@@ -97,6 +98,19 @@ The **back** and **forward** buttons jump playback by the configured **Skip step
 
 - A **volume slider** sets the level from 0 to 1. Dragging it above 0 while muted automatically unmutes.
 - The **mute** button toggles mute and reflects the state with its icon.
+
+### Voice boost
+
+The **voice boost** button applies the [audio cleanup](audio-cleanup.md) chain to the recording **while it plays**, so a quiet passage becomes intelligible without waiting for a processed copy to be written. The stages are the ones under **Settings > Advanced Audio Recorder > Audio cleanup defaults**, applied to the live signal instead of to a decoded file, and the recording itself is never touched: switching the button off returns the audio to exactly how it sounded before.
+
+- The button stays pressed while the chain is engaged. Every player on screen follows the same switch, so turning it on in one embed turns it on in the others, including a player rendered after the fact.
+- **Remembered for the session.** The chain stays on for the rest of the session, across recordings and across notes, and it is not written to the settings file, so reopening Obsidian starts with it off.
+- Only the stages switched on in the cleanup defaults are rendered. With the stock defaults, where the high-pass filter is on and the noise gate and loudness leveling are off, the change is subtle. Turn the gate and the leveling on for a recording that needs what the offline cleanup produces.
+- The stages run in the offline pass's order, with the gate deciding before the filter, and the gate measures the same short window of signal with the same threshold and hysteresis. A threshold tuned in the cleanup dialog therefore behaves the way it does on a processed copy, rather than gating the quiet passage the button exists for.
+- There is no decoding, no size limit, and no length limit, which is what makes it usable on a recording that is far too long to clean up as a file.
+- The chain is built from Web Audio nodes. On a runtime that does not provide them, the button is not offered at all and playback is unaffected.
+
+![The enhanced player control row with the voice boost button pressed, between the volume slider and the loop button](images/player-voice-boost.png)
 
 ### Loop
 

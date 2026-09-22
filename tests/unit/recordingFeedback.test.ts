@@ -4,10 +4,8 @@
  */
 
 import { formatByteSize } from 'src/utils/formatBytes';
-import {
-	computeRms,
-	rmsToMeterFraction,
-} from 'src/recording/InputLevelMonitor';
+import { computeRms } from 'src/audio/pcm';
+import { rmsToMeterFraction } from 'src/recording/InputLevelMonitor';
 
 describe('formatByteSize', () => {
 	const KB = 1024;

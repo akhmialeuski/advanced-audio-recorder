@@ -7,25 +7,10 @@
  */
 
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { computeRms } from '../audio/pcm';
 
 /** Lowest level, in dBFS, mapped to the bottom of the meter. */
 const METER_FLOOR_DB = -60;
-
-/**
- * Root-mean-square amplitude of time-domain samples (range 0..~1).
- * @param samples - Time-domain samples in the range -1..1
- */
-export function computeRms(samples: Float32Array): number {
-	if (samples.length === 0) {
-		return 0;
-	}
-	let sumSquares = 0;
-	for (let i = 0; i < samples.length; i++) {
-		const sample = samples[i] ?? 0;
-		sumSquares += sample * sample;
-	}
-	return Math.sqrt(sumSquares / samples.length);
-}
 
 /**
  * Maps an RMS amplitude to a 0..1 meter fraction on a dB scale, so quiet

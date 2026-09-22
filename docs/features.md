@@ -18,6 +18,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 - [Enhanced audio player](#enhanced-audio-player)
 - [Markers and chapters](#markers-and-chapters)
 - [On-demand audio cleanup](#on-demand-audio-cleanup)
+- [Live voice boost](#live-voice-boost)
 - [Input processing and live feedback](#input-processing-and-live-feedback)
 - [Transcription](#transcription)
 - [Exporting chapters and markers](#exporting-chapters-and-markers)
@@ -134,6 +135,12 @@ Right-click an audio file (or its embed) and choose **Clean up audio** to run of
 
 Learn more: [Audio cleanup](audio-cleanup.md)
 
+## Live voice boost
+
+The **voice boost** button in the enhanced player applies the cleanup chain to a recording **while it plays**, so a quiet passage becomes intelligible without writing a processed copy first. It renders the same **Audio cleanup defaults** the dialog starts from, it decodes nothing, and it has no size or length limit. The recording on disk is never touched, and switching the button off returns the audio to how it sounded. The switch is remembered for the session and applies to every player on screen, so it is not a per-recording setting. Like the offline cleanup, only the stages enabled in the defaults are rendered, and on a runtime without the required Web Audio nodes the button is not offered.
+
+Learn more: [Audio player](audio-player.md#voice-boost)
+
 ## Input processing and live feedback
 
 Control the browser's microphone processing and watch live feedback while recording, all under **Audio processing & feedback**. Toggles for **Noise suppression**, **Echo cancellation**, and **Automatic gain control** (all default On) are applied to the input stream and the diagnostics test recording. The **Input level meter** shows a live VU meter in the status bar, **Recording stats** show live elapsed time and growing total size, and the **Mobile recording banner** marks an in-progress recording where there is no ribbon icon.
@@ -214,6 +221,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | Playback commands             | Transport, speed, chapters, and markers as hotkey-bindable commands | Command palette (while playing)                 | [Audio player](audio-player.md#playback-commands-and-hotkeys)  |
 | Markers and chapters          | Per-file bookmarks and chapters stored in a sidecar                 | Settings > Audio player                         | [Audio player](audio-player.md#markers-and-chapters)           |
 | On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy           | Context menu / palette > Clean up audio         | [Audio cleanup](audio-cleanup.md)                              |
+| Live voice boost              | Cleanup stages applied to a recording as it plays                   | Settings > Audio cleanup defaults               | [Audio player](audio-player.md#voice-boost)                    |
 | Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner           | Settings > Audio processing & feedback          | [Recording](recording.md#live-feedback)                        |
 | Transcription                 | Speech-to-text via 5 engines, diarization, output formats           | Settings > Transcription                        | [Transcription](transcription.md)                              |
 | LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM     | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |

@@ -12,7 +12,10 @@ import type {
 	PlaybackController,
 	PlaybackControlsState,
 } from 'src/player/playbackControls';
-import { installControlledAudio } from '../helpers/mediaMocks';
+import {
+	installAudioGraphMock,
+	installControlledAudio,
+} from '../helpers/mediaMocks';
 
 /**
  * Builds a jest-backed player command surface for registry delegation tests.
@@ -51,11 +54,13 @@ function makePlayer(connected = true): SeekablePlayer & {
 	seeks: number[];
 	reloads: number;
 	applied: number;
+	voiceBoosts: boolean[];
 } {
 	return {
 		seeks: [] as number[],
 		reloads: 0,
 		applied: 0,
+		voiceBoosts: [] as boolean[],
 		seekTo(seconds: number): void {
 			this.seeks.push(seconds);
 		},
@@ -67,6 +72,9 @@ function makePlayer(connected = true): SeekablePlayer & {
 		},
 		applySettings(_settings: ResolvedPlayerSettings): void {
 			this.applied += 1;
+		},
+		setVoiceBoost(enabled: boolean): void {
+			this.voiceBoosts.push(enabled);
 		},
 	};
 }
@@ -705,5 +713,63 @@ describe('AudioPlayerRegistry', () => {
 		} finally {
 			jest.useRealTimers();
 		}
+	});
+
+	// A media element can be routed into an audio graph only if its media was
+	// fetched across origins, and the fetch mode is fixed when the source is
+	// set - so an element loaded without this could never be routed later.
+	it('creates the shared element asking for the recording across origins', () => {
+		const harness = installControlledAudio();
+		const registry = new AudioPlayerRegistry();
+
+		registry.acquireAudio(playbackKey('rec.wav', null), 'app://rec');
+
+		expect(harness.audio.crossOrigin).toBe('anonymous');
+	});
+});
+
+describe('the registry voice boost', () => {
+	it('reports the chain as unavailable where the runtime offers no audio graph', () => {
+		const registry = new AudioPlayerRegistry();
+
+		expect(registry.voiceBoostState()).toEqual({
+			available: false,
+			enabled: false,
+		});
+	});
+
+	// The chain is one switch for the plugin, and every player has to show it:
+	// the row of a second embed would otherwise keep saying the sound is
+	// untouched while both of them play through the chain.
+	it('shows the state a toggle moved to on every live player', () => {
+		const graph = installAudioGraphMock();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const first = makePlayer();
+			const second = makePlayer();
+			registry.register('a.wav', first);
+			registry.register('b.wav', second);
+
+			registry.toggleVoiceBoost();
+
+			expect(registry.voiceBoostState()).toEqual({
+				available: true,
+				enabled: true,
+			});
+			expect(first.voiceBoosts).toEqual([true]);
+			expect(second.voiceBoosts).toEqual([true]);
+		} finally {
+			graph.restore();
+		}
+	});
+
+	it('leaves a player that is no longer attached out of the broadcast', () => {
+		const registry = new AudioPlayerRegistry();
+		const gone = makePlayer(false);
+		registry.register('a.wav', gone);
+
+		registry.toggleVoiceBoost();
+
+		expect(gone.voiceBoosts).toEqual([]);
 	});
 });

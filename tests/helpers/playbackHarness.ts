@@ -1,16 +1,73 @@
 /**
  * Shared harness for the player integration suites: one controllable audio
  * element installed as the global Audio factory, an in-memory sidecar store,
- * and the small readers both suites use. Extracted so PlaybackSync and the
- * pop-out suites drive the exact same real audio element instead of each
+ * the app, decoder, file and container a player is mounted against, and the
+ * small readers both suites use. Extracted so PlaybackSync and the pop-out
+ * suites drive the exact same real audio element instead of each
  * hand-rolling (and drifting) their own copy.
  * @module tests/helpers/playbackHarness
  */
 
+import { App, Modal } from 'obsidian';
+import type { TFile } from 'obsidian';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
+import type { AudioDecoder } from 'src/player/WaveformData';
 import { makePlaybackDouble } from './audioPlayerHarness';
+import { partial } from './doubles';
+import { createMockApp } from './createApp';
+
+/**
+ * The app a player integration suite renders an embed against: a vault that
+ * answers the two calls a player makes, and no file behind it.
+ * @returns The mocked app handle
+ */
+export function makePlayerApp(): App {
+	return createMockApp({
+		vault: {
+			getResourcePath: () => 'app://media',
+			readBinary: () => Promise.resolve(new ArrayBuffer(0)),
+		},
+		fileManager: { generateMarkdownLink: () => '[[rec.mp4]]' },
+	}).app;
+}
+
+/**
+ * The decoder those suites install. It refuses, which keeps the progressive
+ * waveform path - and its timers - out of a suite that does not cover it.
+ * @returns A decoder that rejects every request
+ */
+export function makeRefusingDecoder(): AudioDecoder {
+	return {
+		decode: () => Promise.reject(new Error('no decode in tests')),
+	};
+}
+
+/**
+ * The recording a player integration suite mounts a player for.
+ * @param extension - Extension the file reports, mp4 by default
+ * @returns A file entry as the vault hands one out
+ */
+export function makePlayerFile(extension = 'mp4'): TFile {
+	return partial<TFile>({
+		path: `rec.${extension}`,
+		extension,
+		stat: { mtime: 1, size: 1000 },
+	});
+}
+
+/**
+ * A container attached to the document, as an embed's is. A player's mode
+ * probe reads the document its container is in, so a detached one renders as
+ * neither of the two view modes.
+ * @returns The attached container
+ */
+export function makePlayerContainer(): HTMLElement {
+	const container = new Modal(new App()).contentEl.createDiv();
+	document.body.appendChild(container);
+	return container;
+}
 
 /** Controllable audio element whose setters emit the matching media events. */
 export interface ControllableAudio extends HTMLAudioElement {

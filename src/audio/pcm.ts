@@ -107,6 +107,31 @@ export function floatToInt16(sample: number): number {
 }
 
 /**
+ * Root-mean-square amplitude of float samples, on the -1..1 scale a decoded
+ * or analysed buffer carries: the level a gate, a meter, or a normalization
+ * decision is taken against.
+ *
+ * Lives here rather than with any one consumer because the recording meter
+ * and the live playback chain both read it, and neither should have to reach
+ * into the other's module for it.
+ * @param samples - Samples in the range -1..1
+ * @returns The RMS amplitude, zero for an empty buffer
+ */
+export function computeRms(samples: Float32Array): number {
+	if (samples.length === 0) {
+		return 0;
+	}
+	let sumSquares = 0;
+	// Iterated rather than indexed: a sample exists at every offset of a typed
+	// array, so a read guarded against an absent one is a branch that can never
+	// be taken and a coverage figure that can never be whole.
+	for (const sample of samples) {
+		sumSquares += sample * sample;
+	}
+	return Math.sqrt(sumSquares / samples.length);
+}
+
+/**
  * Reads one sample from raw PCM bytes, on the scale its representation works
  * in: a whole number for the integer representations, a share of full scale
  * for the floating point one.
