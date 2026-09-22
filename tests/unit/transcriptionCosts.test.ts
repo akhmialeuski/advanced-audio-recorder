@@ -615,6 +615,48 @@ describe('buildCostEstimate', () => {
 		expect(estimate.totalUsd).toBeCloseTo(transcription + postProcess, 10);
 	});
 
+	it('prices the post-processing line by the task it will run', () => {
+		// A 600-second transcript is 4800 tokens (eight per second). A cleanup
+		// writes back all of them up to the model's answer ceiling; a summary
+		// answers with a quarter of them, which is 1200. Both read the same
+		// input, so at gpt-4o-mini's $0.15/$0.60 per million tokens the summary
+		// costs 2896 output tokens less, and the line has to say so: the dialog
+		// used to keep showing the total it had priced for the previous task.
+		// The ceiling is this engine's own field, stated rather than inherited
+		// from the default so the arithmetic below does not move with it.
+		const cleanup = buildCostEstimate(
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+				llmPostProcessEnabled: true,
+				llmPostProcessTask: 'cleanup',
+				llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				llmOpenAiModel: 'gpt-4o-mini',
+				llmOpenAiMaxTokens: 4096,
+			}),
+			600,
+		);
+		const summary = buildCostEstimate(
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+				llmPostProcessEnabled: true,
+				llmPostProcessTask: 'summary',
+				llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				llmOpenAiModel: 'gpt-4o-mini',
+				llmOpenAiMaxTokens: 4096,
+			}),
+			600,
+		);
+
+		expect(cleanup.lines[1]?.label).toBe('Post-processing (Clean up)');
+		expect(summary.lines[1]?.label).toBe('Post-processing (Summarize)');
+		// 4800 input tokens at $0.15/M plus 4096 output at $0.60/M.
+		expect(cleanup.lines[1]?.usd).toBeCloseTo(0.0031776, 10);
+		// The same input plus 1200 output.
+		expect(summary.lines[1]?.usd).toBeCloseTo(0.00144, 10);
+	});
+
 	it('marks the free local engine as free and needs no link', () => {
 		const settings = mergeSettings({
 			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,

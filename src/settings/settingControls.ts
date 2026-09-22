@@ -89,6 +89,20 @@ export interface SettingsSectionContext {
 	rerender: () => void;
 	/** Schedules a debounced persist (used by text inputs). */
 	saveDebounced: () => void;
+	/**
+	 * Called after any control writes a new value, before the value is
+	 * persisted. For a surface that renders something derived from the whole
+	 * settings object rather than from one field, such as the transcribe
+	 * dialog's cost estimate, which has to re-price whenever any of the choices
+	 * it is computed from changes.
+	 *
+	 * Distinct from {@link SettingsSectionContext.rerender} on purpose: that one
+	 * rebuilds the controls, which a derived figure does not need, and asking
+	 * every price-affecting control to remember it is how the estimate came to
+	 * ignore a changed LLM task. Left out by the settings tab, which renders no
+	 * such figure.
+	 */
+	onValueChanged?: (() => void) | undefined;
 }
 
 /** Configuration for a debounced text control (optionally a password). */
@@ -164,6 +178,7 @@ export function addText(
 		}
 		text.setValue(config.get()).onChange((value) => {
 			config.set(value);
+			ctx.onValueChanged?.();
 			ctx.saveDebounced();
 		});
 		if (config.disabled) {
@@ -205,6 +220,7 @@ export function addToggle(
 	setting.addToggle((toggle) => {
 		toggle.setValue(config.get()).onChange(async (value) => {
 			config.set(value);
+			ctx.onValueChanged?.();
 			await ctx.save();
 			if (config.rerender) {
 				ctx.rerender();
@@ -259,6 +275,7 @@ export function addDropdown(
 		}
 		dropdown.setValue(config.get()).onChange(async (value) => {
 			config.set(value);
+			ctx.onValueChanged?.();
 			await ctx.save();
 			if (config.rerender) {
 				ctx.rerender();
