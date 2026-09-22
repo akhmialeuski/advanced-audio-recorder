@@ -287,6 +287,15 @@ export const PLAYER_ICONS = {
 	previousChapter: 'chevron-first',
 	nextChapter: 'chevron-last',
 	chapterLoop: 'repeat-1',
+	/**
+	 * Live cleanup of the playing audio. The older `mic-2` name rather than
+	 * the `mic-vocal` it was renamed to in Lucide 0.395, because Obsidian
+	 * pins its icon set and only reached 0.446 in 1.7, while the manifest
+	 * supports 1.6.6. Both names draw the same glyph, and the old one still
+	 * resolves in current Lucide, so this is the name that resolves on every
+	 * version the plugin runs on.
+	 */
+	voiceBoost: 'mic-2',
 	searchMarkers: 'search',
 	speed: 'gauge',
 	copyLink: 'link',
@@ -1309,6 +1318,47 @@ export const CLEANUP_SEGMENT_SECONDS = 120;
  * region begins.
  */
 export const CLEANUP_WARMUP_SECONDS = 3;
+
+/**
+ * Level-tracking window, in seconds, of the noise gate. The offline pass
+ * measures the signal over this window, and the live chain reads its analyser
+ * on the same cadence, so a gate tuned in the cleanup dialog responds at the
+ * pace it was tuned at when it runs during playback.
+ */
+export const CLEANUP_GATE_WINDOW_SECONDS = 0.02;
+
+/**
+ * Hysteresis, in dB, of the noise gate: the level has to fall this far below
+ * the threshold before the gate closes, so it cannot chatter on and off around
+ * it. Shared by the offline gate and the live chain, which is what keeps the
+ * two from gating differently on the same recording.
+ */
+export const CLEANUP_GATE_HYSTERESIS_DB = 6;
+
+/** Gate open ramp time constant, in milliseconds (fast, to avoid clipping onsets). */
+export const CLEANUP_GATE_ATTACK_MS = 5;
+
+/** Gate close ramp time constant, in milliseconds (slower, to avoid clicks). */
+export const CLEANUP_GATE_RELEASE_MS = 80;
+
+/**
+ * Threshold, in dBFS, of the fixed speech-leveling compressor curve. Fixed
+ * rather than configurable: only the makeup gain is a setting, and the live
+ * chain has to compress exactly as the offline pass does.
+ */
+export const CLEANUP_LEVELING_THRESHOLD_DB = -24;
+
+/** Knee width, in dB, of the fixed speech-leveling compressor curve. */
+export const CLEANUP_LEVELING_KNEE_DB = 30;
+
+/** Compression ratio of the fixed speech-leveling compressor curve. */
+export const CLEANUP_LEVELING_RATIO = 12;
+
+/** Attack time, in seconds, of the fixed speech-leveling compressor curve. */
+export const CLEANUP_LEVELING_ATTACK_SECONDS = 0.003;
+
+/** Release time, in seconds, of the fixed speech-leveling compressor curve. */
+export const CLEANUP_LEVELING_RELEASE_SECONDS = 0.25;
 
 // Actions
 

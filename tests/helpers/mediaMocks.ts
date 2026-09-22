@@ -2,12 +2,16 @@
  * Media-API doubles with paired cleanup, so suites stop hand-rolling globals
  * and leaking them into each other.
  *
- * Covers the HTMLAudioElement and object URLs. It once also carried
- * MediaRecorder, AudioContext, and getUserMedia doubles, which no test ever
- * used - the suites that needed them had installed their own before these were
- * written. Removed rather than left as a second way to do it.
+ * Covers the HTMLAudioElement, object URLs, and the realtime audio graph the
+ * live playback chain is wired in. It once also carried MediaRecorder and
+ * getUserMedia doubles, which no test ever used - the suites that needed them
+ * had installed their own before these were written. Removed rather than left
+ * as a second way to do it.
  * @module tests/helpers/mediaMocks
  */
+
+import { at } from './assertions';
+import { globals } from './doubles';
 
 /** Handle returned by the install helpers; restore() undoes the global. */
 export interface InstalledMock<T> {
@@ -203,6 +207,303 @@ export function installAudioContextRate(
 			(global as Record<string, unknown>)['AudioContext'] = previous;
 		},
 	};
+}
+
+/** One parameter of a graph node, as the tests read and schedule it. */
+export interface AudioParamDouble {
+	/** Value written straight onto the parameter. */
+	value: number;
+	/** Every setTargetAtTime schedule, in order. */
+	scheduled: Array<{ value: number; time: number; timeConstant: number }>;
+	/**
+	 * Records the schedule and moves the value to the target it aims at. The
+	 * ramp is not modelled, only where it lands, which is what lets a test
+	 * tell a parameter the plugin drove from one it left at its default.
+	 */
+	setTargetAtTime(value: number, time: number, timeConstant: number): void;
+}
+
+/**
+ * One node the plugin put in an audio graph.
+ *
+ * Everything a node can be is on one shape rather than one class per node
+ * kind: a test that inspects a chain reads the same fields whichever node it
+ * lands on, and the members that do not apply stay inert.
+ */
+export interface AudioNodeDouble {
+	/** The kind of node, as the plugin asked for it. */
+	kind: string;
+	/** Nodes this one currently feeds. */
+	outputs: AudioNodeDouble[];
+	/** Times it was disconnected, which is what drops its outputs. */
+	disconnects: number;
+	/** Parameters it exposes, by name; empty for a node without any. */
+	parameters: Record<string, AudioParamDouble>;
+	/** FFT window of an analyser, zero for every other kind. */
+	fftSize: number;
+	/** Fills a buffer with the level the test asked for; inert off an analyser. */
+	getFloatTimeDomainData(buffer: Float32Array): void;
+	connect(target: AudioNodeDouble): AudioNodeDouble;
+	disconnect(): void;
+}
+
+/** The audio context the plugin opened, and everything wired through it. */
+export interface AudioGraphContextDouble {
+	/** The rate the context reports. */
+	sampleRate: number;
+	/** Whether the plugin closed it. */
+	closed: boolean;
+	/** Times the plugin asked it to run. */
+	resumes: number;
+	/** Every node created in it, in the order created. */
+	nodes: AudioNodeDouble[];
+	/** The node each element was routed through, in the order routed. */
+	sources: Array<{ element: HTMLMediaElement; node: AudioNodeDouble }>;
+	/** The context's own output, which everything audible has to reach. */
+	destination: AudioNodeDouble;
+	/** Amplitude the analyser reports, which is the level a test sets. */
+	analyserAmplitude: number;
+}
+
+/**
+ * Builds one parameter of a node.
+ * @param initial - The value the platform starts it at, 0 where it has none
+ */
+function audioParamDouble(initial = 0): AudioParamDouble {
+	const parameter: AudioParamDouble = {
+		value: initial,
+		scheduled: [],
+		setTargetAtTime(value, time, timeConstant) {
+			parameter.scheduled.push({ value, time, timeConstant });
+			parameter.value = value;
+		},
+	};
+	return parameter;
+}
+
+/**
+ * Builds one node of a graph and records it on its context.
+ * @param kind - The kind of node, as the plugin asked for it
+ * @param parameterDefaults - Each parameter and the value the platform starts
+ *   it at, which a test asserts an untouched parameter still holds
+ * @param context - The context the node belongs to
+ */
+function nodeDouble(
+	kind: string,
+	parameterDefaults: Record<string, number>,
+	context: AudioGraphContextDouble,
+): AudioNodeDouble {
+	const parameters: Record<string, AudioParamDouble> = {};
+	for (const [name, initial] of Object.entries(parameterDefaults)) {
+		parameters[name] = audioParamDouble(initial);
+	}
+	const node: AudioNodeDouble = {
+		kind,
+		outputs: [],
+		disconnects: 0,
+		parameters,
+		fftSize: 0,
+		getFloatTimeDomainData(buffer) {
+			buffer.fill(context.analyserAmplitude);
+		},
+		connect(target) {
+			node.outputs.push(target);
+			return target;
+		},
+		disconnect() {
+			node.disconnects += 1;
+			node.outputs.length = 0;
+		},
+	};
+	// The plugin reads a parameter the way the platform exposes it - as
+	// `node.frequency`, `node.gain` - so the same objects are placed on the
+	// node itself as well as in the map a test reads them back through.
+	Object.assign(node, parameters);
+	context.nodes.push(node);
+	return node;
+}
+
+/**
+ * A realtime audio context that records what was wired through it.
+ *
+ * Built as a class whose own prototype carries the node factories, because
+ * the plugin decides whether to offer the live chain by probing that prototype
+ * - the way it has to, since the answer gates a control long before anything
+ * is played. Routing an element twice throws the way the platform does: a
+ * media element can be taken into a graph once, and a test that proves the
+ * plugin never rebuilds a graph needs the double to refuse it too.
+ * @param sampleRate - The rate this context reports to the plugin
+ * @param instances - Collects every context built, as the install hands them out
+ */
+function audioGraphContextClass(
+	sampleRate: number,
+	instances: AudioGraphContextDouble[],
+): new () => AudioGraphContextDouble {
+	return class AudioGraphContextMock implements AudioGraphContextDouble {
+		readonly sampleRate = sampleRate;
+		readonly nodes: AudioNodeDouble[] = [];
+		readonly sources: Array<{
+			element: HTMLMediaElement;
+			node: AudioNodeDouble;
+		}> = [];
+		readonly destination: AudioNodeDouble;
+		/** The double has no clock; what a test reads is what was scheduled. */
+		readonly currentTime = 0;
+		closed = false;
+		resumes = 0;
+		analyserAmplitude = 0;
+
+		constructor() {
+			// Created before anything can connect to it, so it is the last node
+			// of every chain and nothing else has to be assigned first
+			this.destination = nodeDouble('destination', {}, this);
+			instances.push(this);
+		}
+
+		createMediaElementSource(element: HTMLMediaElement): AudioNodeDouble {
+			if (this.sources.some((entry) => entry.element === element)) {
+				throw new DOMException(
+					'this element is already routed into a graph',
+					'InvalidStateError',
+				);
+			}
+			const node = nodeDouble('source', {}, this);
+			this.sources.push({ element, node });
+			return node;
+		}
+
+		createBiquadFilter(): AudioNodeDouble {
+			// The platform's own defaults, so a test can tell a parameter the
+			// plugin left alone from one it set: a BiquadFilterNode starts at
+			// 350 Hz with a Q of 1
+			return nodeDouble(
+				'biquad',
+				{ frequency: 350, Q: 1, gain: 0 },
+				this,
+			);
+		}
+
+		createGain(): AudioNodeDouble {
+			// A GainNode starts at unity, so an untouched one passes the
+			// signal through rather than silencing it
+			return nodeDouble('gain', { gain: 1 }, this);
+		}
+
+		createAnalyser(): AudioNodeDouble {
+			const node = nodeDouble('analyser', {}, this);
+			node.fftSize = 2048;
+			return node;
+		}
+
+		createDynamicsCompressor(): AudioNodeDouble {
+			return nodeDouble(
+				'compressor',
+				{
+					threshold: 0,
+					knee: 0,
+					ratio: 0,
+					attack: 0,
+					release: 0,
+				},
+				this,
+			);
+		}
+
+		close(): Promise<void> {
+			this.closed = true;
+			return Promise.resolve();
+		}
+
+		resume(): Promise<void> {
+			this.resumes += 1;
+			return Promise.resolve();
+		}
+	};
+}
+
+/**
+ * Installs the audio context every Web Audio path is built against, recording
+ * the nodes and the connections between them.
+ *
+ * Distinct from {@link installAudioContextRate}, which answers one question -
+ * what rate does this device run at - for suites that never build a graph. A
+ * suite that wires one needs to see the graph itself.
+ * @param sampleRate - The rate the context reports, 48 kHz by default
+ * @returns Handle whose instances are the contexts the plugin opened
+ */
+export function installAudioGraphMock(
+	sampleRate = 48000,
+): InstalledMock<AudioGraphContextDouble> {
+	const instances: AudioGraphContextDouble[] = [];
+	const scope = globals();
+	const previous = scope['AudioContext'];
+	scope['AudioContext'] = audioGraphContextClass(sampleRate, instances);
+	return {
+		instances,
+		restore: () => {
+			if (previous === undefined) {
+				delete scope['AudioContext'];
+				return;
+			}
+			scope['AudioContext'] = previous;
+		},
+	};
+}
+
+/**
+ * The nodes one element's audio passes through, from its source to the
+ * context's output. An analyser tap is left out: it hangs off the path with
+ * nothing connected after it, so it is a meter rather than a stage.
+ * @param context - The recorded context
+ * @param audio - Element whose path is followed
+ * @returns The path in order, or null where the element was never routed
+ */
+export function audioPathOf(
+	context: AudioGraphContextDouble,
+	audio: HTMLMediaElement,
+): AudioNodeDouble[] | null {
+	const source = context.sources.find((entry) => entry.element === audio);
+	return source ? pathTo(context.destination, source.node, new Set()) : null;
+}
+
+/** Depth-first walk to the output, skipping the branches that lead nowhere. */
+function pathTo(
+	destination: AudioNodeDouble,
+	node: AudioNodeDouble,
+	seen: Set<AudioNodeDouble>,
+): AudioNodeDouble[] | null {
+	if (node === destination) {
+		return [node];
+	}
+	if (seen.has(node)) {
+		return null;
+	}
+	seen.add(node);
+	for (const next of node.outputs) {
+		const rest = pathTo(destination, next, seen);
+		if (rest) {
+			return [node, ...rest];
+		}
+	}
+	return null;
+}
+
+/**
+ * The node of a kind, by the order the plugin created it in. A chain builds
+ * two gain nodes - the gate and the makeup stage behind it - so the index is
+ * how they are told apart.
+ * @param context - The recorded context
+ * @param kind - Kind of node to find
+ * @param index - Which one of that kind, in creation order
+ * @returns The recorded node
+ */
+export function nodeOfKind(
+	context: AudioGraphContextDouble,
+	kind: string,
+	index = 0,
+): AudioNodeDouble {
+	const found = context.nodes.filter((node) => node.kind === kind);
+	return at(found, index, `the ${kind} node at index ${String(index)}`);
 }
 
 /**

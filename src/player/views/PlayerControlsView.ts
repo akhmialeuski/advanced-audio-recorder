@@ -30,6 +30,13 @@ export interface PlayerControlsState {
 	skipSeconds: number;
 	/** Whether playback is repeating the chapter it is inside. */
 	chapterLoop: boolean;
+	/**
+	 * Whether this runtime can render the live cleanup chain. False hides the
+	 * control rather than offering one that could not process anything.
+	 */
+	voiceBoostAvailable: boolean;
+	/** Whether the live cleanup chain is applied to playback. */
+	voiceBoost: boolean;
 }
 
 /** What each control does (owned by the player). */
@@ -52,6 +59,14 @@ export interface PlayerControlsCallbacks {
 	 * player's state rather than its own click.
 	 */
 	onToggleChapterLoop(): void;
+	/**
+	 * Toggles the live cleanup chain of the playing audio. Nothing is
+	 * returned, and the button is repainted by {@link PlayerControlsView.setVoiceBoost}:
+	 * the chain is one state for the whole plugin, so a second player drives
+	 * the same state and this button has to follow the player rather than its
+	 * own click.
+	 */
+	onToggleVoiceBoost(): void;
 	onCopyTimestampLink(): void;
 }
 
@@ -89,6 +104,7 @@ export class PlayerControlsView {
 	private playButton: HTMLElement | null = null;
 	private speedButton: HTMLElement | null = null;
 	private muteButton: HTMLElement | null = null;
+	private voiceBoostButton: HTMLElement | null = null;
 	private chapterLoopButton: HTMLElement | null = null;
 	private timeEl: HTMLElement | null = null;
 
@@ -185,6 +201,23 @@ export class PlayerControlsView {
 			volume.setCssProps({ '--slider-fill-ratio': volume.value });
 			this.callbacks.onVolumeInput(Number(volume.value));
 		});
+
+		if (state.voiceBoostAvailable) {
+			// Beside the sound controls rather than at the end of the row: it
+			// shapes what is heard, the way the volume slider does, while
+			// everything after it is about the timeline.
+			this.voiceBoostButton = this.createIconButton(
+				controls,
+				PLAYER_ICONS.voiceBoost,
+				'Voice boost',
+				() => {
+					this.callbacks.onToggleVoiceBoost();
+				},
+			);
+			// Reflect the chain the plugin is already running, so a player
+			// rendered later in the session shows the state it is playing in
+			setToggleState(this.voiceBoostButton, state.voiceBoost);
+		}
 
 		const loopButton = this.createIconButton(
 			controls,
@@ -297,6 +330,23 @@ export class PlayerControlsView {
 				muted ? PLAYER_ICONS.muted : PLAYER_ICONS.volume,
 			);
 			setToggleState(this.muteButton, muted);
+		}
+	}
+
+	/**
+	 * Reflects the live cleanup chain on its button. Driven by the player for
+	 * the same reason the chapter repeat is: the chain is one state for the
+	 * whole plugin, so it can be turned on from another player, and the button
+	 * has to show where the state actually is.
+	 *
+	 * A player rendered where the runtime cannot host the chain has no button,
+	 * and this is then a no-op rather than a throw into the registry's own
+	 * notification loop.
+	 * @param enabled - True while the chain is applied to playback
+	 */
+	setVoiceBoost(enabled: boolean): void {
+		if (this.voiceBoostButton) {
+			setToggleState(this.voiceBoostButton, enabled);
 		}
 	}
 

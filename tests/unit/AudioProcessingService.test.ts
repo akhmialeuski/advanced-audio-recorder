@@ -17,7 +17,7 @@ import {
 	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from 'src/constants';
 import { at } from '../helpers/assertions';
-import { partial } from '../helpers/doubles';
+import { internalsOf, partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 
 // Controllable container probe: null (the default) means "container not
@@ -414,6 +414,32 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 
 		expect(decodeAudioData).toHaveBeenCalled();
 		expect(written.size).toBe(1);
+	});
+});
+
+// The empty-channel guard is unreachable through process(): decodeChannels
+// refuses a file with no audio at all, so the segment loop never hands this
+// one nothing to render. Reached directly rather than widening the pipeline
+// for a test's sake.
+describe('renderOffline', () => {
+	it('returns the channels untouched when there is nothing to render', async () => {
+		const { app } = makeApp();
+		const service = internalsOf<{
+			renderOffline(
+				channels: Float32Array[],
+				sampleRate: number,
+				config: AudioDspConfig,
+			): Promise<Float32Array[]>;
+		}>(new AudioProcessingService(app));
+		const channels: Float32Array[] = [];
+
+		const rendered = await service.renderOffline(
+			channels,
+			48000,
+			ALL_STAGES,
+		);
+
+		expect(rendered).toBe(channels);
 	});
 });
 

@@ -39,7 +39,7 @@ It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.
 - **Multi-track capture** - record up to 8 devices at once, mixed or per-track. See [Multi-track recording](multi-track-recording.md).
 - **Eight output formats** - pick the right balance of quality, size, and compatibility. See [Formats](formats.md).
 - **Convert, split, and manage files** - transcode, divide into parts, and update note links from the context menu. See [File operations](file-operations.md) and [Splitting](splitting.md).
-- **Enhanced waveform player** - waveform seek bar, speed presets, a configurable skip step (10 seconds by default), volume, loop, timecode links, and per-file markers and chapters. See [Audio player](audio-player.md).
+- **Enhanced waveform player** - waveform seek bar, speed presets, a configurable skip step (10 seconds by default), volume, loop, voice boost (the cleanup chain applied to playback), timecode links, and per-file markers and chapters. See [Audio player](audio-player.md).
 - **On-demand audio cleanup** - remove rumble and hiss and even out loudness with a single right-click. See [Audio cleanup](audio-cleanup.md).
 - **Speech-to-text with five engines** - Whisper API, Deepgram, Gemini, Mistral Voxtral, or offline local whisper.cpp, with speaker diarization on Deepgram, Gemini, and Voxtral. See [Transcription](transcription.md).
 - **LLM post-processing** - clean up, summarize, or run a custom instruction over the transcript. See [LLM post-processing](llm-post-processing.md).

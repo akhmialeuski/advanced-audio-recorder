@@ -592,6 +592,36 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
+	 * Reflects the plugin-wide voice-boost state on this player's control row.
+	 * Driven by the registry rather than by this player's own click, because
+	 * the chain is one state for every player: turning it on in one of them
+	 * has to show in the others, which their buttons cannot know about.
+	 * @param enabled - True while the chain is applied to playback
+	 */
+	setVoiceBoost(enabled: boolean): void {
+		this.controls?.setVoiceBoost(enabled);
+	}
+
+	/**
+	 * Turns the live cleanup chain on or off for every player, and says so
+	 * when it has nothing to apply.
+	 *
+	 * The stages come from the cleanup configuration, so a configuration with
+	 * every stage switched off engages a chain that passes the audio straight
+	 * through. The offline pass refuses that configuration with a message
+	 * rather than writing an identical copy; here there is no run to refuse,
+	 * so the switch engages and the message says where to turn a stage on.
+	 */
+	private toggleVoiceBoost(): void {
+		const state = this.registry.toggleVoiceBoost();
+		if (state.enabled && !state.renders) {
+			new Notice(
+				'Voice boost is on, but no cleanup stage is enabled. Turn one on under audio cleanup defaults.',
+			);
+		}
+	}
+
+	/**
 	 * Seeks to an absolute offset, optionally starting playback. Timecode
 	 * links start playback (the user clicked to listen); in-player marker and
 	 * chapter jumps preserve the current play/pause state, matching a seek-bar
@@ -754,6 +784,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				onVolumeInput: (volume) => {
 					this.setVolume(volume);
 				},
+				onToggleVoiceBoost: () => {
+					this.toggleVoiceBoost();
+				},
 				onToggleLoop: () => {
 					this.audio.loop = !this.audio.loop;
 					return this.audio.loop;
@@ -775,6 +808,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				},
 			},
 		);
+		const voiceBoost = this.registry.voiceBoostState();
 		this.controls.mount(this.containerEl, {
 			paused: this.audio.paused,
 			playbackRate: this.audio.playbackRate,
@@ -784,6 +818,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			markersEnabled: this.settings.enableMarkers,
 			skipSeconds: this.settings.skipSeconds,
 			chapterLoop: this.chapterLoop,
+			voiceBoostAvailable: voiceBoost.available,
+			voiceBoost: voiceBoost.enabled,
 		});
 	}
 

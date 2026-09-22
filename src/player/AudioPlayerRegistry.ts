@@ -9,9 +9,19 @@
  * @module player/AudioPlayerRegistry
  */
 
-import { PLAYER_SKIP_SECONDS, SHARED_AUDIO_GRACE_MS } from '../constants';
+import {
+	PLAYER_SKIP_SECONDS,
+	PLUGIN_LOG_PREFIX,
+	SHARED_AUDIO_GRACE_MS,
+} from '../constants';
 import type { MarkerKind } from '../markers/markerModel';
 import type { ResolvedPlayerSettings } from '../player/playerSettings';
+import type { VoiceBoostStages } from '../cleanup/audioDsp';
+import {
+	isLiveVoiceBoostSupported,
+	LiveVoiceBoost,
+	type VoiceBoostState,
+} from './LiveVoiceBoost';
 import {
 	readPlaybackSnapshot,
 	resetPlayback,
@@ -90,6 +100,8 @@ interface SharedAudio {
 	playbackControllers: Set<PlaybackController>;
 	/** Detaches the registry's one set of media lifecycle listeners. */
 	detachPlaybackEvents: () => void;
+	/** Detaches the listeners that decide whether this element may be routed. */
+	detachVoiceBoostRouting: () => void;
 }
 
 /**
@@ -105,6 +117,8 @@ export interface SeekablePlayer {
 	reloadMarkers(): void;
 	/** Re-renders the player UI in place with new settings. */
 	applySettings(settings: ResolvedPlayerSettings): void;
+	/** Shows the plugin-wide voice-boost state on this player's controls. */
+	setVoiceBoost(enabled: boolean): void;
 }
 
 /**
@@ -122,6 +136,14 @@ export class AudioPlayerRegistry {
 	private activePlaybackKey: string | null = null;
 	/** Consumers interested in the active status-bar playback snapshot. */
 	private readonly playbackListeners = new Set<PlaybackControlsListener>();
+	/**
+	 * The live voice-boost chain, offered to every shared audio element. It
+	 * lives here rather than on a player because a player is rebuilt on every
+	 * render pass while its element survives, and because a media element can
+	 * be routed into an audio graph only once per element: the graph has to
+	 * belong to whoever owns the element's lifetime.
+	 */
+	private readonly voiceBoost = new LiveVoiceBoost();
 
 	/**
 	 * Returns the shared audio element for a playback key, creating it on
@@ -155,6 +177,16 @@ export class AudioPlayerRegistry {
 			return { audio: existing.audio, isNew: false };
 		}
 		const audio = new Audio();
+		// The element is created asking for the recording across origins, which
+		// is what a live voice-boost chain needs from it: an element whose media
+		// was fetched without CORS routes into the audio graph as silence
+		// instead of sound, and the fetch mode is fixed when the source is set,
+		// so it cannot be added later. Obsidian serves vault files with
+		// `Access-Control-Allow-Origin: *`, but the boost is off by default and
+		// a host that does not send that header would otherwise refuse to play
+		// the recording at all, so attachVoiceBoostRouting repairs the load and
+		// keeps the element out of the graph.
+		audio.crossOrigin = 'anonymous';
 		audio.preload = 'metadata';
 		audio.src = src;
 		const detachPlaybackEvents = this.attachPlaybackEvents(key, audio);
@@ -166,6 +198,11 @@ export class AudioPlayerRegistry {
 			engaged: false,
 			playbackControllers: new Set<PlaybackController>(),
 			detachPlaybackEvents,
+			detachVoiceBoostRouting: this.attachVoiceBoostRouting(
+				key,
+				audio,
+				src,
+			),
 		};
 		this.audioByKey.set(key, entry);
 		return { audio, isNew: true };
@@ -229,6 +266,10 @@ export class AudioPlayerRegistry {
 				this.emitPlaybackState();
 			}
 			entry.detachPlaybackEvents();
+			entry.detachVoiceBoostRouting();
+			// Before the source is dropped: a graph holds the element it was
+			// built on, and this is the last moment its nodes can be released.
+			this.voiceBoost.untrack(entry.audio);
 			entry.audio.removeAttribute('src');
 			entry.audio.load();
 			this.audioByKey.delete(key);
@@ -517,6 +558,26 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
+	 * Shows the new chain state on every live player. The chain is one switch
+	 * for the plugin, so the player whose button was pressed cannot be the only
+	 * one that knows: the same embed in another pane and a second recording's
+	 * player both have to show what is being rendered. Disconnected players are
+	 * pruned in passing, as the settings broadcast does.
+	 * @param enabled - State the chain moved to
+	 */
+	private notifyVoiceBoost(enabled: boolean): void {
+		for (const players of this.playersByPath.values()) {
+			for (const player of [...players]) {
+				if (!player.isConnected()) {
+					players.delete(player);
+					continue;
+				}
+				player.setVoiceBoost(enabled);
+			}
+		}
+	}
+
+	/**
 	 * Marks an embed's shared playback as engaged: the user has played or
 	 * sought it, so its #t= start hint is no longer meaningful and must not
 	 * reappear (e.g. when playback later returns to 0). Shared across every
@@ -561,15 +622,58 @@ export class AudioPlayerRegistry {
 				window.clearTimeout(entry.releaseTimer);
 			}
 			entry.detachPlaybackEvents();
+			entry.detachVoiceBoostRouting();
 			entry.audio.pause();
 			entry.audio.removeAttribute('src');
 			entry.audio.load();
 		}
 		this.audioByKey.clear();
+		// The chain goes with the elements: it holds the audio context, and a
+		// context left open outlives the plugin that opened it.
+		this.voiceBoost.dispose();
 		this.playersByPath.clear();
 		this.activePlaybackKey = null;
 		this.emitPlaybackState();
 		this.playbackListeners.clear();
+	}
+
+	/**
+	 * The live voice-boost state as a player's control row renders it. It is
+	 * one state for the plugin rather than one per element: the control is
+	 * offered by every player, and a second player of the same recording has
+	 * to show what the first one set.
+	 * @returns Whether the chain can be offered here, and whether it is on
+	 */
+	voiceBoostState(): VoiceBoostState {
+		return {
+			available: isLiveVoiceBoostSupported(),
+			enabled: this.voiceBoost.isEnabled(),
+			renders: this.voiceBoost.rendersAnyStage(),
+		};
+	}
+
+	/**
+	 * Turns the live chain on or off for every playing element and reports the
+	 * state it moved to. A click is what reaches here, which is the gesture the
+	 * browser requires before an audio graph may make a sound.
+	 * @returns The state the playback moved to
+	 */
+	toggleVoiceBoost(): VoiceBoostState {
+		this.voiceBoost.setEnabled(!this.voiceBoost.isEnabled());
+		const state = this.voiceBoostState();
+		this.notifyVoiceBoost(state.enabled);
+		return state;
+	}
+
+	/**
+	 * Applies the cleanup stages the live chain renders. Pushed on every
+	 * settings save rather than only when a player's layout changes, because
+	 * these come from the cleanup configuration and move nothing a player
+	 * draws.
+	 * @param stages - Stages resolved from the plugin settings
+	 */
+	applyVoiceBoostStages(stages: VoiceBoostStages): void {
+		this.voiceBoost.setStages(stages);
 	}
 
 	/**
@@ -620,6 +724,64 @@ export class AudioPlayerRegistry {
 			audio.removeEventListener('volumechange', refresh);
 			audio.removeEventListener('ratechange', refresh);
 			audio.removeEventListener('ended', finish);
+		};
+	}
+
+	/**
+	 * Decides whether this element may be routed into the live voice-boost
+	 * chain, and repairs its load when the cross-origin request it was created
+	 * with is refused.
+	 *
+	 * Routing is irreversible: once an element has a source node its audio
+	 * exists only inside the graph, and media fetched without CORS produces
+	 * silence there. An element is therefore offered to the chain only once it
+	 * has loaded metadata, which is the proof that the cross-origin fetch was
+	 * allowed. Until then it plays through itself, exactly as it did before the
+	 * chain existed.
+	 *
+	 * An error that arrives before any metadata is the refusal. The load is
+	 * repeated without the attribute, so the recording plays, and the element
+	 * is never offered to the chain, because routing it now would be the
+	 * silence this guard exists to prevent. An error that arrives later means
+	 * the fetch was allowed and the stream failed afterwards, which no reload
+	 * would mend.
+	 * @param key - Playback key, named in the log line
+	 * @param audio - The shared element being settled
+	 * @param src - Resource URL to load again without the attribute
+	 * @returns Cleanup that removes both listeners
+	 */
+	private attachVoiceBoostRouting(
+		key: string,
+		audio: HTMLAudioElement,
+		src: string,
+	): () => void {
+		const routing = new AbortController();
+		audio.addEventListener(
+			'loadedmetadata',
+			() => {
+				routing.abort();
+				this.voiceBoost.track(audio);
+			},
+			{ signal: routing.signal },
+		);
+		audio.addEventListener(
+			'error',
+			() => {
+				if (audio.readyState !== HTMLMediaElement.HAVE_NOTHING) {
+					return;
+				}
+				routing.abort();
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Loading ${key} across origins was refused; reloading it without that request, so the voice boost is unavailable for this recording.`,
+				);
+				audio.removeAttribute('crossorigin');
+				audio.src = src;
+				audio.load();
+			},
+			{ signal: routing.signal },
+		);
+		return () => {
+			routing.abort();
 		};
 	}
 

@@ -45,6 +45,7 @@ import {
 	playerSettingsEqual,
 	type ResolvedPlayerSettings,
 } from '../player/playerSettings';
+import { resolveVoiceBoostStages } from '../cleanup/audioDsp';
 import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 import { DetachedPlayback } from './DetachedPlayback';
 import { MediaSessionBridge } from './MediaSessionBridge';
@@ -177,6 +178,12 @@ export class EnhancedPlayerRegistrar {
 		this.lastResolved = this.lastEnabled
 			? resolvePlayerSettings(this.getSettings())
 			: null;
+		// The live cleanup chain renders the cleanup configuration, so it is
+		// armed with the stages as they stand now, before a player exists to
+		// press its control
+		this.registry.applyVoiceBoostStages(
+			resolveVoiceBoostStages(this.getSettings()),
+		);
 		this.setupEmbedRegistry();
 		// Independent of the master toggle: a timecode link plays a recording
 		// with no embed at all, and that playback is worth announcing too.
@@ -388,6 +395,13 @@ export class EnhancedPlayerRegistrar {
 	 * settings changes from lagging the page.
 	 */
 	refresh(): void {
+		// The live cleanup chain follows the cleanup configuration, which moves
+		// nothing a player draws, so it is pushed on every save rather than
+		// behind the layout comparison below - a chain already running has to
+		// pick up a changed threshold without being switched off and on
+		this.registry.applyVoiceBoostStages(
+			resolveVoiceBoostStages(this.getSettings()),
+		);
 		const enabled = this.getSettings().enhancedPlayerEnabled;
 		if (enabled !== this.lastEnabled) {
 			this.lastEnabled = enabled;

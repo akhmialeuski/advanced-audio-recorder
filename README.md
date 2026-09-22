@@ -19,7 +19,7 @@ The full documentation lives in the [docs](docs/index.md) folder, and the same l
 - Recording: one-click capture with pause, resume, live status feedback, automatic splitting of long sessions, and crash recovery. Record in stereo or mono - including keeping just one channel of a dual-input audio interface.
 - System audio: record this computer's own output beside the microphone with one switch, so the remote participants of a call reach the recording (Windows).
 - Multi-track recording: capture up to eight input devices at once for multi-microphone interviews.
-- Enhanced audio player: inline waveform with adjustable speed, skip, loop, volume, per-recording bookmarks, chapters, and clickable timestamp links.
+- Enhanced audio player: inline waveform with adjustable speed, skip, loop, volume, a voice-boost toggle that applies the cleanup chain to the recording as it plays, per-recording bookmarks, chapters, and clickable timestamp links.
 - Transcription: OpenAI-compatible Whisper API, Deepgram, Google Gemini, Mistral Voxtral, or fully offline whisper.cpp, with speaker diarization and JSON, SRT, WebVTT, or plain-text output.
 - LLM post-processing: optionally clean up or summarize any transcript with OpenAI, Anthropic, Gemini, or Mistral.
 - Audio cleanup: high-pass filter, noise gate, and loudness leveling, written to a fresh copy.

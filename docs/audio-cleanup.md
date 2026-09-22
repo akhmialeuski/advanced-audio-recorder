@@ -58,6 +58,8 @@ The left/right options rescue a stereo recording where only one channel carries 
 
 The stages are applied in this order: **noise gate > high-pass filter > loudness leveling**. You can enable any combination.
 
+The same three stages are what the [enhanced player](audio-player.md#voice-boost) applies to a recording while it plays, with the same values, so a stage tuned here is what the live playback renders without a processed copy having to be written first.
+
 ### High-pass filter
 
 Attenuates everything below a cutoff frequency, which removes low-frequency rumble: air conditioning, traffic, desk thumps, mains hum, and microphone handling noise.
@@ -127,7 +129,7 @@ Start conservative and re-run with stronger settings if needed - the original is
 - **Output is always WAV.** Convert it afterwards with **Convert audio format** from the context menu if you need a compressed format.
 - **Size and length caps.** Cleanup decodes the whole file into memory, then processes it one time segment at a time so memory stays bounded regardless of the recording length. A file is refused with a clear message when it is larger than the on-disk ceiling (checked before decoding), longer than the duration ceiling, or decodes to more samples than the working set allows (checked right after decoding). On the desktop those three are **1 GB**, **two hours** and **256 M samples**, which is roughly a four-hour stereo recording at 48 kHz. In the mobile app they are **256 MB**, **45 minutes** and **64 M samples**, because the WebView runs on a far smaller memory budget. The decoded-size cap catches a heavily compressed file that is small on disk yet expands to several gigabytes once decoded. For a file over any of the three, split it first (**Split audio into parts**) and clean each part.
 - **Desktop and mobile.** Cleanup runs in both the desktop and the mobile app under the caps above, so a recording over the mobile cap is cleaned up on the desktop instead. Processing a long file briefly uses significant memory and CPU. See [Mobile support](mobile-support.md).
-- **Not real-time.** This is post-processing. To shape the signal _during_ recording, use the browser input toggles under **Audio processing & feedback** instead.
+- **Post-processing, except during playback.** Writing a copy is an operation on the whole file. To shape the signal _during_ recording, use the browser input toggles under **Audio processing & feedback**. To hear the same chain on a recording as it plays, use the [voice boost](audio-player.md#voice-boost) button in the player, which decodes nothing, writes nothing, and leaves the file untouched.
 
 ## Troubleshooting
 

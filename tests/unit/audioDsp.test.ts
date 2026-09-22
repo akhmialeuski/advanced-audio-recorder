@@ -10,6 +10,9 @@ import {
 	hasActiveChange,
 	hasActiveStage,
 	resolveAudioDspConfig,
+	resolveVoiceBoostStages,
+	voiceBoostStagesEqual,
+	type VoiceBoostStages,
 } from 'src/cleanup/audioDsp';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
@@ -44,11 +47,10 @@ describe('dbToGain', () => {
 });
 
 describe('hasActiveStage', () => {
-	const off = {
+	const off: VoiceBoostStages = {
 		highPass: { enabled: false, hz: 80 },
 		gate: { enabled: false, thresholdDb: -50 },
 		leveling: { enabled: false, makeupDb: 6 },
-		channelMode: 'source' as const,
 	};
 
 	it('is false only when every stage is disabled', () => {
@@ -60,12 +62,74 @@ describe('hasActiveStage', () => {
 			}),
 		).toBe(true);
 	});
+});
 
-	it('ignores the channel mode', () => {
-		// A mono downmix is a change, but not a DSP stage
-		expect(hasActiveStage({ ...off, channelMode: 'mono-left' })).toBe(
-			false,
+describe('voiceBoostStagesEqual', () => {
+	it('is true for the same stages resolved twice', () => {
+		const settings = mergeSettings({ cleanupLevelingEnabled: true });
+
+		expect(resolveVoiceBoostStages(settings)).toEqual(
+			resolveVoiceBoostStages(settings),
 		);
+		expect(
+			voiceBoostStagesEqual(
+				resolveVoiceBoostStages(settings),
+				resolveVoiceBoostStages(settings),
+			),
+		).toBe(true);
+	});
+
+	it.each([
+		{
+			name: 'a stage is switched',
+			change: { cleanupLevelingEnabled: true },
+		},
+		{ name: 'a cutoff moves', change: { cleanupHighPassHz: 140 } },
+		{
+			name: 'a threshold moves',
+			change: { cleanupNoiseGateThresholdDb: -30 },
+		},
+		{ name: 'a makeup gain moves', change: { cleanupLevelingMakeupDb: 3 } },
+	])('is false when $name', ({ change }) => {
+		const before = resolveVoiceBoostStages(mergeSettings({}));
+
+		// Nothing a save changes can leave the chain re-rendering the same
+		// stages, so every cleanup value is one the comparison has to see
+		expect(
+			voiceBoostStagesEqual(
+				resolveVoiceBoostStages(mergeSettings(change)),
+				before,
+			),
+		).toBe(false);
+	});
+});
+
+describe('resolveVoiceBoostStages', () => {
+	it('resolves the cleanup stages without a downmix choice', () => {
+		const stages = resolveVoiceBoostStages(
+			mergeSettings({
+				cleanupHighPassEnabled: true,
+				cleanupHighPassHz: 120,
+				cleanupLevelingEnabled: true,
+				cleanupLevelingMakeupDb: 9,
+			}),
+		);
+
+		// Live playback collapses nothing to mono, so the stages are the whole
+		// of what it renders - and they are the dialog's own values
+		expect(stages).toEqual({
+			highPass: { enabled: true, hz: 120 },
+			gate: { enabled: false, thresholdDb: -50 },
+			leveling: { enabled: true, makeupDb: 9 },
+		});
+	});
+
+	it('clamps a value the dialog would have bounded', () => {
+		const stages = resolveVoiceBoostStages(
+			mergeSettings({ cleanupHighPassHz: MAX_CLEANUP_HIGHPASS_HZ + 500 }),
+		);
+
+		expect(stages.highPass.hz).toBe(MAX_CLEANUP_HIGHPASS_HZ);
 	});
 });
 
