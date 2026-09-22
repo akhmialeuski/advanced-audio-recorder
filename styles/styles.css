@@ -1275,10 +1275,18 @@ button.aar-player-marker-row {
     border-top: none;
 }
 
-/* "Estimated cost" heading above the per-part breakdown. */
-.aar-transcribe-cost-title {
+/* "Estimated cost" heading above the per-part breakdown, and the "Session
+   spending" heading that opens the second figure below it. */
+.aar-transcribe-cost-title,
+.aar-transcribe-cost-session-title {
     font-weight: var(--font-semibold);
     color: var(--text-normal);
+}
+
+/* The session heading takes the gap the estimate's own heading gets from the
+   divider at the top of the block, so the two figures read as two groups. */
+.aar-transcribe-cost-session-title {
+    margin-top: 8px;
 }
 
 /* Per-part breakdown list (transcription, post-processing). */

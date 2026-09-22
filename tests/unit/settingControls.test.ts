@@ -4,6 +4,9 @@
  * use - e.g. speaker diarization on an engine that cannot diarize. A disabled
  * control must both be non-interactive and visually greyed (a dim class on the
  * row), so the user can tell it is off because it is unavailable, not unset.
+ * The onValueChanged hook every builder fires after a write is covered here
+ * too: it is the one point a surface rendering a figure derived from the
+ * settings is told that the figure is stale.
  * The capturing Setting mock is shared from tests/helpers/captureSettings.
  * @module tests/unit/settingControls.test
  */
@@ -21,6 +24,7 @@ import {
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import {
 	capturedSettings,
+	changeSetting,
 	clickSettingButton,
 	type CapturedSetting,
 } from '../helpers/captureSettings';
@@ -291,5 +295,85 @@ describe('addNumberInputTo', () => {
 
 		expect(set).toHaveBeenLastCalledWith(32000);
 		expect(Number(input.value)).toBeLessThanOrEqual(32000);
+	});
+});
+
+describe('onValueChanged', () => {
+	beforeEach(() => {
+		capturedSettings.length = 0;
+	});
+
+	/**
+	 * A context whose hook records the order it runs in beside the write.
+	 * @returns The context, and the list both callbacks append to
+	 */
+	function ctxOrderedByWrite(): {
+		ctx: SettingsSectionContext;
+		order: string[];
+	} {
+		const ctx = makeCtx();
+		const order: string[] = [];
+		ctx.onValueChanged = () => order.push('refreshed');
+		return { ctx, order };
+	}
+
+	it('runs after a toggle wrote its value, not before', () => {
+		// A figure derived from the settings has to be computed from the new
+		// value; running the hook first would redraw the previous answer.
+		const { ctx, order } = ctxOrderedByWrite();
+		addToggle(ctx, {
+			name: 'LLM post-processing',
+			get: () => false,
+			set: (value) => order.push(`set:${String(value)}`),
+		});
+
+		changeSetting('LLM post-processing', 'toggle', true);
+
+		expect(order).toEqual(['set:true', 'refreshed']);
+	});
+
+	it('runs after a dropdown wrote its value', () => {
+		const { ctx, order } = ctxOrderedByWrite();
+		addDropdown(ctx, {
+			name: 'LLM task',
+			options: [
+				{ value: 'cleanup', label: 'Clean up' },
+				{ value: 'summary', label: 'Summarize' },
+			],
+			get: () => 'cleanup',
+			set: (value) => order.push(`set:${value}`),
+		});
+
+		changeSetting('LLM task', 'dropdown', 'summary');
+
+		expect(order).toEqual(['set:summary', 'refreshed']);
+	});
+
+	it('runs after a text field wrote its value', () => {
+		const { ctx, order } = ctxOrderedByWrite();
+		addText(ctx, {
+			name: 'Language',
+			get: () => 'auto',
+			set: (value) => order.push(`set:${value}`),
+		});
+
+		changeSetting('Language', 'text', 'ru');
+
+		expect(order).toEqual(['set:ru', 'refreshed']);
+	});
+
+	it('leaves a context without the hook writing and saving as before', () => {
+		// The settings tab renders no derived figure, so it leaves the hook out;
+		// a control there must behave exactly as it did.
+		const ctx = makeCtx();
+		addToggle(ctx, {
+			name: 'Show cost estimates',
+			get: () => true,
+			set: () => undefined,
+		});
+
+		changeSetting('Show cost estimates', 'toggle', false);
+
+		expect(ctx.save).toHaveBeenCalledTimes(1);
 	});
 });

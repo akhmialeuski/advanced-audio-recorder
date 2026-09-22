@@ -228,8 +228,8 @@ export class TranscriptionModal extends PluginModal {
 		this.configEl = contentEl.createDiv({ cls: 'aar-transcribe-options' });
 		this.renderConfig();
 
-		// Pre-run cost estimate and session total; refreshed on every config
-		// re-render (the engine dropdown triggers one) and when the duration
+		// Pre-run cost estimate and session total; refreshed whenever a control
+		// changes a value, on every config re-render, and when the duration
 		// probe finishes. The probe is kicked off lazily from
 		// updateCostEstimate only when a priced line actually needs the
 		// duration, so a disabled estimate, a free local run, or an auto-run
@@ -324,6 +324,15 @@ export class TranscriptionModal extends PluginModal {
 			},
 			saveDebounced: () => {
 				/* no debounced persistence in the dialog */
+			},
+			// Every control here writes into the run snapshot the estimate is
+			// computed from, and the dialog persists nothing, so the two hooks
+			// that would otherwise be the refresh point are no-ops. Re-pricing
+			// therefore hangs off the one hook every control passes through,
+			// instead of a `rerender` flag each price-affecting control has to
+			// remember - which the LLM task and the two-pass toggle did not.
+			onValueChanged: () => {
+				this.updateCostEstimate();
 			},
 		};
 
@@ -614,8 +623,9 @@ export class TranscriptionModal extends PluginModal {
 		// Re-evaluated on every rerender (the Engine dropdown triggers one),
 		// so the Transcribe button tracks the freshly selected engine.
 		this.refreshRunButtonState();
-		// The estimate depends on the engine/model picked for this run, so it
-		// tracks the config re-render too.
+		// The estimate is computed from the whole snapshot, so it is drawn on
+		// the first render and on any re-render; a control that changes a value
+		// without reshaping the config refreshes it through onValueChanged.
 		this.updateCostEstimate();
 	}
 
@@ -717,9 +727,13 @@ export class TranscriptionModal extends PluginModal {
 			const suffix = estimate.hasUnpriced
 				? ' (excludes unpriced parts)'
 				: '';
+			// Named as this run's forecast because it sits directly above the
+			// session total, which is a different quantity: an unlabelled
+			// "estimated total" beside an accumulated one reads as a broken
+			// calculation rather than as two answers to two questions.
 			el.createDiv({
 				cls: 'aar-transcribe-cost-total',
-				text: `Estimated total: ~${formatUsd(estimate.totalUsd)}${suffix}`,
+				text: `Estimated total for this run: ~${formatUsd(estimate.totalUsd)}${suffix}`,
 			});
 		}
 		// Every line past the transcription one is an LLM step (context agents,
@@ -783,7 +797,11 @@ export class TranscriptionModal extends PluginModal {
 		note.createSpan({ text: '.' });
 	}
 
-	/** Renders the running per-session spending line under the estimate. */
+	/**
+	 * Renders the running per-session spending, set under its own heading so it
+	 * reads as a second figure rather than as the tail of the estimate above it:
+	 * the two cover different spans and are never meant to be subtracted.
+	 */
 	private renderSessionTotal(el: HTMLElement): void {
 		const tracker = this.options.costTracker;
 		if (!tracker?.hasEntries()) {
@@ -807,8 +825,16 @@ export class TranscriptionModal extends PluginModal {
 		}
 		const suffix = notes.length > 0 ? ` (${notes.join(', ')})` : '';
 		el.createDiv({
+			cls: 'aar-transcribe-cost-session-title',
+			text: 'Session spending',
+		});
+		el.createDiv({
 			cls: 'aar-transcribe-cost-session',
 			text: `Spent this session: ~${formatUsd(tracker.totalUsd())}${suffix}`,
+		});
+		el.createDiv({
+			cls: 'aar-transcribe-cost-note',
+			text: 'Everything priced since Obsidian started; this run is not counted yet.',
 		});
 	}
 

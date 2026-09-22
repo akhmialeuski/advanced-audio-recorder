@@ -2,8 +2,8 @@
  * Unit tests for the transcribe dialog's cost surface: the combined
  * pre-run estimate breakdown, the pricing links, the session-total line,
  * the duration-probe gating (never read the whole file when the estimate
- * cannot use it), and how a finished (or output-failed) run is recorded in
- * the session tracker.
+ * cannot use it), the re-pricing a control change has to trigger, and how a
+ * finished (or output-failed) run is recorded in the session tracker.
  */
 
 import { App, Notice, TFile } from 'obsidian';
@@ -31,6 +31,7 @@ import { transcribeFile } from 'src/transcription/api';
 import { createFile } from '../helpers/createApp';
 import { tick } from '../helpers/async';
 import { internalsOf } from '../helpers/doubles';
+import { rowSelect, rowToggle, settingRow } from '../helpers/settingRows';
 
 type ModalInternals = {
 	updateCostEstimate: () => void;
@@ -114,7 +115,7 @@ describe('TranscriptionModal cost estimate', () => {
 		const text = internals.costEstimateEl?.textContent ?? '';
 		expect(text).toContain('Estimated cost');
 		expect(text).toContain('Transcription - Deepgram (nova-3): ~$0.04');
-		expect(text).toContain('Estimated total: ~$0.04');
+		expect(text).toContain('Estimated total for this run: ~$0.04');
 		expect(text).toContain('Check current pricing');
 		expect(readBinary).toHaveBeenCalledTimes(1);
 	});
@@ -307,6 +308,97 @@ describe('TranscriptionModal cost estimate', () => {
 		});
 
 		expect(line).toContain('(1 run not priced, 2 steps estimated)');
+	});
+
+	it('names the scope of each figure it shows', async () => {
+		// A forecast for the run about to start sits directly above an
+		// accumulated total, and the two are not comparable: reading them as one
+		// number makes a correct calculation look like a wrong one. Each figure
+		// therefore says what it covers.
+		const tracker = new SessionCostTracker();
+		tracker.add('deepgram', 2.45);
+		const { modal, internals } = createModal(
+			{
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+			},
+			tracker,
+		);
+		modal.onOpen();
+		await tick();
+
+		const text = internals.costEstimateEl?.textContent ?? '';
+		expect(text).toContain('Estimated total for this run: ~$0.04');
+		expect(text).toContain('Session spending');
+		expect(text).toContain('Spent this session: ~$2.45');
+		expect(text).toContain('this run is not counted yet');
+	});
+});
+
+describe('TranscriptionModal cost reactivity', () => {
+	it('re-prices the estimate when the LLM task changes', async () => {
+		// The output share the pass is priced from is the task's own: a summary
+		// answers with a quarter of the transcript a cleanup rewrites in full.
+		const { modal, internals } = createModal({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			deepgramModel: 'nova-3',
+			llmPostProcessEnabled: true,
+			llmPostProcessTask: 'cleanup',
+			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			llmOpenAiModel: 'gpt-4.1',
+		});
+		modal.onOpen();
+		await tick();
+		const before = internals.costEstimateEl?.textContent ?? '';
+		expect(before).toContain('Post-processing (Clean up)');
+		expect(before).toContain('Estimated total for this run: ~$0.09');
+
+		const task = rowSelect(settingRow(modal.contentEl, 'LLM task'));
+		task.value = 'summary';
+		task.dispatchEvent(new Event('change'));
+		await tick();
+
+		const text = internals.costEstimateEl?.textContent ?? '';
+		expect(text).toContain('Post-processing (Summarize)');
+		expect(text).not.toContain('Post-processing (Clean up)');
+		// A 600-second transcript is 4800 tokens; the cleanup writes all of them
+		// up to the model's 4096-token ceiling, the summary a quarter of it. The
+		// 2896 output tokens a summary does not write are the whole of the drop,
+		// $0.09 to $0.06 at gpt-4.1's $8 per million.
+		expect(text).toContain('Estimated total for this run: ~$0.06');
+	});
+
+	it('re-prices the estimate when the advanced two-pass mode is switched on', async () => {
+		// The mode doubles the engine passes and adds a team of context agents
+		// between them, so it changes both the transcription line and the number
+		// of priced lines.
+		const { modal, internals } = createModal({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			deepgramModel: 'nova-3',
+			transcriptionAdvancedSettingsEnabled: true,
+			transcriptionAdvancedEnabled: false,
+			llmPostProcessEnabled: false,
+			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			llmOpenAiModel: 'gpt-4.1',
+		});
+		modal.onOpen();
+		await tick();
+		const before = internals.costEstimateEl?.textContent ?? '';
+		expect(before).toContain('Transcription - Deepgram (nova-3)');
+		expect(before).toContain('Estimated total for this run: ~$0.04');
+
+		rowToggle(
+			settingRow(modal.contentEl, 'Advanced two-pass transcription'),
+		).click();
+		await tick();
+
+		const text = internals.costEstimateEl?.textContent ?? '';
+		expect(text).toContain('Transcription (2 passes) - Deepgram (nova-3)');
+		expect(text).toContain('Advanced context agents');
+		// The second pass doubles the engine line, and the context agents the
+		// mode runs between the passes are priced on top: four calls reading
+		// 3000 tokens of the draft each, answering 200 tokens apiece.
+		expect(text).toContain('Estimated total for this run: ~$0.12');
 	});
 });
 
