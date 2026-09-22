@@ -35,6 +35,7 @@ import { globals, silenceConsole } from '../helpers/doubles';
 import {
 	audioPathOf,
 	installAudioGraphMock,
+	installControlledAudio,
 	nodeOfKind,
 	type AudioGraphContextDouble,
 	type AudioNodeDouble,
@@ -108,7 +109,9 @@ describe('the live voice boost', () => {
 	}
 
 	/**
-	 * An element with the chain offered to it.
+	 * An element with the chain offered to it. The element reports and emits
+	 * its own play and pause, because the gate's loop follows the playback
+	 * rather than merely the engaged state.
 	 * @returns The booster and the element
 	 */
 	function createSut(): {
@@ -116,7 +119,7 @@ describe('the live voice boost', () => {
 		audio: HTMLMediaElement;
 	} {
 		const boost = new LiveVoiceBoost();
-		const audio = document.createElement('audio');
+		const { audio } = installControlledAudio({ asConstructor: false });
 		boost.track(audio);
 		return { boost, audio };
 	}
@@ -384,6 +387,36 @@ describe('the live voice boost', () => {
 		});
 	});
 
+	// A chain whose configuration switches every stage off routes the audio
+	// straight through, so the switch is on and the sound is unchanged. The
+	// offline pass refuses that configuration outright; the live one reports
+	// it, and the player says so.
+	describe('whether it has a stage to render', () => {
+		it('reports nothing to render before the settings have been read', () => {
+			const boost = new LiveVoiceBoost();
+
+			expect(boost.rendersAnyStage()).toBe(false);
+		});
+
+		it('reports nothing to render where every stage is switched off', () => {
+			const boost = new LiveVoiceBoost();
+
+			boost.setStages(noStages());
+
+			expect(boost.rendersAnyStage()).toBe(false);
+		});
+
+		it('reports a stage to render as soon as one is switched on', () => {
+			const boost = new LiveVoiceBoost();
+			const stages = noStages();
+			stages.leveling.enabled = true;
+
+			boost.setStages(stages);
+
+			expect(boost.rendersAnyStage()).toBe(true);
+		});
+	});
+
 	describe('the noise gate', () => {
 		beforeEach(() => {
 			jest.useFakeTimers();
@@ -407,6 +440,9 @@ describe('the live voice boost', () => {
 			const stages = gateOnly();
 			stages.gate.thresholdDb = thresholdDb;
 			boost.setStages(stages);
+			// Playing, because the gate measures what is being played and its
+			// loop does not run over an element that is not
+			void audio.play();
 			boost.setEnabled(true);
 			return {
 				boost,
@@ -424,13 +460,44 @@ describe('the live voice boost', () => {
 			jest.advanceTimersByTime(CLEANUP_GATE_WINDOW_SECONDS * 1000);
 		}
 
-		it('starts the gate open, as the offline pass does', () => {
+		// The offline pass starts its gate open and lets the first window
+		// decide, and resuming playback is where the live one starts. The gate
+		// is driven shut first, so the assertion is about what resuming did
+		// rather than about the value a fresh gain node already carries.
+		it('opens the gate again when playback resumes', () => {
+			const { audio, gain } = engagedGate();
+			readLevel(0.0001);
+			expect(gain.value).toBe(0);
+			audio.pause();
+
+			void audio.play();
+
+			expect(gain.value).toBe(1);
+		});
+
+		// The loop costs a timer at fifty reads a second, per element, for as
+		// long as it runs. A note embedding several recordings would pay it
+		// for every one of them, including the ones nobody played.
+		it('runs no level loop while the element is not playing', () => {
 			const { boost } = createSut();
 			boost.setStages(gateOnly());
 
 			boost.setEnabled(true);
+			jest.advanceTimersByTime(CLEANUP_GATE_WINDOW_SECONDS * 1000 * 5);
 
-			expect(nodeOf('gain', 0).parameters['gain']?.value).toBe(1);
+			expect(nodeOf('gain', 0).parameters['gain']?.scheduled).toEqual([]);
+		});
+
+		it('stops the level loop when the playback it measures pauses', () => {
+			const { audio, gain } = engagedGate();
+			jest.advanceTimersByTime(CLEANUP_GATE_WINDOW_SECONDS * 1000);
+			const whilePlaying = gain.scheduled.length;
+
+			audio.pause();
+			jest.advanceTimersByTime(CLEANUP_GATE_WINDOW_SECONDS * 1000 * 3);
+
+			expect(whilePlaying).toBeGreaterThan(0);
+			expect(gain.scheduled).toHaveLength(whilePlaying);
 		});
 
 		it('taps the signal into the meter on its way to the gate', () => {
@@ -448,8 +515,9 @@ describe('the live voice boost', () => {
 		// The gate is a gain driven by a reading rather than a node that
 		// gates on its own, so it costs a loop for as long as it is engaged.
 		it('runs its level loop only while the gate is in the chain', () => {
-			const { boost } = createSut();
+			const { boost, audio } = createSut();
 			boost.setStages(gateOnly());
+			void audio.play();
 			boost.setEnabled(true);
 			const gate = nodeOf('gain', 0);
 

@@ -9,7 +9,11 @@
  * @module player/AudioPlayerRegistry
  */
 
-import { PLAYER_SKIP_SECONDS, SHARED_AUDIO_GRACE_MS } from '../constants';
+import {
+	PLAYER_SKIP_SECONDS,
+	PLUGIN_LOG_PREFIX,
+	SHARED_AUDIO_GRACE_MS,
+} from '../constants';
 import type { MarkerKind } from '../markers/markerModel';
 import type { ResolvedPlayerSettings } from '../player/playerSettings';
 import type { VoiceBoostStages } from '../cleanup/audioDsp';
@@ -96,6 +100,8 @@ interface SharedAudio {
 	playbackControllers: Set<PlaybackController>;
 	/** Detaches the registry's one set of media lifecycle listeners. */
 	detachPlaybackEvents: () => void;
+	/** Detaches the listeners that decide whether this element may be routed. */
+	detachVoiceBoostRouting: () => void;
 }
 
 /**
@@ -176,8 +182,10 @@ export class AudioPlayerRegistry {
 		// was fetched without CORS routes into the audio graph as silence
 		// instead of sound, and the fetch mode is fixed when the source is set,
 		// so it cannot be added later. Obsidian serves vault files with
-		// `Access-Control-Allow-Origin: *`, so this asks for a header the app
-		// already sends and changes nothing else about the playback.
+		// `Access-Control-Allow-Origin: *`, but the boost is off by default and
+		// a host that does not send that header would otherwise refuse to play
+		// the recording at all, so attachVoiceBoostRouting repairs the load and
+		// keeps the element out of the graph.
 		audio.crossOrigin = 'anonymous';
 		audio.preload = 'metadata';
 		audio.src = src;
@@ -190,9 +198,13 @@ export class AudioPlayerRegistry {
 			engaged: false,
 			playbackControllers: new Set<PlaybackController>(),
 			detachPlaybackEvents,
+			detachVoiceBoostRouting: this.attachVoiceBoostRouting(
+				key,
+				audio,
+				src,
+			),
 		};
 		this.audioByKey.set(key, entry);
-		this.voiceBoost.track(audio);
 		return { audio, isNew: true };
 	}
 
@@ -254,6 +266,7 @@ export class AudioPlayerRegistry {
 				this.emitPlaybackState();
 			}
 			entry.detachPlaybackEvents();
+			entry.detachVoiceBoostRouting();
 			// Before the source is dropped: a graph holds the element it was
 			// built on, and this is the last moment its nodes can be released.
 			this.voiceBoost.untrack(entry.audio);
@@ -609,6 +622,7 @@ export class AudioPlayerRegistry {
 				window.clearTimeout(entry.releaseTimer);
 			}
 			entry.detachPlaybackEvents();
+			entry.detachVoiceBoostRouting();
 			entry.audio.pause();
 			entry.audio.removeAttribute('src');
 			entry.audio.load();
@@ -634,6 +648,7 @@ export class AudioPlayerRegistry {
 		return {
 			available: isLiveVoiceBoostSupported(),
 			enabled: this.voiceBoost.isEnabled(),
+			renders: this.voiceBoost.rendersAnyStage(),
 		};
 	}
 
@@ -709,6 +724,64 @@ export class AudioPlayerRegistry {
 			audio.removeEventListener('volumechange', refresh);
 			audio.removeEventListener('ratechange', refresh);
 			audio.removeEventListener('ended', finish);
+		};
+	}
+
+	/**
+	 * Decides whether this element may be routed into the live voice-boost
+	 * chain, and repairs its load when the cross-origin request it was created
+	 * with is refused.
+	 *
+	 * Routing is irreversible: once an element has a source node its audio
+	 * exists only inside the graph, and media fetched without CORS produces
+	 * silence there. An element is therefore offered to the chain only once it
+	 * has loaded metadata, which is the proof that the cross-origin fetch was
+	 * allowed. Until then it plays through itself, exactly as it did before the
+	 * chain existed.
+	 *
+	 * An error that arrives before any metadata is the refusal. The load is
+	 * repeated without the attribute, so the recording plays, and the element
+	 * is never offered to the chain, because routing it now would be the
+	 * silence this guard exists to prevent. An error that arrives later means
+	 * the fetch was allowed and the stream failed afterwards, which no reload
+	 * would mend.
+	 * @param key - Playback key, named in the log line
+	 * @param audio - The shared element being settled
+	 * @param src - Resource URL to load again without the attribute
+	 * @returns Cleanup that removes both listeners
+	 */
+	private attachVoiceBoostRouting(
+		key: string,
+		audio: HTMLAudioElement,
+		src: string,
+	): () => void {
+		const routing = new AbortController();
+		audio.addEventListener(
+			'loadedmetadata',
+			() => {
+				routing.abort();
+				this.voiceBoost.track(audio);
+			},
+			{ signal: routing.signal },
+		);
+		audio.addEventListener(
+			'error',
+			() => {
+				if (audio.readyState !== HTMLMediaElement.HAVE_NOTHING) {
+					return;
+				}
+				routing.abort();
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Loading ${key} across origins was refused; reloading it without that request, so the voice boost is unavailable for this recording.`,
+				);
+				audio.removeAttribute('crossorigin');
+				audio.src = src;
+				audio.load();
+			},
+			{ signal: routing.signal },
+		);
+		return () => {
+			routing.abort();
 		};
 	}
 

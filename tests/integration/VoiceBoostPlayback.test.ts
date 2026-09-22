@@ -14,8 +14,9 @@
  * @jest-environment jsdom
  */
 
+import { noticeMessages } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
-import { partial } from '../helpers/doubles';
+import { partial, silenceConsole } from '../helpers/doubles';
 import { clickControl, control, maybeControl } from '../helpers/dom';
 import {
 	audioPathOf,
@@ -101,11 +102,14 @@ function pathKinds(): string[] {
  * a later unload() runs what the player registered.
  * @param registry - The registry the player binds its shared element through
  * @param startSeconds - The embed's #t= offset, absent by default
+ * @param loaded - Whether the recording's media has loaded, as it has by the
+ *   time a listener reaches the control row
  * @returns The container the player rendered into, and the player itself
  */
 function mountPlayer(
 	registry: AudioPlayerRegistry,
 	startSeconds: number | null = null,
+	loaded = true,
 ): { container: HTMLElement; player: AudioPlayer } {
 	const container = makePlayerContainer();
 	const player = new AudioPlayer(
@@ -120,6 +124,11 @@ function mountPlayer(
 		{ startSeconds, sourcePath: 'note.md', immediate: true },
 	);
 	player.load();
+	// The registry offers an element to the chain only once its media has
+	// loaded, so the load a real embed performs is performed here too.
+	if (loaded) {
+		shared.audio.loadMetadata();
+	}
 	return { container, player };
 }
 
@@ -264,6 +273,74 @@ describe('the live voice boost on a playing embed', () => {
 	});
 });
 
+// The stages come from the cleanup configuration, so one with every stage
+// switched off engages a chain that passes the audio straight through. The
+// offline pass refuses that configuration and says so; the switch has no run
+// to refuse, so it engages and the player says where to turn a stage on.
+describe('a chain with no stage to render', () => {
+	/** Cleanup settings with every processing stage switched off. */
+	function noStages(): AudioRecorderSettings {
+		return cleanupSettings({
+			cleanupHighPassEnabled: false,
+			cleanupNoiseGateEnabled: false,
+			cleanupLevelingEnabled: false,
+		});
+	}
+
+	it('tells the listener where to turn a stage on', () => {
+		const { container } = createSut(noStages());
+
+		clickControl(container, 'Voice boost');
+
+		expect(noticeMessages().join('\n')).toContain(
+			'no cleanup stage is enabled',
+		);
+	});
+
+	it('says nothing when the configuration has a stage to render', () => {
+		const { container } = createSut();
+
+		clickControl(container, 'Voice boost');
+
+		expect(noticeMessages().join('\n')).not.toContain(
+			'no cleanup stage is enabled',
+		);
+	});
+
+	// Switching it off is not the press that could have nothing to apply.
+	it('says nothing when the chain is switched off again', () => {
+		const { container } = createSut(noStages());
+		clickControl(container, 'Voice boost');
+		const afterEngage = noticeMessages().length;
+
+		clickControl(container, 'Voice boost');
+
+		expect(noticeMessages()).toHaveLength(afterEngage);
+	});
+});
+
+// A media element can be taken into an audio graph once in its life, and one
+// whose media the host refused to serve across origins routes as silence, so
+// an embed is routed only once its load has proved otherwise.
+describe('an embed whose recording has not loaded yet', () => {
+	it('is left unrouted until its media loads', () => {
+		const registry = new AudioPlayerRegistry();
+		registry.applyVoiceBoostStages(
+			resolveVoiceBoostStages(cleanupSettings()),
+		);
+		const { container } = mountPlayer(registry, null, false);
+
+		clickControl(container, 'Voice boost');
+
+		expect(graph.instances).toHaveLength(0);
+		expect(control(container, 'Voice boost')).toBeActiveControl();
+
+		shared.audio.loadMetadata();
+
+		expect(pathKinds()).toEqual(['source', 'biquad', 'destination']);
+	});
+});
+
 describe('where the runtime cannot host the chain', () => {
 	// Offering a control that could not process anything is worse than
 	// offering none: the audio chain is what the control is for.
@@ -275,12 +352,14 @@ describe('where the runtime cannot host the chain', () => {
 	});
 
 	it('reports the chain as engaged for nothing, rather than failing', () => {
+		silenceConsole('warn');
 		graph.restore();
 		const registry = new AudioPlayerRegistry();
 
 		expect(registry.toggleVoiceBoost()).toEqual({
 			available: false,
 			enabled: false,
+			renders: false,
 		});
 	});
 });

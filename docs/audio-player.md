@@ -105,10 +105,11 @@ The **voice boost** button applies the [audio cleanup](audio-cleanup.md) chain t
 
 - The button stays pressed while the chain is engaged. Every player on screen follows the same switch, so turning it on in one embed turns it on in the others, including a player rendered after the fact.
 - **Remembered for the session.** The chain stays on for the rest of the session, across recordings and across notes, and it is not written to the settings file, so reopening Obsidian starts with it off.
-- Only the stages switched on in the cleanup defaults are rendered. With the stock defaults, where the high-pass filter is on and the noise gate and loudness leveling are off, the change is subtle. Turn the gate and the leveling on for a recording that needs what the offline cleanup produces.
+- Only the stages switched on in the cleanup defaults are rendered. With the stock defaults, where the high-pass filter is on and the noise gate and loudness leveling are off, the change is subtle. Turn the gate and the leveling on for a recording that needs what the offline cleanup produces. With every stage switched off there is nothing to apply, and pressing the button says so instead of changing the sound.
 - The stages run in the offline pass's order, with the gate deciding before the filter, and the gate measures the same short window of signal with the same threshold and hysteresis. A threshold tuned in the cleanup dialog therefore behaves the way it does on a processed copy, rather than gating the quiet passage the button exists for.
 - There is no decoding, no size limit, and no length limit, which is what makes it usable on a recording that is far too long to clean up as a file.
 - The chain is built from Web Audio nodes. On a runtime that does not provide them, the button is not offered at all and playback is unaffected.
+- A recording is taken into the chain only once the player has loaded it. A recording the app will not hand over for processing keeps playing normally and is left out of the chain, so the button never costs you the playback itself.
 
 ![The enhanced player control row with the voice boost button pressed, between the volume slider and the loop button](images/player-voice-boost.png)
 

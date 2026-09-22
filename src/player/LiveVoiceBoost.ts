@@ -35,6 +35,7 @@ import { computeRms } from '../audio/pcm';
 import {
 	dbToGain,
 	gateShouldOpen,
+	hasActiveStage,
 	voiceBoostStagesEqual,
 	type VoiceBoostStages,
 } from '../cleanup/audioDsp';
@@ -57,6 +58,8 @@ const MAX_GATE_WINDOW_SAMPLES = 32768;
  * from, and the state that survives a rewire.
  */
 interface VoiceBoostGraph {
+	/** The element this graph was built on, and whose playback drives it. */
+	element: HTMLMediaElement;
 	/** The element's only route into Web Audio, created once and never again. */
 	source: MediaElementAudioSourceNode;
 	highPass: BiquadFilterNode;
@@ -75,6 +78,8 @@ interface VoiceBoostGraph {
 	gateOpen: boolean;
 	/** Reused buffer for one analyser read. */
 	gateSamples: Float32Array<ArrayBuffer>;
+	/** Removes the listeners that keep the gate's loop on the playback. */
+	playbackEvents: AbortController;
 }
 
 /** Whether the live chain can be offered here, and whether it is engaged. */
@@ -86,6 +91,12 @@ export interface VoiceBoostState {
 	available: boolean;
 	/** Whether the chain is currently applied to playback. */
 	enabled: boolean;
+	/**
+	 * Whether the cleanup configuration has a stage to apply. A chain with
+	 * none engages and routes the audio straight through, so the switch is
+	 * honest about being on while nothing is being rendered.
+	 */
+	renders: boolean;
 }
 
 /**
@@ -171,9 +182,24 @@ export class LiveVoiceBoost {
 	}
 
 	/**
+	 * Whether the configuration in force has a stage to apply. The offline
+	 * pass refuses a run with nothing enabled and says so; the live chain has
+	 * no run to refuse, so it reports the same fact and lets the player tell
+	 * the listener why their playback did not change.
+	 */
+	rendersAnyStage(): boolean {
+		return this.stages !== null && hasActiveStage(this.stages);
+	}
+
+	/**
 	 * Offers the chain to an element. Nothing is routed until the chain is
 	 * engaged, so a plugin that never engages it leaves playback exactly as it
 	 * was.
+	 *
+	 * The caller offers an element only once its media has loaded, because
+	 * routing cannot be undone and media the host refused to serve across
+	 * origins routes as silence. `AudioPlayerRegistry` holds that gate, in
+	 * `attachVoiceBoostRouting`.
 	 * @param audio - Element playing the recording
 	 */
 	track(audio: HTMLMediaElement): void {
@@ -285,7 +311,8 @@ export class LiveVoiceBoost {
 			const compressor = context.createDynamicsCompressor();
 			const makeup = context.createGain();
 			const source = context.createMediaElementSource(audio);
-			return {
+			const graph: VoiceBoostGraph = {
+				element: audio,
 				source,
 				highPass,
 				gate,
@@ -296,7 +323,10 @@ export class LiveVoiceBoost {
 				gateTimer: 0,
 				gateOpen: true,
 				gateSamples: new Float32Array(analyser.fftSize),
+				playbackEvents: new AbortController(),
 			};
+			this.watchPlayback(graph);
+			return graph;
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Could not route the playing audio into the voice-boost chain.`,
@@ -353,8 +383,6 @@ export class LiveVoiceBoost {
 				// leaves its own output unconnected, which is what keeps it a
 				// meter on the path rather than a second branch of it.
 				tail.connect(graph.analyser);
-				graph.gateOpen = true;
-				graph.gate.gain.value = 1;
 				tail.connect(graph.gate);
 				tail = graph.gate;
 			}
@@ -394,6 +422,7 @@ export class LiveVoiceBoost {
 
 	/** Stops the graph's gate and discards its nodes with the element. */
 	private discard(graph: VoiceBoostGraph): void {
+		graph.playbackEvents.abort();
 		if (graph.gateTimer !== 0) {
 			window.clearInterval(graph.gateTimer);
 			graph.gateTimer = 0;
@@ -402,14 +431,46 @@ export class LiveVoiceBoost {
 	}
 
 	/**
-	 * Runs the gate's level loop while the gate is in the chain, and stops it
-	 * otherwise. The gate is the one stage with no node to set: it is a gain
-	 * driven by a reading, so it costs a timer for as long as it is engaged.
+	 * Keeps the gate's loop on the element's playback. The gate measures what
+	 * is being played, so an element that is not playing has nothing to
+	 * measure: without this the loop would read silence fifty times a second,
+	 * for every embed in the note, for as long as the note stayed open.
+	 * @param graph - Graph whose element is being watched
+	 */
+	private watchPlayback(graph: VoiceBoostGraph): void {
+		const sync = (): void => {
+			this.syncGateTimer(graph);
+		};
+		// `ended` as well as `pause`, because an element that runs off the end
+		// of a recording is not guaranteed to report the pause that put it
+		// there.
+		const { signal } = graph.playbackEvents;
+		graph.element.addEventListener('play', sync, { signal });
+		graph.element.addEventListener('pause', sync, { signal });
+		graph.element.addEventListener('ended', sync, { signal });
+	}
+
+	/**
+	 * Runs the gate's level loop while the gate is in the chain and the
+	 * element is playing, and stops it otherwise. The gate is the one stage
+	 * with no node to set: it is a gain driven by a reading, so it costs a
+	 * timer for as long as it runs, and a paused element offers it nothing to
+	 * read.
+	 *
+	 * Starting the loop is also where the gate is opened, which is where the
+	 * offline pass starts too. It is the only place that opens it, so a
+	 * rewire in the middle of a recording leaves the gate where the last
+	 * reading put it instead of snapping it open for one window.
 	 * @param graph - Graph whose gate is being wired
 	 */
 	private syncGateTimer(graph: VoiceBoostGraph): void {
-		const wanted = graph.engaged && this.stages?.gate.enabled === true;
+		const wanted =
+			graph.engaged &&
+			this.stages?.gate.enabled === true &&
+			!graph.element.paused;
 		if (wanted && graph.gateTimer === 0) {
+			graph.gateOpen = true;
+			graph.gate.gain.value = 1;
 			graph.gateTimer = window.setInterval(() => {
 				this.updateGate(graph);
 			}, CLEANUP_GATE_WINDOW_SECONDS * 1000);

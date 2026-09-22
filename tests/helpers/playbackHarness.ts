@@ -75,6 +75,12 @@ export interface ControllableAudio extends HTMLAudioElement {
 	setReady(value: number): void;
 	/** Sets the duration and emits durationchange, as a real load would. */
 	setDuration(value: number): void;
+	/**
+	 * Reports metadata as arrived and emits loadedmetadata, which is what a
+	 * successful load does and what the registry waits for before offering
+	 * the element to the live voice-boost chain.
+	 */
+	loadMetadata(): void;
 }
 
 /**
@@ -129,6 +135,10 @@ export function installSharedAudio(): {
 	el.setDuration = (value: number) => {
 		duration = value;
 		el.dispatchEvent(new Event('durationchange'));
+	};
+	el.loadMetadata = () => {
+		ready = 1;
+		el.dispatchEvent(new Event('loadedmetadata'));
 	};
 	jest.spyOn(globalThis, 'Audio').mockImplementation(() => el);
 	return {

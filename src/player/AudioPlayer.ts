@@ -603,6 +603,25 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
+	 * Turns the live cleanup chain on or off for every player, and says so
+	 * when it has nothing to apply.
+	 *
+	 * The stages come from the cleanup configuration, so a configuration with
+	 * every stage switched off engages a chain that passes the audio straight
+	 * through. The offline pass refuses that configuration with a message
+	 * rather than writing an identical copy; here there is no run to refuse,
+	 * so the switch engages and the message says where to turn a stage on.
+	 */
+	private toggleVoiceBoost(): void {
+		const state = this.registry.toggleVoiceBoost();
+		if (state.enabled && !state.renders) {
+			new Notice(
+				'Voice boost is on, but no cleanup stage is enabled. Turn one on under audio cleanup defaults.',
+			);
+		}
+	}
+
+	/**
 	 * Seeks to an absolute offset, optionally starting playback. Timecode
 	 * links start playback (the user clicked to listen); in-player marker and
 	 * chapter jumps preserve the current play/pause state, matching a seek-bar
@@ -766,7 +785,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 					this.setVolume(volume);
 				},
 				onToggleVoiceBoost: () => {
-					this.registry.toggleVoiceBoost();
+					this.toggleVoiceBoost();
 				},
 				onToggleLoop: () => {
 					this.audio.loop = !this.audio.loop;

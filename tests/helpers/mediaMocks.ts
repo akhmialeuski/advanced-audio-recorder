@@ -215,7 +215,11 @@ export interface AudioParamDouble {
 	value: number;
 	/** Every setTargetAtTime schedule, in order. */
 	scheduled: Array<{ value: number; time: number; timeConstant: number }>;
-	/** Records a schedule rather than ramping, which is what a test asserts on. */
+	/**
+	 * Records the schedule and moves the value to the target it aims at. The
+	 * ramp is not modelled, only where it lands, which is what lets a test
+	 * tell a parameter the plugin drove from one it left at its default.
+	 */
 	setTargetAtTime(value: number, time: number, timeConstant: number): void;
 }
 
@@ -271,6 +275,7 @@ function audioParamDouble(initial = 0): AudioParamDouble {
 		scheduled: [],
 		setTargetAtTime(value, time, timeConstant) {
 			parameter.scheduled.push({ value, time, timeConstant });
+			parameter.value = value;
 		},
 	};
 	return parameter;
@@ -379,7 +384,9 @@ function audioGraphContextClass(
 		}
 
 		createGain(): AudioNodeDouble {
-			return nodeDouble('gain', { gain: 0 }, this);
+			// A GainNode starts at unity, so an untouched one passes the
+			// signal through rather than silencing it
+			return nodeDouble('gain', { gain: 1 }, this);
 		}
 
 		createAnalyser(): AudioNodeDouble {

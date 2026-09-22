@@ -16,6 +16,8 @@ import {
 	installAudioGraphMock,
 	installControlledAudio,
 } from '../helpers/mediaMocks';
+import { at } from '../helpers/assertions';
+import { silenceConsole } from '../helpers/doubles';
 
 /**
  * Builds a jest-backed player command surface for registry delegation tests.
@@ -728,6 +730,112 @@ describe('AudioPlayerRegistry', () => {
 	});
 });
 
+// The cross-origin request the chain needs is made for every recording,
+// including the ones nobody will ever boost, so a host that refuses it would
+// otherwise stop the plugin playing anything at all.
+describe('a shared element whose cross-origin load is refused', () => {
+	/**
+	 * Acquires a shared element whose media has not loaded yet.
+	 * @returns The element harness and the registry holding it
+	 */
+	function createSut(): {
+		harness: ReturnType<typeof installControlledAudio>;
+		registry: AudioPlayerRegistry;
+		audio: HTMLAudioElement;
+	} {
+		const harness = installControlledAudio({ readyState: 0 });
+		const registry = new AudioPlayerRegistry();
+		const { audio } = registry.acquireAudio(
+			playbackKey('rec.wav', null),
+			'app://rec',
+		);
+		return { harness, registry, audio };
+	}
+
+	it('loads the recording again without the cross-origin request', () => {
+		silenceConsole('warn');
+		const { harness, audio } = createSut();
+
+		audio.dispatchEvent(new Event('error'));
+
+		expect(audio.crossOrigin).toBeNull();
+		expect(harness.load).toHaveBeenCalledTimes(1);
+	});
+
+	it('says which recording it had to fall back for', () => {
+		const warn = silenceConsole('warn');
+		const { audio } = createSut();
+
+		audio.dispatchEvent(new Event('error'));
+
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('across origins was refused'),
+		);
+	});
+
+	// Routing is irreversible and media fetched without CORS routes as
+	// silence, so the element that had to fall back is the one element the
+	// chain may never be built over.
+	it('never routes it into the chain, however the load then goes', () => {
+		silenceConsole('warn');
+		const graph = installAudioGraphMock();
+		try {
+			const { harness, registry, audio } = createSut();
+			registry.toggleVoiceBoost();
+
+			audio.dispatchEvent(new Event('error'));
+			harness.loadMetadata();
+
+			expect(graph.instances).toHaveLength(0);
+		} finally {
+			graph.restore();
+		}
+	});
+
+	// An error that arrives with metadata already in is a stream that failed
+	// after the fetch was allowed, which no reload would mend.
+	it('leaves an element alone that failed after its metadata had loaded', () => {
+		const harness = installControlledAudio({ readyState: 1 });
+		const registry = new AudioPlayerRegistry();
+		const { audio } = registry.acquireAudio(
+			playbackKey('rec.wav', null),
+			'app://rec',
+		);
+
+		audio.dispatchEvent(new Event('error'));
+
+		expect(audio.crossOrigin).toBe('anonymous');
+		expect(harness.load).not.toHaveBeenCalled();
+	});
+});
+
+// A media element can be taken into an audio graph once in its life, and one
+// whose media the host refused to serve across origins routes as silence, so
+// the element is offered to the chain only once the load has proved it can be
+// fetched the way the chain needs.
+describe('offering a shared element to the live chain', () => {
+	it('waits for the media to load before routing it', () => {
+		const graph = installAudioGraphMock();
+		try {
+			const harness = installControlledAudio({ readyState: 0 });
+			const registry = new AudioPlayerRegistry();
+			registry.acquireAudio(playbackKey('rec.wav', null), 'app://rec');
+
+			registry.toggleVoiceBoost();
+
+			expect(graph.instances).toHaveLength(0);
+
+			harness.loadMetadata();
+
+			expect(
+				at(graph.instances, 0, 'the context the plugin opened').sources,
+			).toHaveLength(1);
+		} finally {
+			graph.restore();
+		}
+	});
+});
+
 describe('the registry voice boost', () => {
 	it('reports the chain as unavailable where the runtime offers no audio graph', () => {
 		const registry = new AudioPlayerRegistry();
@@ -735,6 +843,7 @@ describe('the registry voice boost', () => {
 		expect(registry.voiceBoostState()).toEqual({
 			available: false,
 			enabled: false,
+			renders: false,
 		});
 	});
 
@@ -755,6 +864,7 @@ describe('the registry voice boost', () => {
 			expect(registry.voiceBoostState()).toEqual({
 				available: true,
 				enabled: true,
+				renders: false,
 			});
 			expect(first.voiceBoosts).toEqual([true]);
 			expect(second.voiceBoosts).toEqual([true]);
@@ -764,6 +874,9 @@ describe('the registry voice boost', () => {
 	});
 
 	it('leaves a player that is no longer attached out of the broadcast', () => {
+		// No graph is installed here, so engaging warns that the runtime
+		// cannot host the chain; the case is about the broadcast, not that.
+		silenceConsole('warn');
 		const registry = new AudioPlayerRegistry();
 		const gone = makePlayer(false);
 		registry.register('a.wav', gone);

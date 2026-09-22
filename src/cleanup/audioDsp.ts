@@ -64,11 +64,15 @@ function clamp(
 }
 
 /**
- * Resolves the three processing stages from settings, clamping every
- * numeric field into its supported range.
+ * Resolves the three processing stages from settings, clamping every numeric
+ * field into its supported range. Both renderers start here: the offline pass
+ * adds the downmix choice on top, and a live playback chain has none, so the
+ * stages are the whole of what it renders.
  * @param settings - Plugin settings
  */
-function resolveStages(settings: AudioRecorderSettings): VoiceBoostStages {
+export function resolveVoiceBoostStages(
+	settings: AudioRecorderSettings,
+): VoiceBoostStages {
 	return {
 		highPass: {
 			enabled: settings.cleanupHighPassEnabled,
@@ -109,19 +113,10 @@ function resolveStages(settings: AudioRecorderSettings): VoiceBoostStages {
 export function resolveAudioDspConfig(
 	settings: AudioRecorderSettings,
 ): AudioDspConfig {
-	return { ...resolveStages(settings), channelMode: ChannelMode.Source };
-}
-
-/**
- * Resolves the stages a live playback chain renders, from the same cleanup
- * configuration the offline pass reads. Live playback has no downmix choice,
- * so the stages are the whole of it.
- * @param settings - Plugin settings
- */
-export function resolveVoiceBoostStages(
-	settings: AudioRecorderSettings,
-): VoiceBoostStages {
-	return resolveStages(settings);
+	return {
+		...resolveVoiceBoostStages(settings),
+		channelMode: ChannelMode.Source,
+	};
 }
 
 /**

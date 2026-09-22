@@ -118,8 +118,16 @@ export function makePartialRegistry(...audios: FakeAudio[]): object {
 		// No Web Audio is installed in these suites, so the live chain is
 		// reported as this runtime offers it: not at all, which leaves the
 		// control out of the row rather than half-working.
-		voiceBoostState: jest.fn(() => ({ available: false, enabled: false })),
-		toggleVoiceBoost: jest.fn(() => ({ available: false, enabled: false })),
+		voiceBoostState: jest.fn(() => ({
+			available: false,
+			enabled: false,
+			renders: false,
+		})),
+		toggleVoiceBoost: jest.fn(() => ({
+			available: false,
+			enabled: false,
+			renders: false,
+		})),
 		applyVoiceBoostStages: jest.fn(),
 		markAudioEngaged: jest.fn((key: string) => {
 			const entry = entries.get(key);
