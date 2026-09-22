@@ -474,7 +474,7 @@ Below the breakdown, a **Check current pricing** line links straight to the pric
 
 ## LLM post-processing
 
-After transcription, you can optionally pass the transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. The provider defaults to OpenAI (`gpt-5.6-sol`), with Anthropic (`claude-opus-4-8`), Google Gemini (`gemini-3.5-flash`), and Mistral (`mistral-medium-latest`) also available. The OpenAI, Gemini, and Mistral keys are shared with the matching transcription engines.
+After transcription, you can optionally pass the transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. The provider defaults to OpenAI (`gpt-5.6-sol`), with Anthropic (`claude-opus-4-8`), Google Gemini (`gemini-3.5-flash`), Mistral (`mistral-medium-latest`), and DeepSeek (`deepseek-flash`) also available. The OpenAI, Gemini, and Mistral keys are shared with the matching transcription engines.
 
 LLM post-processing is **best-effort**: a failure (bad key, network, timeout) falls back to the raw transcript rather than discarding completed work.
 

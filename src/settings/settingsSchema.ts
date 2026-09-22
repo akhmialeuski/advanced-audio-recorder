@@ -21,6 +21,7 @@ import {
 	DEFAULT_GEMINI_MODEL,
 	GEMINI_MODEL_SUGGESTIONS,
 	DEFAULT_MISTRAL_BASE_URL,
+	DEFAULT_DEEPSEEK_BASE_URL,
 	DEFAULT_VOXTRAL_MODEL,
 	VOXTRAL_MODEL_SUGGESTIONS,
 	DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
@@ -36,6 +37,8 @@ import {
 	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
 	DEFAULT_LLM_MISTRAL_MODEL,
 	LLM_MISTRAL_MODEL_SUGGESTIONS,
+	DEFAULT_LLM_DEEPSEEK_MODEL,
+	LLM_DEEPSEEK_MODEL_SUGGESTIONS,
 	DEFAULT_LLM_CLEANUP_PROMPT,
 	DEFAULT_LLM_SUMMARY_PROMPT,
 	DEFAULT_LLM_CUSTOM_INSTRUCTION,
@@ -514,6 +517,9 @@ export interface AudioRecorderSettings {
 	 */
 	mistralBaseUrl: string;
 	mistralApiKey: string;
+	/** DeepSeek endpoint and key, read by its one chat catalogue. */
+	deepSeekBaseUrl: string;
+	deepSeekApiKey: string;
 	/** Voxtral transcription model id (the selected one) */
 	voxtralModel: string;
 	/** Known Voxtral model ids offered in the picker (user-editable) */
@@ -593,6 +599,10 @@ export interface AudioRecorderSettings {
 	llmMistralModel: string;
 	/** Known Mistral LLM model ids offered in the picker (user-editable) */
 	llmMistralModels: string[];
+	/** Selected DeepSeek LLM model id */
+	llmDeepSeekModel: string;
+	/** Known DeepSeek LLM model ids offered in the picker (user-editable) */
+	llmDeepSeekModels: string[];
 	/**
 	 * Longest answer each engine is allowed to write. A ceiling belongs to the
 	 * engine that has to honour it, not to one of the jobs that calls it, so
@@ -602,6 +612,7 @@ export interface AudioRecorderSettings {
 	llmAnthropicMaxTokens: number;
 	geminiMaxTokens: number;
 	llmMistralMaxTokens: number;
+	llmDeepSeekMaxTokens: number;
 	/**
 	 * Generation of the shipped model catalogues the saved lists were last
 	 * topped up from. A list is the user's to edit, so new ids are merged in
@@ -907,6 +918,8 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	geminiModels: [...GEMINI_MODEL_SUGGESTIONS],
 	mistralBaseUrl: DEFAULT_MISTRAL_BASE_URL,
 	mistralApiKey: '',
+	deepSeekBaseUrl: DEFAULT_DEEPSEEK_BASE_URL,
+	deepSeekApiKey: '',
 	voxtralModel: DEFAULT_VOXTRAL_MODEL,
 	voxtralModels: [...VOXTRAL_MODEL_SUGGESTIONS],
 	localWhisperBinaryPath: '',
@@ -945,10 +958,13 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmAnthropicModels: [...LLM_ANTHROPIC_MODEL_SUGGESTIONS],
 	llmMistralModel: DEFAULT_LLM_MISTRAL_MODEL,
 	llmMistralModels: [...LLM_MISTRAL_MODEL_SUGGESTIONS],
+	llmDeepSeekModel: DEFAULT_LLM_DEEPSEEK_MODEL,
+	llmDeepSeekModels: [...LLM_DEEPSEEK_MODEL_SUGGESTIONS],
 	llmOpenAiMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 	llmAnthropicMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 	geminiMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 	llmMistralMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	llmDeepSeekMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 	modelSeedGeneration: MODEL_SEED_GENERATION,
 	inputNoiseSuppression: true,
 	inputEchoCancellation: true,

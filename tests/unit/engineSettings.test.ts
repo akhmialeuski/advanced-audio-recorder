@@ -88,13 +88,22 @@ describe('engine settings', () => {
 			// The ceiling belongs to the engine that has to honour it, so an
 			// engine added over an existing account brings its own rather than
 			// sharing the one already there.
-			applyEngineSettings(settings, ENGINE_IDS.MISTRAL_LLM, {
-				maxTokens: 3000,
+			const writers = ENGINE_ORDER.filter(
+				(id) => ENGINES[id].maxTokens !== null,
+			);
+			writers.forEach((id, index) => {
+				applyEngineSettings(settings, id, { maxTokens: 3000 + index });
 			});
 
-			expect(settings.llmMistralMaxTokens).toBe(3000);
-			expect(settings.llmOpenAiMaxTokens).toBe(
-				DEFAULT_SETTINGS.llmOpenAiMaxTokens,
+			// Each engine reads back the value written to it, so no two share a
+			// field and a later write never overwrote an earlier one.
+			writers.forEach((id, index) => {
+				expect(readEngineSettings(settings, id).maxTokens).toBe(
+					3000 + index,
+				);
+			});
+			expect(settings.llmMistralMaxTokens).not.toBe(
+				settings.llmOpenAiMaxTokens,
 			);
 		});
 

@@ -1471,6 +1471,7 @@ describe('settings definitions', () => {
 				'Anthropic (Claude)',
 				'Mistral Voxtral',
 				'Mistral',
+				'DeepSeek',
 				'Local whisper.cpp (desktop)',
 			]);
 			// A provider that both transcribes and answers prompts keeps one
@@ -1497,6 +1498,16 @@ describe('settings definitions', () => {
 			expect(pageEntryNames('Mistral')).toEqual([
 				'Base URL',
 				'Mistral API key',
+				'Model',
+				'Model catalogue',
+				'Max output tokens',
+			]);
+			// A vendor that only writes gets one page with its own key, so
+			// pointing post-processing at it never touches the transcription
+			// account.
+			expect(pageEntryNames('DeepSeek')).toEqual([
+				'Base URL',
+				'DeepSeek API key',
 				'Model',
 				'Model catalogue',
 				'Max output tokens',

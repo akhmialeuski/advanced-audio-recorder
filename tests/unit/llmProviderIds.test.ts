@@ -23,6 +23,7 @@ describe('LLM_PROVIDER_IDS as single source of truth', () => {
 			ANTHROPIC: 'anthropic',
 			GEMINI: 'gemini',
 			MISTRAL: 'mistral',
+			DEEPSEEK: 'deepseek',
 		});
 	});
 
@@ -44,6 +45,15 @@ describe('LLM_PROVIDER_IDS as single source of truth', () => {
 					label: 'Mistral',
 				}),
 			id: LLM_PROVIDER_IDS.MISTRAL,
+		},
+		{
+			name: 'DeepSeek',
+			build: (): { id: string } =>
+				new OpenAiCompatibleLlmProvider(CONFIG, {
+					id: LLM_PROVIDER_IDS.DEEPSEEK,
+					label: 'DeepSeek',
+				}),
+			id: LLM_PROVIDER_IDS.DEEPSEEK,
 		},
 		{
 			name: 'Anthropic',

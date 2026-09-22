@@ -145,6 +145,18 @@ const MISTRAL_RATES: readonly [string, LlmRate][] = [
 ];
 
 /**
+ * Approximate DeepSeek chat rates, USD per million tokens, at the peak-hour
+ * cache-miss price. The vendor bills by time of day as well (01:00-04:00 and
+ * 06:00-10:00 UTC on weekdays at this rate, half of it otherwise) and far less
+ * on a cache hit; the rate model has no clock, so the peak price is stored as
+ * the upper bound and an off-peak run costs about half the estimate.
+ */
+const DEEPSEEK_RATES: readonly [string, LlmRate][] = [
+	['deepseek-flash', { input: 0.3, output: 1.2 }],
+	['deepseek-v4-pro', { input: 1.32, output: 3.96 }],
+];
+
+/**
  * The half of a vendor that belongs to the service rather than to this job: how
  * it is named, how it is reached, and the catalogue its models come from. Read
  * from the provider registry, so a service that also transcribes declares them
@@ -190,11 +202,12 @@ function vendorIdentity(
 }
 
 /**
- * The two vendors that share the OpenAI-compatible client, resolved once so
- * each can hand that client the identity it answers as.
+ * The vendors that share the OpenAI-compatible client, resolved once so each
+ * can hand that client the identity it answers as.
  */
 const OPENAI_VENDOR = fromRegistry(ENGINE_IDS.OPENAI_LLM);
 const MISTRAL_VENDOR = fromRegistry(ENGINE_IDS.MISTRAL_LLM);
+const DEEPSEEK_VENDOR = fromRegistry(ENGINE_IDS.DEEPSEEK);
 
 /**
  * Every LLM vendor, keyed by its settings id. Insertion order is the order the
@@ -231,6 +244,18 @@ export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 			new OpenAiCompatibleLlmProvider(
 				config,
 				vendorIdentity(MISTRAL_VENDOR),
+			),
+	},
+	[LLM_PROVIDER_IDS.DEEPSEEK]: {
+		...DEEPSEEK_VENDOR,
+		rates: DEEPSEEK_RATES,
+		// OpenAI-compatible chat endpoint, the same case as Mistral. The vendor
+		// also serves an Anthropic-compatible one, which is not used: one client
+		// per wire format is enough.
+		create: (config) =>
+			new OpenAiCompatibleLlmProvider(
+				config,
+				vendorIdentity(DEEPSEEK_VENDOR),
 			),
 	},
 };

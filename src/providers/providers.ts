@@ -22,8 +22,10 @@
 import {
 	ANTHROPIC_MODELS_DOC_URL,
 	DEEPGRAM_MODELS_DOC_URL,
+	DEEPSEEK_MODELS_DOC_URL,
 	DEFAULT_ANTHROPIC_BASE_URL,
 	DEFAULT_DEEPGRAM_BASE_URL,
+	DEFAULT_DEEPSEEK_BASE_URL,
 	DEFAULT_GEMINI_BASE_URL,
 	DEFAULT_MISTRAL_BASE_URL,
 	DEFAULT_OPENAI_BASE_URL,
@@ -49,6 +51,7 @@ export const ACCOUNT_IDS = {
 	GEMINI: 'gemini',
 	ANTHROPIC: 'anthropic',
 	MISTRAL: 'mistral',
+	DEEPSEEK: 'deepseek',
 } as const;
 
 /** One account id. */
@@ -65,6 +68,7 @@ export const ENGINE_IDS = {
 	VOXTRAL: 'voxtral',
 	/** Chat catalogue: the mistral-* ids reached through the same account. */
 	MISTRAL_LLM: 'mistral-llm',
+	DEEPSEEK: 'deepseek',
 	LOCAL_WHISPER: 'local-whisper',
 } as const;
 
@@ -255,6 +259,20 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 		keyFieldName: 'Anthropic API key',
 		keyFieldDesc: STORED_LOCALLY_DESC,
 		missingKeyMessage: 'Set the Anthropic API key in settings.',
+	},
+	[ACCOUNT_IDS.DEEPSEEK]: {
+		baseUrlKey: 'deepSeekBaseUrl',
+		defaultBaseUrl: DEFAULT_DEEPSEEK_BASE_URL,
+		apiKeyKey: 'deepSeekApiKey',
+		baseUrl: (s) => s.deepSeekBaseUrl,
+		setBaseUrl: (s, url) => (s.deepSeekBaseUrl = url),
+		apiKey: (s) => s.deepSeekApiKey,
+		setApiKey: (s, key) => (s.deepSeekApiKey = key),
+		baseUrlFieldDesc:
+			'DeepSeek API base (default https://api.deepseek.com).',
+		keyFieldName: 'DeepSeek API key',
+		keyFieldDesc: STORED_LOCALLY_DESC,
+		missingKeyMessage: 'Set the DeepSeek API key in settings.',
 	},
 };
 
@@ -456,6 +474,35 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			key: 'llmMistralMaxTokens',
 			get: (settings) => settings.llmMistralMaxTokens,
 			set: (settings, value) => (settings.llmMistralMaxTokens = value),
+		},
+	},
+	[ENGINE_IDS.DEEPSEEK]: {
+		id: ENGINE_IDS.DEEPSEEK,
+		label: 'DeepSeek',
+		pricingUrl: 'https://api-docs.deepseek.com/quick_start/pricing',
+		account: ACCOUNT_IDS.DEEPSEEK,
+		// The vendor has no audio endpoint, so its one catalogue only writes.
+		transcriptionId: null,
+		llmId: LLM_PROVIDER_IDS.DEEPSEEK,
+		uploadLimitMb: 0,
+		uploadChunk: null,
+		models: {
+			modelKey: 'llmDeepSeekModel',
+			modelsKey: 'llmDeepSeekModels',
+			model: (s) => s.llmDeepSeekModel,
+			setModel: (s, id) => (s.llmDeepSeekModel = id),
+			models: (s) => s.llmDeepSeekModels,
+			setModels: (s, ids) => (s.llmDeepSeekModels = ids),
+			pickerName: 'Model',
+			pickerDesc:
+				'Pick a DeepSeek model (e.g. deepseek-flash, deepseek-v4-pro).',
+			docLabel: 'DeepSeek models',
+			docUrl: DEEPSEEK_MODELS_DOC_URL,
+		},
+		maxTokens: {
+			key: 'llmDeepSeekMaxTokens',
+			get: (settings) => settings.llmDeepSeekMaxTokens,
+			set: (settings, value) => (settings.llmDeepSeekMaxTokens = value),
 		},
 	},
 	[ENGINE_IDS.LOCAL_WHISPER]: {

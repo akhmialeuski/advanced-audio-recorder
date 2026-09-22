@@ -86,11 +86,11 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 
 ### Transcription
 
-| Page                                          | What it covers                                                                                                   |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| [Transcription](transcription.md)             | Speech-to-text with five engines, diarization, output destinations and formats, and the progress flow.           |
-| [LLM post-processing](llm-post-processing.md) | Clean up, summarize, or run a custom instruction over the transcript with OpenAI, Anthropic, Gemini, or Mistral. |
-| [Use cases](use-cases/index.md)               | Step-by-step guides for API keys and end-to-end workflows (see Use cases below).                                 |
+| Page                                          | What it covers                                                                                                             |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [Transcription](transcription.md)             | Speech-to-text with five engines, diarization, output destinations and formats, and the progress flow.                     |
+| [LLM post-processing](llm-post-processing.md) | Clean up, summarize, or run a custom instruction over the transcript with OpenAI, Anthropic, Gemini, Mistral, or DeepSeek. |
+| [Use cases](use-cases/index.md)               | Step-by-step guides for API keys and end-to-end workflows (see Use cases below).                                           |
 
 ### Reference
 

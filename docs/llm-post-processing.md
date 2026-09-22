@@ -31,7 +31,7 @@ When **Enable LLM post-processing** is on, the plugin runs the LLM pass at the v
 
 It changes the **text** of the transcript, not the audio. It runs on every transcription while it is enabled - automatic [transcribe-after-recording](use-cases/transcribe-after-recording.md) runs, the **Transcribe audio** command, and the right-click **Transcribe audio** action all go through the same step.
 
-> **It is a separate, paid API call.** The cloud providers (OpenAI, Anthropic, Google Gemini, Mistral) bill for the tokens this step uses, on top of the transcription engine's cost. The local whisper.cpp transcription engine is offline, but LLM post-processing always uses one of the four cloud LLM providers.
+> **It is a separate, paid API call.** The cloud providers (OpenAI, Anthropic, Google Gemini, Mistral, DeepSeek) bill for the tokens this step uses, on top of the transcription engine's cost. The local whisper.cpp transcription engine is offline, but LLM post-processing always uses one of the five cloud LLM providers, so the text of the transcript is sent to that provider's servers.
 
 ---
 
@@ -132,7 +132,7 @@ These ship with the plugin as the **Default** profile of each task, and are used
 
 ## Providers and models
 
-LLM post-processing supports four providers, chosen from its own **Post-processing engine** dropdown. That row settles only which service does the work; where the service is reached and which models it serves are configured once on its page under **Engines**, so a key that also transcribes is entered in one place. The other two LLM jobs, auto chapters and the advanced two-pass agents, each carry a **Chapters engine** and a **Context agents engine** row of their own beside their own switch, so a run can summarize with one service and title its chapters with another. Each provider has its own default model and its own user-editable model list.
+LLM post-processing supports five providers, chosen from its own **Post-processing engine** dropdown. That row settles only which service does the work; where the service is reached and which models it serves are configured once on its page under **Engines**, so a key that also transcribes is entered in one place. The other two LLM jobs, auto chapters and the advanced two-pass agents, each carry a **Chapters engine** and a **Context agents engine** row of their own beside their own switch, so a run can summarize with one service and title its chapters with another. Each provider has its own default model and its own user-editable model list.
 
 | Provider               | Dropdown label       | Default model           | Model catalogue                                                                      |
 | ---------------------- | -------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
@@ -140,6 +140,7 @@ LLM post-processing supports four providers, chosen from its own **Post-processi
 | **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-4-8`       | [Anthropic models](https://platform.claude.com/docs/en/about-claude/models/overview) |
 | **Google Gemini**      | `Google Gemini`      | `gemini-3.5-flash`      | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                        |
 | **Mistral**            | `Mistral`            | `mistral-medium-latest` | [Mistral models](https://docs.mistral.ai/getting-started/models/models_overview)     |
+| **DeepSeek**           | `DeepSeek`           | `deepseek-flash`        | [DeepSeek models](https://api-docs.deepseek.com/quick_start/pricing)                 |
 
 The **Model** row on the engine's page is the same control used for transcription models: pick an id from its dropdown, add one with the button on the **Model catalogue** entry below it, delete one with the button on a catalogue row, and follow the link at the end of the **Model** row's description to the provider's model list. The list is seeded with common models for the provider:
 
@@ -149,8 +150,11 @@ The **Model** row on the engine's page is the same control used for transcriptio
 | **Anthropic** | `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`, `claude-fable-5`                                                                         |
 | **Gemini**    | `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite`, `gemini-2.0-flash` |
 | **Mistral**   | `mistral-medium-latest`, `mistral-small-latest`, `mistral-large-latest`                                                                            |
+| **DeepSeek**  | `deepseek-flash`, `deepseek-v4-pro`                                                                                                                |
 
-The model list belongs to the provider rather than to the job, so each provider's page keeps its own picker contents and its own selected model, and your OpenAI choice is remembered separately from your Anthropic, Gemini, and Mistral choices whichever job calls them.
+The model list belongs to the provider rather than to the job, so each provider's page keeps its own picker contents and its own selected model, and your OpenAI choice is remembered separately from your Anthropic, Gemini, Mistral, and DeepSeek choices whichever job calls them.
+
+DeepSeek serves the OpenAI chat format, and its catalogue holds two current models: `deepseek-flash` for everyday cleanup and summaries, and `deepseek-v4-pro` for harder prompts at about four times the price. The older ids `deepseek-chat`, `deepseek-reasoner`, and `deepseek-v4-flash` are retired by the vendor and are not seeded, because a request naming one fails. DeepSeek bills by time of day: the cost estimate uses the weekday peak rate (01:00-04:00 and 06:00-10:00 UTC), so a run outside those hours costs about half of what the estimate shows, and less again when the vendor's prompt cache is hit.
 
 ![OpenAI engine settings with the base URL, API key, model picker and max output tokens rows](images/settings-llm-provider-model.png)
 
@@ -168,8 +172,9 @@ You only enter a vendor's API token **once**, because a key belongs to the accou
 | **Google Gemini**      | **Google Gemini API key** | The [Gemini](transcription.md#engines) engine, which transcribes and writes. |
 | **Anthropic (Claude)** | **Anthropic API key**     | The Anthropic engine, which only writes and so keeps a key of its own.       |
 | **Mistral**            | **Mistral API key**       | The [Voxtral](transcription.md#engines) engine and the Mistral engine.       |
+| **DeepSeek**           | **DeepSeek API key**      | The DeepSeek engine, which only writes and so keeps a key of its own.        |
 
-So a key set on the OpenAI page serves OpenAI-compatible transcription and OpenAI post-processing alike, and the same holds for Gemini and for Mistral, whose account serves the Voxtral speech models and the Mistral chat models through two pages that share one endpoint and one key. Anthropic is not offered as a transcription engine, so its page is where its key lives and nothing else reads it.
+So a key set on the OpenAI page serves OpenAI-compatible transcription and OpenAI post-processing alike, and the same holds for Gemini and for Mistral, whose account serves the Voxtral speech models and the Mistral chat models through two pages that share one endpoint and one key. Anthropic and DeepSeek are not offered as transcription engines, since neither transcribes audio, so each page is where its key lives and nothing else reads it. Pointing a job at DeepSeek therefore leaves transcription on the OpenAI account untouched.
 
 Need a key? Follow the matching use-case guide:
 
@@ -177,6 +182,7 @@ Need a key? Follow the matching use-case guide:
 - [OpenAI / Whisper API key](use-cases/openai-whisper-api-key.md)
 - [Google Gemini API key](use-cases/gemini-api-key.md)
 - [Mistral API key](use-cases/mistral-api-key.md)
+- DeepSeek has no guide page: create a key at [platform.deepseek.com](https://platform.deepseek.com/api_keys) and paste it into **DeepSeek API key** on the DeepSeek page.
 
 > **API keys** are stored in the plugin's `data.json` on this device and are never written to diagnostics output. Avoid syncing `data.json` to untrusted locations.
 
@@ -192,6 +198,7 @@ The **Base URL** on a provider's page is the API endpoint its requests are sent 
 | **Anthropic**     | `https://api.anthropic.com/v1`              |
 | **Google Gemini** | `https://generativelanguage.googleapis.com` |
 | **Mistral**       | `https://api.mistral.ai/v1`                 |
+| **DeepSeek**      | `https://api.deepseek.com`                  |
 
 Leave it at the default unless you are routing requests through an OpenAI-compatible gateway or proxy.
 
@@ -280,16 +287,16 @@ The exact headings come from the model following the summary prompt; the `### Su
 
 All controls live under **Settings > Advanced Audio Recorder > Transcription > LLM post-processing**.
 
-| Setting                         | Description                                                                                                                        | Default         |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| **Enable LLM post-processing**  | Run an LLM pass over the transcript after transcription. Reveals the controls below.                                               | Off             |
-| **Task**                        | `Clean up`, `Summarize`, `Translate`, or `Custom`.                                                                                 | Clean up        |
-| **Translate into**              | Language the translation is written in, English when it is empty. Shown when Task is Translate.                                    | empty           |
-| **Cleanup prompt profiles**     | Named prompts for Clean up (language clause appended). None = built-in default. Shown when Task is Clean up.                       | Default profile |
-| **Summary prompt profiles**     | Named prompts for Summarize (language clause appended). None = built-in default. Shown when Task is Summarize.                     | Default profile |
-| **Translation prompt profiles** | Named prompts for Translate (target language appended). None = built-in default. Shown when Task is Translate.                     | Default profile |
-| **Custom instruction profiles** | Named instructions sent verbatim. Shown when Task is Custom.                                                                       | Default profile |
-| **Post-processing engine**      | `OpenAI`, `Anthropic (Claude)`, `Google Gemini`, or `Mistral`. Only the choice, since the service is configured under **Engines**. | OpenAI          |
+| Setting                         | Description                                                                                                                                    | Default         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Enable LLM post-processing**  | Run an LLM pass over the transcript after transcription. Reveals the controls below.                                                           | Off             |
+| **Task**                        | `Clean up`, `Summarize`, `Translate`, or `Custom`.                                                                                             | Clean up        |
+| **Translate into**              | Language the translation is written in, English when it is empty. Shown when Task is Translate.                                                | empty           |
+| **Cleanup prompt profiles**     | Named prompts for Clean up (language clause appended). None = built-in default. Shown when Task is Clean up.                                   | Default profile |
+| **Summary prompt profiles**     | Named prompts for Summarize (language clause appended). None = built-in default. Shown when Task is Summarize.                                 | Default profile |
+| **Translation prompt profiles** | Named prompts for Translate (target language appended). None = built-in default. Shown when Task is Translate.                                 | Default profile |
+| **Custom instruction profiles** | Named instructions sent verbatim. Shown when Task is Custom.                                                                                   | Default profile |
+| **Post-processing engine**      | `OpenAI`, `Anthropic (Claude)`, `Google Gemini`, `Mistral`, or `DeepSeek`. Only the choice, since the service is configured under **Engines**. | OpenAI          |
 
 The rows that describe the service itself sit on its page under **Engines**, shared by every job that calls it:
 
