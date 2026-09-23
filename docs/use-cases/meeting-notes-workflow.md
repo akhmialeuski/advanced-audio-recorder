@@ -122,15 +122,24 @@ This is what turns a wall of transcript text into a usable summary with action i
 1. Turn on **Enable LLM post-processing**.
 2. Set **Task** to **Summarize**. (The other tasks are **Clean up**, which fixes punctuation and formatting, **Translate**, which rewrites the transcript in the language named in **Translate into**, and **Custom**, which sends your own instruction verbatim.)
 3. Each task carries its own catalogue of named prompt profiles. The **Summarize** catalogue ships with a **Default** profile and has the transcript language appended automatically - edit that profile, or add one of your own, if you want a specific structure (for example, "list decisions, then action items with owners").
-4. Pick its **Post-processing engine**: **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, or **Mistral**, and set that service up on its page under **Engines**.
+4. Pick its **Post-processing engine**: **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **Mistral**, or **DeepSeek**, and set that service up on its page under **Engines**.
 5. Confirm the **API key**. The plugin shares keys where the same vendor does both jobs:
     - **OpenAI** LLM reuses the **OpenAI API key** the Whisper API engine reads.
     - **Gemini** LLM reuses your **Google Gemini API key**.
     - **Mistral** LLM reuses the **Mistral API key** the Voxtral engine reads.
     - **Anthropic (Claude)** has its **own** dedicated key - see [Anthropic / Claude](anthropic-api-key.md).
+    - **DeepSeek** has its **own** dedicated key, entered on the **DeepSeek** page.
 6. Leave **Max output tokens** at its default of **4096** (range 512-200000) unless your summaries are getting cut off, in which case raise it.
 
-Provider model defaults are **OpenAI** `gpt-5.6-sol`, **Anthropic** `claude-opus-4-8`, **Gemini** `gemini-3.5-flash`, and **Mistral** `mistral-medium-latest`. Each account keeps its own **Base URL**, so switching the engine reads that account's field rather than rewriting a shared one, and a custom URL you typed for a gateway survives every switch.
+Each provider starts on its own default model:
+
+- **OpenAI** runs `gpt-5.6-sol` by default.
+- **Anthropic** runs `claude-opus-4-8` by default.
+- **Gemini** runs `gemini-3.5-flash` by default.
+- **Mistral** runs `mistral-medium-latest` by default.
+- **DeepSeek** runs `deepseek-flash` by default.
+
+Each account keeps its own **Base URL**, so switching the engine reads that account's field rather than rewriting a shared one, and a custom URL you typed for a gateway survives every switch.
 
 A practical pairing: use **Gemini** for both transcription and the summary so one key covers everything, or **Deepgram** for the diarized transcript plus **OpenAI** or **Anthropic** for the summary. See [LLM post-processing](../llm-post-processing.md) for the full reference.
 
@@ -266,7 +275,7 @@ Use this once to confirm your setup, then just record.
 - **Speaker numbers reset partway through a long Gemini transcript** - Gemini splits recordings longer than 15 minutes into parts, and diarized splits restart speaker numbering at each boundary (surfaced as a warning). Use **Deepgram** for consistent labels across a long meeting.
 - **One person came back as two speakers** - diarization split them across labels (a changed microphone position, a long pause, a phone joining). In **Rename speakers**, type the same name into both rows and confirm the merge: their lines become one speaker everywhere. Do it before anyone edits the note, since merged lines read identically afterwards and only a new transcription can separate them again.
 - **The play buttons in Rename speakers are greyed out** - that recording's roster predates speaker samples. Transcribe it once more with **Speaker diarization** on and the samples appear.
-- **No summary appeared** - confirm **Enable LLM post-processing** is on, **Task** is **Summarize**, and the chosen engine's **API key** is set on its page under **Engines** (the OpenAI, Gemini, and Mistral accounts are shared with transcription, while Anthropic keeps its own).
+- **No summary appeared** - confirm **Enable LLM post-processing** is on, **Task** is **Summarize**, and the chosen engine's **API key** is set on its page under **Engines** (the OpenAI, Gemini, and Mistral accounts are shared with transcription, while Anthropic and DeepSeek keep their own).
 - **The summary is cut off** - raise **Max output tokens** (default 4096), up to whatever your model allows; the service refuses a larger budget and names its own maximum.
 - **Transcription accuracy is poor in a noisy room** - run [Clean up audio](../audio-cleanup.md) first, or move to a better microphone.
 - **The transcription dialog closed and the job stopped** - closing the dialog cancels the job. Use **Minimize** to keep it running in the status bar.

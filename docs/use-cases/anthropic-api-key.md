@@ -1,6 +1,6 @@
 # Get an Anthropic (Claude) API key for LLM post-processing
 
-Anthropic (Claude) is one of the four **LLM post-processing** providers. After a transcript is produced, the plugin can send it to a Claude model to **clean it up**, **summarize** it, **translate** it, or run a **custom instruction**. Claude is not a transcription engine - it never turns audio into text. It only rewrites, translates, or summarizes text that one of the transcription engines already produced. This guide walks you through creating an Anthropic account, generating an API key, and wiring it into the plugin.
+Anthropic (Claude) is one of the five **LLM post-processing** providers. After a transcript is produced, the plugin can send it to a Claude model to **clean it up**, **summarize** it, **translate** it, or run a **custom instruction**. Claude is not a transcription engine - it never turns audio into text. It only rewrites, translates, or summarizes text that one of the transcription engines already produced. This guide walks you through creating an Anthropic account, generating an API key, and wiring it into the plugin.
 
 Unlike the OpenAI, Gemini, and Mistral pages - which are shared with the matching transcription engines - Anthropic has **a page and a key of its own**. You enter the Anthropic key separately, and you can use Claude for post-processing no matter which engine produced the transcript (Whisper API, Deepgram, Gemini, Mistral Voxtral, or local `whisper.cpp`).
 
