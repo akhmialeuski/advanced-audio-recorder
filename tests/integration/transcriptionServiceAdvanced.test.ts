@@ -15,6 +15,7 @@ import { Notice } from 'obsidian';
 import {
 	TranscriptionCancelledError,
 	TranscriptionService,
+	type TranscribeRunResult,
 } from 'src/transcription/TranscriptionService';
 import type {
 	TranscribeOptions,
@@ -200,6 +201,21 @@ function makeService(
 	});
 }
 
+/**
+ * Runs the two-pass mode over a provider, with the stock agent LLM and no
+ * other setting changed.
+ * @param provider - The transcription provider double
+ * @returns What the run produced
+ */
+function runTwoPass(
+	provider: TranscriptionProvider,
+): Promise<TranscribeRunResult> {
+	const { llm } = makeLlm();
+	return makeService(provider, llm, {
+		transcriptionAdvancedEnabled: true,
+	}).run(audioFile, { notePathForLinks: 'note.md' });
+}
+
 beforeEach(() => {
 	prepareOnePart();
 });
@@ -279,14 +295,7 @@ describe('TranscriptionService advanced two-pass mode', () => {
 			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 			[{ start: 0, end: 5, text: 'Коротко.' }],
 		);
-		const { llm } = makeLlm();
-		const service = makeService(provider, llm, {
-			transcriptionAdvancedEnabled: true,
-		});
-
-		const result = await service.run(audioFile, {
-			notePathForLinks: 'note.md',
-		});
+		const result = await runTwoPass(provider);
 
 		expect(calls).toHaveLength(2);
 		expect(result.markdown).toContain('кубернетис');
@@ -478,14 +487,7 @@ describe('a second pass that does not come back whole', () => {
 				});
 			},
 		};
-		const { llm } = makeLlm();
-		const service = makeService(provider, llm, {
-			transcriptionAdvancedEnabled: true,
-		});
-
-		const result = await service.run(audioFile, {
-			notePathForLinks: 'note.md',
-		});
+		const result = await runTwoPass(provider);
 
 		expect(mockNotice).toHaveBeenCalledWith(
 			expect.stringContaining('Advanced second pass failed'),
@@ -582,14 +584,7 @@ describe('a first pass that produced nothing to bias from', () => {
 			capabilities: WHISPER_API_CAPABILITIES,
 			transcribe: () => Promise.resolve({ segments: [] }),
 		};
-		const { llm } = makeLlm();
-		const service = makeService(provider, llm, {
-			transcriptionAdvancedEnabled: true,
-		});
-
-		const result = await service.run(audioFile, {
-			notePathForLinks: 'note.md',
-		});
+		const result = await runTwoPass(provider);
 
 		expect(result.transcript.segments).toEqual([]);
 	});

@@ -196,7 +196,6 @@ function makeApp(): { app: App; files: Map<string, string> } {
 	return { app, files };
 }
 
-/** A whole-file provider returning the diarized segments untouched. */
 /**
  * A whole-file provider returning the diarized segments untouched.
  * @returns The provider double
@@ -209,39 +208,41 @@ function makeProvider(): TranscriptionProvider {
 }
 
 /**
- * A cleanup LLM that behaves the way DEFAULT_LLM_CLEANUP_PROMPT instructs:
- * the spoken text is repunctuated and capitalized, while every speaker label
- * and timestamp stays byte-for-byte on its original line.
+ * An LLM double that rewrites the transcript it is sent one line at a time,
+ * the way a model following a line-preserving prompt does.
+ * @param rewrite - What the model makes of one line
+ * @returns The provider double
  */
-function makeCleanupLlm(): LlmProvider {
+function lineRewritingLlm(rewrite: (line: string) => string): LlmProvider {
 	return {
 		id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 		label: EngineLabel.OpenAi,
 		complete: (prompt: { user: string }) =>
 			Promise.resolve(
-				completed(
-					prompt.user
-						.split('\n')
-						.map((line) => {
-							// Everything up to and including the label plus its
-							// separator is the part the prompt tells the model to
-							// leave alone; only what follows is repunctuated.
-							const spoken =
-								/^(.*\*\*Speaker \d+\*\*[^A-Za-z]*)(.+)$/.exec(
-									line,
-								);
-							if (!spoken) {
-								return line;
-							}
-							const text = spoken[2] ?? '';
-							return `${spoken[1] ?? ''}${
-								text.charAt(0).toUpperCase() + text.slice(1)
-							}.`;
-						})
-						.join('\n'),
-				),
+				completed(prompt.user.split('\n').map(rewrite).join('\n')),
 			),
 	};
+}
+
+/**
+ * A cleanup LLM that behaves the way DEFAULT_LLM_CLEANUP_PROMPT instructs:
+ * the spoken text is repunctuated and capitalized, while every speaker label
+ * and timestamp stays byte-for-byte on its original line.
+ */
+function makeCleanupLlm(): LlmProvider {
+	return lineRewritingLlm((line) => {
+		// Everything up to and including the label plus its separator is the
+		// part the prompt tells the model to leave alone; only what follows is
+		// repunctuated.
+		const spoken = /^(.*\*\*Speaker \d+\*\*[^A-Za-z]*)(.+)$/.exec(line);
+		if (!spoken) {
+			return line;
+		}
+		const text = spoken[2] ?? '';
+		return `${spoken[1] ?? ''}${
+			text.charAt(0).toUpperCase() + text.slice(1)
+		}.`;
+	});
 }
 
 /**
@@ -250,21 +251,9 @@ function makeCleanupLlm(): LlmProvider {
  * exactly what leaves the note beyond a scoped rewrite.
  */
 function makeRestructuringLlm(): LlmProvider {
-	return {
-		id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-		label: EngineLabel.OpenAi,
-		complete: (prompt: { user: string }) =>
-			Promise.resolve(
-				completed(
-					prompt.user
-						.split('\n')
-						.map((line) =>
-							line.replace(/^\[\[[^\]]*\]\]\s*-\s*/, ''),
-						)
-						.join('\n'),
-				),
-			),
-	};
+	return lineRewritingLlm((line) =>
+		line.replace(/^\[\[[^\]]*\]\]\s*-\s*/, ''),
+	);
 }
 
 /** Settings that diarize, write into the note, and run the cleanup pass. */

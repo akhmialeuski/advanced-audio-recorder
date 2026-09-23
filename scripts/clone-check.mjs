@@ -26,8 +26,8 @@ const WINDOW = 6;
 /** Shortest such run by characters, so six short lines are not a "block". */
 const MIN_CHARS = 120;
 /** Ceilings: the counts the suite sits at, lowered as the work is done. */
-const MAX_GROUPS = 211;
-const MAX_REDUNDANT_LINES = 1825;
+const MAX_GROUPS = 210;
+const MAX_REDUNDANT_LINES = 1774;
 
 /**
  * Normalises a line for comparison, dropping comments and blank lines: two
