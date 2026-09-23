@@ -85,12 +85,16 @@ describe('transcription provider capabilities', () => {
 	});
 
 	it('maps every engine id to its capabilities', () => {
-		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES['whisper-api']).toBe(
-			WHISPER_API_CAPABILITIES,
-		);
-		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES['local-whisper']).toBe(
-			LOCAL_WHISPER_CAPABILITIES,
-		);
+		expect(
+			TRANSCRIPTION_PROVIDER_CAPABILITIES[
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API
+			],
+		).toBe(WHISPER_API_CAPABILITIES);
+		expect(
+			TRANSCRIPTION_PROVIDER_CAPABILITIES[
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER
+			],
+		).toBe(LOCAL_WHISPER_CAPABILITIES);
 		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES.deepgram).toBe(
 			DEEPGRAM_CAPABILITIES,
 		);
@@ -103,11 +107,23 @@ describe('transcription provider capabilities', () => {
 	});
 
 	it('exposes diarization support through the UI helper', () => {
-		expect(providerSupportsDiarization('whisper-api')).toBe(false);
-		expect(providerSupportsDiarization('local-whisper')).toBe(false);
-		expect(providerSupportsDiarization('deepgram')).toBe(true);
-		expect(providerSupportsDiarization('gemini')).toBe(true);
-		expect(providerSupportsDiarization('voxtral')).toBe(true);
+		expect(
+			providerSupportsDiarization(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API),
+		).toBe(false);
+		expect(
+			providerSupportsDiarization(
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			),
+		).toBe(false);
+		expect(
+			providerSupportsDiarization(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM),
+		).toBe(true);
+		expect(
+			providerSupportsDiarization(TRANSCRIPTION_PROVIDER_IDS.GEMINI),
+		).toBe(true);
+		expect(
+			providerSupportsDiarization(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL),
+		).toBe(true);
 	});
 
 	it('advertises dictionary biasing for every current engine', () => {
@@ -123,11 +139,23 @@ describe('transcription provider capabilities', () => {
 	});
 
 	it('exposes dictionary support through the UI helper', () => {
-		expect(providerSupportsDictionary('whisper-api')).toBe(true);
-		expect(providerSupportsDictionary('local-whisper')).toBe(true);
-		expect(providerSupportsDictionary('deepgram')).toBe(true);
-		expect(providerSupportsDictionary('gemini')).toBe(true);
-		expect(providerSupportsDictionary('voxtral')).toBe(true);
+		expect(
+			providerSupportsDictionary(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API),
+		).toBe(true);
+		expect(
+			providerSupportsDictionary(
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			),
+		).toBe(true);
+		expect(
+			providerSupportsDictionary(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM),
+		).toBe(true);
+		expect(
+			providerSupportsDictionary(TRANSCRIPTION_PROVIDER_IDS.GEMINI),
+		).toBe(true);
+		expect(
+			providerSupportsDictionary(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL),
+		).toBe(true);
 	});
 
 	it('records the channel each engine carries a generated bias through', () => {
@@ -144,56 +172,102 @@ describe('transcription provider capabilities', () => {
 
 describe('effectiveDictionary', () => {
 	it('passes the terms through for an engine that can bias', () => {
-		expect(effectiveDictionary('deepgram', ['Kubernetes', 'gRPC'])).toEqual(
-			['Kubernetes', 'gRPC'],
-		);
+		expect(
+			effectiveDictionary(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, [
+				'Kubernetes',
+				'gRPC',
+			]),
+		).toEqual(['Kubernetes', 'gRPC']);
 	});
 
 	it('returns an empty list for an empty dictionary', () => {
-		expect(effectiveDictionary('whisper-api', [])).toEqual([]);
+		expect(
+			effectiveDictionary(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, []),
+		).toEqual([]);
 	});
 });
 
 describe('effectiveDiarize', () => {
 	it('requests diarization only when requested AND the engine supports it', () => {
-		expect(effectiveDiarize('deepgram', true)).toBe(true);
-		expect(effectiveDiarize('deepgram', false)).toBe(false);
+		expect(
+			effectiveDiarize(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, true),
+		).toBe(true);
+		expect(
+			effectiveDiarize(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, false),
+		).toBe(false);
 	});
 
 	it('ignores a requested "on" for an engine that cannot diarize', () => {
-		expect(effectiveDiarize('whisper-api', true)).toBe(false);
-		expect(effectiveDiarize('local-whisper', true)).toBe(false);
+		expect(
+			effectiveDiarize(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, true),
+		).toBe(false);
+		expect(
+			effectiveDiarize(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER, true),
+		).toBe(false);
 	});
 });
 
 describe('per-word timing gates', () => {
 	it('lets the user choose only on the engine that reads the request', () => {
-		expect(wordTimestampsSelectable('whisper-api')).toBe(true);
-		expect(wordTimestampsSelectable('deepgram')).toBe(false);
-		expect(wordTimestampsSelectable('gemini')).toBe(false);
-		expect(wordTimestampsSelectable('local-whisper')).toBe(false);
+		expect(
+			wordTimestampsSelectable(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API),
+		).toBe(true);
+		expect(
+			wordTimestampsSelectable(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM),
+		).toBe(false);
+		expect(
+			wordTimestampsSelectable(TRANSCRIPTION_PROVIDER_IDS.GEMINI),
+		).toBe(false);
+		expect(
+			wordTimestampsSelectable(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER),
+		).toBe(false);
 	});
 
 	it('honours the request on the engine that reads it', () => {
-		expect(effectiveWordTimestamps('whisper-api', true)).toBe(true);
-		expect(effectiveWordTimestamps('whisper-api', false)).toBe(false);
+		expect(
+			effectiveWordTimestamps(
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				true,
+			),
+		).toBe(true);
+		expect(
+			effectiveWordTimestamps(
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				false,
+			),
+		).toBe(false);
 	});
 
 	// The stored value is left alone on the way past, so switching back to an
 	// engine that reads it finds the user's own choice still there.
 	it('drops a stored "on" for an engine that never returns words', () => {
-		expect(effectiveWordTimestamps('gemini', true)).toBe(false);
-		expect(effectiveWordTimestamps('local-whisper', true)).toBe(false);
+		expect(
+			effectiveWordTimestamps(TRANSCRIPTION_PROVIDER_IDS.GEMINI, true),
+		).toBe(false);
+		expect(
+			effectiveWordTimestamps(
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				true,
+			),
+		).toBe(false);
 	});
 
 	it('reports words for an engine that returns them regardless', () => {
-		expect(effectiveWordTimestamps('deepgram', false)).toBe(true);
+		expect(
+			effectiveWordTimestamps(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, false),
+		).toBe(true);
 	});
 
 	it('explains each engine in its own terms', () => {
-		expect(wordTimestampsNote('whisper-api')).toMatch(/Request per-word/);
-		expect(wordTimestampsNote('deepgram')).toMatch(/on every run/);
-		expect(wordTimestampsNote('gemini')).toMatch(/segment-level/);
+		expect(
+			wordTimestampsNote(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API),
+		).toMatch(/Request per-word/);
+		expect(wordTimestampsNote(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM)).toMatch(
+			/on every run/,
+		);
+		expect(wordTimestampsNote(TRANSCRIPTION_PROVIDER_IDS.GEMINI)).toMatch(
+			/segment-level/,
+		);
 	});
 
 	// Where the timing lands is what makes the option intelligible at all, and
@@ -208,9 +282,9 @@ describe('per-word timing gates', () => {
 	);
 
 	it('answers the same question through the table and the accessor', () => {
-		expect(providerWordTimestamps('deepgram')).toBe(
-			DEEPGRAM_CAPABILITIES.wordTimestamps,
-		);
+		expect(
+			providerWordTimestamps(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM),
+		).toBe(DEEPGRAM_CAPABILITIES.wordTimestamps);
 	});
 });
 
@@ -219,11 +293,21 @@ describe('the language hint gate', () => {
 		// Voxtral is the one that does not: Mistral documents `language` as
 		// incompatible with `timestamp_granularities`, and the granularity is
 		// what makes the response carry segments, so the hint gives way.
-		expect(providerReadsLanguageHint('whisper-api')).toBe(true);
-		expect(providerReadsLanguageHint('deepgram')).toBe(true);
-		expect(providerReadsLanguageHint('gemini')).toBe(true);
-		expect(providerReadsLanguageHint('local-whisper')).toBe(true);
-		expect(providerReadsLanguageHint('voxtral')).toBe(false);
+		expect(
+			providerReadsLanguageHint(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API),
+		).toBe(true);
+		expect(
+			providerReadsLanguageHint(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM),
+		).toBe(true);
+		expect(
+			providerReadsLanguageHint(TRANSCRIPTION_PROVIDER_IDS.GEMINI),
+		).toBe(true);
+		expect(
+			providerReadsLanguageHint(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER),
+		).toBe(true);
+		expect(
+			providerReadsLanguageHint(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL),
+		).toBe(false);
 	});
 
 	it.each([
@@ -265,8 +349,12 @@ describe('the language hint gate', () => {
 	});
 
 	it('names the engine behaviour in the note the row shows', () => {
-		expect(languageNote('whisper-api')).toMatch(/ISO code/);
-		expect(languageNote('voxtral')).toMatch(/detects the spoken language/);
+		expect(languageNote(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API)).toMatch(
+			/ISO code/,
+		);
+		expect(languageNote(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL)).toMatch(
+			/detects the spoken language/,
+		);
 	});
 
 	it('keeps the field readable for chapters on an engine that drops it', () => {
@@ -279,7 +367,9 @@ describe('the language hint gate', () => {
 			effectiveLanguage(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL, 'ru'),
 		).toBeUndefined();
 		expect(configuredLanguageHint('ru')).toBe('ru');
-		expect(languageNote('voxtral')).toMatch(/Auto chapters still read it/);
+		expect(languageNote(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL)).toMatch(
+			/Auto chapters still read it/,
+		);
 	});
 });
 

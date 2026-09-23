@@ -17,6 +17,7 @@ import {
 	vendorConnection,
 } from 'src/providers/providers';
 import { partial } from '../helpers/doubles';
+import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 describe('account endpoints', () => {
 	it('gives each account a field of its own', () => {
@@ -41,15 +42,19 @@ describe('account endpoints', () => {
 	it('reaches a vendor through the endpoint its provider holds', () => {
 		const settings = { ...DEFAULT_SETTINGS, geminiBaseUrl: 'https://my' };
 
-		expect(vendorConnection('gemini').baseUrl(settings)).toBe('https://my');
-		expect(vendorConnection('openai-compatible').baseUrl(settings)).toBe(
-			DEFAULT_SETTINGS.whisperApiBaseUrl,
-		);
+		expect(
+			vendorConnection(LLM_PROVIDER_IDS.GEMINI).baseUrl(settings),
+		).toBe('https://my');
+		expect(
+			vendorConnection(LLM_PROVIDER_IDS.OPENAI_COMPATIBLE).baseUrl(
+				settings,
+			),
+		).toBe(DEFAULT_SETTINGS.whisperApiBaseUrl);
 	});
 
 	it('carries a stored shared endpoint onto the vendor that used it', () => {
 		const merged = mergeSettings({
-			llmProvider: 'anthropic',
+			llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 			llmBaseUrl: 'https://claude.internal/v1',
 		});
 
@@ -62,7 +67,7 @@ describe('account endpoints', () => {
 		// That field is also the transcription endpoint, and a URL typed there
 		// is worth more than one the vendor switch happened to leave behind.
 		const merged = mergeSettings({
-			llmProvider: 'gemini',
+			llmProvider: LLM_PROVIDER_IDS.GEMINI,
 			geminiBaseUrl: 'https://gemini.internal',
 			llmBaseUrl: 'https://generativelanguage.googleapis.com',
 		});
@@ -78,7 +83,7 @@ describe('account endpoints', () => {
 		// chat URL there would send every transcription request to a host with
 		// no audio endpoint, and lose the address that did work.
 		const merged = mergeSettings({
-			llmProvider: 'openai-compatible',
+			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 			whisperApiKey: 'sk-live',
 			llmBaseUrl: 'http://localhost:1234/v1',
 		});
@@ -91,8 +96,8 @@ describe('account endpoints', () => {
 
 	it('drops it for Gemini while Gemini is what transcribes', () => {
 		const merged = mergeSettings({
-			llmProvider: 'gemini',
-			transcriptionProvider: 'gemini',
+			llmProvider: LLM_PROVIDER_IDS.GEMINI,
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 			llmBaseUrl: 'http://localhost:4000',
 		});
 
@@ -108,8 +113,8 @@ describe('account endpoints', () => {
 		// away the only address that worked and pointed post-processing at a
 		// host that answers nobody there.
 		const merged = mergeSettings({
-			transcriptionProvider: 'deepgram',
-			llmProvider: 'gemini',
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			llmProvider: LLM_PROVIDER_IDS.GEMINI,
 			llmBaseUrl: 'https://gemini-relay.internal/v1',
 		});
 
@@ -122,8 +127,8 @@ describe('account endpoints', () => {
 		// nothing to recover it from.
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 		mergeSettings({
-			llmProvider: 'gemini',
-			transcriptionProvider: 'gemini',
+			llmProvider: LLM_PROVIDER_IDS.GEMINI,
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 			llmBaseUrl: 'http://localhost:4000',
 		});
 
@@ -136,7 +141,7 @@ describe('account endpoints', () => {
 		// Anthropic only answers prompts, so its endpoint was never anything
 		// but the chat one and adopting the stored value loses nothing.
 		const merged = mergeSettings({
-			llmProvider: 'anthropic',
+			llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 			llmBaseUrl: 'https://claude.internal/v1',
 		});
 
@@ -155,7 +160,7 @@ describe('account endpoints', () => {
 		const merged = mergeSettings(
 			partial<AudioRecorderSettingsInput>({
 				transcriptionProvider: 'no-such-engine',
-				llmProvider: 'openai-compatible',
+				llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 				llmBaseUrl: 'http://localhost:1234/v1',
 			}),
 		);
@@ -175,7 +180,7 @@ describe('account endpoints', () => {
 		const merged = mergeSettings(
 			partial<AudioRecorderSettingsInput>({
 				transcriptionProvider: 'no-such-engine',
-				llmProvider: 'anthropic',
+				llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 				llmBaseUrl: 'https://claude-relay.internal/v1',
 			}),
 		);
@@ -192,7 +197,7 @@ describe('the pre-rework single LLM model', () => {
 		// chat model maps onto is the one transcription picks from: adopting it
 		// unconditionally replaced the id chosen to transcribe with.
 		const merged = mergeSettings({
-			llmProvider: 'gemini',
+			llmProvider: LLM_PROVIDER_IDS.GEMINI,
 			geminiModel: 'gemini-2.5-pro',
 			llmModel: 'gemini-2.0-flash',
 		});
@@ -207,7 +212,7 @@ describe('the pre-rework single LLM model', () => {
 		// Anthropic never transcribes, so its catalogue was only ever the chat
 		// one and adopting the stored id loses nothing.
 		const merged = mergeSettings({
-			llmProvider: 'anthropic',
+			llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 			llmModel: 'claude-3-5-sonnet',
 		});
 
@@ -223,7 +228,7 @@ describe('the pre-rework single LLM model', () => {
 		// would move what transcription runs on, and what it costs, without
 		// anything having been asked. It joins the catalogue instead.
 		const merged = mergeSettings({
-			llmProvider: 'gemini',
+			llmProvider: LLM_PROVIDER_IDS.GEMINI,
 			llmModel: 'gemini-2.5-pro',
 		});
 
@@ -235,7 +240,7 @@ describe('the pre-rework single LLM model', () => {
 		// The dedicated llmGeminiModel field went the same way as llmModel, so
 		// it is carried over by the same rule rather than by one of its own.
 		const merged = mergeSettings({
-			llmProvider: 'openai-compatible',
+			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 			llmGeminiModel: 'gemini-2.5-pro',
 			llmGeminiModels: ['gemini-2.5-pro', 'gemini-2.0-flash'],
 		});
@@ -253,7 +258,7 @@ describe('the pre-rework single LLM model', () => {
 		// belongs to the engine, not to the account the two engines share, so
 		// the legacy chat model reaches one of them only.
 		const merged = mergeSettings({
-			llmProvider: 'openai-compatible',
+			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 			llmModel: 'gpt-4o-mini',
 		});
 

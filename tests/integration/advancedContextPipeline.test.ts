@@ -38,6 +38,7 @@ import { estimateLlmCallCost, estimateStepCost } from 'src/transcription/costs';
 import { CancellationSource } from 'src/utils/cancellation';
 import { at, defined } from '../helpers/assertions';
 import { completed } from '../helpers/llmDoubles';
+import { EngineLabel } from 'src/providers/providers';
 
 /**
  * Settings the agents are priced against. Required by the pipeline: there is
@@ -68,7 +69,7 @@ function scriptedLlm(replies: Partial<Record<AgentKey, string | Error>>): {
 	const calls: AgentCall[] = [];
 	const llm: LlmProvider = {
 		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Scripted',
+		label: EngineLabel.Gemini,
 		complete: (
 			prompt: LlmPrompt,
 			maxTokens: number,
@@ -576,7 +577,7 @@ describe('generateContext', () => {
 		const source = new CancellationSource();
 		const llm: LlmProvider = {
 			id: LLM_PROVIDER_IDS.GEMINI,
-			label: 'Fake',
+			label: EngineLabel.Gemini,
 			complete: (): Promise<LlmCompletion> => {
 				source.cancel();
 				return Promise.reject(new Error('The user aborted a request.'));

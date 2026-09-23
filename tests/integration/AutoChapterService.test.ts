@@ -22,6 +22,7 @@ import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { waitFor } from '../helpers/async';
 import { completed } from '../helpers/llmDoubles';
+import { EngineLabel } from 'src/providers/providers';
 
 const tf = (path: string): TFile => {
 	const name = path.split('/').pop() ?? path;
@@ -68,7 +69,7 @@ function makeStore(initial: PlayerMarker[] = []): {
 function makeLlm(output: string | Error): LlmProvider {
 	return {
 		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Fake',
+		label: EngineLabel.Gemini,
 		complete: jest.fn(async () => {
 			if (output instanceof Error) {
 				throw output;
@@ -461,7 +462,7 @@ describe('a chapter run the user cancels', () => {
 		let started = false;
 		return {
 			id: LLM_PROVIDER_IDS.GEMINI,
-			label: 'Fake',
+			label: EngineLabel.Gemini,
 			started: () => started,
 			complete: jest.fn(
 				(_prompt, _maxTokens, options) =>

@@ -21,6 +21,7 @@
 import { LLM_PROVIDER_IDS } from '../../constants';
 import {
 	ENGINE_IDS,
+	EngineLabel,
 	engineAccess,
 	missingModelMessage,
 	type EngineId,
@@ -82,7 +83,7 @@ export interface LlmVendorSettingsAccess {
 export interface LlmVendorDescriptor {
 	readonly id: LlmProviderId;
 	/** Display label, used in dropdowns and cost-estimate lines. */
-	readonly label: string;
+	readonly label: EngineLabel;
 	/** Public pricing page, linked from the cost estimate. */
 	readonly pricingUrl: string;
 	/** Error shown when a run is attempted with no key configured. */

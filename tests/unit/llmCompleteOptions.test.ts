@@ -25,6 +25,7 @@ import {
 import { withRequestUrl } from '../helpers/network';
 import { OPENAI_IDENTITY } from '../helpers/llmDoubles';
 import { outcomeOf } from '../helpers/async';
+import { EngineLabel } from 'src/providers/providers';
 
 const PROMPT: LlmPrompt = { system: 'You extract terms.', user: 'hello' };
 
@@ -80,7 +81,7 @@ const GEMINI_RESPONSE = JSON.stringify({
  */
 const VENDORS = [
 	{
-		name: 'OpenAI',
+		name: EngineLabel.OpenAi,
 		build: (): LlmProvider => openAiProvider(),
 		response: OPENAI_RESPONSE,
 		withUsage: JSON.stringify({

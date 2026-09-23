@@ -18,6 +18,7 @@ import {
 	PLUGIN_LOG_PREFIX,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
+import { EngineLabel } from '../../providers/providers';
 import { whisperPromptValue } from '../dictionaryBias';
 import type { TranscriptSegment } from '../TranscriptTypes';
 import { LOCAL_WHISPER_CAPABILITIES } from './capabilities';
@@ -192,7 +193,7 @@ function describeRunFailure(
  */
 export class LocalWhisperProvider implements TranscriptionProvider {
 	readonly id = TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
-	readonly label = 'Local whisper.cpp';
+	readonly label = EngineLabel.LocalWhisper;
 	readonly requiresNetwork = false;
 	readonly capabilities: ProviderCapabilities = LOCAL_WHISPER_CAPABILITIES;
 	private readonly node = loadNodeModules();

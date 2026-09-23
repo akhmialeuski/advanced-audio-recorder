@@ -242,7 +242,7 @@ describe('TranscriptionModal cost estimate', () => {
 
 	it('shows the session total when the tracker has entries', async () => {
 		const tracker = new SessionCostTracker();
-		tracker.add('deepgram', 0.12);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.12);
 		const { modal, internals } = createModal(
 			{
 				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
@@ -283,8 +283,13 @@ describe('TranscriptionModal cost estimate', () => {
 
 	it('says how much of the total is estimated rather than measured', async () => {
 		const line = await sessionLine((tracker) => {
-			tracker.add('deepgram', 0.12, false);
-			tracker.recordLlmCall('gemini', 'autoChapters', 0.01, true);
+			tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.12, false);
+			tracker.recordLlmCall(
+				LLM_PROVIDER_IDS.GEMINI,
+				'autoChapters',
+				0.01,
+				true,
+			);
 		});
 
 		expect(line).toContain('Spent this session: ~$0.13 (1 step estimated)');
@@ -292,8 +297,13 @@ describe('TranscriptionModal cost estimate', () => {
 
 	it('says nothing extra when every figure came from a vendor', async () => {
 		const line = await sessionLine((tracker) => {
-			tracker.add('deepgram', 0.12, false);
-			tracker.recordLlmCall('gemini', 'autoChapters', 0.01, false);
+			tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.12, false);
+			tracker.recordLlmCall(
+				LLM_PROVIDER_IDS.GEMINI,
+				'autoChapters',
+				0.01,
+				false,
+			);
 		});
 
 		expect(line).toContain('Spent this session: ~$0.13');
@@ -302,9 +312,19 @@ describe('TranscriptionModal cost estimate', () => {
 
 	it('reports the unpriced runs and the estimated steps together', async () => {
 		const line = await sessionLine((tracker) => {
-			tracker.add('deepgram', null);
-			tracker.recordLlmCall('gemini', 'autoChapters', 0.01, true);
-			tracker.recordLlmCall('gemini', 'postProcess', 0.02, true);
+			tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, null);
+			tracker.recordLlmCall(
+				LLM_PROVIDER_IDS.GEMINI,
+				'autoChapters',
+				0.01,
+				true,
+			);
+			tracker.recordLlmCall(
+				LLM_PROVIDER_IDS.GEMINI,
+				'postProcess',
+				0.02,
+				true,
+			);
 		});
 
 		expect(line).toContain('(1 run not priced, 2 steps estimated)');
@@ -316,7 +336,7 @@ describe('TranscriptionModal cost estimate', () => {
 		// number makes a correct calculation look like a wrong one. Each figure
 		// therefore says what it covers.
 		const tracker = new SessionCostTracker();
-		tracker.add('deepgram', 2.45);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 2.45);
 		const { modal, internals } = createModal(
 			{
 				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,

@@ -10,7 +10,7 @@ import { runLlmStep, type LlmCostSink } from 'src/transcription/llm/llmStep';
 import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
 import { estimateLlmCallCost, estimateStepCost } from 'src/transcription/costs';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { LLM_PROVIDER_IDS } from 'src/constants';
+import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import type { RunCostStepId } from 'src/transcription/costs';
 import { at, defined } from '../helpers/assertions';
@@ -19,6 +19,7 @@ import {
 	extractGeminiUsage,
 	type LlmUsage,
 } from 'src/transcription/llm/llmResponse';
+import { EngineLabel } from 'src/providers/providers';
 
 /**
  * A provider that returns fixed text and records how it was called.
@@ -35,7 +36,7 @@ function stubLlm(
 	const calls: unknown[][] = [];
 	return {
 		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Google Gemini',
+		label: EngineLabel.Gemini,
 		calls,
 		complete: (prompt, maxTokens, options) => {
 			calls.push([prompt, maxTokens, options]);
@@ -376,7 +377,7 @@ describe('runLlmStep', () => {
 describe('SessionCostTracker as an LLM cost sink', () => {
 	it('adds LLM calls to the same total as transcription runs', async () => {
 		const tracker = new SessionCostTracker();
-		tracker.add('deepgram', 0.04);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.04);
 
 		await chapterStep(stubLlm(), tracker);
 
@@ -387,7 +388,7 @@ describe('SessionCostTracker as an LLM cost sink', () => {
 		// Each provider keeps its own row, so the breakdown still says who was
 		// billed for what.
 		expect(tracker.engineTotals().map((e) => e.engineId)).toEqual([
-			'deepgram',
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			LLM_PROVIDER_IDS.GEMINI,
 		]);
 	});

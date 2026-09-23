@@ -34,7 +34,11 @@ import {
 	TRANSCRIPT_DESTINATION_LABELS,
 	TRANSCRIPT_FILE_FORMAT_LABELS,
 } from 'src/settings/labels';
-import { ENGINE_IDS, type EngineId } from 'src/providers/providers';
+import {
+	ENGINE_IDS,
+	type EngineId,
+	EngineLabel,
+} from 'src/providers/providers';
 import {
 	CLEANUP_HIGHPASS_STEP_HZ,
 	MAX_CLEANUP_HIGHPASS_HZ,
@@ -405,8 +409,7 @@ describe('settings definitions', () => {
 				);
 			}
 			expect(
-				listIn(pageOf(build(), 'Whisper API (OpenAI-compatible)'))
-					.items,
+				listIn(pageOf(build(), EngineLabel.WhisperApi)).items,
 			).toHaveLength(2);
 		});
 
@@ -428,9 +431,7 @@ describe('settings definitions', () => {
 
 			// An engine entry reports what it holds: the model it uses once it
 			// is reachable, and what is missing until then.
-			expect(displayValue('Whisper API (OpenAI-compatible)')).toBe(
-				'whisper-1',
-			);
+			expect(displayValue(EngineLabel.WhisperApi)).toBe('whisper-1');
 			expect(displayValue('Dictionary profiles')).toBe('Legal');
 
 			// Both halves are needed to run, so an engine reachable but with
@@ -438,9 +439,7 @@ describe('settings definitions', () => {
 			// reading as configured.
 			settings.whisperApiModel = '';
 
-			expect(displayValue('Whisper API (OpenAI-compatible)')).toBe(
-				'No model',
-			);
+			expect(displayValue(EngineLabel.WhisperApi)).toBe('No model');
 		});
 
 		it('counts a configured engine by its account, not by its engines', () => {
@@ -484,7 +483,7 @@ describe('settings definitions', () => {
 
 			expect(statusOf('Transcription')).toBe('warning');
 			expect(statusOf('Engines')).toBe('warning');
-			expect(statusOf('Whisper API (OpenAI-compatible)')).toBe('warning');
+			expect(statusOf(EngineLabel.WhisperApi)).toBe('warning');
 		});
 
 		it('clears the trail once the engine can run', () => {
@@ -497,7 +496,7 @@ describe('settings definitions', () => {
 
 			expect(statusOf('Transcription')).toBeNull();
 			expect(statusOf('Engines')).toBeNull();
-			expect(statusOf('Whisper API (OpenAI-compatible)')).toBeNull();
+			expect(statusOf(EngineLabel.WhisperApi)).toBeNull();
 		});
 
 		it('leaves an engine no job calls unmarked', () => {
@@ -509,7 +508,9 @@ describe('settings definitions', () => {
 			settings.whisperApiModel = 'whisper-1';
 			settings.deepgramApiKey = '';
 
-			expect(entryStatusOf(pageOf(build(), 'Deepgram'))).toBeNull();
+			expect(
+				entryStatusOf(pageOf(build(), EngineLabel.Deepgram)),
+			).toBeNull();
 		});
 
 		it('marks every engine page from the same answer', () => {
@@ -528,7 +529,7 @@ describe('settings definitions', () => {
 				.filter((page) => entryStatusOf(page) === 'warning')
 				.map((page) => page.name);
 
-			expect(marked).toEqual(['Deepgram']);
+			expect(marked).toEqual([EngineLabel.Deepgram]);
 		});
 
 		it('says which half the local engine is still missing', () => {
@@ -536,7 +537,7 @@ describe('settings definitions', () => {
 			// configured - the entry said it was.
 			settings.transcriptionEnabled = true;
 			const local = (): string | undefined =>
-				entryValueOf(pageOf(build(), 'Local whisper.cpp (desktop)'));
+				entryValueOf(pageOf(build(), EngineLabel.LocalWhisper));
 
 			expect(local()).toBe('No binary');
 
@@ -744,7 +745,7 @@ describe('settings definitions', () => {
 		it('hosts a provider key on that provider\u2019s page', () => {
 			// A password field is the one row no control type covers, and it
 			// belongs to the service rather than to either use of it.
-			expect(pageEntryNames('Deepgram')).toEqual([
+			expect(pageEntryNames(EngineLabel.Deepgram)).toEqual([
 				'Base URL',
 				'Deepgram API key',
 				'Model',
@@ -761,7 +762,7 @@ describe('settings definitions', () => {
 			settings.deepgramModel = 'nova-3';
 			const definitions = build();
 
-			const picker = rowOf(definitions, 'Deepgram', 'Model');
+			const picker = rowOf(definitions, EngineLabel.Deepgram, 'Model');
 			expect(picker.control?.type).toBe('dropdown');
 			expect(picker.control?.key).toBe('deepgramModel');
 			expect(picker.control?.options).toEqual({
@@ -770,7 +771,7 @@ describe('settings definitions', () => {
 			});
 
 			const catalogue = pageOf(
-				groupOf(definitions, 'Deepgram')
+				groupOf(definitions, EngineLabel.Deepgram)
 					.items as SettingDefinitionItem[],
 				'Model catalogue',
 			);
@@ -781,7 +782,7 @@ describe('settings definitions', () => {
 			// An emptied catalogue has nothing to pick, and the entry below is
 			// where ids are added; a blank dropdown would be a dead end.
 			settings.deepgramModels = [];
-			const picker = rowOf(build(), 'Deepgram', 'Model');
+			const picker = rowOf(build(), EngineLabel.Deepgram, 'Model');
 
 			expect(picker.control?.options).toEqual({});
 			expect(picker.control?.disabled).toBe(true);
@@ -1139,8 +1140,7 @@ describe('settings definitions', () => {
 				desc?: string;
 				action?: (el: HTMLElement, index: number) => void;
 			}>;
-		} =>
-			listIn(pageOf(build(), 'Whisper API (OpenAI-compatible)')) as never;
+		} => listIn(pageOf(build(), EngineLabel.WhisperApi)) as never;
 
 		it('declares the saved models as a list the user can edit', () => {
 			seedModels();
@@ -1210,9 +1210,9 @@ describe('settings definitions', () => {
 			// It runs a binary against a file on disk: there is no list of
 			// served ids to keep, so its page holds the paths instead.
 			expect(() =>
-				pageOf(build(), 'Local whisper.cpp (desktop)'),
+				pageOf(build(), EngineLabel.LocalWhisper),
 			).not.toThrow();
-			expect(pageEntryNames('Local whisper.cpp (desktop)')).toEqual([
+			expect(pageEntryNames(EngineLabel.LocalWhisper)).toEqual([
 				'Binary and model paths',
 			]);
 		});
@@ -1464,22 +1464,22 @@ describe('settings definitions', () => {
 			);
 
 			expect(providers).toEqual([
-				'Whisper API (OpenAI-compatible)',
-				'OpenAI',
-				'Deepgram',
-				'Google Gemini',
-				'Anthropic (Claude)',
-				'Mistral Voxtral',
-				'Mistral',
-				'DeepSeek',
-				'Local whisper.cpp (desktop)',
+				EngineLabel.WhisperApi,
+				EngineLabel.OpenAi,
+				EngineLabel.Deepgram,
+				EngineLabel.Gemini,
+				EngineLabel.Anthropic,
+				EngineLabel.Voxtral,
+				EngineLabel.Mistral,
+				EngineLabel.DeepSeek,
+				EngineLabel.LocalWhisper,
 			]);
 			// A provider that both transcribes and answers prompts keeps one
 			// key and one endpoint, with a catalogue per capability.
 			// One catalogue for both jobs, because the ids are the same family.
 			// One catalogue for both jobs, and the ceiling of the engine that
 			// has to honour it.
-			expect(pageEntryNames('Google Gemini')).toEqual([
+			expect(pageEntryNames(EngineLabel.Gemini)).toEqual([
 				'Base URL',
 				'Google Gemini API key',
 				'Model',
@@ -1489,13 +1489,13 @@ describe('settings definitions', () => {
 			// Two catalogues over one account, because the voxtral-* ids
 			// transcribe and the mistral-* ids write: each engine gets its own
 			// page, and both pages carry the same endpoint and key.
-			expect(pageEntryNames('Mistral Voxtral')).toEqual([
+			expect(pageEntryNames(EngineLabel.Voxtral)).toEqual([
 				'Base URL',
 				'Mistral API key',
 				'Model',
 				'Model catalogue',
 			]);
-			expect(pageEntryNames('Mistral')).toEqual([
+			expect(pageEntryNames(EngineLabel.Mistral)).toEqual([
 				'Base URL',
 				'Mistral API key',
 				'Model',
@@ -1505,7 +1505,7 @@ describe('settings definitions', () => {
 			// A vendor that only writes gets one page with its own key, so
 			// pointing post-processing at it never touches the transcription
 			// account.
-			expect(pageEntryNames('DeepSeek')).toEqual([
+			expect(pageEntryNames(EngineLabel.DeepSeek)).toEqual([
 				'Base URL',
 				'DeepSeek API key',
 				'Model',
@@ -1518,11 +1518,7 @@ describe('settings definitions', () => {
 			// The link lists the ids the endpoint serves, so it belongs with
 			// those ids; hanging it off the API-key row put a model catalogue
 			// under a password field.
-			const picker = rowOf(
-				build(),
-				'Whisper API (OpenAI-compatible)',
-				'Model',
-			);
+			const picker = rowOf(build(), EngineLabel.WhisperApi, 'Model');
 			const desc = picker.desc;
 			if (!(desc instanceof DocumentFragment)) {
 				throw new Error('The picker carries no link');
@@ -1536,10 +1532,10 @@ describe('settings definitions', () => {
 		it('offers a chunk size only on the engine that splits an upload', () => {
 			// A limit is the engine's own fact, and so is the field holding the
 			// chunk size, so no second engine can edit the first one's.
-			expect(pageEntryNames('Whisper API (OpenAI-compatible)')).toContain(
+			expect(pageEntryNames(EngineLabel.WhisperApi)).toContain(
 				'Upload chunk size',
 			);
-			expect(pageEntryNames('Deepgram')).not.toContain(
+			expect(pageEntryNames(EngineLabel.Deepgram)).not.toContain(
 				'Upload chunk size',
 			);
 		});
@@ -2459,7 +2455,7 @@ describe('settings definitions', () => {
 		it('accepts the ceiling of the answer budget an engine may write', () => {
 			// The reported defect: the row showed 32000 and refused to store it.
 			const row = rowIn(
-				pageOf(build(), 'Anthropic (Claude)'),
+				pageOf(build(), EngineLabel.Anthropic),
 				'Max output tokens',
 			);
 
@@ -2476,8 +2472,10 @@ describe('settings definitions', () => {
 		});
 
 		it('accepts the round numbers a model catalogue quotes', () => {
-			const row = rowIn(pageOf(build(), 'OpenAI'), 'Max output tokens')
-				.control as { min?: number; max?: number; step?: number };
+			const row = rowIn(
+				pageOf(build(), EngineLabel.OpenAi),
+				'Max output tokens',
+			).control as { min?: number; max?: number; step?: number };
 
 			for (const tokens of [4000, 8000, 16000, 32000]) {
 				expect(numberControlRejection(row, tokens)).toBeUndefined();

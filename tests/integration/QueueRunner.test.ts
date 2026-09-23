@@ -18,6 +18,7 @@ import { mergeSettings } from 'src/settings/settingsSerialization';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { noticeMessages } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 /**
  * How long the queue assumes one recording to be. The queue never measures a
@@ -42,7 +43,7 @@ type RunToken = Parameters<QueueTranscriber>[1]['token'];
 
 /** A priced run, as the service reports one. */
 function cost(usd: number | null = 0.05): TranscribeRunCost {
-	return { engineId: 'deepgram', usd, usage: {} };
+	return { engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd, usage: {} };
 }
 
 /**
@@ -382,7 +383,11 @@ describe('what a queued run costs the session', () => {
 		await runner.drain();
 
 		expect(recorded).toEqual([
-			{ engineId: 'deepgram', usd: 0.05, seconds: ASSUMED_SECONDS },
+			{
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				usd: 0.05,
+				seconds: ASSUMED_SECONDS,
+			},
 		]);
 	});
 
@@ -398,7 +403,11 @@ describe('what a queued run costs the session', () => {
 		await runner.drain();
 
 		expect(recorded).toEqual([
-			{ engineId: 'deepgram', usd: null, seconds: ASSUMED_SECONDS },
+			{
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				usd: null,
+				seconds: ASSUMED_SECONDS,
+			},
 		]);
 	});
 

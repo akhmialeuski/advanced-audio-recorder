@@ -27,6 +27,7 @@ import {
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { completed } from '../helpers/llmDoubles';
+import { EngineLabel } from 'src/providers/providers';
 
 jest.mock('src/chapters/transcriptSources', () => ({
 	...jest.requireActual<typeof import('src/chapters/transcriptSources')>(
@@ -76,7 +77,7 @@ function makeStore(markers: PlayerMarker[] | Error): StoreDouble {
 function makeLlm(output: string): LlmProvider {
 	return {
 		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Fake',
+		label: EngineLabel.Gemini,
 		complete: jest.fn(() => Promise.resolve(completed(output))),
 	};
 }

@@ -8,7 +8,11 @@
  * @module tests/helpers/settingsFixtures
  */
 
-import { MODEL_SEED_GENERATION } from 'src/constants';
+import {
+	MODEL_SEED_GENERATION,
+	LLM_PROVIDER_IDS,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from 'src/constants';
 import type {
 	AudioRecorderSettings,
 	AudioSource,
@@ -96,7 +100,7 @@ export function fullyPopulatedSettings(): Omit<
 		transcriptionEnabled: true,
 		transcribeOnSave: true,
 		transcriptionShowCostEstimates: true,
-		transcriptionProvider: 'local-whisper',
+		transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 		transcriptionLanguage: 'ru',
 		transcriptionDiarize: true,
 		transcriptionTranslateToEnglish: true,
@@ -168,9 +172,9 @@ export function fullyPopulatedSettings(): Omit<
 			llmTranslate: '',
 			llmCustom: '',
 		},
-		llmProvider: 'anthropic',
-		chaptersLlmProvider: 'anthropic',
-		advancedLlmProvider: 'anthropic',
+		llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+		chaptersLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+		advancedLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 		anthropicBaseUrl: 'https://api.anthropic.com/v1',
 		anthropicApiKey: 'ak-test',
 		llmOpenAiModel: 'gpt-4o',

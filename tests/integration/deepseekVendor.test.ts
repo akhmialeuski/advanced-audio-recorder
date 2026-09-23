@@ -13,7 +13,7 @@ import {
 	LLM_PROVIDER_IDS,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from 'src/constants';
-import { ENGINES, ENGINE_IDS } from 'src/providers/providers';
+import { ENGINES, ENGINE_IDS, EngineLabel } from 'src/providers/providers';
 import {
 	LLM_PROVIDER_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
@@ -47,11 +47,11 @@ describe('DeepSeek LLM vendor', () => {
 	it('is offered to every LLM job and to no transcription dropdown', () => {
 		expect(LLM_PROVIDER_OPTIONS).toContainEqual({
 			value: LLM_PROVIDER_IDS.DEEPSEEK,
-			label: 'DeepSeek',
+			label: EngineLabel.DeepSeek,
 		});
 		expect(
 			TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => option.label),
-		).not.toContain('DeepSeek');
+		).not.toContain(EngineLabel.DeepSeek);
 		expect(ENGINES[ENGINE_IDS.DEEPSEEK].transcriptionId).toBeNull();
 
 		// Each job stores its engine under its own key; all three resolve the
@@ -138,7 +138,7 @@ describe('DeepSeek LLM vendor', () => {
 		).lines[1];
 
 		expect(deepSeek).toMatchObject({
-			providerName: 'DeepSeek',
+			providerName: EngineLabel.DeepSeek,
 			model: 'deepseek-flash',
 			pricingUrl: 'https://api-docs.deepseek.com/quick_start/pricing',
 		});

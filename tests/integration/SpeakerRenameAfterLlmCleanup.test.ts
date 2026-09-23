@@ -25,7 +25,7 @@
 
 import { MarkdownView, Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { TRANSCRIPTION_PROVIDER_IDS, LLM_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
@@ -39,6 +39,7 @@ import { typeSpeakerNames } from '../helpers/speakerRows';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
 import { completed } from '../helpers/llmDoubles';
+import { EngineLabel } from 'src/providers/providers';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
 interface ModalInternals {
@@ -214,8 +215,8 @@ function makeProvider(): TranscriptionProvider {
  */
 function makeCleanupLlm(): LlmProvider {
 	return {
-		id: 'openai',
-		label: 'Fake cleanup',
+		id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+		label: EngineLabel.OpenAi,
 		complete: (prompt: { user: string }) =>
 			Promise.resolve(
 				completed(
@@ -240,7 +241,7 @@ function makeCleanupLlm(): LlmProvider {
 						.join('\n'),
 				),
 			),
-	} as unknown as LlmProvider;
+	};
 }
 
 /**
@@ -250,8 +251,8 @@ function makeCleanupLlm(): LlmProvider {
  */
 function makeRestructuringLlm(): LlmProvider {
 	return {
-		id: 'openai',
-		label: 'Fake custom pass',
+		id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+		label: EngineLabel.OpenAi,
 		complete: (prompt: { user: string }) =>
 			Promise.resolve(
 				completed(
@@ -263,7 +264,7 @@ function makeRestructuringLlm(): LlmProvider {
 						.join('\n'),
 				),
 			),
-	} as unknown as LlmProvider;
+	};
 }
 
 /** Settings that diarize, write into the note, and run the cleanup pass. */

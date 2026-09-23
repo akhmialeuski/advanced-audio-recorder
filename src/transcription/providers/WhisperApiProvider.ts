@@ -13,6 +13,7 @@
  */
 
 import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
+import { EngineLabel } from '../../providers/providers';
 import { whisperPromptValue } from '../dictionaryBias';
 import {
 	authHeader,
@@ -60,7 +61,7 @@ export interface WhisperApiConfig {
  */
 export class WhisperApiProvider implements TranscriptionProvider {
 	readonly id = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
-	readonly label = 'Whisper API (OpenAI-compatible)';
+	readonly label = EngineLabel.WhisperApi;
 	readonly requiresNetwork = true;
 	readonly capabilities: ProviderCapabilities = WHISPER_API_CAPABILITIES;
 

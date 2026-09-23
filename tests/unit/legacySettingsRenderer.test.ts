@@ -21,6 +21,7 @@ import {
 	LLM_MAX_TOKENS_STEP,
 	MAX_LLM_MAX_TOKENS,
 	MIN_LLM_MAX_TOKENS,
+	TRANSCRIPTION_PROVIDER_IDS,
 } from 'src/constants';
 import {
 	LEGACY_ACTION_ROW_CLASS,
@@ -30,6 +31,7 @@ import {
 	type LegacySettingsHost,
 } from 'src/settings/legacySettingsRenderer';
 import { partial } from '../helpers/doubles';
+import { EngineLabel } from 'src/providers/providers';
 
 describe('LegacySettingsRenderer', () => {
 	let values: Record<string, unknown>;
@@ -354,11 +356,13 @@ describe('LegacySettingsRenderer', () => {
 					type: 'dropdown',
 					key: 'engine',
 					options: {
-						'whisper-api': 'Whisper API',
-						'local-whisper': 'Local whisper.cpp (desktop)',
+						[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]:
+							EngineLabel.WhisperApi,
+						[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]:
+							EngineLabel.LocalWhisper,
 					},
 					validate: (value: string) =>
-						value === 'local-whisper'
+						value === TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER
 							? 'Not available on this device.'
 							: undefined,
 				},
@@ -369,11 +373,11 @@ describe('LegacySettingsRenderer', () => {
 			// The declaration is one declaration: from 1.13 the framework refuses
 			// the change and states why, so an engine this device cannot run must
 			// not become the stored engine here either.
-			values['engine'] = 'whisper-api';
+			values['engine'] = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
 			renderer.render(containerEl, engineTree());
 
 			const select = rowSelect(rowFor('Transcription engine'));
-			select.value = 'local-whisper';
+			select.value = TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
 			select.dispatchEvent(new Event('change'));
 
 			expect(setControlValue).not.toHaveBeenCalled();
@@ -382,22 +386,22 @@ describe('LegacySettingsRenderer', () => {
 			);
 			// Put back to what is stored: a refused choice left on screen reads
 			// as a choice that was taken.
-			expect(select.value).toBe('whisper-api');
+			expect(select.value).toBe(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API);
 		});
 
 		it('takes a dropdown option its validator accepts, and clears the refusal', () => {
-			values['engine'] = 'whisper-api';
+			values['engine'] = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
 			renderer.render(containerEl, engineTree());
 
 			const select = rowSelect(rowFor('Transcription engine'));
-			select.value = 'local-whisper';
+			select.value = TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
 			select.dispatchEvent(new Event('change'));
-			select.value = 'whisper-api';
+			select.value = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
 			select.dispatchEvent(new Event('change'));
 
 			expect(setControlValue).toHaveBeenCalledWith(
 				'engine',
-				'whisper-api',
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 			);
 			expect(rejectionOn('Transcription engine')).toBe('');
 		});
@@ -407,18 +411,20 @@ describe('LegacySettingsRenderer', () => {
 			// validates the seeded value on mount and shows the message without
 			// replacing what is stored, because the value is the user's and it
 			// works again the moment the vault is opened where it came from.
-			values['engine'] = 'local-whisper';
+			values['engine'] = TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
 			renderer.render(containerEl, engineTree());
 
 			expect(rejectionOn('Transcription engine')).toBe(
 				'Not available on this device.',
 			);
 			expect(setControlValue).not.toHaveBeenCalled();
-			expect(values['engine']).toBe('local-whisper');
+			expect(values['engine']).toBe(
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			);
 		});
 
 		it('grows no error line on a row whose value is accepted', () => {
-			values['engine'] = 'whisper-api';
+			values['engine'] = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
 			renderer.render(containerEl, engineTree());
 
 			expect(

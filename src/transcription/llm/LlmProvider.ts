@@ -11,6 +11,7 @@ import {
 	LLM_PROVIDER_IDS,
 	LLM_REQUEST_TIMEOUT_MS,
 } from '../../constants';
+import { EngineLabel } from '../../providers/providers';
 import {
 	authHeader,
 	HttpError,
@@ -75,7 +76,7 @@ export interface LlmProvider {
 	 * (and therefore the vendor registry) do not know about.
 	 */
 	readonly id: LlmProviderId;
-	readonly label: string;
+	readonly label: EngineLabel;
 	/**
 	 * Completes a prompt and returns the assistant's text with whatever
 	 * usage the vendor reported alongside it.
@@ -177,7 +178,7 @@ function rejectedTokenParam(error: unknown, param: OutputTokenParam): boolean {
  */
 export interface LlmVendorIdentity {
 	readonly id: LlmProviderId;
-	readonly label: string;
+	readonly label: EngineLabel;
 }
 
 /**
@@ -187,7 +188,7 @@ export interface LlmVendorIdentity {
  */
 export class OpenAiCompatibleLlmProvider implements LlmProvider {
 	readonly id: LlmProviderId;
-	readonly label: string;
+	readonly label: EngineLabel;
 
 	/**
 	 * The name this endpoint took, once it has answered.
@@ -309,7 +310,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
  */
 export class AnthropicLlmProvider implements LlmProvider {
 	readonly id = LLM_PROVIDER_IDS.ANTHROPIC;
-	readonly label = 'Anthropic (Claude)';
+	readonly label = EngineLabel.Anthropic;
 
 	constructor(private readonly config: LlmConfig) {}
 
@@ -353,7 +354,7 @@ export class AnthropicLlmProvider implements LlmProvider {
  */
 export class GeminiLlmProvider implements LlmProvider {
 	readonly id = LLM_PROVIDER_IDS.GEMINI;
-	readonly label = 'Google Gemini';
+	readonly label = EngineLabel.Gemini;
 
 	constructor(private readonly config: LlmConfig) {}
 

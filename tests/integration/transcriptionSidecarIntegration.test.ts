@@ -33,6 +33,7 @@ import { fakeProvider } from '../helpers/providerFixtures';
 import { completed } from '../helpers/llmDoubles';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
+import { EngineLabel } from 'src/providers/providers';
 
 jest.mock('src/transcription/transcriptOutput', () => ({
 	writeTranscriptFile: jest.fn(),
@@ -560,7 +561,7 @@ describe('transcribeFile output registration', () => {
 				createProvider: () => makeProvider(twoSpeakerSegments),
 				createLlm: () => ({
 					id: LLM_PROVIDER_IDS.GEMINI,
-					label: 'Fake LLM',
+					label: EngineLabel.Gemini,
 					complete: jest.fn(async () => completed('cleaned body')),
 				}),
 			},
@@ -681,7 +682,7 @@ describe('a run that translates the transcript', () => {
 				createProvider: () => makeProvider(twoSpeakerSegments),
 				createLlm: () => ({
 					id: LLM_PROVIDER_IDS.GEMINI,
-					label: 'Fake LLM',
+					label: EngineLabel.Gemini,
 					...translatingLlm(),
 				}),
 			},
@@ -781,7 +782,7 @@ describe('a run that translates the transcript', () => {
 				createProvider: () => makeProvider(twoSpeakerSegments),
 				createLlm: () => ({
 					id: LLM_PROVIDER_IDS.GEMINI,
-					label: 'Fake LLM',
+					label: EngineLabel.Gemini,
 					...translatingLlm(),
 				}),
 			},
