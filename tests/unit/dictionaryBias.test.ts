@@ -27,6 +27,7 @@ import type {
 } from 'src/transcription/dictionaryBias';
 import { planDictionaryBias } from 'src/transcription/providers/engines';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { EngineLabel } from 'src/providers/providers';
 
 /** Builds n unique terms, wide enough to blow past the prompt window. */
 function manyTerms(n: number): string[] {
@@ -473,7 +474,7 @@ describe('describeDictionaryOmission', () => {
 			reason: 'context-bias-limit',
 		});
 		expect(message).toContain('Voxtral');
-		expect(message).not.toContain('Deepgram');
+		expect(message).not.toContain(EngineLabel.Deepgram);
 		expect(message).toContain(String(VOXTRAL_CONTEXT_BIAS_LIMIT));
 		expect(message).toContain(String(VOXTRAL_CONTEXT_BIAS_LIMIT + 5));
 	});

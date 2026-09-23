@@ -1020,7 +1020,7 @@ describe('TranscriptionModal running the job', () => {
 		return {
 			transcript: { segments: [], speakers: [] },
 			markdown: '# Transcript',
-			cost: { engineId: 'deepgram', usd: 0.12 },
+			cost: { engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: 0.12 },
 			...overrides,
 		} as RunResult;
 	}
@@ -1101,7 +1101,9 @@ describe('TranscriptionModal running the job', () => {
 		// The third figure is the duration the dialog probed, which is null
 		// until the probe answers; it only ever sizes a fallback estimate
 		expect(recordRun).toHaveBeenCalledWith(
-			expect.objectContaining({ engineId: 'deepgram' }),
+			expect.objectContaining({
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			}),
 			expect.anything(),
 			null,
 		);
@@ -1177,7 +1179,10 @@ describe('TranscriptionModal running the job', () => {
 				reportCost = (
 					runOptions as unknown as { onCost: (cost: unknown) => void }
 				).onCost;
-				reportCost({ engineId: 'deepgram', usd: 0.5 });
+				reportCost({
+					engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+					usd: 0.5,
+				});
 				throw new Error('vault is read-only');
 			},
 		);
@@ -1186,7 +1191,7 @@ describe('TranscriptionModal running the job', () => {
 		await internals.startRun();
 
 		expect(recordRun).toHaveBeenCalledWith(
-			{ engineId: 'deepgram', usd: 0.5 },
+			{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: 0.5 },
 			expect.anything(),
 			null,
 		);

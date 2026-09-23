@@ -12,6 +12,7 @@ import type {
 	LlmVendorIdentity,
 } from 'src/transcription/llm/LlmProvider';
 import type { LlmUsage } from 'src/transcription/llm/llmResponse';
+import { EngineLabel } from 'src/providers/providers';
 
 /**
  * The identity a test gives the OpenAI-compatible client when it builds one
@@ -23,7 +24,7 @@ import type { LlmUsage } from 'src/transcription/llm/llmResponse';
  */
 export const OPENAI_IDENTITY: LlmVendorIdentity = {
 	id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-	label: 'OpenAI',
+	label: EngineLabel.OpenAi,
 };
 
 /**

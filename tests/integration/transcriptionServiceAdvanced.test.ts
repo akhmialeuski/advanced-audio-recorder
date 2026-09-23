@@ -15,6 +15,7 @@ import { Notice } from 'obsidian';
 import {
 	TranscriptionCancelledError,
 	TranscriptionService,
+	type TranscribeRunResult,
 } from 'src/transcription/TranscriptionService';
 import type {
 	TranscribeOptions,
@@ -39,6 +40,8 @@ import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { completed } from '../helpers/llmDoubles';
+import { EngineLabel } from 'src/providers/providers';
+import { TRANSCRIPTION_ENGINES } from 'src/transcription/providers/engines';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -124,7 +127,7 @@ function makeProvider(
 	const calls: TranscribeOptions[] = [];
 	const provider: TranscriptionProvider = {
 		id,
-		label: 'Fake engine',
+		label: TRANSCRIPTION_ENGINES[id].label,
 		requiresNetwork: false,
 		capabilities: WHISPER_API_CAPABILITIES,
 		transcribe: (_payload, options) => {
@@ -159,7 +162,7 @@ function makeLlm(): { llm: LlmProvider; calls: LlmPrompt[] } {
 	const calls: LlmPrompt[] = [];
 	const llm: LlmProvider = {
 		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Fake LLM',
+		label: EngineLabel.Gemini,
 		complete: (prompt: LlmPrompt): Promise<LlmCompletion> => {
 			calls.push(prompt);
 			const match = AGENT_REPLIES.find(([fragment]) =>
@@ -175,7 +178,7 @@ function makeLlm(): { llm: LlmProvider; calls: LlmPrompt[] } {
 function makeDeadLlm(): LlmProvider {
 	return {
 		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Dead LLM',
+		label: EngineLabel.Gemini,
 		complete: () => Promise.reject(new Error('LLM unreachable')),
 	};
 }
@@ -196,6 +199,21 @@ function makeService(
 		createProvider: () => provider,
 		createLlm: () => llm,
 	});
+}
+
+/**
+ * Runs the two-pass mode over a provider, with the stock agent LLM and no
+ * other setting changed.
+ * @param provider - The transcription provider double
+ * @returns What the run produced
+ */
+function runTwoPass(
+	provider: TranscriptionProvider,
+): Promise<TranscribeRunResult> {
+	const { llm } = makeLlm();
+	return makeService(provider, llm, {
+		transcriptionAdvancedEnabled: true,
+	}).run(audioFile, { notePathForLinks: 'note.md' });
 }
 
 beforeEach(() => {
@@ -273,17 +291,11 @@ describe('TranscriptionService advanced two-pass mode', () => {
 	});
 
 	it('reverts to the first pass when the second comes back too short', async () => {
-		const { provider, calls } = makeProvider('whisper-api', [
-			{ start: 0, end: 5, text: 'Коротко.' },
-		]);
-		const { llm } = makeLlm();
-		const service = makeService(provider, llm, {
-			transcriptionAdvancedEnabled: true,
-		});
-
-		const result = await service.run(audioFile, {
-			notePathForLinks: 'note.md',
-		});
+		const { provider, calls } = makeProvider(
+			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			[{ start: 0, end: 5, text: 'Коротко.' }],
+		);
+		const result = await runTwoPass(provider);
 
 		expect(calls).toHaveLength(2);
 		expect(result.markdown).toContain('кубернетис');
@@ -294,11 +306,13 @@ describe('TranscriptionService advanced two-pass mode', () => {
 	});
 
 	it('sends keyterms instead of a prompt sentence on Deepgram, skipping the prompt-only agents', async () => {
-		const { provider, calls } = makeProvider('deepgram');
+		const { provider, calls } = makeProvider(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		);
 		const { llm, calls: llmCalls } = makeLlm();
 		const service = makeService(provider, llm, {
 			transcriptionAdvancedEnabled: true,
-			transcriptionProvider: 'deepgram',
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			deepgramModel: 'nova-3',
 		});
 
@@ -317,11 +331,13 @@ describe('TranscriptionService advanced two-pass mode', () => {
 	});
 
 	it('degrades to a single pass, before any LLM spend, on a non-biasing model', async () => {
-		const { provider, calls } = makeProvider('deepgram');
+		const { provider, calls } = makeProvider(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		);
 		const { llm, calls: llmCalls } = makeLlm();
 		const service = makeService(provider, llm, {
 			transcriptionAdvancedEnabled: true,
-			transcriptionProvider: 'deepgram',
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			// Deepgram's hosted Whisper models accept no biasing at all.
 			deepgramModel: 'whisper',
 		});
@@ -344,11 +360,11 @@ describe('TranscriptionService advanced two-pass mode', () => {
 		// that never comes: with two parts the second is reported at half the
 		// full ceiling, not a quarter (which a wrongly-split band would give).
 		prepareTwoParts();
-		const { provider } = makeProvider('deepgram');
+		const { provider } = makeProvider(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
 		const { llm } = makeLlm();
 		const service = makeService(provider, llm, {
 			transcriptionAdvancedEnabled: true,
-			transcriptionProvider: 'deepgram',
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			deepgramModel: 'whisper',
 		});
 
@@ -447,7 +463,7 @@ describe('a second pass that does not come back whole', () => {
 		let biasedCalls = 0;
 		const provider: TranscriptionProvider = {
 			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-			label: 'Fake engine',
+			label: EngineLabel.WhisperApi,
 			requiresNetwork: false,
 			capabilities: WHISPER_API_CAPABILITIES,
 			transcribe: (_payload, options) => {
@@ -471,14 +487,7 @@ describe('a second pass that does not come back whole', () => {
 				});
 			},
 		};
-		const { llm } = makeLlm();
-		const service = makeService(provider, llm, {
-			transcriptionAdvancedEnabled: true,
-		});
-
-		const result = await service.run(audioFile, {
-			notePathForLinks: 'note.md',
-		});
+		const result = await runTwoPass(provider);
 
 		expect(mockNotice).toHaveBeenCalledWith(
 			expect.stringContaining('Advanced second pass failed'),
@@ -501,7 +510,7 @@ describe('a second pass that does not come back whole', () => {
 			createProvider: () => provider,
 			createLlm: () => ({
 				id: LLM_PROVIDER_IDS.GEMINI,
-				label: 'Cancelling LLM',
+				label: EngineLabel.Gemini,
 				complete: () => {
 					cancelled = true;
 					return Promise.reject(new Error('aborted'));
@@ -527,7 +536,7 @@ describe('a cancel that lands during the second pass', () => {
 		let cancelled = false;
 		const provider: TranscriptionProvider = {
 			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-			label: 'Fake engine',
+			label: EngineLabel.WhisperApi,
 			requiresNetwork: false,
 			capabilities: WHISPER_API_CAPABILITIES,
 			transcribe: (_payload, options) => {
@@ -570,19 +579,12 @@ describe('a first pass that produced nothing to bias from', () => {
 	it('keeps the empty transcript and skips the second pass', async () => {
 		const provider: TranscriptionProvider = {
 			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-			label: 'Fake engine',
+			label: EngineLabel.WhisperApi,
 			requiresNetwork: false,
 			capabilities: WHISPER_API_CAPABILITIES,
 			transcribe: () => Promise.resolve({ segments: [] }),
 		};
-		const { llm } = makeLlm();
-		const service = makeService(provider, llm, {
-			transcriptionAdvancedEnabled: true,
-		});
-
-		const result = await service.run(audioFile, {
-			notePathForLinks: 'note.md',
-		});
+		const result = await runTwoPass(provider);
 
 		expect(result.transcript.segments).toEqual([]);
 	});

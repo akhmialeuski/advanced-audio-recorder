@@ -16,6 +16,7 @@ import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import { ConfirmModal } from 'src/ui/ConfirmModal';
 import { TranscriptionQueueModal } from 'src/ui/TranscriptionQueueModal';
 import { at } from '../helpers/assertions';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 /** A folder tree of the given paths, as the vault reports one. */
 function folderOf(name: string, paths: readonly string[]): TFolder {
@@ -76,7 +77,11 @@ function createSut(stored: { path: string; state: string }[] = []): Sut {
 				transcribe: (file) => {
 					transcribed.push(file.path);
 					return Promise.resolve({
-						cost: { engineId: 'deepgram', usd: 0, usage: {} },
+						cost: {
+							engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+							usd: 0,
+							usage: {},
+						},
 					});
 				},
 				assumedSecondsPerRecording: 600,

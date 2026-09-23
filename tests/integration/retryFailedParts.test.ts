@@ -21,6 +21,7 @@ import type {
 import { createMockApp } from '../helpers/createApp';
 import { partial } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 /** A transcript of the given segments. */
 function transcriptOf(segments: TranscriptSegment[]): Transcript {
@@ -34,7 +35,7 @@ const HEARD: TranscriptSegment[] = [
 
 /** What the engine reported for a top-up run. */
 const RUN_COST: TranscribeRunCost = {
-	engineId: 'deepgram',
+	engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 	usd: 0.02,
 	usage: {},
 };

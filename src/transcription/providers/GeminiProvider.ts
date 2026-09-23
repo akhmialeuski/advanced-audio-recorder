@@ -14,6 +14,7 @@ import {
 	GEMINI_GENERATE_MIN_TIMEOUT_MS,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
+import { EngineLabel } from '../../providers/providers';
 import { DICTIONARY_JOIN_SEPARATOR } from '../dictionaryBias';
 import { authHeader, inferenceTimeoutMs, requestJson } from '../httpClient';
 import { GEMINI_CAPABILITIES } from './capabilities';
@@ -136,7 +137,7 @@ function buildInstruction(options: TranscribeOptions): string {
 /** Google Gemini multimodal transcription provider. */
 export class GeminiProvider implements TranscriptionProvider {
 	readonly id = TRANSCRIPTION_PROVIDER_IDS.GEMINI;
-	readonly label = 'Google Gemini';
+	readonly label = EngineLabel.Gemini;
 	readonly requiresNetwork = true;
 	readonly capabilities: ProviderCapabilities = GEMINI_CAPABILITIES;
 

@@ -19,6 +19,7 @@ import {
 	VOXTRAL_MAX_REQUEST_SECONDS,
 	VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS,
 } from '../../constants';
+import { EngineLabel } from '../../providers/providers';
 import { dedupeTerms } from '../dictionary';
 import { voxtralContextBiasTerms } from '../dictionaryBias';
 import {
@@ -84,7 +85,7 @@ export interface VoxtralConfig {
  */
 export class VoxtralProvider implements TranscriptionProvider {
 	readonly id = TRANSCRIPTION_PROVIDER_IDS.VOXTRAL;
-	readonly label = 'Mistral Voxtral';
+	readonly label = EngineLabel.Voxtral;
 	readonly requiresNetwork = true;
 	readonly capabilities: ProviderCapabilities = VOXTRAL_CAPABILITIES;
 

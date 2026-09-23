@@ -1,6 +1,6 @@
 # Get a Mistral API key
 
-Mistral runs two things this plugin uses, and one key reaches both. **Mistral Voxtral** is one of the five [transcription](../transcription.md) engines: it takes a recording of up to three hours in a single request, labels the speakers, and bills about **$0.003 per audio minute**. **Mistral** is one of the four [LLM post-processing](../llm-post-processing.md) providers, which cleans up, summarizes, or translates the transcript afterwards. Both are configured on their own page under **Engines**, and both read the same base URL and the same **Mistral API key**, so you enter it once. This guide takes you from a blank settings tab to a working transcript.
+Mistral runs two things this plugin uses, and one key reaches both. **Mistral Voxtral** is one of the five [transcription](../transcription.md) engines: it takes a recording of up to three hours in a single request, labels the speakers, and bills about **$0.003 per audio minute**. **Mistral** is one of the five [LLM post-processing](../llm-post-processing.md) providers, which cleans up, summarizes, or translates the transcript afterwards. Both are configured on their own page under **Engines**, and both read the same base URL and the same **Mistral API key**, so you enter it once. This guide takes you from a blank settings tab to a working transcript.
 
 - [Why Voxtral](#why-voxtral)
 - [Step 1: Create the API key in the Mistral console](#step-1-create-the-api-key-in-the-mistral-console)
@@ -89,7 +89,7 @@ A few behaviors are specific to this engine and worth knowing before you transcr
 
 ## Reuse the same key for LLM post-processing
 
-Mistral is also one of the four [LLM post-processing](../llm-post-processing.md) engines, alongside OpenAI, Anthropic, and Gemini. The **Mistral** page under **Engines** is a second catalogue over the same account: the `voxtral-*` ids transcribe and the `mistral-*` ids write, so the two pages hold separate model lists but the same endpoint and the same key.
+Mistral is also one of the five [LLM post-processing](../llm-post-processing.md) engines, alongside OpenAI, Anthropic, Gemini, and DeepSeek. The **Mistral** page under **Engines** is a second catalogue over the same account: the `voxtral-*` ids transcribe and the `mistral-*` ids write, so the two pages hold separate model lists but the same endpoint and the same key.
 
 To enable it:
 

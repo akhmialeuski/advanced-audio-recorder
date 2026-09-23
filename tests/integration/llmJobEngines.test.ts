@@ -30,6 +30,7 @@ import { at } from '../helpers/assertions';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { completed } from '../helpers/llmDoubles';
+import { EngineLabel } from 'src/providers/providers';
 
 /** A configuration where every job names a different engine. */
 const settingsWithDistinctEngines = (): AudioRecorderSettings =>
@@ -129,7 +130,7 @@ describe('AutoChapterService engine choice', () => {
 		const maxTokens: number[] = [];
 		const llm: LlmProvider = {
 			id: LLM_PROVIDER_IDS.GEMINI,
-			label: 'Fake',
+			label: EngineLabel.Gemini,
 			complete: (_prompt, limit): Promise<LlmCompletion> => {
 				maxTokens.push(limit);
 				return Promise.resolve(completed('0:00 Intro\n1:00 Topic'));
@@ -180,13 +181,13 @@ describe('cost estimate per job', () => {
 
 		expect(
 			estimateStepCost('postProcess', settings, 600).providerName,
-		).toBe('OpenAI');
+		).toBe(EngineLabel.OpenAi);
 		expect(
 			estimateStepCost('autoChapters', settings, 600).providerName,
-		).toBe('Anthropic (Claude)');
+		).toBe(EngineLabel.Anthropic);
 		expect(
 			estimateStepCost('contextAgents', settings, 600).providerName,
-		).toBe('Google Gemini');
+		).toBe(EngineLabel.Gemini);
 	});
 
 	it('quotes the model of the engine the job names', () => {

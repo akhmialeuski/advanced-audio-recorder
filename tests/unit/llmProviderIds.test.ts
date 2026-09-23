@@ -13,6 +13,7 @@ import {
 	GeminiLlmProvider,
 	OpenAiCompatibleLlmProvider,
 } from 'src/transcription/llm/LlmProvider';
+import { EngineLabel } from 'src/providers/providers';
 
 const CONFIG = { baseUrl: 'https://x.example', apiKey: 'k', model: 'm' };
 
@@ -23,27 +24,37 @@ describe('LLM_PROVIDER_IDS as single source of truth', () => {
 			ANTHROPIC: 'anthropic',
 			GEMINI: 'gemini',
 			MISTRAL: 'mistral',
+			DEEPSEEK: 'deepseek',
 		});
 	});
 
 	it.each([
 		{
-			name: 'OpenAI',
+			name: EngineLabel.OpenAi,
 			build: (): { id: string } =>
 				new OpenAiCompatibleLlmProvider(CONFIG, {
 					id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-					label: 'OpenAI',
+					label: EngineLabel.OpenAi,
 				}),
 			id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 		},
 		{
-			name: 'Mistral',
+			name: EngineLabel.Mistral,
 			build: (): { id: string } =>
 				new OpenAiCompatibleLlmProvider(CONFIG, {
 					id: LLM_PROVIDER_IDS.MISTRAL,
-					label: 'Mistral',
+					label: EngineLabel.Mistral,
 				}),
 			id: LLM_PROVIDER_IDS.MISTRAL,
+		},
+		{
+			name: EngineLabel.DeepSeek,
+			build: (): { id: string } =>
+				new OpenAiCompatibleLlmProvider(CONFIG, {
+					id: LLM_PROVIDER_IDS.DEEPSEEK,
+					label: EngineLabel.DeepSeek,
+				}),
+			id: LLM_PROVIDER_IDS.DEEPSEEK,
 		},
 		{
 			name: 'Anthropic',

@@ -5,7 +5,7 @@
  * run method, which is why none of them had a test of its own: reaching one
  * meant driving a whole transcription. The scenario answers with a value now,
  * so each reason is a return the test can name.
- * @module tests/unit/AdvancedTwoPassRunner.test
+ * @module tests/integration/AdvancedTwoPassRunner.test
  */
 
 import {
@@ -18,6 +18,8 @@ import {
 import { generateContext } from 'src/transcription/advanced/contextPipeline';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
+import { EngineLabel } from 'src/providers/providers';
+import { TRANSCRIPTION_PROVIDER_IDS, LLM_PROVIDER_IDS } from 'src/constants';
 
 jest.mock('src/transcription/advanced/contextPipeline', () => ({
 	generateContext: jest.fn(),
@@ -67,15 +69,15 @@ function createSut(
 		settings: mergeSettings({ transcriptionAdvancedSettingsEnabled: true }),
 		baseline: transcriptOf('a first pass of comparable length here now'),
 		transcribeOptions: { diarize: false, wordTimestamps: false },
-		engineId: 'whisper-api',
+		engineId: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		sourcePath: 'rec.webm',
 		secondPassResults,
 		progressBase: 0.4,
 		progressSpan: 0.4,
 		transcribePass: passBehaviour,
 		createLlm: () => ({
-			id: 'openai-compatible',
-			label: 'OpenAI',
+			id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			label: EngineLabel.OpenAi,
 			complete: jest.fn(),
 		}),
 		token: { isCancelled: (): boolean => false },

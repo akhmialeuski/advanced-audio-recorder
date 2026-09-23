@@ -845,6 +845,7 @@ export const LLM_PROVIDER_IDS = {
 	ANTHROPIC: 'anthropic',
 	GEMINI: 'gemini',
 	MISTRAL: 'mistral',
+	DEEPSEEK: 'deepseek',
 } as const;
 
 /**
@@ -876,6 +877,21 @@ export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
  * first, so it leads rather than the cheaper Small or the Large above it.
  */
 export const DEFAULT_LLM_MISTRAL_MODEL = 'mistral-medium-latest';
+
+/**
+ * Default endpoint of the DeepSeek account. The vendor serves the OpenAI Chat
+ * Completions wire format at the bare host, so `/chat/completions` is appended
+ * to it directly, with no `/v1` segment. DeepSeek does not transcribe, so this
+ * account backs a chat catalogue only.
+ */
+export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
+
+/**
+ * Default DeepSeek chat model for transcript post-processing. The Flash tier
+ * is the vendor's everyday model and costs a fraction of the Pro tier, which is
+ * more than enough for punctuation, cleanup and a summary.
+ */
+export const DEFAULT_LLM_DEEPSEEK_MODEL = 'deepseek-flash';
 
 /** Minimum configurable transcription chunk size in megabytes. */
 export const MIN_TRANSCRIBE_CHUNK_MB = 1;
@@ -965,6 +981,20 @@ export const LLM_MISTRAL_MODEL_SUGGESTIONS = [
 	'mistral-large-latest',
 ];
 
+/**
+ * Seed DeepSeek chat model ids for the LLM model picker on first run; the list
+ * is user-editable. `deepseek-flash` (DeepSeek-V4.1-Flash) is the everyday
+ * pick and `deepseek-v4-pro` the dearer one for harder prompts. The retired
+ * `deepseek-chat` and `deepseek-reasoner` (July 24, 2026) and
+ * `deepseek-v4-flash` (September 10, 2026) are left out, because an id the
+ * vendor no longer serves answers with an error instead of a completion. See
+ * {@link DEEPSEEK_MODELS_DOC_URL} for the current list.
+ */
+export const LLM_DEEPSEEK_MODEL_SUGGESTIONS = [
+	'deepseek-flash',
+	'deepseek-v4-pro',
+];
+
 /** Where to find the OpenAI model catalog. */
 export const OPENAI_MODELS_DOC_URL =
 	'https://developers.openai.com/api/docs/models';
@@ -976,6 +1006,10 @@ export const ANTHROPIC_MODELS_DOC_URL =
 /** Where to find the Mistral chat model catalog. */
 export const MISTRAL_MODELS_DOC_URL =
 	'https://docs.mistral.ai/getting-started/models/models_overview';
+
+/** Where to find the DeepSeek model catalog and its rates. */
+export const DEEPSEEK_MODELS_DOC_URL =
+	'https://api-docs.deepseek.com/quick_start/pricing';
 
 /**
  * Default editable system prompt for the cleanup task. The language clause is

@@ -27,6 +27,7 @@ import {
 	DEEPGRAM_MODEL_SUGGESTIONS,
 	GEMINI_MODEL_SUGGESTIONS,
 	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
+	LLM_DEEPSEEK_MODEL_SUGGESTIONS,
 	LLM_MISTRAL_MODEL_SUGGESTIONS,
 	LLM_OPENAI_MODEL_SUGGESTIONS,
 	MODEL_SEED_GENERATION,
@@ -920,6 +921,7 @@ function migrateModelCatalogues(
 		['llmAnthropicModels', [...LLM_ANTHROPIC_MODEL_SUGGESTIONS]],
 		['voxtralModels', [...VOXTRAL_MODEL_SUGGESTIONS]],
 		['llmMistralModels', [...LLM_MISTRAL_MODEL_SUGGESTIONS]],
+		['llmDeepSeekModels', [...LLM_DEEPSEEK_MODEL_SUGGESTIONS]],
 	];
 	for (const [key, shipped] of seeds) {
 		const saved = merged[key];

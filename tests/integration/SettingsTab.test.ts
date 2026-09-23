@@ -1,7 +1,7 @@
 /**
  * Unit tests for AudioRecorderSettingTab module.
  * Tests device-change listener lifecycle and test recording cleanup.
- * @module tests/unit/SettingsTab.test
+ * @module tests/integration/SettingsTab.test
  */
 
 import { App, Notice } from 'obsidian';
@@ -24,7 +24,12 @@ import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
-import { DOCS_URL, MAX_LLM_MAX_TOKENS } from 'src/constants';
+import {
+	DOCS_URL,
+	MAX_LLM_MAX_TOKENS,
+	LLM_PROVIDER_IDS,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from 'src/constants';
 import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
 import { at } from '../helpers/assertions';
@@ -59,6 +64,7 @@ import {
 import { closeSettingsPage } from 'src/obsidian/settingsNavigation';
 import { listFormatAvailability } from 'src/audio/AudioCapabilityDetector';
 import { TextInputSuggest } from 'src/ui/TextInputSuggest';
+import { EngineLabel } from 'src/providers/providers';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -595,7 +601,7 @@ describe('AudioRecorderSettingTab', () => {
 				mockSettings.whisperApiBaseUrl = 'https://groq.internal/v1';
 				mockSettings.anthropicBaseUrl = 'https://claude.internal/v1';
 
-				await tab.setControlValue(key, 'anthropic');
+				await tab.setControlValue(key, LLM_PROVIDER_IDS.ANTHROPIC);
 
 				// The endpoint belongs to the provider, not to the use, so the
 				// switch reads another provider's field instead of rewriting
@@ -610,7 +616,7 @@ describe('AudioRecorderSettingTab', () => {
 				);
 				expect(
 					(mockSettings as unknown as Record<string, unknown>)[key],
-				).toBe('anthropic');
+				).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
 				expect(updateSpy).not.toHaveBeenCalled();
 			},
 		);
@@ -618,7 +624,10 @@ describe('AudioRecorderSettingTab', () => {
 		it('reads the tree again when the engine changes', async () => {
 			mockSettings.transcriptionEnabled = true;
 
-			await tab.setControlValue('transcriptionProvider', 'deepgram');
+			await tab.setControlValue(
+				'transcriptionProvider',
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			);
 
 			// The model catalogue and the credential fields are another
 			// engine's now, in the rows that were already there.
@@ -1521,17 +1530,15 @@ describe('AudioRecorderSettingTab', () => {
 		beforeEach(() => {
 			mockModelDialogs.length = 0;
 			mockSettings.transcriptionEnabled = true;
-			mockSettings.transcriptionProvider = 'whisper-api';
+			mockSettings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
 		});
 
 		it('adds a model through the dialog and puts it in use', async () => {
 			mockSettings.whisperApiModels = ['whisper-1'];
 			mockSettings.whisperApiModel = 'whisper-1';
 
-			await addThrough(
-				'Whisper API (OpenAI-compatible)',
-				'whisper-large-v3',
-			);
+			await addThrough(EngineLabel.WhisperApi, 'whisper-large-v3');
 
 			expect(mockSettings.whisperApiModels).toContain('whisper-large-v3');
 			// A model is added to be used, so the addition is also the selection.
@@ -1543,7 +1550,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-1';
 
-			listOf('Whisper API (OpenAI-compatible)').onDelete?.(0);
+			listOf(EngineLabel.WhisperApi).onDelete?.(0);
 			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-large-v3']);
@@ -1554,7 +1561,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-1';
 
-			listOf('Whisper API (OpenAI-compatible)').onDelete?.(1);
+			listOf(EngineLabel.WhisperApi).onDelete?.(1);
 			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
@@ -1564,7 +1571,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('ignores a delete for a position the list no longer has', async () => {
 			mockSettings.whisperApiModels = ['whisper-1'];
 
-			listOf('Whisper API (OpenAI-compatible)').onDelete?.(4);
+			listOf(EngineLabel.WhisperApi).onDelete?.(4);
 			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
@@ -1575,7 +1582,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-large-v3';
 
-			expect(listOf('Whisper API (OpenAI-compatible)').items).toEqual([
+			expect(listOf(EngineLabel.WhisperApi).items).toEqual([
 				expect.objectContaining({ name: 'whisper-1' }),
 				expect.objectContaining({
 					name: 'whisper-large-v3',
@@ -1586,10 +1593,10 @@ describe('AudioRecorderSettingTab', () => {
 
 		it('adds an LLM model to the vendor in use', async () => {
 			mockSettings.llmPostProcessEnabled = true;
-			mockSettings.llmProvider = 'openai-compatible';
+			mockSettings.llmProvider = LLM_PROVIDER_IDS.OPENAI_COMPATIBLE;
 			mockSettings.llmOpenAiModels = ['gpt-4o-mini'];
 
-			await addThrough('OpenAI', 'gpt-4o');
+			await addThrough(EngineLabel.OpenAi, 'gpt-4o');
 
 			expect(mockSettings.llmOpenAiModels).toContain('gpt-4o');
 			expect(mockSettings.llmOpenAiModel).toBe('gpt-4o');
@@ -1597,11 +1604,11 @@ describe('AudioRecorderSettingTab', () => {
 
 		it('deletes an LLM model through the same list', async () => {
 			mockSettings.llmPostProcessEnabled = true;
-			mockSettings.llmProvider = 'openai-compatible';
+			mockSettings.llmProvider = LLM_PROVIDER_IDS.OPENAI_COMPATIBLE;
 			mockSettings.llmOpenAiModels = ['gpt-4o-mini', 'gpt-4o'];
 			mockSettings.llmOpenAiModel = 'gpt-4o';
 
-			listOf('OpenAI').onDelete?.(1);
+			listOf(EngineLabel.OpenAi).onDelete?.(1);
 			await tick();
 
 			expect(mockSettings.llmOpenAiModels).toEqual(['gpt-4o-mini']);
@@ -1616,7 +1623,7 @@ describe('AudioRecorderSettingTab', () => {
 			// id than the row the user clicked.
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-1';
-			const onDelete = listOf('Whisper API (OpenAI-compatible)').onDelete;
+			const onDelete = listOf(EngineLabel.WhisperApi).onDelete;
 			mockSettings.whisperApiModels = [
 				'whisper-large-v3-turbo',
 				'whisper-1',
@@ -2297,7 +2304,7 @@ describe('AudioRecorderSettingTab', () => {
 			// page holds the paths and no catalogue at all.
 			const page = pageOf(
 				tab.getSettingDefinitions(),
-				'Local whisper.cpp (desktop)',
+				EngineLabel.LocalWhisper,
 			);
 			const [block] = page.items as GroupDefinition[];
 
@@ -2386,7 +2393,8 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('shows the switch on for an engine that always returns the words', () => {
-			mockSettings.transcriptionProvider = 'deepgram';
+			mockSettings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
 			mockSettings.transcriptionWordTimestamps = false;
 
 			tab.display();
@@ -2395,7 +2403,8 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('shows the switch off for an engine that never returns them', () => {
-			mockSettings.transcriptionProvider = 'gemini';
+			mockSettings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.GEMINI;
 			mockSettings.transcriptionWordTimestamps = true;
 
 			tab.display();
@@ -2404,7 +2413,8 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('shows the stored choice on the engine that reads the request', () => {
-			mockSettings.transcriptionProvider = 'whisper-api';
+			mockSettings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
 			mockSettings.transcriptionWordTimestamps = true;
 
 			tab.display();
@@ -2416,7 +2426,8 @@ describe('AudioRecorderSettingTab', () => {
 		// the choice waits where they left it rather than being rewritten by
 		// the engine that was selected in the meantime.
 		it('leaves the stored choice alone whatever the engine does with it', () => {
-			mockSettings.transcriptionProvider = 'deepgram';
+			mockSettings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
 			mockSettings.transcriptionWordTimestamps = false;
 
 			tab.display();

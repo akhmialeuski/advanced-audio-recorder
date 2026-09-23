@@ -18,6 +18,7 @@ import type {
 	TranscriptionProvider,
 } from 'src/transcription/providers/TranscriptionProvider';
 import type { WhisperResult } from 'src/transcription/providers/whisperResponse';
+import { TRANSCRIPTION_ENGINES } from 'src/transcription/providers/engines';
 
 /**
  * An engine with no request limits that takes the original container. This is
@@ -83,7 +84,7 @@ export function fakeProvider(options: FakeProviderOptions = {}): FakeProvider {
 			: (): Promise<WhisperResult> => Promise.resolve(transcribe);
 	return {
 		id,
-		label: 'Fake',
+		label: TRANSCRIPTION_ENGINES[id].label,
 		requiresNetwork: false,
 		capabilities: { ...UNLIMITED_CAPABILITIES, ...capabilities },
 		transcribe: jest.fn(implementation),

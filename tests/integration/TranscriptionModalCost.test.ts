@@ -83,6 +83,24 @@ function createModal(
 	return { modal, internals: internalsOf<ModalInternals>(modal), readBinary };
 }
 
+/**
+ * The dialog on Deepgram nova-3, reading the given session counter: the
+ * engine every session-total case prices against.
+ * @param tracker - Session spend counter the dialog reports
+ * @returns The modal and its internals
+ */
+function createDeepgramModal(
+	tracker: SessionCostTracker,
+): ReturnType<typeof createModal> {
+	return createModal(
+		{
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			deepgramModel: 'nova-3',
+		},
+		tracker,
+	);
+}
+
 beforeEach(() => {
 	probeMock.mockResolvedValue({
 		durationSeconds: 600,
@@ -242,14 +260,8 @@ describe('TranscriptionModal cost estimate', () => {
 
 	it('shows the session total when the tracker has entries', async () => {
 		const tracker = new SessionCostTracker();
-		tracker.add('deepgram', 0.12);
-		const { modal, internals } = createModal(
-			{
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				deepgramModel: 'nova-3',
-			},
-			tracker,
-		);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.12);
+		const { modal, internals } = createDeepgramModal(tracker);
 		modal.onOpen();
 		await tick();
 
@@ -269,13 +281,7 @@ describe('TranscriptionModal cost estimate', () => {
 	): Promise<string> {
 		const tracker = new SessionCostTracker();
 		fill(tracker);
-		const { modal, internals } = createModal(
-			{
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				deepgramModel: 'nova-3',
-			},
-			tracker,
-		);
+		const { modal, internals } = createDeepgramModal(tracker);
 		modal.onOpen();
 		await tick();
 		return internals.costEstimateEl?.textContent ?? '';
@@ -283,8 +289,13 @@ describe('TranscriptionModal cost estimate', () => {
 
 	it('says how much of the total is estimated rather than measured', async () => {
 		const line = await sessionLine((tracker) => {
-			tracker.add('deepgram', 0.12, false);
-			tracker.recordLlmCall('gemini', 'autoChapters', 0.01, true);
+			tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.12, false);
+			tracker.recordLlmCall(
+				LLM_PROVIDER_IDS.GEMINI,
+				'autoChapters',
+				0.01,
+				true,
+			);
 		});
 
 		expect(line).toContain('Spent this session: ~$0.13 (1 step estimated)');
@@ -292,8 +303,13 @@ describe('TranscriptionModal cost estimate', () => {
 
 	it('says nothing extra when every figure came from a vendor', async () => {
 		const line = await sessionLine((tracker) => {
-			tracker.add('deepgram', 0.12, false);
-			tracker.recordLlmCall('gemini', 'autoChapters', 0.01, false);
+			tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.12, false);
+			tracker.recordLlmCall(
+				LLM_PROVIDER_IDS.GEMINI,
+				'autoChapters',
+				0.01,
+				false,
+			);
 		});
 
 		expect(line).toContain('Spent this session: ~$0.13');
@@ -302,9 +318,19 @@ describe('TranscriptionModal cost estimate', () => {
 
 	it('reports the unpriced runs and the estimated steps together', async () => {
 		const line = await sessionLine((tracker) => {
-			tracker.add('deepgram', null);
-			tracker.recordLlmCall('gemini', 'autoChapters', 0.01, true);
-			tracker.recordLlmCall('gemini', 'postProcess', 0.02, true);
+			tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, null);
+			tracker.recordLlmCall(
+				LLM_PROVIDER_IDS.GEMINI,
+				'autoChapters',
+				0.01,
+				true,
+			);
+			tracker.recordLlmCall(
+				LLM_PROVIDER_IDS.GEMINI,
+				'postProcess',
+				0.02,
+				true,
+			);
 		});
 
 		expect(line).toContain('(1 run not priced, 2 steps estimated)');
@@ -316,14 +342,8 @@ describe('TranscriptionModal cost estimate', () => {
 		// number makes a correct calculation look like a wrong one. Each figure
 		// therefore says what it covers.
 		const tracker = new SessionCostTracker();
-		tracker.add('deepgram', 2.45);
-		const { modal, internals } = createModal(
-			{
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				deepgramModel: 'nova-3',
-			},
-			tracker,
-		);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 2.45);
+		const { modal, internals } = createDeepgramModal(tracker);
 		modal.onOpen();
 		await tick();
 
@@ -503,13 +523,7 @@ describe('TranscriptionModal accountRunCost', () => {
 describe('TranscriptionModal run accounting', () => {
 	it('shows the cost notice after a successful run', async () => {
 		const tracker = new SessionCostTracker();
-		const { modal, internals } = createModal(
-			{
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				deepgramModel: 'nova-3',
-			},
-			tracker,
-		);
+		const { modal, internals } = createDeepgramModal(tracker);
 		transcribeMock.mockResolvedValue({
 			transcript: { segments: [], speakers: [] },
 			markdown: '',
@@ -530,13 +544,7 @@ describe('TranscriptionModal run accounting', () => {
 
 	it('still records the billed cost when the transcript write fails', async () => {
 		const tracker = new SessionCostTracker();
-		const { modal, internals } = createModal(
-			{
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				deepgramModel: 'nova-3',
-			},
-			tracker,
-		);
+		const { modal, internals } = createDeepgramModal(tracker);
 		// The provider call succeeds and bills (onCost), but writing the
 		// transcript afterwards throws (read-only or full vault).
 		transcribeMock.mockImplementation(

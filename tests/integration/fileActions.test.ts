@@ -12,7 +12,7 @@
 import { Notice, TFile } from 'obsidian';
 import { describeRetryOutcome, FILE_ACTIONS } from 'src/actions/fileActions';
 import type { ActionServices } from 'src/actions/PluginAction';
-import { COMMAND_IDS } from 'src/constants';
+import { COMMAND_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { at } from '../helpers/assertions';
@@ -479,7 +479,11 @@ describe('transcribing the parts that failed', () => {
 		mockEngineRun.mockResolvedValue({
 			transcript: { segments: [], speakers: [], language: 'en' },
 			missingParts: [],
-			cost: { engineId: 'deepgram', usd: 0.02, usage: {} },
+			cost: {
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				usd: 0.02,
+				usage: {},
+			},
 			// The part covering the ninety-second gap runs to five minutes,
 			// which is what a plan coarser than the request sends.
 			sentSeconds: 300,
@@ -491,7 +495,11 @@ describe('transcribing the parts that failed', () => {
 		// asked for instead quoted ninety seconds for five minutes of engine
 		// time, so the session total came out short by the difference.
 		expect(recordRun).toHaveBeenCalledWith(
-			{ engineId: 'deepgram', usd: 0.02, usage: {} },
+			{
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				usd: 0.02,
+				usage: {},
+			},
 			expect.anything(),
 			300,
 		);

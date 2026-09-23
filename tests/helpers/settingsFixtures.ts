@@ -8,7 +8,11 @@
  * @module tests/helpers/settingsFixtures
  */
 
-import { MODEL_SEED_GENERATION } from 'src/constants';
+import {
+	MODEL_SEED_GENERATION,
+	LLM_PROVIDER_IDS,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from 'src/constants';
 import type {
 	AudioRecorderSettings,
 	AudioSource,
@@ -96,7 +100,7 @@ export function fullyPopulatedSettings(): Omit<
 		transcriptionEnabled: true,
 		transcribeOnSave: true,
 		transcriptionShowCostEstimates: true,
-		transcriptionProvider: 'local-whisper',
+		transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 		transcriptionLanguage: 'ru',
 		transcriptionDiarize: true,
 		transcriptionTranslateToEnglish: true,
@@ -124,6 +128,8 @@ export function fullyPopulatedSettings(): Omit<
 		geminiModels: ['gemini-2.5-flash', 'gemini-2.5-pro'],
 		mistralBaseUrl: 'https://api.mistral.ai/v1',
 		mistralApiKey: 'ml-test',
+		deepSeekBaseUrl: 'https://api.deepseek.com',
+		deepSeekApiKey: 'ds-test',
 		voxtralModel: 'voxtral-mini-latest',
 		voxtralModels: ['voxtral-mini-latest'],
 		localWhisperBinaryPath: '/usr/bin/whisper',
@@ -166,9 +172,9 @@ export function fullyPopulatedSettings(): Omit<
 			llmTranslate: '',
 			llmCustom: '',
 		},
-		llmProvider: 'anthropic',
-		chaptersLlmProvider: 'anthropic',
-		advancedLlmProvider: 'anthropic',
+		llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+		chaptersLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+		advancedLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 		anthropicBaseUrl: 'https://api.anthropic.com/v1',
 		anthropicApiKey: 'ak-test',
 		llmOpenAiModel: 'gpt-4o',
@@ -177,10 +183,13 @@ export function fullyPopulatedSettings(): Omit<
 		llmAnthropicModels: ['claude-opus-4-8', 'claude-sonnet-4-6'],
 		llmMistralModel: 'mistral-medium-latest',
 		llmMistralModels: ['mistral-medium-latest', 'mistral-small-latest'],
+		llmDeepSeekModel: 'deepseek-v4-pro',
+		llmDeepSeekModels: ['deepseek-flash', 'deepseek-v4-pro'],
 		llmOpenAiMaxTokens: 2048,
 		llmAnthropicMaxTokens: 2048,
 		geminiMaxTokens: 2048,
 		llmMistralMaxTokens: 2048,
+		llmDeepSeekMaxTokens: 2048,
 		modelSeedGeneration: MODEL_SEED_GENERATION,
 		inputNoiseSuppression: false,
 		inputEchoCancellation: false,

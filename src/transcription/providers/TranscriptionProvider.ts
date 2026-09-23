@@ -7,6 +7,7 @@
  * @module transcription/providers/TranscriptionProvider
  */
 
+import type { EngineLabel } from '../../providers/providers';
 import type { TranscriptionProviderId } from '../../settings/settingsSchema';
 import type { WhisperResult } from './whisperResponse';
 
@@ -203,8 +204,8 @@ export interface TranscriptionProvider {
 	 * (and therefore the engine registry) do not know about.
 	 */
 	readonly id: TranscriptionProviderId;
-	/** Human-readable label. */
-	readonly label: string;
+	/** Human-readable label, one of the engine names. */
+	readonly label: EngineLabel;
 	/** Whether the provider makes network calls (affects availability). */
 	readonly requiresNetwork: boolean;
 	/** What the provider accepts in a single request. */

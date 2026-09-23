@@ -22,6 +22,7 @@ import {
 import {
 	LOCAL_WHISPER_SETUP_MESSAGE,
 	TRANSCRIPTION_PROVIDER_IDS,
+	LLM_PROVIDER_IDS,
 } from 'src/constants';
 import {
 	DEFAULT_SETTINGS,
@@ -238,14 +239,14 @@ describe('enginesInUse', () => {
 			makeSettings({
 				transcriptionEnabled: true,
 				llmPostProcessEnabled: false,
-				llmProvider: 'anthropic',
+				llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 			}),
 		);
 		const on = enginesInUse(
 			makeSettings({
 				transcriptionEnabled: true,
 				llmPostProcessEnabled: true,
-				llmProvider: 'anthropic',
+				llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 			}),
 		);
 
@@ -258,9 +259,9 @@ describe('enginesInUse', () => {
 			makeSettings({
 				transcriptionEnabled: true,
 				llmPostProcessEnabled: true,
-				llmProvider: 'anthropic',
+				llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 				transcriptionAutoChaptersEnabled: true,
-				chaptersLlmProvider: 'anthropic',
+				chaptersLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 			}),
 		);
 
@@ -277,7 +278,7 @@ describe('enginesInUse', () => {
 				makeSettings({
 					transcriptionEnabled: false,
 					transcriptionAutoChaptersEnabled: true,
-					chaptersLlmProvider: 'gemini',
+					chaptersLlmProvider: LLM_PROVIDER_IDS.GEMINI,
 				}),
 			),
 		).toEqual([ENGINES[ENGINE_IDS.GEMINI]]);
@@ -331,7 +332,7 @@ describe('enginesStatus', () => {
 					transcriptionEnabled: true,
 					whisperApiKey: 'sk-1',
 					llmPostProcessEnabled: true,
-					llmProvider: 'anthropic',
+					llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 					anthropicApiKey: '',
 				}),
 			),

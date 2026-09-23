@@ -20,7 +20,7 @@ import { asMockPlugin, asMockVault } from '../helpers/obsidianMock';
 import { modalInstances } from '../mocks/obsidian';
 import { ReleaseNotesModal } from 'src/ui/ReleaseNotesModal';
 import { makePlaybackState } from '../helpers/playbackHarness';
-import { COMMAND_IDS } from 'src/constants';
+import { COMMAND_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { detectSilentChannel } from 'src/recording/silentChannelDetector';
@@ -1462,7 +1462,11 @@ describe('AudioRecorderPlugin transcription queue', () => {
 				// wired, so a change during a long queue reaches it
 				settingsFromRun = getSettings();
 				return Promise.resolve({
-					cost: { engineId: 'deepgram', usd: 0, usage: {} },
+					cost: {
+						engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+						usd: 0,
+						usage: {},
+					},
 				});
 			},
 		);
@@ -1494,7 +1498,11 @@ describe('AudioRecorderPlugin transcription queue', () => {
 			transcribeFile: jest.Mock;
 		}>('src/transcription/runTranscription');
 		transcribeFile.mockResolvedValue({
-			cost: { engineId: 'deepgram', usd: 0, usage: {} },
+			cost: {
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				usd: 0,
+				usage: {},
+			},
 		});
 		const { plugin } = createPlugin([null]);
 		await onloadWithTimers(plugin);

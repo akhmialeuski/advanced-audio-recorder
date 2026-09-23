@@ -25,6 +25,7 @@ import {
 	extractOpenAiUsage,
 } from 'src/transcription/llm/llmResponse';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import { EngineLabel } from 'src/providers/providers';
 
 describe('resolveEnginePricing', () => {
 	it.each([
@@ -587,7 +588,7 @@ describe('buildCostEstimate', () => {
 		expect(estimate.lines).toHaveLength(1);
 		expect(estimate.lines[0]).toMatchObject({
 			label: 'Transcription',
-			providerName: 'Deepgram',
+			providerName: EngineLabel.Deepgram,
 			model: 'nova-3',
 			pricingUrl: 'https://deepgram.com/pricing',
 		});
@@ -609,7 +610,7 @@ describe('buildCostEstimate', () => {
 		const estimate = buildCostEstimate(settings, 600);
 		expect(estimate.lines).toHaveLength(2);
 		expect(estimate.lines[1]?.label).toBe('Post-processing (Clean up)');
-		expect(estimate.lines[1]?.providerName).toBe('OpenAI');
+		expect(estimate.lines[1]?.providerName).toBe(EngineLabel.OpenAi);
 		const transcription = estimate.lines[0]?.usd ?? 0;
 		const postProcess = estimate.lines[1]?.usd ?? 0;
 		expect(estimate.totalUsd).toBeCloseTo(transcription + postProcess, 10);
@@ -721,7 +722,7 @@ describe('buildCostEstimate', () => {
 		const agents = estimate.lines.find(
 			(line) => line.label === 'Advanced context agents',
 		);
-		expect(agents?.providerName).toBe('OpenAI');
+		expect(agents?.providerName).toBe(EngineLabel.OpenAi);
 		expect(agents?.usd).not.toBeNull();
 	});
 
@@ -815,7 +816,7 @@ describe('buildCostEstimate', () => {
 		const chapters = estimate.lines.find(
 			(line) => line.label === 'Auto chapters',
 		);
-		expect(chapters?.providerName).toBe('OpenAI');
+		expect(chapters?.providerName).toBe(EngineLabel.OpenAi);
 		expect(chapters?.usd).not.toBeNull();
 	});
 });
@@ -979,13 +980,21 @@ describe('what a finished run adds to the session total', () => {
 
 	it('records what the provider reported, and calls it no estimate', () => {
 		expect(
-			runCostToRecord({ engineId: 'deepgram', usd: 0.05 }, settings, 600),
+			runCostToRecord(
+				{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: 0.05 },
+				settings,
+				600,
+			),
 		).toEqual({ usd: 0.05, estimated: false });
 	});
 
 	it('falls back to the duration estimate the user was already shown', () => {
 		expect(
-			runCostToRecord({ engineId: 'deepgram', usd: null }, settings, 600),
+			runCostToRecord(
+				{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: null },
+				settings,
+				600,
+			),
 		).toEqual({
 			usd: estimateStepCost('transcription', settings, 600).usd,
 			estimated: true,
@@ -1008,7 +1017,7 @@ describe('what a finished run adds to the session total', () => {
 	it('records nothing while cost estimates are turned off', () => {
 		expect(
 			runCostToRecord(
-				{ engineId: 'deepgram', usd: 0.05 },
+				{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: 0.05 },
 				mergeSettings({ transcriptionShowCostEstimates: false }),
 				600,
 			),

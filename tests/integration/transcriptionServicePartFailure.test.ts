@@ -27,6 +27,7 @@ import {
 	LLM_PROVIDER_IDS,
 	TRANSCRIBE_RETRY_MAX_ATTEMPTS,
 	TRANSCRIBE_RETRY_MAX_DELAY_MS,
+	TRANSCRIPTION_PROVIDER_IDS,
 } from 'src/constants';
 import { HttpError } from 'src/transcription/httpClient';
 import { CancellationSource } from 'src/utils/cancellation';
@@ -35,6 +36,7 @@ import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 import { outcomeOf } from '../helpers/async';
 import { completed } from '../helpers/llmDoubles';
+import { EngineLabel } from 'src/providers/providers';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -154,7 +156,7 @@ function prepareSubdividingPart(): void {
 function makeLlm(output: string): LlmProvider {
 	return {
 		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Fake LLM',
+		label: EngineLabel.Gemini,
 		complete: jest.fn(async () => completed(output)),
 	};
 }
@@ -169,7 +171,7 @@ function makeProvider(transcribe: jest.Mock): TranscriptionProvider {
 }
 
 const baseSettings = {
-	transcriptionProvider: 'gemini' as const,
+	transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 	geminiApiKey: 'gm-test',
 };
 
@@ -864,7 +866,7 @@ describe('the collaborators the service builds when it is given none', () => {
 		prepareTwoParts();
 		const service = new TranscriptionService(makeApp(), () =>
 			mergeSettings({
-				transcriptionProvider: 'gemini',
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 				geminiApiKey: '',
 			}),
 		);

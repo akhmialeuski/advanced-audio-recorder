@@ -22,11 +22,12 @@ import { mergeSettings } from 'src/settings/settingsSerialization';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
-import { LLM_PROVIDER_IDS } from 'src/constants';
+import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { noticeMessages } from '../mocks/obsidian';
 import { CancellationSource } from 'src/utils/cancellation';
 import { HttpError } from 'src/transcription/httpClient';
 import { outcomeOf, waitFor } from '../helpers/async';
+import { EngineLabel } from 'src/providers/providers';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -76,7 +77,7 @@ function makeApp(create?: jest.Mock): App {
 }
 
 const baseSettings = {
-	transcriptionProvider: 'whisper-api' as const,
+	transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 	whisperApiKey: 'test-key',
 };
 
@@ -123,7 +124,7 @@ function serviceWithFailingCleanup(
 		withCleanup,
 		() => ({
 			id: LLM_PROVIDER_IDS.GEMINI,
-			label: 'Fake LLM',
+			label: EngineLabel.Gemini,
 			complete: () => Promise.reject(reason()),
 		}),
 	);
@@ -350,7 +351,7 @@ describe('a cancel that lands while a request is in flight', () => {
 						}),
 					createLlm: () => ({
 						id: LLM_PROVIDER_IDS.GEMINI,
-						label: 'Fake LLM',
+						label: EngineLabel.Gemini,
 						complete: (_prompt, _maxTokens, options) =>
 							new Promise((_resolve, reject) => {
 								started = true;

@@ -28,6 +28,7 @@ import {
 import {
 	accountKeyMissing,
 	ENGINE_IDS,
+	EngineLabel,
 	engineAccess,
 	missingModelMessage,
 	type EngineId,
@@ -126,7 +127,7 @@ function cloudEngineFactory(
 export interface TranscriptionEngineDescriptor {
 	readonly id: TranscriptionProviderId;
 	/** Display label, used in dropdowns and cost-estimate lines. */
-	readonly label: string;
+	readonly label: EngineLabel;
 	/** Public pricing page; absent for the free local engine. */
 	readonly pricingUrl?: string;
 	/**
@@ -268,7 +269,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		// The engine is named for what it does; the service behind it is named
 		// once in the provider registry.
-		label: 'Whisper API (OpenAI-compatible)',
+		label: EngineLabel.WhisperApi,
 		pricingUrl: 'https://openai.com/api/pricing/',
 		model: (s) => s.whisperApiModel,
 		pricing: (model) =>
@@ -282,7 +283,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-		label: 'Deepgram',
+		label: EngineLabel.Deepgram,
 		pricingUrl: 'https://deepgram.com/pricing',
 		model: (s) => s.deepgramModel,
 		pricing: (model) => perMinutePricing(matchRate(DEEPGRAM_RATES, model)),
@@ -335,7 +336,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
-		label: 'Google Gemini',
+		label: EngineLabel.Gemini,
 		pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
 		model: (s) => s.geminiModel,
 		pricing: (model) =>
@@ -350,7 +351,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.VOXTRAL]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.VOXTRAL,
-		label: 'Mistral Voxtral',
+		label: EngineLabel.Voxtral,
 		pricingUrl: 'https://mistral.ai/pricing/api',
 		model: (s) => s.voxtralModel,
 		pricing: (model) => perMinutePricing(matchRate(VOXTRAL_RATES, model)),
@@ -381,7 +382,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
-		label: 'Local whisper.cpp (desktop)',
+		label: EngineLabel.LocalWhisper,
 		// Runs on the user's machine, so there is no rate card to link.
 		model: () => '',
 		pricing: () => ({ kind: 'free' }),

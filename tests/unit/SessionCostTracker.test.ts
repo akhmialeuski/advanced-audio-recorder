@@ -4,7 +4,7 @@
 
 import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { TRANSCRIPTION_PROVIDER_IDS, LLM_PROVIDER_IDS } from 'src/constants';
 
 describe('SessionCostTracker', () => {
 	it('starts empty', () => {
@@ -17,22 +17,22 @@ describe('SessionCostTracker', () => {
 
 	it('accumulates priced runs per engine', () => {
 		const tracker = new SessionCostTracker();
-		tracker.add('deepgram', 0.04);
-		tracker.add('deepgram', 0.01);
-		tracker.add('gemini', 0.02);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.04);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.01);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.GEMINI, 0.02);
 
 		expect(tracker.hasEntries()).toBe(true);
 		expect(tracker.totalUsd()).toBeCloseTo(0.07, 10);
 		expect(tracker.engineTotals()).toEqual([
 			{
-				engineId: 'deepgram',
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 				usd: 0.05,
 				runs: 2,
 				unpricedRuns: 0,
 				estimatedRuns: 0,
 			},
 			{
-				engineId: 'gemini',
+				engineId: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 				usd: 0.02,
 				runs: 1,
 				unpricedRuns: 0,
@@ -43,8 +43,8 @@ describe('SessionCostTracker', () => {
 
 	it('counts unpriced runs separately instead of adding zero', () => {
 		const tracker = new SessionCostTracker();
-		tracker.add('deepgram', 0.04);
-		tracker.add('deepgram', null);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.04);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, null);
 
 		const totals = tracker.engineTotals();
 		expect(totals[0]?.runs).toBe(1);
@@ -55,7 +55,7 @@ describe('SessionCostTracker', () => {
 
 	it('returns copies so callers cannot mutate the totals', () => {
 		const tracker = new SessionCostTracker();
-		tracker.add('deepgram', 0.04);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.04);
 		const totals = tracker.engineTotals();
 		const first = totals[0];
 		if (!first) {
@@ -69,9 +69,9 @@ describe('SessionCostTracker', () => {
 describe('telling a measured total from an estimated one', () => {
 	it('counts the entries whose figure came from an estimate', () => {
 		const tracker = new SessionCostTracker();
-		tracker.add('gemini', 0.04, false);
-		tracker.add('gemini', 0.01, true);
-		tracker.add('deepgram', 0.02, true);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.GEMINI, 0.04, false);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.GEMINI, 0.01, true);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 0.02, true);
 
 		expect(tracker.estimatedRuns()).toBe(2);
 		expect(tracker.totalUsd()).toBeCloseTo(0.07, 10);
@@ -79,8 +79,13 @@ describe('telling a measured total from an estimated one', () => {
 
 	it('counts none when every figure came from a vendor', () => {
 		const tracker = new SessionCostTracker();
-		tracker.add('gemini', 0.04);
-		tracker.recordLlmCall('gemini', 'autoChapters', 0.01, false);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.GEMINI, 0.04);
+		tracker.recordLlmCall(
+			LLM_PROVIDER_IDS.GEMINI,
+			'autoChapters',
+			0.01,
+			false,
+		);
 
 		expect(tracker.estimatedRuns()).toBe(0);
 	});
@@ -88,7 +93,7 @@ describe('telling a measured total from an estimated one', () => {
 	it('leaves an unpriced run out of the estimated count', () => {
 		// It is neither measured nor estimated: nothing was recorded for it
 		const tracker = new SessionCostTracker();
-		tracker.add('gemini', null, true);
+		tracker.add(TRANSCRIPTION_PROVIDER_IDS.GEMINI, null, true);
 
 		expect(tracker.estimatedRuns()).toBe(0);
 		expect(tracker.unpricedRuns()).toBe(1);
@@ -96,7 +101,12 @@ describe('telling a measured total from an estimated one', () => {
 
 	it('carries an estimated LLM call through to the count', () => {
 		const tracker = new SessionCostTracker();
-		tracker.recordLlmCall('openai', 'postProcess', 0.03, true);
+		tracker.recordLlmCall(
+			LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			'postProcess',
+			0.03,
+			true,
+		);
 
 		expect(tracker.estimatedRuns()).toBe(1);
 		expect(tracker.totalUsd()).toBeCloseTo(0.03, 10);
@@ -116,7 +126,7 @@ describe('recording a finished transcription run', () => {
 
 		expect(
 			tracker.recordRun(
-				{ engineId: 'deepgram', usd: 0.05 },
+				{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: 0.05 },
 				SETTINGS,
 				600,
 			),
@@ -124,7 +134,7 @@ describe('recording a finished transcription run', () => {
 
 		expect(tracker.engineTotals()).toEqual([
 			{
-				engineId: 'deepgram',
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 				usd: 0.05,
 				runs: 1,
 				unpricedRuns: 0,
@@ -136,13 +146,17 @@ describe('recording a finished transcription run', () => {
 	it('falls back to the duration estimate when the provider priced nothing', () => {
 		const tracker = new SessionCostTracker();
 
-		tracker.recordRun({ engineId: 'deepgram', usd: null }, SETTINGS, 600);
+		tracker.recordRun(
+			{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: null },
+			SETTINGS,
+			600,
+		);
 
 		// Recorded as spend, and marked as the guess it is rather than
 		// dropped as unpriced
 		expect(tracker.engineTotals()).toEqual([
 			{
-				engineId: 'deepgram',
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 				usd: expect.any(Number),
 				runs: 1,
 				unpricedRuns: 0,
@@ -156,7 +170,7 @@ describe('recording a finished transcription run', () => {
 
 		expect(
 			tracker.recordRun(
-				{ engineId: 'deepgram', usd: 0.05 },
+				{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: 0.05 },
 				mergeSettings({ transcriptionShowCostEstimates: false }),
 				600,
 			),

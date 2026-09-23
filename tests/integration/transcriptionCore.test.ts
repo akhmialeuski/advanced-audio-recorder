@@ -28,6 +28,8 @@ import {
 	TRANSCRIBE_BYTES_PER_SEC,
 	DEFAULT_LLM_CLEANUP_PROMPT,
 	DEFAULT_LLM_SUMMARY_PROMPT,
+	LLM_PROVIDER_IDS,
+	TRANSCRIPTION_PROVIDER_IDS,
 } from 'src/constants';
 import { WAV_HEADER_SIZE } from 'src/audio/WavEncoder';
 
@@ -436,7 +438,7 @@ describe('parseArgs', () => {
 describe('provider factories', () => {
 	it('requires a Whisper API key', () => {
 		const settings = mergeSettings({
-			transcriptionProvider: 'whisper-api',
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 			whisperApiKey: '',
 		});
 		expect(() => createTranscriptionProvider(settings)).toThrow(
@@ -446,7 +448,7 @@ describe('provider factories', () => {
 
 	it('requires local whisper paths', () => {
 		const settings = mergeSettings({
-			transcriptionProvider: 'local-whisper',
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 			localWhisperBinaryPath: '',
 			localWhisperModelPath: '',
 		});
@@ -457,7 +459,7 @@ describe('provider factories', () => {
 
 	it('requires a Deepgram API key', () => {
 		const settings = mergeSettings({
-			transcriptionProvider: 'deepgram',
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			deepgramApiKey: '',
 		});
 		expect(() => createTranscriptionProvider(settings)).toThrow(
@@ -468,11 +470,11 @@ describe('provider factories', () => {
 	it('builds a whole-file Deepgram provider with a key', () => {
 		const provider = createTranscriptionProvider(
 			mergeSettings({
-				transcriptionProvider: 'deepgram',
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 				deepgramApiKey: 'dg-test',
 			}),
 		);
-		expect(provider.id).toBe('deepgram');
+		expect(provider.id).toBe(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
 		expect(provider.capabilities.acceptsOriginalContainer).toBe(true);
 		expect(provider.capabilities.supportsDiarization).toBe(true);
 	});
@@ -481,20 +483,23 @@ describe('provider factories', () => {
 		expect(() =>
 			createLlmProvider(
 				mergeSettings({
-					llmProvider: 'anthropic',
+					llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 					anthropicApiKey: '',
 				}),
 			),
 		).toThrow(ProviderConfigError);
 		expect(() =>
 			createLlmProvider(
-				mergeSettings({ llmProvider: 'gemini', geminiApiKey: '' }),
+				mergeSettings({
+					llmProvider: LLM_PROVIDER_IDS.GEMINI,
+					geminiApiKey: '',
+				}),
 			),
 		).toThrow(ProviderConfigError);
 		expect(() =>
 			createLlmProvider(
 				mergeSettings({
-					llmProvider: 'openai-compatible',
+					llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 					whisperApiKey: '',
 				}),
 			),
@@ -505,26 +510,26 @@ describe('provider factories', () => {
 		expect(
 			createLlmProvider(
 				mergeSettings({
-					llmProvider: 'openai-compatible',
+					llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 					whisperApiKey: 'sk-test',
 				}),
 			).id,
-		).toBe('openai-compatible');
+		).toBe(LLM_PROVIDER_IDS.OPENAI_COMPATIBLE);
 		expect(
 			createLlmProvider(
 				mergeSettings({
-					llmProvider: 'anthropic',
+					llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 					anthropicApiKey: 'ak-test',
 				}),
 			).id,
-		).toBe('anthropic');
+		).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
 		expect(
 			createLlmProvider(
 				mergeSettings({
-					llmProvider: 'gemini',
+					llmProvider: LLM_PROVIDER_IDS.GEMINI,
 					geminiApiKey: 'gm-test',
 				}),
 			).id,
-		).toBe('gemini');
+		).toBe(LLM_PROVIDER_IDS.GEMINI);
 	});
 });

@@ -18,7 +18,7 @@ import {
 	mergeSettingsAsync,
 } from 'src/settings/settingsSerialization';
 import type { Profile } from 'src/settings/profiles';
-import { MODEL_SEED_GENERATION } from 'src/constants';
+import { MODEL_SEED_GENERATION, LLM_PROVIDER_IDS } from 'src/constants';
 import { fullyPopulatedSettings } from '../helpers/settingsFixtures';
 import { partial } from '../helpers/doubles';
 import { mediaDevice } from '../helpers/mediaMocks';
@@ -302,9 +302,9 @@ describe('Settings', () => {
 		it('migrates a legacy llmApiKey/llmModel onto the Anthropic vendor fields', () => {
 			// Pre-rework data held one flat key and model for the stored provider.
 			const legacy = partial<AudioRecorderSettingsInput>({
-				llmProvider: 'anthropic',
-				chaptersLlmProvider: 'anthropic',
-				advancedLlmProvider: 'anthropic',
+				llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+				chaptersLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+				advancedLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 				llmApiKey: 'ak-legacy',
 				llmModel: 'claude-legacy',
 			});
@@ -321,7 +321,7 @@ describe('Settings', () => {
 
 		it('maps a legacy OpenAI llmApiKey onto the shared Whisper/OpenAI key', () => {
 			const result = mergeSettings({
-				llmProvider: 'openai-compatible',
+				llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 				llmApiKey: 'sk-legacy',
 				llmModel: 'gpt-legacy',
 			});
@@ -332,7 +332,7 @@ describe('Settings', () => {
 
 		it('does not overwrite a vendor key that is already set', () => {
 			const result = mergeSettings({
-				llmProvider: 'gemini',
+				llmProvider: LLM_PROVIDER_IDS.GEMINI,
 				geminiApiKey: 'gm-current',
 				llmApiKey: 'gm-legacy',
 			});
@@ -402,7 +402,7 @@ describe('Settings', () => {
 
 		it('ignores a non-string legacy LLM key and model instead of throwing', () => {
 			const corrupt = partial<AudioRecorderSettingsInput>({
-				llmProvider: 'gemini',
+				llmProvider: LLM_PROVIDER_IDS.GEMINI,
 				llmApiKey: 42,
 				llmModel: { nested: true },
 			});
@@ -445,7 +445,7 @@ describe('Settings', () => {
 			const corrupt = partial<AudioRecorderSettingsInput>({
 				llmProvider: 'no-such-vendor',
 				chaptersLlmProvider: 'also-gone',
-				advancedLlmProvider: 'gemini',
+				advancedLlmProvider: LLM_PROVIDER_IDS.GEMINI,
 			});
 
 			const result = mergeSettings(corrupt);
@@ -455,7 +455,7 @@ describe('Settings', () => {
 				DEFAULT_SETTINGS.chaptersLlmProvider,
 			);
 			// A claimed id is a deliberate choice and is left alone.
-			expect(result.advancedLlmProvider).toBe('gemini');
+			expect(result.advancedLlmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
 		});
 
 		it('points transcription at an engine that exists', () => {
@@ -475,11 +475,11 @@ describe('Settings', () => {
 			// behaviour it had by starting all three on the one it named - but
 			// only where that one names an engine at all.
 			const result = mergeSettings({
-				llmProvider: 'anthropic',
+				llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 			});
 
-			expect(result.chaptersLlmProvider).toBe('anthropic');
-			expect(result.advancedLlmProvider).toBe('anthropic');
+			expect(result.chaptersLlmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
+			expect(result.advancedLlmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
 		});
 
 		it('enables the advanced master switch on upgrade for a config with a dictionary profile', () => {

@@ -21,13 +21,14 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { emptyTranscriptSection } from 'src/sidecar/recordingSidecarModel';
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
-import { LLM_PROVIDER_IDS } from 'src/constants';
+import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 import { completed } from '../helpers/llmDoubles';
 import { noticeMessages } from '../mocks/obsidian';
 import { asMockVault } from '../helpers/obsidianMock';
+import { EngineLabel } from 'src/providers/providers';
 
 const standup = partial<TFile>({
 	name: 'standup.webm',
@@ -82,7 +83,7 @@ function withNoteProfile(
 ): AudioRecorderSettings {
 	const settings = mergeSettings({
 		transcriptionEnabled: true,
-		transcriptionProvider: 'whisper-api',
+		transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		whisperApiKey: 'sk-glossary',
 		profiles: [profile],
 	});
@@ -112,7 +113,7 @@ function vaultWith(notes: Record<string, string>): App {
 function echoingLlm(): LlmProvider & { complete: jest.Mock } {
 	return {
 		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Fake LLM',
+		label: EngineLabel.Gemini,
 		complete: jest.fn((prompt: LlmPrompt) =>
 			Promise.resolve(completed(prompt.user)),
 		),
@@ -261,7 +262,7 @@ describe('a transcription whose profile is read from a note', () => {
 
 		await transcribe(
 			withNoteProfile(TEAM_ROSTER, {
-				transcriptionProvider: 'deepgram',
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 				deepgramApiKey: 'dg-roster',
 				transcriptionDiarize: true,
 			}),

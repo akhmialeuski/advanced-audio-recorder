@@ -93,7 +93,7 @@ A few behaviors are specific to Gemini and worth knowing before you transcribe a
 
 ## Reuse the same key for LLM post-processing
 
-Gemini is also one of the four [LLM post-processing](../llm-post-processing.md) engines, alongside OpenAI, Anthropic, and Mistral. Because one Gemini page serves both jobs, the key you entered for transcription is the key post-processing reads, and you do not need a second one.
+Gemini is also one of the five [LLM post-processing](../llm-post-processing.md) engines, alongside OpenAI, Anthropic, Mistral, and DeepSeek. Because one Gemini page serves both jobs, the key you entered for transcription is the key post-processing reads, and you do not need a second one.
 
 To enable it:
 
@@ -139,7 +139,7 @@ If a transcript appears with speaker labels (when diarization is on) and clickab
 ## Related guides
 
 - [Transcription](../transcription.md) - engines, diarization, output formats, and destinations.
-- [LLM post-processing](../llm-post-processing.md) - clean up, summarize, or apply a custom instruction with Gemini, OpenAI, Anthropic, or Mistral.
+- [LLM post-processing](../llm-post-processing.md) - clean up, summarize, or apply a custom instruction with Gemini, OpenAI, Anthropic, Mistral, or DeepSeek.
 - [Deepgram API key](deepgram-api-key.md) - whole-file diarization with consistent speaker numbering on long files.
 - [Anthropic / Claude API key](anthropic-api-key.md) - for Claude-based LLM post-processing.
 - [Local whisper.cpp (offline)](local-whisper-cpp.md) - private, offline transcription with no API key.

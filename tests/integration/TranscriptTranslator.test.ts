@@ -15,6 +15,8 @@ import type {
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { completed } from '../helpers/llmDoubles';
 import { at } from '../helpers/assertions';
+import { EngineLabel } from 'src/providers/providers';
+import { LLM_PROVIDER_IDS } from 'src/constants';
 
 const SETTINGS: AudioRecorderSettings = mergeSettings({
 	llmPostProcessTask: 'translate',
@@ -70,8 +72,8 @@ function createSut(
 	const billedUsd: (number | null)[] = [];
 	let call = 0;
 	const llm: LlmProvider = {
-		id: 'openai-compatible',
-		label: 'Fake',
+		id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+		label: EngineLabel.OpenAi,
 		complete: (prompt) => {
 			prompts.push(prompt.user);
 			const answer = answers[Math.min(call, answers.length - 1)] ?? '';
@@ -138,8 +140,8 @@ describe('translating a transcript segment by segment', () => {
 			transcript: transcriptOf(['Hola']),
 			settings: mergeSettings({ llmTranslateTargetLanguage: '  ' }),
 			llm: {
-				id: 'openai-compatible',
-				label: 'Fake',
+				id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				label: EngineLabel.OpenAi,
 				complete: () => Promise.resolve(completed('0||Hello')),
 			},
 			maxTokens: 32000,
