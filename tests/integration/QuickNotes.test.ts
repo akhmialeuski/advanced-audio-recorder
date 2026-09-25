@@ -174,6 +174,20 @@ function selectQuickNoteProfile(
 	setSelectedProfileId(settings, ProfileKindId.QuickNote, profile.id);
 }
 
+/**
+ * The calls the session total counts per engine, priced or not.
+ * @param costs - The session's cost tracker
+ * @returns Each engine with its number of calls, in first-use order
+ */
+function callsPerEngine(
+	costs: SessionCostTracker,
+): { engineId: string; calls: number }[] {
+	return costs.engineTotals().map((entry) => ({
+		engineId: entry.engineId,
+		calls: entry.runs + entry.unpricedRuns,
+	}));
+}
+
 /** How a test settles a microphone open it is holding. */
 interface HeldOpen {
 	/** Opens the microphone, as a granted permission prompt does. */
@@ -352,14 +366,33 @@ describe('quick notes', () => {
 		// One transcription run and one LLM call. The engine reported no
 		// usage and the dictation carries no measured length, so the run is
 		// counted as unpriced rather than left out of the total.
-		expect(
-			h.costs.engineTotals().map((entry) => ({
-				engineId: entry.engineId,
-				calls: entry.runs + entry.unpricedRuns,
-			})),
-		).toEqual([
+		expect(callsPerEngine(h.costs)).toEqual([
 			{ engineId: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE, calls: 1 },
 			{ engineId: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, calls: 1 },
+		]);
+	});
+
+	it('dictates through its own transcription engine and charges the dictation to it', async () => {
+		// Recordings stay on Whisper API while dictations go to Deepgram: the
+		// press is checked against Deepgram's key, and the session total
+		// names the engine that actually heard the dictation.
+		const h = harness({
+			settings: {
+				whisperApiKey: '',
+				deepgramApiKey: 'dg-test',
+				quickNoteTranscriptionProvider:
+					TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			},
+		});
+
+		await dictate(h.controller);
+
+		expect(h.settings.transcriptionProvider).toBe(
+			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+		);
+		expect(h.note.editor.replaceSelection).toHaveBeenCalledWith(HEARD);
+		expect(callsPerEngine(h.costs)).toEqual([
+			{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, calls: 1 },
 		]);
 	});
 

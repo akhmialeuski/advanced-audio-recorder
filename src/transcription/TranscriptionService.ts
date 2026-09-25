@@ -32,7 +32,10 @@ import type {
 	AudioRecorderSettings,
 	LlmProviderId,
 } from '../settings/settingsSchema';
-import { advancedTwoPassEnabled } from '../settings/settingsSchema';
+import {
+	advancedTwoPassEnabled,
+	quickNoteTranscriptionSettings,
+} from '../settings/settingsSchema';
 import {
 	audioMimeFromExtension,
 	audioPrepOptions,
@@ -781,12 +784,13 @@ export class TranscriptionService {
 	/**
 	 * Transcribes dictated audio into the text a quick note inserts.
 	 *
-	 * The engine, the parts a long dictation is split into, the retries, the
-	 * dictionary and the cost accounting are the ones a recording run uses,
-	 * and none of what a recording run adds for a document is: no speakers,
-	 * no word timings, no advanced second pass, no Markdown and no transcript
-	 * post-processing. A dictation is one person's text for the cursor, and
-	 * the quick note profile is the only rewrite it gets.
+	 * The engine is the one quick notes pick, which need not be the one
+	 * recordings are transcribed with. The parts a long dictation is split
+	 * into, the retries, the dictionary and the cost accounting are the ones a
+	 * recording run uses, and none of what a recording run adds for a document
+	 * is: no speakers, no word timings, no advanced second pass, no Markdown
+	 * and no transcript post-processing. A dictation is one person's text for
+	 * the cursor, and the quick note profile is the only rewrite it gets.
 	 * @param audio - The dictated audio, held in memory
 	 * @param options - Progress and cancellation
 	 * @returns The text to insert and what producing it cost
@@ -799,10 +803,14 @@ export class TranscriptionService {
 		// A dictation cancelled while its clip was being read is refused before
 		// it reads notes, raises notices, or decodes anything.
 		this.throwIfCancelled(token);
-		const { settings, unread } = await readProfileNotes(
+		const { settings: read, unread } = await readProfileNotes(
 			this.app,
 			this.getSettings(),
 		);
+		// One snapshot for the whole run, and the one the result hands back,
+		// so the engine called, its limits and the price recorded for it all
+		// name the quick note transcription engine.
+		const settings = quickNoteTranscriptionSettings(read);
 		const provider = this.createProvider(settings);
 		// Plain text in the language it was spoken in: speakers, word timings
 		// and the translation into English all shape a transcript document.

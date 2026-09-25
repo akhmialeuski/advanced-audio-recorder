@@ -4,6 +4,7 @@ A **quick note** is a dictation that lands in the note you are writing. Press th
 
 - [How it works](#how-it-works)
 - [Enabling quick notes](#enabling-quick-notes)
+- [Choosing the engines](#choosing-the-engines)
 - [Dictating a note](#dictating-a-note)
 - [Where the text goes](#where-the-text-goes)
 - [Quick note profiles](#quick-note-profiles)
@@ -17,8 +18,8 @@ A **quick note** is a dictation that lands in the note you are writing. Press th
 Quick notes reuse the plugin's own pipeline rather than a second one:
 
 1. The microphone is opened with the same device, channel and encoding settings a recording uses, and the audio is kept in memory rather than written to the vault.
-2. When you stop, the audio is sent to the transcription engine configured under **Settings > Transcription**, with its language and, when the advanced settings are on, its dictionary profile.
-3. When a quick note profile is selected, the recognized text is sent to the **Quick note engine** with the profile's instruction.
+2. When you stop, the audio is sent to the **Quick note transcription engine**, with the language of the Transcription page and, when the advanced settings are on, its dictionary profile.
+3. When a quick note profile is selected, the recognized text is sent to the **Quick note rewrite engine** with the profile's instruction.
 4. The final text is inserted at the cursor, and the audio is discarded.
 
 A quick note asks for plain text in the language it was spoken in. Speaker labels, word timings, **Translate speech to English**, the advanced two-pass mode, the transcript output format and the LLM post-processing of recordings are left to recordings, so a dictation is never billed for them and never comes back translated.
@@ -27,14 +28,25 @@ A quick note asks for plain text in the language it was spoken in. Speaker label
 
 Quick notes are off by default, and while they are off the button is hidden and the command is not offered. They have an entry of their own on the main settings tab, the first one below the file storage rows:
 
-1. Open **Settings > Advanced Audio Recorder > Transcription** and make sure **Enable transcription** is on and the engine is set up, because a dictation is transcribed by that engine.
+1. Open **Settings > Advanced Audio Recorder > Transcription** and make sure **Enable transcription** is on and the engine you want to dictate with is set up under **Engines**, because a dictation is transcribed through those engines.
 2. Open **Settings > Advanced Audio Recorder > Quick notes** and turn on **Enable quick notes**.
 
 The quick note button appears in the left ribbon at once, beside the recorder's own button, and the **Start/stop quick note** command becomes available in the command palette. Turning the switch off, or turning transcription off, hides both again without a restart. The button uses a waveform icon, so it cannot be mistaken for the recorder's microphone or for the microphone of Obsidian's own Audio recorder.
 
 With quick notes on and transcription off, the entry reads **Needs transcription** and the page shows a **Transcription is off** row, so a switched-on feature never sits there without a button and without a reason. The entry also carries a warning marker while a press would be refused, for example while the engine has no key.
 
-![The Quick notes page with the enable switch on, the quick note engine dropdown set to OpenAI and the quick note profile row set to None](images/settings-quick-notes.png)
+![The Quick notes page with the enable switch on, the quick note transcription engine set to Deepgram, the quick note rewrite engine set to OpenAI and the quick note profile row set to None](images/settings-quick-notes.png)
+
+## Choosing the engines
+
+A quick note passes through two engines, and the Quick notes page picks each of them on its own row:
+
+- The **Quick note transcription engine** turns the dictation into text. It offers the same engines as the **Transcription engine** row of the Transcription page (Whisper API, Deepgram, Google Gemini, Mistral Voxtral, and the local whisper.cpp on desktop), and it can differ from the one recordings are transcribed with.
+- The **Quick note rewrite engine** rewrites the recognized text when a quick note profile is selected. It offers the LLM services (OpenAI, Anthropic (Claude), Google Gemini, Mistral, and DeepSeek), and plain dictation never calls it.
+
+Both engines are set up once, with their endpoint, key and model, on their pages under **Transcription > Engines**. For example, with **Transcription engine** set to `Whisper API`, **Quick note transcription engine** set to `Deepgram` and **Quick note rewrite engine** set to `DeepSeek`, a recording is sent to Whisper API, a dictation is sent to Deepgram, and a dictation with a profile selected is then rewritten by DeepSeek. The session total in the Transcribe dialog counts the dictation under Deepgram.
+
+On a setup saved by a version before the transcription engine of quick notes could be picked, it starts on the engine recordings already use, so dictation keeps working with the key that is already there.
 
 ## Dictating a note
 
@@ -50,8 +62,8 @@ Nothing is asked when you press the button: every setting a dictation reads is i
 
 Before the microphone opens, the plugin checks that the dictation could be completed, so you are never left speaking into a note that refuses the text afterwards. A quick note does not start in these cases, and a notice says why:
 
-- Transcription is switched off, or the transcription engine is missing its key or model.
-- A quick note profile is selected and the **Quick note engine** is missing its key or model.
+- Transcription is switched off, or the **Quick note transcription engine** is missing its key or model, or cannot run on this device.
+- A quick note profile is selected and the **Quick note rewrite engine** is missing its key or model.
 - A recording is running, because the two would capture the same speech twice.
 
 The same rule holds the other way round. While a dictation is recording, a recording does not start, from the ribbon, the command palette or the command line, and a notice says `Stop the quick note before starting a recording.` Once the dictation is stopped and only being transcribed, the microphone is free again and a recording starts as usual.
@@ -92,7 +104,7 @@ Dictating "buy milk and eggs and call the plumber about the kitchen tap" with th
 - Call the plumber about the kitchen tap
 ```
 
-The rewrite runs on the engine named by the **Quick note engine** row, which can be a different service from the one post-processing uses. Its endpoint, key and model are configured once on its page under **Transcription > Engines**. On an existing setup it starts on the engine post-processing already uses.
+The rewrite runs on the engine named by the **Quick note rewrite engine** row, which can be a different service from the one post-processing uses. Its endpoint, key and model are configured once on its page under **Transcription > Engines**. On an existing setup it starts on the engine post-processing already uses.
 
 ## Long dictations
 
@@ -105,21 +117,22 @@ There is no limit on how long a dictation can be. A typical quick note lasts und
 - **One dictation at a time.** Pressing the button while the last dictation is still being transcribed only shows `The last quick note is still being transcribed.`, however many presses land while the microphone is opening.
 - **Disabling cancels.** Turning quick notes off, turning transcription off, or disabling the plugin closes the microphone and cancels a dictation in flight, which then inserts nothing.
 - **Costs are counted.** The transcription and the rewrite are added to the session total shown in the Transcribe dialog, like any other run.
-- **Privacy.** The audio is sent to the transcription engine, and the recognized text to the quick note engine when a profile is selected. With the local whisper.cpp engine and no profile, a quick note never leaves the computer.
+- **Privacy.** The audio is sent to the quick note transcription engine, and the recognized text to the quick note rewrite engine when a profile is selected. With the local whisper.cpp engine and no profile, a quick note never leaves the computer.
 
 ## Settings summary
 
 All controls live under **Settings > Advanced Audio Recorder > Quick notes**.
 
-| Setting                  | What it does                                                                                                   | Default                    |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| **Enable quick notes**   | Adds the quick note button to the ribbon and the **Start/stop quick note** command. Reveals the rows below.    | Off                        |
-| **Transcription is off** | Shown instead of the button when quick notes are on and transcription is off. Turn transcription on.           | -                          |
-| **Quick note engine**    | `OpenAI`, `Anthropic (Claude)`, `Google Gemini`, `Mistral`, or `DeepSeek`. Called only when a profile is used. | The post-processing engine |
-| **Quick note profile**   | The instruction the dictation is rewritten with. **None** inserts the text as it was recognized.               | None                       |
-| **Quick note profiles**  | Named instructions, each a page with its instruction or the note it is read from, rename, and delete.          | No profiles                |
+| Setting                             | What it does                                                                                                                                        | Default                    |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| **Enable quick notes**              | Adds the quick note button to the ribbon and the **Start/stop quick note** command. Reveals the rows below.                                         | Off                        |
+| **Transcription is off**            | Shown instead of the button when quick notes are on and transcription is off. Turn transcription on.                                                | -                          |
+| **Quick note transcription engine** | `Whisper API (OpenAI-compatible)`, `Deepgram`, `Google Gemini`, `Mistral Voxtral`, or `Local whisper.cpp (desktop)`. Turns the dictation into text. | The transcription engine   |
+| **Quick note rewrite engine**       | `OpenAI`, `Anthropic (Claude)`, `Google Gemini`, `Mistral`, or `DeepSeek`. Called only when a profile is used.                                      | The post-processing engine |
+| **Quick note profile**              | The instruction the dictation is rewritten with. **None** inserts the text as it was recognized.                                                    | None                       |
+| **Quick note profiles**             | Named instructions, each a page with its instruction or the note it is read from, rename, and delete.                                               | No profiles                |
 
-The transcription itself follows the Transcription page: the engine, **Language**, the **Dictionary profile** when the advanced settings are on, and the microphone settings under **Audio input**.
+The transcription follows the Transcription page for **Language** and for the **Dictionary profile** when the advanced settings are on, and the recording follows the microphone settings under **Audio input**. The engine is the one this page names.
 
 ## Related pages
 

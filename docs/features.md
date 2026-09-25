@@ -198,7 +198,7 @@ Learn more: [Transcription](transcription.md#auto-chapters)
 
 ## Quick notes
 
-With **Enable quick notes** on its own settings entry, a waveform button joins the recorder's microphone in the ribbon, together with the **Start/stop quick note** command. Press it, dictate, press it again, and the recognized text is inserted at the cursor of the note you started in. The audio is held in memory only and dropped once the text is ready, so nothing is saved to the vault. While it records and while it is processed, the status bar shows it the way it shows a recording, stage by stage. A selectable **quick note profile** can rewrite the dictation with an LLM before it is inserted, turning it into a tidy paragraph, a bulleted list or a task; with the default **None**, the text goes in as it was recognized.
+With **Enable quick notes** on its own settings entry, a waveform button joins the recorder's microphone in the ribbon, together with the **Start/stop quick note** command. Press it, dictate, press it again, and the recognized text is inserted at the cursor of the note you started in. The audio is held in memory only and dropped once the text is ready, so nothing is saved to the vault. While it records and while it is processed, the status bar shows it the way it shows a recording, stage by stage. A selectable **quick note profile** can rewrite the dictation with an LLM before it is inserted, turning it into a tidy paragraph, a bulleted list or a task; with the default **None**, the text goes in as it was recognized. The engine that hears the dictation and the engine that rewrites it are picked on their own rows, independently of the engines recordings use.
 
 Learn more: [Quick notes](quick-notes.md)
 
@@ -216,33 +216,33 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 
 ## Feature matrix
 
-| Feature                       | What it does                                                        | Where to configure                              | Deep-dive link                                                 |
-| ----------------------------- | ------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
-| Recording                     | Start/stop capture; ribbon, status bar, save-progress feedback      | Ribbon icon / command palette                   | [Recording](recording.md)                                      |
-| Switch input device           | Quick-pick modal to change the microphone                           | Command palette                                 | [Recording](recording.md#switching-the-input-device)           |
-| Command line (desktop)        | Start, stop, report state, transcribe a file from a terminal        | Obsidian CLI (1.12.2+)                          | [Recording](recording.md#from-the-command-line)                |
-| Pause and resume              | Pause and continue a session without losing progress                | Command palette / status bar                    | [Recording](recording.md#pausing-and-resuming)                 |
-| Markers while recording       | Drop a bookmark or chapter at the live position                     | Status bar / command palette (markers enabled)  | [Recording](recording.md#marking-moments-while-recording)      |
-| Crash recovery                | Recover audio after a crash, power loss, or mid-recording disable   | Automatic modal on next launch                  | [Recording](recording.md#crash-recovery)                       |
-| Automatic splitting           | Save a recording as fixed-duration part files                       | Settings > Audio splitting                      | [Splitting](splitting.md#automatic-splitting-during-recording) |
-| Include system audio          | Record this computer's own output beside the microphone, as one mixed file | Settings > Audio input                   | [Recording](recording.md#recording-this-computers-own-output)  |
-| Multi-track recording         | Capture up to 8 input devices at once; single or per-track files    | Settings > Multi-track recording                | [Multi-track recording](multi-track-recording.md)              |
-| Output formats and encoding   | 8 formats with online/offline encoding                              | Settings > Output format                        | [Formats](formats.md)                                          |
-| Format conversion             | Transcode a file to another format and bitrate                      | Context menu / palette > Convert audio format   | [File operations](file-operations.md#convert-audio-format)     |
-| Manual splitting              | Split an existing file into fixed-duration parts                    | Context menu / palette > Split audio into parts | [Splitting](splitting.md#manual-splitting-existing-file)       |
-| Audio file info               | Inspect metadata; copy it as Markdown                               | Context menu / palette > Audio file info        | [File operations](file-operations.md#audio-file-info)          |
-| Delete / delete and link      | Trash a recording, optionally removing its embed link               | Context menu / palette > Delete actions         | [File operations](file-operations.md#delete-recording)         |
-| Enhanced audio player         | Waveform seek bar, speed, skip, volume, loop, timecode links        | Settings > Audio player                         | [Audio player](audio-player.md)                                |
-| Playback commands             | Transport, speed, chapters, and markers as hotkey-bindable commands | Command palette (while playing)                 | [Audio player](audio-player.md#playback-commands-and-hotkeys)  |
-| Markers and chapters          | Per-file bookmarks and chapters stored in a sidecar                 | Settings > Audio player                         | [Audio player](audio-player.md#markers-and-chapters)           |
-| On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy           | Context menu / palette > Clean up audio         | [Audio cleanup](audio-cleanup.md)                              |
-| Live voice boost              | Cleanup stages applied to a recording as it plays                   | Settings > Audio cleanup defaults               | [Audio player](audio-player.md#voice-boost)                    |
-| Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner           | Settings > Audio processing & feedback          | [Recording](recording.md#live-feedback)                        |
-| Transcription                 | Speech-to-text via 5 engines, diarization, output formats           | Settings > Transcription                        | [Transcription](transcription.md)                              |
-| LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM     | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
-| Auto chapters                 | LLM-generated titled chapters from an existing transcript           | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
-| Quick notes                   | Dictate text at the cursor, optionally rewritten by an LLM profile  | Settings > Quick notes                          | [Quick notes](quick-notes.md)                                  |
-| Diagnostics                   | Test recording, system info, debug mode                             | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
+| Feature                       | What it does                                                               | Where to configure                              | Deep-dive link                                                 |
+| ----------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| Recording                     | Start/stop capture; ribbon, status bar, save-progress feedback             | Ribbon icon / command palette                   | [Recording](recording.md)                                      |
+| Switch input device           | Quick-pick modal to change the microphone                                  | Command palette                                 | [Recording](recording.md#switching-the-input-device)           |
+| Command line (desktop)        | Start, stop, report state, transcribe a file from a terminal               | Obsidian CLI (1.12.2+)                          | [Recording](recording.md#from-the-command-line)                |
+| Pause and resume              | Pause and continue a session without losing progress                       | Command palette / status bar                    | [Recording](recording.md#pausing-and-resuming)                 |
+| Markers while recording       | Drop a bookmark or chapter at the live position                            | Status bar / command palette (markers enabled)  | [Recording](recording.md#marking-moments-while-recording)      |
+| Crash recovery                | Recover audio after a crash, power loss, or mid-recording disable          | Automatic modal on next launch                  | [Recording](recording.md#crash-recovery)                       |
+| Automatic splitting           | Save a recording as fixed-duration part files                              | Settings > Audio splitting                      | [Splitting](splitting.md#automatic-splitting-during-recording) |
+| Include system audio          | Record this computer's own output beside the microphone, as one mixed file | Settings > Audio input                          | [Recording](recording.md#recording-this-computers-own-output)  |
+| Multi-track recording         | Capture up to 8 input devices at once; single or per-track files           | Settings > Multi-track recording                | [Multi-track recording](multi-track-recording.md)              |
+| Output formats and encoding   | 8 formats with online/offline encoding                                     | Settings > Output format                        | [Formats](formats.md)                                          |
+| Format conversion             | Transcode a file to another format and bitrate                             | Context menu / palette > Convert audio format   | [File operations](file-operations.md#convert-audio-format)     |
+| Manual splitting              | Split an existing file into fixed-duration parts                           | Context menu / palette > Split audio into parts | [Splitting](splitting.md#manual-splitting-existing-file)       |
+| Audio file info               | Inspect metadata; copy it as Markdown                                      | Context menu / palette > Audio file info        | [File operations](file-operations.md#audio-file-info)          |
+| Delete / delete and link      | Trash a recording, optionally removing its embed link                      | Context menu / palette > Delete actions         | [File operations](file-operations.md#delete-recording)         |
+| Enhanced audio player         | Waveform seek bar, speed, skip, volume, loop, timecode links               | Settings > Audio player                         | [Audio player](audio-player.md)                                |
+| Playback commands             | Transport, speed, chapters, and markers as hotkey-bindable commands        | Command palette (while playing)                 | [Audio player](audio-player.md#playback-commands-and-hotkeys)  |
+| Markers and chapters          | Per-file bookmarks and chapters stored in a sidecar                        | Settings > Audio player                         | [Audio player](audio-player.md#markers-and-chapters)           |
+| On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy                  | Context menu / palette > Clean up audio         | [Audio cleanup](audio-cleanup.md)                              |
+| Live voice boost              | Cleanup stages applied to a recording as it plays                          | Settings > Audio cleanup defaults               | [Audio player](audio-player.md#voice-boost)                    |
+| Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner                  | Settings > Audio processing & feedback          | [Recording](recording.md#live-feedback)                        |
+| Transcription                 | Speech-to-text via 5 engines, diarization, output formats                  | Settings > Transcription                        | [Transcription](transcription.md)                              |
+| LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM            | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
+| Auto chapters                 | LLM-generated titled chapters from an existing transcript                  | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
+| Quick notes                   | Dictate text at the cursor, optionally rewritten by an LLM profile         | Settings > Quick notes                          | [Quick notes](quick-notes.md)                                  |
+| Diagnostics                   | Test recording, system info, debug mode                                    | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
 
 ---
 

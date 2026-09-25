@@ -149,6 +149,7 @@ export function fullyPopulatedSettings(): Omit<
 		transcriptionAutoChaptersEnabled: true,
 		transcriptionAutoChaptersOnTranscribe: true,
 		quickNotesEnabled: true,
+		quickNoteTranscriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 		transcriptionChunkMb: 10,
 		transcriptionTimeoutMinutes: 15,
 		localWhisperTimeoutMinutes: 90,

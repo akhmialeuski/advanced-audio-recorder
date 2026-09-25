@@ -313,7 +313,7 @@ export function mergeSettings(
 	// stored chat URL onto the very field the reconciliation is about to point
 	// transcription back at. A field a migration resolves through a registry has
 	// to name something by the time the migration asks.
-	reconcileTranscriptionEngine(merged);
+	reconcileTranscriptionEngines(merged, userSettings);
 	migrateLegacyLlmSettings(merged, userSettings);
 	migrateModelCatalogues(merged, userSettings);
 	// The same rule that holds after an edit on an engine's page, applied to a
@@ -391,11 +391,27 @@ function reconcileLlmJobEngines(merged: AudioRecorderSettings): void {
 }
 
 /**
- * Points transcription at an engine that exists.
+ * Points transcription, and the transcription of quick notes, at engines that
+ * exist.
  * @param merged - The merged settings to reconcile in place
+ * @param raw - The stored config, read for whether quick notes named an engine
  */
-function reconcileTranscriptionEngine(merged: AudioRecorderSettings): void {
+function reconcileTranscriptionEngines(
+	merged: AudioRecorderSettings,
+	raw: AudioRecorderSettingsInput,
+): void {
 	reconcileRegistryId(merged, 'transcriptionProvider', TRANSCRIPTION_ENGINES);
+	// Quick notes used to be transcribed by the recordings' engine. A stored
+	// config holds a key for that one and may hold none for the shipped
+	// default, so dictation starts where it was.
+	if (raw.quickNoteTranscriptionProvider === undefined) {
+		merged.quickNoteTranscriptionProvider = merged.transcriptionProvider;
+	}
+	reconcileRegistryId(
+		merged,
+		'quickNoteTranscriptionProvider',
+		TRANSCRIPTION_ENGINES,
+	);
 }
 
 /**

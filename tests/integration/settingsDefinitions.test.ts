@@ -1583,7 +1583,8 @@ describe('settings definitions', () => {
 			expect(pageEntryNames('Quick notes')).toEqual([
 				'Enable quick notes',
 				'Transcription is off',
-				'Quick note engine',
+				'Quick note transcription engine',
+				'Quick note rewrite engine',
 				'Use by default',
 				'Quick note profiles',
 			]);
@@ -1609,7 +1610,8 @@ describe('settings definitions', () => {
 			settings.transcriptionEnabled = false;
 			expect(entryValueOf(page())).toBe('Off');
 			expect(visible(row('Transcription is off'))).toBe(false);
-			expect(visible(row('Quick note engine'))).toBe(false);
+			expect(visible(row('Quick note transcription engine'))).toBe(false);
+			expect(visible(row('Quick note rewrite engine'))).toBe(false);
 
 			settings.quickNotesEnabled = true;
 			expect(entryValueOf(page())).toBe('Needs transcription');
@@ -1621,7 +1623,8 @@ describe('settings definitions', () => {
 			expect(entryValueOf(page())).toBe('On');
 			expect(entryStatusOf(page())).toBeNull();
 			expect(visible(row('Transcription is off'))).toBe(false);
-			expect(visible(row('Quick note engine'))).toBe(true);
+			expect(visible(row('Quick note transcription engine'))).toBe(true);
+			expect(visible(row('Quick note rewrite engine'))).toBe(true);
 		});
 
 		it('leaves the transcription page holding blocks and entries only', () => {

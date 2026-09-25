@@ -18,7 +18,7 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { WhisperResult } from 'src/transcription/providers/whisperResponse';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { CancellationSource } from 'src/utils/cancellation';
-import { LLM_PROVIDER_IDS } from 'src/constants';
+import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { EngineLabel } from 'src/providers/providers';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, type FakeProvider } from '../helpers/providerFixtures';
@@ -57,6 +57,7 @@ function prepareParts(count: number): void {
 interface Dictation {
 	service: TranscriptionService;
 	provider: FakeProvider;
+	createProvider: jest.Mock;
 	createLlm: jest.Mock;
 	complete: jest.Mock;
 }
@@ -94,12 +95,13 @@ function dictation(
 		transcriptionEnabled: true,
 		...overrides,
 	});
+	const createProvider = jest.fn(() => provider);
 	const service = new TranscriptionService(
 		createMockApp().app,
 		() => settings,
-		{ createProvider: () => provider, createLlm },
+		{ createProvider, createLlm },
 	);
-	return { service, provider, createLlm, complete };
+	return { service, provider, createProvider, createLlm, complete };
 }
 
 /**
@@ -197,6 +199,27 @@ describe('a long dictation', () => {
 });
 
 describe("a dictation's inputs and its rewrite", () => {
+	it('is transcribed by the quick note transcription engine, not the one recordings use', async () => {
+		// A dictation and a recording are different jobs, and a vault may
+		// transcribe its meetings with one service and its dictations with
+		// another; the engine, its limits and its price must all follow.
+		const run = dictation([heard('buy milk')], {
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			quickNoteTranscriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		});
+
+		const result = await dictate(run);
+
+		const [used] = run.createProvider.mock.calls[0] ?? [];
+		expect(used).toMatchObject({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		});
+		expect(result.cost.engineId).toBe(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
+		expect(result.settings.transcriptionProvider).toBe(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		);
+	});
+
 	it('biases the engine toward the selected dictionary terms', async () => {
 		// A dictation names the same people and products the recordings do,
 		// so it spells them the way the vault does.

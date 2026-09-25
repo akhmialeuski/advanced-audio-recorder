@@ -3,13 +3,17 @@
  *
  * Each of these exists because two or more sections would otherwise write the
  * same thing: the group every page wraps its rows in, the summary line a page
- * entry carries, the row whose body is drawn by hand, the engine picker three
- * jobs offer. A helper used by one section stays in that section.
+ * entry carries, the row whose body is drawn by hand, the engine pickers every
+ * job offers. A helper used by one section stays in that section.
  * @module settings/sections/rowHelpers
  */
 
-import { LLM_PROVIDER_LABELS } from '../labels';
-import type { AudioRecorderSettings } from '../settingsSchema';
+import { isProviderAvailableOnPlatform } from '../../transcription/providers/capabilities';
+import { LLM_PROVIDER_LABELS, TRANSCRIPTION_PROVIDER_LABELS } from '../labels';
+import type {
+	AudioRecorderSettings,
+	TranscriptionProviderId,
+} from '../settingsSchema';
 import {
 	type DeviceOptions,
 	SETTINGS_ROOT_CLASS,
@@ -207,6 +211,42 @@ export function engineChoiceRow(
 			type: 'dropdown',
 			key,
 			options: LLM_PROVIDER_LABELS,
+		},
+	};
+}
+
+/**
+ * The row that picks which service transcribes for a job: recordings on the
+ * Transcription page, dictations on the Quick notes page. Only the choice:
+ * where a service is reached and which models it serves are configured once,
+ * on its own page under Engines.
+ * @param name - Row name, e.g. "Transcription engine"
+ * @param desc - What the engine is called for
+ * @param key - Settings key holding the choice
+ * @param visible - Whether the job is on
+ */
+export function transcriptionEngineChoiceRow(
+	name: string,
+	desc: string,
+	key: 'transcriptionProvider' | 'quickNoteTranscriptionProvider',
+	visible: () => boolean,
+): SettingGroupItem {
+	return {
+		name,
+		aliases: ['provider', 'whisper', 'deepgram', 'gemini', 'elevenlabs'],
+		desc,
+		visible,
+		control: {
+			type: 'dropdown',
+			key,
+			// Every device lists every engine, so the dropdown reads the same
+			// everywhere; picking one this device cannot run is refused with
+			// the reason instead of silently blocked.
+			options: TRANSCRIPTION_PROVIDER_LABELS,
+			validate: (value: string): string | undefined =>
+				isProviderAvailableOnPlatform(value as TranscriptionProviderId)
+					? undefined
+					: 'Not available on this device.',
 		},
 	};
 }

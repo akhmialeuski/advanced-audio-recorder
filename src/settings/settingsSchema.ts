@@ -481,6 +481,12 @@ export interface AudioRecorderSettings {
 	 * button is hidden and the command is not offered.
 	 */
 	quickNotesEnabled: boolean;
+	/**
+	 * Engine a dictated quick note is transcribed with. Its own choice rather
+	 * than the recordings' engine, so a vault can dictate through one service
+	 * and transcribe its meetings with another.
+	 */
+	quickNoteTranscriptionProvider: TranscriptionProviderId;
 	/** Upload size limit per chunk, in megabytes (Whisper API) */
 	transcriptionChunkMb: number;
 	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
@@ -911,6 +917,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionAutoChaptersEnabled: false,
 	transcriptionAutoChaptersOnTranscribe: false,
 	quickNotesEnabled: false,
+	quickNoteTranscriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	whisperApiBaseUrl: DEFAULT_OPENAI_BASE_URL,
@@ -1047,4 +1054,25 @@ export function quickNotesAvailable(
 	>,
 ): boolean {
 	return settings.transcriptionEnabled && settings.quickNotesEnabled;
+}
+
+/**
+ * The settings a dictation is transcribed with: the vault's own, with the
+ * transcription engine replaced by the one quick notes pick.
+ *
+ * Everything downstream that depends on the engine reads
+ * `transcriptionProvider`: the provider factory, the language and dictionary
+ * gates, the part limits, and the price of the run. Replacing it once on the
+ * snapshot moves all of them together, where teaching each a second field
+ * would let one of them keep reading the recordings' engine.
+ * @param settings - The vault's settings
+ * @returns A copy that transcribes with the quick note transcription engine
+ */
+export function quickNoteTranscriptionSettings(
+	settings: AudioRecorderSettings,
+): AudioRecorderSettings {
+	return {
+		...settings,
+		transcriptionProvider: settings.quickNoteTranscriptionProvider,
+	};
 }

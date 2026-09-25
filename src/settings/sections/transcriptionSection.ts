@@ -12,59 +12,23 @@ import {
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import {
-	isProviderAvailableOnPlatform,
 	languageNote,
 	providerSupportsDiarization,
 	providerSupportsSpeechTranslation,
 	wordTimestampsNote,
 	wordTimestampsSelectable,
 } from '../../transcription/providers/capabilities';
-import { TRANSCRIPTION_PROVIDER_LABELS } from '../labels';
-import type {
-	AudioRecorderSettings,
-	TranscriptionProviderId,
-} from '../settingsSchema';
 import {
 	SETTINGS_SECTION_CLASS,
 	type SettingsDefinitionContext,
 } from './context';
 import { profileCatalogues } from './profilesSection';
+import { transcriptionEngineChoiceRow } from './rowHelpers';
 import { ProfileSection } from '../profileKinds';
 import type { SettingDefinitionItem, SettingGroupItem } from 'obsidian';
 
 /** Accepted shape of the transcription language field: an ISO code or empty. */
 const LANGUAGE_CODE_PATTERN = /^([a-z]{2,3}(-[a-z0-9]{2,8})?|auto)?$/i;
-
-/**
- * Which service transcribes. Only the choice: where that service is reached and
- * which models it serves are configured once, on its own page under Engines.
- * @param settings - Live settings, read by the predicate
- */
-function transcriptionEngineRow(
-	settings: AudioRecorderSettings,
-): SettingGroupItem {
-	return {
-		// Named for the job it configures rather than "Engine": three rows pick
-		// an engine, on three pages, and the settings search lists them by name
-		// alone - three results reading "Engine" name nothing.
-		name: 'Transcription engine',
-		aliases: ['provider', 'whisper', 'deepgram', 'gemini', 'elevenlabs'],
-		desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop). Configure each one under Engines.',
-		visible: (): boolean => settings.transcriptionEnabled,
-		control: {
-			type: 'dropdown',
-			key: 'transcriptionProvider',
-			// Every device lists every engine, so the dropdown reads the same
-			// everywhere; picking one this device cannot run is refused with
-			// the reason instead of silently blocked.
-			options: TRANSCRIPTION_PROVIDER_LABELS,
-			validate: (value: string): string | undefined =>
-				isProviderAvailableOnPlatform(value as TranscriptionProviderId)
-					? undefined
-					: 'Not available on this device.',
-		},
-	};
-}
 
 /**
  * The transcription section. Everything below the section's own switch is
@@ -99,7 +63,15 @@ export function transcriptionGroup(
 			// The first thing to settle once transcription is on, so it opens
 			// the block rather than sitting below the run options: which
 			// service transcribes, and the page where every service is set up.
-			transcriptionEngineRow(settings),
+			// Named for the job it configures rather than "Engine": several
+			// rows pick an engine, on several pages, and the settings search
+			// lists them by name alone.
+			transcriptionEngineChoiceRow(
+				'Transcription engine',
+				'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop). Configure each one under Engines.',
+				'transcriptionProvider',
+				enabled,
+			),
 			enginesEntry,
 			{
 				name: 'Transcribe after recording',
