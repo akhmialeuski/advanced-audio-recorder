@@ -34,6 +34,49 @@ export const MAX_SHOWN_VERSIONS = 10;
  * version cannot be titled one thing here and another there.
  */
 export const RELEASE_NOTES: Readonly<Record<string, string>> = {
+	'2.3.3': `
+This release lets you dictate straight into the note you are writing, clean up a recording while it plays, and pick DeepSeek for post-processing. A **quick note** records a dictation into memory, transcribes it, and inserts the text at the cursor, optionally rewritten by an LLM profile first. The player's control row gains a **Voice boost** switch that runs the audio cleanup stages on the playing audio without writing a file. **DeepSeek** joins the LLM engines, and a **What's new** dialog now greets each update with its notes. Existing recordings, stored settings, and the recorder are unaffected.
+
+## New: Quick notes
+
+- With transcription on, turn on **Enable quick notes** under **Settings > Advanced Audio Recorder > Quick notes**, and a ribbon button with a waveform icon and the **Start/stop quick note** command appear at once. The first press starts a dictation, the second stops it, and the recognized text is inserted at the cursor of the note the dictation was started in.
+- The audio is held in memory only and dropped as soon as the text is ready, whether the dictation succeeded, failed, or was cancelled, so nothing reaches the vault or a sync service.
+- The dictation is transcribed by the engine set up under **Transcription**, in the language it was spoken in: no speaker labels, no word timings, no translation into English.
+- A **quick note profile** rewrites the text with an LLM before it is inserted, for example to tidy it up, turn it into a bulleted list, or format it as a task. Profiles live in their own catalogue, and the rewrite runs on its own **Quick note engine**. With **None**, the default, the text goes in as it was recognized, and a failed rewrite inserts the text as dictated.
+- While a dictation records, the status bar shows it the way it shows a recording, with a stop button, the elapsed time, the size, and the input meter, and then follows each processing stage with a progress bar. On mobile a notice follows the same stages.
+- A dictation is refused before the microphone opens when the engine it needs is not set up, and a dictation and a recording never hold the microphone together. When no note is open to take the text, it is copied to the clipboard.
+
+## New: Voice boost in the player
+
+The player's control row carries a **Voice boost** toggle between the volume slider and **Loop**. It runs the same three stages the **Clean up audio** dialog writes into a \`...-processed.wav\` - the high-pass filter, the noise gate, and loudness leveling - on the audio as it plays, with the values the cleanup settings hold. Nothing is decoded ahead and nothing is written, so one quiet passage is made intelligible without processing the whole recording. The switch applies to every playing recording at once and is offered where the runtime provides the Web Audio nodes it needs. A press with every cleanup stage switched off says where to turn one on instead of lighting the button over unchanged audio.
+
+## New: DeepSeek for post-processing
+
+DeepSeek is a fifth LLM engine, with an endpoint, a key, and a model list of its own on its page under **Transcription > Engines**, and it can be chosen for post-processing, chapter titles, and the advanced context agents. It seeds \`deepseek-flash\`, the default, and \`deepseek-v4-pro\`. DeepSeek offers no audio endpoint, so it is not a transcription engine. The cost estimate prices it at the weekday peak rate, and an off-peak run costs about half. Until now DeepSeek was reachable only by pointing the OpenAI base URL at it, which also moved Whisper API transcription onto an endpoint with no audio support.
+
+## New: What's new after an update
+
+The first run of a new version opens a **What's new** dialog with the notes of every release since the one you were on, newest first. The notes ship inside the plugin, so the dialog answers the same offline, and the **Show what's new** command opens every release on record at any time. **Release notes** under **Settings > Advanced Audio Recorder** switches the dialog off.
+
+## Fixed
+
+- The transcribe dialog put the estimate for the run directly above the session's accumulated spending, and neither figure said what it covered, so a run priced at a few cents beside a session at a few dollars read as a broken calculation. The two figures are now labelled **Estimated total for this run** and **Session spending**.
+- The estimate did not change when the **LLM task** or the advanced two-pass switch changed, although both change what the run costs. Every control of the dialog now re-prices it.
+- A dialog longer than the window scrolled its own title and **Close** button out of view. The title and the button now stay in place and the content scrolls between them.
+
+## Internal
+
+- The suite is 6247 tests across 252 suites, and it now fails a test that changes the shared default settings in place, which is what made coverage depend on the order the tests ran in.
+- A release is cut by \`scripts/release.mjs\`, which refuses a version whose notes the plugin does not carry.
+
+## Compatibility
+
+Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existing recordings, stored settings, the recorder, and the players are unaffected. Quick notes and voice boost are off until switched on, and settings written by an earlier version carry no quick note engine, which then starts on the engine post-processing already uses.
+
+The **What's new** dialog appears from the next update on. A vault that updates into this release records the version without showing the dialog, so these notes are opened with the **Show what's new** command.
+
+**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.2...2.3.3
+`,
 	'2.3.2': `
 This release moves the text a run applies out of the settings and into the vault, records a call from one switch, and widens a WAV sample. Every profile - a glossary, a participant roster, chapter guidance, a post-processing prompt - can now **keep its body in an ordinary note**, edited in the editor, synced and versioned like anything else, and read again as a transcription starts. **Include system audio** pairs the microphone with this computer's output into a single mixed file without configuring a track. WAV recording gains a **Bit depth** row with twenty-four bit integer and thirty-two bit float. Two diarized speakers can be **merged under one name**, the ribbon button is told apart from Obsidian's own, and a fresh vault opens the enhanced player straight away. Existing recordings, stored settings, and the recorder are unaffected.
 
