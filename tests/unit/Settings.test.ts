@@ -482,6 +482,31 @@ describe('Settings', () => {
 			expect(result.advancedLlmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
 		});
 
+		it('starts quick notes on the engine post-processing already uses', () => {
+			// Quick notes arrived after the engine choice was split per job. A
+			// stored config holds a key for the post-processing engine and may
+			// hold none for the shipped default, so the new job starts there.
+			const upgraded = mergeSettings({
+				llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+			});
+			const chosen = mergeSettings({
+				llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+				quickNoteLlmProvider: LLM_PROVIDER_IDS.GEMINI,
+			});
+
+			expect(upgraded.quickNoteLlmProvider).toBe(
+				LLM_PROVIDER_IDS.ANTHROPIC,
+			);
+			expect(chosen.quickNoteLlmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
+		});
+
+		it('keeps quick notes off, with no profile selected, on a fresh install', () => {
+			const fresh = mergeSettings({});
+
+			expect(fresh.quickNotesEnabled).toBe(false);
+			expect(fresh.selectedProfileIds.quickNote).toBe('');
+		});
+
 		it('enables the advanced master switch on upgrade for a config with a dictionary profile', () => {
 			// A release that had profiles but not the advanced switch stored no
 			// flag; without the migration it would merge to the false default and

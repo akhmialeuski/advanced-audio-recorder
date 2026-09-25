@@ -76,7 +76,7 @@ import {
 	type AudioInputDeviceSnapshot,
 } from '../recording/AudioStreamHandler';
 import { getEncoderDescription } from '../ui/formatDescriptions';
-import { TestRecorder } from '../recording/TestRecorder';
+import { MemoryRecorder } from '../recording/MemoryRecorder';
 import { TextInputSuggest } from '../ui/TextInputSuggest';
 import { DOCS_URL, FORMAT_WAV } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
@@ -151,7 +151,7 @@ const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
  */
 export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
-	private readonly testRecorder = new TestRecorder();
+	private readonly testRecorder = new MemoryRecorder();
 	private testAudioElement: HTMLAudioElement | null = null;
 	/**
 	 * Device-change listener active while the settings tab is open.

@@ -19,10 +19,7 @@ import {
 	type RenderDefinition,
 	type RowDefinition,
 } from '../helpers/declarativeSettings';
-import {
-	DEFAULT_SETTINGS,
-	type AudioRecorderSettings,
-} from 'src/settings/settingsSchema';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { ProfileSection } from 'src/settings/profileKinds';
 import {
 	CHANNEL_MODE_LABELS,
@@ -77,6 +74,7 @@ import type { AudioSource } from 'src/settings/settingsSchema';
 import { SETTING } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
+import { defaultSettings } from '../helpers/settingsFixtures';
 
 describe('settings definitions', () => {
 	let settings: AudioRecorderSettings;
@@ -101,7 +99,7 @@ describe('settings definitions', () => {
 	let diagnostics: { [K in keyof DiagnosticsActions]: jest.Mock };
 
 	beforeEach(() => {
-		settings = { ...DEFAULT_SETTINGS };
+		settings = defaultSettings();
 		// Stands in for the real body with one marker element, so a test can see
 		// which host it was rendered into and whether it survived.
 		renderDocs = jest.fn((host: HTMLElement) => {
@@ -173,6 +171,7 @@ describe('settings definitions', () => {
 				'Guidance prompt',
 			),
 			catalogue('transcription', 'Participant profiles', 'Participants'),
+			catalogue('quickNotes', 'Quick note profiles', 'Instruction'),
 		],
 		declareListAddRow,
 		transcriptionBlocks: {
@@ -820,11 +819,7 @@ describe('settings definitions', () => {
 			return host;
 		};
 
-		/**
-		 * A track map whose only track records the system output. Its own
-		 * map every time: the one on DEFAULT_SETTINGS is shared by every
-		 * test through the shallow copy in beforeEach.
-		 */
+		/** A track map whose only track records the system output. */
 		const systemAudioOnTrackOne = (): Map<number, AudioSource> =>
 			new Map([
 				[
@@ -977,9 +972,6 @@ describe('settings definitions', () => {
 		// system-loopback input, and one session can hold both.
 		it('offers a processing profile per track and disables it without a device', () => {
 			settings.enableMultiTrack = true;
-			// Its own map: the one on DEFAULT_SETTINGS is shared by every
-			// test through the shallow copy in beforeEach.
-			settings.trackAudioSources = new Map();
 			const control = rowOf(build(), MULTI, 'Track 1 processing').control;
 
 			expect(control?.key).toBe('track.1.processing');
@@ -1568,6 +1560,68 @@ describe('settings definitions', () => {
 			expect(childNamesOf('Auto chapters')).toContain(
 				'Chapter guidance profiles',
 			);
+		});
+
+		it('gives quick notes an entry of their own on the main tab, first among the entries', () => {
+			// A feature with a button of its own is looked for by its own
+			// name, not inside the page of the pipeline it runs through.
+			const entries = build()
+				.flatMap((item) =>
+					'type' in item && item.type === 'group'
+						? (item.items ?? [])
+						: [item],
+				)
+				.filter((item) => 'type' in item && item.type === 'page')
+				.map((item) => item.name);
+
+			expect(entries[0]).toBe('Quick notes');
+			expect(
+				pageOf(build(), 'Transcription').items.map(
+					(item) => (item as GroupDefinition).heading,
+				),
+			).not.toContain('Quick notes');
+			expect(pageEntryNames('Quick notes')).toEqual([
+				'Enable quick notes',
+				'Transcription is off',
+				'Quick note engine',
+				'Use by default',
+				'Quick note profiles',
+			]);
+		});
+
+		it('says on the entry and on the page when quick notes wait for transcription', () => {
+			// Switched on with transcription off, the feature has no engine to
+			// dictate through and shows no button; the entry says why instead
+			// of reading "On" over nothing.
+			const visible = (predicate: unknown): boolean =>
+				typeof predicate === 'function'
+					? (predicate as () => boolean)()
+					: predicate !== false;
+			const page = (): GroupDefinition => pageOf(build(), 'Quick notes');
+			const row = (name: string): unknown =>
+				(
+					(page().items[0] as GroupDefinition).items.find(
+						(item) => item.name === name,
+					) as { visible?: unknown }
+				).visible;
+
+			settings.quickNotesEnabled = false;
+			settings.transcriptionEnabled = false;
+			expect(entryValueOf(page())).toBe('Off');
+			expect(visible(row('Transcription is off'))).toBe(false);
+			expect(visible(row('Quick note engine'))).toBe(false);
+
+			settings.quickNotesEnabled = true;
+			expect(entryValueOf(page())).toBe('Needs transcription');
+			expect(entryStatusOf(page())).toBe('warning');
+			expect(visible(row('Transcription is off'))).toBe(true);
+
+			settings.transcriptionEnabled = true;
+			settings.whisperApiKey = 'sk-test';
+			expect(entryValueOf(page())).toBe('On');
+			expect(entryStatusOf(page())).toBeNull();
+			expect(visible(row('Transcription is off'))).toBe(false);
+			expect(visible(row('Quick note engine'))).toBe(true);
 		});
 
 		it('leaves the transcription page holding blocks and entries only', () => {

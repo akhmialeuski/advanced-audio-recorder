@@ -16,7 +16,10 @@
  * @module settings/profileKinds
  */
 
-import type { AudioRecorderSettings } from './settingsSchema';
+import {
+	type AudioRecorderSettings,
+	quickNotesAvailable,
+} from './settingsSchema';
 import { type Profile, ProfileKindId } from './profiles';
 import { parseDictionary } from '../transcription/dictionary';
 import { LlmTask } from '../transcription/llmPostProcess';
@@ -35,6 +38,8 @@ export const ProfileSection = {
 	Chapters: 'chapters',
 	/** The LLM post-processing page. */
 	Llm: 'llm',
+	/** The quick notes block. */
+	QuickNotes: 'quickNotes',
 } as const;
 
 /** One settings block (derived from {@link ProfileSection}). */
@@ -272,5 +277,22 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		visible: (settings) =>
 			postProcessing(settings) &&
 			settings.llmPostProcessTask === LlmTask.Custom,
+	}),
+	defineKind({
+		id: ProfileKindId.QuickNote,
+		section: ProfileSection.QuickNotes,
+		heading: 'Quick note profiles',
+		catalogueDesc:
+			'Named instructions a dictated quick note is rewritten with before it is inserted: tidy it up, turn it into a list, or format it as a task.',
+		selectionName: 'Quick note profile',
+		// Not the shared sentence: quick notes ship no prompt of their own,
+		// and None is the plain dictation the feature starts out as.
+		selectionDesc:
+			'Instruction the dictated text is rewritten with; None inserts the text as it was recognized.',
+		bodyName: 'Instruction',
+		bodyDesc:
+			'System instruction applied to the dictated text, sent verbatim. Ask for the rewritten text alone, since the answer is inserted as it comes back.',
+		summary: promptSummary,
+		visible: quickNotesAvailable,
 	}),
 ];

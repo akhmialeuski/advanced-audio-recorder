@@ -475,6 +475,12 @@ export interface AudioRecorderSettings {
 	transcriptionAutoChaptersEnabled: boolean;
 	/** Automatically generate chapters after each transcription run. */
 	transcriptionAutoChaptersOnTranscribe: boolean;
+	/**
+	 * Whether quick notes are offered: a ribbon button and a command that
+	 * dictate into the note at the cursor. Off by default, and while off the
+	 * button is hidden and the command is not offered.
+	 */
+	quickNotesEnabled: boolean;
 	/** Upload size limit per chunk, in megabytes (Whisper API) */
 	transcriptionChunkMb: number;
 	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
@@ -579,6 +585,8 @@ export interface AudioRecorderSettings {
 	chaptersLlmProvider: LlmProviderId;
 	/** Engine the two-pass context agents call */
 	advancedLlmProvider: LlmProviderId;
+	/** Engine that rewrites a dictated quick note with its profile */
+	quickNoteLlmProvider: LlmProviderId;
 	/**
 	 * Anthropic endpoint and key. Every provider keeps its endpoint and its key
 	 * in fields of its own, and a provider that both transcribes and answers
@@ -902,6 +910,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionSpeakerRenameEnabled: false,
 	transcriptionAutoChaptersEnabled: false,
 	transcriptionAutoChaptersOnTranscribe: false,
+	quickNotesEnabled: false,
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	whisperApiBaseUrl: DEFAULT_OPENAI_BASE_URL,
@@ -950,6 +959,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	chaptersLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	advancedLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+	quickNoteLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	anthropicBaseUrl: DEFAULT_ANTHROPIC_BASE_URL,
 	anthropicApiKey: '',
 	llmOpenAiModel: DEFAULT_LLM_OPENAI_MODEL,
@@ -1020,4 +1030,21 @@ export function autoChaptersAfterTranscribe(
 		settings.transcriptionAutoChaptersEnabled &&
 		settings.transcriptionAutoChaptersOnTranscribe
 	);
+}
+
+/**
+ * Whether quick notes are on offer: the feature is switched on and there is
+ * transcription to dictate through. The one predicate the ribbon button, the
+ * command, the settings block, and the engine check read, so the feature
+ * cannot be visible in one place and switched off in another.
+ * @param settings - The active settings
+ * @returns True when a quick note can be dictated
+ */
+export function quickNotesAvailable(
+	settings: Pick<
+		AudioRecorderSettings,
+		'transcriptionEnabled' | 'quickNotesEnabled'
+	>,
+): boolean {
+	return settings.transcriptionEnabled && settings.quickNotesEnabled;
 }

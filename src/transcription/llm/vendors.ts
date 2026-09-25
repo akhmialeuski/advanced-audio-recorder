@@ -286,6 +286,8 @@ export const LlmJobId = {
 	ContextAgents: 'contextAgents',
 	/** Automatic chapter titling. */
 	AutoChapters: 'autoChapters',
+	/** Rewriting a dictated quick note before it is inserted. */
+	QuickNote: 'quickNote',
 } as const;
 
 /** One LLM job (derived from {@link LlmJobId}). */
@@ -328,6 +330,10 @@ export const LLM_JOBS: Record<LlmJobId, LlmJob> = {
 	[LlmJobId.AutoChapters]: {
 		key: 'chaptersLlmProvider',
 		vendor: (settings) => settings.chaptersLlmProvider,
+	},
+	[LlmJobId.QuickNote]: {
+		key: 'quickNoteLlmProvider',
+		vendor: (settings) => settings.quickNoteLlmProvider,
 	},
 };
 

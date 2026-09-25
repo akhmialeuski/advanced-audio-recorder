@@ -13,6 +13,7 @@ import {
 	initializeStatusBar,
 	renderPlaybackStatusBar,
 	renderTranscriptionStatusBar,
+	renderQuickNoteStatusBar,
 	updateRecordingLiveStats,
 } from 'src/ui/StatusBar';
 import { at } from '../helpers/assertions';
@@ -342,6 +343,81 @@ describe('transcription progress', () => {
 		);
 
 		expect(onActivate).toHaveBeenCalledTimes(restores ? 1 : 0);
+	});
+});
+
+describe('quick note status', () => {
+	const live = { showStats: true, showMeter: true };
+
+	it('shows a recording dictation like a recording, with only a stop button', () => {
+		// Pausing a dictation is not offered, and a marker has no recording
+		// to land in, so stop is the one control it carries.
+		const statusBarItem = createStatusBar();
+		const onStop = jest.fn();
+
+		renderQuickNoteStatusBar(
+			statusBarItem,
+			RecordingStatus.Recording,
+			undefined,
+			onStop,
+			live,
+		);
+		control(statusBarItem, 'Stop quick note').click();
+
+		expect(el(statusBarItem, STATUS.recordingLabel).textContent).toBe(
+			'Quick note...',
+		);
+		expect(
+			el(statusBarItem, STATUS.recordingButtons).children,
+		).toHaveLength(1);
+		expect(maybeEl(statusBarItem, STATUS.live)).not.toBeNull();
+		expect(onStop).toHaveBeenCalledTimes(1);
+	});
+
+	it('shows the stage being processed and how far along it is', () => {
+		const statusBarItem = createStatusBar();
+
+		renderQuickNoteStatusBar(
+			statusBarItem,
+			RecordingStatus.Saving,
+			{ percent: 40, description: 'Quick note: Transcribing...' },
+			jest.fn(),
+			live,
+		);
+
+		expect(statusBarItem.classList.contains('is-transcribing')).toBe(true);
+		expect(statusBarItem.textContent).toBe('Quick note: Transcribing...');
+		expect(
+			el(statusBarItem, STATUS.saveProgressBar).style.getPropertyValue(
+				'--save-progress',
+			),
+		).toBe('40%');
+	});
+
+	it('says it is transcribing before the first stage is reported', () => {
+		const statusBarItem = createStatusBar();
+
+		renderQuickNoteStatusBar(
+			statusBarItem,
+			RecordingStatus.Saving,
+			undefined,
+			jest.fn(),
+			live,
+		);
+
+		expect(statusBarItem.textContent).toBe('Transcribing quick note...');
+	});
+
+	it('draws nothing without a status bar to draw into', () => {
+		expect(() => {
+			renderQuickNoteStatusBar(
+				null,
+				RecordingStatus.Recording,
+				undefined,
+				jest.fn(),
+				live,
+			);
+		}).not.toThrow();
 	});
 });
 

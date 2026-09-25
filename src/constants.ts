@@ -1406,6 +1406,7 @@ export const AAR_MENU_SECTION = 'aar';
  */
 export const COMMAND_IDS = {
 	startStopRecording: 'start-stop-recording',
+	startStopQuickNote: 'start-stop-quick-note',
 	pauseResumeRecording: 'pause-resume-recording',
 	addRecordingMarker: 'add-recording-marker',
 	addRecordingBookmark: 'add-recording-bookmark',

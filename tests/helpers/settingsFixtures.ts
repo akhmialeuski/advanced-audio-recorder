@@ -13,10 +13,47 @@ import {
 	LLM_PROVIDER_IDS,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from 'src/constants';
-import type {
-	AudioRecorderSettings,
-	AudioSource,
+import {
+	DEFAULT_SETTINGS,
+	type AudioRecorderSettings,
+	type AudioSource,
 } from 'src/settings/settingsSchema';
+
+/**
+ * Copies a settings value all the way down, Maps included. jsdom exposes no
+ * structuredClone, and a settings value holds only Maps, arrays, plain
+ * objects and primitives.
+ * @param value - The value to copy
+ * @returns An equal value that shares nothing with the original
+ */
+function deepCopy<T>(value: T): T {
+	if (value instanceof Map) {
+		return new Map(
+			[...value].map(([key, entry]) => [key, deepCopy(entry)]),
+		) as T;
+	}
+	if (Array.isArray(value)) {
+		return value.map((entry: unknown) => deepCopy(entry)) as T;
+	}
+	if (value !== null && typeof value === 'object') {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, entry]) => [key, deepCopy(entry)]),
+		) as T;
+	}
+	return value;
+}
+
+/**
+ * The default settings as a copy a test may edit in place.
+ *
+ * `{ ...DEFAULT_SETTINGS }` shares every Map, list and nested object with the
+ * module constant, so a settings tab writing a track's device id into it
+ * rewrote the defaults for every case that ran after it in the file.
+ * @returns Settings equal to the defaults and sharing nothing with them
+ */
+export function defaultSettings(): AudioRecorderSettings {
+	return deepCopy(DEFAULT_SETTINGS);
+}
 
 /**
  * One track recording this machine's own output, as the settings hold it.
@@ -111,6 +148,7 @@ export function fullyPopulatedSettings(): Omit<
 		transcriptionSpeakerRenameEnabled: false,
 		transcriptionAutoChaptersEnabled: true,
 		transcriptionAutoChaptersOnTranscribe: true,
+		quickNotesEnabled: true,
 		transcriptionChunkMb: 10,
 		transcriptionTimeoutMinutes: 15,
 		localWhisperTimeoutMinutes: 90,
@@ -162,6 +200,12 @@ export function fullyPopulatedSettings(): Omit<
 				name: 'Default',
 				body: 'summary base',
 			},
+			{
+				id: 'q1',
+				kind: 'quickNote',
+				name: 'Tidy',
+				body: 'Tidy the dictation.',
+			},
 		],
 		selectedProfileIds: {
 			participants: '',
@@ -171,10 +215,12 @@ export function fullyPopulatedSettings(): Omit<
 			llmSummary: 'l1',
 			llmTranslate: '',
 			llmCustom: '',
+			quickNote: 'q1',
 		},
 		llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 		chaptersLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 		advancedLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+		quickNoteLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 		anthropicBaseUrl: 'https://api.anthropic.com/v1',
 		anthropicApiKey: 'ak-test',
 		llmOpenAiModel: 'gpt-4o',

@@ -9,6 +9,7 @@ import { MarkdownView, TFile, getLinkpath } from 'obsidian';
 import type { App, EmbedCache } from 'obsidian';
 import type { InsertionContext } from '../types';
 import type { DebugLogSink } from '../utils/DebugLogger';
+import { findNoteView } from '../utils/noteViews';
 
 /**
  * Captures the active note path and cursor position for later
@@ -65,16 +66,8 @@ export function insertFileLinks(
 		.join('\n');
 
 	if (insertionContext) {
-		const leaf = app.workspace.getLeavesOfType('markdown').find((l) => {
-			const leafView = l.view;
-			return (
-				leafView instanceof MarkdownView &&
-				leafView.file?.path === insertionContext.filePath
-			);
-		});
-
-		const leafView = leaf?.view;
-		if (leafView instanceof MarkdownView) {
+		const leafView = findNoteView(app, insertionContext.filePath);
+		if (leafView) {
 			const editor = leafView.editor;
 			const pos = {
 				line: insertionContext.line + 1,
@@ -93,6 +86,36 @@ export function insertFileLinks(
 		return activeView?.file?.path ?? null;
 	}
 	return null;
+}
+
+/**
+ * Inserts text at the cursor of the note a dictation was started in.
+ *
+ * The note is the one active when the dictation began, because that is the
+ * note the user was writing in when they asked for it, and the position is
+ * that editor's cursor as it stands now: a user who went on typing while the
+ * dictation was transcribed wants it where they are, not where they were.
+ * When that note is no longer open, the active note takes it instead.
+ * @param app - Obsidian App instance
+ * @param text - The text to insert, verbatim
+ * @param insertionContext - The note captured when the dictation began
+ * @returns The path of the note the text went into, or null when no note was
+ *   open to take it
+ */
+export function insertTextAtCursor(
+	app: App,
+	text: string,
+	insertionContext: InsertionContext | null,
+): string | null {
+	const view =
+		(insertionContext
+			? findNoteView(app, insertionContext.filePath)
+			: null) ?? app.workspace.getActiveViewOfType(MarkdownView);
+	if (!view) {
+		return null;
+	}
+	view.editor.replaceSelection(text);
+	return view.file?.path ?? insertionContext?.filePath ?? null;
 }
 
 /**

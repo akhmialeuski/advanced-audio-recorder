@@ -45,6 +45,7 @@ import { isSystemAudioLoopbackAvailable } from '../recording/systemAudioSupport'
 import { llmGroup } from './sections/llmSection';
 import { multiTrackPage } from './sections/multiTrackSection';
 import { outputFormatGroup } from './sections/outputFormatSection';
+import { quickNotesPage } from './sections/quickNotesSection';
 import { sectionItems } from './sections/rowHelpers';
 import { transcriptionAdvancedGroup } from './sections/transcriptionAdvancedSection';
 import { transcriptionGroup } from './sections/transcriptionSection';
@@ -134,6 +135,10 @@ export function buildSettingsDefinitions(
 		outputFormatGroup(ctx.outputFormat, ctx.settings),
 		fileStorageGroup(ctx.settings),
 		...sectionItems([
+			// First among the entries: a feature with a button of its own is
+			// looked for by its own name, above the sections a recording is
+			// tuned with.
+			quickNotesPage(ctx),
 			audioSplittingPage(ctx.settings),
 			multiTrackPage(ctx.settings, ctx.devices, systemAudioAvailable),
 			audioPlayerPage(ctx.settings),

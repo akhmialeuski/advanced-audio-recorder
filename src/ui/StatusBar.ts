@@ -95,7 +95,7 @@ export function updateStatusBar(
 			renderRecordingState(
 				statusBarItem,
 				'Recording...',
-				controls,
+				recordingButtons(controls),
 				liveOptions,
 			);
 			break;
@@ -103,7 +103,7 @@ export function updateStatusBar(
 			renderRecordingState(
 				statusBarItem,
 				'Recording paused',
-				controls,
+				recordingButtons(controls),
 				liveOptions,
 			);
 			break;
@@ -135,16 +135,57 @@ export function updateStatusBar(
 	}
 }
 
+/** One button of the controls a capture shows beside its label. */
+interface ControlButtonSpec {
+	/** Obsidian icon name. */
+	readonly icon: string;
+	/** Accessible label. */
+	readonly label: string;
+	readonly onClick: () => void;
+}
+
 /**
- * Renders the recording or paused state with control buttons.
+ * The buttons a recording session shows: a marker when markers are on, pause
+ * or resume, and stop.
+ * @param controls - The session's control callbacks, when it has any
+ * @returns The buttons, in the order they are shown
+ */
+function recordingButtons(controls?: RecordingControls): ControlButtonSpec[] {
+	if (!controls) {
+		return [];
+	}
+	return [
+		...(controls.onAddMarker
+			? [
+					{
+						icon: 'bookmark',
+						label: 'Add marker',
+						onClick: controls.onAddMarker,
+					},
+				]
+			: []),
+		{
+			icon: controls.isPaused ? 'play' : 'pause',
+			label: controls.isPaused ? 'Resume recording' : 'Pause recording',
+			onClick: controls.onPauseResume,
+		},
+		{ icon: 'square', label: 'Stop recording', onClick: controls.onStop },
+	];
+}
+
+/**
+ * Renders a capture that is running: its label, its control buttons, and the
+ * live indicators. A recording session and a quick note show the same
+ * surface, so the one a user already knows says what either is doing.
  * @param el - The status bar HTML element
  * @param label - Display text for the current state
- * @param controls - Optional recording control callbacks
+ * @param buttons - The control buttons, in order
+ * @param liveOptions - Which live indicators to show
  */
 function renderRecordingState(
 	el: HTMLElement,
 	label: string,
-	controls?: RecordingControls,
+	buttons: readonly ControlButtonSpec[],
 	liveOptions?: RecordingLiveOptions,
 ): void {
 	el.empty();
@@ -158,30 +199,18 @@ function renderRecordingState(
 	const text = container.createSpan({ cls: 'aar-recording-label' });
 	text.textContent = label;
 
-	if (controls) {
-		const buttons = container.createSpan({
+	if (buttons.length > 0) {
+		const buttonsEl = container.createSpan({
 			cls: 'aar-recording-buttons',
 		});
-		if (controls.onAddMarker) {
+		for (const button of buttons) {
 			createControlButton(
-				buttons,
-				'bookmark',
-				'Add marker',
-				controls.onAddMarker,
+				buttonsEl,
+				button.icon,
+				button.label,
+				button.onClick,
 			);
 		}
-		createControlButton(
-			buttons,
-			controls.isPaused ? 'play' : 'pause',
-			controls.isPaused ? 'Resume recording' : 'Pause recording',
-			controls.onPauseResume,
-		);
-		createControlButton(
-			buttons,
-			'square',
-			'Stop recording',
-			controls.onStop,
-		);
 	}
 
 	if (liveOptions?.showStats || liveOptions?.showMeter) {
@@ -540,6 +569,43 @@ export function renderTranscriptionStatusBar(
 		'is-transcribing',
 		'Transcribing...',
 		options,
+	);
+}
+
+/**
+ * Renders a quick note that is under way: while it records, the same surface
+ * a recording shows, with a stop button and the live indicators; while it is
+ * transcribed and rewritten, the progress of each stage.
+ * @param statusBarItem - The status bar HTML element
+ * @param status - Recording while it captures, Saving while it is processed
+ * @param progress - The stage being processed and how far along it is
+ * @param onStop - Stops the dictation, as a second press of its button does
+ * @param liveOptions - Which live indicators to show while it records
+ */
+export function renderQuickNoteStatusBar(
+	statusBarItem: HTMLElement | null,
+	status: RecordingStatus,
+	progress: SaveProgress | undefined,
+	onStop: () => void,
+	liveOptions: RecordingLiveOptions,
+): void {
+	if (!statusBarItem) {
+		return;
+	}
+	if (status === RecordingStatus.Recording) {
+		renderRecordingState(
+			statusBarItem,
+			'Quick note...',
+			[{ icon: 'square', label: 'Stop quick note', onClick: onStop }],
+			liveOptions,
+		);
+		return;
+	}
+	renderProgressState(
+		statusBarItem,
+		progress,
+		'is-transcribing',
+		'Transcribing quick note...',
 	);
 }
 

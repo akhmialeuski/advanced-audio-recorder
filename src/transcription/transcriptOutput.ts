@@ -4,11 +4,12 @@
  * @module transcription/transcriptOutput
  */
 
-import { MarkdownView, Notice } from 'obsidian';
+import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
 import { directoryOf } from '../utils/paths';
+import { findNoteView } from '../utils/noteViews';
 import { serializeTranscriptFile } from './transcriptFormat';
 import {
 	type Transcript,
@@ -102,31 +103,6 @@ export async function writeTranscriptFile(
 		target,
 		serializeTranscriptFile(transcript, format),
 	);
-}
-
-/**
- * Finds the open, editable Markdown view for a specific note path, or null
- * when that note is not open in a Markdown leaf. Targets the note the
- * timecode links were generated against - not whatever happens to be active
- * when an async transcription finishes - so output never lands in an
- * unrelated file the user switched to mid-run. A profile note is read through
- * it too, since its editor holds text not yet saved to disk.
- * @param app - Obsidian App
- * @param notePath - Vault path of the target note
- */
-export function findNoteView(app: App, notePath: string): MarkdownView | null {
-	if (!notePath) {
-		return null;
-	}
-	const view = app.workspace
-		.getLeavesOfType('markdown')
-		.map((leaf) => leaf.view)
-		.find(
-			(candidate): candidate is MarkdownView =>
-				candidate instanceof MarkdownView &&
-				candidate.file?.path === notePath,
-		);
-	return view ?? null;
 }
 
 /**
