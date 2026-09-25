@@ -18,6 +18,7 @@
  */
 
 import './helpers/matchers';
+import { __resetMicrophone } from './helpers/memoryCapture';
 import { __resetStopFailure } from './mocks/modules/pcmStreamRecorder';
 import {
 	DEFAULT_MOCK_API_VERSION,
@@ -37,4 +38,37 @@ beforeEach(() => {
 	// An armed stop failure is module state no mock reset reaches, and a test
 	// that armed one without building a recorder would hand it to the next.
 	__resetStopFailure();
+	// The capture double replaces two globals, and a case that ran after an
+	// install found them still in place.
+	__resetMicrophone();
+	defaultsBefore = describeDefaults();
+});
+
+/**
+ * The default settings as text, Maps included, so an in-place edit anywhere
+ * in them shows as a different string.
+ * @returns The defaults, serialised
+ */
+function describeDefaults(): string {
+	const { DEFAULT_SETTINGS } = jest.requireActual<
+		typeof import('src/settings/settingsSchema')
+	>('src/settings/settingsSchema');
+	return JSON.stringify(DEFAULT_SETTINGS, (_key, value: unknown) =>
+		value instanceof Map ? [...value] : value,
+	);
+}
+
+/** The defaults as the current test found them. */
+let defaultsBefore = '';
+
+afterEach(() => {
+	// A test that edits a shallow copy of DEFAULT_SETTINGS edits the defaults
+	// themselves, and every case after it in the file then starts from its
+	// values. Which cases see them turns on the order the suite runs in, so
+	// the leak is failed here, at the test that made it.
+	if (describeDefaults() !== defaultsBefore) {
+		throw new Error(
+			'This test changed DEFAULT_SETTINGS in place. Build its settings with defaultSettings() from tests/helpers/settingsFixtures.',
+		);
+	}
 });

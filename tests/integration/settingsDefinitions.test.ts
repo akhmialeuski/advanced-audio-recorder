@@ -19,10 +19,7 @@ import {
 	type RenderDefinition,
 	type RowDefinition,
 } from '../helpers/declarativeSettings';
-import {
-	DEFAULT_SETTINGS,
-	type AudioRecorderSettings,
-} from 'src/settings/settingsSchema';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { ProfileSection } from 'src/settings/profileKinds';
 import {
 	CHANNEL_MODE_LABELS,
@@ -77,6 +74,7 @@ import type { AudioSource } from 'src/settings/settingsSchema';
 import { SETTING } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
+import { defaultSettings } from '../helpers/settingsFixtures';
 
 describe('settings definitions', () => {
 	let settings: AudioRecorderSettings;
@@ -101,7 +99,7 @@ describe('settings definitions', () => {
 	let diagnostics: { [K in keyof DiagnosticsActions]: jest.Mock };
 
 	beforeEach(() => {
-		settings = { ...DEFAULT_SETTINGS };
+		settings = defaultSettings();
 		// Stands in for the real body with one marker element, so a test can see
 		// which host it was rendered into and whether it survived.
 		renderDocs = jest.fn((host: HTMLElement) => {
@@ -821,11 +819,7 @@ describe('settings definitions', () => {
 			return host;
 		};
 
-		/**
-		 * A track map whose only track records the system output. Its own
-		 * map every time: the one on DEFAULT_SETTINGS is shared by every
-		 * test through the shallow copy in beforeEach.
-		 */
+		/** A track map whose only track records the system output. */
 		const systemAudioOnTrackOne = (): Map<number, AudioSource> =>
 			new Map([
 				[
@@ -978,9 +972,6 @@ describe('settings definitions', () => {
 		// system-loopback input, and one session can hold both.
 		it('offers a processing profile per track and disables it without a device', () => {
 			settings.enableMultiTrack = true;
-			// Its own map: the one on DEFAULT_SETTINGS is shared by every
-			// test through the shallow copy in beforeEach.
-			settings.trackAudioSources = new Map();
 			const control = rowOf(build(), MULTI, 'Track 1 processing').control;
 
 			expect(control?.key).toBe('track.1.processing');

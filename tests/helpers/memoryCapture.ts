@@ -57,10 +57,25 @@ export interface InstalledMicrophone {
 }
 
 /**
- * Installs the recorder double and a microphone that always grants access.
+ * What installMicrophone replaced, or null when nothing is installed. Kept so
+ * the per-test reset in tests/setupAfterEnv.ts can put it back: a test that
+ * ran after an install used to find the double still in place, so what it
+ * exercised, and what the coverage guard measured, turned on the order the
+ * cases ran in.
+ */
+let replaced: { mediaRecorder: unknown; mediaDevices: unknown } | null = null;
+
+/**
+ * Installs the recorder double and a microphone that always grants access,
+ * for the current test only.
  * @returns The microphone and its spies
  */
 export function installMicrophone(): InstalledMicrophone {
+	replaced ??= {
+		mediaRecorder: globals().MediaRecorder,
+		mediaDevices: (global.navigator as { mediaDevices?: unknown })
+			.mediaDevices,
+	};
 	ChunkingMediaRecorder.instances = [];
 	ChunkingMediaRecorder.nextChunk = 'chunk';
 	ChunkingMediaRecorder.isTypeSupported.mockReturnValue(true);
@@ -74,4 +89,27 @@ export function installMicrophone(): InstalledMicrophone {
 		getUserMedia,
 	};
 	return { stream, trackStop, getUserMedia };
+}
+
+/**
+ * Puts back whatever installMicrophone replaced. Run before every test from
+ * tests/setupAfterEnv.ts, so a case starts without the double unless it
+ * installs one itself, whatever ran before it.
+ */
+export function __resetMicrophone(): void {
+	if (!replaced) {
+		return;
+	}
+	const navigatorGlobals = global.navigator as { mediaDevices?: unknown };
+	if (replaced.mediaRecorder === undefined) {
+		delete globals().MediaRecorder;
+	} else {
+		globals().MediaRecorder = replaced.mediaRecorder;
+	}
+	if (replaced.mediaDevices === undefined) {
+		delete navigatorGlobals.mediaDevices;
+	} else {
+		navigatorGlobals.mediaDevices = replaced.mediaDevices;
+	}
+	replaced = null;
 }

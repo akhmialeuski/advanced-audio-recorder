@@ -1409,8 +1409,8 @@
 	},
 	"suite": {
 		"suites": 252,
-		"tests": 6243,
-		"passed": 6243,
+		"tests": 6247,
+		"passed": 6247,
 		"failed": 0,
 		"todo": 0
 	}

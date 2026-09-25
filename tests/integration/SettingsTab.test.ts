@@ -55,6 +55,7 @@ import {
 	settingRow,
 } from '../helpers/settingRows';
 import { partial } from '../helpers/doubles';
+import { defaultSettings } from '../helpers/settingsFixtures';
 import {
 	installAudioContextRate,
 	mediaDevice,
@@ -273,7 +274,7 @@ describe('AudioRecorderSettingTab', () => {
 			>
 		).isTypeSupported = jest.fn().mockReturnValue(true);
 
-		mockSettings = { ...DEFAULT_SETTINGS };
+		mockSettings = defaultSettings();
 		saveSettingsMock = jest.fn().mockResolvedValue(undefined);
 		mockPlugin = partial<AudioRecorderPluginInterface>({
 			settings: mockSettings,
@@ -475,6 +476,77 @@ describe('AudioRecorderSettingTab', () => {
 			await tick();
 
 			expect(updateSpy).not.toHaveBeenCalled();
+		});
+
+		describe('the channel row for the selected input', () => {
+			/**
+			 * An input that reports how many channels it can deliver.
+			 * @param deviceId - The input's id
+			 * @param channelCount - What its capabilities report
+			 */
+			const inputWithChannels = (
+				deviceId: string,
+				channelCount: number,
+			): MediaDeviceInfo =>
+				Object.assign(mediaDevice(deviceId), {
+					getCapabilities: () => ({
+						channelCount: { max: channelCount },
+					}),
+				});
+
+			/**
+			 * Whether the channel row is locked once the tab has enumerated.
+			 * @param devices - What the enumeration answers, or an error
+			 */
+			const channelRowLocked = async (
+				devices: MediaDeviceInfo[] | Error,
+			): Promise<boolean> => {
+				const enumerate = navigator.mediaDevices
+					.enumerateDevices as jest.Mock;
+				if (devices instanceof Error) {
+					enumerate.mockRejectedValue(devices);
+				} else {
+					enumerate.mockResolvedValue(devices);
+				}
+				jest.spyOn(tab, 'update').mockImplementation(() => undefined);
+				renderDeclaratively();
+				await tick();
+				const disabled = rowOf(
+					tab.getSettingDefinitions(),
+					'Audio input',
+					'Recording channels',
+				).control?.disabled;
+				return typeof disabled === 'function' ? disabled() : false;
+			};
+
+			beforeEach(() => {
+				mockSettings.audioDeviceId = 'mic-1';
+			});
+
+			it('stays open for an input that delivers two channels', async () => {
+				expect(
+					await channelRowLocked([inputWithChannels('mic-1', 2)]),
+				).toBe(false);
+			});
+
+			it('locks for an input that delivers one channel', async () => {
+				// There is nothing to lay out, so a choice would only mislead.
+				expect(
+					await channelRowLocked([inputWithChannels('mic-1', 1)]),
+				).toBe(true);
+			});
+
+			it('locks for an input that is no longer plugged in', async () => {
+				expect(
+					await channelRowLocked([inputWithChannels('mic-2', 2)]),
+				).toBe(true);
+			});
+
+			it('stays open when the enumeration failed', async () => {
+				// A failed enumeration says nothing about the device, so the
+				// choice is left to the user rather than silently locked.
+				expect(await channelRowLocked(new Error('denied'))).toBe(false);
+			});
 		});
 
 		// navigator.mediaDevices is absent outside a secure context and in
@@ -2660,7 +2732,7 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 
 	beforeEach(() => {
 		mockProfileDialogs.length = 0;
-		mockSettings = { ...DEFAULT_SETTINGS };
+		mockSettings = defaultSettings();
 		mockSettings.profiles = [
 			dictionaryProfile('a', 'Legal', 'tort'),
 			dictionaryProfile('b', 'Medical', 'triage'),
@@ -2829,7 +2901,7 @@ describe('AudioRecorderSettingTab describing the recording formats', () => {
 	}
 
 	beforeEach(() => {
-		mockSettings = { ...DEFAULT_SETTINGS };
+		mockSettings = defaultSettings();
 		tab = tabOver(mockSettings);
 		(global as Record<string, unknown>).MediaRecorder = {
 			isTypeSupported: jest.fn(() => false),
@@ -3030,7 +3102,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 				unknown
 			>
 		).isTypeSupported = jest.fn().mockReturnValue(true);
-		mockSettings = { ...DEFAULT_SETTINGS };
+		mockSettings = defaultSettings();
 		// clearMocks keeps an implementation a test installed, and the probe
 		// answer is what half the cases below set up.
 		(
