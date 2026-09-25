@@ -136,7 +136,7 @@ LLM post-processing supports five providers, chosen from its own **Post-processi
 
 - Auto chapters name theirs on the **Chapters engine** row.
 - The advanced two-pass agents name theirs on the **Context agents engine** row.
-- [Quick notes](quick-notes.md) name theirs on the **Quick note engine** row.
+- [Quick notes](quick-notes.md) name theirs on the **Quick note rewrite engine** row, beside the **Quick note transcription engine** row that picks the service hearing the dictation.
 
 Each provider has its own default model and its own user-editable model list.
 

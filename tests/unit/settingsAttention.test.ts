@@ -372,6 +372,44 @@ describe('quick notes and the engines they call', () => {
 	});
 });
 
+describe('quick notes transcribed by an engine of their own', () => {
+	it('calls the quick note transcription engine while quick notes are on', () => {
+		// A key missing on the engine that hears dictations is as much a
+		// fault as one missing on the engine that hears recordings.
+		const settings = quickNoteSettings(undefined, {
+			quickNoteTranscriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		});
+
+		expect(enginesInUse(settings)).toEqual([
+			ENGINES[ENGINE_IDS.WHISPER_API],
+			ENGINES[ENGINE_IDS.DEEPGRAM],
+		]);
+		expect(
+			enginesInUse({ ...settings, quickNotesEnabled: false }),
+		).not.toContain(ENGINES[ENGINE_IDS.DEEPGRAM]);
+	});
+
+	it('refuses a quick note on the setup of its own engine, not the recordings engine', () => {
+		const settings = quickNoteSettings(undefined, {
+			quickNoteTranscriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			deepgramApiKey: '',
+		});
+
+		expect(transcriptionRefusal(settings)).toBeNull();
+		expect(quickNoteRefusal(settings)).toBe(
+			engineSetupReason(settings, ENGINES[ENGINE_IDS.DEEPGRAM]),
+		);
+		expect(quickNoteRefusal(settings)).not.toBeNull();
+		expect(
+			quickNoteRefusal({
+				...settings,
+				whisperApiKey: '',
+				deepgramApiKey: 'dg-test',
+			}),
+		).toBeNull();
+	});
+});
+
 describe('quick notes on an engine the plugin does not serve', () => {
 	it('refuses with the reason rather than starting a dictation it cannot rewrite', () => {
 		// data.json is not type-checked; a stored id no vendor claims must
@@ -383,7 +421,7 @@ describe('quick notes on an engine the plugin does not serve', () => {
 						'gone' as AudioRecorderSettings['quickNoteLlmProvider'],
 				}),
 			),
-		).toBe('The quick note engine is not one this plugin serves.');
+		).toBe('The quick note rewrite engine is not one this plugin serves.');
 	});
 });
 

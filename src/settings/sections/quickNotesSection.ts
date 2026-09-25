@@ -12,18 +12,21 @@ import {
 	type SettingsDefinitionContext,
 } from './context';
 import { profileCatalogues } from './profilesSection';
-import { engineChoiceRow } from './rowHelpers';
+import { engineChoiceRow, transcriptionEngineChoiceRow } from './rowHelpers';
 import type { SettingGroupItem } from 'obsidian';
 
 /**
  * Quick notes behind an entry of their own on the main tab: the switch, the
- * engine a profile rewrites a dictation with, and the profiles themselves.
+ * engine a dictation is transcribed with, the engine a profile rewrites it
+ * with, and the profiles themselves.
  *
  * A feature with its own ribbon button is looked for by its own name, not
  * inside the page of the pipeline it happens to run through, so the entry
- * sits on the main tab. A dictation is still transcribed by the engine the
- * Transcription page configures, and the entry says so when that page is
- * switched off rather than leaving a switched-on feature with no button.
+ * sits on the main tab. The two engines are picked here, each for its own
+ * stage, because a dictation and a recording are different jobs and a vault
+ * may want a different service for each. They are still set up under the
+ * Transcription page, and the entry says so when that page is switched off
+ * rather than leaving a switched-on feature with no button.
  *
  * Every setting a dictation reads is here or on the Transcription page: the
  * button that starts one asks nothing, so there is nowhere else to put them.
@@ -70,11 +73,20 @@ export function quickNotesPage(
 					},
 					{
 						name: 'Transcription is off',
-						desc: 'A dictation is transcribed by the engine set up under Transcription. Turn transcription on there, and the button and the command appear.',
+						desc: 'A dictation is transcribed through the engines set up under Transcription. Turn transcription on there, and the button and the command appear.',
 						visible: waitingForTranscription,
 					},
+					transcriptionEngineChoiceRow(
+						'Quick note transcription engine',
+						'Which engine turns a dictation into text. It can differ from the one recordings are transcribed with. Set it up under Transcription > Engines.',
+						'quickNoteTranscriptionProvider',
+						available,
+					),
+					// Named for its stage: beside a transcription engine, a
+					// bare "Quick note engine" read as the one that hears the
+					// dictation, and offered services that cannot.
 					engineChoiceRow(
-						'Quick note engine',
+						'Quick note rewrite engine',
 						'Which engine rewrites a dictation when a quick note profile is selected. Set it up under Transcription > Engines.',
 						LLM_JOBS.quickNote.key,
 						available,

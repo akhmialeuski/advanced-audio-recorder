@@ -18,7 +18,11 @@ import {
 	mergeSettingsAsync,
 } from 'src/settings/settingsSerialization';
 import type { Profile } from 'src/settings/profiles';
-import { MODEL_SEED_GENERATION, LLM_PROVIDER_IDS } from 'src/constants';
+import {
+	MODEL_SEED_GENERATION,
+	LLM_PROVIDER_IDS,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from 'src/constants';
 import { fullyPopulatedSettings } from '../helpers/settingsFixtures';
 import { partial } from '../helpers/doubles';
 import { mediaDevice } from '../helpers/mediaMocks';
@@ -498,6 +502,34 @@ describe('Settings', () => {
 				LLM_PROVIDER_IDS.ANTHROPIC,
 			);
 			expect(chosen.quickNoteLlmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
+		});
+
+		it('starts quick notes on the engine recordings are transcribed with', () => {
+			// Dictation used to be transcribed by the recordings' engine. A
+			// stored config holds a key for that one and may hold none for the
+			// shipped default, so dictation keeps the engine it had.
+			const upgraded = mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			});
+			const chosen = mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				quickNoteTranscriptionProvider:
+					TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			});
+			const gone = mergeSettings({
+				quickNoteTranscriptionProvider:
+					'gone' as AudioRecorderSettings['quickNoteTranscriptionProvider'],
+			});
+
+			expect(upgraded.quickNoteTranscriptionProvider).toBe(
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			);
+			expect(chosen.quickNoteTranscriptionProvider).toBe(
+				TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			);
+			expect(gone.quickNoteTranscriptionProvider).toBe(
+				DEFAULT_SETTINGS.quickNoteTranscriptionProvider,
+			);
 		});
 
 		it('keeps quick notes off, with no profile selected, on a fresh install', () => {

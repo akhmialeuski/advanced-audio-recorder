@@ -37,7 +37,9 @@ import {
 import {
 	type AudioRecorderSettings,
 	type LlmProviderId,
+	type TranscriptionProviderId,
 	quickNotesAvailable,
+	quickNoteTranscriptionSettings,
 } from './settingsSchema';
 import { resolveQuickNotePrompt } from './profileResolution';
 
@@ -114,9 +116,16 @@ export function enginesInUse(
 	settings: AudioRecorderSettings,
 ): EngineDescriptor[] {
 	const called: EngineDescriptor[] = [];
-	if (settings.transcriptionEnabled) {
-		const speech = engineOfTranscription(settings.transcriptionProvider);
-		if (speech) {
+	const speechJobs: Array<[boolean, TranscriptionProviderId]> = [
+		[settings.transcriptionEnabled, settings.transcriptionProvider],
+		[
+			quickNotesAvailable(settings),
+			settings.quickNoteTranscriptionProvider,
+		],
+	];
+	for (const [enabled, providerId] of speechJobs) {
+		const speech = enabled ? engineOfTranscription(providerId) : undefined;
+		if (speech && !called.includes(speech)) {
 			called.push(speech);
 		}
 	}
@@ -247,9 +256,9 @@ export function transcriptionRefusal(
  *
  * Asked before the microphone opens rather than after the dictation, because
  * a refusal found once the user has finished speaking throws away what they
- * said. A quick note transcribes, so every transcription refusal is one here
- * too, and a note that a profile rewrites also needs the engine that profile
- * calls.
+ * said. A quick note transcribes with an engine of its own, so every reason a
+ * transcription on that engine is refused is one here too, and a note that a
+ * profile rewrites also needs the engine that profile calls.
  * @param settings - Live settings
  * @returns The refusal, or null where a quick note could run
  */
@@ -259,13 +268,15 @@ export function quickNoteRefusal(
 	if (!settings.quickNotesEnabled) {
 		return 'Quick notes are switched off in settings.';
 	}
-	const transcription = transcriptionRefusal(settings);
+	const transcription = transcriptionRefusal(
+		quickNoteTranscriptionSettings(settings),
+	);
 	if (transcription !== null || resolveQuickNotePrompt(settings) === '') {
 		return transcription;
 	}
 	const engine = engineOfVendor(settings.quickNoteLlmProvider);
 	if (!engine) {
-		return 'The quick note engine is not one this plugin serves.';
+		return 'The quick note rewrite engine is not one this plugin serves.';
 	}
 	return engineSetupReason(settings, engine);
 }
