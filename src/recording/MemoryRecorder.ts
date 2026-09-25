@@ -95,7 +95,8 @@ export class MemoryRecorder {
 	/**
 	 * Bumped by every start and every cancel, so a start still waiting on the
 	 * microphone can tell that it was cancelled meanwhile and release the
-	 * device instead of arming a capture nobody will stop.
+	 * device instead of arming a capture nobody will stop, and a stop still
+	 * waiting on the recorder's last chunk drops a clip nobody wants.
 	 */
 	private generation = 0;
 
@@ -244,6 +245,7 @@ export class MemoryRecorder {
 		if (!capture) {
 			return { kind: 'cancelled' };
 		}
+		const generation = this.generation;
 		try {
 			if (capture.recorder.state !== 'inactive') {
 				capture.recorder.stop();
@@ -255,6 +257,11 @@ export class MemoryRecorder {
 			if (this.capture === capture) {
 				this.capture = null;
 			}
+		}
+		// A cancel() that landed while the recorder drained discarded the
+		// clip: whoever cancelled has nowhere left to put it.
+		if (generation !== this.generation) {
+			return { kind: 'cancelled' };
 		}
 		if (capture.chunks.length === 0) {
 			return { kind: 'empty' };
@@ -300,7 +307,7 @@ export class MemoryRecorder {
 
 	/**
 	 * Stops and discards a capture in progress, releasing the microphone at
-	 * once. A pending start() or record() resolves as cancelled.
+	 * once. A pending start(), stop() or record() resolves as cancelled.
 	 */
 	cancel(): void {
 		this.generation++;

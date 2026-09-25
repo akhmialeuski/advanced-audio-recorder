@@ -155,7 +155,10 @@ export default class AudioRecorderPlugin extends Plugin {
 	private recordingManager!: RecordingManager;
 	private statusBarItem: HTMLElement | null = null;
 	private ribbonIconEl: HTMLElement | null = null;
-	/** The quick note button, present only while quick notes are on. */
+	/**
+	 * The quick note button, registered the first time quick notes are on
+	 * and hidden while they are off.
+	 */
 	private quickNoteRibbonEl: HTMLElement | null = null;
 	private quickNotes!: QuickNoteController;
 	/** What the quick note is doing, as the status bar shows it. */
@@ -297,6 +300,12 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.handleRecordingSaved(result);
 			},
 			() => this.encodingWorker,
+			// The mirror of the quick note's own refusal: two captures of one
+			// microphone would record the same speech twice.
+			() =>
+				this.quickNotes.getStatus() === RecordingStatus.Recording
+					? 'Stop the quick note before starting a recording.'
+					: null,
 		);
 
 		this.quickNotes = new QuickNoteController({

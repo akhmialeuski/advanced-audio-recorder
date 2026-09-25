@@ -126,6 +126,9 @@ export class RecordingManager {
 	 * @param onStatusChange - Callback for status changes
 	 * @param markerStore - The plugin's single sidecar store, shared with the
 	 *   player and transcription so all writers serialize on one write chain
+	 * @param captureBusy - Why another capture holds the microphone right
+	 *   now, or null when none does. A session is refused while one does,
+	 *   since both would record the same speech.
 	 */
 	constructor(
 		private app: App,
@@ -146,6 +149,7 @@ export class RecordingManager {
 		// asks for a worker, already falls back to "no worker" - a second
 		// default here would be a second answer to the same question.
 		getWorkerClient?: () => EncodingWorkerClient | null,
+		private readonly captureBusy?: () => string | null,
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
@@ -318,6 +322,13 @@ export class RecordingManager {
 	 * @returns The reason it did not start, or null once it is recording
 	 */
 	async startRecording(): Promise<string | null> {
+		// Asked before the streams open, so the other capture never loses
+		// the device to a session it would then duplicate.
+		const busy = this.captureBusy?.() ?? null;
+		if (busy !== null) {
+			new Notice(busy);
+			return busy;
+		}
 		try {
 			// The streams come first so the layout the encoder is asked about
 			// is the one the tracks were captured with, not one a settings

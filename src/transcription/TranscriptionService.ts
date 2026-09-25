@@ -795,11 +795,14 @@ export class TranscriptionService {
 		audio: DictationAudio,
 		options: DictateOptions,
 	): Promise<DictationResult> {
+		const token = options.token ?? NEVER_CANCELLED;
+		// A dictation cancelled while its clip was being read is refused before
+		// it reads notes, raises notices, or decodes anything.
+		this.throwIfCancelled(token);
 		const { settings, unread } = await readProfileNotes(
 			this.app,
 			this.getSettings(),
 		);
-		const token = options.token ?? NEVER_CANCELLED;
 		const provider = this.createProvider(settings);
 		// Plain text in the language it was spoken in: speakers, word timings
 		// and the translation into English all shape a transcript document.

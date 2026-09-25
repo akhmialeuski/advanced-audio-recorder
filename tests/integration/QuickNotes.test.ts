@@ -582,6 +582,17 @@ describe('quick notes that go wrong', () => {
 		expect(h.note.editor.replaceSelection).not.toHaveBeenCalled();
 	});
 
+	it('reports no state change when cancelled with nothing under way', () => {
+		// Every settings save cancels quick notes while they are off, and each
+		// state change repaints the status bar over a recording or playback.
+		const h = harness();
+
+		h.controller.cancel();
+
+		expect(h.statuses).toEqual([]);
+		expect(h.controller.getStatus()).toBe(RecordingStatus.Idle);
+	});
+
 	it('stops quietly when it is cancelled as the second press lands', async () => {
 		const h = harness();
 		await h.controller.toggle();

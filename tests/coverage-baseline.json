@@ -2,7 +2,7 @@
 	"coverage": {
 		"total": {
 			"statements": 98.75,
-			"branches": 94.71,
+			"branches": 94.75,
 			"functions": 98.72,
 			"lines": 98.75
 		},
@@ -21,8 +21,8 @@
 			},
 			"src/main.ts": {
 				"statements": 99.54,
-				"branches": 97.53,
-				"functions": 99.02,
+				"branches": 97.56,
+				"functions": 99.03,
 				"lines": 99.76
 			},
 			"src/types.ts": {
@@ -423,7 +423,7 @@
 			},
 			"src/quicknotes/QuickNoteController.ts": {
 				"statements": 100,
-				"branches": 94.59,
+				"branches": 94.87,
 				"functions": 100,
 				"lines": 100
 			},
@@ -471,7 +471,7 @@
 			},
 			"src/recording/MemoryRecorder.ts": {
 				"statements": 100,
-				"branches": 87.09,
+				"branches": 93.93,
 				"functions": 100,
 				"lines": 100
 			},
@@ -482,10 +482,10 @@
 				"lines": 100
 			},
 			"src/recording/NoteInserter.ts": {
-				"statements": 98.41,
-				"branches": 80.85,
+				"statements": 98.36,
+				"branches": 79.06,
 				"functions": 100,
-				"lines": 98.38
+				"lines": 98.33
 			},
 			"src/recording/PartRotationController.ts": {
 				"statements": 97.1,
@@ -512,10 +512,10 @@
 				"lines": 96.39
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 99.05,
-				"branches": 93.22,
+				"statements": 99.07,
+				"branches": 93.44,
 				"functions": 100,
-				"lines": 99.04
+				"lines": 99.06
 			},
 			"src/recording/RecordingMarkerCoordinator.ts": {
 				"statements": 100,
@@ -992,10 +992,10 @@
 				"lines": 100
 			},
 			"src/transcription/transcriptOutput.ts": {
-				"statements": 98.38,
-				"branches": 95.23,
+				"statements": 98.21,
+				"branches": 94.44,
 				"functions": 100,
-				"lines": 98.38
+				"lines": 98.21
 			},
 			"src/transcription/transcriptionErrors.ts": {
 				"statements": 100,
@@ -1375,6 +1375,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/utils/noteViews.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/utils/objects.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -1402,9 +1408,9 @@
 		}
 	},
 	"suite": {
-		"suites": 250,
-		"tests": 6234,
-		"passed": 6234,
+		"suites": 252,
+		"tests": 6243,
+		"passed": 6243,
 		"failed": 0,
 		"todo": 0
 	}

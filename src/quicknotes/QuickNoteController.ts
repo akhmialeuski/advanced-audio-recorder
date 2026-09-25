@@ -131,8 +131,16 @@ export class QuickNoteController {
 	 * Discards whatever is under way: closes the microphone and cancels the
 	 * run in flight. Called when the plugin unloads and when quick notes are
 	 * switched off, neither of which has anywhere left to put the text.
+	 *
+	 * An idle controller has nothing to discard: start() leaves idle before
+	 * its first await, so no open and no run is pending. It stays silent
+	 * then, because every settings save asks it to cancel while quick notes
+	 * are off, and each state change repaints the status bar.
 	 */
 	cancel(): void {
+		if (this.status === RecordingStatus.Idle) {
+			return;
+		}
 		this.attempt++;
 		this.deps.recorder.cancel();
 		this.run?.cancel();

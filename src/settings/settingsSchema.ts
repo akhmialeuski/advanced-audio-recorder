@@ -477,8 +477,8 @@ export interface AudioRecorderSettings {
 	transcriptionAutoChaptersOnTranscribe: boolean;
 	/**
 	 * Whether quick notes are offered: a ribbon button and a command that
-	 * dictate into the note at the cursor. Off by default, and while off
-	 * neither the button nor the command exists.
+	 * dictate into the note at the cursor. Off by default, and while off the
+	 * button is hidden and the command is not offered.
 	 */
 	quickNotesEnabled: boolean;
 	/** Upload size limit per chunk, in megabytes (Whisper API) */

@@ -9,6 +9,7 @@ import { MarkdownView, TFile, getLinkpath } from 'obsidian';
 import type { App, EmbedCache } from 'obsidian';
 import type { InsertionContext } from '../types';
 import type { DebugLogSink } from '../utils/DebugLogger';
+import { findNoteView } from '../utils/noteViews';
 
 /**
  * Captures the active note path and cursor position for later
@@ -65,7 +66,7 @@ export function insertFileLinks(
 		.join('\n');
 
 	if (insertionContext) {
-		const leafView = openMarkdownView(app, insertionContext.filePath);
+		const leafView = findNoteView(app, insertionContext.filePath);
 		if (leafView) {
 			const editor = leafView.editor;
 			const pos = {
@@ -108,30 +109,13 @@ export function insertTextAtCursor(
 ): string | null {
 	const view =
 		(insertionContext
-			? openMarkdownView(app, insertionContext.filePath)
+			? findNoteView(app, insertionContext.filePath)
 			: null) ?? app.workspace.getActiveViewOfType(MarkdownView);
 	if (!view) {
 		return null;
 	}
 	view.editor.replaceSelection(text);
 	return view.file?.path ?? insertionContext?.filePath ?? null;
-}
-
-/**
- * The open Markdown view showing a note.
- * @param app - Obsidian App instance
- * @param filePath - Vault path of the note
- * @returns The view, or null when the note is not open in any pane
- */
-function openMarkdownView(app: App, filePath: string): MarkdownView | null {
-	const view = app.workspace
-		.getLeavesOfType('markdown')
-		.find(
-			(leaf) =>
-				leaf.view instanceof MarkdownView &&
-				leaf.view.file?.path === filePath,
-		)?.view;
-	return view instanceof MarkdownView ? view : null;
 }
 
 /**

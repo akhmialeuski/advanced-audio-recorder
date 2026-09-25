@@ -25,7 +25,7 @@ import {
 	parseParticipantBody,
 } from '../speakers/participantRoster';
 import { nextEntryPrefix } from '../utils/listLines';
-import { findNoteView } from '../transcription/transcriptOutput';
+import { findNoteView } from '../utils/noteViews';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**

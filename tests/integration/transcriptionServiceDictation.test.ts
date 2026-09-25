@@ -246,6 +246,22 @@ describe("a dictation's inputs and its rewrite", () => {
 		},
 	);
 
+	it('refuses a dictation cancelled before it starts, without preparing its audio', async () => {
+		// The quick note reads its clip before handing it over, and an unload
+		// can cancel it meanwhile. Preparing would decode audio nobody wants.
+		const cancel = new CancellationSource();
+		const run = dictation([heard('buy milk')]);
+		cancel.cancel();
+
+		const outcome = await outcomeOf(dictate(run, cancel));
+
+		expect(outcome).toEqual({
+			error: expect.any(TranscriptionCancelledError) as Error,
+		});
+		expect(prepareAudio).not.toHaveBeenCalled();
+		expect(run.provider.transcribe).not.toHaveBeenCalled();
+	});
+
 	it('ends as cancelled, not as a failed rewrite, when cancelled during the rewrite', async () => {
 		// The rewrite falls back to the text as heard when the call fails; a
 		// cancel is not a failure, and must not insert anything.

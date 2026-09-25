@@ -25,7 +25,7 @@ A quick note asks for plain text in the language it was spoken in. Speaker label
 
 ## Enabling quick notes
 
-Quick notes are off by default, and while they are off neither the button nor the command exists. They have an entry of their own on the main settings tab, the first one below the file storage rows:
+Quick notes are off by default, and while they are off the button is hidden and the command is not offered. They have an entry of their own on the main settings tab, the first one below the file storage rows:
 
 1. Open **Settings > Advanced Audio Recorder > Transcription** and make sure **Enable transcription** is on and the engine is set up, because a dictation is transcribed by that engine.
 2. Open **Settings > Advanced Audio Recorder > Quick notes** and turn on **Enable quick notes**.
@@ -53,6 +53,8 @@ Before the microphone opens, the plugin checks that the dictation could be compl
 - Transcription is switched off, or the transcription engine is missing its key or model.
 - A quick note profile is selected and the **Quick note engine** is missing its key or model.
 - A recording is running, because the two would capture the same speech twice.
+
+The same rule holds the other way round. While a dictation is recording, a recording does not start, from the ribbon, the command palette or the command line, and a notice says `Stop the quick note before starting a recording.` Once the dictation is stopped and only being transcribed, the microphone is free again and a recording starts as usual.
 
 ## Where the text goes
 

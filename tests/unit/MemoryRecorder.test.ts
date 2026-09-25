@@ -190,6 +190,20 @@ describe('MemoryRecorder', () => {
 		expect(await recorder.stop()).toEqual({ kind: 'cancelled' });
 	});
 
+	it('drops the clip when cancelled while the stop waits for the last chunk', async () => {
+		// Unloading the plugin or switching quick notes off can land between
+		// the second press and the recorder's final chunk. The clip then has
+		// no owner, and handing it over would send it to a paid engine.
+		const recorder = new MemoryRecorder();
+		await recorder.start(settings);
+
+		const stopping = recorder.stop();
+		recorder.cancel();
+
+		expect(await stopping).toEqual({ kind: 'cancelled' });
+		expect(rawTrackStop).toHaveBeenCalled();
+	});
+
 	it('closes a microphone that was still opening when the capture was cancelled', async () => {
 		// The permission prompt can outlast the press that cancels it; the
 		// stream arriving afterwards must not become a capture nobody stops.
