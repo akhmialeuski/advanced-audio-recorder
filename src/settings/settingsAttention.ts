@@ -34,7 +34,12 @@ import {
 	isMultiTrackSessionEnabled,
 	surplusSystemAudioTracks,
 } from '../recording/AudioStreamHandler';
-import type { AudioRecorderSettings, LlmProviderId } from './settingsSchema';
+import {
+	type AudioRecorderSettings,
+	type LlmProviderId,
+	quickNotesAvailable,
+} from './settingsSchema';
+import { resolveQuickNotePrompt } from './profileResolution';
 
 /**
  * The indicator a page entry can carry. The one member is the framework's own
@@ -128,6 +133,13 @@ export function enginesInUse(
 		[
 			settings.transcriptionAutoChaptersEnabled,
 			settings.chaptersLlmProvider,
+		],
+		// A quick note calls its engine only when a profile rewrites it;
+		// plain dictation is transcription alone.
+		[
+			quickNotesAvailable(settings) &&
+				resolveQuickNotePrompt(settings) !== '',
+			settings.quickNoteLlmProvider,
 		],
 	];
 	for (const [enabled, vendorId] of jobs) {
@@ -226,6 +238,34 @@ export function transcriptionRefusal(
 	const engine = engineOfTranscription(settings.transcriptionProvider);
 	if (!engine) {
 		return 'The selected transcription engine is not one this plugin serves.';
+	}
+	return engineSetupReason(settings, engine);
+}
+
+/**
+ * Why a quick note started now would be refused, or null when none would be.
+ *
+ * Asked before the microphone opens rather than after the dictation, because
+ * a refusal found once the user has finished speaking throws away what they
+ * said. A quick note transcribes, so every transcription refusal is one here
+ * too, and a note that a profile rewrites also needs the engine that profile
+ * calls.
+ * @param settings - Live settings
+ * @returns The refusal, or null where a quick note could run
+ */
+export function quickNoteRefusal(
+	settings: AudioRecorderSettings,
+): string | null {
+	if (!settings.quickNotesEnabled) {
+		return 'Quick notes are switched off in settings.';
+	}
+	const transcription = transcriptionRefusal(settings);
+	if (transcription !== null || resolveQuickNotePrompt(settings) === '') {
+		return transcription;
+	}
+	const engine = engineOfVendor(settings.quickNoteLlmProvider);
+	if (!engine) {
+		return 'The quick note engine is not one this plugin serves.';
 	}
 	return engineSetupReason(settings, engine);
 }

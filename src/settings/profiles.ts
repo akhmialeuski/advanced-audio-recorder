@@ -44,6 +44,8 @@ export const ProfileKindId = {
 	LlmCustom: 'llmCustom',
 	/** The instruction the translation task is given. */
 	LlmTranslate: 'llmTranslate',
+	/** The instruction a dictated quick note is rewritten with. */
+	QuickNote: 'quickNote',
 } as const;
 
 /** Which kind of thing a profile holds (derived from {@link ProfileKindId}). */

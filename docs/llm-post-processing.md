@@ -37,7 +37,7 @@ It changes the **text** of the transcript, not the audio. It runs on every trans
 
 ## Enabling it
 
-LLM post-processing has a block of its own in the transcription settings, below **Transcript output** and **Auto chapters** and above **Advanced**.
+LLM post-processing has a block of its own in the transcription settings, below **Transcript output** and **Auto chapters** and above **Quick notes** and **Advanced**.
 
 1. Open **Settings > Advanced Audio Recorder**.
 2. Turn on **Enable transcription** (the whole **Transcription** section only appears when it is on).
@@ -132,7 +132,13 @@ These ship with the plugin as the **Default** profile of each task, and are used
 
 ## Providers and models
 
-LLM post-processing supports five providers, chosen from its own **Post-processing engine** dropdown. That row settles only which service does the work; where the service is reached and which models it serves are configured once on its page under **Engines**, so a key that also transcribes is entered in one place. The other two LLM jobs, auto chapters and the advanced two-pass agents, each carry a **Chapters engine** and a **Context agents engine** row of their own beside their own switch, so a run can summarize with one service and title its chapters with another. Each provider has its own default model and its own user-editable model list.
+LLM post-processing supports five providers, chosen from its own **Post-processing engine** dropdown. That row settles only which service does the work; where the service is reached and which models it serves are configured once on its page under **Engines**, so a key that also transcribes is entered in one place. The other LLM jobs carry an engine row of their own beside their own switch, so a run can summarize with one service and title its chapters with another:
+
+- Auto chapters name theirs on the **Chapters engine** row.
+- The advanced two-pass agents name theirs on the **Context agents engine** row.
+- [Quick notes](quick-notes.md) name theirs on the **Quick note engine** row.
+
+Each provider has its own default model and its own user-editable model list.
 
 | Provider               | Dropdown label       | Default model           | Model catalogue                                                                      |
 | ---------------------- | -------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
@@ -316,3 +322,4 @@ The rows that describe the service itself sit on its page under **Engines**, sha
 - [Settings reference](settings-reference.md) - every plugin setting in one place.
 - [Anthropic (Claude) API key](use-cases/anthropic-api-key.md), [OpenAI / Whisper API key](use-cases/openai-whisper-api-key.md), [Google Gemini API key](use-cases/gemini-api-key.md) - get and enter a provider key.
 - [Meeting notes workflow](use-cases/meeting-notes-workflow.md) - record, transcribe with diarization, and summarize a meeting end to end.
+- [Quick notes](quick-notes.md) - dictation inserted at the cursor, rewritten by a profile of the same kind as the ones on this page.

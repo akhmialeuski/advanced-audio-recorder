@@ -42,6 +42,8 @@ import {
 import { RecordingBanner } from './ui/RecordingBanner';
 import {
 	ICON_MIC,
+	ICON_QUICK_NOTE,
+	QUICK_NOTE_GLYPHS,
 	updateRibbonIcon,
 	initializeRibbonIcon,
 } from './ui/RibbonIcon';
@@ -61,6 +63,10 @@ import { RecordingMarkerModal } from './ui/MarkerModal';
 import { isAudioFile } from './utils/audioFile';
 import { openPluginSettings } from './obsidian/settingsNavigation';
 import { transcriptionRefusal } from './settings/settingsAttention';
+import { quickNotesAvailable } from './settings/settingsSchema';
+import { QuickNoteController } from './quicknotes/QuickNoteController';
+import { MemoryRecorder } from './recording/MemoryRecorder';
+import { TranscriptionService } from './transcription/TranscriptionService';
 import { ProfileNoteStore } from './settings/ProfileNoteStore';
 import { registerCliCommands, type CliHost } from './obsidian/cliCommands';
 import { TranscriptionModal } from './ui/TranscriptionModal';
@@ -147,6 +153,9 @@ export default class AudioRecorderPlugin extends Plugin {
 	private recordingManager!: RecordingManager;
 	private statusBarItem: HTMLElement | null = null;
 	private ribbonIconEl: HTMLElement | null = null;
+	/** The quick note button, present only while quick notes are on. */
+	private quickNoteRibbonEl: HTMLElement | null = null;
+	private quickNotes!: QuickNoteController;
 	private contextMenu!: ContextMenu;
 	private recordingBanner!: RecordingBanner;
 	private playerRegistrar!: EnhancedPlayerRegistrar;
@@ -279,6 +288,27 @@ export default class AudioRecorderPlugin extends Plugin {
 			() => this.encodingWorker,
 		);
 
+		this.quickNotes = new QuickNoteController({
+			app: this.app,
+			getSettings: () => this.settings,
+			recorder: new MemoryRecorder(),
+			// Its own service rather than the dialog's: a dictation reports
+			// to the same session total, and nothing else about it is shared.
+			dictate: (audio, options) =>
+				new TranscriptionService(this.app, () => this.settings, {
+					costSink: this.transcriptionCostTracker,
+				}).dictate(audio, options),
+			costs: this.transcriptionCostTracker,
+			recordingActive: () => this.recordingManager.isSessionActive(),
+			onStatusChange: (status) => {
+				updateRibbonIcon(
+					this.quickNoteRibbonEl,
+					status,
+					QUICK_NOTE_GLYPHS,
+				);
+			},
+		});
+
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
 		this.registerCommands();
 		// The desktop command line, where the app has one. Reports whether it
@@ -298,6 +328,9 @@ export default class AudioRecorderPlugin extends Plugin {
 				void this.recordingManager.toggleRecording();
 			},
 		);
+		// After the recorder's own button, so the two sit side by side with
+		// the recorder first whenever quick notes are on.
+		this.applyQuickNoteSettings();
 		this.setupStatusBar();
 
 		this.contextMenu = new ContextMenu(
@@ -552,6 +585,9 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.silentChannelNotice?.hide();
 		this.silentChannelNotice = null;
 		this.recordingManager.cleanup();
+		// A dictation has nowhere to go once the plugin is gone, so its
+		// microphone is closed and its run cancelled rather than finished.
+		this.quickNotes.cancel();
 		this.recordingBanner.hide();
 		this.playerRegistrar.dispose();
 		this.encodingWorker?.terminate();
@@ -644,12 +680,14 @@ export default class AudioRecorderPlugin extends Plugin {
 			// sees the same session state even though nothing is
 			// persisted
 			this.recordingManager.updateSettings(this.settings);
+			this.applyQuickNoteSettings();
 			this.playerRegistrar.refresh();
 			return;
 		}
 		await this.saveData(serializeSettings(this.settings));
 		await this.backupSettings();
 		this.recordingManager.updateSettings(this.settings);
+		this.applyQuickNoteSettings();
 		// Apply player-affecting changes (enable toggle, waveform, etc.)
 		// to open embeds immediately, without re-opening the note
 		this.playerRegistrar.refresh();
@@ -668,6 +706,37 @@ export default class AudioRecorderPlugin extends Plugin {
 		// would send data.json straight back to the device it came from.
 		await this.profileNotes.reconcile();
 		this.recordingManager.updateSettings(this.settings);
+		this.applyQuickNoteSettings();
+	}
+
+	/**
+	 * Shows the quick note button while quick notes are available and removes
+	 * it otherwise, at once rather than on the next start. Switching the
+	 * feature off also discards a dictation under way, since its button and
+	 * its command are about to disappear from under it.
+	 */
+	private applyQuickNoteSettings(): void {
+		const available = quickNotesAvailable(this.settings);
+		if (available && !this.quickNoteRibbonEl) {
+			// Named after the plugin for the reason the recorder's button is:
+			// the ribbon's context menu lists every button by this text.
+			this.quickNoteRibbonEl = this.addRibbonIcon(
+				ICON_QUICK_NOTE,
+				`${this.manifest.name}: start/stop quick note`,
+				() => {
+					void this.quickNotes.toggle();
+				},
+			);
+			updateRibbonIcon(
+				this.quickNoteRibbonEl,
+				this.quickNotes.getStatus(),
+				QUICK_NOTE_GLYPHS,
+			);
+		} else if (!available && this.quickNoteRibbonEl) {
+			this.quickNotes.cancel();
+			this.quickNoteRibbonEl.remove();
+			this.quickNoteRibbonEl = null;
+		}
 	}
 
 	/**
@@ -983,6 +1052,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			getSettings: () => this.settings,
 			saveSettings: () => this.saveSettings(),
 			recording: this.recordingManager,
+			quickNote: this.quickNotes,
 			openMarkerModal: (kind) => {
 				this.openMarkerModal(kind);
 			},

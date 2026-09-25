@@ -875,6 +875,12 @@ function migrateLegacyLlmSettings(
 	if (raw.advancedLlmProvider === undefined) {
 		merged.advancedLlmProvider = merged.llmProvider;
 	}
+	// Quick notes arrived after the engine choice split per job, so a stored
+	// config starts them on the engine it already set up for post-processing
+	// rather than on one it may hold no key for.
+	if (raw.quickNoteLlmProvider === undefined) {
+		merged.quickNoteLlmProvider = merged.llmProvider;
+	}
 	// The answer ceiling was one field for whichever engine was selected; every
 	// engine that writes now holds its own, and each starts at that bound.
 	const legacyMaxTokens = raw.llmMaxTokens;

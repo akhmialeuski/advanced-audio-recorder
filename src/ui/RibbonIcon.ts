@@ -21,14 +21,47 @@ export const ICON_MIC = 'mic-vocal';
 const ICON_SAVING = 'save';
 
 /**
+ * Icon name of the quick note button.
+ *
+ * Neither microphone: the recorder's button and Obsidian's own Audio recorder
+ * already hold one each in the same ribbon, and a third would be a button
+ * nobody can tell from the other two. A waveform says "speech becomes
+ * something", which is what a dictation into the note is.
+ */
+export const ICON_QUICK_NOTE = 'audio-lines';
+
+/** The glyphs one ribbon button shows. */
+export interface RibbonGlyphs {
+	/** Shown while idle and while capturing. */
+	readonly live: string;
+	/** Shown while the capture is being saved or processed. */
+	readonly busy: string;
+}
+
+/** The recorder's own button: a microphone, and a disk while saving. */
+const RECORDER_GLYPHS: RibbonGlyphs = { live: ICON_MIC, busy: ICON_SAVING };
+
+/**
+ * The quick note button keeps its glyph throughout: it saves nothing, so a
+ * disk would say something untrue, and the busy colour and pulse already say
+ * the dictation is being worked on.
+ */
+export const QUICK_NOTE_GLYPHS: RibbonGlyphs = {
+	live: ICON_QUICK_NOTE,
+	busy: ICON_QUICK_NOTE,
+};
+
+/**
  * Updates the ribbon icon element based on recording status.
  * Toggles the state CSS class, and swaps the glyph for the one saving has.
  * @param ribbonIconEl - The ribbon icon HTML element
  * @param status - Current recording status
+ * @param glyphs - The button's glyphs; the recorder's own by default
  */
 export function updateRibbonIcon(
 	ribbonIconEl: HTMLElement | null,
 	status: RecordingStatus,
+	glyphs: RibbonGlyphs = RECORDER_GLYPHS,
 ): void {
 	if (!ribbonIconEl) {
 		return;
@@ -39,19 +72,19 @@ export function updateRibbonIcon(
 		// same thing it says while the audio is flowing.
 		case RecordingStatus.Recording:
 		case RecordingStatus.Paused:
-			setIcon(ribbonIconEl, ICON_MIC);
+			setIcon(ribbonIconEl, glyphs.live);
 			ribbonIconEl.classList.add('is-recording');
 			ribbonIconEl.classList.remove('is-saving');
 			break;
 		case RecordingStatus.Interrupted:
 		case RecordingStatus.Saving:
-			setIcon(ribbonIconEl, ICON_SAVING);
+			setIcon(ribbonIconEl, glyphs.busy);
 			ribbonIconEl.classList.remove('is-recording');
 			ribbonIconEl.classList.add('is-saving');
 			break;
 		case RecordingStatus.Idle:
 		default:
-			setIcon(ribbonIconEl, ICON_MIC);
+			setIcon(ribbonIconEl, glyphs.live);
 			ribbonIconEl.classList.remove('is-recording');
 			ribbonIconEl.classList.remove('is-saving');
 			break;

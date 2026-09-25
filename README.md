@@ -22,6 +22,7 @@ The full documentation lives in the [docs](docs/index.md) folder, and the same l
 - Enhanced audio player: inline waveform with adjustable speed, skip, loop, volume, a voice-boost toggle that applies the cleanup chain to the recording as it plays, per-recording bookmarks, chapters, and clickable timestamp links.
 - Transcription: OpenAI-compatible Whisper API, Deepgram, Google Gemini, Mistral Voxtral, or fully offline whisper.cpp, with speaker diarization and JSON, SRT, WebVTT, or plain-text output.
 - LLM post-processing: optionally clean up or summarize any transcript with OpenAI, Anthropic, Gemini, Mistral, or DeepSeek.
+- Quick notes: dictate into the note at the cursor from a ribbon button, with the audio never saved and an optional LLM rewrite from a profile of your own.
 - Audio cleanup: high-pass filter, noise gate, and loudness leveling, written to a fresh copy.
 - Formats and file operations: convert between WAV, WebM, OGG, MP3, MP4, M4A, AAC, and FLAC (with an optional mono downmix), and split long files from the right-click menu.
 - Command line (desktop, Obsidian 1.12.2+): start or stop a recording, ask what the recorder is doing, or transcribe a vault file from a terminal.

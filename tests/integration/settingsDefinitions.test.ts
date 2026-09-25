@@ -173,6 +173,7 @@ describe('settings definitions', () => {
 				'Guidance prompt',
 			),
 			catalogue('transcription', 'Participant profiles', 'Participants'),
+			catalogue('quickNotes', 'Quick note profiles', 'Instruction'),
 		],
 		declareListAddRow,
 		transcriptionBlocks: {
@@ -1567,6 +1568,40 @@ describe('settings definitions', () => {
 			expect(childNamesOf('Advanced')).toContain('Dictionary profiles');
 			expect(childNamesOf('Auto chapters')).toContain(
 				'Chapter guidance profiles',
+			);
+		});
+
+		it('keeps quick notes in a block of their own, with the engine a profile calls and the profiles', () => {
+			expect(childNamesOf('Quick notes')).toEqual([
+				'Enable quick notes',
+				'Quick note engine',
+				'Use by default',
+				'Quick note profiles',
+			]);
+		});
+
+		it('shows the quick notes block with transcription, and its engine only once quick notes are on', () => {
+			// A dictation is transcribed by the engine configured on this page,
+			// so the block follows the page's switch; the engine row describes a
+			// job that does not exist until the feature is switched on.
+			const visible = (predicate: unknown): boolean =>
+				typeof predicate === 'function'
+					? (predicate as () => boolean)()
+					: predicate !== false;
+			settings.transcriptionEnabled = true;
+			settings.quickNotesEnabled = false;
+			const engineRow = (): unknown =>
+				rowOf(build(), 'Quick notes', 'Quick note engine').visible;
+
+			expect(visible(groupOf(build(), 'Quick notes').visible)).toBe(true);
+			expect(visible(engineRow())).toBe(false);
+
+			settings.quickNotesEnabled = true;
+			expect(visible(engineRow())).toBe(true);
+
+			settings.transcriptionEnabled = false;
+			expect(visible(groupOf(build(), 'Quick notes').visible)).toBe(
+				false,
 			);
 		});
 

@@ -524,6 +524,39 @@ describe('estimateStepCost: autoChapters', () => {
 	});
 });
 
+describe('estimateStepCost: quickNote', () => {
+	it('prices a rewrite like a custom instruction, on the quick note engine', () => {
+		const settings = mergeSettings({
+			llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+			quickNoteLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			llmOpenAiModel: 'gpt-4o-mini',
+			llmOpenAiMaxTokens: 32000,
+		});
+		// 60s -> 480 dictation tokens in, and the rewrite runs to its length.
+		const line = estimateStepCost('quickNote', settings, 60);
+
+		expect(line.providerName).toBe(EngineLabel.OpenAi);
+		expect(line.usd).toBeCloseTo(
+			(480 * 0.15) / 1_000_000 + (480 * 0.6) / 1_000_000,
+			10,
+		);
+	});
+
+	it('is listed in no run breakdown, since a dictation is not a step of a recording run', () => {
+		const estimate = buildCostEstimate(
+			mergeSettings({
+				quickNotesEnabled: true,
+				transcriptionEnabled: true,
+			}),
+			600,
+		);
+
+		expect(estimate.lines.map((line) => line.label)).not.toContain(
+			'Quick note',
+		);
+	});
+});
+
 describe('one step is priced identically wherever it is read', () => {
 	// The chapter dialog prices the auto-chapters step on its own while the
 	// transcribe dialog prices it as part of the run. Both go through

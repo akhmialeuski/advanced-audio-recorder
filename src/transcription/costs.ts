@@ -645,6 +645,29 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 		enabled: autoChaptersAfterTranscribe,
 		needsDuration: llmStepIsPriced(LlmJobId.AutoChapters),
 	},
+	[RunCostStepId.QuickNote]: {
+		line: (settings, durationSeconds) =>
+			llmLine(
+				settings,
+				LlmJobId.QuickNote,
+				durationSeconds,
+				'Quick note',
+				(seconds) =>
+					estimatedTranscriptPassUsage(
+						settings,
+						seconds,
+						LlmJobId.QuickNote,
+						// A profile is a custom instruction over the
+						// dictation, so it is sized like one.
+						LLM_OUTPUT_RATIO[LlmTask.Custom],
+					),
+			),
+		// A quick note is dictated, never a step of a run over a recording,
+		// so no run breakdown lists it; it is priced only on its own, as the
+		// fallback for a call its vendor reported no usage for.
+		enabled: () => false,
+		needsDuration: llmStepIsPriced(LlmJobId.QuickNote),
+	},
 };
 
 /** The steps in execution order, independent of which are enabled. */
@@ -653,6 +676,7 @@ const RUN_COST_STEP_ORDER: readonly RunCostStepId[] = [
 	RunCostStepId.ContextAgents,
 	RunCostStepId.PostProcess,
 	RunCostStepId.AutoChapters,
+	RunCostStepId.QuickNote,
 ];
 
 /**

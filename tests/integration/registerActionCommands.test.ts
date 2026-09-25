@@ -252,6 +252,8 @@ interface SessionState {
 	active?: boolean;
 	/** Whether the player markers feature is on. */
 	markersEnabled?: boolean;
+	/** Whether quick notes are switched on (transcription is, either way). */
+	quickNotesEnabled?: boolean;
 }
 
 /**
@@ -264,9 +266,11 @@ interface SessionState {
 function makeSession({
 	active = true,
 	markersEnabled = true,
+	quickNotesEnabled = false,
 }: SessionState = {}): {
 	services: SessionServices;
 	recording: jest.Mocked<RecordingSessionPort>;
+	quickNote: { toggle: jest.Mock };
 	openMarkerModal: jest.Mock;
 	saveSettings: jest.Mock;
 	settings: AudioRecorderSettings;
@@ -277,11 +281,17 @@ function makeSession({
 		togglePauseResume: jest.fn(),
 		canDropMarker: jest.fn(() => active && markersEnabled),
 	} as unknown as jest.Mocked<RecordingSessionPort>;
+	const quickNote = { toggle: jest.fn().mockResolvedValue(undefined) };
 	const openMarkerModal = jest.fn();
 	const saveSettings = jest.fn().mockResolvedValue(undefined);
-	const settings = partial<AudioRecorderSettings>({ audioDeviceId: '' });
+	const settings = partial<AudioRecorderSettings>({
+		audioDeviceId: '',
+		transcriptionEnabled: true,
+		quickNotesEnabled,
+	});
 	return {
 		recording,
+		quickNote,
 		openMarkerModal,
 		saveSettings,
 		settings,
@@ -290,6 +300,7 @@ function makeSession({
 			getSettings: () => settings,
 			saveSettings,
 			recording,
+			quickNote,
 			openMarkerModal,
 		},
 	};
@@ -320,6 +331,7 @@ describe('session actions over the recorder', () => {
 
 		expect(commands.map((command) => command.id)).toEqual([
 			COMMAND_IDS.startStopRecording,
+			COMMAND_IDS.startStopQuickNote,
 			COMMAND_IDS.pauseResumeRecording,
 			COMMAND_IDS.addRecordingMarker,
 			COMMAND_IDS.addRecordingBookmark,
@@ -343,6 +355,23 @@ describe('session actions over the recorder', () => {
 		// is the one session command with nothing to gate on.
 		expect(idle.session.recording.toggleRecording).toHaveBeenCalledTimes(1);
 		expect(live.session.recording.toggleRecording).toHaveBeenCalledTimes(1);
+	});
+
+	it('offers the quick note command only once quick notes are switched on', () => {
+		const off = registerSession({ quickNotesEnabled: false });
+		const on = registerSession({ quickNotesEnabled: true });
+
+		expect(
+			invokeCommand(off.commands, COMMAND_IDS.startStopQuickNote),
+		).toBe(false);
+		expect(invokeCommand(on.commands, COMMAND_IDS.startStopQuickNote)).toBe(
+			true,
+		);
+
+		// Off, the feature does not exist yet, so a key bound to it stays free
+		// for whatever else claims it.
+		expect(off.session.quickNote.toggle).not.toHaveBeenCalled();
+		expect(on.session.quickNote.toggle).toHaveBeenCalledTimes(1);
 	});
 
 	it('drives pause only while a session is running', () => {

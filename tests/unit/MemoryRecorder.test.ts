@@ -1,15 +1,20 @@
 /**
- * Unit tests for the settings-tab test capture, focused on the mono
- * capture bridge integration and stream lifecycle.
- * @module tests/unit/TestRecorder.test
+ * Unit tests for the in-memory capture behind the settings test recording and
+ * quick notes, focused on the mono capture bridge integration and the stream
+ * lifecycle.
+ * @module tests/unit/MemoryRecorder.test
  */
 
-import { TestRecorder } from 'src/recording/TestRecorder';
+import { CaptureStart, MemoryRecorder } from 'src/recording/MemoryRecorder';
 import { at } from '../helpers/assertions';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { partial } from '../helpers/doubles';
 import { installAudioContextRate } from '../helpers/mediaMocks';
+import {
+	ChunkingMediaRecorder,
+	installMicrophone,
+} from '../helpers/memoryCapture';
 
 /** Bridge doubles created by the recorder under test. */
 interface BridgeDouble {
@@ -44,60 +49,14 @@ jest.mock('src/recording/MonoCaptureBridge', () => ({
 		),
 }));
 
-/** MediaRecorder double that emits one chunk and stops synchronously. */
-class MockMediaRecorder {
-	static instances: MockMediaRecorder[] = [];
-	static isTypeSupported = jest.fn().mockReturnValue(true);
-	state = 'recording';
-	ondataavailable: ((event: { data: Blob }) => void) | null = null;
-	private stopHandler: (() => void) | null = null;
-
-	constructor(
-		public readonly stream: MediaStream,
-		public readonly options: unknown,
-	) {
-		MockMediaRecorder.instances.push(this);
-	}
-
-	start(): void {
-		this.state = 'recording';
-	}
-
-	stop(): void {
-		this.state = 'inactive';
-		this.ondataavailable?.({ data: new Blob(['chunk']) });
-		this.stopHandler?.();
-	}
-
-	addEventListener(event: string, handler: () => void): void {
-		if (event === 'stop') {
-			this.stopHandler = handler;
-		}
-	}
-}
-
-function createRawStream(): { stream: MediaStream; trackStop: jest.Mock } {
-	const trackStop = jest.fn();
-	const stream = partial<MediaStream>({
-		getTracks: () => [{ stop: trackStop }],
-	});
-	return { stream, trackStop };
-}
-
-describe('TestRecorder', () => {
+describe('MemoryRecorder', () => {
 	let settings: AudioRecorderSettings;
 	let rawTrackStop: jest.Mock;
+	let getUserMedia: jest.Mock;
 
 	beforeEach(() => {
 		createdBridges.length = 0;
-		MockMediaRecorder.instances = [];
-		MockMediaRecorder.isTypeSupported.mockReturnValue(true);
-		(global as Record<string, unknown>).MediaRecorder = MockMediaRecorder;
-		const raw = createRawStream();
-		rawTrackStop = raw.trackStop;
-		(global.navigator as { mediaDevices?: unknown }).mediaDevices = {
-			getUserMedia: jest.fn().mockResolvedValue(raw.stream),
-		};
+		({ trackStop: rawTrackStop, getUserMedia } = installMicrophone());
 		settings = { ...DEFAULT_SETTINGS, recordingFormat: 'webm' };
 	});
 
@@ -110,12 +69,12 @@ describe('TestRecorder', () => {
 		settings.sampleRate = 22050;
 		settings.bitrate = 24000;
 		try {
-			await new TestRecorder().record(settings, 0);
+			await new MemoryRecorder().record(settings, 0);
 		} finally {
 			device.restore();
 		}
 
-		expect(at(MockMediaRecorder.instances, 0).options).toEqual(
+		expect(at(ChunkingMediaRecorder.instances, 0).options).toEqual(
 			expect.objectContaining({ audioBitsPerSecond: 32000 }),
 		);
 	});
@@ -125,14 +84,14 @@ describe('TestRecorder', () => {
 		// audio/mp4. Rebuilding the type from the container name handed the
 		// preview element audio/m4a, which it has no decoder for, so the clip
 		// would not play back while the recording itself was fine.
-		MockMediaRecorder.isTypeSupported.mockImplementation(
+		ChunkingMediaRecorder.isTypeSupported.mockImplementation(
 			(mime: string) => mime === 'audio/mp4',
 		);
 		settings.recordingFormat = 'm4a';
 
-		const result = await new TestRecorder().record(settings, 0);
+		const result = await new MemoryRecorder().record(settings, 0);
 
-		expect(at(MockMediaRecorder.instances, 0).options).toEqual(
+		expect(at(ChunkingMediaRecorder.instances, 0).options).toEqual(
 			expect.objectContaining({ mimeType: 'audio/mp4' }),
 		);
 		expect(result.kind === 'recorded' && result.blob.type).toBe(
@@ -141,62 +100,107 @@ describe('TestRecorder', () => {
 	});
 
 	it('records the raw stream in the source mode', async () => {
-		const result = await new TestRecorder().record(settings, 0);
+		const result = await new MemoryRecorder().record(settings, 0);
 
 		expect(result.kind).toBe('recorded');
 		expect(createdBridges).toHaveLength(0);
-		expect(rawTrackStop).toHaveBeenCalled();
+		expect(rawTrackStop).toHaveBeenCalledTimes(1);
 	});
 
 	it('records through the mono bridge in a mono mode and releases it', async () => {
 		settings.recordingChannels = 'mono-right';
 		settings.sampleRate = 48000;
 
-		const result = await new TestRecorder().record(settings, 0);
+		const result = await new MemoryRecorder().record(settings, 0);
 
 		expect(result.kind).toBe('recorded');
 		expect(createdBridges).toHaveLength(1);
 		const bridge = at(createdBridges, 0);
 		expect(bridge.mode).toBe('mono-right');
 		expect(bridge.sampleRate).toBe(48000);
-		expect(at(MockMediaRecorder.instances, 0).stream).toBe(
+		expect(at(ChunkingMediaRecorder.instances, 0).stream).toBe(
 			bridge.monoStream,
 		);
-		expect(bridge.release).toHaveBeenCalled();
+		expect(bridge.release).toHaveBeenCalledTimes(1);
 		// The microphone stream is still stopped by the recorder itself
-		expect(rawTrackStop).toHaveBeenCalled();
+		expect(rawTrackStop).toHaveBeenCalledTimes(1);
 	});
 
 	it('releases the bridge when the capture fails mid-run', async () => {
 		settings.recordingChannels = 'mono-mix';
 		// spyOn, not assignment: a plain assignment would leave the throwing
 		// start on the prototype for every later test in any order but this one.
-		jest.spyOn(MockMediaRecorder.prototype, 'start').mockImplementation(
+		jest.spyOn(ChunkingMediaRecorder.prototype, 'start').mockImplementation(
 			() => {
 				throw new Error('recorder failed');
 			},
 		);
 
-		await expect(new TestRecorder().record(settings, 0)).rejects.toThrow(
+		await expect(new MemoryRecorder().record(settings, 0)).rejects.toThrow(
 			'recorder failed',
 		);
 
-		expect(at(createdBridges, 0).release).toHaveBeenCalled();
-		expect(rawTrackStop).toHaveBeenCalled();
+		expect(at(createdBridges, 0).release).toHaveBeenCalledTimes(1);
+		expect(rawTrackStop).toHaveBeenCalledTimes(1);
 	});
 
 	it('reports unsupported formats before touching the microphone', async () => {
-		MockMediaRecorder.isTypeSupported.mockReturnValue(false);
+		ChunkingMediaRecorder.isTypeSupported.mockReturnValue(false);
 
-		const result = await new TestRecorder().record(settings, 0);
+		const result = await new MemoryRecorder().record(settings, 0);
 
 		expect(result.kind).toBe('unsupported');
-		expect(
-			(
-				global.navigator.mediaDevices as unknown as {
-					getUserMedia: jest.Mock;
-				}
-			).getUserMedia,
-		).not.toHaveBeenCalled();
+		expect(getUserMedia).not.toHaveBeenCalled();
+	});
+
+	it('hands over what an open-ended capture recorded once it is stopped', async () => {
+		// A quick note has no fixed length: the capture runs until the second
+		// press, and the container it names is what the transcription is told.
+		const recorder = new MemoryRecorder();
+
+		expect(await recorder.start(settings)).toBe(CaptureStart.Started);
+		expect(recorder.isRecording()).toBe(true);
+		expect(rawTrackStop).not.toHaveBeenCalled();
+		const result = await recorder.stop();
+
+		expect(result).toEqual({
+			kind: 'recorded',
+			blob: expect.any(Blob) as Blob,
+			recorderFormat: 'webm',
+		});
+		expect(recorder.isRecording()).toBe(false);
+		expect(rawTrackStop).toHaveBeenCalledTimes(1);
+	});
+
+	it('releases the microphone at once when cancelled, and reports the stop as cancelled', async () => {
+		const recorder = new MemoryRecorder();
+		await recorder.start(settings);
+
+		recorder.cancel();
+
+		expect(rawTrackStop).toHaveBeenCalledTimes(1);
+		expect(await recorder.stop()).toEqual({ kind: 'cancelled' });
+	});
+
+	it('closes a microphone that was still opening when the capture was cancelled', async () => {
+		// The permission prompt can outlast the press that cancels it; the
+		// stream arriving afterwards must not become a capture nobody stops.
+		let grant: (stream: MediaStream) => void = () => undefined;
+		const late = new Promise<MediaStream>((resolve) => {
+			grant = resolve;
+		});
+		getUserMedia.mockReturnValueOnce(late);
+		const recorder = new MemoryRecorder();
+
+		const starting = recorder.start(settings);
+		recorder.cancel();
+		grant(
+			partial<MediaStream>({ getTracks: () => [{ stop: rawTrackStop }] }),
+		);
+
+		expect(await starting).toBe(CaptureStart.Cancelled);
+		expect(rawTrackStop).toHaveBeenCalledTimes(1);
+		expect(ChunkingMediaRecorder.instances).toHaveLength(0);
+		expect(recorder.isRecording()).toBe(false);
 	});
 });

@@ -4,7 +4,12 @@
  * @module tests/unit/RibbonIcon.test
  */
 
-import { updateRibbonIcon, initializeRibbonIcon } from 'src/ui/RibbonIcon';
+import {
+	ICON_QUICK_NOTE,
+	QUICK_NOTE_GLYPHS,
+	updateRibbonIcon,
+	initializeRibbonIcon,
+} from 'src/ui/RibbonIcon';
 import { RecordingStatus } from 'src/types';
 
 describe('RibbonIcon', () => {
@@ -79,6 +84,24 @@ describe('RibbonIcon', () => {
 			expect(ribbonElement.getAttribute('data-icon')).toBe('mic-vocal');
 			expect(ribbonElement.classList.contains('is-saving')).toBe(false);
 		});
+
+		it.each([
+			RecordingStatus.Idle,
+			RecordingStatus.Recording,
+			RecordingStatus.Saving,
+		])(
+			'keeps the quick note glyph while %s, since a dictation saves nothing',
+			(status) => {
+				updateRibbonIcon(ribbonElement, status, QUICK_NOTE_GLYPHS);
+
+				expect(ribbonElement.getAttribute('data-icon')).toBe(
+					ICON_QUICK_NOTE,
+				);
+				expect(ribbonElement.classList.contains('is-saving')).toBe(
+					status === RecordingStatus.Saving,
+				);
+			},
+		);
 
 		it('handles default case same as idle', () => {
 			ribbonElement.classList.add('is-recording');

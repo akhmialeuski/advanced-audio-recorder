@@ -26,6 +26,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 - [Transcribing the parts that failed](#transcribing-the-parts-that-failed)
 - [LLM post-processing](#llm-post-processing)
 - [Auto chapters](#auto-chapters)
+- [Quick notes](#quick-notes)
 - [Diagnostics](#diagnostics)
 - [Feature matrix](#feature-matrix)
 
@@ -185,7 +186,7 @@ Optionally pass a finished transcript through an LLM to **clean up** punctuation
 - **Mistral** runs `mistral-medium-latest` by default.
 - **DeepSeek** runs `deepseek-flash` by default.
 
-The OpenAI, Gemini and Mistral pages are shared with the matching transcription engines, while Anthropic and DeepSeek keep their own. Auto chapters and the advanced two-pass agents each pick an engine of their own, so a run can summarize with one service and title its chapters with another.
+The OpenAI, Gemini and Mistral pages are shared with the matching transcription engines, while Anthropic and DeepSeek keep their own. Auto chapters, the advanced two-pass agents and quick notes each pick an engine of their own, so a run can summarize with one service and title its chapters with another.
 
 Learn more: [LLM post-processing](llm-post-processing.md)
 
@@ -194,6 +195,12 @@ Learn more: [LLM post-processing](llm-post-processing.md)
 With **Auto chapters** enabled, the **Generate chapters from transcript** action (context menu, editor menu, command palette) asks the configured LLM to divide a transcribed recording into titled chapters, written to the recording's marker sidecar and shown in the enhanced player. It requires an existing transcript (sidecar file or in-note transcript with timecode links) and asks you to transcribe first when none is found. How the recording is split follows a selectable **chapter guidance profile**: a built-in **Default** is seeded and editable, and you can add profiles for specific cases and pick the right one per recording. An optional **Generate after transcription** toggle runs it automatically after each transcription. Re-running replaces only previously generated chapters - bookmarks and manual chapters are kept.
 
 Learn more: [Transcription](transcription.md#auto-chapters)
+
+## Quick notes
+
+With **Enable quick notes** on, a waveform button joins the recorder's microphone in the ribbon, together with the **Start/stop quick note** command. Press it, dictate, press it again, and the recognized text is inserted at the cursor of the note you started in. The audio is held in memory only and dropped once the text is ready, so nothing is saved to the vault. A selectable **quick note profile** can rewrite the dictation with an LLM before it is inserted, turning it into a tidy paragraph, a bulleted list or a task; with the default **None**, the text goes in as it was recognized.
+
+Learn more: [Quick notes](quick-notes.md)
 
 ## Diagnostics
 
@@ -234,6 +241,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | Transcription                 | Speech-to-text via 5 engines, diarization, output formats           | Settings > Transcription                        | [Transcription](transcription.md)                              |
 | LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM     | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
 | Auto chapters                 | LLM-generated titled chapters from an existing transcript           | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
+| Quick notes                   | Dictate text at the cursor, optionally rewritten by an LLM profile  | Settings > Transcription > Quick notes          | [Quick notes](quick-notes.md)                                  |
 | Diagnostics                   | Test recording, system info, debug mode                             | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
 
 ---

@@ -1,10 +1,10 @@
 /**
  * The recording-session actions offered by the plugin, defined once.
  * Together they cover a session from the palette: starting and stopping
- * capture, pausing it, choosing the input device, and dropping a marker
- * at the live position either through the kind chooser or with the kind
- * fixed up front, so bookmark and chapter can each carry their own
- * hotkey.
+ * capture, dictating a quick note, pausing, choosing the input device, and
+ * dropping a marker at the live position either through the kind chooser or
+ * with the kind fixed up front, so bookmark and chapter can each carry their
+ * own hotkey.
  * @module actions/sessionActions
  */
 
@@ -12,6 +12,8 @@ import { COMMAND_IDS, PLAYER_ICONS } from '../constants';
 import { MARKER_KIND } from '../markers/markerModel';
 import { isDeviceSelectionSupported } from '../platform/capabilities';
 import { showDeviceSelectionModal } from '../ui/DeviceSelectionModal';
+import { ICON_QUICK_NOTE } from '../ui/RibbonIcon';
+import { quickNotesAvailable } from '../settings/settingsSchema';
 import type { SessionAction, SessionServices } from './PluginAction';
 
 /** Availability gate for the action that starts a session as well as ends it. */
@@ -26,7 +28,7 @@ const whileDropping = ({ recording }: SessionServices): boolean =>
 	recording.canDropMarker();
 
 /**
- * All recording-session actions in palette order: capture, pause, the
+ * All recording-session actions in palette order: capture, quick note, pause, the
  * marker chooser, the two kind-fixed markers, and the device picker.
  */
 export const SESSION_ACTIONS: readonly SessionAction[] = [
@@ -37,6 +39,17 @@ export const SESSION_ACTIONS: readonly SessionAction[] = [
 		isAvailable: always,
 		run: ({ recording }: SessionServices): Promise<void> =>
 			recording.toggleRecording(),
+	},
+	{
+		commandId: COMMAND_IDS.startStopQuickNote,
+		title: 'Start/stop quick note',
+		icon: ICON_QUICK_NOTE,
+		// Absent from the palette, and inert as a hotkey, until quick notes
+		// are switched on: the feature does not exist before that.
+		isAvailable: ({ getSettings }: SessionServices): boolean =>
+			quickNotesAvailable(getSettings()),
+		run: ({ quickNote }: SessionServices): Promise<void> =>
+			quickNote.toggle(),
 	},
 	{
 		commandId: COMMAND_IDS.pauseResumeRecording,

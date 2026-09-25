@@ -110,6 +110,15 @@ export interface RecordingSessionPort {
 	canDropMarker(): boolean;
 }
 
+/**
+ * The slice of quick notes the session actions drive, declared as a port for
+ * the same reason as {@link RecordingSessionPort}.
+ */
+export interface QuickNotePort {
+	/** Starts a dictation, or stops the running one and inserts its text. */
+	toggle(): Promise<void>;
+}
+
 /** Everything a recording-session action needs. */
 export interface SessionServices {
 	readonly app: App;
@@ -118,6 +127,8 @@ export interface SessionServices {
 	readonly saveSettings: () => Promise<void>;
 	/** The live recording session the action drives. */
 	readonly recording: RecordingSessionPort;
+	/** Quick notes, which dictate into the note at the cursor. */
+	readonly quickNote: QuickNotePort;
 	/**
 	 * Freezes a marker draft of the given kind at the live position and
 	 * opens the naming modal. Without a kind the modal asks for one.
