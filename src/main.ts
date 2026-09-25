@@ -38,12 +38,14 @@ import {
 	initializeStatusBar,
 	renderPlaybackStatusBar,
 	renderTranscriptionStatusBar,
+	renderQuickNoteStatusBar,
 } from './ui/StatusBar';
 import { RecordingBanner } from './ui/RecordingBanner';
 import {
 	ICON_MIC,
 	ICON_QUICK_NOTE,
 	QUICK_NOTE_GLYPHS,
+	RIBBON_HIDDEN_CLASS,
 	updateRibbonIcon,
 	initializeRibbonIcon,
 } from './ui/RibbonIcon';
@@ -156,6 +158,15 @@ export default class AudioRecorderPlugin extends Plugin {
 	/** The quick note button, present only while quick notes are on. */
 	private quickNoteRibbonEl: HTMLElement | null = null;
 	private quickNotes!: QuickNoteController;
+	/** What the quick note is doing, as the status bar shows it. */
+	private quickNoteStatus: RecordingStatus = RecordingStatus.Idle;
+	/** The processing stage the quick note reported last. */
+	private quickNoteProgress: SaveProgress | undefined;
+	/**
+	 * Where a quick note says what it is doing on a platform with no status
+	 * bar, which is where the recording banner stands in for it.
+	 */
+	private quickNoteNotice: Notice | null = null;
 	private contextMenu!: ContextMenu;
 	private recordingBanner!: RecordingBanner;
 	private playerRegistrar!: EnhancedPlayerRegistrar;
@@ -300,12 +311,8 @@ export default class AudioRecorderPlugin extends Plugin {
 				}).dictate(audio, options),
 			costs: this.transcriptionCostTracker,
 			recordingActive: () => this.recordingManager.isSessionActive(),
-			onStatusChange: (status) => {
-				updateRibbonIcon(
-					this.quickNoteRibbonEl,
-					status,
-					QUICK_NOTE_GLYPHS,
-				);
+			onStatusChange: (status, progress) => {
+				this.handleQuickNoteStatus(status, progress);
 			},
 		});
 
@@ -588,6 +595,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		// A dictation has nowhere to go once the plugin is gone, so its
 		// microphone is closed and its run cancelled rather than finished.
 		this.quickNotes.cancel();
+		this.quickNoteNotice?.hide();
+		this.quickNoteNotice = null;
 		this.recordingBanner.hide();
 		this.playerRegistrar.dispose();
 		this.encodingWorker?.terminate();
@@ -710,13 +719,21 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Shows the quick note button while quick notes are available and removes
-	 * it otherwise, at once rather than on the next start. Switching the
-	 * feature off also discards a dictation under way, since its button and
-	 * its command are about to disappear from under it.
+	 * Shows the quick note button while quick notes are available and hides it
+	 * otherwise, at once rather than on the next start. Switching the feature
+	 * off also discards a dictation under way, since its button and its
+	 * command are about to disappear from under it.
+	 *
+	 * The button is registered once, the first time the feature is on, and
+	 * hidden rather than removed afterwards. The plugin API has no way to take
+	 * a ribbon action back short of unloading: detaching the element left its
+	 * registration in the ribbon, and every switch back on added another.
 	 */
 	private applyQuickNoteSettings(): void {
 		const available = quickNotesAvailable(this.settings);
+		if (!available) {
+			this.quickNotes.cancel();
+		}
 		if (available && !this.quickNoteRibbonEl) {
 			// Named after the plugin for the reason the recorder's button is:
 			// the ribbon's context menu lists every button by this text.
@@ -732,11 +749,8 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.quickNotes.getStatus(),
 				QUICK_NOTE_GLYPHS,
 			);
-		} else if (!available && this.quickNoteRibbonEl) {
-			this.quickNotes.cancel();
-			this.quickNoteRibbonEl.remove();
-			this.quickNoteRibbonEl = null;
 		}
+		this.quickNoteRibbonEl?.toggleClass(RIBBON_HIDDEN_CLASS, !available);
 	}
 
 	/**
@@ -1336,6 +1350,26 @@ export default class AudioRecorderPlugin extends Plugin {
 	 */
 	private renderStatusBar(): void {
 		const active = this.activeBackgroundTranscription();
+		// A dictation is what the user is doing right now, so it outranks a
+		// playback and a minimized transcription the way a recording does.
+		if (
+			this.recordingStatus === RecordingStatus.Idle &&
+			this.quickNoteStatus !== RecordingStatus.Idle
+		) {
+			renderQuickNoteStatusBar(
+				this.statusBarItem,
+				this.quickNoteStatus,
+				this.quickNoteProgress,
+				() => {
+					void this.quickNotes.toggle();
+				},
+				{
+					showStats: this.settings.showRecordingStats,
+					showMeter: this.settings.showInputLevelMeter,
+				},
+			);
+			return;
+		}
 		if (
 			this.recordingStatus === RecordingStatus.Idle &&
 			this.playbackState
@@ -1428,6 +1462,44 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
+	 * Shows what the quick note is doing: on its ribbon button, in the status
+	 * bar the way a recording shows itself there, and, where there is no
+	 * status bar, in a notice that follows each stage.
+	 * @param status - Recording while it captures, Saving while processed
+	 * @param progress - The processing stage, while it is processed
+	 */
+	private handleQuickNoteStatus(
+		status: RecordingStatus,
+		progress: SaveProgress | undefined,
+	): void {
+		if (this.unloaded) {
+			return;
+		}
+		this.quickNoteStatus = status;
+		this.quickNoteProgress = progress;
+		updateRibbonIcon(this.quickNoteRibbonEl, status, QUICK_NOTE_GLYPHS);
+		this.renderStatusBar();
+		if (!isRecordingBannerSupported()) {
+			return;
+		}
+		if (status === RecordingStatus.Idle) {
+			this.quickNoteNotice?.hide();
+			this.quickNoteNotice = null;
+			return;
+		}
+		// A processing stage always arrives with its progress, and recording
+		// is the one state that carries none.
+		const message = progress
+			? progress.description
+			: 'Quick note: recording. Run the command again to stop.';
+		if (this.quickNoteNotice) {
+			this.quickNoteNotice.setMessage(message);
+		} else {
+			this.quickNoteNotice = new Notice(message, 0);
+		}
+	}
+
+	/**
 	 * Renders the status bar and the mobile banner for a status change.
 	 * @param status - New recording status
 	 * @param saveProgress - Optional save progress for the saving state
@@ -1474,6 +1546,10 @@ export default class AudioRecorderPlugin extends Plugin {
 			status !== RecordingStatus.Recording &&
 			status !== RecordingStatus.Paused
 		) {
+			const dictation = this.quickNotes.liveStats();
+			if (dictation) {
+				updateRecordingLiveStats(this.statusBarItem, dictation);
+			}
 			return;
 		}
 		const elapsedMs = this.recordingManager.getElapsedMs();

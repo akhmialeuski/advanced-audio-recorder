@@ -45,7 +45,7 @@ import { isSystemAudioLoopbackAvailable } from '../recording/systemAudioSupport'
 import { llmGroup } from './sections/llmSection';
 import { multiTrackPage } from './sections/multiTrackSection';
 import { outputFormatGroup } from './sections/outputFormatSection';
-import { quickNotesGroup } from './sections/quickNotesSection';
+import { quickNotesPage } from './sections/quickNotesSection';
 import { sectionItems } from './sections/rowHelpers';
 import { transcriptionAdvancedGroup } from './sections/transcriptionAdvancedSection';
 import { transcriptionGroup } from './sections/transcriptionSection';
@@ -135,6 +135,10 @@ export function buildSettingsDefinitions(
 		outputFormatGroup(ctx.outputFormat, ctx.settings),
 		fileStorageGroup(ctx.settings),
 		...sectionItems([
+			// First among the entries: a feature with a button of its own is
+			// looked for by its own name, above the sections a recording is
+			// tuned with.
+			quickNotesPage(ctx),
 			audioSplittingPage(ctx.settings),
 			multiTrackPage(ctx.settings, ctx.devices, systemAudioAvailable),
 			audioPlayerPage(ctx.settings),
@@ -143,7 +147,7 @@ export function buildSettingsDefinitions(
 				// case for a sub-page, and it keeps the main tab scannable.
 				type: 'page',
 				name: 'Transcription',
-				desc: 'Speech-to-text, transcript output, chapters, LLM post-processing, and quick notes.',
+				desc: 'Speech-to-text, transcript output, chapters, and LLM post-processing.',
 				displayValue: (): string =>
 					ctx.settings.transcriptionEnabled ? 'On' : 'Off',
 				// Every engine a job calls is configured under this entry, so
@@ -157,7 +161,6 @@ export function buildSettingsDefinitions(
 					transcriptOutputGroup(ctx.settings),
 					autoChaptersGroup(ctx, ProfileSection.Chapters),
 					...llmGroup(ctx),
-					quickNotesGroup(ctx),
 					transcriptionAdvancedGroup(ctx, ProfileSection.Advanced),
 				],
 			},

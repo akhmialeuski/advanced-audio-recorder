@@ -30,7 +30,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 - [Diagnostics](#diagnostics)
 - [Feature matrix](#feature-matrix)
 
-![The plugin settings tab with the documentation callout, the release notes switch under it, the audio input, output format and file storage rows, and one entry per section below them, with the output format section showing recording format, bit depth, audio bitrate and the read-only output summary](images/features-settings-overview.png)
+![The plugin settings tab with the documentation callout, the release notes switch under it, the audio input, output format and file storage rows, and one entry per section below them starting with Quick notes, with the output format section showing recording format, bit depth, audio bitrate and the read-only output summary](images/features-settings-overview.png)
 
 ---
 
@@ -198,7 +198,7 @@ Learn more: [Transcription](transcription.md#auto-chapters)
 
 ## Quick notes
 
-With **Enable quick notes** on, a waveform button joins the recorder's microphone in the ribbon, together with the **Start/stop quick note** command. Press it, dictate, press it again, and the recognized text is inserted at the cursor of the note you started in. The audio is held in memory only and dropped once the text is ready, so nothing is saved to the vault. A selectable **quick note profile** can rewrite the dictation with an LLM before it is inserted, turning it into a tidy paragraph, a bulleted list or a task; with the default **None**, the text goes in as it was recognized.
+With **Enable quick notes** on its own settings entry, a waveform button joins the recorder's microphone in the ribbon, together with the **Start/stop quick note** command. Press it, dictate, press it again, and the recognized text is inserted at the cursor of the note you started in. The audio is held in memory only and dropped once the text is ready, so nothing is saved to the vault. While it records and while it is processed, the status bar shows it the way it shows a recording, stage by stage. A selectable **quick note profile** can rewrite the dictation with an LLM before it is inserted, turning it into a tidy paragraph, a bulleted list or a task; with the default **None**, the text goes in as it was recognized.
 
 Learn more: [Quick notes](quick-notes.md)
 
@@ -241,7 +241,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | Transcription                 | Speech-to-text via 5 engines, diarization, output formats           | Settings > Transcription                        | [Transcription](transcription.md)                              |
 | LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM     | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
 | Auto chapters                 | LLM-generated titled chapters from an existing transcript           | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
-| Quick notes                   | Dictate text at the cursor, optionally rewritten by an LLM profile  | Settings > Transcription > Quick notes          | [Quick notes](quick-notes.md)                                  |
+| Quick notes                   | Dictate text at the cursor, optionally rewritten by an LLM profile  | Settings > Quick notes                          | [Quick notes](quick-notes.md)                                  |
 | Diagnostics                   | Test recording, system info, debug mode                             | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
 
 ---

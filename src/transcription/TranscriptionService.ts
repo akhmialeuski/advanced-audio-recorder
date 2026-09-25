@@ -545,8 +545,11 @@ export class TranscriptionService {
 		const { transcribeOptions, dictionaryTerms } = this.requestOptions(
 			settings,
 			token,
-			diarize,
-			settings.transcriptionWordTimestamps,
+			{
+				diarize,
+				wordTimestamps: settings.transcriptionWordTimestamps,
+				translateToEnglish: settings.transcriptionTranslateToEnglish,
+			},
 		);
 		// One decision for whether the post-processing pass runs, read by the
 		// pass below and by the warning about the prompt it would send.
@@ -798,11 +801,16 @@ export class TranscriptionService {
 		);
 		const token = options.token ?? NEVER_CANCELLED;
 		const provider = this.createProvider(settings);
+		// Plain text in the language it was spoken in: speakers, word timings
+		// and the translation into English all shape a transcript document.
 		const { transcribeOptions, dictionaryTerms } = this.requestOptions(
 			settings,
 			token,
-			false,
-			false,
+			{
+				diarize: false,
+				wordTimestamps: false,
+				translateToEnglish: false,
+			},
 		);
 		const instruction = resolveQuickNotePrompt(settings);
 		const lostSourceNotice = new ProfileTextSource(
@@ -976,16 +984,19 @@ export class TranscriptionService {
 	 * or silently ignore. Whatever is dropped is told to the user here.
 	 * @param settings - The run's settings snapshot
 	 * @param token - Cancellation for the run, whose signal every request carries
-	 * @param diarize - Whether the run asks for speaker labels, already gated
-	 *   by the engine
-	 * @param wordTimestamps - Whether the run would like word timings
+	 * @param wanted - What the run would like from the engine: speaker labels
+	 *   (already gated by the engine), word timings, and the speech translated
+	 *   into English. The last two are gated here.
 	 * @returns The request options and the resolved terms
 	 */
 	private requestOptions(
 		settings: AudioRecorderSettings,
 		token: CancellationToken,
-		diarize: boolean,
-		wordTimestamps: boolean,
+		wanted: {
+			diarize: boolean;
+			wordTimestamps: boolean;
+			translateToEnglish: boolean;
+		},
 	): { transcribeOptions: TranscribeOptions; dictionaryTerms: string[] } {
 		const dictionaryTerms = resolveDictionaryTermList(settings);
 		const dictionaryPlan = planDictionaryBias(
@@ -1009,13 +1020,13 @@ export class TranscriptionService {
 					settings.transcriptionProvider,
 					settings.transcriptionLanguage,
 				),
-				diarize,
+				diarize: wanted.diarize,
 				// Gated like diarize: an engine that returns segment-level
 				// timing only never sees a request it would drop, and a stored
 				// "on" left from an engine that reads it stops travelling.
 				wordTimestamps: effectiveWordTimestamps(
 					settings.transcriptionProvider,
-					wordTimestamps,
+					wanted.wordTimestamps,
 				),
 				dictionary: dictionaryPlan.applied.length
 					? dictionaryPlan.applied
@@ -1024,7 +1035,7 @@ export class TranscriptionService {
 				// never sees a request it has nothing to answer with.
 				translateToEnglish: effectiveSpeechTranslation(
 					settings.transcriptionProvider,
-					settings.transcriptionTranslateToEnglish,
+					wanted.translateToEnglish,
 				),
 				// Providers on abortable transports stop the in-flight request
 				// the moment the user cancels, not at the next chunk boundary.

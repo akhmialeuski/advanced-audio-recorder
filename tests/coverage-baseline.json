@@ -2,8 +2,8 @@
 	"coverage": {
 		"total": {
 			"statements": 98.75,
-			"branches": 94.68,
-			"functions": 98.71,
+			"branches": 94.71,
+			"functions": 98.72,
 			"lines": 98.75
 		},
 		"files": {
@@ -20,10 +20,10 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 99.51,
-				"branches": 97.29,
-				"functions": 99,
-				"lines": 99.75
+				"statements": 99.54,
+				"branches": 97.53,
+				"functions": 99.02,
+				"lines": 99.76
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -423,7 +423,7 @@
 			},
 			"src/quicknotes/QuickNoteController.ts": {
 				"statements": 100,
-				"branches": 93.54,
+				"branches": 94.59,
 				"functions": 100,
 				"lines": 100
 			},
@@ -471,7 +471,7 @@
 			},
 			"src/recording/MemoryRecorder.ts": {
 				"statements": 100,
-				"branches": 83.33,
+				"branches": 87.09,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1403,8 +1403,8 @@
 	},
 	"suite": {
 		"suites": 250,
-		"tests": 6220,
-		"passed": 6220,
+		"tests": 6234,
+		"passed": 6234,
 		"failed": 0,
 		"todo": 0
 	}

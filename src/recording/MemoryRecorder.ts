@@ -15,6 +15,7 @@ import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
 import { effectiveBitrate } from '../audio/AudioCapabilityDetector';
 import { isMonoChannelMode, normalizeChannelMode } from '../audio/downmix';
 import { MonoCaptureBridge } from './MonoCaptureBridge';
+import { InputLevelMonitor } from './InputLevelMonitor';
 import {
 	getProcessingConstraints,
 	recordingEncodingFor,
@@ -46,11 +47,38 @@ export const CaptureStart = {
 /** One start outcome (derived from {@link CaptureStart}). */
 export type CaptureStart = (typeof CaptureStart)[keyof typeof CaptureStart];
 
+/** What a running capture reports while it records, for a live indicator. */
+export interface CaptureLiveStats {
+	/** Time since the recorder started, in milliseconds. */
+	elapsedMs: number;
+	/** Bytes the recorder has delivered so far. */
+	bytes: number;
+	/** Input level as a 0..1 meter fraction; 0 when not metered. */
+	level: number;
+}
+
+/** Options of one capture. */
+export interface CaptureOptions {
+	/** Meter the input level, for a capture that shows it while it runs. */
+	meter?: boolean;
+}
+
+/**
+ * How often the recorder hands over what it has, in milliseconds. A capture
+ * that delivered its audio only at the stop would report no size until then,
+ * and the chunks are concatenated at the stop either way.
+ */
+const CHUNK_INTERVAL_MS = 1000;
+
 /** Everything one running capture holds until it is stopped or cancelled. */
 interface ActiveCapture {
 	readonly recorder: MediaRecorder;
 	readonly stream: MediaStream;
 	readonly monoBridge: MonoCaptureBridge | null;
+	/** The input meter, when the capture was asked for one. */
+	readonly levelMonitor: InputLevelMonitor | null;
+	/** When the recorder started, in performance-clock milliseconds. */
+	readonly startedAt: number;
 	readonly chunks: Blob[];
 	readonly mimeType: string;
 	readonly recorderFormat: string;
@@ -77,14 +105,37 @@ export class MemoryRecorder {
 	}
 
 	/**
+	 * What the running capture has recorded so far, or null when none runs.
+	 * @returns Elapsed time, delivered bytes and the input level
+	 */
+	liveStats(): CaptureLiveStats | null {
+		const capture = this.capture;
+		if (!capture) {
+			return null;
+		}
+		return {
+			elapsedMs: performance.now() - capture.startedAt,
+			bytes: capture.chunks.reduce(
+				(total, chunk) => total + chunk.size,
+				0,
+			),
+			level: capture.levelMonitor?.getLevel() ?? 0,
+		};
+	}
+
+	/**
 	 * Opens the microphone and starts recording. Anything already running is
 	 * cancelled first. The stream is released before this returns on every
 	 * path that does not leave a capture running, so a recorder-setup error
 	 * can never leave the device captured.
 	 * @param settings - Plugin settings (device, format, rates)
+	 * @param options - Whether to meter the input level
 	 * @returns How the start ended
 	 */
-	async start(settings: AudioRecorderSettings): Promise<CaptureStart> {
+	async start(
+		settings: AudioRecorderSettings,
+		options: CaptureOptions = {},
+	): Promise<CaptureStart> {
 		this.cancel();
 		const generation = this.generation;
 
@@ -157,11 +208,20 @@ export class MemoryRecorder {
 					once: true,
 				});
 			});
-			recorder.start();
+			recorder.start(CHUNK_INTERVAL_MS);
+			// Metered from the stream the recorder hears, so the meter shows
+			// the channel mode the clip is recorded in.
+			let levelMonitor: InputLevelMonitor | null = null;
+			if (options.meter === true) {
+				levelMonitor = new InputLevelMonitor();
+				levelMonitor.start(captureStream);
+			}
 			this.capture = {
 				recorder,
 				stream,
 				monoBridge,
+				levelMonitor,
+				startedAt: performance.now(),
 				chunks,
 				mimeType,
 				recorderFormat,
@@ -190,6 +250,7 @@ export class MemoryRecorder {
 			}
 			await capture.stopped;
 		} finally {
+			capture.levelMonitor?.stop();
 			releaseDevices(capture.stream, capture.monoBridge);
 			if (this.capture === capture) {
 				this.capture = null;
@@ -251,6 +312,7 @@ export class MemoryRecorder {
 		if (capture.recorder.state !== 'inactive') {
 			capture.recorder.stop();
 		}
+		capture.levelMonitor?.stop();
 		releaseDevices(capture.stream, capture.monoBridge);
 	}
 }

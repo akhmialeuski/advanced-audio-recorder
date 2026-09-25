@@ -37,7 +37,7 @@ It changes the **text** of the transcript, not the audio. It runs on every trans
 
 ## Enabling it
 
-LLM post-processing has a block of its own in the transcription settings, below **Transcript output** and **Auto chapters** and above **Quick notes** and **Advanced**.
+LLM post-processing has a block of its own in the transcription settings, below **Transcript output** and **Auto chapters** and above **Advanced**.
 
 1. Open **Settings > Advanced Audio Recorder**.
 2. Turn on **Enable transcription** (the whole **Transcription** section only appears when it is on).

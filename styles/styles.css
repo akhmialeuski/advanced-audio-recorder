@@ -12,6 +12,11 @@ If your plugin does not need CSS, delete this file.
     font-weight: bold;
 }
 
+/* A ribbon button whose feature is switched off */
+.side-dock-ribbon-action.aar-ribbon-hidden {
+    display: none;
+}
+
 /* Ribbon icon recording animation */
 .side-dock-ribbon-action.is-recording svg {
     color: var(--color-red);

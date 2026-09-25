@@ -30,6 +30,13 @@ const ICON_SAVING = 'save';
  */
 export const ICON_QUICK_NOTE = 'audio-lines';
 
+/**
+ * Class that hides a ribbon button the plugin registered but does not offer
+ * right now. The rule lives in the plugin stylesheet, so a theme can override
+ * it like any other.
+ */
+export const RIBBON_HIDDEN_CLASS = 'aar-ribbon-hidden';
+
 /** The glyphs one ribbon button shows. */
 export interface RibbonGlyphs {
 	/** Shown while idle and while capturing. */

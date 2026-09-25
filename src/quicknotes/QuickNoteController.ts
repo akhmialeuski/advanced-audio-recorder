@@ -21,7 +21,11 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import { RecordingStatus } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { quickNoteRefusal } from '../settings/settingsAttention';
-import { CaptureStart, type MemoryRecorder } from '../recording/MemoryRecorder';
+import {
+	CaptureStart,
+	type CaptureLiveStats,
+	type MemoryRecorder,
+} from '../recording/MemoryRecorder';
 import {
 	captureInsertionContext,
 	insertTextAtCursor,
@@ -38,7 +42,7 @@ import type {
 } from '../transcription/TranscriptionService';
 import { TranscriptionCancelledError } from '../transcription/TranscriptionService';
 import type { RunCostSink } from '../transcription/SessionCostTracker';
-import type { InsertionContext } from '../types';
+import type { InsertionContext, SaveProgress } from '../types';
 
 /** What the quick note controller needs from the rest of the plugin. */
 export interface QuickNoteDeps {
@@ -59,8 +63,15 @@ export interface QuickNoteDeps {
 	 * quick note would land in the note the recording's link goes to.
 	 */
 	readonly recordingActive: () => boolean;
-	/** Told every time the state the ribbon button shows changes. */
-	readonly onStatusChange: (status: RecordingStatus) => void;
+	/**
+	 * Told every time the state changes, and every time a stage of the
+	 * processing starts, so the ribbon button and the status bar can say what
+	 * the dictation is doing.
+	 */
+	readonly onStatusChange: (
+		status: RecordingStatus,
+		progress?: SaveProgress,
+	) => void;
 }
 
 /**
@@ -75,12 +86,27 @@ export class QuickNoteController {
 	private insertionContext: InsertionContext | null = null;
 	/** Cancels the run in flight when the plugin unloads. */
 	private run: CancellationSource | null = null;
+	/**
+	 * Counts the microphone opens, and every cancel. A start still waiting on
+	 * the microphone when a cancel, or a newer start, has moved on no longer
+	 * owns the state the button shows, and must not reset it.
+	 */
+	private attempt = 0;
 
 	constructor(private readonly deps: QuickNoteDeps) {}
 
 	/** The state the ribbon button shows. */
 	getStatus(): RecordingStatus {
 		return this.status;
+	}
+
+	/**
+	 * What the dictation has recorded so far, or null when it is not
+	 * recording, for the live indicators of the status bar.
+	 * @returns Elapsed time, recorded bytes and the input level
+	 */
+	liveStats(): CaptureLiveStats | null {
+		return this.deps.recorder.liveStats();
 	}
 
 	/**
@@ -107,6 +133,7 @@ export class QuickNoteController {
 	 * switched off, neither of which has anywhere left to put the text.
 	 */
 	cancel(): void {
+		this.attempt++;
 		this.deps.recorder.cancel();
 		this.run?.cancel();
 		this.run = null;
@@ -120,6 +147,7 @@ export class QuickNoteController {
 	 * @returns Whether the capture is running
 	 */
 	private async start(): Promise<boolean> {
+		const attempt = ++this.attempt;
 		const settings = this.deps.getSettings();
 		const refusal = quickNoteRefusal(settings);
 		if (refusal !== null) {
@@ -139,7 +167,12 @@ export class QuickNoteController {
 		// permission prompt stops this dictation instead of starting another.
 		this.setStatus(RecordingStatus.Recording);
 		try {
-			const started = await this.deps.recorder.start(settings);
+			const started = await this.deps.recorder.start(settings, {
+				meter: settings.showInputLevelMeter,
+			});
+			if (attempt !== this.attempt) {
+				return false;
+			}
 			if (started === CaptureStart.Unsupported) {
 				new Notice(
 					`Format "${settings.recordingFormat}" cannot be recorded here. Pick another output format.`,
@@ -155,6 +188,9 @@ export class QuickNoteController {
 				`${PLUGIN_LOG_PREFIX} Quick note could not open the microphone:`,
 				error,
 			);
+			if (attempt !== this.attempt) {
+				return false;
+			}
 			new Notice(
 				`Quick note could not open the microphone: ${error instanceof Error ? error.message : String(error)}`,
 			);
@@ -168,15 +204,21 @@ export class QuickNoteController {
 	 * dropped once this returns, whichever way it ends.
 	 */
 	private async finish(): Promise<void> {
+		// Claimed before anything is awaited: the state is what routes the
+		// next press, so a press landing while this one waits must already
+		// find the dictation stopping rather than stop the same capture again.
+		this.setStatus(RecordingStatus.Saving, {
+			percent: 0,
+			description: 'Quick note: stopping...',
+		});
 		// A press that lands while the microphone is still being opened stops
-		// the capture that open produces rather than one that is not there.
+		// the capture that open produces. An open that failed has already put
+		// the button back to idle, and there is nothing to stop.
 		if (!(await this.starting)) {
 			return;
 		}
-		this.setStatus(RecordingStatus.Saving);
 		const run = new CancellationSource();
 		this.run = run;
-		const progress = new Notice('Transcribing quick note...', 0);
 		try {
 			const clip = await this.deps.recorder.stop();
 			if (clip.kind !== 'recorded') {
@@ -192,8 +234,15 @@ export class QuickNoteController {
 				},
 				{
 					token: run.token,
-					onProgress: (_fraction, label) => {
-						progress.setMessage(`Quick note: ${label}`);
+					onProgress: (fraction, label) => {
+						// A cancelled run has handed the state back; a late
+						// stage of it must not take it again.
+						if (this.run === run) {
+							this.setStatus(RecordingStatus.Saving, {
+								percent: fraction * 100,
+								description: `Quick note: ${label}`,
+							});
+						}
 					},
 				},
 			);
@@ -211,7 +260,6 @@ export class QuickNoteController {
 				);
 			}
 		} finally {
-			progress.hide();
 			if (this.run === run) {
 				this.run = null;
 				this.setStatus(RecordingStatus.Idle);
@@ -240,18 +288,34 @@ export class QuickNoteController {
 		if (insertTextAtCursor(this.deps.app, text, this.insertionContext)) {
 			return;
 		}
-		await navigator.clipboard.writeText(text);
+		try {
+			await navigator.clipboard.writeText(text);
+		} catch (error) {
+			// The clipboard refuses a window without focus, and some mobile
+			// webviews refuse it outright. The text is the last copy of a paid
+			// dictation, so it is put in front of the user rather than lost.
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Quick note could not reach the clipboard:`,
+				error,
+			);
+			new Notice(
+				`No note is open to take the quick note, and the clipboard refused it. The text: ${text}`,
+				0,
+			);
+			return;
+		}
 		new Notice(
 			'No note is open to take the quick note, so its text was copied to the clipboard.',
 		);
 	}
 
 	/**
-	 * Records the state and tells the ribbon.
+	 * Records the state and tells the surfaces that show it.
 	 * @param status - The new state
+	 * @param progress - The processing stage, while the dictation is processed
 	 */
-	private setStatus(status: RecordingStatus): void {
+	private setStatus(status: RecordingStatus, progress?: SaveProgress): void {
 		this.status = status;
-		this.deps.onStatusChange(status);
+		this.deps.onStatusChange(status, progress);
 	}
 }

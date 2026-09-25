@@ -24,6 +24,8 @@ import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { RecordingStatus } from 'src/types';
 import { EngineLabel } from 'src/providers/providers';
 import { noticeMessages } from '../mocks/obsidian';
+import { InputLevelMonitor } from 'src/recording/InputLevelMonitor';
+import type { MockInputLevelMonitor } from '../mocks/modules/inputLevelMonitor';
 import {
 	createFile,
 	createMarkdownView,
@@ -39,6 +41,12 @@ import {
 	type InstalledMicrophone,
 	installMicrophone,
 } from '../helpers/memoryCapture';
+
+// jsdom has no AudioContext, so the meter is the shared double; the level
+// maths is covered by the monitor's own suite.
+jest.mock('src/recording/InputLevelMonitor', () =>
+	require('../mocks/modules/inputLevelMonitor'),
+);
 
 /** What the dictation says, as the engine returns it in two segments. */
 const HEARD = 'buy milk and eggs';
@@ -57,6 +65,8 @@ interface Harness {
 	llm: { complete: jest.Mock };
 	costs: SessionCostTracker;
 	statuses: RecordingStatus[];
+	/** Every processing stage reported, in order. */
+	stages: string[];
 	microphone: InstalledMicrophone;
 	/** The note the dictation is started in. */
 	note: SpiedMarkdownView;
@@ -120,6 +130,7 @@ function harness(options: HarnessOptions = {}): Harness {
 		costSink: costs,
 	});
 	const statuses: RecordingStatus[] = [];
+	const stages: string[] = [];
 	const controller = new QuickNoteController({
 		app,
 		getSettings: () => settings,
@@ -128,7 +139,12 @@ function harness(options: HarnessOptions = {}): Harness {
 			service.dictate(audio, dictateOptions),
 		costs,
 		recordingActive: () => options.recordingActive ?? false,
-		onStatusChange: (status) => statuses.push(status),
+		onStatusChange: (status, progress) => {
+			statuses.push(status);
+			if (progress) {
+				stages.push(progress.description);
+			}
+		},
 	});
 	return {
 		controller,
@@ -137,6 +153,7 @@ function harness(options: HarnessOptions = {}): Harness {
 		llm,
 		costs,
 		statuses,
+		stages,
 		microphone,
 		note,
 		app,
@@ -157,6 +174,37 @@ function selectQuickNoteProfile(
 	setSelectedProfileId(settings, ProfileKindId.QuickNote, profile.id);
 }
 
+/** How a test settles a microphone open it is holding. */
+interface HeldOpen {
+	/** Opens the microphone, as a granted permission prompt does. */
+	grant: () => void;
+	/** Fails the open, as a refused permission prompt does. */
+	refuse: () => void;
+}
+
+/**
+ * Holds the next microphone open until the test settles it, the way a
+ * permission prompt holds it until the user answers.
+ * @param h - The harness whose microphone is held
+ * @returns How to settle the open
+ */
+function holdMicrophoneOpen(h: Harness): HeldOpen {
+	let held: HeldOpen = { grant: () => undefined, refuse: () => undefined };
+	h.microphone.getUserMedia.mockReturnValueOnce(
+		new Promise((resolve, reject) => {
+			held = {
+				grant: () => {
+					resolve(h.microphone.stream);
+				},
+				refuse: () => {
+					reject(new Error('Permission denied'));
+				},
+			};
+		}),
+	);
+	return held;
+}
+
 /**
  * Presses the button twice: once to start dictating, once to stop.
  * @param controller - The quick note under test
@@ -175,11 +223,53 @@ describe('quick notes', () => {
 		expect(h.note.editor.replaceSelection).toHaveBeenCalledWith(HEARD);
 		// No profile is selected, so the dictation is transcription alone.
 		expect(h.llm.complete).not.toHaveBeenCalled();
-		expect(h.statuses).toEqual([
-			RecordingStatus.Recording,
-			RecordingStatus.Saving,
-			RecordingStatus.Idle,
+		expect(h.statuses.at(0)).toBe(RecordingStatus.Recording);
+		expect(h.statuses.at(-1)).toBe(RecordingStatus.Idle);
+	});
+
+	it('reports what it has recorded while it records, and nothing once stopped', async () => {
+		// The status bar shows the elapsed time, the size and the input meter
+		// of a dictation the way it shows them for a recording.
+		const h = harness();
+		await h.controller.toggle();
+		const meter = jest.mocked(InputLevelMonitor).mock
+			.instances[0] as unknown as MockInputLevelMonitor;
+		meter.getLevel.mockReturnValue(0.4);
+
+		expect(h.controller.liveStats()).toEqual({
+			elapsedMs: expect.any(Number) as number,
+			bytes: 0,
+			level: 0.4,
+		});
+
+		await h.controller.toggle();
+
+		expect(h.controller.liveStats()).toBeNull();
+		expect(meter.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it('reports each stage of the processing, the way a recording reports its save', async () => {
+		// The status bar reads these; without them the user cannot tell a
+		// dictation being transcribed from one that stalled.
+		const h = harness();
+		selectQuickNoteProfile(h.settings, LIST_INSTRUCTION);
+
+		await dictate(h.controller);
+
+		expect(h.stages).toEqual([
+			'Quick note: stopping...',
+			'Quick note: Preparing audio...',
+			'Quick note: Transcribing...',
+			'Quick note: Rewriting with LLM...',
+			'Quick note: Done',
 		]);
+		expect(new Set(h.statuses)).toEqual(
+			new Set([
+				RecordingStatus.Recording,
+				RecordingStatus.Saving,
+				RecordingStatus.Idle,
+			]),
+		);
 	});
 
 	it('sends the recorded audio from memory, in the container it was recorded in', async () => {
@@ -201,6 +291,7 @@ describe('quick notes', () => {
 			settings: {
 				transcriptionDiarize: true,
 				transcriptionWordTimestamps: true,
+				transcriptionTranslateToEnglish: true,
 			},
 		});
 
@@ -209,6 +300,8 @@ describe('quick notes', () => {
 		const [, options] = at(h.provider.transcribe.mock.calls, 0);
 		expect(options.diarize).toBe(false);
 		expect(options.wordTimestamps).toBe(false);
+		// A dictation is inserted in the language it was spoken in.
+		expect(options.translateToEnglish).toBe(false);
 	});
 
 	it('leaves the transcript post-processing to recordings', async () => {
@@ -441,14 +534,7 @@ describe('quick notes that go wrong', () => {
 	it('treats a press during a microphone open that fails as nothing to stop', async () => {
 		silenceConsole('error');
 		const h = harness();
-		let refuse: () => void = () => undefined;
-		h.microphone.getUserMedia.mockReturnValueOnce(
-			new Promise((_resolve, reject) => {
-				refuse = () => {
-					reject(new Error('Permission denied'));
-				};
-			}),
-		);
+		const { refuse } = holdMicrophoneOpen(h);
 
 		const starting = h.controller.toggle();
 		const stopping = h.controller.toggle();
@@ -505,9 +591,8 @@ describe('quick notes that go wrong', () => {
 		await stopping;
 
 		expect(h.provider.transcribe).not.toHaveBeenCalled();
-		// Only the progress line, which the stop hides again: a cancel is not
-		// an empty recording and not a failure.
-		expect(noticeMessages()).toEqual(['Transcribing quick note...']);
+		// A cancel is not an empty recording and not a failure.
+		expect(noticeMessages()).toEqual([]);
 		expect(h.controller.getStatus()).toBe(RecordingStatus.Idle);
 	});
 
@@ -525,5 +610,79 @@ describe('quick notes that go wrong', () => {
 
 		expect(h.note.editor.replaceSelection).not.toHaveBeenCalled();
 		expect(h.controller.getStatus()).toBe(RecordingStatus.Idle);
+	});
+
+	it('transcribes and inserts once, however many presses land while the microphone opens', async () => {
+		// Every press after the first one while the permission prompt is up
+		// used to stop the same capture again: two runs, two bills, two
+		// insertions.
+		const h = harness();
+		const { grant } = holdMicrophoneOpen(h);
+
+		const presses = [
+			h.controller.toggle(),
+			h.controller.toggle(),
+			h.controller.toggle(),
+		];
+		grant();
+		await Promise.all(presses);
+
+		expect(h.provider.transcribe).toHaveBeenCalledTimes(1);
+		expect(h.note.editor.replaceSelection).toHaveBeenCalledTimes(1);
+		expect(noticeMessages()).toContain(
+			'The last quick note is still being transcribed.',
+		);
+		expect(h.controller.getStatus()).toBe(RecordingStatus.Idle);
+	});
+
+	it('keeps a newer dictation recording when an older, cancelled open settles late', async () => {
+		// Switched off and on again during a permission prompt, the old open
+		// settles after the new dictation started and must not reset its state.
+		const h = harness();
+		const { grant: grantOld } = holdMicrophoneOpen(h);
+		const oldStart = h.controller.toggle();
+		h.controller.cancel();
+
+		await h.controller.toggle();
+		grantOld();
+		await oldStart;
+
+		expect(h.controller.getStatus()).toBe(RecordingStatus.Recording);
+	});
+
+	it('says nothing when a cancelled open fails late, since a newer dictation owns the state', async () => {
+		silenceConsole('error');
+		const h = harness();
+		const { refuse } = holdMicrophoneOpen(h);
+		const oldStart = h.controller.toggle();
+		h.controller.cancel();
+
+		await h.controller.toggle();
+		refuse();
+		await oldStart;
+
+		expect(noticeMessages()).toEqual([]);
+		expect(h.controller.getStatus()).toBe(RecordingStatus.Recording);
+	});
+
+	it('puts the text in front of the user when the clipboard refuses it too', async () => {
+		silenceConsole('warn');
+		Object.assign(navigator, {
+			clipboard: {
+				writeText: jest
+					.fn()
+					.mockRejectedValue(new Error('Document is not focused.')),
+			},
+		});
+		const h = harness({ views: () => [] });
+
+		await dictate(h.controller);
+
+		expect(noticeMessages()).toContain(
+			`No note is open to take the quick note, and the clipboard refused it. The text: ${HEARD}`,
+		);
+		expect(noticeMessages()).not.toContainEqual(
+			expect.stringContaining('Quick note failed'),
+		);
 	});
 });

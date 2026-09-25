@@ -6,6 +6,8 @@
  */
 
 import { CaptureStart, MemoryRecorder } from 'src/recording/MemoryRecorder';
+import { InputLevelMonitor } from 'src/recording/InputLevelMonitor';
+import type { MockInputLevelMonitor } from '../mocks/modules/inputLevelMonitor';
 import { at } from '../helpers/assertions';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
@@ -15,6 +17,12 @@ import {
 	ChunkingMediaRecorder,
 	installMicrophone,
 } from '../helpers/memoryCapture';
+
+// jsdom has no AudioContext, so the meter is the shared double; the level
+// maths is covered by the monitor's own suite.
+jest.mock('src/recording/InputLevelMonitor', () =>
+	require('../mocks/modules/inputLevelMonitor'),
+);
 
 /** Bridge doubles created by the recorder under test. */
 interface BridgeDouble {
@@ -202,5 +210,37 @@ describe('MemoryRecorder', () => {
 		expect(rawTrackStop).toHaveBeenCalledTimes(1);
 		expect(ChunkingMediaRecorder.instances).toHaveLength(0);
 		expect(recorder.isRecording()).toBe(false);
+	});
+
+	it('reports what it has recorded while it records, metered when asked', async () => {
+		// The status bar shows a dictation's size and input level the way it
+		// shows a recording's, so the capture reports both while it runs.
+		const recorder = new MemoryRecorder();
+		await recorder.start(settings, { meter: true });
+		const meter = jest.mocked(InputLevelMonitor).mock
+			.instances[0] as unknown as MockInputLevelMonitor;
+		meter.getLevel.mockReturnValue(0.25);
+		at(ChunkingMediaRecorder.instances, 0).ondataavailable?.({
+			data: new Blob(['abc']),
+		});
+
+		expect(recorder.liveStats()).toEqual({
+			elapsedMs: expect.any(Number) as number,
+			bytes: 3,
+			level: 0.25,
+		});
+
+		recorder.cancel();
+
+		expect(recorder.liveStats()).toBeNull();
+		expect(meter.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it('meters nothing unless asked', async () => {
+		const recorder = new MemoryRecorder();
+		await recorder.start(settings);
+
+		expect(recorder.liveStats()?.level).toBe(0);
+		expect(InputLevelMonitor).not.toHaveBeenCalled();
 	});
 });

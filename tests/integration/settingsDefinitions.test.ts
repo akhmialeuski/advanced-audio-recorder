@@ -1571,38 +1571,66 @@ describe('settings definitions', () => {
 			);
 		});
 
-		it('keeps quick notes in a block of their own, with the engine a profile calls and the profiles', () => {
-			expect(childNamesOf('Quick notes')).toEqual([
+		it('gives quick notes an entry of their own on the main tab, first among the entries', () => {
+			// A feature with a button of its own is looked for by its own
+			// name, not inside the page of the pipeline it runs through.
+			const entries = build()
+				.flatMap((item) =>
+					'type' in item && item.type === 'group'
+						? (item.items ?? [])
+						: [item],
+				)
+				.filter((item) => 'type' in item && item.type === 'page')
+				.map((item) => item.name);
+
+			expect(entries[0]).toBe('Quick notes');
+			expect(
+				pageOf(build(), 'Transcription').items.map(
+					(item) => (item as GroupDefinition).heading,
+				),
+			).not.toContain('Quick notes');
+			expect(pageEntryNames('Quick notes')).toEqual([
 				'Enable quick notes',
+				'Transcription is off',
 				'Quick note engine',
 				'Use by default',
 				'Quick note profiles',
 			]);
 		});
 
-		it('shows the quick notes block with transcription, and its engine only once quick notes are on', () => {
-			// A dictation is transcribed by the engine configured on this page,
-			// so the block follows the page's switch; the engine row describes a
-			// job that does not exist until the feature is switched on.
+		it('says on the entry and on the page when quick notes wait for transcription', () => {
+			// Switched on with transcription off, the feature has no engine to
+			// dictate through and shows no button; the entry says why instead
+			// of reading "On" over nothing.
 			const visible = (predicate: unknown): boolean =>
 				typeof predicate === 'function'
 					? (predicate as () => boolean)()
 					: predicate !== false;
-			settings.transcriptionEnabled = true;
-			settings.quickNotesEnabled = false;
-			const engineRow = (): unknown =>
-				rowOf(build(), 'Quick notes', 'Quick note engine').visible;
+			const page = (): GroupDefinition => pageOf(build(), 'Quick notes');
+			const row = (name: string): unknown =>
+				(
+					(page().items[0] as GroupDefinition).items.find(
+						(item) => item.name === name,
+					) as { visible?: unknown }
+				).visible;
 
-			expect(visible(groupOf(build(), 'Quick notes').visible)).toBe(true);
-			expect(visible(engineRow())).toBe(false);
+			settings.quickNotesEnabled = false;
+			settings.transcriptionEnabled = false;
+			expect(entryValueOf(page())).toBe('Off');
+			expect(visible(row('Transcription is off'))).toBe(false);
+			expect(visible(row('Quick note engine'))).toBe(false);
 
 			settings.quickNotesEnabled = true;
-			expect(visible(engineRow())).toBe(true);
+			expect(entryValueOf(page())).toBe('Needs transcription');
+			expect(entryStatusOf(page())).toBe('warning');
+			expect(visible(row('Transcription is off'))).toBe(true);
 
-			settings.transcriptionEnabled = false;
-			expect(visible(groupOf(build(), 'Quick notes').visible)).toBe(
-				false,
-			);
+			settings.transcriptionEnabled = true;
+			settings.whisperApiKey = 'sk-test';
+			expect(entryValueOf(page())).toBe('On');
+			expect(entryStatusOf(page())).toBeNull();
+			expect(visible(row('Transcription is off'))).toBe(false);
+			expect(visible(row('Quick note engine'))).toBe(true);
 		});
 
 		it('leaves the transcription page holding blocks and entries only', () => {
