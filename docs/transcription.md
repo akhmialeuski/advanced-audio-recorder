@@ -430,7 +430,9 @@ The detailed in-note templates (note heading, timestamp/speaker/line format) sta
 
 Options toggled mid-run do **not** change an in-flight job: the run snapshots its options when you press **Transcribe**, so edits only affect the next attempt after a failure.
 
-![The Transcribe audio dialog with its Engine, Language, Speaker diarization, Participant profile, disabled Word-level timestamps, Advanced settings, Dictionary, Advanced two-pass transcription, Destination, File format, Include timestamps, Include speakers, LLM post-processing, LLM task and Generate chapters rows above the cost line and the Transcribe, Minimize and Close buttons](images/transcription-dialog.png)
+![The Transcribe audio dialog with the Language, Participant profile and Destination rows up front and the collapsed Advanced block below them, above the cost line and the Transcribe, Minimize and Close buttons](images/transcription-dialog.png)
+
+![The same dialog with the Advanced block open, listing Engine, Speaker diarization, disabled Word-level timestamps, Advanced settings, Dictionary, Advanced two-pass transcription, File format, Include timestamps, Include speakers, LLM post-processing, LLM task and Generate chapters](images/transcription-dialog-advanced.png)
 
 ---
 
