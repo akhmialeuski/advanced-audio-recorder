@@ -1,7 +1,7 @@
 /**
  * Modal that configures and runs transcription for a single audio file.
  * Language, the participant profile and the destination are shown up front;
- * every other option sits in a collapsed Advanced block. The per-run options
+ * every other option sits in a collapsed More options block. The per-run options
  * (engine, language, diarization, the participant profile a diarized run
  * stores with the recording, destination, file format, in-note
  * toggles, the advanced settings that reveal the dictionary and two-pass mode,
@@ -156,7 +156,7 @@ export class TranscriptionModal extends PluginModal {
 	private runStartedAt = 0;
 	private progressFillEl: HTMLElement | null = null;
 	private configEl: HTMLElement | null = null;
-	/** Whether the Advanced block is expanded; kept across config re-renders. */
+	/** Whether the More options block is expanded; kept across config re-renders. */
 	private advancedOpen = false;
 	/** Container for the pre-run estimate and the session total lines. */
 	private costEstimateEl: HTMLElement | null = null;
@@ -417,7 +417,9 @@ export class TranscriptionModal extends PluginModal {
 			this.advancedOpen || !this.isSelectedEngineAvailable();
 		advancedEl.createEl('summary', {
 			cls: 'aar-transcribe-advanced-summary',
-			text: 'Advanced',
+			// Not "Advanced": that word already names the Advanced settings
+			// switch this block holds, which in turn reveals the two-pass mode.
+			text: 'More options',
 		});
 		advancedEl.addEventListener('toggle', () => {
 			this.advancedOpen = advancedEl.open;

@@ -903,7 +903,7 @@ describe('TranscriptionModal per-run options', () => {
 			'details.aar-transcribe-advanced',
 		);
 		if (!block) {
-			throw new Error('Advanced block not rendered');
+			throw new Error('More options block not rendered');
 		}
 		return block;
 	}
@@ -939,19 +939,61 @@ describe('TranscriptionModal per-run options', () => {
 		expect(advanced.open).toBe(false);
 	});
 
-	it('keeps the Advanced block open across a re-render', () => {
+	// The rows inside re-render only after their save resolves, so each case
+	// waits for that and checks the block was rebuilt; asserting on the old
+	// element would pass whatever the dialog remembered. Opening and closing
+	// go through the browser's own asynchronous toggle event.
+	it('keeps the More options block open across a re-render', async () => {
 		const { modal } = openWithEverything();
 		const advanced = advancedBlock(modal);
 		advanced.open = true;
-		advanced.dispatchEvent(new Event('toggle'));
+		await tick();
 
 		// Diarization re-renders the config, rebuilding the block.
 		rowToggle(settingRow(modal.contentEl, 'Speaker diarization')).click();
+		await tick();
 
+		expect(advancedBlock(modal)).not.toBe(advanced);
 		expect(advancedBlock(modal).open).toBe(true);
 	});
 
-	it('opens the Advanced block when the stored engine cannot run here', () => {
+	// Closing is a choice too: a block that reopened on every change would
+	// push Transcribe back below the fold after each click inside it.
+	it('keeps the More options block closed across a re-render', async () => {
+		const { modal } = openWithEverything();
+		const advanced = advancedBlock(modal);
+		advanced.open = true;
+		await tick();
+		advanced.open = false;
+		await tick();
+
+		// Changing the destination re-renders the config, rebuilding the block.
+		const destination = rowSelect(
+			settingRow(modal.contentEl, 'Destination'),
+		);
+		destination.value = 'file';
+		destination.dispatchEvent(new Event('change'));
+		await tick();
+
+		expect(advancedBlock(modal)).not.toBe(advanced);
+		expect(advancedBlock(modal).open).toBe(false);
+	});
+
+	// The block holds the Advanced settings switch, which reveals the
+	// two-pass mode; a label those rows start with reads as one more level
+	// of the same thing rather than as the rest of the dialog.
+	it('names the collapsed block apart from the rows it holds', () => {
+		const { modal } = openWithEverything();
+		const advanced = advancedBlock(modal);
+		const label = maybeEl(advanced, 'summary')?.textContent ?? '';
+
+		expect(label).not.toBe('');
+		for (const name of settingNames(advanced)) {
+			expect(name.startsWith(label)).toBe(false);
+		}
+	});
+
+	it('opens the More options block when the stored engine cannot run here', () => {
 		// The reason Transcribe is disabled is on the Engine row, which must
 		// not be hidden behind a closed disclosure.
 		setPlatform({ isMobile: true });
