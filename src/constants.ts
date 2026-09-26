@@ -1418,6 +1418,7 @@ export const COMMAND_IDS = {
 	cleanupAudio: 'clean-up-audio',
 	transcribeAudio: 'transcribe-active-audio',
 	renameSpeakers: 'rename-transcript-speakers',
+	splitTranscriptSelection: 'split-transcript-selection-to-speaker',
 	generateChapters: 'generate-chapters-from-transcript',
 	deleteRecording: 'delete-recording',
 	togglePlayback: 'toggle-playback',

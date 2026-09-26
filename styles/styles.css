@@ -1203,6 +1203,91 @@ button.aar-player-marker-row {
     font-size: 0.9em;
 }
 
+/* The split dialog's start and end fields hold a timecode, so they stay that
+   wide instead of taking the whole control column from the row's description.
+   Stated under .modal because the app sizes input[type='text'] itself. */
+.modal .setting-item-control input.aar-split-time-input {
+    flex: 0 0 auto;
+    width: 7em;
+}
+
+/* A stretch of a recording with two handles marking a span inside it and a
+   playhead over it (the split dialog's time span). The handles are two range
+   inputs stacked on one bar: their own tracks are hidden and only the thumbs
+   take the pointer, so the bar below draws the track and the picked span. */
+.aar-time-span {
+    padding: 0 0 12px;
+}
+
+.aar-time-span-bar {
+    position: relative;
+    height: 24px;
+}
+
+.aar-time-span-track,
+.aar-time-span-fill {
+    position: absolute;
+    top: 50%;
+    height: 6px;
+    transform: translateY(-50%);
+    border-radius: 3px;
+}
+
+.aar-time-span-track {
+    left: 0;
+    right: 0;
+    background-color: var(--background-modifier-border);
+}
+
+.aar-time-span-fill {
+    left: var(--aar-time-span-start, 0%);
+    right: calc(100% - var(--aar-time-span-end, 100%));
+    background-color: var(--color-accent);
+}
+
+.aar-time-span-playhead {
+    display: none;
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: var(--aar-time-span-playhead, 0%);
+    width: 2px;
+    transform: translateX(-1px);
+    background-color: var(--text-normal);
+    pointer-events: none;
+}
+
+.aar-time-span.is-playing .aar-time-span-playhead {
+    display: block;
+}
+
+.aar-time-span input[type='range'].aar-time-span-handle {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    background: transparent;
+    pointer-events: none;
+}
+
+.aar-time-span input[type='range'].aar-time-span-handle.is-raised {
+    z-index: 1;
+}
+
+.aar-time-span input[type='range'].aar-time-span-handle::-webkit-slider-thumb {
+    pointer-events: auto;
+    cursor: ew-resize;
+}
+
+.aar-time-span-scale {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--font-ui-smaller);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+
 .aar-modal-status {
     margin: 8px 0 4px;
     font-size: 0.9em;

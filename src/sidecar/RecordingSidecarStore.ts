@@ -261,6 +261,36 @@ export class RecordingSidecarStore {
 	}
 
 	/**
+	 * Appends speakers to the end of the roster inside one mutation, leaving
+	 * every stored entry as it is. A speaker created after the transcription
+	 * (a transcript line split off to a new speaker) thereby joins the roster
+	 * without writing back the rest of it as the caller last read it, which
+	 * would undo a name assigned since. An entry whose label is already
+	 * stored is skipped rather than replacing that speaker.
+	 * @param path - Vault-relative recording path
+	 * @param entries - Speakers to append, in order
+	 */
+	async addSpeakers(
+		path: string,
+		entries: readonly SpeakerEntry[],
+	): Promise<void> {
+		return this.mutate(path, (sidecar) => {
+			const stored = new Set(
+				sidecar.transcript.speakers.map((entry) => entry.label),
+			);
+			const added = entries.filter((entry) => !stored.has(entry.label));
+			if (added.length === 0) {
+				return false;
+			}
+			sidecar.transcript.speakers = [
+				...sidecar.transcript.speakers,
+				...added.map(cloneSpeakerEntry),
+			];
+			return true;
+		});
+	}
+
+	/**
 	 * Commits an applied rename atomically: the new roster, its history entry,
 	 * and any participant names the rename introduced are written in one
 	 * mutation, so a failure can never persist the roster without the history

@@ -53,6 +53,10 @@ import { ContextMenu } from './ui/ContextMenu';
 import type { ActionServices, SessionServices } from './actions/PluginAction';
 import { activeAudioFile, FILE_ACTIONS } from './actions/fileActions';
 import { SESSION_ACTIONS } from './actions/sessionActions';
+import {
+	activeTranscriptSelection,
+	TRANSCRIPT_ACTIONS,
+} from './actions/transcriptActions';
 import { PLAYBACK_ACTIONS } from './actions/playbackActions';
 import { SEARCH_ACTIONS } from './actions/searchActions';
 import { HELP_ACTIONS } from './actions/helpActions';
@@ -353,6 +357,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			this,
 			this.createActionServices(),
 			FILE_ACTIONS,
+			TRANSCRIPT_ACTIONS,
 		);
 		this.contextMenu.register();
 
@@ -984,6 +989,14 @@ export default class AudioRecorderPlugin extends Plugin {
 			this,
 			FILE_ACTIONS,
 			activeAudioFile(this.createActionServices()),
+		);
+
+		// A transcript action acts on a selection inside a transcript line,
+		// which the active editor's selection resolves to (or does not).
+		registerActionCommands(
+			this,
+			TRANSCRIPT_ACTIONS,
+			activeTranscriptSelection(this.createActionServices()),
 		);
 
 		// The player registrar is created after this method runs, so the

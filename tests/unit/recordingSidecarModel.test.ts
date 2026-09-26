@@ -198,6 +198,25 @@ describe('parseTranscriptSection normalization', () => {
 		expect(section.noteOutputs[0]?.writtenAt).toBe('');
 	});
 
+	it('keeps the timestamp template a note output recorded', () => {
+		const section = parseTranscriptSection({
+			noteOutputs: [
+				{
+					path: 'note.md',
+					templates: {
+						lineFormat: '{timestamp} {text}',
+						speakerFormat: '{speaker}:',
+						timestampFormat: '[{time}]',
+					},
+				},
+			],
+		});
+
+		expect(section.noteOutputs[0]?.templates.timestampFormat).toBe(
+			'[{time}]',
+		);
+	});
+
 	it('drops file outputs with an unknown format and keeps the first per path', () => {
 		const section = parseTranscriptSection({
 			fileOutputs: [

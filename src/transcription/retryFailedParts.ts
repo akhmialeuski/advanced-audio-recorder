@@ -22,16 +22,14 @@
  * @module transcription/retryFailedParts
  */
 
-import { TFile } from 'obsidian';
-import type { App } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
-import { serializeTranscriptFile } from './transcriptFormat';
+import type { App, TFile } from 'obsidian';
 import type { PartFailure, RecordingRange } from './partFailure';
+import type { Transcript, TranscriptSegment } from './TranscriptTypes';
 import {
-	TranscriptFileFormat,
-	type Transcript,
-	type TranscriptSegment,
-} from './TranscriptTypes';
+	readRecordedTranscript,
+	rewriteRecordedTranscriptFiles,
+	type RecordedTranscript,
+} from './recordedTranscript';
 import type {
 	TranscribeRunCost,
 	TranscriptionSidecarAccess,
@@ -260,7 +258,10 @@ export class FailedPartRetry {
 		return {
 			recovered: completed.spliced,
 			stillMissing,
-			rewritten: await this.rewriteOutputs(
+			// Rewritten rather than added to, so a top-up leaves the same
+			// outputs it found instead of a second set beside them.
+			rewritten: await rewriteRecordedTranscriptFiles(
+				this.app,
 				completed.transcript,
 				source.outputs,
 			),
@@ -274,73 +275,12 @@ export class FailedPartRetry {
 	 * @returns The transcript and every output recorded for it, or null when
 	 *   no readable JSON output was recorded
 	 */
-	private async readTranscript(): Promise<{
-		transcript: Transcript;
-		outputs: FileOutput[];
-	} | null> {
+	private async readTranscript(): Promise<RecordedTranscript | null> {
 		const section = await this.sidecar.getTranscript(this.file.path);
 		// Only the recording's own transcript, never a translation: a
 		// translation is a second document and topping it up would need the
 		// translation pass, not the engine.
-		const outputs = section.fileOutputs.filter((o) => !o.language);
-		const json = outputs.find(
-			(output) => output.format === TranscriptFileFormat.Json,
-		);
-		if (!json) {
-			return null;
-		}
-		const file = this.app.vault.getAbstractFileByPath(json.path);
-		if (!(file instanceof TFile)) {
-			return null;
-		}
-		try {
-			const parsed: unknown = JSON.parse(await this.app.vault.read(file));
-			return isTranscript(parsed)
-				? { transcript: parsed, outputs }
-				: null;
-		} catch (error) {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Failed to read the transcript at ${json.path}:`,
-				error,
-			);
-			return null;
-		}
-	}
-
-	/**
-	 * Writes the completed transcript over every file the earlier run wrote,
-	 * each in the format it was written in. Rewritten rather than added to, so
-	 * a top-up leaves the same outputs it found instead of a second set beside
-	 * them. A file that has since been removed or cannot be written is counted
-	 * out and warned about, never thrown.
-	 * @param completed - The transcript with the recovered parts in it
-	 * @param outputs - The files the earlier run recorded
-	 * @returns How many were rewritten
-	 */
-	private async rewriteOutputs(
-		completed: Transcript,
-		outputs: readonly FileOutput[],
-	): Promise<number> {
-		let rewritten = 0;
-		for (const output of outputs) {
-			const file = this.app.vault.getAbstractFileByPath(output.path);
-			if (!(file instanceof TFile)) {
-				continue;
-			}
-			try {
-				await this.app.vault.modify(
-					file,
-					serializeTranscriptFile(completed, output.format),
-				);
-				rewritten++;
-			} catch (error) {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Failed to rewrite ${output.path}:`,
-					error,
-				);
-			}
-		}
-		return rewritten;
+		return readRecordedTranscript(this.app, section.fileOutputs);
 	}
 
 	/**
@@ -387,16 +327,4 @@ function partitionParts(parts: readonly PartFailure[]): {
 		});
 	}
 	return { ranges, unsent };
-}
-
-/**
- * Whether a parsed value is a transcript this can splice into.
- * @param value - Parsed JSON from a recorded output
- * @returns True when it carries a segment list
- */
-function isTranscript(value: unknown): value is Transcript {
-	if (typeof value !== 'object' || value === null) {
-		return false;
-	}
-	return Array.isArray((value as { segments?: unknown }).segments);
 }

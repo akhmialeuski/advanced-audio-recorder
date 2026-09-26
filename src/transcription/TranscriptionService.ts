@@ -65,11 +65,10 @@ import type {
 	TranscriptSection,
 } from '../sidecar/recordingSidecarModel';
 import {
-	DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
 	formatTranscriptMarkdown,
-	type TimecodeLinkBuilder,
-	type TranscriptMarkdownOptions,
+	transcriptMarkdownOptions,
 } from './transcriptFormat';
+import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import { buildPostProcessPrompt, LlmTask } from './llmPostProcess';
 import { TranscriptTranslator } from './llm/TranscriptTranslator';
 import { describeDictionaryOmission } from './dictionaryBias';
@@ -702,8 +701,16 @@ export class TranscriptionService {
 				)
 			: canonical;
 
-		const markdownOptions = this.markdownOptions(settings);
-		const links = this.linkBuilder(file, options.notePathForLinks);
+		// Speaker labels are already stripped from the transcript when
+		// diarization is not in effect (see run()), so these options can honor
+		// the user's settings directly: includeSpeakers/mergeConsecutiveSpeaker
+		// simply have nothing to act on when there are no speakers.
+		const markdownOptions = transcriptMarkdownOptions(settings);
+		const links = timecodeLinkBuilder(
+			this.app,
+			file,
+			options.notePathForLinks,
+		);
 		// Hoisted so a translation renders through exactly the same options
 		// and link builder as the original, and the two documents read alike.
 		const render = (source: Transcript): string =>
@@ -1608,43 +1615,6 @@ export class TranscriptionService {
 			return `### Summary\n\n${output}\n\n### Transcript\n\n${markdown}`;
 		}
 		return output;
-	}
-
-	/**
-	 * Builds the Markdown options from settings.
-	 */
-	private markdownOptions(
-		settings: AudioRecorderSettings,
-	): TranscriptMarkdownOptions {
-		// Speaker labels are already stripped from the transcript when
-		// diarization is not in effect (see run()), so these options can honor
-		// the user's settings directly: includeSpeakers/mergeConsecutiveSpeaker
-		// simply have nothing to act on when there are no speakers.
-		return {
-			...DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
-			includeTimestamps: settings.transcriptIncludeTimestamps,
-			timestampLinks: settings.transcriptTimestampLinks,
-			includeSpeakers: settings.transcriptIncludeSpeakers,
-			mergeConsecutiveSpeaker: settings.transcriptMergeConsecutiveSpeaker,
-			timestampFormat: settings.transcriptTimestampFormat,
-			speakerFormat: settings.transcriptSpeakerFormat,
-			lineFormat: settings.transcriptLineFormat,
-		};
-	}
-
-	/**
-	 * Builds a timecode link generator that produces vault links with a
-	 * `#t=` subpath (handled by the enhanced player), respecting the
-	 * vault's link-format preference.
-	 */
-	private linkBuilder(file: TFile, notePath: string): TimecodeLinkBuilder {
-		return (seconds: number, label: string) =>
-			this.app.fileManager.generateMarkdownLink(
-				file,
-				notePath,
-				`#t=${String(Math.floor(seconds))}`,
-				label,
-			);
 	}
 
 	/**

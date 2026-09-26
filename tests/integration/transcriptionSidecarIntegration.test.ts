@@ -524,6 +524,7 @@ describe('transcribeFile output registration', () => {
 				templates: {
 					lineFormat: settings.transcriptLineFormat,
 					speakerFormat: settings.transcriptSpeakerFormat,
+					timestampFormat: settings.transcriptTimestampFormat,
 					includeTimestamps: false,
 					timestampLinks: settings.transcriptTimestampLinks,
 					mergeConsecutiveSpeaker:

@@ -267,6 +267,28 @@ The names you assign are **remembered in the recording's sidecar file** (`<recor
 
 ![The Participant profile row of the Rename speakers dialog, naming the text last read from a roster note that could not be read](images/dialog-rename-speakers-roster.png)
 
+### Splitting a line between speakers
+
+Diarization also errs the other way: when two people talk over each other, or the engine simply guesses wrong, one transcript line holds words from both of them - and the timestamps of such a turn are usually off with it. **Split selection into another speaker** repairs that line in place.
+
+1. In the note, select the words inside one transcript line that belong to someone else. The selection has to stay on that one line, and the line has to start with its timecode link, which is how the plugin knows which recording it belongs to.
+2. Right-click the selection and choose **Split selection into another speaker**. It is offered whenever transcription is enabled, and is also a palette command (and so hotkey-assignable) that acts on the selection in the active editor.
+3. In the dialog:
+    - **Spoken by** - who the selected words belong to: any speaker the transcript already shows, a participant of the recording nobody is named after yet, or **New speaker (Speaker N)**, the first label no speaker uses.
+    - **Time span** - where the selection starts and ends, as `1:23` or `1:23.5`. The fields start from the word timings when the recording's JSON transcript has them, and otherwise from the line's span shared out by text length. Below them a bar covers the line from its start to its end, with a handle at each end of the selection: drag a handle and the fields follow, type into a field and its handle moves. Press the play button to hear the span; a playhead runs along the bar while it plays, and letting go of a handle during playback plays the span again from its new start, so a boundary can be placed by ear. The bar is left out only for a note's last line whose recording cannot be measured, since that line's end is unknown.
+    - **Rest of the line spoken by** - shown only when the selection sits in the middle of the line, so the line splits into three. The text after the selection keeps the line's own speaker unless you pick another one. Selecting from somewhere in the line to its end splits it in two, and selecting from its start moves the opening words to the other speaker.
+4. Press **Split**.
+
+![The Split selection into another speaker dialog for a selection in the middle of Tom's line: the quoted selection, Spoken by set to Maria, the Time span fields 12:48 and 12:56 prefilled from the word timings beside a play button, the bar of the line from 12:41 to 12:59 with its two handles on 12:48 and 12:56, and Rest of the line spoken by set to Tom, above the Split and Cancel buttons](images/dialog-split-transcript-line.png)
+
+What changes:
+
+- **The note.** The line is replaced by one line per part, written with the same templates the transcript was written with (read from the recording's sidecar) and with a timecode link at each part's start. The edit goes through the editor, so **Ctrl/Cmd+Z** undoes it like any other.
+- **The transcript files.** When the transcription saved a **JSON** transcript, its segments behind the line are split at the entered times, each part keeping the word timings spoken in it, and every transcript file the run wrote (JSON, SRT, WebVTT, TXT) is rewritten from it. Without a JSON transcript - or when it holds no segments whose text matches the line, for example after hand edits, or two identical lines of one speaker in the same second - only the note changes; the dialog says so beforehand and the notice afterwards counts the files kept as they were. Subtitles and plain text drop the timings a split needs, so they are never cut on their own, and translations are never touched. These writes are not undone by the editor's undo.
+- **The speaker roster.** A new speaker, or a participant nobody was named after, is added to the recording's roster under the next free `Speaker N` label with the selection as its first turn, so **Rename speakers** lists it, plays it, and renames its lines like any diarized speaker.
+
+The dialog refuses times that leave the text before the selection no time (the selection has to start after the line does) or the text after it none (it has to end before the line does), and it refuses to write when the line changed while the dialog was open. A sidecar that cannot be read is protected the same way as in **Rename speakers**: nothing is split until it is restored or removed.
+
 ---
 
 ## Biasing recognition toward your own terms

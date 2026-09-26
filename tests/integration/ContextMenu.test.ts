@@ -10,6 +10,7 @@
 
 import { ContextMenu } from 'src/ui/ContextMenu';
 import { FILE_ACTIONS } from 'src/actions/fileActions';
+import { TRANSCRIPT_ACTIONS } from 'src/actions/transcriptActions';
 import type { ActionServices } from 'src/actions/PluginAction';
 import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
@@ -454,6 +455,7 @@ describe('ContextMenu', () => {
 
 			mockEditor = partial<Editor>({
 				getCursor: jest.fn().mockReturnValue({ line: 0, ch: 0 }),
+				somethingSelected: jest.fn().mockReturnValue(false),
 				getLine: jest.fn(),
 				replaceRange: jest.fn(),
 				offsetToPos: jest.fn(),
@@ -617,6 +619,66 @@ describe('ContextMenu', () => {
 				'view.md',
 			);
 			expect(titlesOf(menu)).not.toEqual([]);
+		});
+	});
+
+	describe('transcript selection in the editor menu', () => {
+		const line = '[[rec.m4a#t=5|0:05]] **Speaker 1** Sure. Go ahead.';
+
+		/** Opens the editor menu on a selection of the transcript line. */
+		function openOn(from: number, to: number): Menu {
+			const audio = makeAudioFile('m4a');
+			const menu = new Menu();
+			const transcriptMenu = new ContextMenu(
+				mockPlugin,
+				{
+					app: mockApp,
+					getSettings: () =>
+						partial<AudioRecorderSettings>({
+							transcriptionEnabled: true,
+						}),
+					...commonActionServices(),
+				},
+				FILE_ACTIONS,
+				TRANSCRIPT_ACTIONS,
+			);
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(audio);
+			transcriptMenu.register();
+			const call = (mockWorkspace.on as jest.Mock).mock.calls
+				.filter((c) => c[0] === 'editor-menu')
+				.at(-1);
+			const editor = partial<Editor>({
+				somethingSelected: () => from !== to,
+				getCursor: (which?: string) => ({
+					line: 0,
+					ch: which === 'to' ? to : from,
+				}),
+				getLine: () => line,
+			});
+			call[1](menu, editor, {
+				file: partial<TFile>({ path: 'Notes/meeting.md' }),
+			});
+			return menu;
+		}
+
+		it('offers the split on a selection in a transcript line', () => {
+			const from = line.indexOf('Go ahead.');
+
+			const menu = openOn(from, from + 'Go ahead.'.length);
+
+			expect(titlesOf(menu)).toContain(
+				'Split selection into another speaker',
+			);
+		});
+
+		it('offers no split without a selection', () => {
+			const menu = openOn(30, 30);
+
+			expect(titlesOf(menu)).not.toContain(
+				'Split selection into another speaker',
+			);
 		});
 	});
 
