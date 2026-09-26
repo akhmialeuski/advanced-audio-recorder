@@ -11,7 +11,7 @@
  * that wrote the transcript, replacing the line in the editor (so the edit is
  * undone like any other). The recorded transcript files are rewritten from the
  * JSON transcript and the speakers the split creates join the roster; see
- * {@link speakers/applyTranscriptSplit}. The time fields start from the word
+ * {@link speakers/applyTranscriptEdit}. The time fields start from the word
  * timings when the JSON transcript has them, and a play button plays the
  * entered span, so the times can be checked by ear rather than guessed.
  * @module ui/TranscriptSplitModal
@@ -24,56 +24,56 @@ import type {
 	ExtraButtonComponent,
 	TextComponent,
 } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { TranscriptSelectionContext } from '../actions/PluginAction';
-import { lineTimecodeRef, timecodeLinkBuilder } from '../obsidian/timecodeRefs';
+import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { SpeakerPreviewRange } from '../speakers/speakerPreview';
-import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import {
-	applyTranscriptSplit,
+	applyTranscriptEdit,
 	describeTranscriptSplit,
-	type TranscriptSplitSidecar,
-} from '../speakers/applyTranscriptSplit';
+} from '../speakers/applyTranscriptEdit';
+import {
+	formatLineTime,
+	lineSpeakerOptions,
+	locateRowSegments,
+	resolveLineSpeakers,
+	rowTiming,
+	type LineSpeakerOption,
+	type LineSpeakerRequest,
+	type LineSpeakerSources,
+	type RowSpan,
+	type RowTiming,
+} from '../speakers/transcriptRows';
 import {
 	afterSelection,
 	buildSplitPieces,
 	estimateSplitTimes,
-	formatSplitTime,
-	locateRowSegments,
-	noteMarkdownOptions,
-	resolveSplitSpeakers,
-	rowTiming,
-	splitLineText,
-	splitSpeakerOptions,
 	readSplitTimes,
-	type RowSpan,
-	type RowTiming,
-	type SplitSpeakerChoice,
-	type SplitSpeakerOption,
-	type SplitSpeakerRequest,
-	type SplitSpeakerSources,
+	splitLineText,
 	type SplitTexts,
 } from '../speakers/transcriptSplit';
 import {
-	originalTranscriptOutputs,
-	readRecordedTranscript,
-	type RecordedTranscript,
-} from '../transcription/recordedTranscript';
-import {
 	formatTranscriptMarkdown,
-	parseTranscriptLine,
 	restoreWikilinks,
-	type TranscriptMarkdownOptions,
 } from '../transcription/transcriptFormat';
-import { collectSpeakers } from '../transcription/transcriptModel';
 import { parseTimecode } from '../utils/TimeUtils';
 import { PluginModal } from './PluginModal';
 import { TimeSpanSlider } from './TimeSpanSlider';
-
-/** Longest excerpt of a part of the line the dialog quotes. */
-const EXCERPT_MAX_CHARS = 160;
+import {
+	fillSpeakerDropdown,
+	keptFilesReason,
+	nextLineSeconds,
+	NO_SPEAKER_OPTION,
+	pickedChoice,
+	quote,
+	readTranscriptLine,
+	readTranscriptSource,
+	recordingDuration,
+	speakerSources,
+	speakerValue,
+	type TranscriptEditModalOptions,
+	type TranscriptSource,
+} from './transcriptLineDialog';
 
 /** Preview id of the selection (the player plays one excerpt at a time). */
 const SELECTION_PREVIEW_ID = 'selection';
@@ -84,40 +84,11 @@ const SELECTION_PREVIEW_ID = 'selection';
  */
 const TIME_INPUT_CLASS = 'aar-split-time-input';
 
-/**
- * The slice of the recording sidecar store the dialog needs: read the
- * transcript section, tell an unreadable sidecar from an empty one, and add
- * the speakers a split creates to the roster. Structural so tests can stub it.
- */
-export interface TranscriptSplitSidecarAccess extends TranscriptSplitSidecar {
-	/** Returns the stored transcript section for a recording path. */
-	getTranscript(path: string): Promise<TranscriptSection>;
-	/** Whether the sidecar file exists but could not be read (after a read). */
-	isSidecarCorrupt(path: string): boolean;
-}
-
-/** Collaborators the dialog needs, injected by the action registry. */
-export interface TranscriptSplitModalOptions {
-	/** Returns current plugin settings. */
-	getSettings: () => AudioRecorderSettings;
-	/** Recording sidecar access: templates, outputs and the roster. */
-	sidecar: TranscriptSplitSidecarAccess;
-	/**
-	 * Measures the recording, which is where the note's last line ends when no
-	 * JSON transcript says so.
-	 */
-	probeDuration: (url: string) => Promise<number | null>;
-}
-
 /** Everything read and worked out before the dialog can offer a split. */
 interface PreparedSplit {
-	/** The recording's sidecar transcript section. */
-	section: TranscriptSection;
-	/** The templates the note's transcript was written with. */
-	options: TranscriptMarkdownOptions;
-	/** The recorded JSON transcript, when there is one. */
-	recorded: RecordedTranscript | null;
-	/** The line's segments in it, when they were found. */
+	/** What the recording's sidecar and JSON transcript say. */
+	source: TranscriptSource;
+	/** The line's segments in the JSON transcript, when they were found. */
 	span: RowSpan | null;
 	/** The line's text cut at the selection. */
 	texts: SplitTexts;
@@ -126,7 +97,7 @@ interface PreparedSplit {
 	/** Speaker the line shows. */
 	rowSpeaker: string | undefined;
 	/** What is known about the recording's speakers. */
-	sources: SplitSpeakerSources;
+	sources: LineSpeakerSources;
 }
 
 /**
@@ -149,7 +120,7 @@ export class TranscriptSplitModal extends PluginModal {
 	constructor(
 		app: App,
 		private readonly context: TranscriptSelectionContext,
-		private readonly options: TranscriptSplitModalOptions,
+		private readonly options: TranscriptEditModalOptions,
 	) {
 		super(app);
 	}
@@ -182,85 +153,46 @@ export class TranscriptSplitModal extends PluginModal {
 	}
 
 	/**
-	 * Reads the recording's sidecar transcript section: an empty one when
-	 * nothing is stored, null when it could not be read. A failed read is not
-	 * an empty sidecar, so it is never split over as one: the roster it holds
-	 * is unknown, and a new speaker could take a label already stored there.
-	 */
-	private async loadSection(): Promise<TranscriptSection | null> {
-		const path = this.context.audio.path;
-		try {
-			const section = await this.options.sidecar.getTranscript(path);
-			return this.options.sidecar.isSidecarCorrupt(path) ? null : section;
-		} catch (error) {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Failed to read the sidecar of ${path}:`,
-				error,
-			);
-			return null;
-		}
-	}
-
-	/**
 	 * Reads the recording's sidecar and JSON transcript, reads the line back
 	 * with the note's templates, cuts it at the selection, finds its segments
 	 * in the JSON transcript and works out where it sits.
 	 * @returns What the split works from, or why the selection cannot be split
 	 */
 	private async prepare(): Promise<PreparedSplit | string> {
-		const { note, lineText, from, to, seconds } = this.context;
-		const section = await this.loadSection();
-		if (section === null) {
-			return 'The sidecar file of this recording could not be read, so the speakers stored for it are unknown. Fix or remove the .markers.json file next to the recording and try again.';
-		}
-		const output = section.noteOutputs.find(
-			(candidate) => candidate.path === note.path,
-		);
-		const options = noteMarkdownOptions(
-			output?.templates,
-			this.options.getSettings(),
-		);
-		const recorded = await readRecordedTranscript(
+		const { editor, note, audio, line, lineText, from, to, seconds } =
+			this.context;
+		const source = await readTranscriptSource(
 			this.app,
-			section.fileOutputs,
+			this.options,
+			note,
+			audio,
 		);
-		const shown = recorded
-			? collectSpeakers(recorded.transcript.segments)
-			: [];
-		const known = [
-			...section.speakers.map((entry) => entry.name ?? entry.label),
-			...shown,
-		];
-		// A transcript whose JSON output names no speaker, with an empty
-		// roster, was never diarized: its lines show no speaker, so nothing at
-		// the head of their text (a bold word, a "Note:") is read as one.
-		const undiarized = recorded !== null && known.length === 0;
-		const parsed = parseTranscriptLine(
-			lineText,
-			undiarized ? { ...options, includeSpeakers: false } : options,
-			known,
-		);
-		if (!parsed) {
+		if (typeof source === 'string') {
+			return source;
+		}
+		const read = readTranscriptLine(source, lineText);
+		if (!read) {
 			return 'This line does not have the shape the transcript of this recording was written in, so it cannot be split. Select text inside a transcript line.';
 		}
-		const texts = splitLineText(lineText, parsed, from, to);
+		const texts = splitLineText(lineText, read.parsed, from, to);
 		if (!texts) {
 			return 'The selection holds none of the spoken text of the line. Select the words that belong to another speaker.';
 		}
-		const rowSpeaker =
-			parsed.speaker === undefined
-				? undefined
-				: restoreWikilinks(parsed.speaker);
-		const nextSeconds = this.nextLineSeconds();
+		const nextSeconds = nextLineSeconds(
+			this.app,
+			editor,
+			note,
+			audio,
+			line,
+		);
+		const { recorded } = source;
 		const span = recorded
 			? locateRowSegments(recorded.transcript, {
 					seconds,
-					speaker: rowSpeaker,
+					speaker: read.speaker,
 					nextSeconds,
-					merge: options.mergeConsecutiveSpeaker,
-					text: restoreWikilinks(
-						lineText.slice(parsed.textStart, parsed.textEnd),
-					),
+					merge: source.options.mergeConsecutiveSpeaker,
+					text: restoreWikilinks(read.text),
 				})
 			: null;
 		const timing: RowTiming =
@@ -268,55 +200,22 @@ export class TranscriptSplitModal extends PluginModal {
 				? rowTiming(recorded.transcript, span)
 				: {
 						start: seconds,
-						end: nextSeconds ?? (await this.recordingDuration()),
+						end:
+							nextSeconds ??
+							(await recordingDuration(
+								this.app,
+								this.options,
+								audio,
+							)),
 					};
 		return {
-			section,
-			options,
-			recorded,
+			source,
 			span,
 			texts,
 			timing,
-			rowSpeaker,
-			sources: {
-				roster: section.speakers,
-				participants: section.participants,
-				shown:
-					rowSpeaker === undefined ? shown : [...shown, rowSpeaker],
-			},
+			rowSpeaker: read.speaker,
+			sources: speakerSources(source, [read.speaker]),
 		};
-	}
-
-	/**
-	 * Where the next line of the same recording starts, which is where this
-	 * line ends as far as the note can tell; null for the last line.
-	 */
-	private nextLineSeconds(): number | null {
-		const { editor, note, audio, line } = this.context;
-		// Read from the editor, like the selected line itself, so lines the
-		// metadata cache has not caught up with are never skipped or doubled.
-		for (let below = line + 1; below < editor.lineCount(); below++) {
-			const ref = lineTimecodeRef(this.app, note, editor.getLine(below));
-			if (ref?.file.path === audio.path) {
-				return ref.seconds;
-			}
-		}
-		return null;
-	}
-
-	/** The recording's length, or null when it cannot be measured. */
-	private async recordingDuration(): Promise<number | null> {
-		try {
-			return await this.options.probeDuration(
-				this.app.vault.getResourcePath(this.context.audio),
-			);
-		} catch (error) {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Could not measure ${this.context.audio.path}:`,
-				error,
-			);
-			return null;
-		}
 	}
 
 	/**
@@ -328,7 +227,7 @@ export class TranscriptSplitModal extends PluginModal {
 	private renderForm(prepared: PreparedSplit): void {
 		const { contentEl } = this;
 		const { texts, rowSpeaker } = prepared;
-		const options = splitSpeakerOptions(prepared.sources);
+		const options = lineSpeakerOptions(prepared.sources);
 		const times = estimateSplitTimes(prepared.timing, texts);
 
 		new Setting(contentEl)
@@ -367,7 +266,7 @@ export class TranscriptSplitModal extends PluginModal {
 			)
 			.addText((text) => {
 				text.setPlaceholder('Start')
-					.setValue(formatSplitTime(times.start))
+					.setValue(formatLineTime(times.start))
 					.onChange(() => {
 						this.showTypedSpan();
 					});
@@ -376,7 +275,7 @@ export class TranscriptSplitModal extends PluginModal {
 			})
 			.addText((text) => {
 				text.setPlaceholder('End')
-					.setValue(formatSplitTime(times.end))
+					.setValue(formatLineTime(times.end))
 					.onChange(() => {
 						this.showTypedSpan();
 					});
@@ -397,8 +296,8 @@ export class TranscriptSplitModal extends PluginModal {
 				bounds,
 				value: times,
 				onInput: (span) => {
-					this.startInput.setValue(formatSplitTime(span.start));
-					this.endInput.setValue(formatSplitTime(span.end));
+					this.startInput.setValue(formatLineTime(span.start));
+					this.endInput.setValue(formatLineTime(span.end));
 				},
 				onChange: (span) => {
 					this.replayMovedSpan(span);
@@ -408,7 +307,12 @@ export class TranscriptSplitModal extends PluginModal {
 		if (texts.after) {
 			this.renderAfterSpeaker(options, texts.after, rowSpeaker);
 		}
-		const kept = keptFilesReason(prepared);
+		const kept = keptFilesReason(
+			prepared.source,
+			prepared.span,
+			'no segment matching this line',
+			'a split',
+		);
 		if (kept) {
 			contentEl.createEl('p', {
 				cls: 'setting-item-description',
@@ -438,20 +342,13 @@ export class TranscriptSplitModal extends PluginModal {
 	 * @param rowSpeaker - Speaker the line shows
 	 */
 	private renderAfterSpeaker(
-		options: readonly SplitSpeakerOption[],
+		options: readonly LineSpeakerOption[],
 		after: string,
 		rowSpeaker: string | undefined,
 	): void {
-		const afterOptions: SplitSpeakerOption[] =
+		const afterOptions: LineSpeakerOption[] =
 			rowSpeaker === undefined
-				? [
-						{
-							value: 'none',
-							title: 'No speaker',
-							choice: { kind: 'none' },
-						},
-						...options,
-					]
+				? [NO_SPEAKER_OPTION, ...options]
 				: [...options];
 		new Setting(this.contentEl)
 			.setName('Rest of the line spoken by')
@@ -460,11 +357,7 @@ export class TranscriptSplitModal extends PluginModal {
 			)
 			.addDropdown((dropdown) => {
 				fillSpeakerDropdown(dropdown, afterOptions);
-				dropdown.setValue(
-					rowSpeaker === undefined
-						? 'none'
-						: `existing:${rowSpeaker}`,
-				);
+				dropdown.setValue(speakerValue(rowSpeaker));
 				this.afterSpeaker = dropdown;
 			});
 	}
@@ -545,7 +438,8 @@ export class TranscriptSplitModal extends PluginModal {
 			if (typeof prepared === 'string') {
 				throw new Error(prepared);
 			}
-			const { texts, timing, options } = prepared;
+			const { texts, timing } = prepared;
+			const { options } = prepared.source;
 			const times = readSplitTimes(
 				this.startInput.getValue(),
 				this.endInput.getValue(),
@@ -555,7 +449,7 @@ export class TranscriptSplitModal extends PluginModal {
 			if (typeof times === 'string') {
 				throw new Error(times);
 			}
-			const requests: SplitSpeakerRequest[] = [
+			const requests: LineSpeakerRequest[] = [
 				{
 					choice: pickedChoice(this.selectedSpeaker.getValue()),
 					times,
@@ -567,7 +461,7 @@ export class TranscriptSplitModal extends PluginModal {
 					times: afterSelection(timing, times),
 				});
 			}
-			const { names, added } = resolveSplitSpeakers(
+			const { names, added } = resolveLineSpeakers(
 				prepared.sources,
 				requests,
 			);
@@ -587,13 +481,13 @@ export class TranscriptSplitModal extends PluginModal {
 					),
 				),
 			);
-			const outcome = await applyTranscriptSplit(
+			const outcome = await applyTranscriptEdit(
 				this.app,
 				this.options.sidecar,
 				{
 					audioPath: this.context.audio.path,
-					section: prepared.section,
-					recorded: prepared.recorded,
+					section: prepared.source.section,
+					recorded: prepared.source.recorded,
 					span: prepared.span,
 					pieces,
 					added,
@@ -629,60 +523,4 @@ export class TranscriptSplitModal extends PluginModal {
 			{ line, ch: lineText.length },
 		);
 	}
-}
-
-/**
- * The choice a speaker dropdown value stands for (the values are the ones
- * {@link splitSpeakerOptions} gives, plus "none" for no speaker).
- * @param value - The dropdown's value
- */
-function pickedChoice(value: string): SplitSpeakerChoice {
-	if (value === 'new') {
-		return { kind: 'new' };
-	}
-	if (value === 'none') {
-		return { kind: 'none' };
-	}
-	const separator = value.indexOf(':');
-	const name = value.slice(separator + 1);
-	return value.startsWith('participant:')
-		? { kind: 'participant', name }
-		: { kind: 'existing', name };
-}
-
-/** Fills a speaker dropdown with the options, in order. */
-function fillSpeakerDropdown(
-	dropdown: DropdownComponent,
-	options: readonly SplitSpeakerOption[],
-): void {
-	for (const option of options) {
-		dropdown.addOption(option.value, option.title);
-	}
-}
-
-/** Quotes a part of the line, shortened to a readable excerpt. */
-function quote(text: string): string {
-	const excerpt =
-		text.length > EXCERPT_MAX_CHARS
-			? `${text.slice(0, EXCERPT_MAX_CHARS).trimEnd()}...`
-			: text;
-	return `"${excerpt}"`;
-}
-
-/**
- * Why the transcript files will be kept as they are, or null when they will
- * be split along with the note (or there are none).
- * @param prepared - What the split works from
- */
-function keptFilesReason(prepared: PreparedSplit): string | null {
-	if (prepared.recorded && !prepared.span) {
-		return 'Only the note is changed: the JSON transcript of this recording holds no segment matching this line, so its transcript files are kept as they are.';
-	}
-	if (
-		!prepared.recorded &&
-		originalTranscriptOutputs(prepared.section.fileOutputs).length > 0
-	) {
-		return 'Only the note is changed: the transcript files of this recording are kept as they are, because only a JSON transcript keeps the timings a split needs.';
-	}
-	return null;
 }

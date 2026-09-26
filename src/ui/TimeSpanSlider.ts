@@ -12,7 +12,7 @@
  */
 
 import type { SpeakerPreviewRange } from '../speakers/speakerPreview';
-import { formatSplitTime } from '../speakers/transcriptSplit';
+import { formatLineTime } from '../speakers/transcriptRows';
 
 /** Seconds one step of a handle moves, matching the tenths the fields show. */
 const HANDLE_STEP_SECONDS = 0.1;
@@ -66,8 +66,8 @@ export class TimeSpanSlider {
 		this.startInput = handle('Selection start');
 		this.endInput = handle('Selection end');
 		const scale = this.el.createDiv({ cls: 'aar-time-span-scale' });
-		scale.createSpan({ text: formatSplitTime(bounds.start) });
-		scale.createSpan({ text: formatSplitTime(bounds.end) });
+		scale.createSpan({ text: formatLineTime(bounds.start) });
+		scale.createSpan({ text: formatLineTime(bounds.end) });
 
 		this.startInput.addEventListener('input', () => {
 			this.onHandleInput(this.startInput);

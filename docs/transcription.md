@@ -289,6 +289,24 @@ What changes:
 
 The dialog refuses times that leave the text before the selection no time (the selection has to start after the line does) or the text after it none (it has to end before the line does), and it refuses to write when the line changed while the dialog was open. A sidecar that cannot be read is protected the same way as in **Rename speakers**: nothing is split until it is restored or removed.
 
+### Merging lines into one
+
+The reverse repair: diarization sometimes cuts one person's turn into several lines - it hears a pause as a change of speaker, or hands a few words in the middle to someone else - and the note reads more fragmented than the conversation was. **Merge selected lines into one** joins consecutive transcript lines into a single line of one speaker.
+
+1. In the note, select the lines, from anywhere in the first to anywhere in the last. They have to follow each other: only the blank lines the transcript separates its lines with may lie between them, not a heading, a remark of yours, or a line of another recording. Lines the selection only touches at their very end or start (as when whole lines are selected) are left out.
+2. Right-click the selection and choose **Merge selected lines into one**. It is offered whenever transcription is enabled and the selection reaches over more than one line (a selection inside one line offers the split instead), and is also a palette command (and so hotkey-assignable) that acts on the selection in the active editor.
+3. In the dialog:
+    - **Lines** and **Merged text** - how many lines are merged, the speakers they show, and the text they become.
+    - **Spoken by** - who the merged line belongs to. It starts as the speaker of the first line. Any speaker the transcript shows, a participant of the recording nobody is named after yet, or **New speaker (Speaker N)** can be picked, exactly as in the split. A transcript that was never diarized offers **No speaker**.
+    - **Time span** - the whole passage, from the start of the first line to the end of the last one. Press the play button to hear all of it, to check that it really is one speaker. Press it again to stop, and again to play it once more. A note's last lines whose recording cannot be measured have no known end, and offer no button.
+4. Press **Merge**. Merging two lines is done at once. Merging three or more folds several turns, often of several speakers, into one, so a confirmation first names how many lines become one and whose line it becomes.
+
+![The Merge selected lines into one dialog for three lines shown as Tom, Maria and Tom: the merged text quoted in full, Spoken by set to Tom as the first line's speaker, and the Time span from 12:41 to 12:56 beside a play button, above the Merge and Cancel buttons](images/dialog-merge-transcript-lines.png)
+
+![The Merge 3 lines confirmation, saying that the three transcript lines become one line spoken by Tom at the first line's time, that the other lines' speakers and times are dropped, and that only the note can be undone with the editor, above its Merge and Cancel buttons](images/dialog-merge-transcript-lines-confirm.png)
+
+What changes follows the split: **the note** gets one line in place of the selected ones (blank lines between them included), written with the recording's templates and a timecode link at the first line's time, and **Ctrl/Cmd+Z** undoes it. **The transcript files** are rewritten from the JSON transcript, whose segments behind the lines become one segment spanning them and keeping all their word timings - but only when the JSON holds each line's segments and they follow each other without a gap. When it holds a turn between two of the lines that the note no longer shows (a line deleted by hand), or there is no JSON transcript, only the note changes. The dialog says so beforehand, and the notice counts the files kept as they were. **The roster** gets a new speaker or a participant under the next free `Speaker N` label, with the merged passage as its first turn. The dialog refuses to write when any of the lines changed while it was open, and over a sidecar that cannot be read.
+
 ---
 
 ## Biasing recognition toward your own terms

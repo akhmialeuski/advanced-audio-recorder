@@ -1419,6 +1419,7 @@ export const COMMAND_IDS = {
 	transcribeAudio: 'transcribe-active-audio',
 	renameSpeakers: 'rename-transcript-speakers',
 	splitTranscriptSelection: 'split-transcript-selection-to-speaker',
+	mergeTranscriptLines: 'merge-transcript-lines',
 	generateChapters: 'generate-chapters-from-transcript',
 	deleteRecording: 'delete-recording',
 	togglePlayback: 'toggle-playback',

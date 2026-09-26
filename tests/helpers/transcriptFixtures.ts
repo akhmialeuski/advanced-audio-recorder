@@ -3,7 +3,11 @@
  * @module tests/helpers/transcriptFixtures
  */
 
-import type { TranscriptWord } from 'src/transcription/TranscriptTypes';
+import type {
+	Transcript,
+	TranscriptSegment,
+	TranscriptWord,
+} from 'src/transcription/TranscriptTypes';
 
 /**
  * Word timings for a text, one second per word, starting at the given offset,
@@ -18,6 +22,38 @@ export function wordsOf(text: string, from: number): TranscriptWord[] {
 		end: from + index + 1,
 		text: word,
 	}));
+}
+
+/**
+ * A transcript segment, with a speaker and word timings only when given.
+ * @param start - Offset the segment starts at
+ * @param end - Offset the segment ends at
+ * @param text - What is said in it
+ * @param speaker - Who says it, if anybody
+ * @param words - Its word timings, if the engine gave them
+ */
+export function seg(
+	start: number,
+	end: number,
+	text: string,
+	speaker?: string,
+	words?: TranscriptWord[],
+): TranscriptSegment {
+	return {
+		start,
+		end,
+		text,
+		...(speaker ? { speaker } : {}),
+		...(words ? { words } : {}),
+	};
+}
+
+/**
+ * A transcript of the given segments, with no speaker list of its own.
+ * @param segments - Its segments, in timeline order
+ */
+export function transcriptOf(...segments: TranscriptSegment[]): Transcript {
+	return { segments, speakers: [] };
 }
 
 /** A link as the metadata cache lists it, on one line of a note. */

@@ -73,3 +73,28 @@ export class ConfirmModal extends PluginModal {
 		}
 	}
 }
+
+/**
+ * Asks for a confirmation and answers it: true when the user confirmed, false
+ * when the dialog was closed any other way. For a caller that awaits the
+ * answer in the middle of its work rather than continuing in a callback.
+ * @param app - Obsidian App
+ * @param options - Title, message and the confirm button's label
+ * @returns Whether the user confirmed
+ */
+export function confirmAction(
+	app: App,
+	options: Omit<ConfirmModalOptions, 'onConfirm' | 'onCancel'>,
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmModal(app, {
+			...options,
+			onConfirm: () => {
+				resolve(true);
+			},
+			onCancel: () => {
+				resolve(false);
+			},
+		}).open();
+	});
+}
