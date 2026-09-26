@@ -18,6 +18,7 @@ import { SpeakerRenameModal } from '../ui/SpeakerRenameModal';
 import { ChapterGenerationModal } from '../ui/ChapterGenerationModal';
 import { ChapterExportModal } from '../ui/ChapterExportModal';
 import type { PlayerMarker } from '../markers/markerModel';
+import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
 import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
 import type { ActionServices, FileAction, FileContext } from './PluginAction';
@@ -327,12 +328,6 @@ async function openChapterExport(
 		file,
 		markers,
 		notePath: notePath === file.path ? '' : notePath,
-		linkBuilder: (seconds, label) =>
-			services.app.fileManager.generateMarkdownLink(
-				file,
-				notePath,
-				`#t=${String(Math.floor(seconds))}`,
-				label,
-			),
+		linkBuilder: timecodeLinkBuilder(services.app, file, notePath),
 	}).open();
 }

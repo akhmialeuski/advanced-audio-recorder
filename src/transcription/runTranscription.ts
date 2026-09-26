@@ -221,6 +221,7 @@ export async function transcribeFile(
 					templates: {
 						lineFormat: settings.transcriptLineFormat,
 						speakerFormat: settings.transcriptSpeakerFormat,
+						timestampFormat: settings.transcriptTimestampFormat,
 						includeTimestamps: settings.transcriptIncludeTimestamps,
 						timestampLinks: settings.transcriptTimestampLinks,
 						mergeConsecutiveSpeaker:

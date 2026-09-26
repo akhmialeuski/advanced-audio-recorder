@@ -1587,6 +1587,16 @@ export abstract class AbstractTextComponent<
 		return this;
 	}
 
+	/**
+	 * Read from the element, as Obsidian's own getValue is: text typed into
+	 * the field is what the component holds, whether or not an input event
+	 * reached it.
+	 * @returns The field's current text
+	 */
+	getValue(): string {
+		return this.inputEl.value;
+	}
+
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
 		// Mirrored onto the element like real Obsidian, whose

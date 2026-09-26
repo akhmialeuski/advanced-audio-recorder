@@ -7,6 +7,8 @@
  * @module transcription/transcriptFormat
  */
 
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { escapeRegExp } from '../utils/regex';
 import { formatTimecode } from '../utils/TimeUtils';
 import {
 	type Transcript,
@@ -51,6 +53,37 @@ export const DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS: TranscriptMarkdownOptions = {
 	lineFormat: '{timestamp} {speaker} {text}',
 };
 
+/** The settings the in-note transcript rendering is configured by. */
+export type TranscriptMarkdownSettings = Pick<
+	AudioRecorderSettings,
+	| 'transcriptIncludeTimestamps'
+	| 'transcriptTimestampLinks'
+	| 'transcriptIncludeSpeakers'
+	| 'transcriptMergeConsecutiveSpeaker'
+	| 'transcriptTimestampFormat'
+	| 'transcriptSpeakerFormat'
+	| 'transcriptLineFormat'
+>;
+
+/**
+ * Builds the Markdown rendering options from the plugin settings.
+ * @param settings - Current plugin settings
+ */
+export function transcriptMarkdownOptions(
+	settings: TranscriptMarkdownSettings,
+): TranscriptMarkdownOptions {
+	return {
+		...DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
+		includeTimestamps: settings.transcriptIncludeTimestamps,
+		timestampLinks: settings.transcriptTimestampLinks,
+		includeSpeakers: settings.transcriptIncludeSpeakers,
+		mergeConsecutiveSpeaker: settings.transcriptMergeConsecutiveSpeaker,
+		timestampFormat: settings.transcriptTimestampFormat,
+		speakerFormat: settings.transcriptSpeakerFormat,
+		lineFormat: settings.transcriptLineFormat,
+	};
+}
+
 /**
  * Builds a timecode link/label for a position in the audio.
  * Implementations turn seconds into a vault link with a `#t=` subpath;
@@ -63,6 +96,27 @@ interface RenderRow {
 	start: number;
 	speaker?: string | undefined;
 	text: string;
+}
+
+/**
+ * Whether a segment continues the render row of the given speaker when
+ * consecutive same-speaker segments are merged. Exported so a reader locating
+ * the segments behind a rendered line groups them exactly as the renderer did.
+ * @param rowSpeaker - Speaker of the row being built
+ * @param segment - The next segment
+ */
+export function continuesSpeakerRow(
+	rowSpeaker: string | undefined,
+	segment: TranscriptSegment,
+): boolean {
+	// Only merge a genuine speaker turn: without diarization every segment has
+	// an undefined speaker, and merging them all would collapse the transcript
+	// into one line and lose timestamps.
+	return (
+		segment.speaker !== undefined &&
+		rowSpeaker === segment.speaker &&
+		segment.text.length > 0
+	);
 }
 
 /**
@@ -81,12 +135,7 @@ function toRenderRows(
 		if (
 			merge &&
 			previous &&
-			// Only merge a genuine speaker turn: without diarization every
-			// segment has an undefined speaker, and merging them all would
-			// collapse the transcript into one line and lose timestamps.
-			segment.speaker !== undefined &&
-			previous.speaker === segment.speaker &&
-			segment.text.length > 0
+			continuesSpeakerRow(previous.speaker, segment)
 		) {
 			previous.text = `${previous.text} ${segment.text}`.trim();
 			continue;
@@ -130,6 +179,16 @@ function applyTemplate(
  */
 function neutralizeWikilinks(text: string): string {
 	return text.replace(/\[\[/g, '\\[\\[').replace(/\]\]/g, '\\]\\]');
+}
+
+/**
+ * Reverses {@link neutralizeWikilinks}: turns text read back from a rendered
+ * note line into the transcript text it was rendered from, so a segment
+ * rebuilt from the note never carries the escaping twice.
+ * @param text - Text as it appears in the note
+ */
+export function restoreWikilinks(text: string): string {
+	return text.replace(/\\\[\\\[/g, '[[').replace(/\\\]\\\]/g, ']]');
 }
 
 /**
@@ -202,6 +261,123 @@ function renderTimecode(
 ): string {
 	const label = formatTimecode(seconds);
 	return asLink ? linkBuilder(seconds, label) : label;
+}
+
+/**
+ * Where the parts of one rendered transcript line sit, as read back by
+ * {@link parseTranscriptLine}.
+ */
+export interface ParsedTranscriptLine {
+	/**
+	 * The speaker text the line shows (wikilink-neutralized, exactly as
+	 * rendered), or undefined when it shows none.
+	 */
+	speaker: string | undefined;
+	/** Offset in the line where the spoken text starts. */
+	textStart: number;
+	/** Offset in the line just past the spoken text. */
+	textEnd: number;
+}
+
+/**
+ * A timecode as {@link renderTimecode} writes it: a wikilink, a Markdown link,
+ * or the bare label, which is what the timestamp template's `{time}` holds.
+ */
+const RENDERED_TIME_PATTERN =
+	'(?:!?\\[\\[[^\\]\\n]*\\]\\]|\\[[^\\]\\n]*\\]\\([^)\\n]*\\)|\\d+(?::\\d{2}){1,2})';
+
+/**
+ * Turns a template into a pattern: each `{token}` becomes the pattern given for
+ * it (an unknown token rendered as nothing, so it matches nothing), literal
+ * text is matched as written, and literal whitespace matches any run of spaces
+ * including none - {@link applyTemplate} collapses and trims whitespace around
+ * the fragments that came out empty, so the written line may carry less of it
+ * than the template does.
+ * @param template - Template with `{token}` placeholders
+ * @param tokens - Pattern per token name
+ */
+function templatePattern(
+	template: string,
+	tokens: Record<string, string>,
+): string {
+	const literal = (text: string): string =>
+		text
+			.split(/[ \t]+/)
+			.map(escapeRegExp)
+			.join('[ \\t]*');
+	// A Map, so a token named like an Object.prototype member is unknown.
+	const lookup = new Map(Object.entries(tokens));
+	let pattern = '';
+	let last = 0;
+	for (const match of template.matchAll(/\{(\w+)\}/g)) {
+		pattern += literal(template.slice(last, match.index));
+		pattern += lookup.get(String(match[1])) ?? '';
+		last = match.index + match[0].length;
+	}
+	return pattern + literal(template.slice(last));
+}
+
+/**
+ * Whether a template wraps its `{speaker}` token in literal characters (as
+ * `**{speaker}**` or `{speaker}:` do). Only then can a speaker nobody listed be
+ * told from the text beside it; a bare `{speaker}` is recognized by name alone.
+ * @param speakerFormat - Speaker template
+ */
+function delimitsSpeaker(speakerFormat: string): boolean {
+	return speakerFormat.replace(/\{speaker\}/g, '').trim().length > 0;
+}
+
+/**
+ * Reads one Markdown line written by {@link formatTranscriptMarkdown} back into
+ * its parts, using the same templates the line was written with: which speaker
+ * it shows and where its spoken text sits. The inverse lives next to the
+ * renderer so the two can never drift apart. Speakers are recognized by the
+ * names given (longest first, so "Anna" never shadows "Anna Lee") and, when
+ * the speaker template delimits its name, by that shape as well.
+ * @param line - One rendered transcript line
+ * @param options - The templates the line was written with
+ * @param speakers - Speaker names the transcript is known to show
+ * @returns The parts, or null when the line does not have the templates' shape
+ *   or carries no text
+ */
+export function parseTranscriptLine(
+	line: string,
+	options: TranscriptMarkdownOptions,
+	speakers: readonly string[],
+): ParsedTranscriptLine | null {
+	// Every row the renderer writes carries its timestamp, so a line without
+	// one is not a transcript row, however much of it would pass as text.
+	const timestamp = options.includeTimestamps
+		? `(?:${templatePattern(options.timestampFormat, { time: RENDERED_TIME_PATTERN })})`
+		: '';
+	const names = [...new Set(speakers.filter((name) => name.length > 0))]
+		.map(neutralizeWikilinks)
+		.sort((a, b) => b.length - a.length)
+		.map(escapeRegExp);
+	if (delimitsSpeaker(options.speakerFormat)) {
+		names.push('[^\\n]+?');
+	}
+	const speaker =
+		options.includeSpeakers && names.length > 0
+			? `(?:${templatePattern(options.speakerFormat, {
+					speaker: `(?<speaker>${names.join('|')})`,
+				})})?`
+			: '';
+	const pattern = templatePattern(options.lineFormat, {
+		timestamp,
+		speaker,
+		text: '(?<text>.*?)',
+	});
+	const match = new RegExp(`^[ \\t]*${pattern}[ \\t]*$`, 'd').exec(line);
+	const span = match?.indices?.groups?.text;
+	if (!match || !span || span[0] === span[1]) {
+		return null;
+	}
+	return {
+		speaker: match.groups?.speaker,
+		textStart: span[0],
+		textEnd: span[1],
+	};
 }
 
 /**

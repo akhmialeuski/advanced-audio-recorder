@@ -22,8 +22,13 @@ import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
-import type { ActionServices, FileAction } from '../actions/PluginAction';
+import type {
+	ActionServices,
+	FileAction,
+	TranscriptAction,
+} from '../actions/PluginAction';
 import { renderActionsIntoMenu } from '../actions/renderActionsIntoMenu';
+import { transcriptSelectionIn } from '../actions/transcriptActions';
 
 export type { EnhancementPrimer } from '../actions/PluginAction';
 
@@ -54,11 +59,14 @@ export class ContextMenu {
 	 * @param plugin - The plugin instance.
 	 * @param services - Injected action services (app, settings, ...).
 	 * @param fileActions - Per-file actions in display order.
+	 * @param transcriptActions - Actions on a selection inside a transcript
+	 *   line, offered by the editor menu.
 	 */
 	constructor(
 		private plugin: Plugin,
 		private services: ActionServices,
 		private fileActions: readonly FileAction[],
+		private transcriptActions: readonly TranscriptAction[] = [],
 	) {
 		this.app = services.app;
 	}
@@ -352,6 +360,7 @@ export class ContextMenu {
 		editor: Editor,
 		view: MarkdownView | MarkdownFileInfo,
 	): void {
+		this.addTranscriptSelectionItems(menu, editor, view);
 		const cursor = editor.getCursor();
 		const lineText = editor.getLine(cursor.line);
 		const linkMatch = this.findLinkAtCursor(lineText, cursor.ch);
@@ -381,6 +390,34 @@ export class ContextMenu {
 			editor,
 			cursor.line,
 			linkMatch,
+		);
+	}
+
+	/**
+	 * Offers the transcript actions when the menu was opened on a selection
+	 * inside a transcript line, i.e. a line whose timecode link resolves to a
+	 * recording.
+	 * @param menu - The context menu.
+	 * @param editor - The editor instance.
+	 * @param view - The markdown view or file info.
+	 */
+	private addTranscriptSelectionItems(
+		menu: Menu,
+		editor: Editor,
+		view: MarkdownView | MarkdownFileInfo,
+	): void {
+		if (!view.file) {
+			return;
+		}
+		const context = transcriptSelectionIn(this.services, editor, view.file);
+		if (!context) {
+			return;
+		}
+		renderActionsIntoMenu(
+			menu,
+			this.transcriptActions,
+			context,
+			this.renderedSetFor(menu),
 		);
 	}
 

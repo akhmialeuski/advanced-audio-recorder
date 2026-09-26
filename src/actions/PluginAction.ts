@@ -9,7 +9,7 @@
  * @module actions/PluginAction
  */
 
-import type { App, TFile, TFolder } from 'obsidian';
+import type { App, Editor, TFile, TFolder } from 'obsidian';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
@@ -149,6 +149,40 @@ export interface FileAction extends PluginCommand<FileContext> {
 	 */
 	readonly showInEditorMenu: boolean;
 }
+
+/**
+ * A selection inside one rendered transcript line: the editor it was made in,
+ * the note and the recording the line belongs to (through its timecode link),
+ * and exactly what was selected, so an action can act on that line and verify
+ * it is still the same when it does.
+ */
+export interface TranscriptSelectionContext {
+	/** Injected services shared by every action. */
+	readonly services: ActionServices;
+	/** The editor holding the selection. */
+	readonly editor: Editor;
+	/** The note the line is in. */
+	readonly note: TFile;
+	/** The recording the line's timecode link resolves to. */
+	readonly audio: TFile;
+	/** Zero-based line number. */
+	readonly line: number;
+	/** The line's text when the selection was resolved. */
+	readonly lineText: string;
+	/** Selection start column. */
+	readonly from: number;
+	/** Selection end column. */
+	readonly to: number;
+	/** Whole seconds the line's timecode link points at. */
+	readonly seconds: number;
+}
+
+/**
+ * An action on a selection inside a transcript line. Rendered into the editor
+ * menu, and registered as a palette command that resolves the active editor's
+ * selection, so it is hotkey-assignable like every other action.
+ */
+export type TranscriptAction = PluginCommand<TranscriptSelectionContext>;
 
 /**
  * An action on the recording session. Registered as a palette command

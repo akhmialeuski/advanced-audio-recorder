@@ -95,6 +95,11 @@ export interface NoteOutputTemplates {
 	lineFormat: string;
 	/** Speaker template with a `{speaker}` token. */
 	speakerFormat: string;
+	/**
+	 * Timestamp template with a `{time}` token. Absent on outputs recorded
+	 * before it was stored, which then read as the current setting.
+	 */
+	timestampFormat?: string;
 	/** Whether a timestamp fragment was written on each line. */
 	includeTimestamps: boolean;
 	/** Whether timestamps were written as timecode links. */
@@ -416,6 +421,9 @@ function parseTemplates(value: unknown): NoteOutputTemplates | null {
 	return {
 		lineFormat,
 		speakerFormat,
+		...(typeof record.timestampFormat === 'string'
+			? { timestampFormat: record.timestampFormat }
+			: {}),
 		includeTimestamps:
 			typeof record.includeTimestamps === 'boolean'
 				? record.includeTimestamps

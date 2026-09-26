@@ -263,6 +263,26 @@ The names you assign are **remembered in the recording's sidecar file** (`<recor
     - You can still create a profile and add names to it right in the dialog.
 - When a transcript has no timecode links to identify the recording (for example with timestamp links turned off), the dialog cannot pin its lines to this audio. It warns you, and only after you opt in does it rewrite every matching label in those notes.
 
+### Splitting a line between speakers
+
+Diarization also errs the other way: when two people talk over each other, or the engine simply guesses wrong, one transcript line holds words from both of them - and the timestamps of such a turn are usually off with it. **Split selection into another speaker** repairs that line in place.
+
+1. In the note, select the words inside one transcript line that belong to someone else. The selection has to stay on that one line, and the line has to start with its timecode link, which is how the plugin knows which recording it belongs to.
+2. Right-click the selection and choose **Split selection into another speaker**. It is offered whenever transcription is enabled, and is also a palette command (and so hotkey-assignable) that acts on the selection in the active editor.
+3. In the dialog:
+    - **Spoken by** - who the selected words belong to: any speaker the transcript already shows, a participant of the recording nobody is named after yet, or **New speaker (Speaker N)**, the first label no speaker uses.
+    - **Time span** - where the selection starts and ends, as `1:23` or `1:23.5`. The fields start from the word timings when the recording's JSON transcript has them, and otherwise from the line's span shared out by text length. Press the play button to hear the span before you commit to it.
+    - **Rest of the line spoken by** - shown only when the selection sits in the middle of the line, so the line splits into three. The text after the selection keeps the line's own speaker unless you pick another one. Selecting from somewhere in the line to its end splits it in two, and selecting from its start moves the opening words to the other speaker.
+4. Press **Split**.
+
+What changes:
+
+- **The note.** The line is replaced by one line per part, written with the same templates the transcript was written with (read from the recording's sidecar) and with a timecode link at each part's start. The edit goes through the editor, so **Ctrl/Cmd+Z** undoes it like any other.
+- **The transcript files.** When the transcription saved a **JSON** transcript, its segments behind the line are split at the entered times, each part keeping the word timings spoken in it, and every transcript file the run wrote (JSON, SRT, WebVTT, TXT) is rewritten from it. Without a JSON transcript - or when it holds no segment matching the line, for example after hand edits - only the note changes; the dialog says so beforehand and the notice afterwards counts the files kept as they were. Subtitles and plain text drop the timings a split needs, so they are never cut on their own, and translations are never touched. These writes are not undone by the editor's undo.
+- **The speaker roster.** A new speaker, or a participant nobody was named after, is added to the recording's roster under the next free `Speaker N` label with the selection as its first turn, so **Rename speakers** lists it, plays it, and renames its lines like any diarized speaker.
+
+The dialog refuses times that leave the text before the selection no time (the selection has to start after the line does) or the text after it none (it has to end before the line does), and it refuses to write when the line changed while the dialog was open. A sidecar that cannot be read is protected the same way as in **Rename speakers**: nothing is split until it is restored or removed.
+
 ![The Merge speakers confirmation, naming the two labels about to share one name and saying that merged lines cannot be told apart again, above its Merge and Cancel buttons](images/dialog-merge-speakers.png)
 
 ![The Participant profile row of the Rename speakers dialog, naming the text last read from a roster note that could not be read](images/dialog-rename-speakers-roster.png)

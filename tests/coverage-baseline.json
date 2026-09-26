@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.75,
-			"branches": 94.75,
-			"functions": 98.72,
-			"lines": 98.75
+			"statements": 98.78,
+			"branches": 94.95,
+			"functions": 98.75,
+			"lines": 98.79
 		},
 		"files": {
 			"src/constants.ts": {
@@ -23,7 +23,7 @@
 				"statements": 99.54,
 				"branches": 97.56,
 				"functions": 99.03,
-				"lines": 99.76
+				"lines": 99.77
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -68,6 +68,12 @@
 				"lines": 100
 			},
 			"src/actions/sessionActions.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/transcriptActions.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -686,10 +692,10 @@
 				"lines": 100
 			},
 			"src/settings/settingsSerialization.ts": {
-				"statements": 98.99,
-				"branches": 95.83,
+				"statements": 99,
+				"branches": 95.89,
 				"functions": 100,
-				"lines": 98.98
+				"lines": 99
 			},
 			"src/settings/settingsValidation.ts": {
 				"statements": 100,
@@ -795,7 +801,7 @@
 			},
 			"src/settings/sections/rowHelpers.ts": {
 				"statements": 100,
-				"branches": 91.66,
+				"branches": 92.85,
 				"functions": 100,
 				"lines": 100
 			},
@@ -831,7 +837,7 @@
 			},
 			"src/sidecar/recordingSidecarModel.ts": {
 				"statements": 97.67,
-				"branches": 96.23,
+				"branches": 96.8,
 				"functions": 100,
 				"lines": 97.67
 			},
@@ -840,6 +846,12 @@
 				"branches": 88.57,
 				"functions": 100,
 				"lines": 93.97
+			},
+			"src/speakers/applyTranscriptSplit.ts": {
+				"statements": 100,
+				"branches": 95.45,
+				"functions": 100,
+				"lines": 100
 			},
 			"src/speakers/participantRoster.ts": {
 				"statements": 100,
@@ -862,6 +874,12 @@
 			"src/speakers/transcriptRewrite.ts": {
 				"statements": 100,
 				"branches": 91.8,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/speakers/transcriptSplit.ts": {
+				"statements": 100,
+				"branches": 100,
 				"functions": 100,
 				"lines": 100
 			},
@@ -967,6 +985,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/transcription/recordedTranscript.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/transcription/retryFailedParts.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -981,7 +1005,7 @@
 			},
 			"src/transcription/transcriptFormat.ts": {
 				"statements": 100,
-				"branches": 92.59,
+				"branches": 97.67,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1173,7 +1197,7 @@
 			},
 			"src/ui/ContextMenu.ts": {
 				"statements": 100,
-				"branches": 91.66,
+				"branches": 93.84,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1262,6 +1286,12 @@
 				"lines": 100
 			},
 			"src/ui/TextInputSuggest.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/ui/TranscriptSplitModal.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -1408,9 +1438,9 @@
 		}
 	},
 	"suite": {
-		"suites": 252,
-		"tests": 6247,
-		"passed": 6247,
+		"suites": 258,
+		"tests": 6351,
+		"passed": 6351,
 		"failed": 0,
 		"todo": 0
 	}
