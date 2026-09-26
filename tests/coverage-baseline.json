@@ -883,6 +883,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/speakers/transcriptRows.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/speakers/transcriptSplit.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -1462,7 +1468,7 @@
 		}
 	},
 	"suite": {
-		"suites": 260,
+		"suites": 261,
 		"tests": 6478,
 		"passed": 6478,
 		"failed": 0,

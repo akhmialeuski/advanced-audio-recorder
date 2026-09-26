@@ -33,21 +33,23 @@ import {
 	describeTranscriptSplit,
 } from '../speakers/applyTranscriptEdit';
 import {
+	formatLineTime,
+	lineSpeakerOptions,
+	locateRowSegments,
+	resolveLineSpeakers,
+	rowTiming,
+	type LineSpeakerOption,
+	type LineSpeakerRequest,
+	type LineSpeakerSources,
+	type RowSpan,
+	type RowTiming,
+} from '../speakers/transcriptRows';
+import {
 	afterSelection,
 	buildSplitPieces,
 	estimateSplitTimes,
-	formatSplitTime,
-	locateRowSegments,
-	resolveSplitSpeakers,
-	rowTiming,
-	splitLineText,
-	splitSpeakerOptions,
 	readSplitTimes,
-	type RowSpan,
-	type RowTiming,
-	type SplitSpeakerOption,
-	type SplitSpeakerRequest,
-	type SplitSpeakerSources,
+	splitLineText,
 	type SplitTexts,
 } from '../speakers/transcriptSplit';
 import {
@@ -95,7 +97,7 @@ interface PreparedSplit {
 	/** Speaker the line shows. */
 	rowSpeaker: string | undefined;
 	/** What is known about the recording's speakers. */
-	sources: SplitSpeakerSources;
+	sources: LineSpeakerSources;
 }
 
 /**
@@ -225,7 +227,7 @@ export class TranscriptSplitModal extends PluginModal {
 	private renderForm(prepared: PreparedSplit): void {
 		const { contentEl } = this;
 		const { texts, rowSpeaker } = prepared;
-		const options = splitSpeakerOptions(prepared.sources);
+		const options = lineSpeakerOptions(prepared.sources);
 		const times = estimateSplitTimes(prepared.timing, texts);
 
 		new Setting(contentEl)
@@ -264,7 +266,7 @@ export class TranscriptSplitModal extends PluginModal {
 			)
 			.addText((text) => {
 				text.setPlaceholder('Start')
-					.setValue(formatSplitTime(times.start))
+					.setValue(formatLineTime(times.start))
 					.onChange(() => {
 						this.showTypedSpan();
 					});
@@ -273,7 +275,7 @@ export class TranscriptSplitModal extends PluginModal {
 			})
 			.addText((text) => {
 				text.setPlaceholder('End')
-					.setValue(formatSplitTime(times.end))
+					.setValue(formatLineTime(times.end))
 					.onChange(() => {
 						this.showTypedSpan();
 					});
@@ -294,8 +296,8 @@ export class TranscriptSplitModal extends PluginModal {
 				bounds,
 				value: times,
 				onInput: (span) => {
-					this.startInput.setValue(formatSplitTime(span.start));
-					this.endInput.setValue(formatSplitTime(span.end));
+					this.startInput.setValue(formatLineTime(span.start));
+					this.endInput.setValue(formatLineTime(span.end));
 				},
 				onChange: (span) => {
 					this.replayMovedSpan(span);
@@ -340,11 +342,11 @@ export class TranscriptSplitModal extends PluginModal {
 	 * @param rowSpeaker - Speaker the line shows
 	 */
 	private renderAfterSpeaker(
-		options: readonly SplitSpeakerOption[],
+		options: readonly LineSpeakerOption[],
 		after: string,
 		rowSpeaker: string | undefined,
 	): void {
-		const afterOptions: SplitSpeakerOption[] =
+		const afterOptions: LineSpeakerOption[] =
 			rowSpeaker === undefined
 				? [NO_SPEAKER_OPTION, ...options]
 				: [...options];
@@ -447,7 +449,7 @@ export class TranscriptSplitModal extends PluginModal {
 			if (typeof times === 'string') {
 				throw new Error(times);
 			}
-			const requests: SplitSpeakerRequest[] = [
+			const requests: LineSpeakerRequest[] = [
 				{
 					choice: pickedChoice(this.selectedSpeaker.getValue()),
 					times,
@@ -459,7 +461,7 @@ export class TranscriptSplitModal extends PluginModal {
 					times: afterSelection(timing, times),
 				});
 			}
-			const { names, added } = resolveSplitSpeakers(
+			const { names, added } = resolveLineSpeakers(
 				prepared.sources,
 				requests,
 			);

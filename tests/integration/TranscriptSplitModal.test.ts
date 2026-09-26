@@ -12,7 +12,7 @@ import type { TFile } from 'obsidian';
 import { transcriptSelectionIn } from 'src/actions/transcriptActions';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { TranscriptSplitModal } from 'src/ui/TranscriptSplitModal';
-import { formatSplitTime } from 'src/speakers/transcriptSplit';
+import { formatLineTime } from 'src/speakers/transcriptRows';
 import { noticeMessages } from '../mocks/obsidian';
 import { silenceConsole } from '../helpers/doubles';
 import { flushMicrotasks } from '../helpers/async';
@@ -452,7 +452,7 @@ describe('TranscriptSplitModal', () => {
 		// The line runs from 0:05 to the inserted 0:09 line, shared by length.
 		expect(timeFields(modal)).toEqual([
 			'0:05',
-			formatSplitTime(5 + (4 * 'Sure.'.length) / (MIXED_TURN.length - 1)),
+			formatLineTime(5 + (4 * 'Sure.'.length) / (MIXED_TURN.length - 1)),
 		]);
 	});
 

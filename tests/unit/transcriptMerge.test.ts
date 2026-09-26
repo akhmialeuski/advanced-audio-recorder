@@ -19,25 +19,8 @@ import {
 import {
 	replaceTranscriptRow,
 	type RowLocation,
-} from 'src/speakers/transcriptSplit';
-import type {
-	Transcript,
-	TranscriptSegment,
-} from 'src/transcription/TranscriptTypes';
-import { wordsOf } from '../helpers/transcriptFixtures';
-
-function seg(
-	start: number,
-	end: number,
-	text: string,
-	speaker?: string,
-): TranscriptSegment {
-	return { start, end, text, ...(speaker ? { speaker } : {}) };
-}
-
-function transcriptOf(...segments: TranscriptSegment[]): Transcript {
-	return { segments, speakers: [] };
-}
+} from 'src/speakers/transcriptRows';
+import { seg, transcriptOf, wordsOf } from '../helpers/transcriptFixtures';
 
 /** A line of the note, found by its second, speaker, text and successor. */
 function row(

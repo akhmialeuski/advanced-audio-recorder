@@ -26,7 +26,7 @@ import {
 	type RecordedTranscript,
 } from '../transcription/recordedTranscript';
 import type { TranscriptSegment } from '../transcription/TranscriptTypes';
-import { replaceTranscriptRow, type RowSpan } from './transcriptSplit';
+import { replaceTranscriptRow, type RowSpan } from './transcriptRows';
 
 /** The slice of the recording sidecar store an edit writes. */
 export interface TranscriptEditSidecar {

@@ -18,10 +18,10 @@ import type { TranscriptEditSidecar } from '../speakers/applyTranscriptEdit';
 import {
 	noteMarkdownOptions,
 	type RowSpan,
-	type SplitSpeakerChoice,
-	type SplitSpeakerOption,
-	type SplitSpeakerSources,
-} from '../speakers/transcriptSplit';
+	type LineSpeakerChoice,
+	type LineSpeakerOption,
+	type LineSpeakerSources,
+} from '../speakers/transcriptRows';
 import {
 	originalTranscriptOutputs,
 	readRecordedTranscript,
@@ -203,7 +203,7 @@ export function readTranscriptLine(
 export function speakerSources(
 	source: TranscriptSource,
 	lineSpeakers: readonly (string | undefined)[],
-): SplitSpeakerSources {
+): LineSpeakerSources {
 	return {
 		roster: source.section.speakers,
 		participants: source.section.participants,
@@ -266,7 +266,7 @@ export async function recordingDuration(
 }
 
 /** The dropdown entry that leaves a line without a speaker. */
-export const NO_SPEAKER_OPTION: SplitSpeakerOption = {
+export const NO_SPEAKER_OPTION: LineSpeakerOption = {
 	value: 'none',
 	title: 'No speaker',
 	choice: { kind: 'none' },
@@ -285,10 +285,10 @@ export function speakerValue(speaker: string | undefined): string {
 
 /**
  * The choice a speaker dropdown value stands for (the values are the ones
- * {@link splitSpeakerOptions} gives, plus "none" for no speaker).
+ * {@link lineSpeakerOptions} gives, plus "none" for no speaker).
  * @param value - The dropdown's value
  */
-export function pickedChoice(value: string): SplitSpeakerChoice {
+export function pickedChoice(value: string): LineSpeakerChoice {
 	if (value === 'new') {
 		return { kind: 'new' };
 	}
@@ -309,7 +309,7 @@ export function pickedChoice(value: string): SplitSpeakerChoice {
  */
 export function fillSpeakerDropdown(
 	dropdown: DropdownComponent,
-	options: readonly SplitSpeakerOption[],
+	options: readonly LineSpeakerOption[],
 ): void {
 	for (const option of options) {
 		dropdown.addOption(option.value, option.title);

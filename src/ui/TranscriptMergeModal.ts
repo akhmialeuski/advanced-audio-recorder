@@ -37,15 +37,15 @@ import {
 	type SelectedLineKind,
 } from '../speakers/transcriptMerge';
 import {
-	formatSplitTime,
-	resolveSplitSpeakers,
+	formatLineTime,
+	lineSpeakerOptions,
+	resolveLineSpeakers,
 	rowTiming,
-	splitSpeakerOptions,
+	type LineSpeakerOption,
+	type LineSpeakerSources,
 	type RowSpan,
 	type RowTiming,
-	type SplitSpeakerOption,
-	type SplitSpeakerSources,
-} from '../speakers/transcriptSplit';
+} from '../speakers/transcriptRows';
 import {
 	formatTranscriptMarkdown,
 	restoreWikilinks,
@@ -89,7 +89,7 @@ interface PreparedMerge {
 	/** Where the merged lines sit on the timeline. */
 	timing: RowTiming;
 	/** What is known about the recording's speakers. */
-	sources: SplitSpeakerSources;
+	sources: LineSpeakerSources;
 }
 
 /**
@@ -250,8 +250,8 @@ export class TranscriptMergeModal extends PluginModal {
 		new Setting(contentEl)
 			.setName('Merged text')
 			.setDesc(quote(mergedLineText(rows.map((row) => row.text))));
-		const options = splitSpeakerOptions(prepared.sources);
-		const speakerOptions: SplitSpeakerOption[] = rows.some(
+		const options = lineSpeakerOptions(prepared.sources);
+		const speakerOptions: LineSpeakerOption[] = rows.some(
 			(row) => row.speaker === undefined,
 		)
 			? [NO_SPEAKER_OPTION, ...options]
@@ -305,13 +305,13 @@ export class TranscriptMergeModal extends PluginModal {
 		const row = new Setting(this.contentEl).setName('Time span');
 		if (timing.end === null || timing.end <= timing.start) {
 			row.setDesc(
-				`Starts at ${formatSplitTime(timing.start)}. Where the last line ends is unknown, so the passage cannot be played.`,
+				`Starts at ${formatLineTime(timing.start)}. Where the last line ends is unknown, so the passage cannot be played.`,
 			);
 			return;
 		}
 		const span = { start: timing.start, end: timing.end };
 		row.setDesc(
-			`${formatSplitTime(span.start)} to ${formatSplitTime(span.end)}. Play the whole passage to check that one speaker says it.`,
+			`${formatLineTime(span.start)} to ${formatLineTime(span.end)}. Play the whole passage to check that one speaker says it.`,
 		).addExtraButton((button) => {
 			button
 				.setIcon('play')
@@ -380,7 +380,7 @@ export class TranscriptMergeModal extends PluginModal {
 				throw new Error(prepared);
 			}
 			const { rows, timing, source } = prepared;
-			const { names, added } = resolveSplitSpeakers(prepared.sources, [
+			const { names, added } = resolveLineSpeakers(prepared.sources, [
 				{
 					choice: pickedChoice(this.speaker.getValue()),
 					times: mergedSpan(timing),

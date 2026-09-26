@@ -5,12 +5,13 @@
  * speaker, and the note reads more fragmented than the conversation was; the
  * user selects the lines and they become one line of one speaker.
  *
- * Everything that is not about merging as such is the split's: each line's
- * segments are found by {@link locateRowSegments}, the merged line's span is
- * {@link rowTiming} over them, the speaker choices are the split's, and the
- * transcript is rewritten by {@link replaceTranscriptRow} with the one merged
- * segment - so the note line and the JSON output are written from the same
- * segment and can never disagree. No DOM or I/O; unit tested directly.
+ * Everything that is not about merging as such is shared with the split in
+ * {@link speakers/transcriptRows}: each line's segments are found by
+ * {@link locateRowSegments}, the merged line's span is {@link rowTiming} over
+ * them, the speaker choices are the same, and the transcript is rewritten by
+ * {@link replaceTranscriptRow} with the one merged segment - so the note line
+ * and the JSON output are written from the same segment and can never
+ * disagree. No DOM or I/O; unit tested directly.
  * @module speakers/transcriptMerge
  */
 
@@ -21,11 +22,11 @@ import type {
 } from '../transcription/TranscriptTypes';
 import {
 	locateRowSegments,
+	type LineSpeakerChoice,
 	type RowLocation,
 	type RowSpan,
 	type RowTiming,
-	type SplitSpeakerChoice,
-} from './transcriptSplit';
+} from './transcriptRows';
 
 /**
  * Fewest lines whose merge is asked about first. Two lines are the everyday
@@ -50,7 +51,7 @@ export function mergeNeedsConfirmation(lineCount: number): boolean {
  */
 export function mergeConfirmationMessage(
 	lineCount: number,
-	choice: SplitSpeakerChoice,
+	choice: LineSpeakerChoice,
 ): string {
 	const speaker =
 		choice.kind === 'none'
