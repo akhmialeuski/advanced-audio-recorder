@@ -151,10 +151,12 @@ export interface FileAction extends PluginCommand<FileContext> {
 }
 
 /**
- * A selection inside one rendered transcript line: the editor it was made in,
- * the note and the recording the line belongs to (through its timecode link),
- * and exactly what was selected, so an action can act on that line and verify
- * it is still the same when it does.
+ * A selection over rendered transcript lines: the editor it was made in, the
+ * note and the recording the first line belongs to (through its timecode
+ * link), and exactly what was selected, so an action can act on those lines
+ * and verify they are still the same when it does. Most selections lie inside
+ * one line (`line` equals `lastLine`); one reaching over several lines spans
+ * `line` to `lastLine`, both holding selected text.
  */
 export interface TranscriptSelectionContext {
 	/** Injected services shared by every action. */
@@ -165,20 +167,27 @@ export interface TranscriptSelectionContext {
 	readonly note: TFile;
 	/** The recording the line's timecode link resolves to. */
 	readonly audio: TFile;
-	/** Zero-based line number. */
+	/** Zero-based number of the first selected line. */
 	readonly line: number;
-	/** The line's text when the selection was resolved. */
+	/** Zero-based number of the last selected line. */
+	readonly lastLine: number;
+	/** The first line's text when the selection was resolved. */
 	readonly lineText: string;
-	/** Selection start column. */
+	/**
+	 * The text of every line from `line` to `lastLine` when the selection was
+	 * resolved, blank lines between them included.
+	 */
+	readonly lineTexts: readonly string[];
+	/** Selection start column, on the first line. */
 	readonly from: number;
-	/** Selection end column. */
+	/** Selection end column, on the last line. */
 	readonly to: number;
-	/** Whole seconds the line's timecode link points at. */
+	/** Whole seconds the first line's timecode link points at. */
 	readonly seconds: number;
 }
 
 /**
- * An action on a selection inside a transcript line. Rendered into the editor
+ * An action on a selection over transcript lines. Rendered into the editor
  * menu, and registered as a palette command that resolves the active editor's
  * selection, so it is hotkey-assignable like every other action.
  */

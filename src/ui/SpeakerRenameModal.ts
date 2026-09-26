@@ -24,7 +24,7 @@
 
 import { Notice, Setting } from 'obsidian';
 import type { App, ButtonComponent, DropdownComponent, TFile } from 'obsidian';
-import { ConfirmModal } from './ConfirmModal';
+import { confirmAction } from './ConfirmModal';
 import { PluginModal } from './PluginModal';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
@@ -692,22 +692,14 @@ export class SpeakerRenameModal extends PluginModal {
 		const merged = merges
 			.map((merge) => `${merge.labels.join(', ')} become ${merge.name}`)
 			.join('; ');
-		return new Promise((resolve) => {
-			new ConfirmModal(this.app, {
-				title: 'Merge speakers?',
-				message:
-					`${merged}. Their lines become one speaker in every ` +
-					'output. This cannot be undone: merged lines are the same ' +
-					'text afterwards, so nothing can tell them apart again - ' +
-					'only a new transcription restores separate labels.',
-				confirmText: 'Merge',
-				onConfirm: () => {
-					resolve(true);
-				},
-				onCancel: () => {
-					resolve(false);
-				},
-			}).open();
+		return confirmAction(this.app, {
+			title: 'Merge speakers?',
+			message:
+				`${merged}. Their lines become one speaker in every ` +
+				'output. This cannot be undone: merged lines are the same ' +
+				'text afterwards, so nothing can tell them apart again - ' +
+				'only a new transcription restores separate labels.',
+			confirmText: 'Merge',
 		});
 	}
 

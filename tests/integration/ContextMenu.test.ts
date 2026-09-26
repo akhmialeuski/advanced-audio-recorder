@@ -625,8 +625,11 @@ describe('ContextMenu', () => {
 	describe('transcript selection in the editor menu', () => {
 		const line = '[[rec.m4a#t=5|0:05]] **Speaker 1** Sure. Go ahead.';
 
-		/** Opens the editor menu on a selection of the transcript line. */
-		function openOn(from: number, to: number): Menu {
+		/**
+		 * Opens the editor menu on a selection of the transcript line, or on
+		 * one reaching from it into the line below.
+		 */
+		function openOn(from: number, to: number, toLine = 0): Menu {
 			const audio = makeAudioFile('m4a');
 			const menu = new Menu();
 			const transcriptMenu = new ContextMenu(
@@ -650,11 +653,11 @@ describe('ContextMenu', () => {
 				.filter((c) => c[0] === 'editor-menu')
 				.at(-1);
 			const editor = partial<Editor>({
-				somethingSelected: () => from !== to,
-				getCursor: (which?: string) => ({
-					line: 0,
-					ch: which === 'to' ? to : from,
-				}),
+				somethingSelected: () => toLine > 0 || from !== to,
+				getCursor: (which?: string) =>
+					which === 'to'
+						? { line: toLine, ch: to }
+						: { line: 0, ch: from },
 				getLine: () => line,
 			});
 			call[1](menu, editor, {
@@ -670,6 +673,25 @@ describe('ContextMenu', () => {
 
 			expect(titlesOf(menu)).toContain(
 				'Split selection into another speaker',
+			);
+		});
+
+		it('offers the merge, not the split, on a selection over two lines', () => {
+			const menu = openOn(30, 10, 1);
+
+			expect(titlesOf(menu)).toContain('Merge selected lines into one');
+			expect(titlesOf(menu)).not.toContain(
+				'Split selection into another speaker',
+			);
+		});
+
+		it('offers no merge on a selection inside one line', () => {
+			const from = line.indexOf('Go ahead.');
+
+			const menu = openOn(from, from + 'Go ahead.'.length);
+
+			expect(titlesOf(menu)).not.toContain(
+				'Merge selected lines into one',
 			);
 		});
 

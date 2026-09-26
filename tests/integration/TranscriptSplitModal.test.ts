@@ -8,285 +8,33 @@
  * @jest-environment jsdom
  */
 
-import { App, TFile } from 'obsidian';
-import type { Editor, EditorPosition } from 'obsidian';
+import type { TFile } from 'obsidian';
 import { transcriptSelectionIn } from 'src/actions/transcriptActions';
-import type {
-	ActionServices,
-	TranscriptSelectionContext,
-} from 'src/actions/PluginAction';
-import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import { mergeSettings } from 'src/settings/settingsSerialization';
-import {
-	emptyTranscriptSection,
-	type TranscriptSection,
-} from 'src/sidecar/recordingSidecarModel';
-import {
-	DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
-	formatTranscriptMarkdown,
-} from 'src/transcription/transcriptFormat';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { TranscriptSplitModal } from 'src/ui/TranscriptSplitModal';
 import { formatSplitTime } from 'src/speakers/transcriptSplit';
 import { noticeMessages } from '../mocks/obsidian';
-import { partial, silenceConsole } from '../helpers/doubles';
-import { asMockApp } from '../helpers/obsidianMock';
-import { cachedLink, wordsOf } from '../helpers/transcriptFixtures';
+import { silenceConsole } from '../helpers/doubles';
 import { flushMicrotasks } from '../helpers/async';
 import { MODAL } from '../helpers/selectors';
 import { installControlledAudio } from '../helpers/mediaMocks';
 import { allEls, clickControl, control } from '../helpers/dom';
+import { rowButton, settingNames, settingRow } from '../helpers/settingRows';
 import {
-	rowButton,
-	rowSelect,
-	settingNames,
-	settingRow,
-} from '../helpers/settingRows';
-
-const NOTE_PATH = 'Notes/meeting.md';
-const AUDIO_PATH = 'audio/rec.m4a';
-const JSON_PATH = 'audio/rec.transcript.json';
-const SRT_PATH = 'audio/rec.srt';
-
-const MIXED_TURN = 'Sure. Wait, I have a question. Go ahead.';
-
-/** A meeting whose middle turn diarization gave to one speaker only. */
-const TRANSCRIPT: Transcript = {
-	segments: [
-		{ start: 0, end: 4, text: 'Shall we start?', speaker: 'Bob' },
-		{
-			start: 5,
-			end: 13,
-			text: MIXED_TURN,
-			speaker: 'Speaker 1',
-			words: wordsOf(MIXED_TURN, 5),
-		},
-		{ start: 14, end: 16, text: 'Thanks.', speaker: 'Bob' },
-	],
-	speakers: ['Bob', 'Speaker 1'],
-};
-
-const link = (seconds: number, label: string): string =>
-	`[[rec.m4a#t=${String(Math.floor(seconds))}|${label}]]`;
-
-/** The note as the transcription wrote it. */
-function renderedNote(transcript: Transcript = TRANSCRIPT): string {
-	return `# Meeting\n\n${formatTranscriptMarkdown(
-		transcript,
-		DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
-		link,
-	)}\n`;
-}
-
-/** A section recording the note and both transcript files. */
-function recordedSection(
-	overrides: Partial<TranscriptSection> = {},
-): TranscriptSection {
-	return {
-		...emptyTranscriptSection(),
-		speakers: [{ label: 'Speaker 1' }, { label: 'Speaker 2', name: 'Bob' }],
-		participants: ['Carol'],
-		noteOutputs: [
-			{
-				path: NOTE_PATH,
-				templates: {
-					lineFormat: DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS.lineFormat,
-					speakerFormat:
-						DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS.speakerFormat,
-					timestampFormat:
-						DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS.timestampFormat,
-					includeTimestamps: true,
-					timestampLinks: true,
-					mergeConsecutiveSpeaker: true,
-				},
-				heading: '',
-				writtenAt: '',
-			},
-		],
-		fileOutputs: [
-			{ path: JSON_PATH, format: 'json', writtenAt: '' },
-			{ path: SRT_PATH, format: 'srt', writtenAt: '' },
-		],
-		...overrides,
-	};
-}
-
-/** An editor over the note's text, holding one selection. */
-class FakeEditor {
-	private lines: string[];
-	private selection: { line: number; from: number; to: number };
-
-	constructor(content: string) {
-		this.lines = content.split('\n');
-		this.selection = { line: 0, from: 0, to: 0 };
-	}
-
-	/** Selects the given text on the first line that holds it. */
-	select(text: string): void {
-		const line = this.lines.findIndex((candidate) =>
-			candidate.includes(text),
-		);
-		const from = this.lines[line]?.indexOf(text) ?? -1;
-		if (line < 0 || from < 0) {
-			throw new Error(`No line holds "${text}"`);
-		}
-		this.selection = { line, from, to: from + text.length };
-	}
-
-	get content(): string {
-		return this.lines.join('\n');
-	}
-
-	/** The line holding the given text, as the note now shows it. */
-	lineWith(text: string): string {
-		return this.lines.find((line) => line.includes(text)) ?? '';
-	}
-
-	asEditor(): Editor {
-		return partial<Editor>({
-			somethingSelected: () => this.selection.from !== this.selection.to,
-			getCursor: (which?: string): EditorPosition => ({
-				line: this.selection.line,
-				ch: which === 'to' ? this.selection.to : this.selection.from,
-			}),
-			getLine: (line: number) => this.lines[line] ?? '',
-			lineCount: () => this.lines.length,
-			replaceRange: (
-				text: string,
-				from: EditorPosition,
-				to: EditorPosition,
-			) => {
-				const head = (this.lines[from.line] ?? '').slice(0, from.ch);
-				const tail = (this.lines[to.line] ?? '').slice(to.ch);
-				this.lines.splice(
-					from.line,
-					to.line - from.line + 1,
-					...`${head}${text}${tail}`.split('\n'),
-				);
-			},
-		});
-	}
-
-	/** The links of the note as the metadata cache reports them. */
-	linkCache(): { links: unknown[] } {
-		const links: unknown[] = [];
-		this.lines.forEach((line, index) => {
-			for (const match of line.matchAll(
-				/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g,
-			)) {
-				links.push(
-					cachedLink(
-						String(match[1]),
-						index,
-						match.index,
-						match.index + match[0].length,
-					),
-				);
-			}
-		});
-		return { links };
-	}
-}
-
-/** Everything a test drives and reads back. */
-interface Sut {
-	app: App;
-	editor: FakeEditor;
-	note: TFile;
-	sidecar: {
-		getTranscript: jest.Mock;
-		isSidecarCorrupt: jest.Mock;
-		addSpeakers: jest.Mock;
-	};
-	services: ActionServices;
-	probeDuration: jest.Mock;
-}
-
-/** What a test varies about the recording it splits a line of. */
-interface SutOptions {
-	/** The recording's sidecar transcript section. */
-	section?: TranscriptSection;
-	/** The transcript the note was rendered from. */
-	transcript?: Transcript;
-	/** What the JSON output holds, when it differs from the note. */
-	json?: Transcript;
-	/** Whether the sidecar file exists but cannot be read. */
-	corrupt?: boolean;
-	/** What measuring the recording answers. */
-	duration?: Promise<number | null>;
-	/** Text appended to the note after the transcript. */
-	appended?: string;
-	/** Plugin settings on top of transcription being enabled. */
-	settings?: Partial<AudioRecorderSettings>;
-	/**
-	 * Whether the metadata cache keeps reporting the note as first seeded,
-	 * the way it trails the editor until the note is saved and parsed again.
-	 */
-	staleCache?: boolean;
-}
-
-function createSut(options: SutOptions = {}): Sut {
-	const transcript = options.transcript ?? TRANSCRIPT;
-	const app = new App();
-	const mock = asMockApp(app);
-	mock.vault.seed([
-		{ path: AUDIO_PATH, data: new ArrayBuffer(8) },
-		{ path: NOTE_PATH, content: renderedNote(transcript) },
-		{
-			path: JSON_PATH,
-			content: JSON.stringify(options.json ?? transcript, null, 2),
-		},
-		{ path: SRT_PATH, content: 'original subtitles' },
-	]);
-	const audio = app.vault.getFileByPath(AUDIO_PATH);
-	const note = app.vault.getFileByPath(NOTE_PATH);
-	const editor = new FakeEditor(
-		`${renderedNote(transcript)}${options.appended ?? ''}`,
-	);
-	const seededCache = editor.linkCache();
-	mock.metadataCache.getFileCache.mockImplementation(() =>
-		options.staleCache ? seededCache : editor.linkCache(),
-	);
-	mock.metadataCache.getFirstLinkpathDest.mockImplementation(
-		(path: string) => (path === 'rec.m4a' ? audio : null),
-	);
-	const sidecar = {
-		getTranscript: jest
-			.fn()
-			.mockResolvedValue(options.section ?? recordedSection()),
-		isSidecarCorrupt: jest.fn().mockReturnValue(options.corrupt ?? false),
-		addSpeakers: jest.fn().mockResolvedValue(undefined),
-	};
-	const settings = mergeSettings({
-		transcriptionEnabled: true,
-		...options.settings,
-	});
-	const services = partial<ActionServices>({
-		app,
-		getSettings: () => settings,
-		recordingSidecar: sidecar,
-	});
-	if (!note) {
-		throw new Error('The note was not seeded');
-	}
-	const probeDuration = jest
-		.fn()
-		.mockReturnValue(options.duration ?? Promise.resolve(60));
-	return { app, editor, note, sidecar, services, probeDuration };
-}
-
-/** Resolves the current selection the way the editor menu does. */
-function contextOf(sut: Sut): TranscriptSelectionContext {
-	const context = transcriptSelectionIn(
-		sut.services,
-		sut.editor.asEditor(),
-		sut.note,
-	);
-	if (!context) {
-		throw new Error('The selection did not resolve to a transcript line');
-	}
-	return context;
-}
+	AUDIO_PATH,
+	contextOf,
+	JSON_PATH,
+	openLineDialog,
+	createSut,
+	MIXED_TURN,
+	pick,
+	recordedSection,
+	renderedNote,
+	SRT_PATH,
+	type Sut,
+	TRANSCRIPT,
+	writtenJson,
+} from '../helpers/transcriptEditHarness';
 
 /** Opens the dialog on a selection and waits for it to render. */
 async function openDialog(
@@ -294,19 +42,7 @@ async function openDialog(
 	selected: string,
 ): Promise<TranscriptSplitModal> {
 	sut.editor.select(selected);
-	const modal = new TranscriptSplitModal(sut.app, contextOf(sut), {
-		getSettings: sut.services.getSettings,
-		sidecar: sut.sidecar,
-		probeDuration: sut.probeDuration,
-	});
-	modal.open();
-	await flushMicrotasks(20);
-	return modal;
-}
-
-/** Picks a dropdown option by value in the named row. */
-function pick(modal: TranscriptSplitModal, row: string, value: string): void {
-	rowSelect(settingRow(modal.contentEl, row)).value = value;
+	return openLineDialog(sut, TranscriptSplitModal);
 }
 
 /**
@@ -380,12 +116,6 @@ function timeFields(modal: TranscriptSplitModal): string[] {
 async function pressSplit(modal: TranscriptSplitModal): Promise<void> {
 	rowButton(modal.contentEl, 'Split').click();
 	await flushMicrotasks(20);
-}
-
-/** The transcript the JSON output holds now. */
-async function writtenJson(sut: Sut): Promise<Transcript> {
-	const file = sut.app.vault.getFileByPath(JSON_PATH);
-	return JSON.parse(await sut.app.vault.read(file as TFile)) as Transcript;
 }
 
 describe('TranscriptSplitModal', () => {

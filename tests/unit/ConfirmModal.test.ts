@@ -8,9 +8,10 @@
  * @module tests/unit/ConfirmModal.test
  */
 
-import { ConfirmModal } from 'src/ui/ConfirmModal';
+import { confirmAction, ConfirmModal } from 'src/ui/ConfirmModal';
 import type { App } from 'obsidian';
 import { at } from '../helpers/assertions';
+import { modalInstances } from '../mocks/obsidian';
 
 /** Opens a confirm dialog and exposes its rendered buttons. */
 function open(
@@ -115,5 +116,30 @@ describe('ConfirmModal', () => {
 		modal.onClose();
 
 		expect(modal.contentEl.children).toHaveLength(0);
+	});
+});
+
+describe('confirmAction', () => {
+	/** Asks, then presses the given button of the dialog it opened. */
+	function answer(button: 0 | 1): Promise<boolean> {
+		const answered = confirmAction({} as App, {
+			title: 'Merge 3 lines?',
+			message: '3 transcript lines become one.',
+			confirmText: 'Merge',
+		});
+		const dialog = at(modalInstances, modalInstances.length - 1);
+		at(
+			Array.from(dialog.contentEl.querySelectorAll('button')),
+			button,
+		).click();
+		return answered;
+	}
+
+	it('answers yes when confirmed', async () => {
+		await expect(answer(0)).resolves.toBe(true);
+	});
+
+	it('answers no when cancelled', async () => {
+		await expect(answer(1)).resolves.toBe(false);
 	});
 });

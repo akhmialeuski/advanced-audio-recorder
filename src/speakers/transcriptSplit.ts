@@ -588,18 +588,20 @@ export function buildSplitPieces(
 }
 
 /**
- * Replaces the segments behind a line with the pieces it was split into. The
- * word timings those segments carried go to the piece whose span each word
- * starts in, so a JSON transcript keeps them; the speaker list is derived
- * again, since a split can introduce a speaker or take the last line from one.
- * The row's first piece keeps any word that starts before it, and each piece
- * the words up to where the next one starts.
- * @param transcript - The transcript the line was rendered from
- * @param span - The line's segments
+ * Replaces the segments behind one or more note lines with the pieces they
+ * become: the pieces a line was split into, or the one segment consecutive
+ * lines were merged into. The word timings those segments carried go to the
+ * piece whose span each word starts in, so a JSON transcript keeps them; the
+ * speaker list is derived again, since a split can introduce a speaker and a
+ * split or a merge can take the last line from one. The first piece keeps any
+ * word that starts before it, and each piece the words up to where the next
+ * one starts - so a single piece keeps every word.
+ * @param transcript - The transcript the lines were rendered from
+ * @param span - The lines' segments
  * @param pieces - The pieces, in timeline order
- * @returns The transcript with the row split
+ * @returns The transcript with the segments replaced
  */
-export function splitTranscriptRow(
+export function replaceTranscriptRow(
 	transcript: Transcript,
 	span: RowSpan,
 	pieces: readonly TranscriptSegment[],

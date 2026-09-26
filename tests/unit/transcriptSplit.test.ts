@@ -20,7 +20,7 @@ import {
 	splitLineText,
 	splitSpeakerOptions,
 	splitTimesProblem,
-	splitTranscriptRow,
+	replaceTranscriptRow,
 	type SplitSpeakerSources,
 	type SplitTexts,
 } from 'src/speakers/transcriptSplit';
@@ -524,7 +524,7 @@ describe('buildSplitPieces', () => {
 	});
 });
 
-describe('splitTranscriptRow', () => {
+describe('replaceTranscriptRow', () => {
 	const transcript = transcriptOf(
 		seg(0, 5, 'Before', 'Bob'),
 		seg(5, 8, 'one two three', 'Anna', wordsOf('one two three', 5)),
@@ -533,7 +533,7 @@ describe('splitTranscriptRow', () => {
 	const pieces = [seg(5, 6, 'one', 'Anna'), seg(6, 8, 'two three', 'Carol')];
 
 	it('replaces the row with its pieces', () => {
-		const split = splitTranscriptRow(
+		const split = replaceTranscriptRow(
 			transcript,
 			{ first: 1, last: 1 },
 			pieces,
@@ -548,7 +548,7 @@ describe('splitTranscriptRow', () => {
 	});
 
 	it('hands each piece the words spoken in it', () => {
-		const split = splitTranscriptRow(
+		const split = replaceTranscriptRow(
 			transcript,
 			{ first: 1, last: 1 },
 			pieces,
@@ -558,7 +558,7 @@ describe('splitTranscriptRow', () => {
 	});
 
 	it('adds no word timings the row did not have', () => {
-		const split = splitTranscriptRow(
+		const split = replaceTranscriptRow(
 			transcriptOf(seg(5, 8, 'one two three', 'Anna')),
 			{ first: 0, last: 0 },
 			pieces,
@@ -568,7 +568,7 @@ describe('splitTranscriptRow', () => {
 	});
 
 	it('derives the speaker list again', () => {
-		const split = splitTranscriptRow(
+		const split = replaceTranscriptRow(
 			transcript,
 			{ first: 1, last: 1 },
 			pieces,

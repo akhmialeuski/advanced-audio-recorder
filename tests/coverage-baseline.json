@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.79,
-			"branches": 95,
-			"functions": 98.76,
-			"lines": 98.8
+			"statements": 98.81,
+			"branches": 95.05,
+			"functions": 98.78,
+			"lines": 98.81
 		},
 		"files": {
 			"src/constants.ts": {
@@ -847,7 +847,7 @@
 				"functions": 100,
 				"lines": 93.97
 			},
-			"src/speakers/applyTranscriptSplit.ts": {
+			"src/speakers/applyTranscriptEdit.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -866,6 +866,12 @@
 				"lines": 100
 			},
 			"src/speakers/speakerRename.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/speakers/transcriptMerge.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -1268,10 +1274,10 @@
 				"lines": 100
 			},
 			"src/ui/SpeakerRenameModal.ts": {
-				"statements": 97.1,
+				"statements": 97.07,
 				"branches": 86.84,
-				"functions": 90,
-				"lines": 97.1
+				"functions": 89.36,
+				"lines": 97.07
 			},
 			"src/ui/SplitModal.ts": {
 				"statements": 100,
@@ -1297,6 +1303,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/ui/TranscriptMergeModal.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/ui/TranscriptSplitModal.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -1316,6 +1328,12 @@
 				"lines": 100
 			},
 			"src/ui/formatDescriptions.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/ui/transcriptLineDialog.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -1444,9 +1462,9 @@
 		}
 	},
 	"suite": {
-		"suites": 258,
-		"tests": 6386,
-		"passed": 6386,
+		"suites": 260,
+		"tests": 6478,
+		"passed": 6478,
 		"failed": 0,
 		"todo": 0
 	}
