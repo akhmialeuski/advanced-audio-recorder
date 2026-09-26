@@ -1,7 +1,9 @@
 /**
  * Modal that configures and runs transcription for a single audio file.
- * The per-run options (engine, language, diarization, the participant profile
- * a diarized run stores with the recording, destination, file format, in-note
+ * Language, the participant profile and the destination are shown up front;
+ * every other option sits in a collapsed More options block. The per-run options
+ * (engine, language, diarization, the participant profile a diarized run
+ * stores with the recording, destination, file format, in-note
  * toggles, the advanced settings that reveal the dictionary and two-pass mode,
  * and LLM post-processing) default from settings and can be overridden here for
  * this run only - the saved settings are never mutated. Shows progress and allows cancellation; the detailed
@@ -154,6 +156,8 @@ export class TranscriptionModal extends PluginModal {
 	private runStartedAt = 0;
 	private progressFillEl: HTMLElement | null = null;
 	private configEl: HTMLElement | null = null;
+	/** Whether the More options block is expanded; kept across config re-renders. */
+	private advancedOpen = false;
 	/** Container for the pre-run estimate and the session total lines. */
 	private costEstimateEl: HTMLElement | null = null;
 	/** Live "cost so far" line while a multi-part run is in flight. */
@@ -336,29 +340,13 @@ export class TranscriptionModal extends PluginModal {
 			},
 		};
 
-		addDropdown(ctx, {
-			name: 'Engine',
-			// Explain the blocked run when the stored engine cannot execute
-			// here (a local whisper.cpp selection synced to mobile), so the
-			// disabled Transcribe button below is self-evident.
-			desc: this.isSelectedEngineAvailable()
-				? undefined
-				: 'The selected engine is not available on this device. Pick a cloud engine to transcribe here.',
-			// Engines the platform cannot run stay listed but blocked,
-			// matching the settings tab.
-			options: TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => ({
-				...option,
-				disabled: !isProviderAvailableOnPlatform(
-					option.value as TranscriptionProviderId,
-				),
-			})),
-			get: () => s.transcriptionProvider,
-			set: (v) =>
-				(s.transcriptionProvider = v as TranscriptionProviderId),
-			// Re-render so the diarization toggle reflects the new engine's
-			// capabilities (enabled only when the engine can diarize).
-			rerender: true,
-		});
+		const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
+		// Whether speaker labels will actually be produced for this run; gates the
+		// Include speakers toggle below the same way it gates the toggle itself.
+		const diarizes = effectiveDiarize(
+			s.transcriptionProvider,
+			s.transcriptionDiarize,
+		);
 		addText(ctx, {
 			name: 'Language',
 			// The same sentence the settings tab shows, so one engine cannot be
@@ -368,31 +356,6 @@ export class TranscriptionModal extends PluginModal {
 			desc: languageNote(s.transcriptionProvider),
 			get: () => s.transcriptionLanguage,
 			set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
-		});
-		const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
-		// Whether speaker labels will actually be produced for this run; gates the
-		// Include speakers toggle below the same way it gates the toggle itself.
-		const diarizes = effectiveDiarize(
-			s.transcriptionProvider,
-			s.transcriptionDiarize,
-		);
-		addToggle(ctx, {
-			name: 'Speaker diarization',
-			desc: canDiarize
-				? 'Request speaker labels (providers detect the speaker count automatically).'
-				: 'Not supported by the selected engine. Use Deepgram for speaker labels.',
-			// Reflect the effective state: a stored "on" from a diarizing engine
-			// must read as off here when the chosen engine cannot diarize.
-			get: () =>
-				effectiveDiarize(
-					s.transcriptionProvider,
-					s.transcriptionDiarize,
-				),
-			set: (v) => (s.transcriptionDiarize = v),
-			disabled: !canDiarize,
-			// Re-render so the Include speakers toggle below tracks this one:
-			// without diarization there are no speaker labels to include.
-			rerender: true,
 		});
 		if (diarizes) {
 			// Only meaningful with diarization: the roster this profile fills is
@@ -435,7 +398,78 @@ export class TranscriptionModal extends PluginModal {
 				rerender: true,
 			});
 		}
-		addToggle(ctx, {
+		addDropdown(ctx, {
+			name: 'Destination',
+			options: TRANSCRIPT_DESTINATION_OPTIONS,
+			get: () => s.transcriptDestination,
+			set: (v) => (s.transcriptDestination = v as TranscriptDestination),
+			rerender: true,
+		});
+		// Everything past the three rows most runs touch sits in a collapsed
+		// native <details> block, so the dialog stays short enough to reach
+		// Transcribe without scrolling. Its open state survives the re-renders
+		// the controls inside trigger, and it opens by itself when the stored
+		// engine cannot run here, so the reason Transcribe is blocked is shown.
+		const advancedEl = container.createEl('details', {
+			cls: 'aar-transcribe-advanced',
+		});
+		advancedEl.open =
+			this.advancedOpen || !this.isSelectedEngineAvailable();
+		advancedEl.createEl('summary', {
+			cls: 'aar-transcribe-advanced-summary',
+			// Not "Advanced": that word already names the Advanced settings
+			// switch this block holds, which in turn reveals the two-pass mode.
+			text: 'More options',
+		});
+		advancedEl.addEventListener('toggle', () => {
+			this.advancedOpen = advancedEl.open;
+		});
+		const advancedCtx: SettingsSectionContext = {
+			...ctx,
+			containerEl: advancedEl,
+		};
+		addDropdown(advancedCtx, {
+			name: 'Engine',
+			// Explain the blocked run when the stored engine cannot execute
+			// here (a local whisper.cpp selection synced to mobile), so the
+			// disabled Transcribe button below is self-evident.
+			desc: this.isSelectedEngineAvailable()
+				? undefined
+				: 'The selected engine is not available on this device. Pick a cloud engine to transcribe here.',
+			// Engines the platform cannot run stay listed but blocked,
+			// matching the settings tab.
+			options: TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => ({
+				...option,
+				disabled: !isProviderAvailableOnPlatform(
+					option.value as TranscriptionProviderId,
+				),
+			})),
+			get: () => s.transcriptionProvider,
+			set: (v) =>
+				(s.transcriptionProvider = v as TranscriptionProviderId),
+			// Re-render so the diarization toggle reflects the new engine's
+			// capabilities (enabled only when the engine can diarize).
+			rerender: true,
+		});
+		addToggle(advancedCtx, {
+			name: 'Speaker diarization',
+			desc: canDiarize
+				? 'Request speaker labels (providers detect the speaker count automatically).'
+				: 'Not supported by the selected engine. Use Deepgram for speaker labels.',
+			// Reflect the effective state: a stored "on" from a diarizing engine
+			// must read as off here when the chosen engine cannot diarize.
+			get: () =>
+				effectiveDiarize(
+					s.transcriptionProvider,
+					s.transcriptionDiarize,
+				),
+			set: (v) => (s.transcriptionDiarize = v),
+			disabled: !canDiarize,
+			// Re-render so the Include speakers toggle below tracks this one:
+			// without diarization there are no speaker labels to include.
+			rerender: true,
+		});
+		addToggle(advancedCtx, {
 			name: 'Word-level timestamps',
 			desc: wordTimestampsNote(s.transcriptionProvider),
 			// Reflect what this run will produce: a stored "off" reads as on
@@ -454,7 +488,7 @@ export class TranscriptionModal extends PluginModal {
 		// It reveals the dictionary term biasing and the two-pass mode; off keeps
 		// a single plain pass with no biasing. Defaults from the saved setting
 		// and, like every dialog control, never persists to plugin data.
-		addToggle(ctx, {
+		addToggle(advancedCtx, {
 			name: 'Advanced settings',
 			desc: 'Reveal the dictionary and the experimental two-pass mode for this run. Off keeps a single plain pass with no term biasing.',
 			get: () => s.transcriptionAdvancedSettingsEnabled,
@@ -472,7 +506,7 @@ export class TranscriptionModal extends PluginModal {
 				s,
 				ProfileKindId.Dictionary,
 			);
-			addDropdown(ctx, {
+			addDropdown(advancedCtx, {
 				name: 'Dictionary',
 				desc: profileText.describe(
 					providerSupportsDictionary(s.transcriptionProvider)
@@ -507,7 +541,7 @@ export class TranscriptionModal extends PluginModal {
 			// run can be enabled (or skipped) for this file. It reuses the
 			// Dictionary terms picked above; the length safeguard stays in the
 			// settings tab, so only the on/off decision is per-run here.
-			addToggle(ctx, {
+			addToggle(advancedCtx, {
 				name: 'Advanced two-pass transcription',
 				desc: 'Transcribe twice and bias the second pass with LLM-generated context (names, jargon, English acronyms), reusing the Dictionary terms above. Roughly 2x the engine cost plus LLM calls. The length safeguard stays in settings.',
 				get: () => s.transcriptionAdvancedEnabled,
@@ -515,15 +549,8 @@ export class TranscriptionModal extends PluginModal {
 			});
 		}
 
-		addDropdown(ctx, {
-			name: 'Destination',
-			options: TRANSCRIPT_DESTINATION_OPTIONS,
-			get: () => s.transcriptDestination,
-			set: (v) => (s.transcriptDestination = v as TranscriptDestination),
-			rerender: true,
-		});
 		if (s.transcriptDestination !== TranscriptDestination.Note) {
-			addDropdown(ctx, {
+			addDropdown(advancedCtx, {
 				name: 'File format',
 				options: TRANSCRIPT_FILE_FORMAT_OPTIONS,
 				get: () => s.transcriptFileFormat,
@@ -538,12 +565,12 @@ export class TranscriptionModal extends PluginModal {
 			s.transcriptDestination === TranscriptDestination.Note ||
 			s.transcriptDestination === TranscriptDestination.Both
 		) {
-			addToggle(ctx, {
+			addToggle(advancedCtx, {
 				name: 'Include timestamps',
 				get: () => s.transcriptIncludeTimestamps,
 				set: (v) => (s.transcriptIncludeTimestamps = v),
 			});
-			addToggle(ctx, {
+			addToggle(advancedCtx, {
 				name: 'Include speakers',
 				desc: diarizes
 					? undefined
@@ -554,7 +581,7 @@ export class TranscriptionModal extends PluginModal {
 			});
 		}
 
-		addToggle(ctx, {
+		addToggle(advancedCtx, {
 			name: 'LLM post-processing',
 			desc: 'Clean up, summarize, or apply a custom instruction with an LLM.',
 			get: () => s.llmPostProcessEnabled,
@@ -565,7 +592,7 @@ export class TranscriptionModal extends PluginModal {
 			// Only the task is per-run here; the LLM provider, endpoint, key,
 			// and model stay in settings (a key cannot be entered safely in a
 			// transient dialog), so switching providers belongs in the tab.
-			addDropdown(ctx, {
+			addDropdown(advancedCtx, {
 				name: 'LLM task',
 				options: LLM_TASK_OPTIONS,
 				get: () => s.llmPostProcessTask,
@@ -573,7 +600,7 @@ export class TranscriptionModal extends PluginModal {
 			});
 		}
 		if (s.transcriptionAutoChaptersEnabled) {
-			addToggle(ctx, {
+			addToggle(advancedCtx, {
 				name: 'Generate chapters',
 				desc: 'After transcribing, ask the LLM to add titled chapters to the enhanced player.',
 				get: () => s.transcriptionAutoChaptersOnTranscribe,
@@ -594,7 +621,7 @@ export class TranscriptionModal extends PluginModal {
 				);
 				// Compact picker whose only description is the line naming the
 				// picked guidance's text, so the section does not grow tall.
-				addDropdown(ctx, {
+				addDropdown(advancedCtx, {
 					name: 'Chapter profile',
 					desc: profileText.status(
 						selectedProfile(s, ProfileKindId.ChapterPrompt),

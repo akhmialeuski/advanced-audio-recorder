@@ -410,24 +410,30 @@ How the templates compose: each line takes its **timestamp** (wrapped by **Times
 
 ## The Transcribe dialog (per-run overrides)
 
-When you run **Transcribe audio** from the context menu or the command palette, the dialog lets you override the global defaults **for that run only** - your saved settings are never changed. The dialog shows the source file name and these editable options:
+When you run **Transcribe audio** from the context menu or the command palette, the dialog lets you override the global defaults **for that run only** - your saved settings are never changed. The dialog shows the source file name, three rows up front, and the estimated cost above the **Transcribe** button:
+
+- **Language** - `auto` or an ISO code.
+- **Participant profile** - shown only when the run will actually produce speaker labels. Picks the roster of names stored with this recording, so **Rename speakers** suggests the right people afterwards. The last pick is remembered and also applies to transcribe-on-save; profiles are created in the rename dialog. See [Naming speakers](#naming-speakers). It follows **Speaker diarization** under **More options**.
+- **Destination** - Insert into note / Save to file / Note and file / Save to file and link it in the note.
+
+Every other option sits in a collapsed **More options** block below them; click it to expand. It stays open while you change options, and opens by itself when the saved engine cannot run on this device, so the reason **Transcribe** is disabled is in view:
 
 - **Engine** - switch engine for this run.
-- **Language** - `auto` or an ISO code.
 - **Speaker diarization** - request speaker labels (enabled only when the chosen engine can diarize).
-- **Participant profile** - shown only when the run will actually produce speaker labels. Picks the roster of names stored with this recording, so **Rename speakers** suggests the right people afterwards. The last pick is remembered and also applies to transcribe-on-save; profiles are created in the rename dialog. See [Naming speakers](#naming-speakers).
 - **Word-level timestamps** - per-word timing (JSON output only). Live on Whisper API; on the other engines it shows what that engine will do and cannot be changed.
 - **Advanced settings** - a master switch (off by default) that reveals the term-biasing controls for this run; with it off the recording transcribes in one plain pass with no biasing. When on it shows a **Dictionary** picker (choose a named profile to bias this run, or None) and an **Advanced two-pass transcription** toggle (the experimental context-biased two-pass mode, roughly 2x the engine cost plus LLM calls, reusing the Dictionary terms above and leaving its length safeguard in the settings tab).
-- **Destination** - Insert into note / Save to file / Note and file / Save to file and link it in the note.
 - **File format** - shown when the destination is not note-only.
 - **Include timestamps** and **Include speakers** - shown only when the destination renders Markdown into the note (Insert into note / Note and file); **Include speakers** is diarization-gated.
 - **LLM post-processing** - toggle it on, and pick the **LLM task** (Clean up / Summarize / Translate / Custom) for this run.
+- **Generate chapters** - shown when auto chapters are enabled; asks the LLM for titled chapters after transcribing. Turned on, it adds a **Chapter profile** picker for the guidance this run uses.
 
 The detailed in-note templates (note heading, timestamp/speaker/line format) stay in the **settings tab**, and so does everything about a service itself, since a credential cannot be entered safely in a transient dialog: each engine's endpoint, key, model catalogue, and token ceiling belong on its page under **Engines**. Whatever you set in those template and provider fields is applied as configured.
 
 Options toggled mid-run do **not** change an in-flight job: the run snapshots its options when you press **Transcribe**, so edits only affect the next attempt after a failure.
 
-![The Transcribe audio dialog with its Engine, Language, Speaker diarization, Participant profile, disabled Word-level timestamps, Advanced settings, Dictionary, Advanced two-pass transcription, Destination, File format, Include timestamps, Include speakers, LLM post-processing, LLM task and Generate chapters rows above the cost line and the Transcribe, Minimize and Close buttons](images/transcription-dialog.png)
+![The Transcribe audio dialog with the Language, Participant profile and Destination rows up front and the collapsed More options block below them, above the cost line and the Transcribe, Minimize and Close buttons](images/transcription-dialog.png)
+
+![The same dialog with the More options block open, listing Engine, Speaker diarization, disabled Word-level timestamps, Advanced settings, Dictionary, Advanced two-pass transcription, File format, Include timestamps, Include speakers, LLM post-processing, LLM task and Generate chapters](images/transcription-dialog-advanced.png)
 
 ---
 

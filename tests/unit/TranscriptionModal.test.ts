@@ -18,6 +18,7 @@ import { createFile } from '../helpers/createApp';
 import { allEls, maybeEl } from '../helpers/dom';
 import {
 	hasSettingRow,
+	settingNames,
 	rowDescription,
 	rowInput,
 	rowSelect,
@@ -893,6 +894,118 @@ describe('TranscriptionModal per-run options', () => {
 		rowToggle(settingRow(modal.contentEl, 'Word-level timestamps')).click();
 
 		expect(runSettings.transcriptionWordTimestamps).toBe(true);
+	});
+
+	/** The collapsed block holding every option past the first rows. */
+	function advancedBlock(modal: TranscriptionModal): HTMLDetailsElement {
+		const block = maybeEl<HTMLDetailsElement>(
+			modal.contentEl,
+			'details.aar-transcribe-advanced',
+		);
+		if (!block) {
+			throw new Error('More options block not rendered');
+		}
+		return block;
+	}
+
+	// The dialog must fit without scrolling to Transcribe, so only the rows
+	// most runs touch sit outside the collapsed block.
+	it('shows language, participant profile and destination up front', () => {
+		const { modal } = openWithEverything();
+		const advanced = advancedBlock(modal);
+		const advancedNames = settingNames(advanced);
+
+		const upFront = settingNames(modal.contentEl).filter(
+			(name) => !advancedNames.includes(name),
+		);
+
+		expect(upFront).toEqual([
+			'Language',
+			'Participant profile',
+			'Destination',
+		]);
+		expect(advancedNames).toEqual(
+			expect.arrayContaining([
+				'Engine',
+				'Speaker diarization',
+				'Word-level timestamps',
+				'Dictionary',
+				'File format',
+				'Include speakers',
+				'LLM post-processing',
+				'Generate chapters',
+			]),
+		);
+		expect(advanced.open).toBe(false);
+	});
+
+	// The rows inside re-render only after their save resolves, so each case
+	// waits for that and checks the block was rebuilt; asserting on the old
+	// element would pass whatever the dialog remembered. Opening and closing
+	// go through the browser's own asynchronous toggle event.
+	it('keeps the More options block open across a re-render', async () => {
+		const { modal } = openWithEverything();
+		const advanced = advancedBlock(modal);
+		advanced.open = true;
+		await tick();
+
+		// Diarization re-renders the config, rebuilding the block.
+		rowToggle(settingRow(modal.contentEl, 'Speaker diarization')).click();
+		await tick();
+
+		expect(advancedBlock(modal)).not.toBe(advanced);
+		expect(advancedBlock(modal).open).toBe(true);
+	});
+
+	// Closing is a choice too: a block that reopened on every change would
+	// push Transcribe back below the fold after each click inside it.
+	it('keeps the More options block closed across a re-render', async () => {
+		const { modal } = openWithEverything();
+		const advanced = advancedBlock(modal);
+		advanced.open = true;
+		await tick();
+		advanced.open = false;
+		await tick();
+
+		// Changing the destination re-renders the config, rebuilding the block.
+		const destination = rowSelect(
+			settingRow(modal.contentEl, 'Destination'),
+		);
+		destination.value = 'file';
+		destination.dispatchEvent(new Event('change'));
+		await tick();
+
+		expect(advancedBlock(modal)).not.toBe(advanced);
+		expect(advancedBlock(modal).open).toBe(false);
+	});
+
+	// The block holds the Advanced settings switch, which reveals the
+	// two-pass mode; a label those rows start with reads as one more level
+	// of the same thing rather than as the rest of the dialog.
+	it('names the collapsed block apart from the rows it holds', () => {
+		const { modal } = openWithEverything();
+		const advanced = advancedBlock(modal);
+		const label = maybeEl(advanced, 'summary')?.textContent ?? '';
+
+		expect(label).not.toBe('');
+		for (const name of settingNames(advanced)) {
+			expect(name.startsWith(label)).toBe(false);
+		}
+	});
+
+	it('opens the More options block when the stored engine cannot run here', () => {
+		// The reason Transcribe is disabled is on the Engine row, which must
+		// not be hidden behind a closed disclosure.
+		setPlatform({ isMobile: true });
+		try {
+			const { modal } = openWithEverything({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			});
+
+			expect(advancedBlock(modal).open).toBe(true);
+		} finally {
+			useDesktopPlatform();
+		}
 	});
 
 	it('picks another engine for this run alone', () => {
