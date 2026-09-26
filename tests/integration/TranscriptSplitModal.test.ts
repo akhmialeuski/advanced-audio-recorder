@@ -15,6 +15,7 @@ import type {
 	ActionServices,
 	TranscriptSelectionContext,
 } from 'src/actions/PluginAction';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	emptyTranscriptSection,
@@ -211,6 +212,8 @@ interface SutOptions {
 	duration?: Promise<number | null>;
 	/** Text appended to the note after the transcript. */
 	appended?: string;
+	/** Plugin settings on top of transcription being enabled. */
+	settings?: Partial<AudioRecorderSettings>;
 }
 
 function createSut(options: SutOptions = {}): Sut {
@@ -244,7 +247,10 @@ function createSut(options: SutOptions = {}): Sut {
 		isSidecarCorrupt: jest.fn().mockReturnValue(options.corrupt ?? false),
 		setSpeakers: jest.fn().mockResolvedValue(undefined),
 	};
-	const settings = mergeSettings({ transcriptionEnabled: true });
+	const settings = mergeSettings({
+		transcriptionEnabled: true,
+		...options.settings,
+	});
 	const services = partial<ActionServices>({
 		app,
 		getSettings: () => settings,
@@ -373,6 +379,68 @@ describe('TranscriptSplitModal', () => {
 			{ start: 11, end: 13, text: 'Go ahead.', speaker: 'Speaker 1' },
 			{ start: 14, end: 16, text: 'Thanks.', speaker: 'Bob' },
 		]);
+	});
+
+	it('splits the turn after an interruption in the same second, not the one before it', async () => {
+		// A timecode link carries whole seconds, so both Bob lines point at 0:45
+		// and only their text tells which segments the selection lies in.
+		const sut = createSut({
+			transcript: {
+				segments: [
+					{ start: 45.1, end: 45.3, text: 'Yeah.', speaker: 'Bob' },
+					{
+						start: 45.3,
+						end: 45.5,
+						text: 'What?',
+						speaker: 'Speaker 1',
+					},
+					{
+						start: 45.6,
+						end: 49,
+						text: 'I said hello there.',
+						speaker: 'Bob',
+					},
+				],
+				speakers: ['Bob', 'Speaker 1'],
+			},
+		});
+		const modal = await openDialog(sut, 'hello');
+
+		await pressSplit(modal);
+
+		expect(
+			(await writtenJson(sut)).segments.map(({ text }) => text),
+		).toEqual(['Yeah.', 'What?', 'I said', 'hello', 'there.']);
+	});
+
+	it('writes the pieces with the templates the note was written with, not the current settings', async () => {
+		const sut = createSut({
+			settings: {
+				transcriptSpeakerFormat: '[{speaker}]:',
+				transcriptLineFormat: '{speaker} {timestamp} {text}',
+				transcriptTimestampFormat: '({time})',
+			},
+		});
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+
+		await pressSplit(modal);
+
+		expect(sut.editor.lineWith('Go ahead.')).toBe(
+			'[[rec.m4a#t=11|0:11]] **Speaker 1** Go ahead.',
+		);
+	});
+
+	it('keeps the time fields as narrow as a timecode', async () => {
+		const sut = createSut();
+
+		const modal = await openDialog(sut, 'Go ahead.');
+
+		expect(
+			allEls<HTMLInputElement>(
+				settingRow(modal.contentEl, 'Time span'),
+				'input',
+			).map((input) => input.classList.contains('aar-split-time-input')),
+		).toEqual([true, true]);
 	});
 
 	it('rewrites the subtitles from the split transcript', async () => {

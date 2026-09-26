@@ -143,6 +143,7 @@ describe('locateRowSegments', () => {
 				speaker: 'Anna',
 				nextSeconds: 12,
 				merge: true,
+				text: 'one two three',
 			}),
 		).toEqual({ first: 1, last: 3 });
 	});
@@ -154,6 +155,7 @@ describe('locateRowSegments', () => {
 				speaker: 'Anna',
 				nextSeconds: 7,
 				merge: false,
+				text: 'one',
 			}),
 		).toEqual({ first: 1, last: 1 });
 	});
@@ -165,6 +167,7 @@ describe('locateRowSegments', () => {
 				speaker: 'Anna',
 				nextSeconds: 9,
 				merge: true,
+				text: 'one two',
 			}),
 		).toEqual({ first: 1, last: 2 });
 	});
@@ -176,6 +179,80 @@ describe('locateRowSegments', () => {
 				speaker: 'Bob',
 				nextSeconds: null,
 				merge: true,
+				text: 'one two three',
+			}),
+		).toBeNull();
+	});
+
+	it('finds nothing for a line whose text was edited by hand', () => {
+		expect(
+			locateRowSegments(transcript, {
+				seconds: 5,
+				speaker: 'Anna',
+				nextSeconds: 12,
+				merge: true,
+				text: 'one two three four',
+			}),
+		).toBeNull();
+	});
+});
+
+/**
+ * One speaker can open two lines in the same second, and the timecode link
+ * carries whole seconds only, so the line's text is what tells them apart.
+ * Taking the first line of that second would split another turn in every
+ * transcript file.
+ */
+describe('locateRowSegments with two lines of a speaker in one second', () => {
+	it('finds the turn after an interruption, not the one before it', () => {
+		const transcript = transcriptOf(
+			seg(45.1, 45.3, 'Yeah.', 'Bob'),
+			seg(45.3, 45.5, 'What?', 'Anna'),
+			seg(45.6, 47, 'I said hello there.', 'Bob'),
+		);
+
+		expect(
+			locateRowSegments(transcript, {
+				seconds: 45,
+				speaker: 'Bob',
+				nextSeconds: null,
+				merge: true,
+				text: 'I said hello there.',
+			}),
+		).toEqual({ first: 2, last: 2 });
+	});
+
+	it('finds the second of two unmerged segments', () => {
+		const transcript = transcriptOf(
+			seg(45.1, 45.5, 'Yeah.', 'Bob'),
+			seg(45.6, 47, 'I said hello there.', 'Bob'),
+		);
+
+		expect(
+			locateRowSegments(transcript, {
+				seconds: 45,
+				speaker: 'Bob',
+				nextSeconds: null,
+				merge: false,
+				text: 'I said hello there.',
+			}),
+		).toEqual({ first: 1, last: 1 });
+	});
+
+	it('finds nothing when both lines read the same', () => {
+		const transcript = transcriptOf(
+			seg(45.1, 45.3, 'Yeah.', 'Bob'),
+			seg(45.3, 45.5, 'What?', 'Anna'),
+			seg(45.6, 46, 'Yeah.', 'Bob'),
+		);
+
+		expect(
+			locateRowSegments(transcript, {
+				seconds: 45,
+				speaker: 'Bob',
+				nextSeconds: null,
+				merge: true,
+				text: 'Yeah.',
 			}),
 		).toBeNull();
 	});

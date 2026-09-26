@@ -83,6 +83,12 @@ const EXCERPT_MAX_CHARS = 160;
 const SELECTION_PREVIEW_ID = 'selection';
 
 /**
+ * Class of the two time fields, which the stylesheet keeps as wide as a
+ * timecode so the row's description is not squeezed beside them.
+ */
+const TIME_INPUT_CLASS = 'aar-split-time-input';
+
+/**
  * The slice of the recording sidecar store the dialog needs: read the
  * transcript section, tell an unreadable sidecar from an empty one, and add
  * the speakers a split creates to the roster. Structural so tests can stub it.
@@ -249,6 +255,9 @@ export class TranscriptSplitModal extends PluginModal {
 					speaker: rowSpeaker,
 					nextSeconds,
 					merge: options.mergeConsecutiveSpeaker,
+					text: restoreWikilinks(
+						lineText.slice(parsed.textStart, parsed.textEnd),
+					),
 				})
 			: null;
 		const timing: RowTiming =
@@ -345,10 +354,12 @@ export class TranscriptSplitModal extends PluginModal {
 				text.setPlaceholder('Start').setValue(
 					formatSplitTime(times.start),
 				);
+				text.inputEl.addClass(TIME_INPUT_CLASS);
 				this.startInput = text;
 			})
 			.addText((text) => {
 				text.setPlaceholder('End').setValue(formatSplitTime(times.end));
+				text.inputEl.addClass(TIME_INPUT_CLASS);
 				this.endInput = text;
 			})
 			.addExtraButton((button) => {

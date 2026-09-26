@@ -1,7 +1,7 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.78,
+			"statements": 98.79,
 			"branches": 94.95,
 			"functions": 98.75,
 			"lines": 98.79
@@ -1439,8 +1439,8 @@
 	},
 	"suite": {
 		"suites": 258,
-		"tests": 6351,
-		"passed": 6351,
+		"tests": 6358,
+		"passed": 6358,
 		"failed": 0,
 		"todo": 0
 	}

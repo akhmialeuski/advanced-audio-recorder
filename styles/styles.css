@@ -1203,6 +1203,14 @@ button.aar-player-marker-row {
     font-size: 0.9em;
 }
 
+/* The split dialog's start and end fields hold a timecode, so they stay that
+   wide instead of taking the whole control column from the row's description.
+   Stated under .modal because the app sizes input[type='text'] itself. */
+.modal .setting-item-control input.aar-split-time-input {
+    flex: 0 0 auto;
+    width: 7em;
+}
+
 .aar-modal-status {
     margin: 8px 0 4px;
     font-size: 0.9em;

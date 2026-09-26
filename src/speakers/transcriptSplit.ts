@@ -30,7 +30,10 @@ import {
 	type TranscriptMarkdownOptions,
 	type TranscriptMarkdownSettings,
 } from '../transcription/transcriptFormat';
-import { collectSpeakers } from '../transcription/transcriptModel';
+import {
+	collectSpeakers,
+	normalizeWhitespace,
+} from '../transcription/transcriptModel';
 import type {
 	Transcript,
 	TranscriptSegment,
@@ -127,38 +130,54 @@ export interface RowLocation {
 	nextSeconds: number | null;
 	/** Whether the note merged consecutive same-speaker segments. */
 	merge: boolean;
+	/** The spoken text the line shows (restored from the note's escaping). */
+	text: string;
 }
 
 /**
  * Finds the segments a rendered line was built from. A timecode link carries
- * whole seconds, so the line starts at the first segment in that second with
- * the speaker it shows, and runs on the way the renderer merged it - while
- * the same speaker continues - but never into the second the next line of the
+ * whole seconds, so the line starts at a segment in that second with the
+ * speaker it shows, and runs on the way the renderer merged it - while the
+ * same speaker continues - but never into the second the next line of the
  * note starts in. Bounding by the next line is what keeps a line found after an
  * earlier split, whose pieces the note shows apart but the transcript holds
  * next to a neighbour of the same speaker.
+ *
+ * The second and the speaker do not tell a line apart on their own: a short
+ * turn interrupted by another speaker puts two lines of one speaker in one
+ * second. So a run counts only when its text reads as the line's text, and
+ * the line is found only when exactly one run does - a line edited by hand, or
+ * one of two identical lines, is not guessed at, since splitting the wrong
+ * segments would rewrite another turn in every transcript file.
  * @param transcript - The transcript the line was rendered from
  * @param location - What identifies the line
- * @returns The segments behind the line, or null when none match it
+ * @returns The segments behind the line, or null when not exactly one run of
+ *   them matches it
  */
 export function locateRowSegments(
 	transcript: Transcript,
 	location: RowLocation,
 ): RowSpan | null {
 	const { segments } = transcript;
-	const first = segments.findIndex(
-		(segment) =>
-			Math.floor(segment.start) === location.seconds &&
-			(location.speaker === undefined ||
-				segment.speaker === location.speaker),
-	);
-	const head = segments[first];
-	if (!head) {
-		return null;
-	}
-	let last = first;
-	if (location.merge) {
-		for (let index = first + 1; index < segments.length; index++) {
+	const text = normalizeWhitespace(location.text);
+	const matches: RowSpan[] = [];
+	segments.forEach((head, first) => {
+		if (
+			Math.floor(head.start) !== location.seconds ||
+			(location.speaker !== undefined &&
+				head.speaker !== location.speaker)
+		) {
+			return;
+		}
+		// Joined the way the renderer merges a row, so the text compares
+		// with what the note line was written from.
+		let joined = head.text;
+		let match = normalizeWhitespace(joined) === text ? first : null;
+		for (
+			let index = first + 1;
+			location.merge && index < segments.length;
+			index++
+		) {
 			const segment = segments[index];
 			if (
 				!segment ||
@@ -168,10 +187,17 @@ export function locateRowSegments(
 			) {
 				break;
 			}
-			last = index;
+			joined = `${joined} ${segment.text}`;
+			if (normalizeWhitespace(joined) === text) {
+				match = index;
+			}
 		}
-	}
-	return { first, last };
+		if (match !== null) {
+			matches.push({ first, last: match });
+		}
+	});
+	const [only, ...others] = matches;
+	return only && others.length === 0 ? only : null;
 }
 
 /** Where a line sits on the timeline, as far as it is known. */
