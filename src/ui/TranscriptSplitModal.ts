@@ -29,6 +29,7 @@ import type { TranscriptSelectionContext } from '../actions/PluginAction';
 import { lineTimecodeRef, timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type { SpeakerPreviewRange } from '../speakers/speakerPreview';
 import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import {
 	applyTranscriptSplit,
@@ -69,6 +70,7 @@ import {
 import { collectSpeakers } from '../transcription/transcriptModel';
 import { parseTimecode } from '../utils/TimeUtils';
 import { PluginModal } from './PluginModal';
+import { TimeSpanSlider } from './TimeSpanSlider';
 
 /** Longest excerpt of a part of the line the dialog quotes. */
 const EXCERPT_MAX_CHARS = 160;
@@ -141,6 +143,8 @@ export class TranscriptSplitModal extends PluginModal {
 	private selectedSpeaker!: DropdownComponent;
 	/** Speaker of the rest of the line; null when the selection ends it. */
 	private afterSpeaker: DropdownComponent | null = null;
+	/** Handles over the line's span; null when the line's end is unknown. */
+	private spanSlider: TimeSpanSlider | null = null;
 
 	constructor(
 		app: App,
@@ -347,20 +351,35 @@ export class TranscriptSplitModal extends PluginModal {
 				dropdown.setValue(other?.value ?? 'new');
 				this.selectedSpeaker = dropdown;
 			});
+		// The bar needs both ends of the line; a last line whose recording
+		// could not be measured has only its start, and keeps the fields alone.
+		const { timing } = prepared;
+		const bounds =
+			timing.end !== null && timing.end > timing.start
+				? { start: timing.start, end: timing.end }
+				: null;
 		new Setting(contentEl)
 			.setName('Time span')
 			.setDesc(
-				'Where the selection starts and ends, as 1:23 or 1:23.5. Play it to check.',
+				bounds
+					? 'Where the selection starts and ends: drag the handles on the line below, or type 1:23 or 1:23.5. Play it to check.'
+					: 'Where the selection starts and ends, as 1:23 or 1:23.5. Play it to check.',
 			)
 			.addText((text) => {
-				text.setPlaceholder('Start').setValue(
-					formatSplitTime(times.start),
-				);
+				text.setPlaceholder('Start')
+					.setValue(formatSplitTime(times.start))
+					.onChange(() => {
+						this.showTypedSpan();
+					});
 				text.inputEl.addClass(TIME_INPUT_CLASS);
 				this.startInput = text;
 			})
 			.addText((text) => {
-				text.setPlaceholder('End').setValue(formatSplitTime(times.end));
+				text.setPlaceholder('End')
+					.setValue(formatSplitTime(times.end))
+					.onChange(() => {
+						this.showTypedSpan();
+					});
 				text.inputEl.addClass(TIME_INPUT_CLASS);
 				this.endInput = text;
 			})
@@ -373,6 +392,19 @@ export class TranscriptSplitModal extends PluginModal {
 					});
 				this.previewButton = button;
 			});
+		if (bounds) {
+			this.spanSlider = new TimeSpanSlider(contentEl, {
+				bounds,
+				value: times,
+				onInput: (span) => {
+					this.startInput.setValue(formatSplitTime(span.start));
+					this.endInput.setValue(formatSplitTime(span.end));
+				},
+				onChange: (span) => {
+					this.replayMovedSpan(span);
+				},
+			});
+		}
 		if (texts.after) {
 			this.renderAfterSpeaker(options, texts.after, rowSpeaker);
 		}
@@ -437,6 +469,32 @@ export class TranscriptSplitModal extends PluginModal {
 			});
 	}
 
+	/** Moves the handles to the span typed into the fields, once it reads. */
+	private showTypedSpan(): void {
+		const start = parseTimecode(this.startInput.getValue());
+		const end = parseTimecode(this.endInput.getValue());
+		if (start !== null && end !== null && end >= start) {
+			this.spanSlider?.setSpan({ start, end });
+		}
+	}
+
+	/**
+	 * Plays the span again from its new start when a handle is let go while
+	 * it plays, so a boundary is placed by ear without pressing play again.
+	 * @param span - The span the handles were left at
+	 */
+	private replayMovedSpan(span: SpeakerPreviewRange): void {
+		const preview = this.preview;
+		if (
+			preview?.playingId !== SELECTION_PREVIEW_ID ||
+			span.end <= span.start
+		) {
+			return;
+		}
+		preview.stop();
+		preview.toggle(SELECTION_PREVIEW_ID, span);
+	}
+
 	/** Plays the entered span, or stops it when it is playing. */
 	private togglePreview(): void {
 		const start = parseTimecode(this.startInput.getValue());
@@ -461,6 +519,12 @@ export class TranscriptSplitModal extends PluginModal {
 			() => this.app.vault.getResourcePath(this.context.audio),
 			(playingId) => {
 				this.previewButton.setIcon(playingId ? 'square' : 'play');
+				if (playingId === null) {
+					this.spanSlider?.setPlayhead(null);
+				}
+			},
+			(seconds) => {
+				this.spanSlider?.setPlayhead(seconds);
 			},
 		);
 		this.preview = player;

@@ -2,9 +2,9 @@
 	"coverage": {
 		"total": {
 			"statements": 98.79,
-			"branches": 94.95,
-			"functions": 98.75,
-			"lines": 98.79
+			"branches": 95,
+			"functions": 98.76,
+			"lines": 98.8
 		},
 		"files": {
 			"src/constants.ts": {
@@ -830,10 +830,10 @@
 				"lines": 100
 			},
 			"src/sidecar/RecordingSidecarStore.ts": {
-				"statements": 98.5,
-				"branches": 96.15,
-				"functions": 98.38,
-				"lines": 98.46
+				"statements": 98.57,
+				"branches": 96.25,
+				"functions": 98.48,
+				"lines": 98.52
 			},
 			"src/sidecar/recordingSidecarModel.ts": {
 				"statements": 97.67,
@@ -849,7 +849,7 @@
 			},
 			"src/speakers/applyTranscriptSplit.ts": {
 				"statements": 100,
-				"branches": 95.45,
+				"branches": 100,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1005,7 +1005,7 @@
 			},
 			"src/transcription/transcriptFormat.ts": {
 				"statements": 100,
-				"branches": 97.67,
+				"branches": 97.87,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1291,6 +1291,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/ui/TimeSpanSlider.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/ui/TranscriptSplitModal.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -1439,8 +1445,8 @@
 	},
 	"suite": {
 		"suites": 258,
-		"tests": 6358,
-		"passed": 6358,
+		"tests": 6386,
+		"passed": 6386,
 		"failed": 0,
 		"todo": 0
 	}

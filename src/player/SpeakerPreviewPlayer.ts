@@ -40,9 +40,10 @@ export class SpeakerPreviewPlayer {
 	private pendingStart: number | null = null;
 	private disposed = false;
 
-	/** Stops the excerpt once playback reaches its end. */
+	/** Reports the position, and stops the excerpt once it reaches its end. */
 	private readonly handleTimeUpdate = (): void => {
 		if (this.currentId !== null && this.audio) {
+			this.onTime?.(this.audio.currentTime);
 			if (this.audio.currentTime >= this.endSeconds) {
 				this.stop();
 			}
@@ -65,10 +66,13 @@ export class SpeakerPreviewPlayer {
 	 *   use
 	 * @param onChange - Notified with the id now playing (null when stopped),
 	 *   so the dialog can flip the pressed button between play and stop
+	 * @param onTime - Notified with the position while an excerpt plays, so a
+	 *   dialog can draw a playhead over it
 	 */
 	constructor(
 		private readonly resolveSrc: () => string,
 		private readonly onChange: (playingId: string | null) => void,
+		private readonly onTime?: (seconds: number) => void,
 	) {}
 
 	/** Id of the excerpt currently playing, or null when nothing is. */

@@ -33,6 +33,8 @@ import { partial, silenceConsole } from '../helpers/doubles';
 import { asMockApp } from '../helpers/obsidianMock';
 import { cachedLink, wordsOf } from '../helpers/transcriptFixtures';
 import { flushMicrotasks } from '../helpers/async';
+import { MODAL } from '../helpers/selectors';
+import { installControlledAudio } from '../helpers/mediaMocks';
 import { allEls, clickControl, control } from '../helpers/dom';
 import {
 	rowButton,
@@ -307,11 +309,15 @@ function pick(modal: TranscriptSplitModal, row: string, value: string): void {
 	rowSelect(settingRow(modal.contentEl, row)).value = value;
 }
 
-/** Types the selection's start and end into the time fields. */
+/**
+ * Types the selection's start and end into the time fields; live, the fields
+ * also fire the input events a keyboard would.
+ */
 function typeTimes(
 	modal: TranscriptSplitModal,
 	start: string,
 	end: string,
+	{ live = false }: { live?: boolean } = {},
 ): void {
 	const [startInput, endInput] = allEls<HTMLInputElement>(
 		settingRow(modal.contentEl, 'Time span'),
@@ -322,6 +328,44 @@ function typeTimes(
 	}
 	startInput.value = start;
 	endInput.value = end;
+	if (live) {
+		startInput.dispatchEvent(new Event('input'));
+		endInput.dispatchEvent(new Event('input'));
+	}
+}
+
+/**
+ * Opens the dialog on the last line of a transcript kept only in the note,
+ * whose recording cannot be measured, so the line's end is unknown.
+ */
+async function openOnUnmeasuredLastLine(): Promise<TranscriptSplitModal> {
+	const sut = createSut({
+		section: recordedSection({ fileOutputs: [] }),
+		duration: Promise.reject(new Error('no metadata')),
+	});
+	silenceConsole('warn');
+	return openDialog(sut, 'Thanks.');
+}
+
+/** The slider over the line's span. */
+function spanSlider(modal: TranscriptSplitModal): HTMLElement {
+	const slider = modal.contentEl.querySelector<HTMLElement>(MODAL.timeSpan);
+	if (!slider) {
+		throw new Error('The dialog shows no time span slider');
+	}
+	return slider;
+}
+
+/** Moves a slider handle, firing the event a drag or its release fires. */
+function moveHandle(
+	modal: TranscriptSplitModal,
+	label: string,
+	seconds: number,
+	event: 'input' | 'change',
+): void {
+	const handle = control<HTMLInputElement>(modal.contentEl, label);
+	handle.value = String(seconds);
+	handle.dispatchEvent(new Event(event));
 }
 
 /** What the time fields show. */
@@ -734,13 +778,7 @@ describe('TranscriptSplitModal', () => {
 	});
 
 	it('offers only the start of a last line when the recording cannot be measured', async () => {
-		const sut = createSut({
-			section: recordedSection({ fileOutputs: [] }),
-			duration: Promise.reject(new Error('no metadata')),
-		});
-		silenceConsole('warn');
-
-		const modal = await openDialog(sut, 'Thanks.');
+		const modal = await openOnUnmeasuredLastLine();
 
 		expect(timeFields(modal)).toEqual(['0:14', '0:14']);
 	});
@@ -777,6 +815,7 @@ describe('TranscriptSplitModal', () => {
 	});
 
 	it('plays the entered span', async () => {
+		installControlledAudio({ duration: 60 });
 		const sut = createSut();
 		const modal = await openDialog(sut, 'Go ahead.');
 
@@ -802,6 +841,7 @@ describe('TranscriptSplitModal', () => {
 	});
 
 	it('stops the span on a second press', async () => {
+		installControlledAudio({ duration: 60 });
 		const sut = createSut();
 		const modal = await openDialog(sut, 'Go ahead.');
 		clickControl(modal.contentEl, 'Play the selection');
@@ -813,6 +853,134 @@ describe('TranscriptSplitModal', () => {
 				'data-icon',
 			),
 		).toBe('play');
+	});
+
+	it('moves the time fields when a handle is dragged', async () => {
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+
+		moveHandle(modal, 'Selection start', 7.5, 'input');
+
+		expect(timeFields(modal)).toEqual(['0:07.5', '0:11']);
+	});
+
+	it('keeps the start handle from passing the end handle', async () => {
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+
+		moveHandle(modal, 'Selection start', 12.5, 'input');
+
+		expect(timeFields(modal)).toEqual(['0:11', '0:11']);
+	});
+
+	it('keeps the end handle from passing the start handle', async () => {
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+
+		moveHandle(modal, 'Selection end', 5.5, 'input');
+
+		expect(timeFields(modal)).toEqual(['0:06', '0:06']);
+	});
+
+	it('leaves the handles in place while a typed time does not read', async () => {
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+
+		typeTimes(modal, '0:07', 'soon', { live: true });
+
+		// Still the prefilled 0:06 of the line's 0:05 to 0:13.
+		expect(
+			spanSlider(modal).style.getPropertyValue('--aar-time-span-start'),
+		).toBe('12.5%');
+	});
+
+	it('raises the start handle past the middle so handles pushed to the end come apart', async () => {
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+
+		moveHandle(modal, 'Selection start', 10, 'input');
+
+		expect(
+			control(modal.contentEl, 'Selection start').classList.contains(
+				'is-raised',
+			),
+		).toBe(true);
+	});
+
+	it('moves the handles to a span typed into the fields', async () => {
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+
+		typeTimes(modal, '0:07', '0:09', { live: true });
+
+		// The bar covers the line, 0:05 to 0:13.
+		expect(
+			spanSlider(modal).style.getPropertyValue('--aar-time-span-start'),
+		).toBe('25%');
+		expect(
+			spanSlider(modal).style.getPropertyValue('--aar-time-span-end'),
+		).toBe('50%');
+	});
+
+	it('draws no handles when the end of the line is unknown', async () => {
+		const modal = await openOnUnmeasuredLastLine();
+
+		expect(modal.contentEl.querySelector(MODAL.timeSpan)).toBeNull();
+	});
+
+	it('follows the playing span with a playhead', async () => {
+		const audio = installControlledAudio({ duration: 60 });
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+		clickControl(modal.contentEl, 'Play the selection');
+
+		audio.advanceTo(9);
+
+		expect(spanSlider(modal).classList.contains('is-playing')).toBe(true);
+		expect(
+			spanSlider(modal).style.getPropertyValue(
+				'--aar-time-span-playhead',
+			),
+		).toBe('50%');
+	});
+
+	it('takes the playhead away once the span has played', async () => {
+		const audio = installControlledAudio({ duration: 60 });
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+		clickControl(modal.contentEl, 'Play the selection');
+
+		audio.advanceTo(11);
+
+		expect(spanSlider(modal).classList.contains('is-playing')).toBe(false);
+	});
+
+	it('plays again from where a handle is let go while the span plays', async () => {
+		const audio = installControlledAudio({ duration: 60 });
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+		clickControl(modal.contentEl, 'Play the selection');
+
+		moveHandle(modal, 'Selection start', 8, 'change');
+
+		expect(audio.audio.currentTime).toBeCloseTo(8);
+		expect(
+			control(modal.contentEl, 'Play the selection').getAttribute(
+				'data-icon',
+			),
+		).toBe('square');
+	});
+
+	it('starts nothing when a handle is let go after the span was stopped', async () => {
+		const audio = installControlledAudio({ duration: 60 });
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+		clickControl(modal.contentEl, 'Play the selection');
+		clickControl(modal.contentEl, 'Play the selection');
+
+		moveHandle(modal, 'Selection start', 8, 'change');
+
+		expect(audio.play).toHaveBeenCalledTimes(1);
 	});
 
 	it('refuses a line that only mentions the recording', async () => {

@@ -84,7 +84,7 @@ export const TRANSCRIPT_ACTIONS: readonly TranscriptAction[] = [
 	{
 		commandId: COMMAND_IDS.splitTranscriptSelection,
 		title: 'Split selection into another speaker',
-		icon: 'split',
+		icon: 'user-plus',
 		isAvailable: ({ services }: TranscriptSelectionContext): boolean =>
 			services.getSettings().transcriptionEnabled,
 		run: (context: TranscriptSelectionContext): void => {

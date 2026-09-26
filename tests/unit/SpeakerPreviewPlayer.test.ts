@@ -67,6 +67,22 @@ describe('SpeakerPreviewPlayer', () => {
 		expect(changes).toEqual(['Speaker 1', null]);
 	});
 
+	it('reports the position only while an excerpt plays', () => {
+		const positions: number[] = [];
+		const player = new SpeakerPreviewPlayer(
+			() => 'app://vault/audio/rec.wav',
+			() => undefined,
+			(seconds) => positions.push(seconds),
+		);
+		player.toggle('Speaker 1', { start: 10, end: 20 });
+
+		harness.advanceTo(12);
+		player.stop();
+		harness.advanceTo(13);
+
+		expect(positions).toEqual([12]);
+	});
+
 	it('does not keep stopping after the excerpt already stopped', () => {
 		const { player, changes } = makePlayer(harness);
 		player.toggle('Speaker 1', { start: 10, end: 20 });

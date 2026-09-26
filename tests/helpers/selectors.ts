@@ -172,6 +172,8 @@ export const MODAL = {
 	error: '.aar-modal-error',
 	conversionSource: '.aar-conversion-source',
 	splitSource: '.aar-split-source',
+	/** The bar of a transcript line with the handles of the split selection. */
+	timeSpan: '.aar-time-span',
 	recoverySession: '.aar-recovery-session',
 	silentChannelConvert: '.aar-silent-channel-convert',
 	/**
