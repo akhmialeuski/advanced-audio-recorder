@@ -27,6 +27,7 @@ import {
 } from 'src/transcription/transcriptFormat';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { TranscriptSplitModal } from 'src/ui/TranscriptSplitModal';
+import { formatSplitTime } from 'src/speakers/transcriptSplit';
 import { noticeMessages } from '../mocks/obsidian';
 import { partial, silenceConsole } from '../helpers/doubles';
 import { asMockApp } from '../helpers/obsidianMock';
@@ -147,6 +148,7 @@ class FakeEditor {
 				ch: which === 'to' ? this.selection.to : this.selection.from,
 			}),
 			getLine: (line: number) => this.lines[line] ?? '',
+			lineCount: () => this.lines.length,
 			replaceRange: (
 				text: string,
 				from: EditorPosition,
@@ -192,7 +194,7 @@ interface Sut {
 	sidecar: {
 		getTranscript: jest.Mock;
 		isSidecarCorrupt: jest.Mock;
-		setSpeakers: jest.Mock;
+		addSpeakers: jest.Mock;
 	};
 	services: ActionServices;
 	probeDuration: jest.Mock;
@@ -214,6 +216,11 @@ interface SutOptions {
 	appended?: string;
 	/** Plugin settings on top of transcription being enabled. */
 	settings?: Partial<AudioRecorderSettings>;
+	/**
+	 * Whether the metadata cache keeps reporting the note as first seeded,
+	 * the way it trails the editor until the note is saved and parsed again.
+	 */
+	staleCache?: boolean;
 }
 
 function createSut(options: SutOptions = {}): Sut {
@@ -234,8 +241,9 @@ function createSut(options: SutOptions = {}): Sut {
 	const editor = new FakeEditor(
 		`${renderedNote(transcript)}${options.appended ?? ''}`,
 	);
+	const seededCache = editor.linkCache();
 	mock.metadataCache.getFileCache.mockImplementation(() =>
-		editor.linkCache(),
+		options.staleCache ? seededCache : editor.linkCache(),
 	);
 	mock.metadataCache.getFirstLinkpathDest.mockImplementation(
 		(path: string) => (path === 'rec.m4a' ? audio : null),
@@ -245,7 +253,7 @@ function createSut(options: SutOptions = {}): Sut {
 			.fn()
 			.mockResolvedValue(options.section ?? recordedSection()),
 		isSidecarCorrupt: jest.fn().mockReturnValue(options.corrupt ?? false),
-		setSpeakers: jest.fn().mockResolvedValue(undefined),
+		addSpeakers: jest.fn().mockResolvedValue(undefined),
 	};
 	const settings = mergeSettings({
 		transcriptionEnabled: true,
@@ -462,9 +470,7 @@ describe('TranscriptSplitModal', () => {
 
 		await pressSplit(modal);
 
-		expect(sut.sidecar.setSpeakers).toHaveBeenCalledWith(AUDIO_PATH, [
-			{ label: 'Speaker 1' },
-			{ label: 'Speaker 2', name: 'Bob' },
+		expect(sut.sidecar.addSpeakers).toHaveBeenCalledWith(AUDIO_PATH, [
 			{ label: 'Speaker 3', firstStart: 6, firstEnd: 11 },
 		]);
 	});
@@ -559,19 +565,146 @@ describe('TranscriptSplitModal', () => {
 		);
 	});
 
-	it('splits the note on the current templates when the sidecar read fails', async () => {
+	it('refuses to split when reading the sidecar fails', async () => {
+		// A failed read leaves the stored roster unknown, and a new speaker
+		// numbered without it could take a label already stored there.
 		const sut = createSut();
 		sut.sidecar.getTranscript.mockRejectedValue(new Error('disk'));
 		silenceConsole('warn');
+
 		const modal = await openDialog(sut, 'Go ahead.');
+
+		expect(modal.contentEl.textContent).toContain(
+			'The sidecar file of this recording could not be read',
+		);
+	});
+
+	it('refuses to split when the sidecar became unreadable after the dialog opened', async () => {
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Go ahead.');
+		sut.sidecar.isSidecarCorrupt.mockReturnValue(true);
 
 		await pressSplit(modal);
 
-		// Nothing but the line itself names a speaker, so the new one is the
-		// first label it leaves free.
-		expect(sut.editor.lineWith('Go ahead.')).toBe(
-			'[[rec.m4a#t=11|0:11]] **Speaker 2** Go ahead.',
+		expect(noticeMessages()).toContainEqual(
+			expect.stringContaining(
+				'The sidecar file of this recording could not be read',
+			),
 		);
+		expect(sut.editor.content).toBe(renderedNote());
+	});
+
+	it('numbers a new speaker after the roster as it stands when Split is pressed', async () => {
+		// Another split, or a transcription, may add a speaker while the
+		// dialog is open; the label is taken from what is stored by then.
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+		pick(modal, 'Spoken by', 'new');
+		sut.sidecar.getTranscript.mockResolvedValue(
+			recordedSection({
+				speakers: [
+					{ label: 'Speaker 1' },
+					{ label: 'Speaker 2', name: 'Bob' },
+					{ label: 'Speaker 3', name: 'Dana' },
+				],
+			}),
+		);
+
+		await pressSplit(modal);
+
+		expect(sut.sidecar.addSpeakers).toHaveBeenCalledWith(AUDIO_PATH, [
+			{ label: 'Speaker 4', firstStart: 6, firstEnd: 11 },
+		]);
+	});
+
+	it('keeps what a background run wrote to the transcript while the dialog was open', async () => {
+		const sut = createSut();
+		const modal = await openDialog(sut, 'Wait, I have a question.');
+		const json = sut.app.vault.getFileByPath(JSON_PATH) as TFile;
+		await sut.app.vault.modify(
+			json,
+			JSON.stringify({
+				...TRANSCRIPT,
+				segments: [
+					...TRANSCRIPT.segments,
+					{
+						start: 20,
+						end: 22,
+						text: 'Recovered part.',
+						speaker: 'Bob',
+					},
+				],
+			}),
+		);
+
+		await pressSplit(modal);
+
+		expect((await writtenJson(sut)).segments.map((s) => s.text)).toContain(
+			'Recovered part.',
+		);
+	});
+
+	it('resolves a line moved by an edit the metadata cache has not caught up with', () => {
+		const sut = createSut({ staleCache: true });
+		// Deleting the heading moves every transcript line up by two.
+		sut.editor
+			.asEditor()
+			.replaceRange('', { line: 0, ch: 0 }, { line: 2, ch: 0 });
+		sut.editor.select('Go ahead.');
+
+		expect(contextOf(sut)).toMatchObject({
+			seconds: 5,
+			lineText: expect.stringContaining('#t=5') as unknown,
+		});
+	});
+
+	it('ends a note-only line where the editor shows the next line, not the metadata cache', async () => {
+		const sut = createSut({
+			section: recordedSection({ fileOutputs: [] }),
+			staleCache: true,
+		});
+		const line = sut.editor.lineWith('Go ahead.');
+		const row = sut.editor.content.split('\n').indexOf(line);
+		sut.editor
+			.asEditor()
+			.replaceRange(
+				'\n\n[[rec.m4a#t=9|0:09]] **Carol** Hm.',
+				{ line: row, ch: line.length },
+				{ line: row, ch: line.length },
+			);
+
+		const modal = await openDialog(sut, 'Sure.');
+
+		// The line runs from 0:05 to the inserted 0:09 line, shared by length.
+		expect(timeFields(modal)).toEqual([
+			'0:05',
+			formatSplitTime(5 + (4 * 'Sure.'.length) / (MIXED_TURN.length - 1)),
+		]);
+	});
+
+	it('reads no speaker off a line of a transcript that was never diarized', async () => {
+		const undiarized: Transcript = {
+			segments: [
+				{ start: 0, end: 4, text: 'Shall we start?' },
+				{ start: 5, end: 13, text: '**Note** buy milk and bread.' },
+				{ start: 14, end: 16, text: 'Thanks.' },
+			],
+			speakers: [],
+		};
+		const sut = createSut({
+			transcript: undiarized,
+			section: recordedSection({ speakers: [], participants: [] }),
+		});
+		const modal = await openDialog(sut, 'bread.');
+
+		await pressSplit(modal);
+
+		expect((await writtenJson(sut)).segments.map((s) => s.text)).toEqual([
+			'Shall we start?',
+			'**Note** buy milk and',
+			'bread.',
+			'Thanks.',
+		]);
 	});
 
 	it('keeps the rest of an undiarized line without a speaker', async () => {

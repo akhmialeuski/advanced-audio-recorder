@@ -25,48 +25,40 @@ export interface AudioTimecodeRef {
 	seconds: number | null;
 }
 
-/** A timecode reference together with the file it resolves to. */
-interface ResolvedTimecodeRef extends AudioTimecodeRef {
+/** A timecode link resolved to the file it points into. */
+interface ResolvedTimecodeLink {
 	/** The file the link resolves to. */
-	dest: TFile;
-	/** Zero-based column the reference starts at on its first line. */
-	startCol: number;
-	/** Zero-based column just past the reference on its last line. */
-	endCol: number;
+	file: TFile;
+	/** Seconds the link points at, or null when its value is invalid. */
+	seconds: number | null;
+}
+
+/** The timecode link a single note line starts a transcript row with. */
+export interface LineTimecodeRef extends ResolvedTimecodeLink {
+	/** Seconds the link points at. */
+	seconds: number;
 }
 
 /**
- * Every link and embed of a note that carries a `#t=` subpath and resolves to
- * a file, in the metadata cache's order. A plain link (no `#t=` subpath) is
- * deliberately excluded, so a note that only embeds the player yields none.
+ * Resolves one link target to the file it points into and the time its `#t=`
+ * subpath carries.
  * @param app - Obsidian App
- * @param note - Note to inspect
+ * @param note - Note the link is written in
+ * @param link - Link target without its alias, e.g. `rec.m4a#t=12`
+ * @returns The reference, or null when the link carries no `#t=` subpath or
+ *   resolves to no file
  */
-function resolvedTimecodeRefs(app: App, note: TFile): ResolvedTimecodeRef[] {
-	const refs: ResolvedTimecodeRef[] = [];
-	const cache = app.metadataCache.getFileCache(note);
-	if (!cache) {
-		return refs;
+function resolveTimecodeLink(
+	app: App,
+	note: TFile,
+	link: string,
+): ResolvedTimecodeLink | null {
+	const { path, subpath } = parseLinktext(link);
+	if (!subpath.replace(/^#/, '').startsWith('t=')) {
+		return null;
 	}
-	for (const ref of [...(cache.links ?? []), ...(cache.embeds ?? [])]) {
-		const { path, subpath } = parseLinktext(ref.link);
-		if (!subpath.replace(/^#/, '').startsWith('t=')) {
-			continue;
-		}
-		const dest = app.metadataCache.getFirstLinkpathDest(path, note.path);
-		if (!dest) {
-			continue;
-		}
-		refs.push({
-			dest,
-			startLine: ref.position.start.line,
-			endLine: ref.position.end.line,
-			startCol: ref.position.start.col,
-			endCol: ref.position.end.col,
-			seconds: parseTimecodeSubpath(subpath),
-		});
-	}
-	return refs;
+	const file = app.metadataCache.getFirstLinkpathDest(path, note.path);
+	return file ? { file, seconds: parseTimecodeSubpath(subpath) } : null;
 }
 
 /**
@@ -82,59 +74,76 @@ export function audioTimecodeRefs(
 	note: TFile,
 	audioPath: string,
 ): AudioTimecodeRef[] {
-	return resolvedTimecodeRefs(app, note)
-		.filter((ref) => ref.dest.path === audioPath)
-		.map(({ startLine, endLine, seconds }) => ({
-			startLine,
-			endLine,
-			seconds,
-		}));
-}
-
-/** The timecode link a single note line starts a transcript row with. */
-export interface LineTimecodeRef {
-	/** The file the link resolves to. */
-	file: TFile;
-	/** Seconds the link points at. */
-	seconds: number;
-	/** Column the link starts at. */
-	startCol: number;
-	/** Column just past the link. */
-	endCol: number;
+	const refs: AudioTimecodeRef[] = [];
+	const cache = app.metadataCache.getFileCache(note);
+	if (!cache) {
+		return refs;
+	}
+	for (const ref of [...(cache.links ?? []), ...(cache.embeds ?? [])]) {
+		const resolved = resolveTimecodeLink(app, note, ref.link);
+		if (resolved?.file.path !== audioPath) {
+			continue;
+		}
+		refs.push({
+			startLine: ref.position.start.line,
+			endLine: ref.position.end.line,
+			seconds: resolved.seconds,
+		});
+	}
+	return refs;
 }
 
 /**
- * The first timecode link on one line of a note that resolves to a file and
- * carries a valid time: what ties a rendered transcript line to the recording
- * it transcribes. A link spanning several lines is not a transcript row's
- * timestamp and is ignored.
+ * A wikilink or a Markdown link in note source, either of them possibly an
+ * embed, with its target captured: `[[target|alias]]` in group 1,
+ * `[label](<target>)` in group 2, and `[label](target)` in group 3, where
+ * Obsidian URL-encodes the target.
+ */
+const SOURCE_LINK_PATTERN =
+	/!?\[\[([^\]|\n]+)(?:\|[^\]\n]*)?\]\]|!?\[[^\]\n]*\]\((?:<([^>\n]+)>|([^)\s]+))\)/g;
+
+/**
+ * Decodes the target of a Markdown link the way the metadata cache reads it.
+ * A malformed escape is left as written, since that is what the link says.
+ * @param target - The target between the parentheses
+ */
+function decodeLinkTarget(target: string): string {
+	try {
+		return decodeURI(target);
+	} catch {
+		return target;
+	}
+}
+
+/**
+ * The first timecode link in one line of note source that resolves to a file
+ * and carries a valid time: what ties a rendered transcript line to the
+ * recording it transcribes. Read from the line's own text rather than from
+ * the metadata cache, whose line positions trail the editor until the note is
+ * saved and parsed again, so a line edited a moment ago, or moved by lines
+ * inserted above it, is never matched with a neighbour's link.
  * @param app - Obsidian App
  * @param note - Note the line belongs to
- * @param line - Zero-based line number
+ * @param lineText - The line as the editor holds it
  * @returns The link, or null when the line carries none
  */
 export function lineTimecodeRef(
 	app: App,
 	note: TFile,
-	line: number,
+	lineText: string,
 ): LineTimecodeRef | null {
-	const ref = resolvedTimecodeRefs(app, note)
-		.filter(
-			(candidate) =>
-				candidate.startLine === line &&
-				candidate.endLine === line &&
-				candidate.seconds !== null,
-		)
-		.sort((a, b) => a.startCol - b.startCol)[0];
-	if (!ref || ref.seconds === null) {
-		return null;
+	for (const match of lineText.matchAll(SOURCE_LINK_PATTERN)) {
+		const [, wikiTarget, bracketedTarget, encodedTarget] = match;
+		const link =
+			wikiTarget ??
+			bracketedTarget ??
+			decodeLinkTarget(String(encodedTarget));
+		const ref = resolveTimecodeLink(app, note, link);
+		if (ref && ref.seconds !== null) {
+			return { file: ref.file, seconds: ref.seconds };
+		}
 	}
-	return {
-		file: ref.dest,
-		seconds: ref.seconds,
-		startCol: ref.startCol,
-		endCol: ref.endCol,
-	};
+	return null;
 }
 
 /**

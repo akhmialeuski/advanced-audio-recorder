@@ -44,7 +44,8 @@ export function transcriptSelectionIn(
 	if (from.line !== to.line || from.ch === to.ch) {
 		return null;
 	}
-	const ref = lineTimecodeRef(services.app, note, from.line);
+	const lineText = editor.getLine(from.line);
+	const ref = lineTimecodeRef(services.app, note, lineText);
 	if (!ref || !isAudioFile(ref.file)) {
 		return null;
 	}
@@ -54,7 +55,7 @@ export function transcriptSelectionIn(
 		note,
 		audio: ref.file,
 		line: from.line,
-		lineText: editor.getLine(from.line),
+		lineText,
 		from: from.ch,
 		to: to.ch,
 		seconds: ref.seconds,

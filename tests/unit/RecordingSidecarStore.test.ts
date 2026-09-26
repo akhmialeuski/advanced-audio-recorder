@@ -159,6 +159,41 @@ describe('RecordingSidecarStore', () => {
 		});
 	});
 
+	describe('addSpeakers', () => {
+		it('appends speakers after the stored roster and leaves it as stored', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [
+				{ label: 'Speaker 1', name: 'Alex' },
+				{ label: 'Speaker 2', name: 'Bob' },
+			]);
+
+			await store.addSpeakers('rec.wav', [
+				{ label: 'Speaker 3', firstStart: 6, firstEnd: 11 },
+			]);
+
+			expect((await store.getTranscript('rec.wav')).speakers).toEqual([
+				{ label: 'Speaker 1', name: 'Alex' },
+				{ label: 'Speaker 2', name: 'Bob' },
+				{ label: 'Speaker 3', firstStart: 6, firstEnd: 11 },
+			]);
+		});
+
+		it('never replaces a stored speaker that has the same label', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [
+				{ label: 'Speaker 1', name: 'Alex' },
+			]);
+
+			await store.addSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+
+			expect((await store.getTranscript('rec.wav')).speakers).toEqual([
+				{ label: 'Speaker 1', name: 'Alex' },
+			]);
+		});
+	});
+
 	describe('participant roster', () => {
 		it('merges names into the recording and records their profile', async () => {
 			const { app } = makeApp();

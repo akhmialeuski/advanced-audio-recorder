@@ -19,7 +19,6 @@ import {
 	createMockApp,
 } from '../helpers/createApp';
 import { partial } from '../helpers/doubles';
-import { cachedLink } from '../helpers/transcriptFixtures';
 
 jest.mock('src/ui/TranscriptSplitModal', () => ({
 	TranscriptSplitModal: jest.fn().mockImplementation(() => ({
@@ -31,16 +30,13 @@ const LINE = '[[rec.m4a#t=5|0:05]] **Speaker 1** Sure. Go ahead.';
 const note = createFile('Notes/meeting.md');
 const audio = createFile('audio/rec.m4a');
 
-/** Services over an app whose note links line 0 to the recording. */
+/** Services over an app whose links resolve to the given recording. */
 function createServices(
 	transcriptionEnabled = true,
 	linked = audio,
 ): ActionServices {
 	const { app } = createMockApp({
 		metadataCache: {
-			getFileCache: () => ({
-				links: [cachedLink('rec.m4a#t=5', 0, 0, 20)],
-			}),
 			getFirstLinkpathDest: () => linked,
 		},
 	});

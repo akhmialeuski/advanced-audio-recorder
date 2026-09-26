@@ -28,15 +28,15 @@ import { splitTranscriptRow, type RowSpan } from './transcriptSplit';
 
 /** The slice of the recording sidecar store a split writes. */
 export interface TranscriptSplitSidecar {
-	/** Replaces the speaker roster for a recording path. */
-	setSpeakers(path: string, entries: readonly SpeakerEntry[]): Promise<void>;
+	/** Appends speakers to a recording's roster, leaving stored ones as they are. */
+	addSpeakers(path: string, entries: readonly SpeakerEntry[]): Promise<void>;
 }
 
 /** Everything a split writes besides the note line. */
 export interface TranscriptSplitWrite {
 	/** Vault path of the recording. */
 	audioPath: string;
-	/** The recording's sidecar transcript section, as read for the dialog. */
+	/** The recording's sidecar transcript section, as read for the split. */
 	section: TranscriptSection;
 	/** The recorded JSON transcript, or null when none could be read. */
 	recorded: RecordedTranscript | null;
@@ -91,12 +91,7 @@ export async function applyTranscriptSplit(
 		).length;
 	}
 	if (write.added.length > 0) {
-		// The whole stored roster goes first, so the new speakers are appended
-		// after it instead of jumping to the head.
-		await sidecar.setSpeakers(write.audioPath, [
-			...write.section.speakers,
-			...write.added,
-		]);
+		await sidecar.addSpeakers(write.audioPath, write.added);
 	}
 	return { rewrittenFiles, keptFiles, addedSpeakers: write.added.length };
 }
@@ -106,10 +101,13 @@ export async function applyTranscriptSplit(
  * updated, and - never silently - which transcript files were kept as they
  * were and why.
  * @param outcome - What the split wrote
+ * @param renameOffered - Whether the "Rename speakers" action is enabled, so
+ *   the notice points at it only when it can be found
  * @returns The notice text
  */
 export function describeTranscriptSplit(
 	outcome: TranscriptSplitOutcome,
+	renameOffered: boolean,
 ): string {
 	const parts = ['Split the transcript line.'];
 	if (outcome.rewrittenFiles > 0) {
@@ -118,8 +116,11 @@ export function describeTranscriptSplit(
 		);
 	}
 	if (outcome.addedSpeakers > 0) {
+		const added = `Added ${String(outcome.addedSpeakers)} speaker${outcome.addedSpeakers === 1 ? '' : 's'} to the recording`;
 		parts.push(
-			`Added ${String(outcome.addedSpeakers)} speaker${outcome.addedSpeakers === 1 ? '' : 's'} to the recording, so "Rename speakers" can name ${outcome.addedSpeakers === 1 ? 'it' : 'them'}.`,
+			renameOffered
+				? `${added}, so "Rename speakers" can name ${outcome.addedSpeakers === 1 ? 'it' : 'them'}.`
+				: `${added}.`,
 		);
 	}
 	if (outcome.keptFiles > 0) {

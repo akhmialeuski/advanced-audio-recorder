@@ -35,7 +35,6 @@ import {
 	TFolder,
 } from 'obsidian';
 import { partial, commonActionServices } from '../helpers/doubles';
-import { cachedLink } from '../helpers/transcriptFixtures';
 import { createMockApp } from '../helpers/createApp';
 import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
 import { AudioFileInfoModal } from 'src/ui/AudioFileInfoModal';
@@ -643,9 +642,6 @@ describe('ContextMenu', () => {
 				FILE_ACTIONS,
 				TRANSCRIPT_ACTIONS,
 			);
-			mockApp.metadataCache.getFileCache = jest.fn().mockReturnValue({
-				links: [cachedLink('rec.m4a#t=5', 0, 0, 20)],
-			});
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
 			).mockReturnValue(audio);

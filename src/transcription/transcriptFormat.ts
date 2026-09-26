@@ -287,6 +287,14 @@ const RENDERED_TIME_PATTERN =
 	'(?:!?\\[\\[[^\\]\\n]*\\]\\]|\\[[^\\]\\n]*\\]\\([^)\\n]*\\)|\\d+(?::\\d{2}){1,2})';
 
 /**
+ * How one template token is matched: `first` where the template first uses
+ * it, and `again` wherever it repeats it. A pattern can name a group only
+ * once, and the renderer writes the same value at every use, so a repeat is
+ * matched by a backreference to the first. A plain string serves both.
+ */
+type TokenPattern = string | { first: string; again: string };
+
+/**
  * Turns a template into a pattern: each `{token}` becomes the pattern given for
  * it (an unknown token rendered as nothing, so it matches nothing), literal
  * text is matched as written, and literal whitespace matches any run of spaces
@@ -298,7 +306,7 @@ const RENDERED_TIME_PATTERN =
  */
 function templatePattern(
 	template: string,
-	tokens: Record<string, string>,
+	tokens: Record<string, TokenPattern>,
 ): string {
 	const literal = (text: string): string =>
 		text
@@ -307,11 +315,19 @@ function templatePattern(
 			.join('[ \\t]*');
 	// A Map, so a token named like an Object.prototype member is unknown.
 	const lookup = new Map(Object.entries(tokens));
+	const used = new Set<string>();
 	let pattern = '';
 	let last = 0;
 	for (const match of template.matchAll(/\{(\w+)\}/g)) {
+		const name = String(match[1]);
+		const token = lookup.get(name) ?? '';
 		pattern += literal(template.slice(last, match.index));
-		pattern += lookup.get(String(match[1])) ?? '';
+		if (typeof token === 'string') {
+			pattern += token;
+		} else {
+			pattern += used.has(name) ? token.again : token.first;
+		}
+		used.add(name);
 		last = match.index + match[0].length;
 	}
 	return pattern + literal(template.slice(last));
@@ -357,16 +373,24 @@ export function parseTranscriptLine(
 	if (delimitsSpeaker(options.speakerFormat)) {
 		names.push('[^\\n]+?');
 	}
-	const speaker =
+	// The speaker fragment the first time the line template uses it, and a
+	// copy that repeats the name it matched for any later use.
+	const speakerFragment = (name: TokenPattern): string =>
+		`(?:${templatePattern(options.speakerFormat, { speaker: name })})?`;
+	const speaker: TokenPattern =
 		options.includeSpeakers && names.length > 0
-			? `(?:${templatePattern(options.speakerFormat, {
-					speaker: `(?<speaker>${names.join('|')})`,
-				})})?`
+			? {
+					first: speakerFragment({
+						first: `(?<speaker>${names.join('|')})`,
+						again: '\\k<speaker>',
+					}),
+					again: speakerFragment('\\k<speaker>'),
+				}
 			: '';
 	const pattern = templatePattern(options.lineFormat, {
 		timestamp,
 		speaker,
-		text: '(?<text>.*?)',
+		text: { first: '(?<text>.*?)', again: '\\k<text>' },
 	});
 	const match = new RegExp(`^[ \\t]*${pattern}[ \\t]*$`, 'd').exec(line);
 	const span = match?.indices?.groups?.text;

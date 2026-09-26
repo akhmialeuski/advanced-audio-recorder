@@ -191,6 +191,34 @@ describe('parseTranscriptLine', () => {
 		expect(textOf(line, options)).toBe('Plain');
 	});
 
+	it('reads a layout that repeats the speaker', () => {
+		const options = {
+			lineFormat: '{timestamp} {speaker} {text} ({speaker})',
+		};
+		const line = renderLine(
+			{ start: 5, end: 6, text: 'Named twice', speaker: 'Bob' },
+			options,
+		);
+
+		const parsed = parseTranscriptLine(
+			line,
+			{ ...DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS, ...options },
+			['Bob'],
+		);
+
+		expect(parsed?.speaker).toBe('Bob');
+	});
+
+	it('points at the first copy of a text the layout repeats', () => {
+		const options = { lineFormat: '{timestamp} {speaker} {text} / {text}' };
+		const line = renderLine(
+			{ start: 5, end: 6, text: 'Said twice', speaker: 'Bob' },
+			options,
+		);
+
+		expect(textOf(line, options, ['Bob'])).toBe('Said twice');
+	});
+
 	it('rejects a line that does not start with its timestamp', () => {
 		expect(
 			parseTranscriptLine(

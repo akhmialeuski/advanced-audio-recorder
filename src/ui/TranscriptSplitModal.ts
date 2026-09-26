@@ -26,16 +26,10 @@ import type {
 } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { TranscriptSelectionContext } from '../actions/PluginAction';
-import {
-	audioTimecodeRefs,
-	timecodeLinkBuilder,
-} from '../obsidian/timecodeRefs';
+import { lineTimecodeRef, timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
-import {
-	emptyTranscriptSection,
-	type TranscriptSection,
-} from '../sidecar/recordingSidecarModel';
+import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import {
 	applyTranscriptSplit,
 	describeTranscriptSplit,
@@ -172,17 +166,10 @@ export class TranscriptSplitModal extends PluginModal {
 	 * selection cannot be split.
 	 */
 	private async render(): Promise<void> {
-		const { audio } = this.context;
-		const section = await this.loadSection();
-		const prepared =
-			section === null
-				? // An unreadable sidecar is not an empty one: writing the roster
-					// back would replace whatever is stored in it.
-					'The sidecar file of this recording could not be read, so the speakers stored for it are unknown. Fix or remove the .markers.json file next to the recording and try again.'
-				: await this.prepare(section);
+		const prepared = await this.prepare();
 		const { contentEl } = this;
 		contentEl.empty();
-		this.renderSource(audio);
+		this.renderSource(this.context.audio);
 		if (typeof prepared === 'string') {
 			this.renderEmptyState(prepared);
 			return;
@@ -192,7 +179,9 @@ export class TranscriptSplitModal extends PluginModal {
 
 	/**
 	 * Reads the recording's sidecar transcript section: an empty one when
-	 * nothing is stored, null when the file exists but could not be read.
+	 * nothing is stored, null when it could not be read. A failed read is not
+	 * an empty sidecar, so it is never split over as one: the roster it holds
+	 * is unknown, and a new speaker could take a label already stored there.
 	 */
 	private async loadSection(): Promise<TranscriptSection | null> {
 		const path = this.context.audio.path;
@@ -204,20 +193,22 @@ export class TranscriptSplitModal extends PluginModal {
 				`${PLUGIN_LOG_PREFIX} Failed to read the sidecar of ${path}:`,
 				error,
 			);
-			return emptyTranscriptSection();
+			return null;
 		}
 	}
 
 	/**
-	 * Reads the line back with the note's templates, cuts it at the selection,
-	 * finds its segments in the JSON transcript and works out where it sits.
-	 * @param section - The recording's sidecar transcript section
-	 * @returns What the form needs, or why the selection cannot be split
+	 * Reads the recording's sidecar and JSON transcript, reads the line back
+	 * with the note's templates, cuts it at the selection, finds its segments
+	 * in the JSON transcript and works out where it sits.
+	 * @returns What the split works from, or why the selection cannot be split
 	 */
-	private async prepare(
-		section: TranscriptSection,
-	): Promise<PreparedSplit | string> {
+	private async prepare(): Promise<PreparedSplit | string> {
 		const { note, lineText, from, to, seconds } = this.context;
+		const section = await this.loadSection();
+		if (section === null) {
+			return 'The sidecar file of this recording could not be read, so the speakers stored for it are unknown. Fix or remove the .markers.json file next to the recording and try again.';
+		}
 		const output = section.noteOutputs.find(
 			(candidate) => candidate.path === note.path,
 		);
@@ -236,7 +227,15 @@ export class TranscriptSplitModal extends PluginModal {
 			...section.speakers.map((entry) => entry.name ?? entry.label),
 			...shown,
 		];
-		const parsed = parseTranscriptLine(lineText, options, known);
+		// A transcript whose JSON output names no speaker, with an empty
+		// roster, was never diarized: its lines show no speaker, so nothing at
+		// the head of their text (a bold word, a "Note:") is read as one.
+		const undiarized = recorded !== null && known.length === 0;
+		const parsed = parseTranscriptLine(
+			lineText,
+			undiarized ? { ...options, includeSpeakers: false } : options,
+			known,
+		);
 		if (!parsed) {
 			return 'This line does not have the shape the transcript of this recording was written in, so it cannot be split. Select text inside a transcript line.';
 		}
@@ -289,13 +288,16 @@ export class TranscriptSplitModal extends PluginModal {
 	 * line ends as far as the note can tell; null for the last line.
 	 */
 	private nextLineSeconds(): number | null {
-		const { note, audio, line } = this.context;
-		// The cache lists links in note order, so the first one below the line
-		// starts the next line.
-		const next = audioTimecodeRefs(this.app, note, audio.path).find(
-			(ref) => ref.startLine > line && ref.seconds !== null,
-		);
-		return next?.seconds ?? null;
+		const { editor, note, audio, line } = this.context;
+		// Read from the editor, like the selected line itself, so lines the
+		// metadata cache has not caught up with are never skipped or doubled.
+		for (let below = line + 1; below < editor.lineCount(); below++) {
+			const ref = lineTimecodeRef(this.app, note, editor.getLine(below));
+			if (ref?.file.path === audio.path) {
+				return ref.seconds;
+			}
+		}
+		return null;
 	}
 
 	/** The recording's length, or null when it cannot be measured. */
@@ -385,7 +387,7 @@ export class TranscriptSplitModal extends PluginModal {
 			{
 				text: 'Split',
 				cta: true,
-				onClick: () => this.split(prepared),
+				onClick: () => this.split(),
 			},
 			{
 				text: 'Cancel',
@@ -466,13 +468,19 @@ export class TranscriptSplitModal extends PluginModal {
 	}
 
 	/**
-	 * Splits the line: validates the times, resolves the speakers, replaces
-	 * the line in the editor with its pieces, then writes the transcript files
-	 * and the roster.
-	 * @param prepared - What the split works from
+	 * Splits the line: reads the transcript and the roster again, validates
+	 * the times, resolves the speakers, replaces the line in the editor with
+	 * its pieces, then writes the transcript files and the roster. What the
+	 * form was built from is not written back: a background run may have
+	 * rewritten the transcript or the roster since, and the old copy would
+	 * undo it in every file.
 	 */
-	private async split(prepared: PreparedSplit): Promise<void> {
+	private async split(): Promise<void> {
 		await this.runExclusive(async () => {
+			const prepared = await this.prepare();
+			if (typeof prepared === 'string') {
+				throw new Error(prepared);
+			}
 			const { texts, timing, options } = prepared;
 			const times = readSplitTimes(
 				this.startInput.getValue(),
@@ -527,7 +535,13 @@ export class TranscriptSplitModal extends PluginModal {
 					added,
 				},
 			);
-			new Notice(describeTranscriptSplit(outcome));
+			new Notice(
+				describeTranscriptSplit(
+					outcome,
+					this.options.getSettings()
+						.transcriptionSpeakerRenameEnabled,
+				),
+			);
 			this.close();
 		});
 	}
