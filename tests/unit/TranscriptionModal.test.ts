@@ -18,6 +18,7 @@ import { createFile } from '../helpers/createApp';
 import { allEls, maybeEl } from '../helpers/dom';
 import {
 	hasSettingRow,
+	settingNames,
 	rowDescription,
 	rowInput,
 	rowSelect,
@@ -893,6 +894,76 @@ describe('TranscriptionModal per-run options', () => {
 		rowToggle(settingRow(modal.contentEl, 'Word-level timestamps')).click();
 
 		expect(runSettings.transcriptionWordTimestamps).toBe(true);
+	});
+
+	/** The collapsed block holding every option past the first rows. */
+	function advancedBlock(modal: TranscriptionModal): HTMLDetailsElement {
+		const block = maybeEl<HTMLDetailsElement>(
+			modal.contentEl,
+			'details.aar-transcribe-advanced',
+		);
+		if (!block) {
+			throw new Error('Advanced block not rendered');
+		}
+		return block;
+	}
+
+	// The dialog must fit without scrolling to Transcribe, so only the rows
+	// most runs touch sit outside the collapsed block.
+	it('shows language, participant profile and destination up front', () => {
+		const { modal } = openWithEverything();
+		const advanced = advancedBlock(modal);
+		const advancedNames = settingNames(advanced);
+
+		const upFront = settingNames(modal.contentEl).filter(
+			(name) => !advancedNames.includes(name),
+		);
+
+		expect(upFront).toEqual([
+			'Language',
+			'Participant profile',
+			'Destination',
+		]);
+		expect(advancedNames).toEqual(
+			expect.arrayContaining([
+				'Engine',
+				'Speaker diarization',
+				'Word-level timestamps',
+				'Dictionary',
+				'File format',
+				'Include speakers',
+				'LLM post-processing',
+				'Generate chapters',
+			]),
+		);
+		expect(advanced.open).toBe(false);
+	});
+
+	it('keeps the Advanced block open across a re-render', () => {
+		const { modal } = openWithEverything();
+		const advanced = advancedBlock(modal);
+		advanced.open = true;
+		advanced.dispatchEvent(new Event('toggle'));
+
+		// Diarization re-renders the config, rebuilding the block.
+		rowToggle(settingRow(modal.contentEl, 'Speaker diarization')).click();
+
+		expect(advancedBlock(modal).open).toBe(true);
+	});
+
+	it('opens the Advanced block when the stored engine cannot run here', () => {
+		// The reason Transcribe is disabled is on the Engine row, which must
+		// not be hidden behind a closed disclosure.
+		setPlatform({ isMobile: true });
+		try {
+			const { modal } = openWithEverything({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			});
+
+			expect(advancedBlock(modal).open).toBe(true);
+		} finally {
+			useDesktopPlatform();
+		}
 	});
 
 	it('picks another engine for this run alone', () => {

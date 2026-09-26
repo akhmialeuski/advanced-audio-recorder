@@ -1322,6 +1322,23 @@ button.aar-player-marker-row {
     margin: 8px 0;
 }
 
+/* Collapsed block holding every transcribe option past the first three rows;
+   a native <details>, so the browser owns the disclosure and its marker. */
+.aar-transcribe-advanced {
+    border-top: 1px solid var(--background-modifier-border);
+    padding-top: 8px;
+}
+
+.aar-transcribe-advanced-summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+}
+
+.aar-transcribe-advanced[open] > .aar-transcribe-advanced-summary {
+    margin-bottom: 4px;
+}
+
 .aar-transcribe-options-disabled {
     opacity: 0.5;
     pointer-events: none;

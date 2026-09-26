@@ -410,15 +410,18 @@ How the templates compose: each line takes its **timestamp** (wrapped by **Times
 
 ## The Transcribe dialog (per-run overrides)
 
-When you run **Transcribe audio** from the context menu or the command palette, the dialog lets you override the global defaults **for that run only** - your saved settings are never changed. The dialog shows the source file name and these editable options:
+When you run **Transcribe audio** from the context menu or the command palette, the dialog lets you override the global defaults **for that run only** - your saved settings are never changed. The dialog shows the source file name, three rows up front, and the estimated cost above the **Transcribe** button:
+
+- **Language** - `auto` or an ISO code.
+- **Participant profile** - shown only when the run will actually produce speaker labels. Picks the roster of names stored with this recording, so **Rename speakers** suggests the right people afterwards. The last pick is remembered and also applies to transcribe-on-save; profiles are created in the rename dialog. See [Naming speakers](#naming-speakers). It follows **Speaker diarization** under **Advanced**.
+- **Destination** - Insert into note / Save to file / Note and file / Save to file and link it in the note.
+
+Every other option sits in a collapsed **Advanced** block below them; click it to expand. It stays open while you change options, and opens by itself when the saved engine cannot run on this device, so the reason **Transcribe** is disabled is in view:
 
 - **Engine** - switch engine for this run.
-- **Language** - `auto` or an ISO code.
 - **Speaker diarization** - request speaker labels (enabled only when the chosen engine can diarize).
-- **Participant profile** - shown only when the run will actually produce speaker labels. Picks the roster of names stored with this recording, so **Rename speakers** suggests the right people afterwards. The last pick is remembered and also applies to transcribe-on-save; profiles are created in the rename dialog. See [Naming speakers](#naming-speakers).
 - **Word-level timestamps** - per-word timing (JSON output only). Live on Whisper API; on the other engines it shows what that engine will do and cannot be changed.
 - **Advanced settings** - a master switch (off by default) that reveals the term-biasing controls for this run; with it off the recording transcribes in one plain pass with no biasing. When on it shows a **Dictionary** picker (choose a named profile to bias this run, or None) and an **Advanced two-pass transcription** toggle (the experimental context-biased two-pass mode, roughly 2x the engine cost plus LLM calls, reusing the Dictionary terms above and leaving its length safeguard in the settings tab).
-- **Destination** - Insert into note / Save to file / Note and file / Save to file and link it in the note.
 - **File format** - shown when the destination is not note-only.
 - **Include timestamps** and **Include speakers** - shown only when the destination renders Markdown into the note (Insert into note / Note and file); **Include speakers** is diarization-gated.
 - **LLM post-processing** - toggle it on, and pick the **LLM task** (Clean up / Summarize / Translate / Custom) for this run.
