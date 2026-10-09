@@ -46,7 +46,7 @@ If **Markers and chapters** is enabled, you can drop a bookmark or chapter at th
 
 ### 3. Stop and save
 
-Tap the **stop** button on the recording banner, or run **Start/stop recording** again. The plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[recording-….mp4]]` on a default-configured iPhone) into your note. A long recording is saved as several self-contained part files (`...-part1`, `...-part2`, and so on) when it exceeds the in-memory buffer limit, with a link to each part inserted into the note.
+Tap the **stop** button on the recording banner, which floats just below the note header, or run **Start/stop recording** again. The plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[recording-….mp4]]` on a default-configured iPhone) into your note. A long recording is saved as several self-contained part files (`...-part1`, `...-part2`, and so on) when it exceeds the in-memory buffer limit, with a link to each part inserted into the note.
 
 ### 4. Play it back
 

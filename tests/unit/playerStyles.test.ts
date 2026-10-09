@@ -5,30 +5,8 @@
  * tests parse the stylesheet so that fix cannot silently regress.
  */
 
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { MARKER, PLAYER } from '../helpers/selectors';
-
-const css = readFileSync(join(__dirname, '../../styles/styles.css'), 'utf8');
-
-/** Escapes a literal string for use inside a RegExp. */
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Returns the declaration bodies of every CSS rule a selector ends. */
-function ruleBodies(selector: string): string[] {
-	const pattern = new RegExp(
-		`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`,
-		'g',
-	);
-	return [...css.matchAll(pattern)].map((match) => match[1] ?? '');
-}
-
-/** Returns the declaration body of a CSS rule, or null when absent. */
-function ruleBody(selector: string): string | null {
-	return ruleBodies(selector)[0] ?? null;
-}
+import { stylesheet as css, ruleBodies, ruleBody } from '../helpers/stylesheet';
 
 describe('read-only player styles', () => {
 	it('left-aligns the static marker label, scoped to outrank reading-view buttons', () => {
