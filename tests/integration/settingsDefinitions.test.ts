@@ -1827,6 +1827,7 @@ describe('settings definitions', () => {
 			'Audio player',
 			'Audio processing & feedback',
 			'Audio cleanup defaults',
+			'Mobile',
 			'Diagnostics',
 		])('declares %s behind an entry rather than inline', (name) => {
 			// Sections nobody reads on the way to something else: inline they
@@ -1884,11 +1885,22 @@ describe('settings definitions', () => {
 			settings.showInputLevelMeter = false;
 			settings.showRecordingStats = false;
 			settings.detectSilentChannelOnSave = false;
+
+			// Six independent switches have no single value, so the entry
+			// reports how many of them are on.
+			expect(readValue('Audio processing & feedback')).toBe('2 of 6 on');
+		});
+
+		it('names on the mobile entry where the banner rests, or that it is off', () => {
+			settings.mobileRecordingBanner = true;
+			settings.mobileRecordingBannerPosition =
+				RecordingBannerAnchor.BottomRight;
+
+			expect(readValue('Mobile')).toBe('Bottom right');
+
 			settings.mobileRecordingBanner = false;
 
-			// Seven independent switches have no single value, so the entry
-			// reports how many of them are on.
-			expect(readValue('Audio processing & feedback')).toBe('2 of 7 on');
+			expect(readValue('Mobile')).toBe('Off');
 		});
 
 		it('names the stages the cleanup dialog would open with', () => {
@@ -2061,12 +2073,29 @@ describe('settings definitions', () => {
 					'Detect silent channel after recording',
 					{ type: 'toggle', key: 'detectSilentChannelOnSave' },
 				],
+			]);
+		});
+	});
+
+	describe('the mobile page', () => {
+		const MOBILE = 'Mobile';
+
+		it('holds the banner switch and its position in a block of their own', () => {
+			expect(groupOf(build(), 'Recording banner').heading).toBe(
+				'Recording banner',
+			);
+			expect(
+				rowNamesIn(groupOf(build(), MOBILE)).map((name) => [
+					name,
+					rowOf(build(), MOBILE, name).control,
+				]),
+			).toEqual([
 				[
-					'Mobile recording banner',
+					'Show recording banner',
 					{ type: 'toggle', key: 'mobileRecordingBanner' },
 				],
 				[
-					'Recording banner position',
+					'Banner position',
 					{
 						type: 'dropdown',
 						key: 'mobileRecordingBannerPosition',
@@ -2076,14 +2105,21 @@ describe('settings definitions', () => {
 			]);
 		});
 
-		it('offers every banner anchor and counts only the switches', () => {
+		it('offers every banner anchor', () => {
 			expect(Object.keys(RECORDING_BANNER_ANCHOR_LABELS)).toEqual(
 				Object.values(RecordingBannerAnchor),
 			);
-			// The position is not a switch, so the entry still reads "N of 7"
-			expect(
-				entryValueOf(pageOf(build(), 'Audio processing & feedback')),
-			).toMatch(/ of 7 on$/);
+		});
+
+		it('shows the position only while the banner is on', () => {
+			const visible = rowOf(build(), MOBILE, 'Banner position').visible;
+			settings.mobileRecordingBanner = false;
+
+			expect(typeof visible === 'function' && visible()).toBe(false);
+
+			settings.mobileRecordingBanner = true;
+
+			expect(typeof visible === 'function' && visible()).toBe(true);
 		});
 	});
 

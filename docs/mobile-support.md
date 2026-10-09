@@ -81,7 +81,7 @@ The mobile app has no ribbon icon and no desktop status bar to show that a captu
 
 ![The mobile recording banner with a pulsing dot, the elapsed time 1:23 and a stop button, floating below the note header on a phone](images/mobile-recording-banner.png)
 
-The banner is governed by the **Mobile recording banner** setting under **Settings > Advanced Audio Recorder > Audio processing & feedback** (default **On**), and its place by **Recording banner position** right below it, where **Top center** puts a dragged banner back. On the desktop app the ribbon indicator and the status bar already make a recording obvious, so the banner is not shown there. See [Mobile recording banner](recording.md#mobile-recording-banner).
+The banner is governed by the **Show recording banner** setting on the **Settings > Advanced Audio Recorder > Mobile** page (default **On**), and its place by **Banner position** right below it, where **Top center** puts a dragged banner back. On the desktop app the ribbon indicator and the status bar already make a recording obvious, so the banner is not shown there. See [Mobile recording banner](recording.md#mobile-recording-banner).
 
 ## Getting started on mobile
 
