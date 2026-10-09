@@ -143,14 +143,15 @@ describe('dragging the banner', () => {
 		type: string,
 		clientX: number,
 		clientY: number,
+		{ pointerId = 1, button = 0 } = {},
 	): void {
 		const event = new MouseEvent(type, {
 			clientX,
 			clientY,
-			button: 0,
+			button,
 			bubbles: true,
 		});
-		Object.defineProperty(event, 'pointerId', { value: 1 });
+		Object.defineProperty(event, 'pointerId', { value: pointerId });
 		target.dispatchEvent(event);
 	}
 
@@ -190,6 +191,24 @@ describe('dragging the banner', () => {
 		expect(banner.setPointerCapture).toHaveBeenCalledWith(1);
 		expect(banner.style.getPropertyValue('--aar-banner-drag-y')).toBe(
 			`${String(BANNER_DRAG_SLOP_PX + 30)}px`,
+		);
+	});
+
+	it('keeps following the finger after the drag has started', () => {
+		mount();
+		const banner = layout({ x: 512, y: 40 });
+		const stop = stopEl();
+
+		pointer(stop, 'pointerdown', 500, 40);
+		pointer(stop, 'pointermove', 500, 100);
+		pointer(stop, 'pointermove', 420, 300);
+
+		expect(banner.setPointerCapture).toHaveBeenCalledTimes(1);
+		expect(banner.style.getPropertyValue('--aar-banner-drag-x')).toBe(
+			'-80px',
+		);
+		expect(banner.style.getPropertyValue('--aar-banner-drag-y')).toBe(
+			'260px',
 		);
 	});
 
@@ -273,6 +292,45 @@ describe('dragging the banner', () => {
 			RecordingBannerAnchor.TopCenter,
 		);
 		expect(banner.classList.contains('is-dragging')).toBe(false);
+	});
+
+	it('leaves a press with another mouse button to the context menu', () => {
+		const { onAnchorChange } = mount();
+		const banner = layout({ x: 900, y: 700 });
+		const stop = stopEl();
+
+		pointer(stop, 'pointerdown', 500, 40, { button: 2 });
+		pointer(stop, 'pointermove', 900, 700);
+		pointer(stop, 'pointerup', 900, 700);
+
+		expect(banner.classList.contains('is-dragging')).toBe(false);
+		expect(onAnchorChange).not.toHaveBeenCalled();
+	});
+
+	it('ignores a pointer that only hovers over the banner', () => {
+		mount();
+		const banner = layout({ x: 900, y: 700 });
+
+		pointer(stopEl(), 'pointermove', 900, 700);
+		pointer(stopEl(), 'pointerup', 900, 700);
+		pointer(stopEl(), 'pointercancel', 900, 700);
+
+		expect(banner.classList.contains('is-dragging')).toBe(false);
+		expect(banner.setPointerCapture).not.toHaveBeenCalled();
+	});
+
+	it('follows only the finger that pressed, not a second one', () => {
+		const { onAnchorChange } = mount();
+		const banner = layout({ x: 900, y: 700 });
+		const stop = stopEl();
+
+		pointer(stop, 'pointerdown', 500, 40);
+		pointer(stop, 'pointermove', 900, 700, { pointerId: 2 });
+		pointer(stop, 'pointerup', 900, 700, { pointerId: 2 });
+		pointer(stop, 'pointercancel', 900, 700, { pointerId: 2 });
+
+		expect(banner.classList.contains('is-dragging')).toBe(false);
+		expect(onAnchorChange).not.toHaveBeenCalled();
 	});
 
 	it('replaces the anchor rather than accumulating anchors', () => {
