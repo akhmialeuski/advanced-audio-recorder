@@ -17,7 +17,9 @@ import { COMMAND_IDS } from 'src/constants';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { RecordingMarkerModal } from 'src/ui/MarkerModal';
+import { RecordingBannerAnchor } from 'src/settings/settingsSchema';
 import { at } from '../helpers/assertions';
+import { waitFor } from '../helpers/async';
 import { allEls, control, el, maybeEl } from '../helpers/dom';
 import { asMockPlugin } from '../helpers/obsidianMock';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
@@ -339,6 +341,80 @@ describe('the mobile recording banner', () => {
 		reportStatus(RecordingStatus.Recording);
 
 		expect(maybeEl(document.body, BANNER.root)).toBeNull();
+	});
+
+	it('rests at the anchor the settings name', async () => {
+		const plugin = await loadRecording();
+		setPlatform({ isMobile: true, isMobileApp: true });
+		plugin.settings.mobileRecordingBannerPosition =
+			RecordingBannerAnchor.BottomLeft;
+
+		reportStatus(RecordingStatus.Recording);
+
+		expect(el(document.body, BANNER.root).getAttribute('data-anchor')).toBe(
+			RecordingBannerAnchor.BottomLeft,
+		);
+	});
+
+	it('moves to a position picked in settings while recording', async () => {
+		const plugin = await loadRecording();
+		setPlatform({ isMobile: true, isMobileApp: true });
+		reportStatus(RecordingStatus.Recording);
+
+		plugin.settings.mobileRecordingBannerPosition =
+			RecordingBannerAnchor.BottomRight;
+		await plugin.saveSettings();
+
+		expect(el(document.body, BANNER.root).getAttribute('data-anchor')).toBe(
+			RecordingBannerAnchor.BottomRight,
+		);
+	});
+
+	it('leaves at once when switched off while recording', async () => {
+		const plugin = await loadRecording();
+		setPlatform({ isMobile: true, isMobileApp: true });
+		reportStatus(RecordingStatus.Recording);
+
+		plugin.settings.mobileRecordingBanner = false;
+		await plugin.saveSettings();
+
+		expect(maybeEl(document.body, BANNER.root)).toBeNull();
+	});
+
+	it('saves the anchor a drag leaves it at, without stopping', async () => {
+		const { plugin, saveData } = await loadPlugin();
+		setPlatform({ isMobile: true, isMobileApp: true });
+		reportStatus(RecordingStatus.Recording);
+		saveData.mockClear();
+		const banner = el(document.body, BANNER.root);
+		const stop = el(banner, BANNER.stop);
+		banner.setPointerCapture = jest.fn();
+		banner.getBoundingClientRect = jest.fn(
+			() => ({ left: 840, top: 680, width: 120, height: 40 }) as DOMRect,
+		);
+
+		// jsdom has no PointerEvent; a MouseEvent of the same type reaches
+		// the same listeners
+		for (const [type, x, y] of [
+			['pointerdown', 500, 40],
+			['pointermove', 900, 700],
+			['pointerup', 900, 700],
+		] as const) {
+			const event = new MouseEvent(type, {
+				clientX: x,
+				clientY: y,
+				bubbles: true,
+			});
+			Object.defineProperty(event, 'pointerId', { value: 1 });
+			stop.dispatchEvent(event);
+		}
+		stop.click();
+
+		await waitFor(() => saveData.mock.calls.length > 0);
+		expect(plugin.settings.mobileRecordingBannerPosition).toBe(
+			RecordingBannerAnchor.BottomRight,
+		);
+		expect(recorder().stopRecording).not.toHaveBeenCalled();
 	});
 });
 

@@ -152,6 +152,44 @@ export function normalizeTrackSourceKind(value: unknown): TrackSourceKind {
 }
 
 /**
+ * Where the mobile recording banner rests: an edge of the screen and a third
+ * of its width. Dragging the banner snaps it to the nearest of these, so a
+ * position is a name rather than pixels and survives a rotation, a resized
+ * window and a vault synced to a screen of another size.
+ *
+ * Stored in data.json, so a value is renamed only with a migration. The keys
+ * are declared in the order the dropdown offers them.
+ */
+export const RecordingBannerAnchor = {
+	TopLeft: 'top-left',
+	/** Below the view header, where the banner sat before it could be moved. */
+	TopCenter: 'top-center',
+	TopRight: 'top-right',
+	BottomLeft: 'bottom-left',
+	BottomCenter: 'bottom-center',
+	BottomRight: 'bottom-right',
+} as const;
+
+/** One banner anchor (derived from {@link RecordingBannerAnchor}). */
+export type RecordingBannerAnchor =
+	(typeof RecordingBannerAnchor)[keyof typeof RecordingBannerAnchor];
+
+/**
+ * Coerces an untrusted value to a banner anchor, falling back to the place the
+ * banner had before it could be moved.
+ * @param value - Candidate value
+ */
+export function normalizeRecordingBannerAnchor(
+	value: unknown,
+): RecordingBannerAnchor {
+	return (
+		Object.values(RecordingBannerAnchor).find(
+			(anchor) => anchor === value,
+		) ?? RecordingBannerAnchor.TopCenter
+	);
+}
+
+/**
  * Track audio sources mapping (track number -> device ID).
  */
 export interface AudioSource {
@@ -651,6 +689,8 @@ export interface AudioRecorderSettings {
 	showRecordingStats: boolean;
 	/** Show a prominent recording banner on mobile */
 	mobileRecordingBanner: boolean;
+	/** Where the mobile recording banner rests, set by dragging it */
+	mobileRecordingBannerPosition: RecordingBannerAnchor;
 	/** Default: enable the high-pass (low-rumble removal) stage */
 	cleanupHighPassEnabled: boolean;
 	/** High-pass filter cutoff in Hz */
@@ -990,6 +1030,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	detectSilentChannelOnSave: true,
 	showRecordingStats: true,
 	mobileRecordingBanner: true,
+	mobileRecordingBannerPosition: RecordingBannerAnchor.TopCenter,
 	cleanupHighPassEnabled: true,
 	cleanupHighPassHz: DEFAULT_CLEANUP_HIGHPASS_HZ,
 	cleanupNoiseGateEnabled: false,

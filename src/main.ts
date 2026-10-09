@@ -289,8 +289,14 @@ export default class AudioRecorderPlugin extends Plugin {
 			// joins the same session counter the transcription runs report to.
 			{ costSink: this.transcriptionCostTracker },
 		);
-		this.recordingBanner = new RecordingBanner(() => {
-			void this.recordingManager.stopRecording();
+		this.recordingBanner = new RecordingBanner({
+			onStop: () => {
+				void this.recordingManager.stopRecording();
+			},
+			onAnchorChange: (anchor) => {
+				this.settings.mobileRecordingBannerPosition = anchor;
+				void this.saveSettings();
+			},
 		});
 		this.recordingManager = new RecordingManager(
 			this.app,
@@ -704,6 +710,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			// persisted
 			this.recordingManager.updateSettings(this.settings);
 			this.applyQuickNoteSettings();
+			this.renderRecordingBanner();
 			this.playerRegistrar.refresh();
 			return;
 		}
@@ -711,6 +718,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		await this.backupSettings();
 		this.recordingManager.updateSettings(this.settings);
 		this.applyQuickNoteSettings();
+		// The banner switch and position apply to a recording in progress
+		this.renderRecordingBanner();
 		// Apply player-affecting changes (enable toggle, waveform, etc.)
 		// to open embeds immediately, without re-opening the note
 		this.playerRegistrar.refresh();
@@ -730,6 +739,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		await this.profileNotes.reconcile();
 		this.recordingManager.updateSettings(this.settings);
 		this.applyQuickNoteSettings();
+		this.renderRecordingBanner();
 	}
 
 	/**
@@ -1543,7 +1553,20 @@ export default class AudioRecorderPlugin extends Plugin {
 		// keeps its precedence when recording returns to idle.
 		this.renderStatusBar();
 		updateRibbonIcon(this.ribbonIconEl, status);
+		this.renderRecordingBanner();
+	}
 
+	/**
+	 * Shows the mobile banner while a recording is active and the user wants
+	 * it, at the anchor the settings name, and hides it otherwise. Driven by
+	 * both the status and the settings, so a change to either applies at once.
+	 */
+	private renderRecordingBanner(): void {
+		// A save still settling after unload must not bring the banner back
+		if (this.unloaded) {
+			return;
+		}
+		const status = this.recordingStatus;
 		const active =
 			status === RecordingStatus.Recording ||
 			status === RecordingStatus.Paused;
@@ -1552,7 +1575,10 @@ export default class AudioRecorderPlugin extends Plugin {
 			isRecordingBannerSupported() &&
 			this.settings.mobileRecordingBanner
 		) {
-			this.recordingBanner.show(status === RecordingStatus.Paused);
+			this.recordingBanner.show(
+				status === RecordingStatus.Paused,
+				this.settings.mobileRecordingBannerPosition,
+			);
 		} else {
 			this.recordingBanner.hide();
 		}

@@ -3,6 +3,7 @@
  * @module settings/sections/audioProcessingSection
  */
 
+import { RECORDING_BANNER_ANCHOR_LABELS } from '../labels';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import { sectionItems, toggleSummary } from './rowHelpers';
 import type { SettingDefinition, SettingGroupItem } from 'obsidian';
@@ -10,7 +11,8 @@ import type { SettingDefinition, SettingGroupItem } from 'obsidian';
 /**
  * The input-processing constraints and the live recording feedback, behind an
  * entry of its own. Seven switches that are set once and then read past, so the
- * entry counts how many are on rather than showing them all.
+ * entry counts how many are on rather than showing them all, plus the place the
+ * mobile banner rests, which the count leaves out because it is not a switch.
  * @param settings - Live settings, read by the entry's value
  */
 export function audioProcessingPage(
@@ -52,6 +54,16 @@ export function audioProcessingPage(
 			name: 'Mobile recording banner',
 			desc: 'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
 			control: { type: 'toggle', key: 'mobileRecordingBanner' },
+		},
+		{
+			name: 'Recording banner position',
+			aliases: ['move banner', 'drag banner'],
+			desc: 'Where the mobile recording banner rests. Dragging the banner moves it to the nearest of these places, and picking Top center here puts it back.',
+			control: {
+				type: 'dropdown',
+				key: 'mobileRecordingBannerPosition',
+				options: RECORDING_BANNER_ANCHOR_LABELS,
+			},
 		},
 	];
 	return {

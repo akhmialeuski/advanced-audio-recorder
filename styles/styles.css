@@ -217,18 +217,30 @@ If your plugin does not need CSS, delete this file.
     transition: width 0.1s linear;
 }
 
-/* Mobile recording banner. It floats below the view header, because the top edge belongs to
-   the header and to the system's notification gesture. .is-phone sets the header offset,
-   while a tablet keeps the tab header strip above the view header instead. */
+/* Mobile recording banner. A top anchor floats below the view header, because the top edge
+   belongs to the header and to the system's notification gesture. .is-phone sets the header
+   offset, while a tablet keeps the tab header strip above the view header instead. The
+   platform rules set only the variables, so an anchor rule never competes with them. */
 .aar-recording-banner {
-    position: fixed;
-    top: calc(
+    --aar-banner-top: calc(
         var(--view-header-top-offset, var(--safe-area-inset-top))
         + var(--view-header-height)
         + var(--size-4-2)
     );
+    /* A tablet hides the navbar, so only the system's own inset is left to clear */
+    --aar-banner-navbar-clearance: var(--safe-area-inset-bottom);
+    --aar-banner-side-inset: var(--size-4-4);
+    --aar-banner-shift-x: -50%;
+    position: fixed;
+    top: var(--aar-banner-top);
     left: 50%;
-    transform: translateX(-50%);
+    transform: translate(
+        calc(var(--aar-banner-shift-x) + var(--aar-banner-drag-x, 0px)),
+        var(--aar-banner-drag-y, 0px)
+    );
+    /* The banner takes the whole gesture, so dragging it never scrolls the note */
+    touch-action: none;
+    cursor: grab;
     z-index: var(--layer-notice, 100);
     display: flex;
     align-items: center;
@@ -242,7 +254,7 @@ If your plugin does not need CSS, delete this file.
 }
 
 .is-tablet .aar-recording-banner {
-    top: calc(
+    --aar-banner-top: calc(
         var(--safe-area-inset-top)
         + var(--header-height)
         + var(--view-header-height)
@@ -252,7 +264,44 @@ If your plugin does not need CSS, delete this file.
 
 /* Off a phone Obsidian hides the view header unless "Show tab title bar" is on */
 .is-tablet:not(.show-view-header) .aar-recording-banner {
-    top: calc(var(--safe-area-inset-top) + var(--header-height) + var(--size-4-2));
+    --aar-banner-top: calc(var(--safe-area-inset-top) + var(--header-height) + var(--size-4-2));
+}
+
+/* A phone keeps its navbar at the bottom: docked, its height already holds the inset under it,
+   while floating it sits above that inset */
+.is-phone .aar-recording-banner {
+    --aar-banner-navbar-clearance: var(--navbar-height);
+}
+
+.is-phone.is-floating-nav .aar-recording-banner {
+    --aar-banner-navbar-clearance: calc(var(--navbar-height) + var(--navbar-bottom-offset));
+}
+
+/* While typing, the editing toolbar rides on the keyboard and the navbar is under it */
+.aar-recording-banner[data-anchor^='bottom-'] {
+    top: auto;
+    bottom: calc(
+        max(
+            var(--aar-banner-navbar-clearance),
+            var(--keyboard-height) + var(--mobile-toolbar-height)
+        )
+        + var(--size-4-2)
+    );
+}
+
+.aar-recording-banner[data-anchor$='-left'] {
+    --aar-banner-shift-x: 0px;
+    left: calc(var(--safe-area-inset-left) + var(--aar-banner-side-inset));
+}
+
+.aar-recording-banner[data-anchor$='-right'] {
+    --aar-banner-shift-x: 0px;
+    left: auto;
+    right: calc(var(--safe-area-inset-right) + var(--aar-banner-side-inset));
+}
+
+.aar-recording-banner.is-dragging {
+    cursor: grabbing;
 }
 
 .aar-recording-banner-dot {

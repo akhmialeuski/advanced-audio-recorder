@@ -19,7 +19,10 @@ import {
 	type RenderDefinition,
 	type RowDefinition,
 } from '../helpers/declarativeSettings';
-import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import {
+	RecordingBannerAnchor,
+	type AudioRecorderSettings,
+} from 'src/settings/settingsSchema';
 import type { ProfileSection } from 'src/settings/profileKinds';
 import {
 	CHANNEL_MODE_LABELS,
@@ -27,6 +30,7 @@ import {
 	PCM_SAMPLE_FORMAT_LABELS,
 	LLM_PROVIDER_LABELS,
 	LLM_TASK_LABELS,
+	RECORDING_BANNER_ANCHOR_LABELS,
 	TRANSCRIPTION_PROVIDER_LABELS,
 	TRANSCRIPT_DESTINATION_LABELS,
 	TRANSCRIPT_FILE_FORMAT_LABELS,
@@ -2061,7 +2065,25 @@ describe('settings definitions', () => {
 					'Mobile recording banner',
 					{ type: 'toggle', key: 'mobileRecordingBanner' },
 				],
+				[
+					'Recording banner position',
+					{
+						type: 'dropdown',
+						key: 'mobileRecordingBannerPosition',
+						options: RECORDING_BANNER_ANCHOR_LABELS,
+					},
+				],
 			]);
+		});
+
+		it('offers every banner anchor and counts only the switches', () => {
+			expect(Object.keys(RECORDING_BANNER_ANCHOR_LABELS)).toEqual(
+				Object.values(RecordingBannerAnchor),
+			);
+			// The position is not a switch, so the entry still reads "N of 7"
+			expect(
+				entryValueOf(pageOf(build(), 'Audio processing & feedback')),
+			).toMatch(/ of 7 on$/);
 		});
 	});
 

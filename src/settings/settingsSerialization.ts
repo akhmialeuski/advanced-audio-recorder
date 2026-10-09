@@ -40,6 +40,7 @@ import {
 	createPlatformScopedDefaults,
 	TrackProcessingMode,
 	TrackSourceKind,
+	normalizeRecordingBannerAnchor,
 	normalizeTrackProcessingMode,
 	normalizeTrackSourceKind,
 	type AudioRecorderSettings,
@@ -306,6 +307,11 @@ export function mergeSettings(
 		// in-place edits (settings tab track rows) land in the branch.
 		trackAudioSources: active.trackAudioSources,
 		perPlatform,
+		// An anchor names a stylesheet rule, so a hand edit or a value from a
+		// newer version would leave the banner with no position at all.
+		mobileRecordingBannerPosition: normalizeRecordingBannerAnchor(
+			userSettings.mobileRecordingBannerPosition,
+		),
 	};
 	// Before the migrations, not after: the endpoint rule below asks which
 	// account transcription is reached through, and an id no engine claims

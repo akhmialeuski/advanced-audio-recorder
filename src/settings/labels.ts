@@ -19,6 +19,7 @@ import { LlmTask } from '../transcription/llmPostProcess';
 import type { LlmProviderId, TranscriptionProviderId } from './settingsSchema';
 import {
 	ConversionLinkAction,
+	RecordingBannerAnchor,
 	TrackProcessingMode,
 	TrackSourceKind,
 } from './settingsSchema';
@@ -44,6 +45,19 @@ export const TRANSCRIPT_DESTINATION_LABELS: Record<
 	[TranscriptDestination.File]: 'Save to file',
 	[TranscriptDestination.Both]: 'Note and file',
 	[TranscriptDestination.Link]: 'Save to file and link it in the note',
+};
+
+/** Display labels for each mobile recording banner anchor (single source for UI). */
+export const RECORDING_BANNER_ANCHOR_LABELS: Record<
+	RecordingBannerAnchor,
+	string
+> = {
+	[RecordingBannerAnchor.TopLeft]: 'Top left',
+	[RecordingBannerAnchor.TopCenter]: 'Top center',
+	[RecordingBannerAnchor.TopRight]: 'Top right',
+	[RecordingBannerAnchor.BottomLeft]: 'Bottom left',
+	[RecordingBannerAnchor.BottomCenter]: 'Bottom center',
+	[RecordingBannerAnchor.BottomRight]: 'Bottom right',
 };
 
 /** Display labels for each transcript file format (single source for UI). */

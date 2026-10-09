@@ -189,6 +189,34 @@ describe('Settings', () => {
 			},
 		);
 
+		it.each([
+			{
+				name: 'a known anchor',
+				stored: 'bottom-left',
+				expected: 'bottom-left',
+			},
+			{
+				name: 'an unknown anchor, normalised',
+				stored: 'middle',
+				expected: 'top-center',
+			},
+			{
+				name: 'a missing anchor',
+				stored: undefined,
+				expected: 'top-center',
+			},
+		])(
+			'reads a stored banner position of $name as $expected',
+			({ stored, expected }) => {
+				const result = mergeSettings({
+					mobileRecordingBannerPosition:
+						stored as AudioRecorderSettings['mobileRecordingBannerPosition'],
+				});
+
+				expect(result.mobileRecordingBannerPosition).toBe(expected);
+			},
+		);
+
 		it('merges track audio sources', () => {
 			const trackSources: TrackAudioSources = new Map([
 				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
