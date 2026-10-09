@@ -275,7 +275,9 @@ Recording works in the Obsidian mobile app, with platform limits the plugin appl
 
 ## Mobile recording banner
 
-The **Mobile recording banner** option (under **Settings > Audio processing & feedback**, default On) governs a floating on-screen banner shown on mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button so the session is always visible and stoppable.
+The **Mobile recording banner** option (under **Settings > Audio processing & feedback**, default On) governs a floating on-screen banner shown on mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button, so the session stays visible and can be stopped from the banner. The banner floats just below the note header, away from the top edge of the screen, and its stop button is a full-size touch target.
+
+![The mobile recording banner with a pulsing dot, the elapsed time 1:23 and a stop button, floating below the note header on a phone](images/mobile-recording-banner.png)
 
 On the desktop app the ribbon indicator and the status bar already make the recording obvious, so the banner is not shown there.
 
