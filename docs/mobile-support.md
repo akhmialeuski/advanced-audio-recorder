@@ -79,6 +79,8 @@ The **Local whisper.cpp** engine is **desktop-only** and is shown blocked on mob
 
 The mobile app has no ribbon icon and no desktop status bar to show that a capture is in progress, so the plugin shows a **floating recording banner** instead. The banner carries a recording indicator, the elapsed time, and a **stop** button, so an active session stays visible and can be stopped from the banner. It floats just below the note header, clear of the status bar and of the edge where the system pulls down its notifications, and its stop button is a full-size touch target.
 
+![The mobile recording banner with a pulsing dot, the elapsed time 1:23 and a stop button, floating below the note header on a phone](images/mobile-recording-banner.png)
+
 The banner is governed by the **Mobile recording banner** setting under **Settings > Advanced Audio Recorder > Audio processing & feedback** (default **On**). On the desktop app the ribbon indicator and the status bar already make a recording obvious, so the banner is not shown there. See [Mobile recording banner](recording.md#mobile-recording-banner).
 
 ## Getting started on mobile

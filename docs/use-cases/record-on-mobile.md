@@ -48,6 +48,8 @@ If **Markers and chapters** is enabled, you can drop a bookmark or chapter at th
 
 Tap the **stop** button on the recording banner, which floats just below the note header, or run **Start/stop recording** again. The plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[recording-….mp4]]` on a default-configured iPhone) into your note. A long recording is saved as several self-contained part files (`...-part1`, `...-part2`, and so on) when it exceeds the in-memory buffer limit, with a link to each part inserted into the note.
 
+![The mobile recording banner with a pulsing dot, the elapsed time 1:23 and a stop button, floating below the note header on a phone](../images/mobile-recording-banner.png)
+
 ### 4. Play it back
 
 The inserted embed plays your recording in the note. Turn on the **Enhanced audio player** under **Settings > Advanced Audio Recorder > Audio player** for the waveform seek bar, playback-speed presets, skip, volume, loop, the time display, and per-file markers and chapters - all of which work on mobile. See [Audio player](../audio-player.md).
