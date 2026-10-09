@@ -24,6 +24,29 @@ describe('mobile recording banner styles', () => {
 		expect(top?.[1]).toMatch(/var\(--view-header-height\b/);
 	});
 
+	it('sits below the tab header strip a tablet keeps above the view header', () => {
+		// A tablet has no header offset and keeps the tab strip a phone hides,
+		// so the phone placement would land the banner on the view header.
+		const top = /top:\s*calc\(([^;]*)\);/.exec(
+			bannerRule(`.is-tablet ${BANNER.root}`),
+		);
+
+		expect(top?.[1]).toMatch(/var\(--safe-area-inset-top\)/);
+		expect(top?.[1]).toMatch(/var\(--header-height\)/);
+		expect(top?.[1]).toMatch(/var\(--view-header-height\)/);
+	});
+
+	it('sits right below the tab strip when a tablet hides the view header', () => {
+		// Obsidian hides the view header off a phone unless "Show tab title
+		// bar" adds .show-view-header, so the banner drops the header height.
+		const top = /top:\s*calc\(([^;]*)\);/.exec(
+			bannerRule(`.is-tablet:not(.show-view-header) ${BANNER.root}`),
+		);
+
+		expect(top?.[1]).toMatch(/var\(--header-height\)/);
+		expect(top?.[1]).not.toMatch(/var\(--view-header-height\)/);
+	});
+
 	it("takes the safe area from Obsidian's variable, not from env() directly", () => {
 		expect(bannerRule(BANNER.root)).not.toMatch(/env\(safe-area-inset-top/);
 	});

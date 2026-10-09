@@ -217,14 +217,14 @@ If your plugin does not need CSS, delete this file.
     transition: width 0.1s linear;
 }
 
-/* Mobile recording banner. It floats below the view header Obsidian pins under the status bar,
-   because the top edge belongs to the header and to the system's notification gesture.
-   .is-phone defines both header variables, and the fallbacks place it the same way on a tablet. */
+/* Mobile recording banner. It floats below the view header, because the top edge belongs to
+   the header and to the system's notification gesture. .is-phone sets the header offset,
+   while a tablet keeps the tab header strip above the view header instead. */
 .aar-recording-banner {
     position: fixed;
     top: calc(
-        var(--view-header-top-offset, max(var(--safe-area-inset-top), var(--size-4-3)))
-        + var(--view-header-height, var(--touch-size-m))
+        var(--view-header-top-offset, var(--safe-area-inset-top))
+        + var(--view-header-height)
         + var(--size-4-2)
     );
     left: 50%;
@@ -239,6 +239,20 @@ If your plugin does not need CSS, delete this file.
     border: 1px solid var(--background-modifier-border);
     box-shadow: var(--shadow-s);
     font-variant-numeric: tabular-nums;
+}
+
+.is-tablet .aar-recording-banner {
+    top: calc(
+        var(--safe-area-inset-top)
+        + var(--header-height)
+        + var(--view-header-height)
+        + var(--size-4-2)
+    );
+}
+
+/* Off a phone Obsidian hides the view header unless "Show tab title bar" is on */
+.is-tablet:not(.show-view-header) .aar-recording-banner {
+    top: calc(var(--safe-area-inset-top) + var(--header-height) + var(--size-4-2));
 }
 
 .aar-recording-banner-dot {
