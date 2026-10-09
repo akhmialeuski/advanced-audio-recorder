@@ -144,7 +144,7 @@ Learn more: [Audio player](audio-player.md#voice-boost)
 
 ## Input processing and live feedback
 
-Control the browser's microphone processing and watch live feedback while recording, all under **Audio processing & feedback**. Toggles for **Noise suppression**, **Echo cancellation**, and **Automatic gain control** (all default On) are applied to the input stream and the diagnostics test recording. The **Input level meter** shows a live VU meter in the status bar, **Recording stats** show live elapsed time and growing total size, and the **Mobile recording banner** marks an in-progress recording where there is no ribbon icon.
+Control the browser's microphone processing and watch live feedback while recording, all under **Audio processing & feedback**. Toggles for **Noise suppression**, **Echo cancellation**, and **Automatic gain control** (all default On) are applied to the input stream and the diagnostics test recording. The **Input level meter** shows a live VU meter in the status bar, **Recording stats** show live elapsed time and growing total size, and the **Mobile recording banner** marks an in-progress recording where there is no ribbon icon. The banner can be dragged to one of six places along the top and bottom edges of the screen, and **Recording banner position** sets or resets that place.
 
 Learn more: [Recording](recording.md#live-feedback)
 

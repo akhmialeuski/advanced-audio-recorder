@@ -46,7 +46,7 @@ If **Markers and chapters** is enabled, you can drop a bookmark or chapter at th
 
 ### 3. Stop and save
 
-Tap the **stop** button on the recording banner, which floats just below the note header, or run **Start/stop recording** again. The plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[recording-….mp4]]` on a default-configured iPhone) into your note. A long recording is saved as several self-contained part files (`...-part1`, `...-part2`, and so on) when it exceeds the in-memory buffer limit, with a link to each part inserted into the note.
+Tap the **stop** button on the recording banner, which floats just below the note header unless you dragged it elsewhere, or run **Start/stop recording** again. The plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[recording-….mp4]]` on a default-configured iPhone) into your note. A long recording is saved as several self-contained part files (`...-part1`, `...-part2`, and so on) when it exceeds the in-memory buffer limit, with a link to each part inserted into the note.
 
 ![The mobile recording banner with a pulsing dot, the elapsed time 1:23 and a stop button, floating below the note header on a phone](../images/mobile-recording-banner.png)
 
@@ -81,7 +81,7 @@ For the full list, see [Mobile support](../mobile-support.md) and [Recording on 
 ## Tips
 
 - **Add the command to the mobile toolbar.** With no ribbon icon on mobile, putting **Start/stop recording** on the toolbar makes starting a capture a single tap.
-- **Watch the banner, not the status bar.** On mobile the floating [recording banner](../recording.md#mobile-recording-banner) is where the elapsed time and stop button live. Leave the **Mobile recording banner** setting on so an active recording is always visible.
+- **Watch the banner, not the status bar.** On mobile the floating [recording banner](../recording.md#mobile-recording-banner) is where the elapsed time and stop button live. Leave the **Mobile recording banner** setting on so an active recording is always visible. If the banner sits over the part of the note you are writing in, drag it to the bottom or to a side, and it keeps that place for the next recording.
 - **Screen on for long captures.** For a lecture or a meeting, keep the screen awake and Obsidian in the foreground so the operating system does not suspend the recording.
 - **Transcribe later on any device.** The recording and its markers are just files in the vault, so you can record on the phone and transcribe - or run the desktop-only local `whisper.cpp` engine - once the vault syncs to a desktop.
 
