@@ -277,7 +277,10 @@ If your plugin does not need CSS, delete this file.
     --aar-banner-navbar-clearance: calc(var(--navbar-height) + var(--navbar-bottom-offset));
 }
 
-/* While typing, the editing toolbar rides on the keyboard and the navbar is under it */
+/* While typing, the editing toolbar rides on the keyboard and the navbar is under it. The
+   toolbar height counts even with --keyboard-height at 0, because Obsidian shows the toolbar
+   for an editor in focus whether or not a soft keyboard is up, as with a hardware keyboard on
+   a tablet, and no class tells the two apart. */
 .aar-recording-banner[data-anchor^='bottom-'] {
     top: auto;
     bottom: calc(

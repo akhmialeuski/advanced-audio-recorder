@@ -295,7 +295,12 @@ export default class AudioRecorderPlugin extends Plugin {
 			},
 			onAnchorChange: (anchor) => {
 				this.settings.mobileRecordingBannerPosition = anchor;
-				void this.saveSettings();
+				void this.saveSettings().catch((error: unknown) => {
+					console.warn(
+						`${PLUGIN_LOG_PREFIX} Saving the recording banner position failed:`,
+						error,
+					);
+				});
 			},
 		});
 		this.recordingManager = new RecordingManager(

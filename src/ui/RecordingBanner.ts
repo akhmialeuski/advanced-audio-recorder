@@ -171,9 +171,10 @@ export class RecordingBanner {
 			if (event.button !== 0) {
 				return;
 			}
-			// Obsidian opens a sidebar on a swipe from the screen edge, and a
-			// banner anchored at the side sits right where that swipe starts
-			event.stopPropagation();
+			// The press is left to propagate. Obsidian's sidebar swipe listens
+			// to touchstart on the workspace container, and the banner sits on
+			// the body outside it, so no pointer event of the banner reaches
+			// that swipe and stopping one would only hide it from the document.
 			this.suppressNextClick = false;
 			this.press = {
 				pointerId: event.pointerId,

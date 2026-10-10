@@ -67,6 +67,27 @@ function statusBar(plugin: AudioRecorderPlugin): HTMLElement {
 	return at(asMockPlugin(plugin).statusBarItems, 0);
 }
 
+/**
+ * Drags the banner from a press on the target to the bottom right. jsdom has
+ * no PointerEvent, and a MouseEvent of the same type reaches the same
+ * listeners.
+ */
+function dragToBottomRight(target: HTMLElement): void {
+	for (const [type, x, y] of [
+		['pointerdown', 500, 40],
+		['pointermove', 900, 700],
+		['pointerup', 900, 700],
+	] as const) {
+		const event = new MouseEvent(type, {
+			clientX: x,
+			clientY: y,
+			bubbles: true,
+		});
+		Object.defineProperty(event, 'pointerId', { value: 1 });
+		target.dispatchEvent(event);
+	}
+}
+
 // Obsidian extends the real document.body with createDiv/createSpan, which is
 // how the banner mounts itself; jsdom's body needs the same.
 beforeAll(() => {
@@ -393,21 +414,7 @@ describe('the mobile recording banner', () => {
 			() => ({ left: 840, top: 680, width: 120, height: 40 }) as DOMRect,
 		);
 
-		// jsdom has no PointerEvent; a MouseEvent of the same type reaches
-		// the same listeners
-		for (const [type, x, y] of [
-			['pointerdown', 500, 40],
-			['pointermove', 900, 700],
-			['pointerup', 900, 700],
-		] as const) {
-			const event = new MouseEvent(type, {
-				clientX: x,
-				clientY: y,
-				bubbles: true,
-			});
-			Object.defineProperty(event, 'pointerId', { value: 1 });
-			stop.dispatchEvent(event);
-		}
+		dragToBottomRight(stop);
 		stop.click();
 
 		await waitFor(() => saveData.mock.calls.length > 0);
@@ -415,6 +422,31 @@ describe('the mobile recording banner', () => {
 			RecordingBannerAnchor.BottomRight,
 		);
 		expect(recorder().stopRecording).not.toHaveBeenCalled();
+	});
+
+	it('logs a failed save of the dragged anchor instead of dropping it', async () => {
+		// A floating rejection would leave the anchor unsaved with no trace
+		// of why it is gone after a restart
+		const { saveData } = await loadPlugin();
+		setPlatform({ isMobile: true, isMobileApp: true });
+		reportStatus(RecordingStatus.Recording);
+		const warn = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => undefined);
+		saveData.mockRejectedValueOnce(new Error('disk full'));
+		const banner = el(document.body, BANNER.root);
+		banner.setPointerCapture = jest.fn();
+		banner.getBoundingClientRect = jest.fn(
+			() => ({ left: 840, top: 680, width: 120, height: 40 }) as DOMRect,
+		);
+
+		dragToBottomRight(banner);
+
+		await waitFor(() => warn.mock.calls.length > 0);
+		expect(String(at(warn.mock.calls, 0)[0])).toContain(
+			'Saving the recording banner position failed',
+		);
+		warn.mockRestore();
 	});
 });
 

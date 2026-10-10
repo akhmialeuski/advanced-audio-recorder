@@ -307,6 +307,22 @@ describe('dragging the banner', () => {
 		expect(onAnchorChange).not.toHaveBeenCalled();
 	});
 
+	it('lets a press on the banner propagate to the document', () => {
+		// The banner sits outside the workspace container whose swipe it was
+		// once meant to block, so swallowing the press only hides it from
+		// document-level listeners such as the one that closes an open menu
+		mount();
+		const seen = jest.fn();
+		document.addEventListener('pointerdown', seen);
+		try {
+			pointer(stopEl(), 'pointerdown', 500, 40);
+		} finally {
+			document.removeEventListener('pointerdown', seen);
+		}
+
+		expect(seen).toHaveBeenCalledTimes(1);
+	});
+
 	it('ignores a pointer that only hovers over the banner', () => {
 		mount();
 		const banner = layout({ x: 900, y: 700 });
