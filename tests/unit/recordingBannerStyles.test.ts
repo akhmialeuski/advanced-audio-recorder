@@ -18,7 +18,9 @@ function bannerRule(selector: string): string {
 
 describe('mobile recording banner styles', () => {
 	it('sits below the view header Obsidian floats at the top of a phone', () => {
-		const top = /top:\s*calc\(([^;]*)\);/.exec(bannerRule(BANNER.root));
+		const top = /--aar-banner-top:\s*calc\(([^;]*)\);/.exec(
+			bannerRule(BANNER.root),
+		);
 
 		expect(top?.[1]).toMatch(/var\(--view-header-top-offset\b/);
 		expect(top?.[1]).toMatch(/var\(--view-header-height\b/);
@@ -27,7 +29,7 @@ describe('mobile recording banner styles', () => {
 	it('sits below the tab header strip a tablet keeps above the view header', () => {
 		// A tablet has no header offset and keeps the tab strip a phone hides,
 		// so the phone placement would land the banner on the view header.
-		const top = /top:\s*calc\(([^;]*)\);/.exec(
+		const top = /--aar-banner-top:\s*calc\(([^;]*)\);/.exec(
 			bannerRule(`.is-tablet ${BANNER.root}`),
 		);
 
@@ -39,7 +41,7 @@ describe('mobile recording banner styles', () => {
 	it('sits right below the tab strip when a tablet hides the view header', () => {
 		// Obsidian hides the view header off a phone unless "Show tab title
 		// bar" adds .show-view-header, so the banner drops the header height.
-		const top = /top:\s*calc\(([^;]*)\);/.exec(
+		const top = /--aar-banner-top:\s*calc\(([^;]*)\);/.exec(
 			bannerRule(`.is-tablet:not(.show-view-header) ${BANNER.root}`),
 		);
 
@@ -50,6 +52,63 @@ describe('mobile recording banner styles', () => {
 	it("takes the safe area from Obsidian's variable, not from env() directly", () => {
 		expect(bannerRule(BANNER.root)).not.toMatch(/env\(safe-area-inset-top/);
 	});
+
+	it('takes the whole touch so a drag never scrolls the note under it', () => {
+		expect(bannerRule(BANNER.root)).toMatch(/touch-action:\s*none/);
+	});
+
+	it('follows the drag offset on top of the anchor it rests at', () => {
+		const transform = /transform:\s*translate\(([^;]*)\);/.exec(
+			bannerRule(BANNER.root),
+		);
+
+		expect(transform?.[1]).toMatch(/var\(--aar-banner-drag-x, 0px\)/);
+		expect(transform?.[1]).toMatch(/var\(--aar-banner-drag-y, 0px\)/);
+	});
+
+	it('lets a bottom anchor drop the top offset every platform rule sets', () => {
+		// The platform rules set only --aar-banner-top, so a bottom anchor
+		// wins over them whatever their specificity.
+		for (const selector of [
+			`.is-tablet ${BANNER.root}`,
+			`.is-tablet:not(.show-view-header) ${BANNER.root}`,
+		]) {
+			expect(bannerRule(selector)).not.toMatch(/(^|[\s;])top:/);
+		}
+		expect(bannerRule(`${BANNER.root}[data-anchor^='bottom-']`)).toMatch(
+			/top:\s*auto/,
+		);
+	});
+
+	it('keeps a bottom anchor clear of the navbar and of the toolbar over the keyboard', () => {
+		const bottom = bannerRule(`${BANNER.root}[data-anchor^='bottom-']`);
+
+		expect(bottom).toMatch(/var\(--aar-banner-navbar-clearance\)/);
+		expect(bottom).toMatch(/var\(--keyboard-height\)/);
+		expect(bottom).toMatch(/var\(--mobile-toolbar-height\)/);
+	});
+
+	it('clears the docked and the floating phone navbar', () => {
+		expect(bannerRule(`.is-phone ${BANNER.root}`)).toMatch(
+			/--aar-banner-navbar-clearance:\s*var\(--navbar-height\)/,
+		);
+		expect(bannerRule(`.is-phone.is-floating-nav ${BANNER.root}`)).toMatch(
+			/var\(--navbar-bottom-offset\)/,
+		);
+	});
+
+	it.each([
+		['left', /left:\s*calc\(var\(--safe-area-inset-left\)/],
+		['right', /right:\s*calc\(var\(--safe-area-inset-right\)/],
+	])(
+		'pins a %s anchor inside the safe area without centring it',
+		(side, inset) => {
+			const rule = bannerRule(`${BANNER.root}[data-anchor$='-${side}']`);
+
+			expect(rule).toMatch(inset);
+			expect(rule).toMatch(/--aar-banner-shift-x:\s*0px/);
+		},
+	);
 
 	it('gives the stop control a full touch target', () => {
 		const stop = bannerRule(BANNER.stop);

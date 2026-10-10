@@ -15,6 +15,7 @@ import {
 } from 'src/constants';
 import {
 	DEFAULT_SETTINGS,
+	RecordingBannerAnchor,
 	type AudioRecorderSettings,
 	type AudioSource,
 } from 'src/settings/settingsSchema';
@@ -245,6 +246,7 @@ export function fullyPopulatedSettings(): Omit<
 		detectSilentChannelOnSave: false,
 		showRecordingStats: false,
 		mobileRecordingBanner: false,
+		mobileRecordingBannerPosition: RecordingBannerAnchor.BottomRight,
 		cleanupHighPassEnabled: false,
 		cleanupHighPassHz: 100,
 		cleanupNoiseGateEnabled: true,

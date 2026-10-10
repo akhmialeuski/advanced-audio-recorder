@@ -43,6 +43,7 @@ import { enginesPage } from './sections/enginesSection';
 import { fileStorageGroup } from './sections/fileStorageSection';
 import { isSystemAudioLoopbackAvailable } from '../recording/systemAudioSupport';
 import { llmGroup } from './sections/llmSection';
+import { mobilePage } from './sections/mobileSection';
 import { multiTrackPage } from './sections/multiTrackSection';
 import { outputFormatGroup } from './sections/outputFormatSection';
 import { quickNotesPage } from './sections/quickNotesSection';
@@ -166,6 +167,7 @@ export function buildSettingsDefinitions(
 			},
 			audioProcessingPage(ctx.settings),
 			audioCleanupPage(ctx.settings),
+			mobilePage(ctx.settings),
 			diagnosticsPage(ctx.diagnostics, ctx.settings),
 		]),
 	];

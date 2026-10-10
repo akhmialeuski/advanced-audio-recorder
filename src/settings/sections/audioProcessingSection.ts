@@ -9,8 +9,9 @@ import type { SettingDefinition, SettingGroupItem } from 'obsidian';
 
 /**
  * The input-processing constraints and the live recording feedback, behind an
- * entry of its own. Seven switches that are set once and then read past, so the
- * entry counts how many are on rather than showing them all.
+ * entry of its own. Six switches that are set once and then read past, so the
+ * entry counts how many are on rather than showing them all. The mobile banner
+ * is not input processing, so it lives on the Mobile page.
  * @param settings - Live settings, read by the entry's value
  */
 export function audioProcessingPage(
@@ -47,11 +48,6 @@ export function audioProcessingPage(
 			name: 'Detect silent channel after recording',
 			desc: 'Check a saved stereo recording for a silent channel - the typical result of one microphone on a dual-input interface - and offer to convert it to mono.',
 			control: { type: 'toggle', key: 'detectSilentChannelOnSave' },
-		},
-		{
-			name: 'Mobile recording banner',
-			desc: 'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
-			control: { type: 'toggle', key: 'mobileRecordingBanner' },
 		},
 	];
 	return {

@@ -19,7 +19,10 @@ import {
 	type RenderDefinition,
 	type RowDefinition,
 } from '../helpers/declarativeSettings';
-import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import {
+	RecordingBannerAnchor,
+	type AudioRecorderSettings,
+} from 'src/settings/settingsSchema';
 import type { ProfileSection } from 'src/settings/profileKinds';
 import {
 	CHANNEL_MODE_LABELS,
@@ -27,6 +30,7 @@ import {
 	PCM_SAMPLE_FORMAT_LABELS,
 	LLM_PROVIDER_LABELS,
 	LLM_TASK_LABELS,
+	RECORDING_BANNER_ANCHOR_LABELS,
 	TRANSCRIPTION_PROVIDER_LABELS,
 	TRANSCRIPT_DESTINATION_LABELS,
 	TRANSCRIPT_FILE_FORMAT_LABELS,
@@ -1823,6 +1827,7 @@ describe('settings definitions', () => {
 			'Audio player',
 			'Audio processing & feedback',
 			'Audio cleanup defaults',
+			'Mobile',
 			'Diagnostics',
 		])('declares %s behind an entry rather than inline', (name) => {
 			// Sections nobody reads on the way to something else: inline they
@@ -1880,11 +1885,22 @@ describe('settings definitions', () => {
 			settings.showInputLevelMeter = false;
 			settings.showRecordingStats = false;
 			settings.detectSilentChannelOnSave = false;
+
+			// Six independent switches have no single value, so the entry
+			// reports how many of them are on.
+			expect(readValue('Audio processing & feedback')).toBe('2 of 6 on');
+		});
+
+		it('names on the mobile entry where the banner rests, or that it is off', () => {
+			settings.mobileRecordingBanner = true;
+			settings.mobileRecordingBannerPosition =
+				RecordingBannerAnchor.BottomRight;
+
+			expect(readValue('Mobile')).toBe('Bottom right');
+
 			settings.mobileRecordingBanner = false;
 
-			// Seven independent switches have no single value, so the entry
-			// reports how many of them are on.
-			expect(readValue('Audio processing & feedback')).toBe('2 of 7 on');
+			expect(readValue('Mobile')).toBe('Off');
 		});
 
 		it('names the stages the cleanup dialog would open with', () => {
@@ -2057,11 +2073,53 @@ describe('settings definitions', () => {
 					'Detect silent channel after recording',
 					{ type: 'toggle', key: 'detectSilentChannelOnSave' },
 				],
+			]);
+		});
+	});
+
+	describe('the mobile page', () => {
+		const MOBILE = 'Mobile';
+
+		it('holds the banner switch and its position in a block of their own', () => {
+			expect(groupOf(build(), 'Recording banner').heading).toBe(
+				'Recording banner',
+			);
+			expect(
+				rowNamesIn(groupOf(build(), MOBILE)).map((name) => [
+					name,
+					rowOf(build(), MOBILE, name).control,
+				]),
+			).toEqual([
 				[
-					'Mobile recording banner',
+					'Show recording banner',
 					{ type: 'toggle', key: 'mobileRecordingBanner' },
 				],
+				[
+					'Banner position',
+					{
+						type: 'dropdown',
+						key: 'mobileRecordingBannerPosition',
+						options: RECORDING_BANNER_ANCHOR_LABELS,
+					},
+				],
 			]);
+		});
+
+		it('offers every banner anchor', () => {
+			expect(Object.keys(RECORDING_BANNER_ANCHOR_LABELS)).toEqual(
+				Object.values(RecordingBannerAnchor),
+			);
+		});
+
+		it('shows the position only while the banner is on', () => {
+			const visible = rowOf(build(), MOBILE, 'Banner position').visible;
+			settings.mobileRecordingBanner = false;
+
+			expect(typeof visible === 'function' && visible()).toBe(false);
+
+			settings.mobileRecordingBanner = true;
+
+			expect(typeof visible === 'function' && visible()).toBe(true);
 		});
 	});
 
