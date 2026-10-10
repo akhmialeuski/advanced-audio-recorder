@@ -144,7 +144,7 @@ Learn more: [Audio player](audio-player.md#voice-boost)
 
 ## Input processing and live feedback
 
-Control the browser's microphone processing and watch live feedback while recording, all under **Audio processing & feedback**. Toggles for **Noise suppression**, **Echo cancellation**, and **Automatic gain control** (all default On) are applied to the input stream and the diagnostics test recording. The **Input level meter** shows a live VU meter in the status bar, **Recording stats** show live elapsed time and growing total size, Mobile has a page of its own, **Mobile**, whose **Show recording banner** marks an in-progress recording where there is no ribbon icon. The banner can be dragged to one of six places along the top and bottom edges of the screen, and **Banner position** on the same page sets or resets that place.
+Control the browser's microphone processing and watch live feedback while recording, all under **Audio processing & feedback**. Toggles for **Noise suppression**, **Echo cancellation**, and **Automatic gain control** (all default On) are applied to the input stream and the diagnostics test recording. The **Input level meter** shows a live VU meter in the status bar, **Recording stats** show live elapsed time and growing total size. The mobile app has a settings page of its own, **Mobile**, where **Show recording banner** marks an in-progress recording where there is no ribbon icon. The banner can be dragged to one of six places along the top and bottom edges of the screen, and **Banner position** on the same page sets or resets that place.
 
 Learn more: [Recording](recording.md#live-feedback)
 
@@ -238,6 +238,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy                  | Context menu / palette > Clean up audio         | [Audio cleanup](audio-cleanup.md)                              |
 | Live voice boost              | Cleanup stages applied to a recording as it plays                          | Settings > Audio cleanup defaults               | [Audio player](audio-player.md#voice-boost)                    |
 | Input processing and feedback | Noise/echo/AGC toggles, input meter, stats                                 | Settings > Audio processing & feedback          | [Recording](recording.md#live-feedback)                        |
+| Mobile recording banner       | Floating timer and stop button, draggable to six places on screen          | Settings > Mobile                               | [Recording](recording.md#mobile-recording-banner)              |
 | Transcription                 | Speech-to-text via 5 engines, diarization, output formats                  | Settings > Transcription                        | [Transcription](transcription.md)                              |
 | LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM            | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
 | Auto chapters                 | LLM-generated titled chapters from an existing transcript                  | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
