@@ -34,6 +34,36 @@ export const MAX_SHOWN_VERSIONS = 10;
  * version cannot be titled one thing here and another there.
  */
 export const RELEASE_NOTES: Readonly<Record<string, string>> = {
+	'2.3.5': `
+This release makes the mobile recording banner reachable and movable. The banner no longer sits at the very top of the screen, where a touch opens the system's notification shade, and it can now be dragged to one of six places on the screen and stays there for later recordings. Both banner settings move to a new **Mobile** settings page. Existing recordings, stored settings, and the recorder are unaffected.
+
+## New: Dragging the mobile recording banner
+
+When the banner covers part of the note or a toolbar you need, drag it with a finger. On release it snaps to the nearest of six places: the top or the bottom edge, at the left, in the centre or at the right. The banner keeps that place for every later recording and after the screen rotates, and a vault synced to another phone or a tablet brings it along.
+
+- The drag can start anywhere on the banner, the stop button included, and a drag never stops the recording. Only a tap on the stop button does.
+- A bottom place stays above the navigation bar, docked or floating, and above the editing toolbar while the keyboard is open.
+- **Banner position** offers the same six places as a dropdown, and **Top center** puts a dragged banner back where it started.
+
+## New: The Mobile settings page
+
+**Show recording banner** and **Banner position** move off **Audio processing & feedback**, where the banner switch sat among the microphone filters, onto a page of their own under **Settings > Advanced Audio Recorder > Mobile**. The page entry shows **Off** or the place in use, and **Banner position** is shown only while the banner is on. Both settings now apply to a recording in progress: switching the banner off hides it at once instead of at the next pause or resume.
+
+## Fixed
+
+- The banner sat at the very top of a phone screen, inside the area where a touch pulls down the system's notification shade, so in portrait its stop button could not be pressed ([#118](https://github.com/akhmialeuski/advanced-audio-recorder/issues/118)). It now floats just below the note header on a phone, and below the tab strip on a tablet.
+
+## Internal
+
+- The release workflows run on the Node 24 versions of the GitHub actions and build the plugin on Node 22.
+- The suite is 6532 tests across 262 suites.
+
+## Compatibility
+
+Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existing recordings, stored settings, the recorder, and the players are unaffected. The banner switch keeps the value stored by an earlier version, and settings written by an earlier version carry no banner position, which then starts at **Top center**.
+
+**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.4...2.3.5
+`,
 	'2.3.4': `
 This release lets you repair a diarized transcript line by line, right in the note. **Split selection into another speaker** hands the selected words of one line to another speaker, and **Merge selected lines into one** joins consecutive lines of one turn back together. Both edits rewrite the note and every transcript file of the recording from the same segments. The **Transcribe audio** dialog now fits on one screen, with its secondary options in a collapsed **More options** block, and a quick note can be transcribed by an engine of its own. Existing recordings, stored settings, and the recorder are unaffected.
 
