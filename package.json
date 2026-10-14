@@ -72,33 +72,33 @@
 	"license": "MIT",
 	"devDependencies": {
 		"@types/jest": "30.0.0",
-		"@types/node": "22.19.21",
-		"esbuild": "0.28.1",
-		"eslint": "10.4.1",
+		"@types/node": "22.20.5",
+		"esbuild": "0.28.2",
+		"eslint": "10.12.0",
 		"eslint-config-prettier": "10.1.8",
-		"eslint-plugin-jest": "29.16.1",
-		"eslint-plugin-obsidianmd": "0.4.1",
-		"eslint-plugin-prettier": "^5.5.4",
+		"eslint-plugin-jest": "29.17.0",
+		"eslint-plugin-obsidianmd": "0.4.2",
+		"eslint-plugin-prettier": "5.5.7",
 		"expect-type": "1.4.0",
-		"globals": "^16.5.0",
+		"globals": "17.13.0",
 		"husky": "^9.0.0",
-		"jest": "30.4.2",
-		"jest-environment-jsdom": "30.4.1",
-		"nano-staged": "0.8.0",
-		"obsidian": "1.13.1",
-		"prettier": "3.8.1",
-		"ts-jest": "29.4.11",
+		"jest": "30.5.2",
+		"jest-environment-jsdom": "30.5.2",
+		"nano-staged": "1.0.2",
+		"obsidian": "1.14.4",
+		"prettier": "3.9.10",
+		"ts-jest": "29.4.14",
 		"tslib": "2.8.1",
 		"typescript": "6.0.3",
-		"typescript-eslint": "8.61.0"
+		"typescript-eslint": "8.71.2"
 	},
 	"nano-staged": {
 		"*.ts": "eslint --fix",
 		"*.json": "prettier --write"
 	},
 	"dependencies": {
-		"@mediabunny/flac-encoder": "1.55.1",
-		"@mediabunny/mp3-encoder": "1.55.1",
-		"mediabunny": "1.55.1"
+		"@mediabunny/flac-encoder": "1.61.4",
+		"@mediabunny/mp3-encoder": "1.61.4",
+		"mediabunny": "1.61.4"
 	}
 }
