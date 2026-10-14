@@ -46,6 +46,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- the real API types
    each event name separately; the mock only has to accept any handler. */
 
+import { StateField } from '@codemirror/state';
+
 /** A subscriber registered through {@link Events.on}. */
 export type EventCallback = (...args: any[]) => void;
 
@@ -1728,6 +1730,28 @@ export class Editor {
 		// Mock implementation
 	}
 }
+
+/** The part of Obsidian's MarkdownFileInfo the editor field carries here. */
+export interface MockMarkdownFileInfo {
+	file: TFile | null;
+	editor?: unknown;
+}
+
+/**
+ * Obsidian's `editorInfoField`: the CodeMirror state field through which an
+ * editor's view names the Obsidian editor and note it belongs to.
+ *
+ * It is a real `StateField`, because what reads it is a real CodeMirror view.
+ * CodeMirror runs in jsdom, so a test mounts an actual `EditorView` and seeds
+ * the field with `editorInfoField.init(() => info)`, the way Obsidian seeds it
+ * for every Markdown editor; the DOM-to-position mapping under test then runs
+ * for real instead of through a stubbed `posAtDOM`. A view built without
+ * seeding it holds null, which reads as an editor Obsidian does not own.
+ */
+export const editorInfoField = StateField.define<MockMarkdownFileInfo | null>({
+	create: () => null,
+	update: (value) => value,
+});
 
 /**
  * Mock TAbstractFile class.
