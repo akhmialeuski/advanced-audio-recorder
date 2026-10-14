@@ -105,7 +105,7 @@ The **Model catalogue** on the Deepgram engine page is seeded with the families 
 
 | Model family       | Example ids                                                                                   | Notes                                                |
 | ------------------ | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| **Nova-3**         | `nova-3`, `nova-3-general`, `nova-3-medical`                                                  | Default; Deepgram's current general-purpose model.   |
+| **Nova-3**         | `nova-3`, `nova-3-general`, `nova-3-medical`, `nova-3-pharma`                                 | Default; Deepgram's current general-purpose model.   |
 | **Nova-2**         | `nova-2`, `nova-2-meeting`, `nova-2-phonecall`, `nova-2-finance`, others                      | Named variants tuned for meetings, phone calls, etc. |
 | **Nova**           | `nova`, `nova-general`, `nova-phonecall`                                                      | Earlier Nova generation.                             |
 | **Enhanced**       | `enhanced`, `enhanced-meeting`, `enhanced-phonecall`, `enhanced-finance`                      | Mid-tier accuracy.                                   |

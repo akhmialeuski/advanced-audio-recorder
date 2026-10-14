@@ -227,14 +227,14 @@ describe('ChapterGenerationModal run settings', () => {
 		await Promise.resolve();
 
 		const model = at(dropdowns(modal), 2);
-		model.value = 'claude-sonnet-5';
+		model.value = 'claude-sonnet-5-5';
 		model.dispatchEvent(new Event('change'));
 		await Promise.resolve();
 		await Promise.resolve();
 
 		at(buttons(modal), 0).click();
 
-		expect(settings.llmAnthropicModel).toBe('claude-sonnet-5');
+		expect(settings.llmAnthropicModel).toBe('claude-sonnet-5-5');
 		expect(settings.geminiModel).toBe('gemini-2.5-pro');
 	});
 

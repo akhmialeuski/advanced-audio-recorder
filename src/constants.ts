@@ -460,25 +460,28 @@ export const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
  * gains ids worth offering, which tops up the saved lists once: a list stays
  * the user's to edit, so an id deleted after that stays deleted.
  */
-export const MODEL_SEED_GENERATION = 2;
+export const MODEL_SEED_GENERATION = 3;
 
 /**
  * Seed model ids for the OpenAI-compatible Whisper API. They populate the
  * model picker on first run and can be extended with custom ids in settings.
  * All return `verbose_json` with segment timestamps, which the provider
  * relies on: `whisper-1` is OpenAI's; the `*-v3*` ids are served by Groq and
- * other compatible hosts. (OpenAI's newer `gpt-4o-transcribe`,
- * `gpt-4o-mini-transcribe`, and `gpt-4o-transcribe-diarize` models are
- * omitted: none of them return `verbose_json` - the diarize variant has its
- * own `diarized_json` format without segment timecodes - so they are
- * incompatible with the timed output the plugin requests. As of July 2026,
- * `whisper-1` remains OpenAI's only model that supports it.)
+ * other compatible hosts. Groq shut `distil-whisper-large-v3-en` down on
+ * August 23, 2025, so it is no longer seeded.
+ *
+ * OpenAI's other transcription models are omitted because none is documented
+ * to return segment timestamps: the speech-to-text guide still names
+ * `whisper-1` as the model to use for them, the `gpt-4o-transcribe` family
+ * returns no `verbose_json`, and `gpt-transcribe` (July 2026) documents no
+ * timestamps either, while `gpt-live-transcribe` is realtime only. OpenAI has
+ * deprecated `whisper-1` for shutdown on February 26, 2027, which leaves this
+ * engine needing a timed successor before then.
  */
 export const WHISPER_API_MODEL_SUGGESTIONS = [
 	'whisper-1',
 	'whisper-large-v3',
 	'whisper-large-v3-turbo',
-	'distil-whisper-large-v3-en',
 ];
 
 /** Where to find the model list for the configured Whisper API host. */
@@ -502,19 +505,20 @@ export const DEFAULT_DEEPGRAM_MODEL = 'nova-3';
 /**
  * Seed Deepgram speech-to-text model ids for the pre-recorded API. They
  * populate the model picker on first run and can be extended with custom ids
- * in settings. Grouped by family: Nova-3, Nova-2 and its named variants,
+ * in settings. Grouped by family: Nova-3 with its medical and pharma
+ * (September 2026, English only) variants, Nova-2 and its named variants,
  * Nova, Enhanced (`enhanced`, `enhanced-meeting`, `enhanced-phonecall`,
  * `enhanced-finance`), Base, and the hosted Whisper sizes. The real-time
- * Flux family (`flux-general-en`, `flux-general-multi`) is omitted - even
- * after gaining word-level timestamps in July 2026 it remains a streaming
- * conversational model for voice agents, not part of the pre-recorded API
- * this plugin uses. See {@link DEEPGRAM_MODELS_DOC_URL} for the
- * authoritative, current list.
+ * Flux family (`flux-general-en`, `flux-general-multi`) is omitted - as of
+ * October 2026 it is still served only on the streaming `/v2/listen`
+ * endpoint, not by the pre-recorded API this plugin uses. See
+ * {@link DEEPGRAM_MODELS_DOC_URL} for the authoritative, current list.
  */
 export const DEEPGRAM_MODEL_SUGGESTIONS = [
 	'nova-3',
 	'nova-3-general',
 	'nova-3-medical',
+	'nova-3-pharma',
 	'nova-2',
 	'nova-2-general',
 	'nova-2-meeting',
@@ -671,31 +675,35 @@ export const DEFAULT_GEMINI_BASE_URL =
 	'https://generativelanguage.googleapis.com';
 
 /**
- * Default Gemini transcription model id. Moved from `gemini-2.5-flash` to
- * `gemini-3.5-flash` (GA May 2026): the strongest Flash generation, accepts
- * audio, and priced in the same tier as the 2.5 Flash it replaces.
+ * Default Gemini transcription model id. Moved from `gemini-3.5-flash`, which
+ * Google deprecated on October 8, 2026 and now redirects to 3.6 Flash, to
+ * `gemini-3.8-flash` (GA September 2026): the newest Flash, accepts audio, the
+ * model Google's own audio guide uses, and priced the same as 3.6 Flash.
  */
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 
 /**
  * Seed Gemini model ids for the model picker on first run; the list is
- * user-editable. Flash models are cheaper and fast enough for transcription;
- * the GA 3.x generation (all accept audio) leads the list, with the 2.5
- * generation kept while it stays in the catalog. Deliberately excluded as of
- * July 2026: `gemini-3.5-pro` (announced but not released - no public API
- * id), `gemini-3.1-pro-preview` (preview, not GA), the Live and TTS models
- * (live audio-to-audio dialog and speech synthesis, not file transcription),
- * and `gemini-3.5-flash-cyber` (restricted-access pilot). See
- * {@link GEMINI_MODELS_DOC_URL} for the authoritative, current list.
+ * user-editable. Every seed is GA and accepts audio. Flash models are cheaper
+ * and fast enough for transcription and lead the list; `gemini-4-argon`
+ * (October 2026) is the flagship reasoning model for those who want it.
+ *
+ * Left out as of October 2026, each for a reason a request would meet:
+ * `gemini-3.5-flash` and `gemini-3.7-flash` (deprecated, redirected to a newer
+ * Flash), `gemini-2.0-flash` (shut down June 1, 2026), the 2.5 generation
+ * (closed to new projects since September 18, 2026, so a fresh key is refused;
+ * ids a user saved stay theirs), `gemini-3.5-pro` (still no API id),
+ * `gemini-3.1-pro-preview` (preview), the Live and TTS models (live dialog and
+ * speech synthesis, not file transcription), and `gemini-3.5-transcribe`,
+ * which takes its own `audioTranscriptionConfig` request and answers in a
+ * shape this engine does not read. See {@link GEMINI_MODELS_DOC_URL} for the
+ * authoritative, current list.
  */
 export const GEMINI_MODEL_SUGGESTIONS = [
+	'gemini-3.8-flash',
 	'gemini-3.6-flash',
-	'gemini-3.5-flash',
 	'gemini-3.5-flash-lite',
-	'gemini-2.5-flash',
-	'gemini-2.5-pro',
-	'gemini-2.5-flash-lite',
-	'gemini-2.0-flash',
+	'gemini-4-argon',
 ];
 
 /** Authoritative, current list of Gemini models. */
@@ -850,12 +858,11 @@ export const LLM_PROVIDER_IDS = {
 
 /**
  * Default OpenAI-compatible chat model for LLM post-processing. Moved from
- * `gpt-4o-mini` (dropped from the current catalog) to the GPT-5.6 flagship,
- * matching the Anthropic default, which is also that provider's flagship;
- * `gpt-5.6-terra` and `gpt-5.6-luna` stay in the seed list as the cheaper
- * picks.
+ * `gpt-5.6-sol` to `gpt-6.1-sol` (September 2026), which OpenAI describes as
+ * close to the `gpt-6-astra` flagship at a fifth of its price; cleanup and
+ * summaries do not need the flagship, which stays in the seed list.
  */
-export const DEFAULT_LLM_OPENAI_MODEL = 'gpt-5.6-sol';
+export const DEFAULT_LLM_OPENAI_MODEL = 'gpt-6.1-sol';
 
 /** Default endpoint of the Anthropic account. */
 export const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
@@ -876,12 +883,14 @@ export const ANTHROPIC_API_VERSION = '2023-06-01';
 export const ANTHROPIC_LOW_EFFORT = 'low';
 
 /**
- * Default Anthropic model for transcript post-processing. Kept at
- * `claude-opus-4-8` after the July 2026 catalog review: it is still a current
- * model and the provider's recommended default, while `claude-fable-5` above
- * it is priced for the most demanding work rather than everyday cleanup.
+ * Default Anthropic model for transcript post-processing. Moved from
+ * `claude-opus-4-8`, now a legacy model, to `claude-opus-5-5` (September
+ * 2026): the provider's recommended starting point and cheaper than the Opus
+ * it replaces. It cannot turn thinking off, which is why every request asks
+ * for {@link ANTHROPIC_LOW_EFFORT}; `claude-fable-5-1` above it is priced for
+ * the most demanding work rather than everyday cleanup.
  */
-export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
+export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-5-5';
 
 /**
  * Default Mistral chat model for transcript post-processing. Mistral Medium is
@@ -950,35 +959,34 @@ export const LLM_MAX_TOKENS_STEP = 1;
 
 /**
  * Seed OpenAI chat model ids for the LLM model picker on first run; the list
- * is user-editable. The GPT-5.6 family (released July 2026) is the current
- * text-model catalog: `gpt-5.6-sol` is the flagship (alias `gpt-5.6`),
- * `gpt-5.6-terra` balances intelligence and price, and `gpt-5.6-luna` is the
- * cheapest for high volume. The previous `gpt-4o*` / `gpt-4.1*` / `o4-mini`
- * seeds were removed: they no longer appear in the current catalog (`o4-mini`
- * was retired on February 13, 2026, and the 4.x block left the text-model
- * pages with the GPT-5.6 launch), though ids a user saved keep working while
- * the API still serves them. See {@link OPENAI_MODELS_DOC_URL} for the
- * current list.
+ * is user-editable. The GPT-6 generation (September 2026) is the current
+ * catalog: `gpt-6.1-sol` is the everyday pick, `gpt-6-astra` the flagship for
+ * the hardest prompts, and `gpt-6-luna` the cheapest for high volume.
+ * `gpt-6-sol` is left out because `gpt-6.1-sol` supersedes it, and the GPT-5.6
+ * family no longer leads the catalog, though it is not deprecated and ids a
+ * user saved keep working. See {@link OPENAI_MODELS_DOC_URL} for the current
+ * list.
  */
 export const LLM_OPENAI_MODEL_SUGGESTIONS = [
-	'gpt-5.6-sol',
-	'gpt-5.6-terra',
-	'gpt-5.6-luna',
+	'gpt-6.1-sol',
+	'gpt-6-astra',
+	'gpt-6-luna',
 ];
 
 /**
  * Seed Anthropic model ids for the LLM model picker on first run; the list is
- * user-editable. `claude-sonnet-5` (GA June 2026) replaces
- * `claude-sonnet-4-6`, which the catalog moved to the legacy tier;
- * `claude-fable-5` is the most capable current model but is priced above the
- * Opus tier, so it is listed after the everyday picks. See
+ * user-editable. The 5.5 generation (September and October 2026) replaces
+ * Opus 4.8, Sonnet 5 and Haiku 4.5, which the catalog moved to the legacy
+ * tier; `claude-fable-5-1` is the most capable current model but is priced
+ * above the Opus tier, so it is listed after the everyday picks. The Mythos
+ * models are left out because only verified organisations can call them. See
  * {@link ANTHROPIC_MODELS_DOC_URL} for the current list.
  */
 export const LLM_ANTHROPIC_MODEL_SUGGESTIONS = [
-	'claude-opus-4-8',
-	'claude-sonnet-5',
-	'claude-haiku-4-5',
-	'claude-fable-5',
+	'claude-opus-5-5',
+	'claude-sonnet-5-5',
+	'claude-haiku-5-5',
+	'claude-fable-5-1',
 ];
 
 /**

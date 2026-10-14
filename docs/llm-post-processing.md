@@ -142,21 +142,21 @@ Each provider has its own default model and its own user-editable model list.
 
 | Provider               | Dropdown label       | Default model           | Model catalogue                                                                      |
 | ---------------------- | -------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
-| **OpenAI**             | `OpenAI`             | `gpt-5.6-sol`           | [OpenAI models](https://developers.openai.com/api/docs/models)                       |
-| **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-4-8`       | [Anthropic models](https://platform.claude.com/docs/en/about-claude/models/overview) |
-| **Google Gemini**      | `Google Gemini`      | `gemini-3.5-flash`      | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                        |
+| **OpenAI**             | `OpenAI`             | `gpt-6.1-sol`           | [OpenAI models](https://developers.openai.com/api/docs/models)                       |
+| **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-5-5`       | [Anthropic models](https://platform.claude.com/docs/en/about-claude/models/overview) |
+| **Google Gemini**      | `Google Gemini`      | `gemini-3.8-flash`      | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                        |
 | **Mistral**            | `Mistral`            | `mistral-medium-latest` | [Mistral models](https://docs.mistral.ai/getting-started/models/models_overview)     |
 | **DeepSeek**           | `DeepSeek`           | `deepseek-flash`        | [DeepSeek models](https://api-docs.deepseek.com/quick_start/pricing)                 |
 
 The **Model** row on the engine's page is the same control used for transcription models: pick an id from its dropdown, add one with the button on the **Model catalogue** entry below it, delete one with the button on a catalogue row, and follow the link at the end of the **Model** row's description to the provider's model list. The list is seeded with common models for the provider:
 
-| Provider      | Seeded model ids                                                                                                                                   |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **OpenAI**    | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`                                                                                                     |
-| **Anthropic** | `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`, `claude-fable-5`                                                                         |
-| **Gemini**    | `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite`, `gemini-2.0-flash` |
-| **Mistral**   | `mistral-medium-latest`, `mistral-small-latest`, `mistral-large-latest`                                                                            |
-| **DeepSeek**  | `deepseek-flash`, `deepseek-v4-pro`                                                                                                                |
+| Provider      | Seeded model ids                                                                  |
+| ------------- | --------------------------------------------------------------------------------- |
+| **OpenAI**    | `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-luna`                                        |
+| **Anthropic** | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1`    |
+| **Gemini**    | `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-4-argon` |
+| **Mistral**   | `mistral-medium-latest`, `mistral-small-latest`, `mistral-large-latest`           |
+| **DeepSeek**  | `deepseek-flash`, `deepseek-v4-pro`                                               |
 
 The model list belongs to the provider rather than to the job, so each provider's page keeps its own picker contents and its own selected model, and your OpenAI choice is remembered separately from your Anthropic, Gemini, Mistral, and DeepSeek choices whichever job calls them.
 

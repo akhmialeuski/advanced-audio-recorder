@@ -62,12 +62,6 @@ describe('resolveEnginePricing', () => {
 			expected: { kind: 'perMinute', usdPerMinute: 0.111 / 60 },
 		},
 		{
-			name: 'distil-whisper, its own cheaper model rather than full v3',
-			engine: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-			model: 'distil-whisper-large-v3-en',
-			expected: { kind: 'perMinute', usdPerMinute: 0.02 / 60 },
-		},
-		{
 			name: 'a Deepgram nova tier',
 			engine: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			model: 'nova-2-meeting',
@@ -77,7 +71,7 @@ describe('resolveEnginePricing', () => {
 			name: 'a Deepgram enhanced tier',
 			engine: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			model: 'enhanced-phonecall',
-			expected: { kind: 'perMinute', usdPerMinute: 0.0145 },
+			expected: { kind: 'perMinute', usdPerMinute: 0.0165 },
 		},
 		{
 			name: 'a Gemini 2.x model, audio and text priced apart',
@@ -93,12 +87,35 @@ describe('resolveEnginePricing', () => {
 		{
 			name: 'a Gemini 3.x model, one rate for every input modality',
 			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			model: 'gemini-3.8-flash',
+			expected: {
+				kind: 'perToken',
+				usdPerMillionAudioInput: 0.75,
+				usdPerMillionTextInput: 0.75,
+				usdPerMillionOutput: 3.75,
+			},
+		},
+		{
+			// Deprecated and served by 3.6 Flash, so a saved id is billed as that.
+			name: 'gemini-3.5-flash at the rate of the model now serving it',
+			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 			model: 'gemini-3.5-flash',
 			expected: {
 				kind: 'perToken',
-				usdPerMillionAudioInput: 1.5,
-				usdPerMillionTextInput: 1.5,
-				usdPerMillionOutput: 9,
+				usdPerMillionAudioInput: 0.75,
+				usdPerMillionTextInput: 0.75,
+				usdPerMillionOutput: 3.75,
+			},
+		},
+		{
+			name: 'gemini-4-argon, the flagship',
+			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			model: 'gemini-4-argon',
+			expected: {
+				kind: 'perToken',
+				usdPerMillionAudioInput: 2,
+				usdPerMillionTextInput: 2,
+				usdPerMillionOutput: 10,
 			},
 		},
 		{
@@ -172,28 +189,37 @@ describe('resolveLlmPricing', () => {
 		});
 	});
 
-	it('prices the seeded GPT-5.6 family', () => {
+	it.each([
+		{ model: 'gpt-6.1-sol', input: 2, output: 10 },
+		{ model: 'gpt-6-astra', input: 10, output: 50 },
+		{ model: 'gpt-6-luna', input: 0.1, output: 0.5 },
+		// The previous generation, still served for saved lists.
+		{ model: 'gpt-5.6-sol', input: 4, output: 20 },
+		{ model: 'gpt-5.6-luna', input: 0.2, output: 1.2 },
+	])('prices the OpenAI model $model', ({ model, input, output }) => {
 		expect(
-			resolveLlmPricing(
-				LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-				'gpt-5.6-sol',
-			),
+			resolveLlmPricing(LLM_PROVIDER_IDS.OPENAI_COMPATIBLE, model),
 		).toEqual({
 			kind: 'perToken',
-			usdPerMillionAudioInput: 5,
-			usdPerMillionTextInput: 5,
-			usdPerMillionOutput: 30,
+			usdPerMillionAudioInput: input,
+			usdPerMillionTextInput: input,
+			usdPerMillionOutput: output,
 		});
-		expect(
-			resolveLlmPricing(
-				LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-				'gpt-5.6-luna',
-			),
-		).toEqual({
+	});
+
+	it.each([
+		{ model: 'claude-opus-5-5', input: 4, output: 20 },
+		// The shorter claude-opus-5 fragment must not swallow its successor.
+		{ model: 'claude-opus-5', input: 5, output: 25 },
+		{ model: 'claude-sonnet-5-5', input: 2, output: 10 },
+		{ model: 'claude-haiku-5-5', input: 0.1, output: 0.5 },
+		{ model: 'claude-fable-5-1', input: 10, output: 50 },
+	])('prices the Claude model $model', ({ model, input, output }) => {
+		expect(resolveLlmPricing(LLM_PROVIDER_IDS.ANTHROPIC, model)).toEqual({
 			kind: 'perToken',
-			usdPerMillionAudioInput: 1,
-			usdPerMillionTextInput: 1,
-			usdPerMillionOutput: 6,
+			usdPerMillionAudioInput: input,
+			usdPerMillionTextInput: input,
+			usdPerMillionOutput: output,
 		});
 	});
 
@@ -202,9 +228,9 @@ describe('resolveLlmPricing', () => {
 			resolveLlmPricing(LLM_PROVIDER_IDS.ANTHROPIC, 'claude-sonnet-5'),
 		).toEqual({
 			kind: 'perToken',
-			usdPerMillionAudioInput: 3,
-			usdPerMillionTextInput: 3,
-			usdPerMillionOutput: 15,
+			usdPerMillionAudioInput: 2,
+			usdPerMillionTextInput: 2,
+			usdPerMillionOutput: 10,
 		});
 		// Opus 4.5-4.8 bill $5/$25 via the bare claude-opus-4 fragment...
 		expect(
@@ -918,13 +944,13 @@ describe('pricing one LLM call from what the vendor reported', () => {
 	});
 
 	it('bills the input and output tokens at the model rate', () => {
-		// claude-sonnet-5 is $3 per million in, $15 per million out
+		// claude-sonnet-5 is $2 per million in, $10 per million out
 		expect(
 			llmCallCostFromUsage(LLM_PROVIDER_IDS.ANTHROPIC, settings, {
 				inputTokens: 1_000_000,
 				outputTokens: 1_000_000,
 			}),
-		).toBeCloseTo(18, 10);
+		).toBeCloseTo(12, 10);
 	});
 
 	it('bills an OpenAI reasoning response for its completion total once', () => {
@@ -982,7 +1008,7 @@ describe('pricing one LLM call from what the vendor reported', () => {
 			llmCallCostFromUsage(LLM_PROVIDER_IDS.ANTHROPIC, settings, {
 				outputTokens: 1_000_000,
 			}),
-		).toBeCloseTo(15, 10);
+		).toBeCloseTo(10, 10);
 	});
 
 	it('reports no price when the vendor reported no counts at all', () => {

@@ -349,8 +349,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			models: (s) => s.llmOpenAiModels,
 			setModels: (s, ids) => (s.llmOpenAiModels = ids),
 			pickerName: 'Model',
-			pickerDesc:
-				'Pick an OpenAI model (e.g. gpt-5.6-sol, gpt-5.6-luna).',
+			pickerDesc: 'Pick an OpenAI model (e.g. gpt-6.1-sol, gpt-6-luna).',
 			docLabel: 'OpenAI models',
 			docUrl: OPENAI_MODELS_DOC_URL,
 		},
@@ -404,7 +403,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			setModels: (s, ids) => (s.geminiModels = ids),
 			pickerName: 'Model',
 			pickerDesc:
-				'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro). Used for transcription and for the post-processing prompts alike; a recording is uploaded via the File API for consistent speaker labels.',
+				'Pick a Gemini model (e.g. gemini-3.8-flash, gemini-4-argon). Used for transcription and for the post-processing prompts alike; a recording is uploaded via the File API for consistent speaker labels.',
 			docLabel: 'Gemini model list',
 			docUrl: GEMINI_MODELS_DOC_URL,
 		},
@@ -432,7 +431,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			setModels: (s, ids) => (s.llmAnthropicModels = ids),
 			pickerName: 'Model',
 			pickerDesc:
-				'Pick an Anthropic model (e.g. claude-opus-4-8, claude-sonnet-5).',
+				'Pick an Anthropic model (e.g. claude-opus-5-5, claude-sonnet-5-5).',
 			docLabel: 'Anthropic models',
 			docUrl: ANTHROPIC_MODELS_DOC_URL,
 		},

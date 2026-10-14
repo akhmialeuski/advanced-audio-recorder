@@ -180,9 +180,9 @@ Learn more: [Transcription](transcription.md)
 
 Optionally pass a finished transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. A translation is written beside the original rather than over it, one line per spoken segment, so it carries the recording's own timings and the SubRip and WebVTT outputs come out translated with matching timecodes. The Whisper API additionally offers its own operation for translating the speech into English during recognition. Each task keeps a catalogue of named prompt profiles, so a standup and a client call can be summarized on their own terms. Five engines are offered, each configured once on its own page and each with its own default model:
 
-- **OpenAI** runs `gpt-5.6-sol` by default.
-- **Anthropic (Claude)** runs `claude-opus-4-8` by default.
-- **Google Gemini** runs `gemini-3.5-flash` by default.
+- **OpenAI** runs `gpt-6.1-sol` by default.
+- **Anthropic (Claude)** runs `claude-opus-5-5` by default.
+- **Google Gemini** runs `gemini-3.8-flash` by default.
 - **Mistral** runs `mistral-medium-latest` by default.
 - **DeepSeek** runs `deepseek-flash` by default.
 
