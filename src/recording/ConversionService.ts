@@ -6,17 +6,8 @@
 
 import { Notice, normalizePath } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import { encodeAudioBuffer } from '../audio/AudioEncoder';
-import { FORMAT_WAV } from '../constants';
-import {
-	ChannelMode,
-	downmixAudioBuffer,
-	isMonoChannelMode,
-} from '../audio/downmix';
-import {
-	decodeAudioBlob,
-	convertBlobToFormatBuffer,
-} from '../audio/AudioFormatConverter';
+import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
+import { convertBlobToFormatBuffer } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { isReadableSize, tooLargeMessage } from '../platform/capabilities';
 import { updateLinksInVault } from '../utils/LinkUpdater';
@@ -70,9 +61,8 @@ export class ConversionService {
 	) {}
 
 	/**
-	 * Executes the conversion pipeline: existence pre-check, decode or
-	 * stream-convert, write the converted file, update links, optionally
-	 * delete the source. Failures before the converted file exists abort
+	 * Executes the conversion pipeline: existence pre-check, convert, write
+	 * the converted file, update links, optionally delete the source. Failures before the converted file exists abort
 	 * the conversion; failures after that are reported as partial
 	 * success.
 	 * @param request - Conversion parameters
@@ -125,58 +115,46 @@ export class ConversionService {
 			}
 
 			// The ceiling on the read, which is what happens next, and not
-			// the one on decoding: the compressed path below remuxes or
-			// streams, and neither ever expands the file to PCM. Asking the
-			// decode question here would refuse a long recording that the
-			// converter handles without allocating for it. What decoding
-			// costs is bounded by decodeAudioBlob, where the allocation is.
+			// the one on decoding: the conversion below remuxes or streams,
+			// and neither ever expands the file to PCM. Asking the decode
+			// question here would refuse a long recording that the converter
+			// handles without allocating for it. What decoding costs is
+			// bounded by decodeAudioBlob, where the allocation is, on the
+			// last rung of the ladder.
 			if (!isReadableSize(request.sourceFile.stat.size)) {
 				new Notice(tooLargeMessage('convert'));
 				return { status: 'aborted' };
 			}
 
 			onProgress('Reading source file...');
-			const arrayBuffer = await this.app.vault.adapter.readBinary(
-				request.sourceFile.path,
+			// Read through the vault rather than its adapter: the file is in
+			// hand, and the Vault API is the one Obsidian asks plugins to use
+			// for a file it indexes, leaving the adapter to paths it does not.
+			const arrayBuffer = await this.app.vault.readBinary(
+				request.sourceFile,
 			);
 
-			const channelMode = request.channelMode ?? ChannelMode.Source;
-			let data: ArrayBuffer;
-			if (request.targetFormat === FORMAT_WAV) {
-				// WAV needs a full decode; the streaming pipeline only
-				// targets compressed formats
-				onProgress('Decoding audio...');
-				const audioBuffer = await decodeAudioBlob(
-					arrayBuffer,
-					'convert',
-				);
-				onProgress('Encoding...');
-				const blob = await encodeAudioBuffer(
-					downmixAudioBuffer(audioBuffer, channelMode),
-					{
-						format: request.targetFormat,
-						bitrate: request.bitrate,
-					},
-					(percent) => {
-						onProgress(`Encoding... ${String(percent)}%`);
-					},
-				);
-				data = await blob.arrayBuffer();
-			} else {
-				onProgress('Converting...');
-				// Bytes go straight to createBinary; the buffer variant
-				// avoids wrapping the streamed result in a Blob only to
-				// read it back out.
-				data = await convertBlobToFormatBuffer(
-					new Blob([arrayBuffer]),
-					request.targetFormat,
-					request.bitrate,
-					(percent) => {
-						onProgress(`Converting... ${String(percent)}%`);
-					},
-					{ workerClient: this.getWorkerClient(), channelMode },
-				);
-			}
+			onProgress('Converting...');
+			// One ladder for every target, WAV included: the streaming
+			// Conversion writes WAV as well as any compressed format, so a
+			// WAV target is demuxed and decoded packet by packet into the
+			// output instead of being expanded whole into an AudioBuffer
+			// first. The full decode stays on the ladder's last rung, for a
+			// platform without the decoder the stream needs. Bytes go
+			// straight to createBinary; the buffer variant avoids wrapping
+			// the result in a Blob only to read it back out.
+			const data = await convertBlobToFormatBuffer(
+				new Blob([arrayBuffer]),
+				request.targetFormat,
+				request.bitrate,
+				(percent) => {
+					onProgress(`Converting... ${String(percent)}%`);
+				},
+				{
+					workerClient: this.getWorkerClient(),
+					channelMode: request.channelMode ?? ChannelMode.Source,
+				},
+			);
 
 			onProgress('Saving...');
 			createdFile = await this.app.vault.createBinary(newPath, data);

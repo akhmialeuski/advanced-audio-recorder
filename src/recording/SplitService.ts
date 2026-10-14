@@ -159,8 +159,10 @@ export class SplitService {
 				return { status: 'aborted' };
 			}
 			onProgress('Reading source file...');
-			const sourceBytes = await this.app.vault.adapter.readBinary(
-				request.sourceFile.path,
+			// Through the vault, which is the API for a file it indexes; the
+			// adapter is for paths it does not.
+			const sourceBytes = await this.app.vault.readBinary(
+				request.sourceFile,
 			);
 
 			const parts = await this.preparePartBlobs(

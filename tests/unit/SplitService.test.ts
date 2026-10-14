@@ -95,11 +95,9 @@ describe('SplitService', () => {
 		createdFiles = [];
 		mockApp = createMockApp({
 			vault: {
+				readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(64)),
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
-					readBinary: jest
-						.fn()
-						.mockResolvedValue(new ArrayBuffer(64)),
 					remove: jest.fn().mockResolvedValue(undefined),
 				},
 				createBinary: jest.fn((path: string) => {
@@ -155,7 +153,7 @@ describe('SplitService', () => {
 		it('aborts BEFORE reading a source over the platform read ceiling', async () => {
 			// On mobile even materializing the source bytes can get the
 			// WebView killed, so the size gate must run on stat.size,
-			// before adapter.readBinary
+			// before vault.readBinary
 			const { isReadableSize } = jest.requireMock<{
 				isReadableSize: jest.Mock;
 			}>('src/platform/capabilities');
@@ -164,7 +162,7 @@ describe('SplitService', () => {
 			const outcome = await service.split(createRequest(), jest.fn());
 
 			expect(outcome).toEqual({ status: 'aborted' });
-			expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
+			expect(mockApp.vault.readBinary).not.toHaveBeenCalled();
 			expect(
 				noticeMessages().some((message) =>
 					// The advice that follows depends on the platform and is
@@ -254,7 +252,7 @@ describe('SplitService', () => {
 		});
 
 		it('aborts with a notice when reading the source fails', async () => {
-			jest.mocked(mockApp.vault.adapter.readBinary).mockRejectedValue(
+			jest.mocked(mockApp.vault.readBinary).mockRejectedValue(
 				new Error('missing'),
 			);
 			const onProgress = jest.fn();
@@ -352,9 +350,7 @@ describe('SplitService', () => {
 			const header = createWavHeader(1, 500, 4000);
 			const wav = new Uint8Array(44 + 4000);
 			wav.set(new Uint8Array(header), 0);
-			jest.mocked(mockApp.vault.adapter.readBinary).mockResolvedValue(
-				wav.buffer,
-			);
+			jest.mocked(mockApp.vault.readBinary).mockResolvedValue(wav.buffer);
 			const decode = jest.mocked(
 				jest.requireMock<{ decodeAudioBlob: jest.Mock }>(
 					'src/audio/AudioFormatConverter',

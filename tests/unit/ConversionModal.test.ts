@@ -86,11 +86,9 @@ describe('ConversionModal', () => {
 		createdFile = { path: 'Recordings/recording.webm' };
 		mockApp = createMockApp({
 			vault: {
+				readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(100)),
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
-					readBinary: jest
-						.fn()
-						.mockResolvedValue(new ArrayBuffer(100)),
 				},
 				createBinary: jest.fn().mockResolvedValue(createdFile),
 			},
