@@ -528,6 +528,25 @@ describe('MarkerListView renaming while typing', () => {
 		expect(callbacks.onRename).toHaveBeenCalledTimes(1);
 	});
 
+	// A field keeps one debouncer for as long as the list is shown, and a
+	// commit only cancels it, so typing into the field again has to wait and
+	// save afresh rather than finding it spent.
+	it('saves a rename typed again after the field was committed', () => {
+		const { listContainer, callbacks } = setup(true);
+		const input = el<HTMLInputElement>(listContainer, MARKER.labelOf('b'));
+		type(listContainer, 'b', 'Renamed');
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+
+		type(listContainer, 'b', 'Renamed again');
+		jest.advanceTimersByTime(400);
+
+		expect(callbacks.onRename).toHaveBeenCalledTimes(2);
+		expect(callbacks.onRename).toHaveBeenLastCalledWith(
+			'b',
+			'Renamed again',
+		);
+	});
+
 	it.each([
 		{ name: 'input', event: 'input' },
 		{ name: 'change', event: 'change' },
