@@ -55,16 +55,16 @@ const segments: TranscriptSegment[] = [
 	{ start: 10, end: 14, text: 'api is done', speaker: 'Speaker 2' },
 ];
 
-/** An App backed by an in-memory adapter, shared by the store and the dialog. */
+/** An App backed by an in-memory vault, shared by the store and the dialog. */
 function makeApp(): { app: App; files: Map<string, string> } {
-	const { files, adapter } = fakeVaultFiles();
+	const { files, vault } = fakeVaultFiles();
 	const app = createMockApp({
 		vault: {
-			adapter,
-			getFiles: () => [...files.keys()].map((path) => ({ path })),
-			// No transcript outputs were recorded, so the rename touches no
-			// files; the dialog still resolves the recording for playback.
-			getFileByPath: () => null,
+			// No transcript outputs were recorded and the recording itself is
+			// not in the file map, so the vault finds only the sidecar and the
+			// rename touches no other file; the dialog still resolves the
+			// recording for playback.
+			...vault,
 			getResourcePath: (file: TFile) => `app://vault/${file.path}`,
 			readBinary: () => Promise.resolve(new ArrayBuffer(4)),
 		},

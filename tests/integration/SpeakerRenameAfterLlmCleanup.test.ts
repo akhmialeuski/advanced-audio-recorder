@@ -119,7 +119,7 @@ function linkCache(content: string): {
  * editor appends at the cursor, which is what the real insertion path needs.
  */
 function makeApp(): { app: App; files: Map<string, string> } {
-	const { files, adapter } = fakeVaultFiles([
+	const { files, vault } = fakeVaultFiles([
 		[AUDIO_PATH, ''],
 		[NOTE_PATH, '# Standup\n\n![[standup.webm]]\n'],
 	]);
@@ -147,12 +147,7 @@ function makeApp(): { app: App; files: Map<string, string> } {
 	};
 	const app = createMockApp({
 		vault: {
-			adapter,
-			getFiles: () => [...files.keys()].map((path) => tf(path)),
-			getFileByPath: (path: string): TFile | null =>
-				files.has(path) ? tf(path) : null,
-			cachedRead: (file: TFile): Promise<string> =>
-				Promise.resolve(files.get(file.path) ?? ''),
+			...vault,
 			process: (
 				file: TFile,
 				fn: (data: string) => string,

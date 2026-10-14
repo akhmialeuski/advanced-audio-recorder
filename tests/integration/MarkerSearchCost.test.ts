@@ -1,7 +1,7 @@
 /**
  * What the vault-wide marker search costs on a phone, measured rather than
  * asserted from the design. A hundred recordings with markers are put in a
- * vault behind an adapter that counts reads, the index is built through the
+ * vault that counts reads, the index is built through the
  * real sidecar store, and then the search is typed into. The build is allowed
  * one read per sidecar; typing must read nothing at all, because a search
  * that hits the disk on every keystroke is unusable on a phone.
@@ -19,12 +19,12 @@ const RECORDINGS = 100;
 /** How many markers each of them carries. */
 const MARKERS_PER_RECORDING = 5;
 
-/** A vault of recordings with markers, behind a read-counting adapter. */
+/** A vault of recordings with markers that counts every read of a file. */
 function measuredVault(): {
 	index: MarkerSearchIndex;
 	reads: () => number;
 } {
-	const { files, adapter } = fakeVaultFiles();
+	const { files, vault } = fakeVaultFiles();
 	for (let recording = 0; recording < RECORDINGS; recording++) {
 		const markers = Array.from(
 			{ length: MARKERS_PER_RECORDING },
@@ -40,23 +40,15 @@ function measuredVault(): {
 			JSON.stringify({ version: 2, markers }),
 		);
 	}
-	let reads = 0;
-	const counted = {
-		...adapter,
-		read: (path: string): Promise<string> => {
-			reads++;
-			return adapter.read(path);
-		},
-	};
-	const app = createMockApp({
-		vault: {
-			adapter: counted,
-			getFiles: () => [...files.keys()].map((path) => ({ path })),
-		},
-	}).app;
+	const app = createMockApp({ vault }).app;
+	// Every way the store has of reading a file's text counts, so a read that
+	// slipped past the vault's cache onto the disk is not missed.
 	return {
 		index: new MarkerSearchIndex(new RecordingSidecarStore(app)),
-		reads: () => reads,
+		reads: () =>
+			vault.cachedRead.mock.calls.length +
+			vault.read.mock.calls.length +
+			vault.adapter.read.mock.calls.length,
 	};
 }
 

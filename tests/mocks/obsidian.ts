@@ -565,6 +565,74 @@ export class Vault extends Events {
 		this.trigger('delete', file);
 	}
 
+	/**
+	 * Moves a file as the real vault does: a destination that is taken is
+	 * refused, the TFile keeps its identity with its path and names rewritten
+	 * and its folder changed, and `rename` fires with the old path.
+	 *
+	 * The event is the point. Code that mirrors a rename onto a companion
+	 * file is driven by it, and its own move fires it again, so a vault that
+	 * moved files silently could never show that second event reaching the
+	 * handler that caused it.
+	 * @param file - The file to move
+	 * @param newPath - Vault-relative destination
+	 */
+	rename = jest.fn(
+		async (file: TAbstractFile, newPath: string): Promise<void> => {
+			const oldPath = file.path;
+			if (!(file instanceof TFile) || this.files.get(oldPath) !== file) {
+				throw new Error(`Vault.rename: no file at ${oldPath}.`);
+			}
+			if (this.files.has(newPath)) {
+				throw new Error('Destination file already exists!');
+			}
+			for (const store of [this.text, this.binary] as Map<
+				string,
+				unknown
+			>[]) {
+				if (store.has(oldPath)) {
+					store.set(newPath, store.get(oldPath));
+					store.delete(oldPath);
+				}
+			}
+			this.files.delete(oldPath);
+			this.detachFromFolder(file);
+			const renamed = new TFile(newPath);
+			file.path = newPath;
+			file.name = renamed.name;
+			file.basename = renamed.basename;
+			file.extension = renamed.extension;
+			const parent = this.registerFolders(newPath);
+			file.parent = parent;
+			parent.children.push(file);
+			this.files.set(newPath, file);
+			this.trigger('rename', file, oldPath);
+		},
+	);
+
+	/**
+	 * Deletes a file for good. In the mock that is what trashing does too -
+	 * the difference between the two lives in the user's trash, which the
+	 * mock does not model - so a test tells them apart by which was called.
+	 * @param file - The file to delete
+	 */
+	delete = jest.fn(async (file: TAbstractFile): Promise<void> => {
+		this.forget(file.path);
+	});
+
+	/**
+	 * Takes a file out of the folder holding it, so a move can file it under
+	 * its new folder without the old one still listing it.
+	 * @param file - The file leaving its folder
+	 */
+	private detachFromFolder(file: TFile): void {
+		const siblings = file.parent?.children ?? [];
+		const index = siblings.indexOf(file);
+		if (index >= 0) {
+			siblings.splice(index, 1);
+		}
+	}
+
 	getAbstractFileByPath = jest.fn(
 		(path: string): TAbstractFile | null => this.files.get(path) ?? null,
 	);
