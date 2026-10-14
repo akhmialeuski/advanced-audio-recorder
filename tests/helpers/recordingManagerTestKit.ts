@@ -7,13 +7,14 @@
  * @module tests/helpers/recordingManagerTestKit
  */
 
-import type { App } from 'obsidian';
+import type { App, TFile } from 'obsidian';
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import type { TrackAudioSource } from 'src/recording/AudioStreamHandler';
+import { createFile } from './createApp';
 import { partial } from './doubles';
 import type { PcmRecorderDouble } from '../mocks/modules/pcmStreamRecorder';
 
@@ -140,6 +141,13 @@ export const createRecordingMockApp = (): App =>
 			},
 			createBinary: jest.fn().mockResolvedValue(undefined),
 			createFolder: jest.fn().mockResolvedValue(undefined),
+			// createBinary indexes a file the moment it is written, so the
+			// saved recording is there when its link is generated.
+			getFileByPath: jest.fn((path: string) => createFile(path)),
+		},
+		fileManager: {
+			// Obsidian's default link settings: a shortest-path wikilink.
+			generateMarkdownLink: jest.fn((file: TFile) => `[[${file.name}]]`),
 		},
 		workspace: {
 			getActiveViewOfType: jest.fn().mockReturnValue(null),

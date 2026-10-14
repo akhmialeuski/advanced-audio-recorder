@@ -636,8 +636,8 @@ describe('RecordingManager', () => {
 		});
 	});
 
-	describe('insertFileLinks uses basename only', () => {
-		it('inserts only filename without directory path in wikilinks', async () => {
+	describe('linking the saved recording into the note', () => {
+		it('embeds the link the vault generates for the saved file', async () => {
 			const mockReplaceSelection = jest.fn();
 			(
 				mockApp.workspace.getActiveViewOfType as jest.Mock
@@ -662,7 +662,7 @@ describe('RecordingManager', () => {
 			expect(insertedText).toMatch(/^!\[\[recording-.*\]\]$/);
 		});
 
-		it('uses basename when file is saved in a nested directory', async () => {
+		it('embeds the generated link for a file saved in a nested folder', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				saveNearActiveFile: true,

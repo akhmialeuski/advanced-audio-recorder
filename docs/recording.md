@@ -11,6 +11,7 @@ Recording is the core of Advanced Audio Recorder: start a capture from the ribbo
 - [Pausing and resuming](#pausing-and-resuming)
 - [Stopping and saving](#stopping-and-saving)
 - [Losing the input device](#losing-the-input-device)
+- [How the link is written](#how-the-link-is-written)
 - [Insert at original position](#insert-at-original-position)
 - [Crash recovery](#crash-recovery)
 - [Recording on mobile](#recording-on-mobile)
@@ -191,7 +192,7 @@ Click the ribbon icon again, run **Start/stop recording**, or click the **Stop**
 2. **Flush** any audio still buffered in memory to disk.
 3. **Assemble** the buffered segments into the final audio file.
 4. **Write** the file to the configured save location.
-5. **Insert an embed link** (`![[filename.ext]]`) into the active note.
+5. **Insert an embed link** into the active note, written the way your vault writes links (see [How the link is written](#how-the-link-is-written)).
 6. **Clean up** the temporary segment files.
 
 A `Recording stopped` notice confirms completion.
@@ -224,6 +225,12 @@ A single-track session, or a multi-track one that has just lost its last live in
 While the save that follows a disconnection runs, the status bar reads `Input lost` in front of every stage listed under [Save progress in the status bar](#save-progress-in-the-status-bar), where a stop you pressed shows the stage on its own. The reason holds for as long as the save does, so it stays in front of each stage rather than being replaced by the first one. The ribbon icon switches to the same save icon an ordinary stop uses, and the recorder returns to idle once the file is written.
 
 An input pulled out while a stop you pressed is still writing its file is not treated as a disconnection: the capture had already ended, so the save runs to completion as an ordinary one.
+
+---
+
+## How the link is written
+
+The embed follows the link settings under **Settings > Files and links**, exactly as a link you insert yourself does. With **Use [[Wikilinks]]** on (the default) it reads `![[filename.ext]]`; with it off it is a Markdown embed, the path in parentheses after the `![...]`, with any space in it written as `%20`. **New link format** decides how much of the path is spelled out, and Obsidian adds the folder on its own whenever the bare file name would also match another file in the vault, so the embed always points at the recording that was just saved and never at an older file of the same name.
 
 ---
 
