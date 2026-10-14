@@ -2458,27 +2458,42 @@ export abstract class AbstractInputSuggest<T> {
 }
 
 /**
- * Debounced function type returned by the debounce mock.
+ * Debounced function type returned by the debounce mock. A call and
+ * `cancel()` hand the debouncer back, as Obsidian's typings declare.
  */
-export type Debouncer<T extends unknown[], V> = ((...args: T) => void) & {
-	cancel: () => void;
+export type Debouncer<T extends unknown[], V> = ((
+	...args: T
+) => Debouncer<T, V>) & {
+	cancel: () => Debouncer<T, V>;
 	run: () => V | undefined;
 };
 
 /**
  * Mock debounce function. Defers the callback to a timer like the real
  * implementation so tests can flush it with fake timers or run().
+ *
+ * `resetTimer` decides what a call made while one is pending does, as it does
+ * in Obsidian. With it, the wait starts over from that call, so the callback
+ * runs once the calls stop. Without it (the default) the wait keeps running
+ * from the first call of the burst, so a steady stream of calls still runs
+ * the callback once per window. Either way the callback gets the arguments of
+ * the latest call. Obsidian moves a deadline rather than replacing the timer,
+ * which fires at the same moment; replacing it keeps the double independent
+ * of whether a suite fakes Date.
  */
 export function debounce<T extends unknown[], V>(
 	cb: (...args: T) => V,
 	timeout?: number,
-	_resetTimer?: boolean,
+	resetTimer = false,
 ): Debouncer<T, V> {
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let pendingArgs: T | null = null;
 
-	const debounced = ((...args: T): void => {
+	const debounced = ((...args: T): Debouncer<T, V> => {
 		pendingArgs = args;
+		if (timer !== null && !resetTimer) {
+			return debounced;
+		}
 		if (timer !== null) {
 			clearTimeout(timer);
 		}
@@ -2490,14 +2505,16 @@ export function debounce<T extends unknown[], V>(
 				cb(...callArgs);
 			}
 		}, timeout ?? 0);
+		return debounced;
 	}) as Debouncer<T, V>;
 
-	debounced.cancel = (): void => {
+	debounced.cancel = (): Debouncer<T, V> => {
 		if (timer !== null) {
 			clearTimeout(timer);
 			timer = null;
 		}
 		pendingArgs = null;
+		return debounced;
 	};
 
 	debounced.run = (): V | undefined => {
