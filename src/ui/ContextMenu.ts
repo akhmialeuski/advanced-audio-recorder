@@ -22,6 +22,7 @@ import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
+import { hasTimecodeSubpath } from '../player/timecodeLinks';
 import type {
 	ActionServices,
 	FileAction,
@@ -469,20 +470,29 @@ export class ContextMenu {
 	}
 
 	/**
-	 * Adds a "Delete recording & link to file" item to the menu.
+	 * Adds a "Delete recording & link to file" item to the menu, unless the
+	 * link points at a moment in the recording (`#t=...`). Such a link is a
+	 * transcript timestamp, and a transcript holds dozens of them to the same
+	 * recording: trashing the recording from one of them is not what a
+	 * right-click on a timestamp asks for, and it would leave every other
+	 * timestamp pointing at nothing. The non-destructive file actions stay
+	 * on offer for it; only this entry is held back.
 	 * @param menu - The menu to add the item to.
 	 * @param file - The file to delete.
 	 * @param editor - The editor instance.
 	 * @param line - The line number where the link is located.
-	 * @param linkMatch - The link match object containing start and end indices.
+	 * @param linkMatch - The link at the click, with its span and subpath.
 	 */
 	private addDeleteRecordingAndLinkMenuItem(
 		menu: Menu,
 		file: TFile,
 		editor: Editor,
 		line: number,
-		linkMatch: { start: number; end: number },
+		linkMatch: SourceLink,
 	): void {
+		if (hasTimecodeSubpath(linkMatch.subpath)) {
+			return;
+		}
 		menu.addItem((item: MenuItem) => {
 			item.setTitle('Delete recording & link to file')
 				.setIcon('trash')

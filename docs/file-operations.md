@@ -27,19 +27,19 @@ The plugin recognizes a file as audio by its extension. Supported extensions are
 
 Which actions appear depends on where you click and on your settings:
 
-| Action                                | File Explorer | Embed link | Player | Condition                               |
-| ------------------------------------- | ------------- | ---------- | ------ | --------------------------------------- |
-| **Audio file info**                   | Yes           | Yes        | Yes    | Always                                  |
-| **Convert audio format**              | Yes           | Yes        | Yes    | Always                                  |
-| **Split audio into parts**            | Yes           | Yes        | Yes    | Always                                  |
-| **Clean up audio**                    | Yes           | Yes        | Yes    | Always                                  |
-| **Transcribe audio**                  | Yes           | Yes        | Yes    | When transcription is enabled           |
-| **Transcribe the parts that failed**  | Yes           | Yes        | Yes    | When transcription is enabled           |
-| **Rename speakers**                   | Yes           | Yes        | Yes    | When **Rename speakers** is enabled     |
-| **Generate chapters from transcript** | Yes           | Yes        | Yes    | When **Auto chapters** is enabled       |
-| **Export chapters and markers**       | Yes           | Yes        | Yes    | Always                                  |
-| **Delete recording**                  | Yes           | No         | Yes    | Always                                  |
-| **Delete recording & link to file**   | No            | Yes        | Yes    | When a link to the file is at the click |
+| Action                                | File Explorer | Embed link | Player | Condition                                                 |
+| ------------------------------------- | ------------- | ---------- | ------ | --------------------------------------------------------- |
+| **Audio file info**                   | Yes           | Yes        | Yes    | Always                                                    |
+| **Convert audio format**              | Yes           | Yes        | Yes    | Always                                                    |
+| **Split audio into parts**            | Yes           | Yes        | Yes    | Always                                                    |
+| **Clean up audio**                    | Yes           | Yes        | Yes    | Always                                                    |
+| **Transcribe audio**                  | Yes           | Yes        | Yes    | When transcription is enabled                             |
+| **Transcribe the parts that failed**  | Yes           | Yes        | Yes    | When transcription is enabled                             |
+| **Rename speakers**                   | Yes           | Yes        | Yes    | When **Rename speakers** is enabled                       |
+| **Generate chapters from transcript** | Yes           | Yes        | Yes    | When **Auto chapters** is enabled                         |
+| **Export chapters and markers**       | Yes           | Yes        | Yes    | Always                                                    |
+| **Delete recording**                  | Yes           | No         | Yes    | Always                                                    |
+| **Delete recording & link to file**   | No            | Yes        | Yes    | When a link to the file, not a timestamp, is at the click |
 
 On an **embed link** in the editor, plain **Delete recording** is deliberately replaced by **Delete recording & link to file** - deleting the file under a link you are looking at should also clean up the link. When you right-click an **enhanced player**, the menu also offers position-aware actions at the clicked point - **Add marker here**, **Add chapter here**, and **Copy timestamp link here** - alongside the file actions above. Those are documented in [Audio player](audio-player.md#markers-and-chapters).
 
@@ -186,7 +186,7 @@ A progress dialog shows the elapsed timer and lets you **Cancel** or **Minimize*
 Two delete actions hand the file to Obsidian, which disposes of it the way your vault's **Deleted files** preference says: the system trash, the vault's own `.trash` folder, or permanent deletion.
 
 - **Delete recording** - trashes the audio file. Available in the File Explorer and on an embedded player; on an editor embed link the menu offers only the **& link to file** variant below, so deleting the file never leaves the link you clicked behind.
-- **Delete recording & link to file** - trashes the audio file **and** removes the embed link from the editor in the same step. Available only when you right-click a **link** in the editor or an **embedded player**, because that variant needs a link at the click position to remove. Any link to the recording counts, whether it is a wikilink or a Markdown link (including one whose path is written with `%20` for spaces), an embed or a plain link, and with or without a [timecode](audio-player.md#timecode-links) or an alias, so right-clicking a transcript's timestamp offers it too and removes that one timestamp link. On a player it is offered in Live Preview, where the link the player was rendered from is in the editor; Reading view has no editor to remove it from, so there the player offers only plain **Delete recording**.
+- **Delete recording & link to file** - trashes the audio file **and** removes the embed link from the editor in the same step. Available only when you right-click a **link** in the editor or an **embedded player**, because that variant needs a link at the click position to remove. Any link to the recording counts, whether it is a wikilink or a Markdown link (including one whose path is written with `%20` for spaces), an embed or a plain link, with or without an alias, except a [timecode link](audio-player.md#timecode-links) such as a transcript's timestamp. A transcript holds dozens of timestamps to the same recording, so deleting the recording from one of them would leave all the others pointing at nothing; right-clicking a timestamp therefore offers the other file actions, such as **Transcribe audio** or **Convert audio format**, but not this one. The same holds for a player whose embed starts at a timestamp. On a player it is offered in Live Preview, where the link the player was rendered from is in the editor; Reading view has no editor to remove it from, so there the player offers only plain **Delete recording**.
 
 ![The two delete entries side by side, Delete recording above Delete recording & link to file](images/context-menu-delete.png)
 
@@ -210,7 +210,7 @@ If a recording has marker or chapter data, its sidecar (`recording.webm.markers.
 | **Generate chapters from transcript**    | Asks the configured LLM to divide the transcript into titled chapters.                  | File Explorer, embed link, player (if on)        | [Transcription](transcription.md)                                   |
 | **Export chapters and markers**          | Writes the markup as a timecoded list, a cue sheet, or a Markdown outline.              | File Explorer, embed link, player                | [Audio player](audio-player.md#exporting-chapters-and-markers)      |
 | **Delete recording**                     | Hands the audio file to Obsidian's own Deleted files handling.                          | File Explorer, player                            | [This page](#delete-recording)                                      |
-| **Delete recording & link to file**      | Trashes the audio file and removes its embed link from the editor.                      | Embed link, player                               | [This page](#delete-recording)                                      |
+| **Delete recording & link to file**      | Trashes the audio file and removes its embed link from the editor.                      | Embed link, player (not on a timestamp link)     | [This page](#delete-recording)                                      |
 | **Add marker here**                      | Adds a bookmark at the clicked point on the seek bar.                                   | Enhanced player (markers on, editing)            | [Audio player](audio-player.md#markers-and-chapters)                |
 | **Add chapter here**                     | Adds a chapter at the clicked point on the seek bar.                                    | Enhanced player (markers on, editing)            | [Audio player](audio-player.md#markers-and-chapters)                |
 | **Copy timestamp link here**             | Copies a link to the clicked position, e.g. `[[recording#t=90\|1:30]]`.                 | Enhanced player                                  | [Audio player](audio-player.md#timecode-links)                      |

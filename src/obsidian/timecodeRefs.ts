@@ -12,7 +12,10 @@
 
 import { parseLinktext } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import { parseTimecodeSubpath } from '../player/timecodeLinks';
+import {
+	hasTimecodeSubpath,
+	parseTimecodeSubpath,
+} from '../player/timecodeLinks';
 import type { TimecodeLinkBuilder } from '../transcription/transcriptFormat';
 import { linksInLine } from './sourceLinks';
 
@@ -55,7 +58,7 @@ function resolveTimecodeLink(
 	link: string,
 ): ResolvedTimecodeLink | null {
 	const { path, subpath } = parseLinktext(link);
-	if (!subpath.replace(/^#/, '').startsWith('t=')) {
+	if (!hasTimecodeSubpath(subpath)) {
 		return null;
 	}
 	const file = app.metadataCache.getFirstLinkpathDest(path, note.path);

@@ -40,11 +40,22 @@ export function parseAudioLinkTarget(src: string): AudioLinkTarget {
  * @returns Seconds parsed from a `t=` subpath, or null when absent/invalid
  */
 export function parseTimecodeSubpath(subpath: string): number | null {
-	const cleaned = subpath.startsWith('#') ? subpath.slice(1) : subpath;
-	if (!cleaned.startsWith('t=')) {
+	if (!hasTimecodeSubpath(subpath)) {
 		return null;
 	}
-	return parseTimecode(cleaned.slice(2));
+	return parseTimecode(subpath.replace(/^#/, '').slice(2));
+}
+
+/**
+ * Whether a subpath names a moment in a recording (`t=...`), whether or not
+ * the time after it is readable. A malformed time is still a timestamp link
+ * in intent, which is what the callers deciding how to treat a link need.
+ * A leading `#` is tolerated.
+ * @param subpath - Link subpath (e.g. "#t=1:30" or "t=abc")
+ * @returns True when the subpath is a `t=` timecode
+ */
+export function hasTimecodeSubpath(subpath: string): boolean {
+	return subpath.replace(/^#/, '').startsWith('t=');
 }
 
 export { isAudioFile } from '../utils/audioFile';

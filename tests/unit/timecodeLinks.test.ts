@@ -7,6 +7,7 @@
 import {
 	parseAudioLinkTarget,
 	parseTimecodeSubpath,
+	hasTimecodeSubpath,
 	isAudioFile,
 } from 'src/player/timecodeLinks';
 import { createFile } from '../helpers/createApp';
@@ -76,5 +77,26 @@ describe('parseTimecodeSubpath', () => {
 		expect(parseTimecodeSubpath('')).toBeNull();
 		expect(parseTimecodeSubpath('heading')).toBeNull();
 		expect(parseTimecodeSubpath('t=abc')).toBeNull();
+	});
+});
+
+describe('hasTimecodeSubpath', () => {
+	it.each([
+		{ name: 'a timecode', subpath: '#t=90', expected: true },
+		{
+			name: 'a timecode without its hash',
+			subpath: 't=1:30',
+			expected: true,
+		},
+		{ name: 'an unreadable timecode', subpath: '#t=abc', expected: true },
+		{ name: 'a heading', subpath: '#Intro', expected: false },
+		{
+			name: 'a heading starting with t',
+			subpath: '#title',
+			expected: false,
+		},
+		{ name: 'no subpath', subpath: '', expected: false },
+	])('answers $expected for $name', ({ subpath, expected }) => {
+		expect(hasTimecodeSubpath(subpath)).toBe(expected);
 	});
 });

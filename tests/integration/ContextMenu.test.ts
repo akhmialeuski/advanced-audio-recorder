@@ -622,6 +622,51 @@ describe('ContextMenu', () => {
 			);
 		});
 
+		/**
+		 * Opens the editor menu on the first link of a line.
+		 * @param line - The line the cursor is on
+		 * @returns The titles of the menu that opened
+		 */
+		function editorMenuOn(line: string): string[] {
+			const menu = new Menu();
+			(mockEditor.getLine as jest.Mock).mockReturnValue(line);
+			(mockEditor.getCursor as jest.Mock).mockReturnValue({
+				line: 0,
+				ch: 3,
+			});
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(makeAudioFile());
+
+			editorMenuCallback(menu, mockEditor, {});
+
+			return titlesOf(menu);
+		}
+
+		it.each([
+			{ name: 'a timestamp', line: '[[audio.mp3#t=30|0:30]] Speaker 1' },
+			{ name: 'an unreadable timestamp', line: '[[audio.mp3#t=abc]]' },
+			{ name: 'a Markdown timestamp', line: '[0:30](audio.mp3#t=30)' },
+		])('offers no link deletion on $name', ({ line }) => {
+			// A transcript holds dozens of timestamps to one recording;
+			// trashing it from one would leave the rest pointing at nothing.
+			expect(editorMenuOn(line)).not.toContain(
+				'Delete recording & link to file',
+			);
+		});
+
+		it('keeps the non-destructive file actions on a timestamp', () => {
+			expect(editorMenuOn('[[audio.mp3#t=30|0:30]]')).toContain(
+				'Audio file info',
+			);
+		});
+
+		it('offers link deletion on a link to a heading in the recording', () => {
+			expect(editorMenuOn('[[audio.mp3#Intro]]')).toContain(
+				'Delete recording & link to file',
+			);
+		});
+
 		it('resolves the link without a source path when the view has no file', () => {
 			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue('[[audio.mp3]]');
@@ -983,6 +1028,22 @@ describe('ContextMenu', () => {
 			await clickItem(triggeredMenu(), 'Delete recording & link to file');
 
 			expect(live.text()).toBe('Intro\nBefore  after');
+		});
+
+		it('offers no link deletion over a player that starts at a timestamp', () => {
+			const { event } = rightClickOnRenderedEmbed(
+				'![[audio.mp3#t=30]]',
+				'![[audio.mp3#t=30]]',
+			);
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(makeAudioFile());
+
+			playerMenuCallback(event);
+
+			expect(titlesOf(triggeredMenu())).not.toContain(
+				'Delete recording & link to file',
+			);
 		});
 
 		it('offers no link deletion when the source there links another file', () => {
