@@ -29,12 +29,15 @@ import { allEls, el } from '../helpers/dom';
 import { at } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
 import { SETTING } from '../helpers/selectors';
+import { noticeMessages } from '../mocks/obsidian';
 import {
 	hasSettingRow,
 	rowDescription,
 	rowOptionValues,
+	rowOptions,
 	rowSelect,
 	rowToggle,
+	rowToggleOn,
 	settingRow,
 } from '../helpers/settingRows';
 
@@ -761,7 +764,7 @@ function transcribedInto(notePath: string): Parameters<typeof createSut>[0] {
 	};
 }
 
-describe('fixes from review', () => {
+describe('the panel while saving, with unreadable data, and under changed settings', () => {
 	it('labels the record button as saving while a recording is saved', async () => {
 		const { view } = await createSut({ status: 'saving' });
 
@@ -842,20 +845,12 @@ describe('fixes from review', () => {
 	});
 });
 
-describe('fixes from the second review', () => {
+describe('the panel when refreshes overlap or a run wrote nothing', () => {
 	it('still redraws for new settings when a later refresh overtakes it', async () => {
 		const { view, settings, getTranscript } = await createSut({
 			active: recording('sync.webm'),
 		});
-		let release: () => void = () => undefined;
-		getTranscript.mockImplementationOnce(
-			() =>
-				new Promise((resolve) => {
-					release = () => {
-						resolve(emptyTranscriptSection());
-					};
-				}),
-		);
+		const release = holdNextTranscriptRead(getTranscript);
 		settings.transcriptionEnabled = false;
 
 		const forced = view.refresh();
@@ -902,7 +897,7 @@ describe('fixes from the second review', () => {
 	});
 });
 
-describe('fixes from the third review', () => {
+describe('what the panel leaves out', () => {
 	it('offers no top-up for a recording with no failed parts', async () => {
 		const { view } = await createSut({
 			active: recording('sync.webm'),
@@ -957,8 +952,8 @@ describe('fixes from the third review', () => {
 	});
 });
 
-describe('fixes from the fourth review', () => {
-	it('keeps showing the recording picked in the dropdown after it is renamed', async () => {
+describe('the panel following renames, rewrites and its own switches', () => {
+	it('comes back to the picked recording once the note links its new name', async () => {
 		const files = {
 			a: recording('a.m4a'),
 			b: recording('b.m4a'),
@@ -969,21 +964,143 @@ describe('fixes from the fourth review', () => {
 			cache: {
 				embeds: [{ link: 'a.m4a' }, { link: 'b.m4a' }],
 			} as CachedMetadata,
-			vaultFiles: [files.a, files.b, files.renamed],
+			vaultFiles: [files.a, files.b],
 		});
 		const select = rowSelect(settingRow(view.contentEl, 'Shown'));
 		select.value = 'b.m4a';
 		select.dispatchEvent(new Event('change'));
 		await flushMicrotasks();
-		asMockApp(app).metadataCache.getFileCache.mockReturnValue({
+		const metadata = asMockApp(app).metadataCache;
+		const resolvable = new Map([
+			['a.m4a', files.a],
+			['b2.m4a', files.renamed],
+		]);
+		metadata.getFirstLinkpathDest.mockImplementation(
+			(link: string) => resolvable.get(link) ?? null,
+		);
+		// The rename is seen first, while the note still links the old name.
+		app.vault.trigger('rename', files.renamed, 'b.m4a');
+		await flushMicrotasks();
+		metadata.getFileCache.mockReturnValue({
 			embeds: [{ link: 'a.m4a' }, { link: 'b2.m4a' }],
 		});
 
-		app.vault.trigger('rename', files.renamed, 'b.m4a');
+		app.metadataCache.trigger('changed', note('Meeting.md'));
 		await flushMicrotasks();
 
 		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
 			'b2.m4a',
 		);
 	});
+
+	it('reads the recording again when the file itself is rewritten', async () => {
+		const { app, getTranscript } = await createSut({
+			active: recording('sync.webm'),
+		});
+
+		app.vault.trigger('modify', recording('sync.webm'));
+		await flushMicrotasks();
+
+		expect(getTranscript).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps the switch the user flipped instead of rebuilding the panel', async () => {
+		const { view } = await createSut();
+		const row = settingRow(view.contentEl, 'Enhanced audio player');
+
+		rowToggle(row).click();
+		await view.refresh();
+
+		expect(settingRow(view.contentEl, 'Enhanced audio player')).toBe(row);
+	});
+
+	it('sets a switch in place when its setting changed elsewhere', async () => {
+		const { view, settings } = await createSut();
+		settings.enhancedPlayerEnabled = false;
+
+		await view.refresh();
+
+		expect(
+			rowToggleOn(settingRow(view.contentEl, 'Enhanced audio player')),
+		).toBe(false);
+	});
+
+	it('tells the user a switch could not be saved', async () => {
+		jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		const { view, saveSettings } = await createSut();
+		saveSettings.mockRejectedValue(new Error('disk full'));
+
+		rowToggle(settingRow(view.contentEl, 'Enhanced audio player')).click();
+		await flushMicrotasks();
+
+		expect(noticeMessages()).toContain(
+			'Could not save "Enhanced audio player".',
+		);
+	});
+
+	it('reads again for a change that lands while a refresh is under way', async () => {
+		const { view, getTranscript, sidecarChanged, app } = await createSut();
+		const release = holdNextTranscriptRead(getTranscript);
+		asMockApp(app).workspace.seedActiveFile(recording('new.webm'));
+		const opening = view.refresh();
+
+		sidecarChanged('new.webm');
+		release();
+		await opening;
+		await flushMicrotasks();
+
+		expect(getTranscript).toHaveBeenCalledTimes(2);
+	});
+
+	it('names recordings that share a file name by their path', async () => {
+		const { view } = await createSut({
+			active: note('Meeting.md'),
+			cache: {
+				embeds: [
+					{ link: '2024/standup.webm' },
+					{ link: '2025/standup.webm' },
+				],
+			} as CachedMetadata,
+			vaultFiles: [
+				recording('2024/standup.webm'),
+				recording('2025/standup.webm'),
+			],
+		});
+
+		expect(rowOptions(settingRow(view.contentEl, 'Shown'))).toEqual([
+			'2024/standup.webm',
+			'2025/standup.webm',
+		]);
+	});
+
+	it('says so when a listed output is no longer in the vault', async () => {
+		const { view } = await createSut(transcribedInto('Gone.md'));
+
+		el(settingRow(view.contentEl, 'Note'), SETTING.extraButton).click();
+
+		expect(noticeMessages()).toContain(
+			'Gone.md is no longer in the vault.',
+		);
+	});
 });
+
+/**
+ * Makes the next transcript read wait until released, so a test can act
+ * while a refresh is still reading.
+ * @param getTranscript - The sidecar double's transcript reader
+ * @returns Releases the held read with an empty transcript
+ */
+function holdNextTranscriptRead(getTranscript: jest.Mock): () => void {
+	let release: () => void = () => undefined;
+	getTranscript.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				release = () => {
+					resolve(emptyTranscriptSection());
+				};
+			}),
+	);
+	return () => {
+		release();
+	};
+}

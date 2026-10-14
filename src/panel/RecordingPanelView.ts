@@ -19,8 +19,8 @@
  * @module panel/RecordingPanelView
  */
 
-import { ItemView, Setting, setIcon } from 'obsidian';
-import type { Menu, TFile, WorkspaceLeaf } from 'obsidian';
+import { ItemView, Notice, Setting, setIcon } from 'obsidian';
+import type { Menu, TFile, ToggleComponent, WorkspaceLeaf } from 'obsidian';
 import {
 	COMMAND_IDS,
 	PLUGIN_LOG_PREFIX,
@@ -33,7 +33,10 @@ import type {
 	FileContext,
 } from '../actions/PluginAction';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
-import { renderActionsIntoMenu } from '../actions/renderActionsIntoMenu';
+import {
+	renderActionsIntoMenu,
+	runActionLogged,
+} from '../actions/renderActionsIntoMenu';
 import { RecordingStatus } from '../types';
 import { isAudioFile } from '../utils/audioFile';
 import { fileNameOf } from '../utils/paths';
@@ -140,6 +143,14 @@ export class RecordingPanelView extends ItemView {
 	private shownFile: TFile | null = null;
 	/** The recordings currently shown, to filter sidecar changes by. */
 	private shownPaths = new Set<string>();
+	/**
+	 * The recordings a refresh still in flight is reading, so a change that
+	 * lands before it draws them is not mistaken for one to a recording the
+	 * panel does not show.
+	 */
+	private pendingPaths = new Set<string>();
+	/** The switches drawn, kept to set in place when a setting changes. */
+	private readonly toggles = new Map<QuickSetting['key'], ToggleComponent>();
 	/** The note currently shown, to filter metadata changes by. */
 	private shownNotePath = '';
 	/** Bumped per refresh, so a slower earlier one never draws over a later. */
@@ -244,6 +255,14 @@ export class RecordingPanelView extends ItemView {
 			}),
 		);
 		this.registerEvent(
+			// A recording rewritten in place: its size and length changed.
+			vault.on('modify', (file) => {
+				if (this.shownPaths.has(file.path)) {
+					void this.refresh();
+				}
+			}),
+		);
+		this.registerEvent(
 			vault.on('delete', (file) => {
 				if (this.shownPaths.has(file.path)) {
 					void this.refresh();
@@ -252,7 +271,7 @@ export class RecordingPanelView extends ItemView {
 		);
 		this.register(
 			this.host.services.recordingSidecar.onChange((path) => {
-				if (this.shownPaths.has(path)) {
+				if (this.shownPaths.has(path) || this.pendingPaths.has(path)) {
 					void this.refresh();
 				}
 			}),
@@ -260,11 +279,11 @@ export class RecordingPanelView extends ItemView {
 		await this.refresh();
 	}
 
-	override async onClose(): Promise<void> {
+	override onClose(): Promise<void> {
 		this.generation++;
 		this.recordAction = null;
 		this.contentEl.empty();
-		await Promise.resolve();
+		return Promise.resolve();
 	}
 
 	/**
@@ -330,6 +349,7 @@ export class RecordingPanelView extends ItemView {
 	async refresh(): Promise<void> {
 		const generation = ++this.generation;
 		const target = this.resolveTarget();
+		this.pendingPaths = new Set(target.recordings.map((file) => file.path));
 		const selected =
 			target.recordings.find((file) => file.path === this.selectedPath) ??
 			target.recordings[0] ??
@@ -354,20 +374,26 @@ export class RecordingPanelView extends ItemView {
 			this.offeredSettings(selected),
 		]);
 		if (key === this.shownKey) {
+			this.syncToggles();
 			return;
 		}
 		this.shownKey = key;
 		this.shownNotePath = target.notePath;
 		this.shownPaths = new Set(target.recordings.map((file) => file.path));
-		this.selectedPath = selected?.path ?? null;
+		// selectedPath is left as the user's choice: a refresh that briefly
+		// cannot resolve it - a rename seen before the note's links are
+		// rewritten - shows another recording, but must not forget the one
+		// picked.
 		this.shownFile = selected;
 		this.render(target, selected, summary);
 	}
 
 	/**
 	 * What the settings let the panel offer: which actions are available and
-	 * which switches show, in which state. Part of the redraw key, so a
-	 * settings save that changes none of it costs no redraw.
+	 * which switches show. Part of the redraw key, so a settings save that
+	 * changes none of it costs no redraw. The switches' own values are not:
+	 * they are set in place, so flipping one does not rebuild the panel under
+	 * the user's pointer and take the focus away.
 	 * @param selected - The recording shown, or null
 	 */
 	private offeredSettings(selected: TFile | null): unknown[] {
@@ -380,7 +406,6 @@ export class RecordingPanelView extends ItemView {
 					}).map((action) => action.commandId)
 				: [],
 			settings.transcriptionEnabled,
-			QUICK_SETTINGS.map((entry) => settings[entry.key]),
 		];
 	}
 
@@ -486,8 +511,17 @@ export class RecordingPanelView extends ItemView {
 		new Setting(root).setName('Recording').setHeading();
 		if (recordings.length > 1) {
 			new Setting(root).setName('Shown').addDropdown((dropdown) => {
+				const names = recordings.map((recording) => recording.name);
 				for (const recording of recordings) {
-					dropdown.addOption(recording.path, recording.name);
+					// The path where two recordings share a name, so the two
+					// entries can be told apart.
+					const shared =
+						names.indexOf(recording.name) !==
+						names.lastIndexOf(recording.name);
+					dropdown.addOption(
+						recording.path,
+						shared ? recording.path : recording.name,
+					);
 				}
 				dropdown.setValue(file.path).onChange((path) => {
 					this.selectedPath = path;
@@ -609,14 +643,26 @@ export class RecordingPanelView extends ItemView {
 	}
 
 	/** Switches for the settings a recording session reaches for most. */
+	/** Sets every drawn switch to the value its setting now holds. */
+	private syncToggles(): void {
+		const settings = this.host.services.getSettings();
+		for (const [key, toggle] of this.toggles) {
+			if (toggle.getValue() !== settings[key]) {
+				toggle.setValue(settings[key]);
+			}
+		}
+	}
+
 	private renderQuickSettings(root: HTMLElement): void {
 		new Setting(root).setName('Settings').setHeading();
+		this.toggles.clear();
 		const settings = this.host.services.getSettings();
 		for (const entry of QUICK_SETTINGS) {
 			if (entry.needsTranscription && !settings.transcriptionEnabled) {
 				continue;
 			}
-			new Setting(root).setName(entry.name).addToggle((toggle) =>
+			new Setting(root).setName(entry.name).addToggle((toggle) => {
+				this.toggles.set(entry.key, toggle);
 				toggle.setValue(settings[entry.key]).onChange(async (value) => {
 					// Read again rather than captured: settings synced in from
 					// another device replace the object, and a change made to
@@ -629,9 +675,10 @@ export class RecordingPanelView extends ItemView {
 								`${PLUGIN_LOG_PREFIX} Saving ${entry.key} from the recording panel failed:`,
 								error,
 							);
+							new Notice(`Could not save "${entry.name}".`);
 						});
-				}),
-			);
+				});
+			});
 		}
 	}
 
@@ -660,6 +707,8 @@ export class RecordingPanelView extends ItemView {
 					const file = this.app.vault.getFileByPath(path);
 					if (file) {
 						void this.app.workspace.getLeaf(false).openFile(file);
+					} else {
+						new Notice(`${path} is no longer in the vault.`);
 					}
 				}),
 		);
@@ -686,15 +735,7 @@ export class RecordingPanelView extends ItemView {
 
 	/** Runs one file action, logging a failure it did not report itself. */
 	private runAction(action: FileAction, context: FileContext): void {
-		// Run inside the chain, so a synchronous throw is caught too.
-		void Promise.resolve()
-			.then(() => action.run(context))
-			.catch((error: unknown) => {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} ${action.commandId} failed from the recording panel:`,
-					error,
-				);
-			});
+		runActionLogged(action, context, 'the recording panel');
 	}
 
 	/**

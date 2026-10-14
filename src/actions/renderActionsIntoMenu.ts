@@ -40,19 +40,33 @@ export function renderActionsIntoMenu<TContext>(
 				.setIcon(action.icon)
 				.setSection(AAR_MENU_SECTION)
 				.onClick(() => {
-					// Obsidian drops what a menu handler returns, so a failed
-					// action would otherwise surface as an unhandled rejection
-					// with nothing naming the action it came from.
-					// Run inside the chain, so a synchronous throw is caught too.
-					void Promise.resolve()
-						.then(() => action.run(context))
-						.catch((error: unknown) => {
-							console.error(
-								`${PLUGIN_LOG_PREFIX} ${action.commandId} failed from a menu:`,
-								error,
-							);
-						});
+					runActionLogged(action, context, 'a menu');
 				});
 		});
 	}
+}
+
+/**
+ * Runs an action from a surface that drops what its handler returns - a menu
+ * item, a button - and logs a failure under the action it came from.
+ * Obsidian discards the promise, so without this a failed action would
+ * surface as an unhandled rejection naming nothing. The run starts inside
+ * the chain, so a synchronous throw is caught as well as a rejection.
+ * @param action - The action to run
+ * @param context - The context it runs against
+ * @param origin - Where it was run from, for the log
+ */
+export function runActionLogged<TContext>(
+	action: PluginCommand<TContext>,
+	context: TContext,
+	origin: string,
+): void {
+	void Promise.resolve()
+		.then(() => action.run(context))
+		.catch((error: unknown) => {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} ${action.commandId} failed from ${origin}:`,
+				error,
+			);
+		});
 }

@@ -1902,6 +1902,10 @@ export class ToggleComponent {
 		return this;
 	}
 
+	getValue(): boolean {
+		return this.value;
+	}
+
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
 		// Obsidian marks a disabled toggle with is-disabled rather than a DOM
