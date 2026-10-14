@@ -241,13 +241,18 @@ export class WaveformController {
 		if (attempts <= 0) {
 			return;
 		}
-		const rafId = window.requestAnimationFrame(() => {
+		// Frames of the window the waveform is shown in. The main window's
+		// stop while it is hidden, so a waveform in a pop-out would never be
+		// drawn while the main window was minimised. The window is held so the
+		// frame is cancelled where it was requested even if the player moves.
+		const win = this.canvas.ownerWindow();
+		const rafId = win.requestAnimationFrame(() => {
 			this.redrawWhenSized(attempts - 1);
 		});
 		// Cancel outright on re-render/unload instead of relying on the
 		// unloaded flag alone to fizzle the retry chain.
 		this.host.registerRenderCleanup(() => {
-			window.cancelAnimationFrame(rafId);
+			win.cancelAnimationFrame(rafId);
 		});
 	}
 }

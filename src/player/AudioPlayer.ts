@@ -563,6 +563,18 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.applyMode();
 		});
 
+		// Moving the note into a pop-out (or back) leaves this pass bound to
+		// the window it was built in: the waveform drawn at that window's
+		// pixel ratio and theme, and the marker list listening on that
+		// window's document. Rendering again in place rebinds all of it, the
+		// same way an external marker edit does: playback is untouched, and the
+		// cached peaks redraw without a second decode.
+		this.renderScope.register(
+			this.seekEl.onWindowMigrated(() => {
+				this.renderUi();
+			}),
+		);
+
 		if (this.shouldShowWaveform()) {
 			this.waveformCtl.scheduleLoad(this.containerEl);
 		}

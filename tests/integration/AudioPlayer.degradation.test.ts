@@ -36,6 +36,7 @@ import {
 	type FakeAudio,
 } from '../helpers/audioPlayerHarness';
 import { internalsOf } from '../helpers/doubles';
+import { makePopoutWindow } from '../helpers/popoutHarness';
 
 const PLAIN: ResolvedPlayerSettings = {
 	showWaveform: false,
@@ -277,10 +278,7 @@ describe('waiting for the embed to be attached to the document', () => {
 	// mode. Obsidian's insertion signal comes from the embed's own window.
 	it('resolves the mode in a pop-out while the main window runs no frames', async () => {
 		jest.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
-		const frame = document.body.appendChild(
-			document.createElement('iframe'),
-		);
-		const popoutDoc = frame.contentDocument as Document;
+		const popoutDoc = makePopoutWindow().document;
 		const container = addObsidianDomExtensions(
 			popoutDoc.createElement('div'),
 		);

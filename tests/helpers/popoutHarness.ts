@@ -68,6 +68,24 @@ export function makePopoutDoc(): Document {
 }
 
 /**
+ * A second window standing in for a pop-out, for code that asks an element
+ * for its own window: an iframe's, which jsdom gives a document, animation
+ * frames, getComputedStyle and a writable devicePixelRatio of its own. A
+ * document from {@link makePopoutDoc} has no window, so `el.win` falls back to
+ * the main one there. The iframe is appended to the main body; a suite that
+ * uses this clears the body after each test.
+ * @returns The pop-out window
+ */
+export function makePopoutWindow(): Window {
+	const frame = document.body.appendChild(document.createElement('iframe'));
+	const win = frame.contentWindow;
+	if (!win) {
+		throw new Error('jsdom gave the iframe no window');
+	}
+	return win;
+}
+
+/**
  * Builds the app double the registrar, player, and context menu read from.
  * `iterateAllLeaves` walks the plugin's `leaves`, so a suite can register an
  * open view after setup, and `on` records the window callbacks onto the plugin

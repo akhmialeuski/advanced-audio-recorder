@@ -11,7 +11,8 @@ import { WaveformCanvas } from 'src/player/views/WaveformCanvas';
 import * as WaveformData from 'src/player/WaveformData';
 import { installCanvas2dContext } from '../helpers/canvas';
 import type { CanvasContextDouble } from '../helpers/canvas';
-import { maybeEl } from '../helpers/dom';
+import { el, maybeEl } from '../helpers/dom';
+import { makePopoutWindow } from '../helpers/popoutHarness';
 import { PLAYER } from '../helpers/selectors';
 
 let canvas: CanvasContextDouble;
@@ -201,5 +202,49 @@ describe('WaveformCanvas', () => {
 
 		expect(waveform.hasPeaks()).toBe(true);
 		expect(canvas.rects).toHaveLength(0);
+	});
+});
+
+// A note in a pop-out can sit on another monitor, with its own pixel ratio,
+// while the focused window is the main one. The waveform used to be drawn at
+// the focused window's ratio, blurred or oversized in the pop-out.
+describe('WaveformCanvas in a pop-out window', () => {
+	afterEach(() => {
+		document.body.innerHTML = '';
+	});
+
+	/** A seek area shown in a pop-out with a pixel ratio the test sets. */
+	function popoutSeekEl(devicePixelRatio: number): {
+		seekEl: HTMLElement;
+		popout: Window;
+	} {
+		const popout = makePopoutWindow();
+		jest.replaceProperty(popout, 'devicePixelRatio', devicePixelRatio);
+		const seekEl = popout.document.body.appendChild(makeSeekEl(600));
+		return { seekEl, popout };
+	}
+
+	it('scales the canvas to the pop-out pixel ratio, not the main one', () => {
+		jest.replaceProperty(window, 'devicePixelRatio', 1);
+		const { seekEl } = popoutSeekEl(3);
+
+		new WaveformCanvas(seekEl).setPeaks([0.5, 0.5]);
+
+		expect(el<HTMLCanvasElement>(seekEl, PLAYER.canvas).width).toBe(1800);
+	});
+
+	it('reads the theme colours from the pop-out it is shown in', () => {
+		const { seekEl, popout } = popoutSeekEl(1);
+		const popoutStyles = jest.spyOn(popout, 'getComputedStyle');
+
+		new WaveformCanvas(seekEl).setPeaks([0.5, 0.5]);
+
+		expect(popoutStyles).toHaveBeenCalledWith(el(seekEl, PLAYER.canvas));
+	});
+
+	it('reports the pop-out as the window it is shown in', () => {
+		const { seekEl, popout } = popoutSeekEl(1);
+
+		expect(new WaveformCanvas(seekEl).ownerWindow()).toBe(popout);
 	});
 });

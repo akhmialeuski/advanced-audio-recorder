@@ -10,6 +10,7 @@
 
 import { App, Modal } from 'obsidian';
 import { flushMicrotasks } from '../../helpers/async';
+import { makePopoutWindow as popoutWindow } from '../../helpers/popoutHarness';
 import { addObsidianDomExtensions } from '../../mocks/domExtensions';
 
 /** An element carrying the extensions, the way the plugin always sees them. */
@@ -63,20 +64,6 @@ describe('createEl', () => {
 		expect(button.getAttribute('aria-label')).toBe('Delete marker');
 	});
 });
-
-/**
- * A second window standing in for a pop-out: an iframe's, which jsdom gives a
- * document, a requestAnimationFrame and a devicePixelRatio of its own.
- * @returns The pop-out window
- */
-function popoutWindow(): Window {
-	const frame = document.body.appendChild(document.createElement('iframe'));
-	const win = frame.contentWindow;
-	if (!win) {
-		throw new Error('jsdom gave the iframe no window');
-	}
-	return win;
-}
 
 describe('win and doc', () => {
 	afterEach(() => {

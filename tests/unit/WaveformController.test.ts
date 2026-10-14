@@ -27,6 +27,7 @@ import { tick } from '../helpers/async';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { installCanvas2dContext } from '../helpers/canvas';
 import type { CanvasContextDouble } from '../helpers/canvas';
+import { makePopoutWindow } from '../helpers/popoutHarness';
 
 let canvas: CanvasContextDouble;
 
@@ -558,6 +559,75 @@ describe('drawing once the seek area has a width', () => {
 		}
 
 		expect(cancel).toHaveBeenCalled();
+	});
+});
+
+// A hidden window runs no animation frames. Asking the main window for them
+// stalled the first draw of a waveform in a pop-out for as long as the main
+// window stayed minimised.
+describe('drawing in a pop-out window', () => {
+	afterEach(() => {
+		document.body.innerHTML = '';
+	});
+
+	/**
+	 * Loads cached peaks into a seek area shown in a pop-out that has not been
+	 * laid out yet, with both windows' frame requests recorded.
+	 * @returns The pop-out's and the main window's request spies, the pop-out
+	 *   cancel spy and the controller's render cleanups
+	 */
+	async function loadIntoPopout(): Promise<{
+		popoutFrames: jest.SpyInstance;
+		mainFrames: jest.SpyInstance;
+		popoutCancel: jest.SpyInstance;
+		cleanups: (() => void)[];
+	}> {
+		const file = createFile('Recordings/take.wav', { size: 4096 });
+		const cache = new WaveformPeakCache();
+		cache.set(
+			waveformCacheKey(file.path, file.stat.mtime, file.stat.size),
+			Array.from({ length: WAVEFORM_CACHE_BUCKETS }, () => 0.5),
+		);
+		const sut = createSut({ file, cache });
+		const popout = makePopoutWindow();
+		const popoutFrames = jest
+			.spyOn(popout, 'requestAnimationFrame')
+			.mockReturnValue(7);
+		const popoutCancel = jest.spyOn(popout, 'cancelAnimationFrame');
+		const mainFrames = jest.spyOn(window, 'requestAnimationFrame');
+		const seekEl = popout.document.body.appendChild(createSeekEl(0));
+		const original = globalThis.IntersectionObserver;
+		Reflect.deleteProperty(globalThis, 'IntersectionObserver');
+		try {
+			sut.controller.mount(seekEl);
+			sut.controller.scheduleLoad(document.createElement('div'));
+			await tick();
+		} finally {
+			globalThis.IntersectionObserver = original;
+		}
+		return {
+			popoutFrames,
+			mainFrames,
+			popoutCancel,
+			cleanups: sut.cleanups,
+		};
+	}
+
+	it('waits for the width on the frames of the pop-out', async () => {
+		const { popoutFrames, mainFrames } = await loadIntoPopout();
+
+		expect(popoutFrames).toHaveBeenCalledTimes(1);
+		expect(mainFrames).not.toHaveBeenCalled();
+	});
+
+	it('cancels the pending frame on the pop-out that queued it', async () => {
+		const { popoutCancel, cleanups } = await loadIntoPopout();
+
+		for (const cleanup of cleanups) {
+			cleanup();
+		}
+
+		expect(popoutCancel).toHaveBeenCalledWith(7);
 	});
 });
 
