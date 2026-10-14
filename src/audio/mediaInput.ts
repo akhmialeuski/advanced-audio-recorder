@@ -7,6 +7,7 @@
 
 import { ALL_FORMATS, Input, UrlSource } from 'mediabunny';
 import type { Source } from 'mediabunny';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import { disposableOf } from '../utils/disposables';
 
 /**
@@ -21,11 +22,24 @@ import { disposableOf } from '../utils/disposables';
  * reader waiting on it - an open dialog, an embed still deciding which player
  * to show - waited forever. One failure is the answer, and every caller has a
  * fallback for it.
+ *
+ * A read that fails while nobody is waiting on it - a prefetch ahead of the
+ * parse - is logged rather than left to become an unhandled rejection, which
+ * is mediabunny's default: the read that needed those bytes fails on its own
+ * and its caller falls back, so the stray one has nothing left to report.
  * @param url - Resource URL from app.vault.getResourcePath
  * @returns A source for an Input
  */
 export function resourceSource(url: string): UrlSource {
-	return new UrlSource(url, { getRetryDelay: () => null });
+	return new UrlSource(url, {
+		getRetryDelay: () => null,
+		handleUnhandledError: (error: unknown) => {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} A read ahead of ${url} failed:`,
+				error,
+			);
+		},
+	});
 }
 
 /**

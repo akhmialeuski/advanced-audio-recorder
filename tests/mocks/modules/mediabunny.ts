@@ -79,6 +79,7 @@ export const UrlSource = jest.fn();
 /** The options of a `UrlSource` a suite reads back. */
 export interface UrlSourceOptionsDouble {
 	getRetryDelay?: (previousAttempts: number) => number | null;
+	handleUnhandledError?: (error: unknown) => unknown;
 }
 
 /**
