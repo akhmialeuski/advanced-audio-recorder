@@ -25,6 +25,16 @@ import { ChannelMode, monoPickIndex } from './downmix';
 import { disposableOf } from '../utils/disposables';
 
 /**
+ * How far a copied stream may be shifted to start at zero, in seconds.
+ *
+ * Wide enough for any codec's priming - AAC's 2112 samples are under a tenth
+ * of a second even at 22.05 kHz, Opus pre-skip at most 80 ms - and narrow
+ * enough that a stream starting later than that, which is a recording with a
+ * real gap at its head, is transcoded rather than shifted over the gap.
+ */
+const REMUX_SHIFT_TOLERANCE_SECONDS = 0.25;
+
+/**
  * Builds a mono AudioSample holding one picked channel of the input
  * sample. Used as the mediabunny `process` hook for the left/right
  * channel modes; mediabunny closes the input sample itself after the
@@ -228,6 +238,14 @@ async function convertWithInput(
 		input,
 		output,
 		audio,
+		// A copy into a container that stamps no time on its frames - ADTS,
+		// MP3, FLAC, WAV - has to start at zero, and a codec's priming puts the
+		// first packet a little before it: AAC behind an edit list, which is
+		// how iOS records. Refused, the copy silently became a transcode at
+		// mediabunny's default quality rather than the session's bitrate.
+		// Shifting the whole stream onto zero moves nothing relative to
+		// anything else in a one-track file.
+		copy: { shiftTolerance: REMUX_SHIFT_TOLERANCE_SECONDS },
 		showWarnings: false,
 	});
 
