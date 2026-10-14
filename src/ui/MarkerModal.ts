@@ -43,6 +43,40 @@ export class RecordingMarkerModal extends PluginModal {
 		this.handle = handle;
 		this.kind = handle.initialKind;
 		this.label = handle.defaultLabelFor(this.kind);
+		// Enter confirms through the dialog's own keymap scope rather than a
+		// listener on the field, so it goes through Obsidian's key handling
+		// like every other dialog's Enter, and leaves with the dialog's scope.
+		// Registered here rather than in onOpen so a reopened dialog does not
+		// stack a second handler.
+		this.scope.register([], 'Enter', (evt) => this.confirmOnEnter(evt));
+	}
+
+	/**
+	 * Confirms on Enter in the name field, the only place it ever confirmed.
+	 * Enter on a focused kind button or on Cancel is left to do what pressing
+	 * that button does, which is why the handler declines it rather than
+	 * preventing it.
+	 *
+	 * An Enter that ends an IME composition (picking a kanji or a pinyin
+	 * candidate) belongs to the input method, and confirming on it would add
+	 * the marker with the half-composed name. Chromium, which runs Obsidian on
+	 * the desktop and on Android, marks that keydown isComposing, and the
+	 * handler declines it. Whether Obsidian's keymap filters composition
+	 * itself is not part of its documented API, so the handler does not rely
+	 * on it. Safari, which runs Obsidian on iOS, ends the composition before
+	 * the keydown and reports isComposing false, so there the Enter that picks
+	 * a candidate still confirms, as it did before this handler existed; the
+	 * only sign Safari gives is the deprecated keyCode 229, which this
+	 * codebase does not use.
+	 * @param evt - The keydown the scope matched
+	 * @returns False to have Obsidian prevent the default, true to decline
+	 */
+	private confirmOnEnter(evt: KeyboardEvent): boolean {
+		if (evt.target !== this.inputEl || evt.isComposing) {
+			return true;
+		}
+		this.confirm();
+		return false;
 	}
 
 	/**
@@ -75,12 +109,6 @@ export class RecordingMarkerModal extends PluginModal {
 			type: 'text',
 		});
 		this.inputEl.value = this.label;
-		this.inputEl.addEventListener('keydown', (event) => {
-			if (event.key === 'Enter') {
-				event.preventDefault();
-				this.confirm();
-			}
-		});
 
 		this.renderActions(
 			{

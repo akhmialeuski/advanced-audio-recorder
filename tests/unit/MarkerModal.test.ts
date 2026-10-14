@@ -30,10 +30,34 @@ function makeHandle(initialKind: MarkerKind = MARKER_KIND.bookmark): {
 	return { handle, commit, cancel };
 }
 
+/**
+ * Opens the dialog the way Obsidian does, which also makes its keymap scope
+ * the one keydowns inside it reach.
+ */
 function openModal(handle: RecordingMarkerHandle): RecordingMarkerModal {
 	const modal = new RecordingMarkerModal(new App(), handle);
-	modal.onOpen();
+	modal.open();
 	return modal;
+}
+
+/**
+ * Presses Enter on an element of the dialog.
+ * @param target - Where focus is when the key goes down
+ * @param init - Anything else the keydown carries, such as isComposing
+ * @returns The keydown, to read whether its default was prevented
+ */
+function pressEnter(
+	target: HTMLElement,
+	init: KeyboardEventInit = {},
+): KeyboardEvent {
+	const event = new KeyboardEvent('keydown', {
+		key: 'Enter',
+		bubbles: true,
+		cancelable: true,
+		...init,
+	});
+	target.dispatchEvent(event);
+	return event;
 }
 
 function inputOf(modal: RecordingMarkerModal): HTMLInputElement {
@@ -80,11 +104,46 @@ describe('RecordingMarkerModal', () => {
 		const { handle, commit } = makeHandle();
 		const modal = openModal(handle);
 
-		inputOf(modal).dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'Enter' }),
-		);
+		pressEnter(inputOf(modal));
 
 		expect(commit).toHaveBeenCalledWith('Marker 1', MARKER_KIND.bookmark);
+	});
+
+	it('consumes the Enter that committed', () => {
+		const { handle } = makeHandle();
+		const modal = openModal(handle);
+
+		const event = pressEnter(inputOf(modal));
+
+		expect(event.defaultPrevented).toBe(true);
+	});
+
+	// The Enter that picks a candidate in a Japanese or Chinese input method
+	// belongs to the input method. Confirming on it added the marker under
+	// the half-composed name.
+	it('leaves an Enter that ends an IME composition to the input method', () => {
+		const { handle, commit } = makeHandle();
+		const modal = openModal(handle);
+
+		const event = pressEnter(inputOf(modal), { isComposing: true });
+
+		expect(commit).not.toHaveBeenCalled();
+		expect(event.defaultPrevented).toBe(false);
+	});
+
+	// The scope hears every Enter in the dialog, and Enter on a focused
+	// button is how a keyboard user presses it.
+	it.each([
+		{ name: 'Cancel', text: 'Cancel' },
+		{ name: 'a kind button', text: 'Chapter' },
+	])('leaves Enter on $name to that button', ({ text }) => {
+		const { handle, commit } = makeHandle();
+		const modal = openModal(handle);
+
+		const event = pressEnter(buttonByText(modal, text));
+
+		expect(commit).not.toHaveBeenCalled();
+		expect(event.defaultPrevented).toBe(false);
 	});
 
 	it('discards the draft when closed without confirming', () => {
