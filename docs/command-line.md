@@ -98,7 +98,7 @@ The commands on a recording take the target the way Obsidian's own commands take
 | `all`               | Every recording the note links, one after another.                                                    |
 | `note=<name>`       | The note a recording belongs to, when `file` or `path` names the recording itself.                    |
 
-A note stands for the recordings it embeds or links, in the order they appear in it. A note with one recording needs nothing more; a note with several answers with their list and asks for `recording=` or `all`.
+A note stands for the recordings it embeds or links, in the order they appear in it, a property such as `audio: "[[standup.webm]]"` counting as a link at its top. A note with one recording needs nothing more; a note with several answers with their list and asks for `recording=` or `all`.
 
 Naming the note matters for the commands that write into one: `transcribe` inserts the transcript into the note named and no other, `cleanup` links the cleaned copy there, and `delete-with-links` removes the links from it. With neither `file=` nor `path=`, a command acts on the file active in Obsidian, as Obsidian's own commands do, and when that is a note, it is the note named. A recording named on its own is never given the note that happens to be open: with no note named, a transcript is written as a file next to the recording. A note named with `note=` beside a recording must link it, so a typo cannot send a transcript, or a removal of links, to another note.
 

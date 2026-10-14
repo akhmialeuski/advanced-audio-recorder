@@ -24,8 +24,8 @@ const MARKDOWN_LINK = /!?\[(.*?)\]\((.*?)\)/g;
 
 /**
  * Finds the wikilink or Markdown link, embed or not, that a cursor column
- * falls inside or at either edge of. Wikilinks are tried first, as the form
- * Obsidian writes by default.
+ * falls inside or at either edge of - at its end only where no other link
+ * begins. Wikilinks are tried first, as the form Obsidian writes by default.
  * @param lineText - The text of the line
  * @param cursorCh - The cursor column
  * @returns The link, or null when the cursor is on none
@@ -34,20 +34,29 @@ export function linkAtCursor(
 	lineText: string,
 	cursorCh: number,
 ): LinkAtCursor | null {
+	const links: LinkAtCursor[] = [];
 	for (const [pattern, group] of [
 		[WIKI_LINK, 1],
 		[MARKDOWN_LINK, 2],
 	] as const) {
 		for (const match of lineText.matchAll(pattern)) {
 			const start = match.index;
-			const end = start + match[0].length;
-			const path = match[group];
-			if (path !== undefined && cursorCh >= start && cursorCh <= end) {
-				return { path, start, end };
-			}
+			links.push({
+				// The group takes part in every match, if only as ''.
+				path: String(match[group]),
+				start,
+				end: start + match[0].length,
+			});
 		}
 	}
-	return null;
+	// A column where one link ends and the next begins is the next one's:
+	// a position mapped to the start of an embed, or a cursor in front of a
+	// link, means that link and not the one before it.
+	return (
+		links.find((link) => cursorCh >= link.start && cursorCh < link.end) ??
+		links.find((link) => cursorCh === link.end) ??
+		null
+	);
 }
 
 /**
@@ -57,6 +66,6 @@ export function linkAtCursor(
  * one to the whole recording, as the links a note-wide removal takes are.
  * @param link - The link
  */
-export function pointsAtWholeFile(link: LinkAtCursor): boolean {
+export function pointsAtWholeFile(link: { readonly path: string }): boolean {
 	return !link.path.includes('#');
 }

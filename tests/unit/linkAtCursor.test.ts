@@ -4,7 +4,7 @@
  * @module tests/unit/linkAtCursor.test
  */
 
-import { linkAtCursor } from 'src/obsidian/linkAtCursor';
+import { linkAtCursor, pointsAtWholeFile } from 'src/obsidian/linkAtCursor';
 
 describe('the link at a cursor', () => {
 	it.each([
@@ -51,10 +51,35 @@ describe('the link at a cursor', () => {
 	});
 
 	it.each([
+		{
+			ch: 15,
+			path: 'rec.webm',
+			why: 'where one link ends and the next begins',
+		},
+		{ ch: 3, path: 'intro.webm', why: 'inside the first' },
+		{ ch: 28, path: 'rec.webm', why: 'just past the last' },
+	])('finds the right one of two links that touch: $why', ({ ch, path }) => {
+		expect(linkAtCursor('![[intro.webm]]![[rec.webm]]', ch)?.path).toBe(
+			path,
+		);
+	});
+
+	it.each([
 		{ name: 'on text beside a link', line: 'Text [[rec.webm]]', ch: 2 },
 		{ name: 'on a line without links', line: 'Just text', ch: 3 },
 		{ name: 'on an empty line', line: '', ch: 0 },
 	])('finds nothing $name', ({ line, ch }) => {
 		expect(linkAtCursor(line, ch)).toBeNull();
+	});
+});
+
+describe('whether a link points at a whole file', () => {
+	it.each([
+		{ path: 'rec.webm', whole: true },
+		{ path: 'Recordings/rec.webm', whole: true },
+		{ path: 'rec.webm#t=90', whole: false },
+		{ path: 'Meeting#Decisions', whole: false },
+	])('says $whole for $path', ({ path, whole }) => {
+		expect(pointsAtWholeFile({ path })).toBe(whole);
 	});
 });

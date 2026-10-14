@@ -88,6 +88,40 @@ describe('the recordings a note links', () => {
 		expect(resolve).toHaveBeenCalledTimes(1);
 	});
 
+	it('takes a note named beside its recording that links it in a property', () => {
+		const sut = recordingVault({
+			recordings: [STANDUP],
+			notes: {
+				[MEETING]: '---\naudio: "[[standup.webm]]"\n---\n# Notes',
+			},
+		});
+
+		expect(
+			paths(
+				namedRecordings(sut.services, {
+					path: STANDUP,
+					note: 'Team Meeting',
+				}),
+			),
+		).toEqual([[STANDUP, MEETING]]);
+	});
+
+	it('counts a recording a property links, ahead of the body', () => {
+		const sut = recordingVault({
+			recordings: [STANDUP, RETRO],
+			notes: {
+				[MEETING]:
+					'---\naudio: "[[standup.webm]]"\n---\n![[retro.mp3]]',
+			},
+		});
+
+		expect(
+			recordingsInNote(sut.app, sut.file(MEETING)).map(
+				(file) => file.path,
+			),
+		).toEqual([STANDUP, RETRO]);
+	});
+
 	it('finds nothing in a note the cache has not read', () => {
 		const sut = createSut();
 
@@ -170,6 +204,7 @@ describe('the recordings the palette acts on', () => {
 		expect(target?.file.path).toBe(RETRO);
 		expect(target?.link).toEqual({
 			editor: view.editor,
+			path: 'retro.mp3',
 			line: 4,
 			start: 0,
 			end: 14,

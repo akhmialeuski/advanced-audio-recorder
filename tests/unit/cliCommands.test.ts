@@ -15,7 +15,7 @@ import {
 } from 'src/obsidian/cliCommands';
 import { RecordingStatus } from 'src/types';
 import type { CliData, Plugin } from 'obsidian';
-import { partial } from '../helpers/doubles';
+import { partial, silenceConsole } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
 
 const PLUGIN_ID = 'advanced-audio-recorder';
@@ -254,17 +254,19 @@ describe('registerCliCommands', () => {
 		).toBe(false);
 	});
 
-	it('refuses two of its own commands of one id before registering any', () => {
+	it('registers none of its commands when two share an id, and says so', () => {
+		const error = silenceConsole('error');
 		const registerCliHandler = jest.fn();
 		const commands = cliCommands(makeHost(), PLUGIN_ID);
 		const twice = [...commands, at(commands, 1)];
 
-		expect(() =>
-			registerCliCommands(pluginWith(registerCliHandler), twice),
-		).toThrow(
-			`Two command-line commands share the id ${PLUGIN_ID}:record.`,
+		expect(registerCliCommands(pluginWith(registerCliHandler), twice)).toBe(
+			false,
 		);
 		expect(registerCliHandler).not.toHaveBeenCalled();
+		expect(error).toHaveBeenCalledWith(
+			`[AudioRecorder] CLI commands were not registered: two share the id ${PLUGIN_ID}:record.`,
+		);
 	});
 
 	it('survives a registration the app refuses', () => {

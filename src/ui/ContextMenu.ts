@@ -40,6 +40,7 @@ import type {
 	RegisteredFamily,
 } from '../actions/ActionRegistry';
 import { transcriptSelectionIn } from '../actions/transcriptActions';
+import { recordingsInNote } from '../actions/recordingTargets';
 
 export type { EnhancementPrimer } from '../actions/PluginAction';
 
@@ -59,6 +60,11 @@ const LINK_MENU_SOURCE = 'link-context-menu';
 interface EditorWithCM extends Editor {
 	cm?: EditorCodeMirrorView;
 }
+
+/** What a menu learns about how a recording was reached, filled in by each handler. */
+type MutableFileContext = {
+	-readonly [K in keyof FileContext]: FileContext[K];
+};
 
 /** The registered families the menus render. */
 export interface MenuFamilies {
@@ -82,6 +88,20 @@ export class ContextMenu {
 	 * menu re-triggers file-menu, so every add is deduplicated here.
 	 */
 	private readonly renderedActions = new WeakMap<Menu, Set<string>>();
+
+	/**
+	 * Per-menu context of each recording the file actions were rendered for.
+	 * Obsidian raises file-menu and editor-menu for one link on one Menu, in
+	 * an order this plugin cannot rely on, and each knows something the other
+	 * does not: the editor knows where the link is, the link's own menu that
+	 * it is a link. Every handler adds what it knows to the one context, so
+	 * the actions are offered on everything known when each renders, and run
+	 * on everything known by the time one is clicked.
+	 */
+	private readonly fileContexts = new WeakMap<
+		Menu,
+		Map<string, MutableFileContext>
+	>();
 
 	private readonly app: App;
 
@@ -109,6 +129,59 @@ export class ContextMenu {
 			this.renderedActions.set(menu, rendered);
 		}
 		return rendered;
+	}
+
+	/**
+	 * The context of a recording in a menu, with what this handler knows
+	 * added to what the handlers before it found.
+	 * @param menu - The menu
+	 * @param file - The recording
+	 * @param known - What this handler knows of how it was reached
+	 * @returns The one context the menu's file actions share
+	 */
+	private fileContextFor(
+		menu: Menu,
+		file: TFile,
+		known: {
+			note?: TFile | null;
+			link?: LinkLocation | null;
+			throughLink?: boolean;
+		},
+	): FileContext {
+		let contexts = this.fileContexts.get(menu);
+		if (!contexts) {
+			contexts = new Map();
+			this.fileContexts.set(menu, contexts);
+		}
+		let context = contexts.get(file.path);
+		if (!context) {
+			context = { file, services: this.services };
+			contexts.set(file.path, context);
+		}
+		if (known.note && !context.note) {
+			context.note = known.note;
+		}
+		if (known.link && !context.link) {
+			context.link = known.link;
+		}
+		if (known.throughLink) {
+			context.throughLink = true;
+		}
+		return context;
+	}
+
+	/**
+	 * The note of a view, when it links the recording: a note a player or a
+	 * link is merely shown in - transcluded from another note - is not the
+	 * note the recording was reached through.
+	 * @param view - The view the menu was opened in
+	 * @param file - The recording
+	 */
+	private noteLinking(view: MarkdownView | null, file: TFile): TFile | null {
+		const note = view?.file ?? null;
+		return note && recordingsInNote(this.app, note).includes(file)
+			? note
+			: null;
 	}
 
 	/**
@@ -169,7 +242,8 @@ export class ContextMenu {
 
 				const menu = new Menu();
 				const rendered = this.renderedSetFor(menu);
-				const note = owningView?.file ?? undefined;
+				const linkingNote = this.noteLinking(owningView, file);
+				const note = linkingNote ?? undefined;
 
 				// The point of the player that was clicked, when the embed is
 				// an enhanced player: "here" is where the user clicked rather
@@ -192,7 +266,8 @@ export class ContextMenu {
 				}
 
 				// The note the embed is in, and its link, so the link-aware
-				// delete removes the embed that was right-clicked.
+				// delete removes the embed that was right-clicked. A player is
+				// an embed of the recording whether or not either is found.
 				const link = owningView
 					? this.linkOfEmbed(
 							owningView.editor,
@@ -204,12 +279,11 @@ export class ContextMenu {
 				this.registry.renderInto(
 					menu,
 					this.families.file,
-					{
-						file,
-						services: this.services,
-						...(note ? { note } : {}),
-						...(link ? { link } : {}),
-					},
+					this.fileContextFor(menu, file, {
+						note: linkingNote,
+						link,
+						throughLink: true,
+					}),
 					rendered,
 				);
 
@@ -265,6 +339,7 @@ export class ContextMenu {
 			return found && isThisLink
 				? {
 						editor,
+						path: found.path,
 						line: cursor.line,
 						start: found.start,
 						end: found.end,
@@ -309,19 +384,6 @@ export class ContextMenu {
 	}
 
 	/**
-	 * The note a link was right-clicked in: the note of the leaf the menu
-	 * came from, or else the active note.
-	 * @param leaf - The leaf Obsidian named, if any
-	 */
-	private noteOfLinkMenu(leaf: WorkspaceLeaf | undefined): TFile | null {
-		const view =
-			leaf?.view instanceof MarkdownView
-				? leaf.view
-				: this.app.workspace.getActiveViewOfType(MarkdownView);
-		return view?.file ?? null;
-	}
-
-	/**
 	 * Registers the file menu event (File Explorer): the file actions for an
 	 * audio file, the folder actions for a folder.
 	 */
@@ -343,20 +405,23 @@ export class ContextMenu {
 							return;
 						}
 						// A link right-clicked in a note reaches the recording
-						// through that note, which the menu then acts on: the
-						// link-aware delete rather than the plain one.
-						const note =
-							source === LINK_MENU_SOURCE
-								? this.noteOfLinkMenu(leaf)
-								: null;
+						// through it, and through the note of the leaf - or the
+						// active one - when that note links it.
+						const throughLink = source === LINK_MENU_SOURCE;
+						const view = !throughLink
+							? null
+							: leaf?.view instanceof MarkdownView
+								? leaf.view
+								: this.app.workspace.getActiveViewOfType(
+										MarkdownView,
+									);
 						this.registry.renderInto(
 							menu,
 							this.families.file,
-							{
-								file,
-								services: this.services,
-								...(note ? { note } : {}),
-							},
+							this.fileContextFor(menu, file, {
+								note: this.noteLinking(view, file),
+								throughLink,
+							}),
 							this.renderedSetFor(menu),
 						);
 						return;
@@ -431,17 +496,16 @@ export class ContextMenu {
 		this.registry.renderInto(
 			menu,
 			this.families.file,
-			{
-				file,
-				services: this.services,
-				...(view.file ? { note: view.file } : {}),
+			this.fileContextFor(menu, file, {
+				note: view.file,
 				link: {
 					editor,
+					path: found.path,
 					line: cursor.line,
 					start: found.start,
 					end: found.end,
 				},
-			},
+			}),
 			this.renderedSetFor(menu),
 		);
 	}

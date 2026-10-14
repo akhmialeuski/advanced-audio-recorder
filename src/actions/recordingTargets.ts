@@ -72,17 +72,23 @@ export const RECORDING_TARGET_PARAMS: CliFlags = {
 
 /**
  * Every recording a note links or embeds, in the order the note mentions
- * them, each once. A transcript links its recording on every line, which is
- * why repeats are folded rather than listed.
+ * them, each once: its properties first, as they head the note, then its
+ * body. A transcript links its recording on every line, which is why
+ * repeats are folded rather than listed.
  * @param app - Obsidian App
  * @param note - The note to read
  * @returns The recordings, in document order
  */
 export function recordingsInNote(app: App, note: TFile): TFile[] {
 	const cache = app.metadataCache.getFileCache(note);
-	const references = [...(cache?.links ?? []), ...(cache?.embeds ?? [])].sort(
-		(a, b) => a.position.start.offset - b.position.start.offset,
-	);
+	const references = [
+		// A property such as `audio: "[[standup.webm]]"` links the recording
+		// as surely as an embed does; it carries no position, and comes first.
+		...(cache?.frontmatterLinks ?? []),
+		...[...(cache?.links ?? []), ...(cache?.embeds ?? [])].sort(
+			(a, b) => a.position.start.offset - b.position.start.offset,
+		),
+	];
 	const recordings = new Map<string, TFile>();
 	// A transcript links its recording once per line, each a different
 	// moment of the same file, so each link path is resolved only once.
@@ -178,6 +184,7 @@ function recordingUnderCursor(
 				file,
 				link: {
 					editor,
+					path: link.path,
 					line: cursor.line,
 					start: link.start,
 					end: link.end,

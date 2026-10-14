@@ -206,6 +206,13 @@ export interface FileContext {
 	 */
 	readonly link?: LinkLocation;
 	/**
+	 * Set when the recording was reached through a link whose place in a
+	 * note is not known: Obsidian's own menu for a link, a link in a canvas
+	 * card, a player in a note that only transcludes the one linking it. The
+	 * plain delete, which would leave that link broken, is not offered.
+	 */
+	readonly throughLink?: true;
+	/**
 	 * Set when the command line named the recording. Its note is then the
 	 * one named or none, never the note that happens to be active in the app,
 	 * which a script cannot see: a dialog opened for it falls back to no
@@ -218,6 +225,8 @@ export interface FileContext {
 export interface LinkLocation {
 	/** The editor holding it. */
 	readonly editor: Editor;
+	/** Its target as written, subpath included: `rec.webm#t=90`. */
+	readonly path: string;
 	/** Zero-based line. */
 	readonly line: number;
 	/** Column the link starts at. */

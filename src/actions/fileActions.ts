@@ -294,8 +294,8 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		// it. One reached through a note - its link in the editor, its player,
 		// the palette in that note - has links there that a plain delete
 		// would leave broken, so the link-aware delete is offered instead.
-		isAvailable: ({ note, link }: FileContext): boolean =>
-			note === undefined && link === undefined,
+		isAvailable: ({ note, link, throughLink }: FileContext): boolean =>
+			note === undefined && link === undefined && !throughLink,
 		run: async ({ file, services }: FileContext): Promise<void> => {
 			try {
 				await services.app.fileManager.trashFile(file);
@@ -323,12 +323,13 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.deleteRecordingAndLink,
 		title: 'Delete recording & link to file',
 		icon: 'trash',
-		// Only where there is a link to remove: the one the menu or the cursor
-		// was on - an editor need not show a note file, as a canvas card does
-		// not - or the links of the note the recording was reached through.
-		// The file explorer reaches it through neither.
-		isAvailable: ({ note, link }: FileContext): boolean =>
-			note !== undefined || link !== undefined,
+		// Wherever the recording was reached through a link: the one the menu
+		// or the cursor was on - an editor need not show a note file, as a
+		// canvas card does not - the links of the note it was reached through,
+		// or a link whose place is not known. The file explorer reaches it
+		// through none of them.
+		isAvailable: ({ note, link, throughLink }: FileContext): boolean =>
+			note !== undefined || link !== undefined || throughLink === true,
 		run: async (context: FileContext): Promise<void> => {
 			try {
 				new Notice(await deleteRecordingWithLink(context));

@@ -52,10 +52,8 @@ describe('deleting a recording with its links', () => {
 		const answer = await deleteRecordingWithLink({
 			...sut.context,
 			link: {
-				editor: partial<Editor>({
-					replaceRange,
-					getLine: () => '![[standup.webm]]',
-				}),
+				editor: partial<Editor>({ replaceRange }),
+				path: 'standup.webm',
 				line: 0,
 				start: 0,
 				end: 17,
@@ -80,10 +78,8 @@ describe('deleting a recording with its links', () => {
 		const answer = await deleteRecordingWithLink({
 			...sut.context,
 			link: {
-				editor: partial<Editor>({
-					replaceRange,
-					getLine: () => '[[standup.webm#t=90|1:30]] Budget.',
-				}),
+				editor: partial<Editor>({ replaceRange }),
+				path: 'standup.webm#t=90',
 				line: 1,
 				start: 0,
 				end: 26,

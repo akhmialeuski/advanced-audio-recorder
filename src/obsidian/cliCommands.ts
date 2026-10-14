@@ -185,11 +185,16 @@ export function registerCliCommands(
 	// Checked over every command, the hand-written ones here and the ones the
 	// action registry built, before any is registered: the host refuses a
 	// second command of one id partway through, which would leave the rest
-	// off the command line while the plugin loads as if nothing happened.
+	// off the command line with nothing said. A clash is a bug in this
+	// plugin, which the plugin's load must survive - and which its tests,
+	// counting the commands registered, catch.
 	const seen = new Set<string>();
 	for (const { id } of commands) {
 		if (seen.has(id)) {
-			throw new Error(`Two command-line commands share the id ${id}.`);
+			console.error(
+				`${PLUGIN_LOG_PREFIX} CLI commands were not registered: two share the id ${id}.`,
+			);
+			return false;
 		}
 		seen.add(id);
 	}

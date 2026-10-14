@@ -39,8 +39,8 @@ import {
 	isRefusal,
 	valueParam,
 } from '../obsidian/cliArgs';
-import type { ActionServices, FileContext, LinkLocation } from './PluginAction';
-import { linkAtCursor, pointsAtWholeFile } from '../obsidian/linkAtCursor';
+import type { ActionServices, FileContext } from './PluginAction';
+import { pointsAtWholeFile } from '../obsidian/linkAtCursor';
 import type { TFile } from 'obsidian';
 
 /**
@@ -236,15 +236,6 @@ export async function exportChaptersFromCli(
 }
 
 /**
- * Whether the link at a location links a file as a whole.
- * @param link - The location, in an open editor
- */
-function linksWholeFile(link: LinkLocation): boolean {
-	const found = linkAtCursor(link.editor.getLine(link.line), link.start);
-	return found !== null && pointsAtWholeFile(found);
-}
-
-/**
  * Deletes a recording together with its link in the note it was reached
  * through.
  *
@@ -265,7 +256,7 @@ export async function deleteRecordingWithLink(
 	// The link the menu or the cursor was on goes with the recording when it
 	// links the whole recording. A timecode link points at a moment and is
 	// part of a transcript line, so the note's whole-file links go instead.
-	if (link && linksWholeFile(link)) {
+	if (link && pointsAtWholeFile(link)) {
 		await app.fileManager.trashFile(file);
 		link.editor.replaceRange(
 			'',

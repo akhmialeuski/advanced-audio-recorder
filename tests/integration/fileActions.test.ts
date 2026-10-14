@@ -212,11 +212,17 @@ describe('FILE_ACTIONS registry', () => {
 			extra: {
 				link: {
 					editor: partial<Editor>({}),
+					path: 'take.webm',
 					line: 0,
 					start: 0,
 					end: 9,
 				},
 			},
+			offered: COMMAND_IDS.deleteRecordingAndLink,
+		},
+		{
+			reached: 'through a link whose place is not known',
+			extra: { throughLink: true as const },
 			offered: COMMAND_IDS.deleteRecordingAndLink,
 		},
 	])(
@@ -543,16 +549,13 @@ describe('deleting a recording with its link', () => {
 	it('trashes the recording and removes the link it was opened on', async () => {
 		const { services } = createServices();
 		const replaceRange = jest.fn();
-		const editor = partial<Editor>({
-			replaceRange,
-			getLine: () => 'A ![[take.webm]] and more',
-		});
+		const editor = partial<Editor>({ replaceRange });
 
 		await action(COMMAND_IDS.deleteRecordingAndLink).run({
 			file,
 			services,
 			note: createFile('Meetings/standup.md'),
-			link: { editor, line: 4, start: 2, end: 20 },
+			link: { editor, path: 'take.webm', line: 4, start: 2, end: 20 },
 		});
 
 		expect(services.app.fileManager.trashFile).toHaveBeenCalledWith(file);
