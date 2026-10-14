@@ -114,8 +114,7 @@ type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
 
 /** The reasoning control one generation of Gemini accepts. */
 type GeminiThinkingConfig =
-	| { thinkingBudget: number }
-	| { thinkingLevel: GeminiThinkingLevel };
+	{ thinkingBudget: number } | { thinkingLevel: GeminiThinkingLevel };
 
 /** The generation-dependent fields of a deterministic Gemini request. */
 export interface GeminiGenerationControls {

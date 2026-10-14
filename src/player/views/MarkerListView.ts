@@ -226,9 +226,7 @@ export class MarkerListView {
 		// saved and synced even when no change/blur event fires
 		this.host.registerDomEvent(this.listEl, 'input', (event) => {
 			const input = event.target as
-				| HTMLInputElement
-				| HTMLTextAreaElement
-				| null;
+				HTMLInputElement | HTMLTextAreaElement | null;
 			const id = input?.dataset.markerId;
 			if (!input || !id) {
 				return;

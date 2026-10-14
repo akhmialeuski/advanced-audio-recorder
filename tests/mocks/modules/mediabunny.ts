@@ -96,8 +96,8 @@ export const Quality = jest
  * default, which is what jsdom really reports, and a suite about which
  * parameters an encoder accepts scripts it.
  */
-export const canEncodeAudio = jest.fn(
-	(): Promise<boolean> => Promise.resolve(false),
+export const canEncodeAudio = jest.fn((): Promise<boolean> =>
+	Promise.resolve(false),
 );
 
 /**

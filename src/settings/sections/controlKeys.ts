@@ -15,12 +15,7 @@ export const MAX_TRACK_COUNT = 8;
 
 /** One field of a track's audio source that a settings row addresses. */
 export type TrackControlField =
-	| 'deviceId'
-	| 'channelMode'
-	| 'gainDb'
-	| 'pan'
-	| 'processing'
-	| 'kind';
+	'deviceId' | 'channelMode' | 'gainDb' | 'pan' | 'processing' | 'kind';
 
 /**
  * Track fields the recording's channel layout is built from.

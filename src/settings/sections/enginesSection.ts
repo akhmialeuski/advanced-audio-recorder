@@ -209,22 +209,20 @@ function modelCataloguePage(
 						blocks.removeModel(engine, id);
 					}
 				},
-				items: saved.map(
-					(id): SettingGroupItem => ({
-						name: id,
-						// The row is the choice: tapping an id puts it to work,
-						// and the one in use says so. A row's description is a
-						// string the framework renders, not a predicate it
-						// re-evaluates, so this is the selection as the tree was
-						// built - which is what a rebuild is for.
-						...(id === models.model(settings)
-							? { desc: 'In use' }
-							: {}),
-						action: (): void => {
-							blocks.selectModel(engine, id);
-						},
-					}),
-				),
+				items: saved.map((id): SettingGroupItem => ({
+					name: id,
+					// The row is the choice: tapping an id puts it to work,
+					// and the one in use says so. A row's description is a
+					// string the framework renders, not a predicate it
+					// re-evaluates, so this is the selection as the tree was
+					// built - which is what a rebuild is for.
+					...(id === models.model(settings)
+						? { desc: 'In use' }
+						: {}),
+					action: (): void => {
+						blocks.selectModel(engine, id);
+					},
+				})),
 			},
 			...(declareAddRow
 				? [

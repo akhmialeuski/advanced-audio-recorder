@@ -883,9 +883,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	> {
 		try {
 			return (await this.loadData()) as
-				| Partial<AudioRecorderSettings>
-				| null
-				| undefined;
+				Partial<AudioRecorderSettings> | null | undefined;
 		} catch {
 			return undefined;
 		}
@@ -1462,8 +1460,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * @returns The active background transcription, if any
 	 */
 	private activeBackgroundTranscription():
-		| BackgroundTranscriptionProgress
-		| undefined {
+		BackgroundTranscriptionProgress | undefined {
 		let active: BackgroundTranscriptionProgress | undefined;
 		for (const entry of this.backgroundTranscriptions.values()) {
 			active = entry;

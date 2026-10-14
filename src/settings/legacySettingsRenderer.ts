@@ -140,8 +140,7 @@ interface RenderedContainer {
  */
 function validatorRejection<V>(
 	validate:
-		| ((value: V) => string | void | Promise<string | void>)
-		| undefined,
+		((value: V) => string | void | Promise<string | void>) | undefined,
 	value: V,
 ): string | undefined {
 	const message = validate?.(value);

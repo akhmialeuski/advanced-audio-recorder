@@ -56,8 +56,7 @@ export class ConversionModal extends PluginModal {
 	/** Conversion pipeline behind the form. */
 	private readonly conversionService: ConversionService;
 	private readonly onConverted?:
-		| ((convertedPath: string) => void)
-		| undefined;
+		((convertedPath: string) => void) | undefined;
 
 	/**
 	 * @param app - Obsidian app handle

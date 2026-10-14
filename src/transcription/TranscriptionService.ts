@@ -363,8 +363,7 @@ interface PassContext {
 	readonly token: CancellationToken;
 	readonly discardedUsage: TranscriptionUsage[];
 	readonly onProgress?:
-		| ((fraction: number, label: string) => void)
-		| undefined;
+		((fraction: number, label: string) => void) | undefined;
 	readonly onCost?: ((cost: TranscribeRunCost) => void) | undefined;
 	readonly runCost: () => TranscribeRunCost;
 }

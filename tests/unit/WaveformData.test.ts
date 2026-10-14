@@ -322,9 +322,8 @@ describe('SharedAudioDecoder', () => {
 	class FakeOfflineAudioContext {
 		static count = 0;
 		static last: FakeOfflineAudioContext | null = null;
-		readonly decodeAudioData = jest.fn(
-			(): Promise<AudioBuffer> =>
-				Promise.resolve({ duration: 1 } as AudioBuffer),
+		readonly decodeAudioData = jest.fn((): Promise<AudioBuffer> =>
+			Promise.resolve({ duration: 1 } as AudioBuffer),
 		);
 		constructor(
 			readonly numberOfChannels: number,

@@ -287,12 +287,10 @@ export class TranscriptionQueue {
 		const before = this.state.entries.length;
 		this.state.entries = uniqueByPath([
 			...this.state.entries,
-			...paths.map(
-				(path): QueueEntry => ({
-					path,
-					state: QueueEntryState.Waiting,
-				}),
-			),
+			...paths.map((path): QueueEntry => ({
+				path,
+				state: QueueEntryState.Waiting,
+			})),
 		]);
 		this.changed();
 		return this.state.entries.length - before;
