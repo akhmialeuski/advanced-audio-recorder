@@ -117,6 +117,18 @@ describe('what the export dialog offers', () => {
 	});
 });
 
+describe('closing the export dialog', () => {
+	it('closes on Cancel, writing nothing', () => {
+		const { modal, created } = createSut();
+		const close = jest.spyOn(modal, 'close');
+
+		press(modal, 'Cancel');
+
+		expect(close).toHaveBeenCalledTimes(1);
+		expect(created.size).toBe(0);
+	});
+});
+
 describe('writing a file beside the recording', () => {
 	it('writes the timecoded list as a text file', async () => {
 		const { modal, created } = createSut();

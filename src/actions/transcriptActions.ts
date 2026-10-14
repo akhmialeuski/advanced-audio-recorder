@@ -14,7 +14,11 @@ import { COMMAND_IDS } from '../constants';
 import { lineTimecodeRef } from '../obsidian/timecodeRefs';
 import { TranscriptMergeModal } from '../ui/TranscriptMergeModal';
 import { TranscriptSplitModal } from '../ui/TranscriptSplitModal';
-import type { TranscriptEditModalOptions } from '../ui/transcriptLineDialog';
+import {
+	pickedChoice,
+	speakerValue,
+	type TranscriptEditModalOptions,
+} from '../ui/transcriptLineDialog';
 import {
 	mergeSpeakerOptions,
 	performMerge,
@@ -237,19 +241,23 @@ export function speakerChoiceNamed(
 }
 
 /**
- * The speaker a parameter names, or the default when it names none.
+ * The speaker a parameter names, or, when it names none, the one the dialog's
+ * dropdown starts on - picked by its value, as the dialog picks it.
  * @param args - The arguments as typed
  * @param param - The parameter
  * @param options - The options the dialog would offer
- * @param fallback - The option value the dialog starts on
+ * @param startValue - The dropdown value the dialog starts on
  */
 function typedSpeaker(
 	args: CliData,
 	param: string,
 	options: readonly LineSpeakerOption[],
-	fallback: string,
+	startValue: string,
 ): LineSpeakerChoice | string {
-	return speakerChoiceNamed(options, cliText(args, param) ?? fallback);
+	const typed = cliText(args, param);
+	return typed === null
+		? pickedChoice(startValue)
+		: speakerChoiceNamed(options, typed);
 }
 
 /**
@@ -320,12 +328,11 @@ async function mergeFromCli(
 		return prepared;
 	}
 	const speakerOptions = mergeSpeakerOptions(prepared);
-	const first = prepared.rows[0]?.speaker;
 	const choice = typedSpeaker(
 		args,
 		SPEAKER_PARAM,
 		speakerOptions,
-		first === undefined ? 'none' : first,
+		speakerValue(prepared.rows[0]?.speaker),
 	);
 	if (typeof choice === 'string') {
 		return choice;
@@ -373,7 +380,7 @@ export const TRANSCRIPT_ACTIONS: readonly TranscriptAction[] = [
 				),
 				[REST_PARAM]: valueParam(
 					'<name>|new|none',
-					'Who said the rest of the line. Defaults to its own speaker.',
+					'Who said the rest of the line. Defaults to its own speaker; none only for a line that has none.',
 				),
 				start: valueParam(
 					'<m:ss>',
@@ -385,9 +392,9 @@ export const TRANSCRIPT_ACTIONS: readonly TranscriptAction[] = [
 				),
 			},
 			opensDialog: true,
-			unavailable: ({ line, lastLine, services }): string =>
+			unavailable: ({ services }): string =>
 				services.getSettings().transcriptionEnabled
-					? `A split works on one line, not ${String(lastLine - line + 1)}: leave out ${TO_PARAM}.`
+					? `A split works on one line: leave out ${TO_PARAM}.`
 					: 'Transcription is switched off in settings.',
 			execute: splitFromCli,
 		},
@@ -416,7 +423,7 @@ export const TRANSCRIPT_ACTIONS: readonly TranscriptAction[] = [
 			params: {
 				[SPEAKER_PARAM]: valueParam(
 					'<name>|new|none',
-					'Who said the merged line. Defaults to the speaker of the first.',
+					'Who said the merged line. Defaults to the speaker of the first; none only where a line has none.',
 				),
 				[CONFIRM_FLAG]: flagParam(
 					'Confirm merging more than two lines.',

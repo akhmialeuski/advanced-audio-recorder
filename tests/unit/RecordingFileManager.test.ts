@@ -157,8 +157,8 @@ describe('RecordingFileManager', () => {
 
 			const result = getBaseSaveDirectory(mockSettings, mockApp);
 
-			// activeDir = '', so result = '/recordings' normalized
-			expect(result).toBe('/recordings');
+			// activeDir = '', so '/recordings' normalizes to a relative path
+			expect(result).toBe('recordings');
 		});
 	});
 
@@ -395,7 +395,7 @@ describe('RecordingFileManager', () => {
 				mockSettings,
 			);
 
-			expect(result).toBe('/a-b-c-d-e-f-g-h-i-j.ogg');
+			expect(result).toBe('a-b-c-d-e-f-g-h-i-j.ogg');
 		});
 	});
 

@@ -309,6 +309,12 @@ describe('the point a command line names', () => {
 				'Name the time with at=<seconds|m:ss|h:mm:ss>, or play the recording in Obsidian.',
 		},
 		{
+			name: 'only a time is named and nothing plays',
+			args: { at: '5' },
+			refusal:
+				'Name a recording or a note with file=<name> or path=<vault path>, or open one in Obsidian.',
+		},
+		{
 			name: 'the time is not one',
 			args: { path: LECTURE, at: 'soon' },
 			refusal: 'at=soon is not a time: use seconds, m:ss or h:mm:ss.',

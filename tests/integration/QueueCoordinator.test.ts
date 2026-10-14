@@ -202,3 +202,76 @@ describe('a queue a previous session left', () => {
 		expect(modalInstances).toHaveLength(before);
 	});
 });
+
+describe('driving the queue without its dialog', () => {
+	it('queues a folder quietly and says what it found and added', async () => {
+		const { coordinator, queue } = createSut([
+			{ path: 'Recordings/a.webm', state: 'waiting' },
+		]);
+		const before = modalInstances.length;
+
+		await expect(
+			coordinator.enqueueFolder(
+				folderOf('Recordings', [
+					'Recordings/a.webm',
+					'Recordings/b.webm',
+				]),
+			),
+		).resolves.toEqual({ found: 2, added: 1 });
+		expect(queue.entries()).toHaveLength(2);
+		expect(modalInstances).toHaveLength(before);
+		expect(noticeMessages()).toEqual([]);
+	});
+
+	it('adds nothing from a folder without recordings', async () => {
+		await expect(
+			createSut().coordinator.enqueueFolder(
+				folderOf('Notes', ['Notes/plan.md']),
+			),
+		).resolves.toEqual({ found: 0, added: 0 });
+	});
+
+	it('reports what the queue holds and whether it runs', async () => {
+		const { coordinator, queue } = createSut([
+			{ path: 'a.webm', state: 'waiting' },
+		]);
+		coordinator.pause();
+
+		await expect(coordinator.status()).resolves.toEqual({
+			entries: queue.entries(),
+			paused: true,
+			running: false,
+		});
+	});
+
+	it('starts transcribing what waits', async () => {
+		const { coordinator, transcribed } = createSut([
+			{ path: 'a.webm', state: 'waiting' },
+		]);
+
+		coordinator.start();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(transcribed).toEqual(['a.webm']);
+	});
+
+	it('removes one entry, and clears the rest', () => {
+		const { coordinator, queue } = createSut([
+			{ path: 'a.webm', state: 'waiting' },
+			{ path: 'b.webm', state: 'waiting' },
+			{ path: 'c.webm', state: 'waiting' },
+		]);
+
+		expect(coordinator.remove('a.webm')).toBe(true);
+		expect(coordinator.remove('gone.webm')).toBe(false);
+		expect(queue.entries().map((entry) => entry.path)).toEqual([
+			'b.webm',
+			'c.webm',
+		]);
+
+		coordinator.clear();
+
+		expect(queue.entries()).toEqual([]);
+	});
+});

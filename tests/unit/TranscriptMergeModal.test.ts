@@ -11,7 +11,6 @@
 
 import type { TFile } from 'obsidian';
 import { TRANSCRIPT_ACTIONS } from 'src/actions/transcriptActions';
-import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { TranscriptMergeModal } from 'src/ui/TranscriptMergeModal';
 import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import { silenceConsole } from '../helpers/doubles';
@@ -24,6 +23,7 @@ import {
 	AUDIO_PATH,
 	contextOf,
 	createSut,
+	FRAGMENTED,
 	JSON_PATH,
 	openLineDialog,
 	pick,
@@ -34,40 +34,6 @@ import {
 	type SutOptions,
 	writtenJson,
 } from '../helpers/transcriptEditHarness';
-import { wordsOf } from '../helpers/transcriptFixtures';
-
-/**
- * A meeting where diarization cut Speaker 1's turn in three and gave its
- * middle to Bob, so the note reads as three turns where there was one.
- */
-const FRAGMENTED: Transcript = {
-	segments: [
-		{ start: 0, end: 4, text: 'Shall we start?', speaker: 'Bob' },
-		{
-			start: 5,
-			end: 7,
-			text: 'I think',
-			speaker: 'Speaker 1',
-			words: wordsOf('I think', 5),
-		},
-		{
-			start: 7,
-			end: 10,
-			text: 'we should wait',
-			speaker: 'Bob',
-			words: wordsOf('we should wait', 7),
-		},
-		{
-			start: 10,
-			end: 12,
-			text: 'for Carol.',
-			speaker: 'Speaker 1',
-			words: wordsOf('for Carol.', 10),
-		},
-		{ start: 14, end: 16, text: 'Fine.', speaker: 'Bob' },
-	],
-	speakers: ['Bob', 'Speaker 1'],
-};
 
 /** A recording of the fragmented meeting, varied as a test needs. */
 function createMergeSut(options: SutOptions = {}): Sut {

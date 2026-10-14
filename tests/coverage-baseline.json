@@ -31,7 +31,31 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/actions/ActionRegistry.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/actionCliCommands.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/audioJobsCli.ts": {
+				"statements": 100,
+				"branches": 98.03,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/actions/fileActions.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/folderActions.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -44,6 +68,24 @@
 				"lines": 100
 			},
 			"src/actions/playbackActions.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/positionActions.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/recordingEdits.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/recordingTargets.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -73,7 +115,25 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/actions/speakersCli.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/transcribeCli.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/actions/transcriptActions.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/transcriptLines.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -169,11 +229,23 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/chapters/chapterExportFiles.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/chapters/chapterGeneration.ts": {
 				"statements": 99,
 				"branches": 94.73,
 				"functions": 100,
 				"lines": 98.98
+			},
+			"src/chapters/chapterRunSettings.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
 			},
 			"src/chapters/transcriptSources.ts": {
 				"statements": 91.3,
@@ -199,6 +271,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/cleanup/cleanupRun.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/diagnostics/SystemDiagnostics.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -217,6 +295,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/markers/addRecordingMarker.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/markers/markerFactory.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -228,6 +312,12 @@
 				"branches": 98.57,
 				"functions": 100,
 				"lines": 98.79
+			},
+			"src/obsidian/cliArgs.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
 			},
 			"src/obsidian/cliCommands.ts": {
 				"statements": 100,
@@ -244,6 +334,12 @@
 			"src/obsidian/embedRegistry.ts": {
 				"statements": 100,
 				"branches": 92.3,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/obsidian/linkAtCursor.ts": {
+				"statements": 100,
+				"branches": 100,
 				"functions": 100,
 				"lines": 100
 			},
@@ -901,6 +997,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/speakers/speakerRenameFlow.ts": {
+				"statements": 100,
+				"branches": 87.5,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/speakers/transcriptMerge.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -926,10 +1028,10 @@
 				"lines": 100
 			},
 			"src/transcription/QueueCoordinator.ts": {
-				"statements": 97.61,
-				"branches": 85.71,
-				"functions": 90.9,
-				"lines": 97.61
+				"statements": 97.95,
+				"branches": 87.5,
+				"functions": 94.11,
+				"lines": 97.95
 			},
 			"src/transcription/QueueRunner.ts": {
 				"statements": 100,
@@ -1213,6 +1315,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/ui/ActionTargetModal.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/ui/AudioFileInfoModal.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -1226,10 +1334,10 @@
 				"lines": 98.14
 			},
 			"src/ui/ChapterGenerationModal.ts": {
-				"statements": 97.14,
+				"statements": 99,
 				"branches": 86.36,
-				"functions": 91.3,
-				"lines": 97.14
+				"functions": 100,
+				"lines": 99
 			},
 			"src/ui/ConfirmModal.ts": {
 				"statements": 100,
@@ -1375,6 +1483,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/ui/transcriptLineEdits.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/utils/AudioFileAnalyzer.ts": {
 				"statements": 100,
 				"branches": 96.61,
@@ -1466,6 +1580,12 @@
 				"lines": 100
 			},
 			"src/utils/noteViews.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/utils/notify.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,

@@ -9,7 +9,7 @@
  */
 
 import { App, TFile } from 'obsidian';
-import type { ActionServices } from 'src/actions/PluginAction';
+import type { ActionServices, FileContext } from 'src/actions/PluginAction';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { asMockApp } from './obsidianMock';
@@ -43,6 +43,12 @@ export interface RecordingVault {
 	 * @param path - Its vault path
 	 */
 	file(path: string): TFile;
+	/**
+	 * A recording as a file action is handed it.
+	 * @param recording - Its vault path
+	 * @param note - The note it was reached through, if it was
+	 */
+	fileContext(recording: string, note?: string): FileContext;
 }
 
 /** One embed line of a note, as the note's text holds it. */
@@ -171,14 +177,20 @@ export function recordingVault(
 		transcriptionEnabled: true,
 		...options.settings,
 	});
+	const services = {
+		...commonActionServices(),
+		app,
+		getSettings: () => settings,
+	};
 	return {
 		app,
 		settings,
 		file,
-		services: {
-			...commonActionServices(),
-			app,
-			getSettings: () => settings,
-		},
+		services,
+		fileContext: (recording, note) => ({
+			file: file(recording),
+			services,
+			...(note === undefined ? {} : { note: file(note) }),
+		}),
 	};
 }

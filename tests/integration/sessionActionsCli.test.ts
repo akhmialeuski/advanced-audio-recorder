@@ -259,3 +259,26 @@ describe('choosing the input device from the command line', () => {
 		).resolves.toBe('No audio input devices found.');
 	});
 });
+
+describe('the session actions the command line cannot run now', () => {
+	it.each([
+		{
+			commandId: COMMAND_IDS.startStopQuickNote,
+			said: 'Quick notes are switched off in settings.',
+		},
+		{
+			commandId: COMMAND_IDS.pauseResumeRecording,
+			said: 'Nothing is recording.',
+		},
+		{
+			commandId: COMMAND_IDS.selectAudioInputDevice,
+			said: 'This platform records from its default microphone.',
+		},
+	])('says why for $commandId', ({ commandId, said }) => {
+		const action = SESSION_ACTIONS.find(
+			(entry) => entry.commandId === commandId,
+		);
+
+		expect(action?.cli.unavailable?.(createSut())).toBe(said);
+	});
+});

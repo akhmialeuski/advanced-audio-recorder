@@ -45,11 +45,10 @@ function createSut(
 	});
 	return {
 		...vault,
-		context: {
-			file: vault.file(TAKE),
-			services: vault.services,
-			...(options.throughNote ? { note: vault.file(MEETING) } : {}),
-		},
+		context: vault.fileContext(
+			TAKE,
+			options.throughNote ? MEETING : undefined,
+		),
 	};
 }
 
@@ -127,7 +126,12 @@ describe('converting a recording', () => {
 		jest.spyOn(sut.services, 'primeForEnhancement');
 		const spy = jest
 			.spyOn(ConversionService.prototype, 'convert')
-			.mockImplementation(function (this: ConversionService) {
+			.mockImplementation(function (
+				this: ConversionService,
+				_request,
+				onProgress,
+			) {
+				onProgress('Encoding 50%');
 				said.forEach(reporterOf(this));
 				return Promise.resolve(outcome);
 			});
@@ -274,7 +278,12 @@ describe('splitting a recording', () => {
 		}
 		const spy = jest
 			.spyOn(SplitService.prototype, 'split')
-			.mockImplementation(function (this: SplitService) {
+			.mockImplementation(function (
+				this: SplitService,
+				_request,
+				onProgress,
+			) {
+				onProgress('Writing part 1');
 				(options.said ?? []).forEach(reporterOf(this));
 				return Promise.resolve(
 					options.outcome ?? {

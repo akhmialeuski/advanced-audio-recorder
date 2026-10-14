@@ -160,9 +160,9 @@ describe('RecordingFinalizer', () => {
 				'final.webm',
 			);
 
-			expect(result).toBe('/final.webm');
+			expect(result).toBe('final.webm');
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-				'/final.webm',
+				'final.webm',
 				expect.any(ArrayBuffer),
 			);
 			expect(mockApp.vault.adapter.remove).toHaveBeenCalledTimes(2);
@@ -238,7 +238,7 @@ describe('RecordingFinalizer', () => {
 				'final.webm',
 			);
 
-			expect(result).toBe('/final.webm');
+			expect(result).toBe('final.webm');
 			expect(
 				getNotices().some((message) =>
 					message.includes('temporary files could not be removed'),

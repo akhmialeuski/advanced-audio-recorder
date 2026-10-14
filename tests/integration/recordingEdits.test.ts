@@ -276,6 +276,46 @@ describe('exporting chapters from the command line', () => {
 		).resolves.toContain('Budget');
 	});
 
+	it.each([
+		{ reached: 'through its note', throughNote: true, from: MEETING },
+		{ reached: 'directly', throughNote: false, from: '' },
+	])(
+		'links the outline from where the recording was reached: $reached',
+		async ({ throughNote, from }) => {
+			const sut = withMarkers();
+			const links = jest.spyOn(
+				sut.app.fileManager,
+				'generateMarkdownLink',
+			);
+			const { note: _note, ...direct } = sut.context;
+
+			await exportChaptersFromCli(throughNote ? sut.context : direct, {
+				format: 'outline',
+			});
+
+			expect(links).toHaveBeenCalledWith(
+				sut.file(STANDUP),
+				from,
+				'#t=75',
+				'1:15',
+			);
+		},
+	);
+
+	it('writes beside a recording at the root of the vault', async () => {
+		const vault = recordingVault({ recordings: ['standup.webm'] });
+		jest.mocked(
+			vault.services.recordingSidecar.getMarkers,
+		).mockResolvedValue(markers);
+
+		await expect(
+			exportChaptersFromCli(
+				{ file: vault.file('standup.webm'), services: vault.services },
+				{},
+			),
+		).resolves.toBe('Markers written to standup.chapters.txt.');
+	});
+
 	it('says so when there is nothing to export', async () => {
 		const sut = withMarkers([]);
 

@@ -152,6 +152,18 @@ function sidecarDouble(
 	return methods as unknown as ActionServices['recordingSidecar'];
 }
 
+/** The services over a recording no part of which is missing. */
+function nothingMissingServices(): ActionServices {
+	return createServices(
+		{ transcriptionEnabled: true },
+		sidecarDouble({
+			getFailedParts: jest.fn().mockResolvedValue(null),
+			setFailedParts: jest.fn().mockResolvedValue(undefined),
+			getTranscript: jest.fn().mockResolvedValue({ fileOutputs: [] }),
+		}),
+	).services;
+}
+
 const file = createFile('Recordings/take.webm');
 
 describe('FILE_ACTIONS registry', () => {
@@ -501,14 +513,7 @@ describe('deleting a recording with its link', () => {
 // so, and every other outcome has to reach the user as one sentence.
 describe('transcribing the parts that failed', () => {
 	it('says so when the recording has nothing missing', async () => {
-		const { services } = createServices(
-			{ transcriptionEnabled: true },
-			sidecarDouble({
-				getFailedParts: jest.fn().mockResolvedValue(null),
-				setFailedParts: jest.fn().mockResolvedValue(undefined),
-				getTranscript: jest.fn().mockResolvedValue({ fileOutputs: [] }),
-			}),
-		);
+		const services = nothingMissingServices();
 
 		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
 
@@ -795,5 +800,77 @@ describe('exporting chapters and markers', () => {
 		expect(
 			action(COMMAND_IDS.exportChapters).isAvailable({ file, services }),
 		).toBe(true);
+	});
+});
+
+describe('the file actions on the command line', () => {
+	it('names every action as the command line calls it', () => {
+		expect(FILE_ACTIONS.map((entry) => entry.cli.name)).toEqual([
+			'info',
+			'convert',
+			'split',
+			'cleanup',
+			'transcribe',
+			'retry-failed',
+			'speakers',
+			'chapters',
+			'export-chapters',
+			'delete',
+			'delete-with-links',
+		]);
+	});
+
+	it.each([
+		{
+			commandId: COMMAND_IDS.retryFailedParts,
+			said: 'Transcription is switched off in settings.',
+		},
+		{
+			commandId: COMMAND_IDS.renameSpeakers,
+			said: 'Rename speakers is switched off in settings.',
+		},
+		{
+			commandId: COMMAND_IDS.generateChapters,
+			said: 'Auto chapters are switched off in settings.',
+		},
+		{
+			commandId: COMMAND_IDS.deleteRecordingAndLink,
+			said: `Name the note to remove the links of ${file.path} from: file=<note>, or note=<note> beside path=<recording>.`,
+		},
+	])('says why $commandId is not offered', ({ commandId, said }) => {
+		const { services } = createServices();
+
+		expect(action(commandId).cli.unavailable?.({ file, services })).toBe(
+			said,
+		);
+	});
+
+	it('trashes the recording and says so', async () => {
+		const { services } = createServices();
+
+		await expect(
+			Promise.resolve(
+				action(COMMAND_IDS.deleteRecording).cli.execute(
+					{ file, services },
+					{},
+				),
+			),
+		).resolves.toBe(`Moved ${file.path} to the trash.`);
+		expect(services.app.fileManager.trashFile).toHaveBeenCalledWith(file);
+		expect(noticeMessages()).toEqual([]);
+	});
+
+	it('answers a retry with what the notice would have said', async () => {
+		const services = nothingMissingServices();
+
+		await expect(
+			Promise.resolve(
+				action(COMMAND_IDS.retryFailedParts).cli.execute(
+					{ file, services },
+					{},
+				),
+			),
+		).resolves.toContain('Nothing is missing');
+		expect(noticeMessages()).toEqual([]);
 	});
 });

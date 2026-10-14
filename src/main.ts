@@ -1297,10 +1297,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	/**
 	 * Opens the transcription dialog on a file and starts it there.
 	 *
-	 * Every transcription this plugin starts on its own - after a recording,
-	 * from the command line - goes through here rather than in the background:
-	 * the user gets visible progress and a cancel button for what can be a
-	 * long, paid job. The dialog reports its own errors and writes the
+	 * A transcription this plugin starts on its own after a recording goes
+	 * through here rather than in the background: the user gets visible
+	 * progress and a cancel button for what can be a long, paid job. The
+	 * command line's transcribe opens the same dialog the same way, through
+	 * its action. The dialog reports its own errors and writes the
 	 * configured outputs, with a file fallback when the note is not editable.
 	 * @param file - The audio file to transcribe
 	 * @param notePath - Note the transcript's links should resolve in, where

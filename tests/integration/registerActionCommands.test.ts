@@ -9,7 +9,7 @@
 
 import type { Plugin } from 'obsidian';
 import { registerActionCommands } from 'src/actions/registerActionCommands';
-import { fileActionFamily } from 'src/actions/fileActions';
+import { FILE_ACTIONS, fileActionFamily } from 'src/actions/fileActions';
 import { sessionActionFamily } from 'src/actions/sessionActions';
 import { playbackActionFamily } from 'src/actions/playbackActions';
 import { showDeviceSelectionModal } from 'src/ui/DeviceSelectionModal';
@@ -104,19 +104,10 @@ describe('file actions over what is active', () => {
 	it('registers a palette command for every file action', () => {
 		const { plugin } = registerFiles(undefined);
 
-		expect(plugin.registeredCommands.map((c) => c.id)).toEqual([
-			COMMAND_IDS.audioFileInfo,
-			COMMAND_IDS.convertAudioFormat,
-			COMMAND_IDS.splitAudio,
-			COMMAND_IDS.cleanupAudio,
-			COMMAND_IDS.transcribeAudio,
-			COMMAND_IDS.retryFailedParts,
-			COMMAND_IDS.renameSpeakers,
-			COMMAND_IDS.generateChapters,
-			COMMAND_IDS.exportChapters,
-			COMMAND_IDS.deleteRecording,
-			COMMAND_IDS.deleteRecordingAndLink,
-		]);
+		// In the family's order, which the file actions suite pins.
+		expect(plugin.registeredCommands.map((c) => c.id)).toEqual(
+			FILE_ACTIONS.map((entry) => entry.commandId),
+		);
 	});
 
 	it('offers every command but the link-aware delete on an open recording', () => {

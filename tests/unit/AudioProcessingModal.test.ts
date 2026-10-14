@@ -256,6 +256,22 @@ describe('AudioProcessingModal', () => {
 		expect(modal.contentEl.textContent).toContain('Failed: decode failed');
 	});
 
+	it('reports a failure that is not an error by what it was', async () => {
+		processMock.mockRejectedValue('worker crashed');
+		const { modal, processButton } = openModal(
+			makeApp(),
+			settingsWithStages(true),
+		);
+		jest.spyOn(modal, 'close').mockImplementation();
+
+		processButton.click();
+		await settle();
+
+		expect(Notice).toHaveBeenCalledWith(
+			'Audio processing failed: worker crashed',
+		);
+	});
+
 	it('links the note best-effort: a linking failure does not block the save', async () => {
 		processMock.mockResolvedValue('recordings/take-processed.wav');
 		jest.spyOn(console, 'warn').mockImplementation();

@@ -8,7 +8,10 @@ import { noticeMessages } from '../mocks/obsidian';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { Profile, ProfileKindId } from 'src/settings/profiles';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
-import { TranscriptionModal } from 'src/ui/TranscriptionModal';
+import {
+	TranscriptionModal,
+	type TranscriptionModalOptions,
+} from 'src/ui/TranscriptionModal';
 import {
 	transcribeFile,
 	TranscriptionCancelledError,
@@ -208,7 +211,9 @@ describe('TranscriptionModal platform gating', () => {
 		);
 	}
 
-	function createLocalWhisperModal(): TranscriptionModal {
+	function createLocalWhisperModal(
+		options: Partial<TranscriptionModalOptions> = {},
+	): TranscriptionModal {
 		return new TranscriptionModal(
 			new App(),
 			createAudioFile(),
@@ -216,7 +221,10 @@ describe('TranscriptionModal platform gating', () => {
 				...DEFAULT_SETTINGS,
 				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 			}),
-			{ backgroundProgress: { show: jest.fn(), clear: jest.fn() } },
+			{
+				backgroundProgress: { show: jest.fn(), clear: jest.fn() },
+				...options,
+			},
 		);
 	}
 
@@ -248,6 +256,21 @@ describe('TranscriptionModal platform gating', () => {
 		expect(notice).toHaveBeenCalledWith(
 			expect.stringContaining('not available on this device'),
 		);
+	});
+
+	it('tells the one that started it why the run never began', async () => {
+		setPlatform({ isMobile: true });
+		const onRunSettled = jest.fn();
+		const modal = createLocalWhisperModal({ onRunSettled });
+		modal.onOpen();
+
+		await internalsOf<TranscriptionModalInternals>(modal).startRun();
+
+		expect(onRunSettled).toHaveBeenCalledWith({
+			status: 'failed',
+			message:
+				'The selected engine is not available on this device. Pick a cloud engine to transcribe here.',
+		});
 	});
 
 	it('leaves the Transcribe button enabled on desktop', () => {

@@ -1066,15 +1066,24 @@ describe('ContextMenu', () => {
 			},
 		);
 
-		it('copies a link to the clicked position', async () => {
+		/**
+		 * Right-clicks the player and picks the copy entry, the clipboard a
+		 * spy.
+		 * @returns What was written to the clipboard
+		 */
+		async function copyLinkHere(): Promise<jest.Mock> {
 			const writeText = jest.fn().mockResolvedValue(undefined);
 			Object.defineProperty(navigator, 'clipboard', {
 				value: { writeText },
 				configurable: true,
 			});
 			playerMenu()(rightClickOnPlayer({}));
-
 			await clickPlayerItem('Copy timestamp link here');
+			return writeText;
+		}
+
+		it('copies a link to the clicked position', async () => {
+			const writeText = await copyLinkHere();
 
 			// The link is Obsidian's, built for the clicked second.
 			expect(
@@ -1089,6 +1098,59 @@ describe('ContextMenu', () => {
 				jest.mocked(mockApp.fileManager.generateMarkdownLink).mock
 					.results[0]?.value,
 			);
+		});
+
+		it('links from the note the player is in', async () => {
+			// The line the embed is on holds no link to resolve, so only the
+			// note, not the embed, is known.
+			const editor = partial<Editor>({
+				offsetToPos: jest.fn().mockReturnValue({ line: 0, ch: 0 }),
+				getLine: jest.fn().mockReturnValue('Notes from the call'),
+			});
+			Object.defineProperty(editor, 'cm', {
+				get: () => ({ posAtDOM: jest.fn().mockReturnValue(0) }),
+			});
+			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
+				file: { path: 'Meetings/standup.md' },
+				editor,
+			});
+
+			await copyLinkHere();
+
+			expect(
+				mockApp.fileManager.generateMarkdownLink,
+			).toHaveBeenCalledWith(
+				expect.objectContaining({ extension: 'mp3' }),
+				'Meetings/standup.md',
+				'#t=42',
+				'0:42',
+			);
+		});
+
+		it('resolves a player in a view that shows no file from the vault root', () => {
+			const event = rightClickOnPlayer({});
+			const containerEl = document.createElement('div');
+			containerEl.appendChild(
+				(event.target as HTMLElement).parentElement as HTMLElement,
+			);
+			const view = Object.assign(
+				Object.create(
+					(MarkdownView as unknown as { prototype: object })
+						.prototype,
+				),
+				{ containerEl, file: null, editor: {} },
+			);
+			(mockWorkspace.iterateAllLeaves as jest.Mock).mockImplementation(
+				(cb: (leaf: { view: unknown }) => void) => cb({ view }),
+			);
+
+			playerMenu()(event);
+
+			expect(mockMetadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
+				'audio.mp3',
+				'',
+			);
+			expect(menuTitles()).toContain('Add marker here');
 		});
 
 		it('offers no marker actions in a read-only note', () => {

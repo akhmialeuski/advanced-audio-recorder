@@ -2,8 +2,9 @@
  * Unit tests for the transcribe dialog's cost surface: the combined
  * pre-run estimate breakdown, the pricing links, the session-total line,
  * the duration-probe gating (never read the whole file when the estimate
- * cannot use it), the re-pricing a control change has to trigger, and how a
- * finished (or output-failed) run is recorded in the session tracker.
+ * cannot use it), the re-pricing a control change has to trigger, how a
+ * finished (or output-failed) run is recorded in the session tracker, and
+ * what the one that started the run is told about how it ended.
  */
 
 import { App, Notice, TFile } from 'obsidian';
@@ -27,7 +28,10 @@ jest.mock('src/transcription/api', () => {
 });
 
 import { readAudioMetadata } from 'src/utils/AudioFileAnalyzer';
-import { transcribeFile } from 'src/transcription/api';
+import {
+	transcribeFile,
+	TranscriptionCancelledError,
+} from 'src/transcription/api';
 import { createFile } from '../helpers/createApp';
 import { tick } from '../helpers/async';
 import { internalsOf } from '../helpers/doubles';
@@ -570,5 +574,72 @@ describe('TranscriptionModal run accounting', () => {
 		expect(Notice).toHaveBeenCalledWith(
 			expect.stringContaining('Transcription failed'),
 		);
+	});
+});
+
+describe('TranscriptionModal telling the one that started a run how it ended', () => {
+	/** A dialog over a note, its run's end reported to a spy. */
+	function createReportingModal(): {
+		internals: ModalInternals;
+		onRunSettled: jest.Mock;
+	} {
+		const onRunSettled = jest.fn();
+		const { modal, internals } = createModal(
+			{ transcriptDestination: 'both' },
+			undefined,
+			{ onRunSettled, notePath: 'Meetings/standup.md' },
+		);
+		modal.onOpen();
+		return { internals, onRunSettled };
+	}
+
+	it('says where the transcript went and how many parts it is missing', async () => {
+		transcribeMock.mockResolvedValue({
+			transcript: { segments: [], speakers: [] },
+			markdown: '',
+			missingParts: [{ index: 2 }],
+			cost: {
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				usd: null,
+				usage: {},
+			},
+		});
+		const { internals, onRunSettled } = createReportingModal();
+
+		await internals.startRun();
+
+		expect(onRunSettled).toHaveBeenCalledWith({
+			status: 'done',
+			destination: 'both',
+			notePath: 'Meetings/standup.md',
+			missingParts: 1,
+		});
+	});
+
+	it('says it was cancelled', async () => {
+		transcribeMock.mockRejectedValue(new TranscriptionCancelledError());
+		const { internals, onRunSettled } = createReportingModal();
+
+		await internals.startRun();
+
+		expect(onRunSettled).toHaveBeenCalledWith({ status: 'cancelled' });
+	});
+
+	it.each([
+		{
+			thrown: new Error('Vault is read-only'),
+			message: 'Vault is read-only',
+		},
+		{ thrown: 'quota exceeded', message: 'quota exceeded' },
+	])('says why it failed: $message', async ({ thrown, message }) => {
+		transcribeMock.mockRejectedValue(thrown);
+		const { internals, onRunSettled } = createReportingModal();
+
+		await internals.startRun();
+
+		expect(onRunSettled).toHaveBeenCalledWith({
+			status: 'failed',
+			message,
+		});
 	});
 });

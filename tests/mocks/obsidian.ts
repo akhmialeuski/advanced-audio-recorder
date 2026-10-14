@@ -2391,10 +2391,17 @@ export class SliderComponent {
 }
 
 /**
- * Mock normalizePath function.
+ * Mock normalizePath, doing what Obsidian's does to a path: backslashes become
+ * slashes, runs of slashes collapse, and the slashes at either end go, the
+ * vault root being "/". A path joined onto the root's "" directory comes out
+ * relative, as it does in the app.
  */
 export function normalizePath(path: string): string {
-	return path.replace(/\\/g, '/').replace(/\/+/g, '/');
+	const normalized = path
+		.replace(/\\/g, '/')
+		.replace(/\/+/g, '/')
+		.replace(/^\/|\/$/g, '');
+	return normalized === '' ? '/' : normalized;
 }
 
 /**

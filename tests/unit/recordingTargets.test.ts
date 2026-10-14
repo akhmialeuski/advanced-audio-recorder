@@ -157,6 +157,15 @@ describe('the recordings the palette acts on', () => {
 		});
 	});
 
+	it('falls back to the whole note when the cursor is on a link to no recording', () => {
+		const sut = createSut({ active: MEETING });
+		const view = createMarkdownView({ file: sut.file(MEETING) });
+		Object.assign(view.editor, { getLine: () => '![[slide.png]]' });
+		asMockWorkspace(sut.app.workspace).seedActiveView(view);
+
+		expect(activeRecordings(sut.services)).toHaveLength(2);
+	});
+
 	it('falls back to the whole note when the cursor is on no recording', () => {
 		const sut = createSut({ active: MEETING });
 		const view = createMarkdownView({ file: sut.file(MEETING) });

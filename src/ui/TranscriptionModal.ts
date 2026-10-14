@@ -129,7 +129,10 @@ export type TranscriptionRunOutcome =
 	| {
 			/** The transcript was written. */
 			readonly status: 'done';
-			/** Where it was written, after the note-less downgrade. */
+			/**
+			 * The destination the run was given. With no note to write into,
+			 * a run writes every destination as a file beside the recording.
+			 */
 			readonly destination: TranscriptDestination;
 			/** The note it went into or links resolve in, '' for none. */
 			readonly notePath: string;
