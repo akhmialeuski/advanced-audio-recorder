@@ -1377,13 +1377,17 @@ describe('what readers are and are not told', () => {
 		expect(listener).not.toHaveBeenCalled();
 	});
 
-	it('settles once the writes queued before the call are done', async () => {
-		const { app, files } = makeApp();
+	it('reads a renamed recording only after its sidecar was moved', async () => {
+		const { app } = makeApp();
+		await new RecordingSidecarStore(app).setMarkers('rec.wav', [
+			marker('a', 1),
+		]);
+		// A store that has not read the document yet, so nothing is cached.
 		const store = new RecordingSidecarStore(app);
-		void store.setMarkers('rec.wav', [marker('a', 1)]);
+		void store.handleRename('rec.wav', 'moved.wav');
 
-		await store.settled();
+		const markers = await store.getMarkers('moved.wav');
 
-		expect(rawSidecar(files).markers).toEqual([marker('a', 1)]);
+		expect(markers).toEqual([marker('a', 1)]);
 	});
 });

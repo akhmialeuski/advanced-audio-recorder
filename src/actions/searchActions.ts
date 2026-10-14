@@ -6,7 +6,8 @@
  * @module actions/searchActions
  */
 
-import { COMMAND_IDS, PLAYER_ICONS, RECORDING_PANEL_ICON } from '../constants';
+import { COMMAND_IDS, PLAYER_ICONS } from '../constants';
+import { ICON_MIC } from '../ui/RibbonIcon';
 import type { SearchAction } from './PluginAction';
 
 /** Needs nothing beyond the plugin being loaded. */
@@ -33,7 +34,8 @@ export const SEARCH_ACTIONS: readonly SearchAction[] = [
 	{
 		commandId: COMMAND_IDS.openRecordingPanel,
 		title: 'Open the recording panel',
-		icon: RECORDING_PANEL_ICON,
+		// The microphone the panel's sidebar tab and the ribbon carry.
+		icon: ICON_MIC,
 		isAvailable: always,
 		run: (services): Promise<void> => services.openRecordingPanel(),
 	},

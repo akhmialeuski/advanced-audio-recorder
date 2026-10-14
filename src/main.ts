@@ -1707,7 +1707,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 */
 	private refreshRecordingPanels(): void {
 		this.forEachRecordingPanel((panel) => {
-			void panel.refresh(true);
+			void panel.refresh();
 		});
 	}
 

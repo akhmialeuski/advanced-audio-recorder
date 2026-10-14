@@ -10,11 +10,7 @@ import {
 	RecordingPanelView,
 	type RecordingPanelHost,
 } from 'src/panel/RecordingPanelView';
-import {
-	COMMAND_IDS,
-	RECORDING_PANEL_ICON,
-	RECORDING_PANEL_VIEW_TYPE,
-} from 'src/constants';
+import { COMMAND_IDS, RECORDING_PANEL_VIEW_TYPE } from 'src/constants';
 import { emptyTranscriptSection } from 'src/sidecar/recordingSidecarModel';
 import type {
 	ActionServices,
@@ -92,7 +88,6 @@ async function createSut(
 	toggleRecording: jest.Mock;
 	sidecarChanged: (path: string) => void;
 	getTranscript: jest.Mock;
-	settled: jest.Mock;
 }> {
 	const app = new App();
 	const mockApp = asMockApp(app);
@@ -119,7 +114,6 @@ async function createSut(
 		enhancedPlayerEnabled: true,
 	};
 	const saveSettings = jest.fn().mockResolvedValue(undefined);
-	const settled = jest.fn().mockResolvedValue(undefined);
 	const toggleRecording = jest.fn().mockResolvedValue(undefined);
 	const host: RecordingPanelHost = {
 		displayName: 'Advanced Audio Recorder',
@@ -134,7 +128,6 @@ async function createSut(
 					.fn()
 					.mockResolvedValue(options.failedParts ?? null),
 				isSidecarCorrupt: () => options.sidecarCorrupt ?? false,
-				settled,
 				onChange: (listener: (path: string) => void) => {
 					listeners.push(listener);
 					return () => undefined;
@@ -167,7 +160,6 @@ async function createSut(
 			listeners.forEach((listener) => listener(path));
 		},
 		getTranscript,
-		settled,
 	};
 }
 
@@ -664,7 +656,7 @@ describe('the view menu and the header', () => {
 
 		expect([view.getViewType(), view.getIcon()]).toEqual([
 			RECORDING_PANEL_VIEW_TYPE,
-			RECORDING_PANEL_ICON,
+			'mic-vocal',
 		]);
 	});
 
@@ -772,7 +764,7 @@ describe('fixes from review', () => {
 		const { view } = await createSut({ status: 'saving' });
 
 		expect(headerAction(view, 'Saving the recording').dataset.icon).toBe(
-			'loader',
+			'save',
 		);
 	});
 
@@ -813,11 +805,11 @@ describe('fixes from review', () => {
 		]).toEqual([false, 1]);
 	});
 
-	it('redraws for new settings when asked to, though its data is the same', async () => {
+	it('redraws for new settings, though its data is the same', async () => {
 		const { view, settings } = await createSut();
 		settings.transcriptionEnabled = false;
 
-		await view.refresh(true);
+		await view.refresh();
 
 		expect(
 			hasSettingRow(view.contentEl, 'Transcribe after recording'),
@@ -864,7 +856,7 @@ describe('fixes from the second review', () => {
 		);
 		settings.transcriptionEnabled = false;
 
-		const forced = view.refresh(true);
+		const forced = view.refresh();
 		const later = view.refresh();
 		release();
 		await Promise.all([forced, later]);
@@ -906,23 +898,59 @@ describe('fixes from the second review', () => {
 			'2',
 		);
 	});
+});
 
-	it('reads the sidecar after the store moved it on a rename', async () => {
-		const { app, getTranscript, settled } = await createSut({
+describe('fixes from the third review', () => {
+	it('offers no top-up for a recording with no failed parts', async () => {
+		const { view } = await createSut({
 			active: recording('sync.webm'),
-		});
-		const order: string[] = [];
-		settled.mockImplementation(async () => {
-			order.push('settled');
-		});
-		getTranscript.mockImplementation(async () => {
-			order.push('read');
-			return emptyTranscriptSection();
+			actions: [
+				fileAction(
+					COMMAND_IDS.retryFailedParts,
+					'Transcribe the parts that failed',
+				),
+			],
 		});
 
-		app.vault.trigger('rename', recording('renamed.webm'), 'sync.webm');
+		expect(
+			hasSettingRow(view.contentEl, 'Transcribe the parts that failed'),
+		).toBe(false);
+	});
+
+	it('lists no actions in the tab header menu', async () => {
+		const { view } = await createSut({
+			active: recording('sync.webm'),
+			actions: [fileAction(COMMAND_IDS.audioFileInfo, 'Audio file info')],
+		});
+		const menu = new Menu();
+
+		view.onPaneMenu(menu, 'tab-header');
+
+		expect(asMockMenu(menu).items).toHaveLength(0);
+	});
+
+	it('logs a switch that could not be saved', async () => {
+		const error = jest.spyOn(console, 'error').mockImplementation(() => {
+			// Asserted below
+		});
+		const { view, saveSettings } = await createSut();
+		saveSettings.mockRejectedValue(new Error('disk full'));
+
+		rowToggle(settingRow(view.contentEl, 'Enhanced audio player')).click();
 		await flushMicrotasks();
 
-		expect(order).toEqual(['settled', 'read']);
+		expect(error).toHaveBeenCalledWith(
+			expect.stringContaining('Saving enhancedPlayerEnabled'),
+			expect.any(Error),
+		);
+	});
+
+	it('does not redraw for a settings save that changes nothing it offers', async () => {
+		const { view } = await createSut({ active: recording('sync.webm') });
+		const drawn = settingRow(view.contentEl, 'File');
+
+		await view.refresh();
+
+		expect(settingRow(view.contentEl, 'File')).toBe(drawn);
 	});
 });

@@ -250,7 +250,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM            | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
 | Auto chapters                 | LLM-generated titled chapters from an existing transcript                  | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
 | Quick notes                   | Dictate text at the cursor, optionally rewritten by an LLM profile         | Settings > Quick notes                          | [Quick notes](quick-notes.md)                                  |
-| Recording panel               | Sidebar tab with a recording's details, participants and actions           | Right sidebar / palette > Open the panel        | [Recording panel](recording-panel.md)                          |
+| Recording panel               | Sidebar tab with a recording's details, participants and actions           | Palette > Open the recording panel              | [Recording panel](recording-panel.md)                          |
 | Diagnostics                   | Test recording, system info, debug mode                                    | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
 
 ---

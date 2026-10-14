@@ -18,7 +18,7 @@ import { RecordingStatus } from '../types';
  */
 export const ICON_MIC = 'mic-vocal';
 /** Icon name for saving state */
-const ICON_SAVING = 'save';
+export const ICON_SAVING = 'save';
 
 /**
  * Icon name of the quick note button.

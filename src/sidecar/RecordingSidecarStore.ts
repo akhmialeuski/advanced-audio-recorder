@@ -81,6 +81,13 @@ export class RecordingSidecarStore {
 	private writeChain: Promise<void> = Promise.resolve();
 	/** Readers told which recording's document just changed. */
 	private readonly listeners = new Set<(path: string) => void>();
+	/**
+	 * Sidecar moves still queued, by the recording path they move to. A read
+	 * of that path waits for its move: the document is not on disk there yet,
+	 * and caching the empty answer would let the next write replace the moved
+	 * document with it.
+	 */
+	private readonly pendingMoves = new Map<string, Promise<void>>();
 
 	/**
 	 * @param app - Obsidian App instance
@@ -93,7 +100,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getMarkers(path: string): Promise<PlayerMarker[]> {
-		return serializeMarkers((await this.load(path)).markers);
+		return serializeMarkers((await this.read(path)).markers);
 	}
 
 	/**
@@ -142,7 +149,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getFailedParts(path: string): Promise<FailedPartsSection | null> {
-		const stored = (await this.load(path)).failedParts;
+		const stored = (await this.read(path)).failedParts;
 		return stored
 			? {
 					recordedAt: stored.recordedAt,
@@ -184,7 +191,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getPlayback(path: string): Promise<PlaybackState | null> {
-		const stored = (await this.load(path)).playback;
+		const stored = (await this.read(path)).playback;
 		return stored ? { ...stored } : null;
 	}
 
@@ -228,7 +235,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getTranscript(path: string): Promise<TranscriptSection> {
-		return cloneTranscriptSection((await this.load(path)).transcript);
+		return cloneTranscriptSection((await this.read(path)).transcript);
 	}
 
 	/**
@@ -399,7 +406,7 @@ export class RecordingSidecarStore {
 	 */
 	async handleRename(oldPath: string, newPath: string): Promise<void> {
 		this.moveCacheEntry(oldPath, newPath);
-		return this.enqueue(async () => {
+		const moved = this.enqueue(async () => {
 			const from = this.sidecarPath(oldPath);
 			const to = this.sidecarPath(newPath);
 			try {
@@ -418,7 +425,10 @@ export class RecordingSidecarStore {
 			// that newest state so the new path never serves a stale copy and
 			// no zombie entry lingers under the old path.
 			this.moveCacheEntry(oldPath, newPath);
+			this.pendingMoves.delete(newPath);
 		});
+		this.pendingMoves.set(newPath, moved);
+		return moved;
 	}
 
 	/**
@@ -617,6 +627,21 @@ export class RecordingSidecarStore {
 	}
 
 	/**
+	 * Returns the document for a reader outside the write chain, after any
+	 * queued move of the sidecar to this path. Tasks inside the chain call
+	 * {@link load} directly: the chain already runs them after every move
+	 * queued before them, and one queued before a move must not wait on it.
+	 * @param path - Vault-relative recording path
+	 */
+	private async read(path: string): Promise<RecordingSidecar> {
+		const move = this.pendingMoves.get(path);
+		if (move && !this.cache.has(path)) {
+			await move;
+		}
+		return this.load(path);
+	}
+
+	/**
 	 * Returns the cached document for a path, reading and parsing it on the
 	 * first access. A missing file maps to an empty document. A file that
 	 * exists but cannot be read maps to an empty document too, but is NOT
@@ -732,15 +757,6 @@ export class RecordingSidecarStore {
 					'Restore or remove the file to resume.',
 			);
 		}
-	}
-
-	/**
-	 * Resolves once every write queued so far has finished. A reader that
-	 * reacts to a vault rename waits on this, so it reads the sidecar after
-	 * the store moved it rather than racing the move.
-	 */
-	settled(): Promise<void> {
-		return this.writeChain;
 	}
 
 	/**

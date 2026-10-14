@@ -8,7 +8,7 @@
  */
 
 import type { Menu, MenuItem } from 'obsidian';
-import { AAR_MENU_SECTION } from '../constants';
+import { AAR_MENU_SECTION, PLUGIN_LOG_PREFIX } from '../constants';
 import type { PluginCommand } from './PluginAction';
 
 /**
@@ -39,7 +39,19 @@ export function renderActionsIntoMenu<TContext>(
 			item.setTitle(action.title)
 				.setIcon(action.icon)
 				.setSection(AAR_MENU_SECTION)
-				.onClick(() => void action.run(context));
+				.onClick(() => {
+					// Obsidian drops what a menu handler returns, so a failed
+					// action would otherwise surface as an unhandled rejection
+					// with nothing naming the action it came from.
+					void Promise.resolve(action.run(context)).catch(
+						(error: unknown) => {
+							console.error(
+								`${PLUGIN_LOG_PREFIX} ${action.commandId} failed from a menu:`,
+								error,
+							);
+						},
+					);
+				});
 		});
 	}
 }

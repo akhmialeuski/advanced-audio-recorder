@@ -1466,12 +1466,6 @@ export const COMMAND_IDS = {
 export const RECORDING_PANEL_VIEW_TYPE = 'advanced-audio-recorder-panel';
 
 /**
- * Icon of the recording panel's sidebar tab: the microphone the plugin's
- * ribbon button carries, so the tab reads as this plugin's at a glance.
- */
-export const RECORDING_PANEL_ICON = 'mic-vocal';
-
-/**
  * Local-storage key recording that the recording panel was placed in the
  * sidebar on this device, so a panel the user closed is not put back.
  */

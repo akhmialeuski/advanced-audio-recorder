@@ -24,9 +24,9 @@ import type { Menu, TFile, WorkspaceLeaf } from 'obsidian';
 import {
 	COMMAND_IDS,
 	PLUGIN_LOG_PREFIX,
-	RECORDING_PANEL_ICON,
 	RECORDING_PANEL_VIEW_TYPE,
 } from '../constants';
+import { ICON_MIC, ICON_SAVING } from '../ui/RibbonIcon';
 import type {
 	ActionServices,
 	FileAction,
@@ -57,9 +57,9 @@ const UNREADABLE = 'unreadable';
 
 /** The record button in each state the recorder can be in. */
 const RECORD_BUTTON = {
-	idle: { icon: RECORDING_PANEL_ICON, label: 'Start recording' },
+	idle: { icon: ICON_MIC, label: 'Start recording' },
 	live: { icon: 'square', label: 'Stop recording' },
-	saving: { icon: 'loader', label: 'Saving the recording' },
+	saving: { icon: ICON_SAVING, label: 'Saving the recording' },
 } as const;
 
 /**
@@ -156,8 +156,13 @@ export class RecordingPanelView extends ItemView {
 	 * playback position written to the sidecar, say - does not rebuild it.
 	 */
 	private shownKey = '';
-	/** A redraw was asked for regardless of the data, and is still owed. */
-	private forceRedraw = false;
+	/**
+	 * How many parts of the recording shown failed, or null while unknown. The
+	 * menus offer the top-up whatever this is, because their availability is
+	 * decided before anything is read; the panel has read it, so it offers
+	 * the top-up only when there is something to top up.
+	 */
+	private failedParts: number | null = null;
 	/** The start/stop header action, redrawn when the recorder changes. */
 	private recordAction: HTMLElement | null = null;
 
@@ -181,7 +186,7 @@ export class RecordingPanelView extends ItemView {
 	}
 
 	override getIcon(): string {
-		return RECORDING_PANEL_ICON;
+		return ICON_MIC;
 	}
 
 	override async onOpen(): Promise<void> {
@@ -191,26 +196,22 @@ export class RecordingPanelView extends ItemView {
 		this.addAction('list-ordered', 'Show the transcription queue', () => {
 			this.host.openTranscriptionQueue();
 		});
-		this.recordAction = this.addAction(
-			RECORDING_PANEL_ICON,
-			'Start recording',
-			() => {
-				if (this.recorderState() === 'saving') {
-					return;
-				}
-				void this.host.recording
-					.toggleRecording()
-					.catch((error: unknown) => {
-						console.error(
-							`${PLUGIN_LOG_PREFIX} Starting or stopping a recording from the panel failed:`,
-							error,
-						);
-					})
-					.finally(() => {
-						this.refreshRecordingState();
-					});
-			},
-		);
+		this.recordAction = this.addAction(ICON_MIC, 'Start recording', () => {
+			if (this.recorderState() === 'saving') {
+				return;
+			}
+			void this.host.recording
+				.toggleRecording()
+				.catch((error: unknown) => {
+					console.error(
+						`${PLUGIN_LOG_PREFIX} Starting or stopping a recording from the panel failed:`,
+						error,
+					);
+				})
+				.finally(() => {
+					this.refreshRecordingState();
+				});
+		});
 		this.refreshRecordingState();
 
 		const { workspace, metadataCache, vault } = this.app;
@@ -233,7 +234,7 @@ export class RecordingPanelView extends ItemView {
 					oldPath === this.shownNotePath ||
 					file.path === this.shownNotePath
 				) {
-					void this.refreshAfterRename();
+					void this.refresh();
 				}
 			}),
 		);
@@ -269,29 +270,19 @@ export class RecordingPanelView extends ItemView {
 	 */
 	override onPaneMenu(menu: Menu, source: string): void {
 		super.onPaneMenu(menu, source);
-		if (this.shownFile) {
+		// The "More options" menu only: the tab header's right-click menu is
+		// about the tab, not the recording in it.
+		if (source === 'more-options' && this.shownFile) {
 			renderActionsIntoMenu(
 				menu,
-				this.panelActions(),
+				this.availableActions({
+					file: this.shownFile,
+					services: this.host.services,
+				}),
 				{ file: this.shownFile, services: this.host.services },
 				new Set(),
 			);
 		}
-	}
-
-	/**
-	 * Redraws after a rename that touched what the panel shows, once the
-	 * sidecar store has moved the recording's document. The store's own
-	 * rename handler only queues the move, so a read made right away finds
-	 * nothing at the new path yet - and caching that empty answer would let
-	 * the next write replace the moved document with it.
-	 */
-	private async refreshAfterRename(): Promise<void> {
-		// One turn first, so every rename handler of this event has queued
-		// its work before the store is asked to settle.
-		await Promise.resolve();
-		await this.host.services.recordingSidecar.settled();
-		await this.refresh();
 	}
 
 	/**
@@ -327,15 +318,11 @@ export class RecordingPanelView extends ItemView {
 
 	/**
 	 * Re-reads what the active file refers to and redraws the panel when what
-	 * it shows changed.
-	 * @param force - Redraw even when the data is the same, for a change the
-	 *   data does not carry (the settings that gate the actions and switches)
+	 * it shows changed: the data, or the settings that decide which actions
+	 * and switches it offers.
 	 * @returns Resolves once the panel shows the current state
 	 */
-	async refresh(force = false): Promise<void> {
-		// Kept until a redraw happens: a later refresh can overtake a forced
-		// one, and must not then skip the redraw the forced one was owed.
-		this.forceRedraw ||= force;
+	async refresh(): Promise<void> {
 		const generation = ++this.generation;
 		const target = this.resolveTarget();
 		const selected =
@@ -348,6 +335,8 @@ export class RecordingPanelView extends ItemView {
 		if (generation !== this.generation) {
 			return;
 		}
+		this.failedParts =
+			summary && summary !== UNREADABLE ? summary.failedParts : null;
 		const key = JSON.stringify([
 			target.notePath,
 			target.recordings.map((file) => file.path),
@@ -357,17 +346,37 @@ export class RecordingPanelView extends ItemView {
 				selected.stat.size,
 			],
 			summary,
+			this.offeredSettings(selected),
 		]);
-		if (!this.forceRedraw && key === this.shownKey) {
+		if (key === this.shownKey) {
 			return;
 		}
-		this.forceRedraw = false;
 		this.shownKey = key;
 		this.shownNotePath = target.notePath;
 		this.shownPaths = new Set(target.recordings.map((file) => file.path));
 		this.selectedPath = selected?.path ?? null;
 		this.shownFile = selected;
 		this.render(target, selected, summary);
+	}
+
+	/**
+	 * What the settings let the panel offer: which actions are available and
+	 * which switches show, in which state. Part of the redraw key, so a
+	 * settings save that changes none of it costs no redraw.
+	 * @param selected - The recording shown, or null
+	 */
+	private offeredSettings(selected: TFile | null): unknown[] {
+		const settings = this.host.services.getSettings();
+		return [
+			selected
+				? this.availableActions({
+						file: selected,
+						services: this.host.services,
+					}).map((action) => action.commandId)
+				: [],
+			settings.transcriptionEnabled,
+			QUICK_SETTINGS.map((entry) => settings[entry.key]),
+		];
 	}
 
 	/**
@@ -404,14 +413,16 @@ export class RecordingPanelView extends ItemView {
 	): Promise<RecordingPanelSummary | typeof UNREADABLE> {
 		const sidecar = this.host.services.recordingSidecar;
 		try {
-			const [transcript, markers, failedParts] = await Promise.all([
-				sidecar.getTranscript(file.path),
-				sidecar.getMarkers(file.path),
-				sidecar.getFailedParts(file.path),
-			]);
+			// One read first: it caches the document, so the two after it are
+			// answered from memory instead of each reading the file again.
+			const transcript = await sidecar.getTranscript(file.path);
 			if (sidecar.isSidecarCorrupt(file.path)) {
 				return UNREADABLE;
 			}
+			const [markers, failedParts] = await Promise.all([
+				sidecar.getMarkers(file.path),
+				sidecar.getFailedParts(file.path),
+			]);
 			return summarizeRecording({
 				transcript,
 				markers,
@@ -606,7 +617,14 @@ export class RecordingPanelView extends ItemView {
 					// another device replace the object, and a change made to
 					// the old one would be saved nowhere.
 					this.host.services.getSettings()[entry.key] = value;
-					await this.host.services.saveSettings();
+					await this.host.services
+						.saveSettings()
+						.catch((error: unknown) => {
+							console.error(
+								`${PLUGIN_LOG_PREFIX} Saving ${entry.key} from the recording panel failed:`,
+								error,
+							);
+						});
 				}),
 			);
 		}
@@ -651,8 +669,13 @@ export class RecordingPanelView extends ItemView {
 
 	/** The file actions available for a recording, in menu order. */
 	private availableActions(context: FileContext): FileAction[] {
-		return this.panelActions().filter((action) =>
-			action.isAvailable(context),
+		return this.panelActions().filter(
+			(action) =>
+				action.isAvailable(context) &&
+				!(
+					action.commandId === COMMAND_IDS.retryFailedParts &&
+					this.failedParts === 0
+				),
 		);
 	}
 
