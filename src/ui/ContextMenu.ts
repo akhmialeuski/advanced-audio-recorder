@@ -17,6 +17,7 @@ import {
 	Plugin,
 	MarkdownView,
 	TFolder,
+	getLinkpath,
 } from 'obsidian';
 import type { Editor, MarkdownFileInfo } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
@@ -24,7 +25,7 @@ import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
 import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { isAudioFile } from '../utils/audioFile';
-import { linkAtCursor } from '../obsidian/linkAtCursor';
+import { linkAtCursor, pointsAtWholeFile } from '../obsidian/linkAtCursor';
 import type {
 	ActionServices,
 	FileContext,
@@ -184,7 +185,12 @@ export class ContextMenu {
 				// The note the embed is in, and its link, so the link-aware
 				// delete removes the embed that was right-clicked.
 				const link = owningView
-					? this.linkOfEmbed(owningView.editor, embed as HTMLElement)
+					? this.linkOfEmbed(
+							owningView.editor,
+							embed as HTMLElement,
+							file,
+							sourcePath,
+						)
 					: null;
 				this.registry.renderInto(
 					menu,
@@ -218,11 +224,16 @@ export class ContextMenu {
 	 * it is in.
 	 * @param editor - The note's editor
 	 * @param embed - The right-clicked embed
-	 * @returns The link, or null when its position could not be resolved
+	 * @param file - The recording the embed plays
+	 * @param sourcePath - The note its links resolve from
+	 * @returns The link, or null when its position could not be resolved to
+	 *   a link of the whole recording
 	 */
 	private linkOfEmbed(
 		editor: Editor,
 		embed: HTMLElement,
+		file: TFile,
+		sourcePath: string,
 	): LinkLocation | null {
 		const editorView = (editor as EditorWithCM).cm;
 		if (!editorView?.posAtDOM) {
@@ -232,7 +243,17 @@ export class ContextMenu {
 			const pos = editorView.posAtDOM(embed);
 			const cursor = editor.offsetToPos(pos);
 			const found = linkAtCursor(editor.getLine(cursor.line), cursor.ch);
-			return found
+			// The position maps the embed to a line of the source, which is
+			// only the embed's own link when it links this very recording -
+			// a player drawn outside the text maps elsewhere - and as a whole.
+			const isThisLink =
+				found !== null &&
+				pointsAtWholeFile(found) &&
+				this.app.metadataCache.getFirstLinkpathDest(
+					getLinkpath(found.path),
+					sourcePath,
+				) === file;
+			return found && isThisLink
 				? {
 						editor,
 						line: cursor.line,
@@ -358,7 +379,8 @@ export class ContextMenu {
 			return;
 		}
 
-		// The link the cursor is on is what makes the link-aware delete the
+		// The note the editor shows, and the link the cursor is on when it
+		// links the whole recording, are what make the link-aware delete the
 		// one offered here, in place of the plain one.
 		this.registry.renderInto(
 			menu,
@@ -367,12 +389,16 @@ export class ContextMenu {
 				file,
 				services: this.services,
 				...(view.file ? { note: view.file } : {}),
-				link: {
-					editor,
-					line: cursor.line,
-					start: found.start,
-					end: found.end,
-				},
+				...(pointsAtWholeFile(found)
+					? {
+							link: {
+								editor,
+								line: cursor.line,
+								start: found.start,
+								end: found.end,
+							},
+						}
+					: {}),
 			},
 			this.renderedSetFor(menu),
 		);

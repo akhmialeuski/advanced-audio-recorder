@@ -35,7 +35,7 @@ import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
 import { ConversionService } from '../recording/ConversionService';
 import { clampSplitMinutes } from '../recording/AudioSplitter';
 import { SplitService, type ChapterCut } from '../recording/SplitService';
-import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
+import { embedsOf, insertProcessedAudioEmbed } from '../recording/NoteInserter';
 import { cleanUpRecording, describeCleanup } from '../cleanup/cleanupRun';
 import {
 	hasActiveChange,
@@ -551,6 +551,15 @@ export async function cleanupFromCli(
 	// would leave every link to it broken and the copy linked nowhere.
 	if (deleteSource.value && !note) {
 		return `source=delete trashes ${file.path} once its copy is linked into its note: name the note with file=<note>, or note=<note> beside path=<recording>.`;
+	}
+	// The copy takes the place of the note's embeds of the recording; a note
+	// that only links it, or links moments of it, has none to take.
+	if (
+		deleteSource.value &&
+		note &&
+		embedsOf(services.app, note, file).length === 0
+	) {
+		return `source=delete trashes ${file.path} once its copy has replaced its embed in ${note.path}, which embeds it nowhere. Keep the source with source=keep.`;
 	}
 	const result = await cleanUpRecording(services.app, file, config.value, {
 		deleteSource: deleteSource.value,

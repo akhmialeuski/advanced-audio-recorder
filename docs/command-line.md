@@ -100,11 +100,11 @@ The commands on a recording take the target the way Obsidian's own commands take
 
 A note stands for the recordings it embeds or links, in the order they appear in it. A note with one recording needs nothing more; a note with several answers with their list and asks for `recording=` or `all`.
 
-Naming the note matters for the commands that write into one: `transcribe` inserts the transcript into the note named and no other, `cleanup` links the cleaned copy there, and `delete-with-links` removes the links from it. A script cannot see which note happens to be open, so a command never writes into the active note on a guess. With no note named, a transcript is written as a file next to the recording.
+Naming the note matters for the commands that write into one: `transcribe` inserts the transcript into the note named and no other, `cleanup` links the cleaned copy there, and `delete-with-links` removes the links from it. With neither `file=` nor `path=`, a command acts on the file active in Obsidian, as Obsidian's own commands do, and when that is a note, it is the note named. A recording named on its own is never given the note that happens to be open: with no note named, a transcript is written as a file next to the recording. A note named with `note=` beside a recording must link it, so a typo cannot send a transcript, or a removal of links, to another note.
 
 ## What a command answers
 
-Every command answers with text the terminal prints: what it did, or why it did nothing. A command run on several recordings answers one line per recording. What a dialog would have shown as a notice along the way, for example that a converted file already existed, is part of the answer, not a notice in the app.
+Every command answers with text the terminal prints: what it did, or why it did nothing. A command run on several recordings answers one line per recording. What a dialog would have shown as a notice along the way, for example that a converted file already existed, is part of the answer, and is also shown as a notice in the app, for whoever is watching it.
 
 A refusal says what to change: `Meetings/standup.md links 2 recordings: Recordings/a.webm, Recordings/b.webm. Name one with recording=<name>, or add all to run on each.`, `Transcription is switched off in settings.`, `kind=note is not one of: bookmark, chapter.`.
 
@@ -153,7 +153,7 @@ Each of these takes the target parameters described [above](#which-recording-a-c
 
 `delete` trashes a recording named on its own, with `path=` or `file=`; a recording named through a note is refused, since the note's links to it would be left broken, and `delete-with-links` is the command for it. `delete-with-links` removes the links that point at the whole recording; a timecode link such as `[[standup.webm#t=90]]` points at a moment of it and is kept. It needs the note: name it with `file=<note>`, or `note=<note>` beside `path=<recording>`.
 
-`convert` and `split` refuse a format the device cannot encode, `cleanup` refuses a run that would change nothing, and each answers with what it wrote. `cleanup source=delete` needs the note: it trashes the recording only once its cleaned copy has replaced it there.
+`convert` and `split` refuse a format the device cannot encode, `cleanup` refuses a run that would change nothing, and each answers with what it wrote. `cleanup source=delete` needs a note that embeds the recording: the cleaned copy takes the place of those embeds, and only then is the recording trashed. A note that only links it, or links moments of it, is refused.
 
 ## Transcribing
 

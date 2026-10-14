@@ -484,6 +484,23 @@ describe('cleaning up a recording', () => {
 		);
 	});
 
+	it('trashes no source the note only links, with no embed to replace', async () => {
+		const vault = recordingVault({
+			recordings: [TAKE],
+			notes: { [MEETING]: '[[take.webm#t=90|1:30]] **Ann** Budget.' },
+		});
+		const process = jest.spyOn(AudioProcessingService.prototype, 'process');
+
+		await expect(
+			cleanupFromCli(vault.fileContext(TAKE, MEETING), {
+				source: 'delete',
+			}),
+		).resolves.toBe(
+			`source=delete trashes ${TAKE} once its copy has replaced its embed in ${MEETING}, which embeds it nowhere. Keep the source with source=keep.`,
+		);
+		expect(process).not.toHaveBeenCalled();
+	});
+
 	it('trashes no source whose copy no note would link', async () => {
 		const { answer, process } = await cleanup({ source: 'delete' });
 

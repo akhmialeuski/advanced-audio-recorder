@@ -176,6 +176,23 @@ describe('the recordings the palette acts on', () => {
 		});
 	});
 
+	it('picks the recording of a timecode link, which is not the link to remove', () => {
+		const sut = createSut({ active: MEETING });
+		const view = createMarkdownView({
+			file: sut.file(MEETING),
+			cursor: { line: 4, ch: 3 },
+		});
+		Object.assign(view.editor, {
+			getLine: () => '[[retro.mp3#t=90|1:30]] **Ann** Budget.',
+		});
+		asMockWorkspace(sut.app.workspace).seedActiveView(view);
+
+		const [target] = activeRecordings(sut.services);
+
+		expect(target?.file.path).toBe(RETRO);
+		expect(target?.link).toBeUndefined();
+	});
+
 	it('falls back to the whole note when the cursor is on a link to no recording', () => {
 		const sut = createSut({ active: MEETING });
 		const view = createMarkdownView({ file: sut.file(MEETING) });
@@ -312,6 +329,11 @@ describe('the recordings a command line names', () => {
 			name: 'the note named beside a recording is missing',
 			args: { path: STANDUP, note: 'Nowhere' },
 			refusal: 'No note named "Nowhere" in this vault.',
+		},
+		{
+			name: 'the note named beside a recording does not link it',
+			args: { path: STANDUP, note: 'Empty' },
+			refusal: `Meetings/Empty.md does not link ${STANDUP}. Name the note the recording belongs to.`,
 		},
 		{
 			name: 'what is named beside a recording is not a note',

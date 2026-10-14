@@ -49,3 +49,14 @@ export function linkAtCursor(
 	}
 	return null;
 }
+
+/**
+ * Whether a link points at a file as a whole rather than at a heading, a
+ * block or a moment of it. A timecode link is part of a transcript line and
+ * points at one moment, so it is never "the link" a delete removes: that is
+ * one to the whole recording, as the links a note-wide removal takes are.
+ * @param link - The link
+ */
+export function pointsAtWholeFile(link: LinkAtCursor): boolean {
+	return !link.path.includes('#');
+}

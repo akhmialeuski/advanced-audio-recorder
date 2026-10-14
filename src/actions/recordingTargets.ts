@@ -17,7 +17,7 @@
 import { getLinkpath, MarkdownView, TFile } from 'obsidian';
 import type { App, CliData, CliFlags } from 'obsidian';
 import { isAudioFile } from '../utils/audioFile';
-import { linkAtCursor } from '../obsidian/linkAtCursor';
+import { linkAtCursor, pointsAtWholeFile } from '../obsidian/linkAtCursor';
 import {
 	cliFlag,
 	cliText,
@@ -150,14 +150,15 @@ function namedNote(app: App, args: CliData): CliRead<TFile | null> {
 
 /**
  * The recording under the cursor of the active editor, when the note in it
- * is the given one, with the link the cursor stands on.
+ * is the given one, with the link the cursor stands on when that links the
+ * whole recording. A timecode link picks the recording all the same.
  * @param app - Obsidian App
  * @param note - The active note
  */
 function recordingUnderCursor(
 	app: App,
 	note: TFile,
-): { file: TFile; link: LinkLocation } | null {
+): { file: TFile; link?: LinkLocation } | null {
 	const view = app.workspace.getActiveViewOfType(MarkdownView);
 	const editor = view?.file === note ? view.editor : null;
 	if (!editor) {
@@ -172,7 +173,10 @@ function recordingUnderCursor(
 		getLinkpath(link.path),
 		note.path,
 	);
-	return file && isAudioFile(file)
+	if (!file || !isAudioFile(file)) {
+		return null;
+	}
+	return pointsAtWholeFile(link)
 		? {
 				file,
 				link: {
@@ -182,7 +186,7 @@ function recordingUnderCursor(
 					end: link.end,
 				},
 			}
-		: null;
+		: { file };
 }
 
 /**
@@ -304,6 +308,14 @@ export function namedRecordings(
 		const note = namedNote(services.app, args);
 		if (isRefusal(note)) {
 			return note.refusal;
+		}
+		// What a command does to the note - writes a transcript into it,
+		// removes links from it - is only right for a note of this recording.
+		if (
+			note.value &&
+			!recordingsInNote(services.app, note.value).includes(target)
+		) {
+			return `${note.value.path} does not link ${target.path}. Name the note the recording belongs to.`;
 		}
 		return [
 			note.value
