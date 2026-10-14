@@ -14,9 +14,13 @@ import {
 	wavMaxPcmBytes,
 	WAV_MAX_PCM_BYTES,
 	WAV_SIZE_LIMIT_MESSAGE,
+	encodeFloatsAsInt16Wav,
+	int16WavByteLength,
 } from 'src/audio/WavEncoder';
-import { PcmSampleFormat } from 'src/audio/pcm';
+import { PcmSampleFormat, floatToInt16 } from 'src/audio/pcm';
+import { ALL_FORMATS, AudioSampleSink, BufferSource, Input } from 'mediabunny';
 import { createMockApp } from '../helpers/createApp';
+import { defined } from '../helpers/assertions';
 
 /** Reads a four-character chunk id at an offset. */
 function chunkId(view: DataView, offset: number): string {
@@ -544,5 +548,76 @@ describe('the header of each representation', () => {
 				PcmSampleFormat.Float32,
 			),
 		).toThrow(/cannot exceed 4 GB/);
+	});
+});
+
+describe('encodeFloatsAsInt16Wav', () => {
+	it('interleaves the channels frame by frame', async () => {
+		const left = new Float32Array([1, 0.5]);
+		const right = new Float32Array([-1, -0.5]);
+
+		const wav = await encodeFloatsAsInt16Wav([left, right], 22050);
+
+		expect(Array.from(new Int16Array(wav, 44))).toEqual([
+			floatToInt16(1),
+			floatToInt16(-1),
+			floatToInt16(0.5),
+			floatToInt16(-0.5),
+		]);
+	});
+
+	it('pads a channel shorter than the others with silence', async () => {
+		const wav = await encodeFloatsAsInt16Wav(
+			[new Float32Array([1, 1]), new Float32Array([1])],
+			22050,
+		);
+
+		// The bytes after the short channel's end are the file's, not
+		// whatever the allocation happened to hold.
+		expect(Array.from(new Int16Array(wav, 44))).toEqual([
+			floatToInt16(1),
+			floatToInt16(1),
+			floatToInt16(1),
+			0,
+		]);
+	});
+
+	it('allocates exactly the size it reports in advance', async () => {
+		const wav = await encodeFloatsAsInt16Wav(
+			[new Float32Array(7), new Float32Array(7)],
+			16000,
+		);
+
+		expect(wav.byteLength).toBe(int16WavByteLength(7, 2));
+	});
+
+	it('writes a file mediabunny reads back as the same audio', async () => {
+		// Two WAV writers are in the plugin's reach - this one and the one
+		// mediabunny brings to conversions - and a file from this one has to
+		// be one that mediabunny's reader agrees with: same layout, rate,
+		// width and samples.
+		const left = new Float32Array([0, 0.25, -0.75]);
+		const right = new Float32Array([0.5, -0.5, 1]);
+		const wav = await encodeFloatsAsInt16Wav([left, right], 22050);
+		const input = new Input({
+			source: new BufferSource(wav),
+			formats: ALL_FORMATS,
+		});
+
+		const track = defined(await input.getPrimaryAudioTrack());
+		const sample = await new AudioSampleSink(track).getSample(0);
+		const decoded = new Float32Array(6);
+		sample?.copyTo(decoded, { planeIndex: 0, format: 'f32' });
+
+		expect({
+			codec: await track.getCodec(),
+			channels: await track.getNumberOfChannels(),
+			sampleRate: await track.getSampleRate(),
+		}).toEqual({ codec: 'pcm-s16', channels: 2, sampleRate: 22050 });
+		expect(Array.from(decoded)).toEqual(
+			[0, 0.5, 0.25, -0.5, -0.75, 1].map(
+				(value) => floatToInt16(value) / 32768,
+			),
+		);
 	});
 });

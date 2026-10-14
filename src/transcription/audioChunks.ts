@@ -3,33 +3,25 @@
  * The planning (how to divide a duration into chunks that stay under the
  * upload limit) is pure and tested; producing the actual 16 kHz mono WAV
  * for each chunk uses the Web Audio API and is kept thin.
+ *
+ * The resampling stays with the OfflineAudioContext rather than moving to
+ * mediabunny's resampler, which interpolates linearly with no low-pass filter
+ * in front, so taking 48 kHz down to 16 kHz through it folds what lies above
+ * 8 kHz back into the band speech recognition listens to. Which engine's
+ * resampler is the better one is a measurement nobody has made here, and
+ * swapping one for the other changes the audio every engine transcribes, so
+ * the one the uploads were always built with is kept. The WAV itself is
+ * written by WavEncoder, the plugin's one hand-written WAV writer.
  * @module transcription/audioChunks
  */
 
 import { TRANSCRIBE_BYTES_PER_SEC, TRANSCRIBE_SAMPLE_RATE } from '../constants';
-import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
-import { floatToInt16 } from '../audio/pcm';
+import {
+	encodeFloatsAsInt16Wav,
+	int16WavByteLength,
+	WAV_HEADER_SIZE,
+} from '../audio/WavEncoder';
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
-
-/** Channel count of the mono WAV uploads produced for transcription. */
-const WAV_MONO_CHANNEL_COUNT = 1;
-
-/** Width of one sample in the 16-bit PCM these uploads carry. */
-const BYTES_PER_PCM_SAMPLE = 2;
-
-/**
- * Frames converted per synchronous slice of {@link encodeMonoWav} before
- * yielding to the event loop. A 25 MB Whisper chunk is ~12.5M frames;
- * without the yields that loop runs hundreds of milliseconds on the UI
- * thread in one block. Half a million frames is a few milliseconds of
- * work per slice.
- */
-const ENCODE_YIELD_FRAMES = 500_000;
-
-/** Lets the UI thread breathe between conversion slices. */
-function yieldToEventLoop(): Promise<void> {
-	return new Promise((resolve) => window.setTimeout(resolve, 0));
-}
 
 /**
  * How many bytes {@link encodeMonoWav} will return for this many samples.
@@ -42,42 +34,21 @@ function yieldToEventLoop(): Promise<void> {
  * @returns Byte length of the WAV those samples encode to
  */
 export function monoWavByteLength(sampleCount: number): number {
-	return WAV_HEADER_SIZE + sampleCount * BYTES_PER_PCM_SAMPLE;
+	return int16WavByteLength(sampleCount, 1);
 }
 
 /**
- * Encodes mono Float32 samples (range -1..1) into a 16-bit PCM WAV blob.
- * The float-to-int16 conversion runs in slices with an event-loop yield
- * between them, so encoding a large upload chunk does not jank the UI.
+ * Encodes mono Float32 samples (range -1..1) into the 16-bit PCM WAV a
+ * transcription upload carries, without blocking the UI on a large chunk.
  * @param samples - Mono sample data
  * @param sampleRate - Sample rate in Hz
  * @returns WAV-encoded bytes
  */
-export async function encodeMonoWav(
+export function encodeMonoWav(
 	samples: Float32Array,
 	sampleRate: number,
 ): Promise<ArrayBuffer> {
-	const pcmByteLength = samples.length * BYTES_PER_PCM_SAMPLE;
-	const out = createWavFileBuffer(
-		WAV_MONO_CHANNEL_COUNT,
-		sampleRate,
-		pcmByteLength,
-	);
-	const view = new DataView(out, WAV_HEADER_SIZE);
-	for (let start = 0; start < samples.length; start += ENCODE_YIELD_FRAMES) {
-		const end = Math.min(samples.length, start + ENCODE_YIELD_FRAMES);
-		for (let i = start; i < end; i++) {
-			view.setInt16(
-				i * BYTES_PER_PCM_SAMPLE,
-				floatToInt16(samples[i] ?? 0),
-				true,
-			);
-		}
-		if (end < samples.length) {
-			await yieldToEventLoop();
-		}
-	}
-	return out;
+	return encodeFloatsAsInt16Wav([samples], sampleRate);
 }
 
 /** A planned chunk: its index and start/end offsets in seconds. */
