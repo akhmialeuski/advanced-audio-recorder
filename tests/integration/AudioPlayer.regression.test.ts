@@ -746,13 +746,18 @@ describe('document listeners of a render pass', () => {
 		return () => live.length;
 	}
 
-	it('keeps only the latest render pass listening across re-renders', () => {
-		const live = liveDocumentListeners();
-		const player = makePlayer(
+	/** A Live Preview player with its marker list, not yet rendered. */
+	function markerListPlayer(): AudioPlayer {
+		return makePlayer(
 			makeEditableContainer(),
 			makeRegistry(makeFakeAudio()),
 			MARKERS_ON,
 		);
+	}
+
+	it('keeps only the latest render pass listening across re-renders', () => {
+		const live = liveDocumentListeners();
+		const player = markerListPlayer();
 		player.onload();
 		const afterOneRender = live();
 
@@ -765,11 +770,7 @@ describe('document listeners of a render pass', () => {
 
 	it('takes the last render pass off the document on unload', () => {
 		const live = liveDocumentListeners();
-		const player = makePlayer(
-			makeEditableContainer(),
-			makeRegistry(makeFakeAudio()),
-			MARKERS_ON,
-		);
+		const player = markerListPlayer();
 		player.load();
 
 		player.unload();

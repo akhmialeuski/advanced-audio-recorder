@@ -148,10 +148,17 @@ describe('onNodeInserted', () => {
 		expect(listener).not.toHaveBeenCalled();
 	});
 
-	it('calls back on every re-insertion', async () => {
+	it.each([
+		{ name: 'on every re-insertion', once: false, calls: 2 },
+		{
+			name: 'only for the first insertion when asked for once',
+			once: true,
+			calls: 1,
+		},
+	])('calls back $name', async ({ once, calls }) => {
 		const element = extendedEl();
 		const listener = jest.fn();
-		element.onNodeInserted(listener);
+		element.onNodeInserted(listener, once);
 
 		document.body.appendChild(element);
 		await flushMicrotasks();
@@ -160,22 +167,7 @@ describe('onNodeInserted', () => {
 		document.body.appendChild(element);
 		await flushMicrotasks();
 
-		expect(listener).toHaveBeenCalledTimes(2);
-	});
-
-	it('calls back only for the first insertion when asked for once', async () => {
-		const element = extendedEl();
-		const listener = jest.fn();
-		element.onNodeInserted(listener, true);
-
-		document.body.appendChild(element);
-		await flushMicrotasks();
-		element.remove();
-		await flushMicrotasks();
-		document.body.appendChild(element);
-		await flushMicrotasks();
-
-		expect(listener).toHaveBeenCalledTimes(1);
+		expect(listener).toHaveBeenCalledTimes(calls);
 	});
 
 	it('stops calling back once unregistered', async () => {
@@ -239,11 +231,27 @@ describe('onWindowMigrated', () => {
 		document.body.innerHTML = '';
 	});
 
-	it('calls back with the new window when the element moves to a pop-out', async () => {
+	/**
+	 * An element shown in the main window with a migration listener on it,
+	 * and a pop-out it can be moved to.
+	 * @returns The element, its listener, the unregister function and the
+	 *   pop-out
+	 */
+	function watchedElement(): {
+		element: HTMLElement;
+		listener: jest.Mock;
+		unregister: () => void;
+		popout: Window;
+	} {
 		const popout = popoutWindow();
 		const element = document.body.appendChild(extendedEl());
 		const listener = jest.fn();
-		element.onWindowMigrated(listener);
+		const unregister = element.onWindowMigrated(listener);
+		return { element, listener, unregister, popout };
+	}
+
+	it('calls back with the new window when the element moves to a pop-out', async () => {
+		const { element, listener, popout } = watchedElement();
 
 		popout.document.body.appendChild(element);
 		await flushMicrotasks();
@@ -252,9 +260,7 @@ describe('onWindowMigrated', () => {
 	});
 
 	it('stays quiet for a re-insertion into the same window', async () => {
-		const element = document.body.appendChild(extendedEl());
-		const listener = jest.fn();
-		element.onWindowMigrated(listener);
+		const { element, listener } = watchedElement();
 
 		element.remove();
 		await flushMicrotasks();
@@ -265,10 +271,7 @@ describe('onWindowMigrated', () => {
 	});
 
 	it('calls back again when the element moves back', async () => {
-		const popout = popoutWindow();
-		const element = document.body.appendChild(extendedEl());
-		const listener = jest.fn();
-		element.onWindowMigrated(listener);
+		const { element, listener, popout } = watchedElement();
 
 		popout.document.body.appendChild(element);
 		await flushMicrotasks();
@@ -280,10 +283,7 @@ describe('onWindowMigrated', () => {
 	});
 
 	it('stops calling back once unregistered', async () => {
-		const popout = popoutWindow();
-		const element = document.body.appendChild(extendedEl());
-		const listener = jest.fn();
-		const unregister = element.onWindowMigrated(listener);
+		const { element, listener, unregister, popout } = watchedElement();
 
 		unregister();
 		popout.document.body.appendChild(element);
