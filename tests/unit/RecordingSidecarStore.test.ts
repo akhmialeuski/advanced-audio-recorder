@@ -1361,3 +1361,29 @@ describe('telling readers a recording changed', () => {
 		expect(rawSidecar(files).markers).toEqual([marker('a', 1)]);
 	});
 });
+
+describe('what readers are and are not told', () => {
+	it('does not announce a playback position, which no reader shows', async () => {
+		const { app } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const listener = jest.fn();
+		store.onChange(listener);
+
+		await store.setPlayback('rec.wav', {
+			position: 30,
+			updatedAt: '2026-01-01T00:00:00Z',
+		});
+
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it('settles once the writes queued before the call are done', async () => {
+		const { app, files } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		void store.setMarkers('rec.wav', [marker('a', 1)]);
+
+		await store.settled();
+
+		expect(rawSidecar(files).markers).toEqual([marker('a', 1)]);
+	});
+});

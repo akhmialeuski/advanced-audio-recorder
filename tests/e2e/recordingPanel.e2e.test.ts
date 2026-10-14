@@ -5,9 +5,14 @@
  */
 
 import { App } from 'obsidian';
-import { COMMAND_IDS, RECORDING_PANEL_VIEW_TYPE } from 'src/constants';
+import {
+	COMMAND_IDS,
+	RECORDING_PANEL_PLACED_KEY,
+	RECORDING_PANEL_VIEW_TYPE,
+} from 'src/constants';
 import { flushMicrotasks } from '../helpers/async';
 import {
+	asMockApp,
 	asMockPlugin,
 	asMockVault,
 	asMockWorkspace,
@@ -56,31 +61,26 @@ describe('the recording panel', () => {
 		});
 	});
 
-	it('remembers that it was placed', async () => {
-		const { plugin } = await loadPlugin();
+	it('remembers on this device that it was placed', async () => {
+		const { app } = await loadPlugin();
 		await flushMicrotasks();
 
-		expect(plugin.settings.recordingPanelPlaced).toBe(true);
+		expect(
+			asMockApp(app).localStorage.get(RECORDING_PANEL_PLACED_KEY),
+		).toBe(true);
 	});
 
-	it('is left where the layout already has it', async () => {
-		const app = new App();
-		const workspace = asMockWorkspace(app.workspace);
-		workspace.getLeavesOfType.mockReturnValue([
-			workspace.getRightLeaf(false),
-		]);
-
-		const { plugin } = await loadPlugin(null, app);
+	it('leaves the synced settings alone when it places the panel', async () => {
+		const { saveData } = await loadPlugin({
+			lastReleaseNotesVersion: '2.2.2',
+		});
 		await flushMicrotasks();
 
-		expect([
-			workspace.ensureSideLeaf.mock.calls.length,
-			plugin.settings.recordingPanelPlaced,
-		]).toEqual([0, true]);
+		expect(saveData).not.toHaveBeenCalled();
 	});
 
 	it('is not put back after the user closed it', async () => {
-		const { app } = await loadPlugin({ recordingPanelPlaced: true });
+		const { app } = await loadPlugin(null, placedApp());
 		await flushMicrotasks();
 
 		expect(
@@ -88,10 +88,33 @@ describe('the recording panel', () => {
 		).not.toHaveBeenCalled();
 	});
 
+	it('is left to the palette on an app without local storage', async () => {
+		withApiVersion('1.8.6');
+		const { app } = await loadPlugin();
+		await flushMicrotasks();
+
+		expect(
+			asMockWorkspace(app.workspace).ensureSideLeaf,
+		).not.toHaveBeenCalled();
+	});
+
+	it('is placed again next time when placing it failed', async () => {
+		const app = new App();
+		asMockWorkspace(app.workspace).ensureSideLeaf.mockRejectedValue(
+			new Error('layout not ready'),
+		);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+		await loadPlugin(null, app);
+		await flushMicrotasks();
+
+		expect(
+			asMockApp(app).localStorage.has(RECORDING_PANEL_PLACED_KEY),
+		).toBe(false);
+	});
+
 	it('opens from the palette and is brought into view', async () => {
-		const { plugin, app } = await loadPlugin({
-			recordingPanelPlaced: true,
-		});
+		const { plugin, app } = await loadPlugin(null, placedApp());
 		const workspace = asMockWorkspace(app.workspace);
 
 		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.openRecordingPanel);
@@ -105,9 +128,7 @@ describe('the recording panel', () => {
 	});
 
 	it('builds the panel view for a leaf Obsidian hands it', async () => {
-		const { plugin, app } = await loadPlugin({
-			recordingPanelPlaced: true,
-		});
+		const { plugin, app } = await loadPlugin(null, placedApp());
 		const factory = asMockPlugin(plugin).registeredViews.get(
 			RECORDING_PANEL_VIEW_TYPE,
 		);
@@ -121,6 +142,17 @@ describe('the recording panel', () => {
 });
 
 /**
+ * An app on a device where the panel was placed before, so loading the
+ * plugin does not place it again.
+ * @returns The app
+ */
+function placedApp(): App {
+	const app = new App();
+	asMockApp(app).localStorage.set(RECORDING_PANEL_PLACED_KEY, true);
+	return app;
+}
+
+/**
  * The panel view the plugin's factory builds, opened over the app.
  * @returns The plugin, its app, and the open view
  */
@@ -129,7 +161,7 @@ async function openPanel(): Promise<{
 	app: Awaited<ReturnType<typeof loadPlugin>>['app'];
 	plugin: Awaited<ReturnType<typeof loadPlugin>>['plugin'];
 }> {
-	const { plugin, app } = await loadPlugin({ recordingPanelPlaced: true });
+	const { plugin, app } = await loadPlugin(null, placedApp());
 	const leaf = asMockWorkspace(app.workspace).getRightLeaf(false)!;
 	const factory = asMockPlugin(plugin).registeredViews.get(
 		RECORDING_PANEL_VIEW_TYPE,
@@ -141,21 +173,9 @@ async function openPanel(): Promise<{
 }
 
 describe('the recording panel on an Obsidian without side-leaf support', () => {
-	it('opens in a new right sidebar tab', async () => {
-		withApiVersion('1.6.6');
-		const { app } = await loadPlugin();
-		await flushMicrotasks();
-
-		expect(
-			at(asMockWorkspace(app.workspace).rightLeaves, 0).viewState,
-		).toEqual({ type: RECORDING_PANEL_VIEW_TYPE, active: false });
-	});
-
 	it('brings an open panel into view from the palette', async () => {
 		withApiVersion('1.6.6');
-		const { plugin, app } = await loadPlugin({
-			recordingPanelPlaced: true,
-		});
+		const { plugin, app } = await loadPlugin(null, placedApp());
 		const workspace = asMockWorkspace(app.workspace);
 		const open = workspace.getRightLeaf(false)!;
 		workspace.getLeavesOfType.mockReturnValue([open]);
@@ -167,14 +187,36 @@ describe('the recording panel on an Obsidian without side-leaf support', () => {
 			focus: true,
 		});
 	});
-});
 
-describe('opening the panel on an Obsidian without side-leaf support', () => {
+	it('opens a new right sidebar tab from the palette when none is open', async () => {
+		withApiVersion('1.6.6');
+		const { plugin, app } = await loadPlugin(null, placedApp());
+		const workspace = asMockWorkspace(app.workspace);
+
+		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.openRecordingPanel);
+		await flushMicrotasks();
+
+		expect(at(workspace.rightLeaves, 0).viewState).toEqual({
+			type: RECORDING_PANEL_VIEW_TYPE,
+			active: true,
+		});
+	});
+
+	it('does nothing from the palette when there is no sidebar to open in', async () => {
+		withApiVersion('1.6.6');
+		const { plugin, app } = await loadPlugin(null, placedApp());
+		const workspace = asMockWorkspace(app.workspace);
+		workspace.getRightLeaf.mockReturnValue(null);
+
+		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.openRecordingPanel);
+		await flushMicrotasks();
+
+		expect(workspace.setActiveLeaf).not.toHaveBeenCalled();
+	});
+
 	it('expands the sidebar it sits in when that sidebar is collapsed', async () => {
 		withApiVersion('1.6.6');
-		const { plugin, app } = await loadPlugin({
-			recordingPanelPlaced: true,
-		});
+		const { plugin, app } = await loadPlugin(null, placedApp());
 		const workspace = asMockWorkspace(app.workspace);
 		workspace.getLeavesOfType.mockReturnValue([
 			workspace.getRightLeaf(false),
@@ -185,17 +227,6 @@ describe('opening the panel on an Obsidian without side-leaf support', () => {
 		await flushMicrotasks();
 
 		expect(workspace.rightSplit.collapsed).toBe(false);
-	});
-
-	it('tries again on the next start when there was no sidebar to put it in', async () => {
-		withApiVersion('1.6.6');
-		const app = new App();
-		asMockWorkspace(app.workspace).getRightLeaf.mockReturnValue(null);
-
-		const { plugin } = await loadPlugin(null, app);
-		await flushMicrotasks();
-
-		expect(plugin.settings.recordingPanelPlaced).toBe(false);
 	});
 });
 
@@ -287,7 +318,7 @@ describe('the recording panel wired to the plugin', () => {
 	});
 
 	it('is told of a recorder state change only once its view has loaded', async () => {
-		const { app } = await loadPlugin({ recordingPanelPlaced: true });
+		const { app } = await loadPlugin(null, placedApp());
 		const onStatus = at(jest.mocked(RecordingManager).mock.calls, 0)[2];
 		// A panel restored with the layout stays a placeholder until its tab
 		// is first shown, and there is no view to tell yet.

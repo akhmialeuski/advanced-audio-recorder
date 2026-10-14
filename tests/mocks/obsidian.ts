@@ -330,6 +330,21 @@ export class App {
 		// The workspace builds leaves, and a leaf hands its view the app.
 		this.workspace.app = this;
 	}
+
+	/** What the app keeps in this device's local storage for the vault. */
+	readonly localStorage = new Map<string, unknown>();
+
+	loadLocalStorage = jest.fn(
+		(key: string): unknown => this.localStorage.get(key) ?? null,
+	);
+
+	saveLocalStorage = jest.fn((key: string, data: unknown): void => {
+		if (data === null) {
+			this.localStorage.delete(key);
+		} else {
+			this.localStorage.set(key, data);
+		}
+	});
 }
 
 /**
@@ -728,11 +743,6 @@ export class Workspace extends Events {
 		(_leaf: WorkspaceLeaf, _params?: { focus?: boolean }): void => {
 			// Nothing to focus in a test
 		},
-	);
-
-	openLinkText = jest.fn(
-		(_linktext: string, _sourcePath: string, _newLeaf?: boolean) =>
-			Promise.resolve(),
 	);
 
 	/** The app this workspace belongs to, set by the mock App. */

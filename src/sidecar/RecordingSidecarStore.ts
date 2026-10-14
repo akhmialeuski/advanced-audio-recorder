@@ -199,20 +199,26 @@ export class RecordingSidecarStore {
 		path: string,
 		state: PlaybackState | null,
 	): Promise<void> {
-		return this.mutate(path, (sidecar) => {
-			if (!state) {
-				if (!sidecar.playback) {
+		// Written on every pause, and shown by no reader that listens, so it
+		// is not announced: a reader would re-read the document for nothing.
+		return this.mutate(
+			path,
+			(sidecar) => {
+				if (!state) {
+					if (!sidecar.playback) {
+						return false;
+					}
+					delete sidecar.playback;
+					return true;
+				}
+				if (sidecar.playback?.position === state.position) {
 					return false;
 				}
-				delete sidecar.playback;
+				sidecar.playback = { ...state };
 				return true;
-			}
-			if (sidecar.playback?.position === state.position) {
-				return false;
-			}
-			sidecar.playback = { ...state };
-			return true;
-		});
+			},
+			false,
+		);
 	}
 
 	/**
@@ -675,10 +681,12 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 * @param change - Mutation applied to the cached document; return false
 	 *   to signal nothing changed
+	 * @param announce - Whether listeners hear of the change
 	 */
 	private async mutate(
 		path: string,
 		change: (sidecar: RecordingSidecar) => void | boolean,
+		announce = true,
 	): Promise<void> {
 		let blocked = false;
 		await this.enqueue(async () => {
@@ -693,7 +701,9 @@ export class RecordingSidecarStore {
 			// After the cached document changed rather than after the write:
 			// reads answer from the cache, so a listener re-reading now sees
 			// the change even when the disk write below fails.
-			this.notify(path);
+			if (announce) {
+				this.notify(path);
+			}
 			const file = this.sidecarPath(path);
 			try {
 				if (isSidecarEmpty(sidecar)) {
@@ -722,6 +732,15 @@ export class RecordingSidecarStore {
 					'Restore or remove the file to resume.',
 			);
 		}
+	}
+
+	/**
+	 * Resolves once every write queued so far has finished. A reader that
+	 * reacts to a vault rename waits on this, so it reads the sidecar after
+	 * the store moved it rather than racing the move.
+	 */
+	settled(): Promise<void> {
+		return this.writeChain;
 	}
 
 	/**

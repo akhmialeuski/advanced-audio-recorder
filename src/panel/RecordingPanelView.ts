@@ -33,6 +33,7 @@ import type {
 	FileContext,
 } from '../actions/PluginAction';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
+import { renderActionsIntoMenu } from '../actions/renderActionsIntoMenu';
 import { RecordingStatus } from '../types';
 import { isAudioFile } from '../utils/audioFile';
 import { fileNameOf } from '../utils/paths';
@@ -155,6 +156,8 @@ export class RecordingPanelView extends ItemView {
 	 * playback position written to the sidecar, say - does not rebuild it.
 	 */
 	private shownKey = '';
+	/** A redraw was asked for regardless of the data, and is still owed. */
+	private forceRedraw = false;
 	/** The start/stop header action, redrawn when the recorder changes. */
 	private recordAction: HTMLElement | null = null;
 
@@ -195,9 +198,17 @@ export class RecordingPanelView extends ItemView {
 				if (this.recorderState() === 'saving') {
 					return;
 				}
-				void this.host.recording.toggleRecording().finally(() => {
-					this.refreshRecordingState();
-				});
+				void this.host.recording
+					.toggleRecording()
+					.catch((error: unknown) => {
+						console.error(
+							`${PLUGIN_LOG_PREFIX} Starting or stopping a recording from the panel failed:`,
+							error,
+						);
+					})
+					.finally(() => {
+						this.refreshRecordingState();
+					});
 			},
 		);
 		this.refreshRecordingState();
@@ -222,7 +233,7 @@ export class RecordingPanelView extends ItemView {
 					oldPath === this.shownNotePath ||
 					file.path === this.shownNotePath
 				) {
-					void this.refresh();
+					void this.refreshAfterRename();
 				}
 			}),
 		);
@@ -258,21 +269,29 @@ export class RecordingPanelView extends ItemView {
 	 */
 	override onPaneMenu(menu: Menu, source: string): void {
 		super.onPaneMenu(menu, source);
-		const context = this.actionContext();
-		if (!context) {
-			return;
-		}
-		for (const action of this.availableActions(context)) {
-			menu.addItem((item) =>
-				item
-					.setTitle(action.title)
-					.setIcon(action.icon)
-					.setSection('action')
-					.onClick(() => {
-						this.runAction(action, context);
-					}),
+		if (this.shownFile) {
+			renderActionsIntoMenu(
+				menu,
+				this.panelActions(),
+				{ file: this.shownFile, services: this.host.services },
+				new Set(),
 			);
 		}
+	}
+
+	/**
+	 * Redraws after a rename that touched what the panel shows, once the
+	 * sidecar store has moved the recording's document. The store's own
+	 * rename handler only queues the move, so a read made right away finds
+	 * nothing at the new path yet - and caching that empty answer would let
+	 * the next write replace the moved document with it.
+	 */
+	private async refreshAfterRename(): Promise<void> {
+		// One turn first, so every rename handler of this event has queued
+		// its work before the store is asked to settle.
+		await Promise.resolve();
+		await this.host.services.recordingSidecar.settled();
+		await this.refresh();
 	}
 
 	/**
@@ -314,6 +333,9 @@ export class RecordingPanelView extends ItemView {
 	 * @returns Resolves once the panel shows the current state
 	 */
 	async refresh(force = false): Promise<void> {
+		// Kept until a redraw happens: a later refresh can overtake a forced
+		// one, and must not then skip the redraw the forced one was owed.
+		this.forceRedraw ||= force;
 		const generation = ++this.generation;
 		const target = this.resolveTarget();
 		const selected =
@@ -336,9 +358,10 @@ export class RecordingPanelView extends ItemView {
 			],
 			summary,
 		]);
-		if (!force && key === this.shownKey) {
+		if (!this.forceRedraw && key === this.shownKey) {
 			return;
 		}
+		this.forceRedraw = false;
 		this.shownKey = key;
 		this.shownNotePath = target.notePath;
 		this.shownPaths = new Set(target.recordings.map((file) => file.path));
@@ -482,7 +505,6 @@ export class RecordingPanelView extends ItemView {
 			summary.noteOutputs.length > 0 || summary.fileOutputs.length > 0;
 		if (!written && summary.transcribedAt === null) {
 			new Setting(root).setDesc('Not transcribed yet.');
-			return;
 		}
 		if (summary.transcribedAt !== null) {
 			this.row(
@@ -610,29 +632,28 @@ export class RecordingPanelView extends ItemView {
 				.setIcon('file-symlink')
 				.setTooltip(`Open ${path}`)
 				.onClick(() => {
-					void this.app.workspace.openLinkText(
-						path,
-						this.shownNotePath,
-						false,
-					);
+					// By the file rather than as link text: a '#' or '^' in a
+					// file name would be read as a heading or block reference.
+					const file = this.app.vault.getFileByPath(path);
+					if (file) {
+						void this.app.workspace.getLeaf(false).openFile(file);
+					}
 				}),
+		);
+	}
+
+	/** The file actions the panel offers, in menu order. */
+	private panelActions(): FileAction[] {
+		return this.host.actions.filter(
+			(action) => !EXCLUDED_ACTIONS.has(action.commandId),
 		);
 	}
 
 	/** The file actions available for a recording, in menu order. */
 	private availableActions(context: FileContext): FileAction[] {
-		return this.host.actions.filter(
-			(action) =>
-				!EXCLUDED_ACTIONS.has(action.commandId) &&
-				action.isAvailable(context),
+		return this.panelActions().filter((action) =>
+			action.isAvailable(context),
 		);
-	}
-
-	/** The context the file actions run against, or null with nothing shown. */
-	private actionContext(): FileContext | null {
-		return this.shownFile
-			? { file: this.shownFile, services: this.host.services }
-			: null;
 	}
 
 	/** Runs one file action, logging a failure it did not report itself. */

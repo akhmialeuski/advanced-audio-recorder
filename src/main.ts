@@ -4,14 +4,18 @@
  */
 
 import { Notice, Plugin, requireApiVersion } from 'obsidian';
-import type { TFile, WorkspaceLeaf } from 'obsidian';
+import type { TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
 	SaveProgress,
 	RecordingControls,
 	RecordingSaveResult,
 } from './types';
-import { PLUGIN_LOG_PREFIX, RECORDING_PANEL_VIEW_TYPE } from './constants';
+import {
+	PLUGIN_LOG_PREFIX,
+	RECORDING_PANEL_PLACED_KEY,
+	RECORDING_PANEL_VIEW_TYPE,
+} from './constants';
 import { isRecordingBannerSupported } from './platform/capabilities';
 import type { AudioRecorderSettings } from './settings/settingsSchema';
 import { setSelectedProfileId, type ProfileKindId } from './settings/profiles';
@@ -1086,31 +1090,37 @@ export default class AudioRecorderPlugin extends Plugin {
 
 	/**
 	 * Puts the recording panel in the right sidebar the first time the plugin
-	 * runs with it, without switching to it. After that the saved layout owns
-	 * the panel: it stays wherever the user moved it, and a user who closed it
-	 * opens it again from the palette rather than finding it back on every
-	 * start.
+	 * runs with it on this device, without switching to it. After that the
+	 * saved layout owns the panel: it stays wherever the user moved it, and a
+	 * user who closed it opens it again from the palette rather than finding
+	 * it back on every start.
+	 *
+	 * That it was placed is kept in the app's local storage rather than in
+	 * data.json. The layout is per device, and data.json is synced: a flag
+	 * there would keep the panel off a phone or a second computer because it
+	 * was placed on the first one. Local storage reached the plugin API in
+	 * 1.8.7, so an older app leaves the panel to the palette command.
 	 */
 	private async placeRecordingPanel(): Promise<void> {
-		if (this.settingsLoadFailed || this.settings.recordingPanelPlaced) {
-			return;
-		}
-		try {
-			const placed =
-				this.app.workspace.getLeavesOfType(RECORDING_PANEL_VIEW_TYPE)
-					.length > 0 ||
-				(await this.sidebarPanelLeaf(false)) !== null;
-			if (!placed) {
-				// No sidebar to put it in yet; the next start tries again.
+		if (requireApiVersion('1.8.7')) {
+			if (
+				this.app.loadLocalStorage(RECORDING_PANEL_PLACED_KEY) !== null
+			) {
 				return;
 			}
-			this.settings.recordingPanelPlaced = true;
-			await this.saveSettings();
-		} catch (error) {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Placing the recording panel failed:`,
-				error,
-			);
+			try {
+				await this.app.workspace.ensureSideLeaf(
+					RECORDING_PANEL_VIEW_TYPE,
+					'right',
+					{ active: false, reveal: false },
+				);
+				this.app.saveLocalStorage(RECORDING_PANEL_PLACED_KEY, true);
+			} catch (error) {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Placing the recording panel failed:`,
+					error,
+				);
+			}
 		}
 	}
 
@@ -1119,51 +1129,35 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * not open anywhere.
 	 */
 	private async openRecordingPanel(): Promise<void> {
-		await this.sidebarPanelLeaf(true);
-	}
-
-	/**
-	 * The leaf showing the recording panel, opened in the right sidebar when
-	 * there is none, through the workspace call made for exactly that where
-	 * the app has it: it finds an open panel before it creates one, and brings
-	 * it into view when asked to.
-	 * @param active - Whether the panel is brought into view and selected
-	 * @returns The panel's leaf, or null when there is no sidebar
-	 */
-	private async sidebarPanelLeaf(
-		active: boolean,
-	): Promise<WorkspaceLeaf | null> {
 		const { workspace } = this.app;
 		if (requireApiVersion('1.7.2')) {
-			return workspace.ensureSideLeaf(
-				RECORDING_PANEL_VIEW_TYPE,
-				'right',
-				{
-					active,
-					reveal: active,
-				},
-			);
+			// Finds an open panel before it creates one, and reveals it.
+			await workspace.ensureSideLeaf(RECORDING_PANEL_VIEW_TYPE, 'right', {
+				active: true,
+				reveal: true,
+			});
+			return;
 		}
 		const open = workspace.getLeavesOfType(RECORDING_PANEL_VIEW_TYPE)[0];
 		const leaf = open ?? workspace.getRightLeaf(false);
-		if (leaf && !open) {
+		if (!leaf) {
+			return;
+		}
+		if (!open) {
 			await leaf.setViewState({
 				type: RECORDING_PANEL_VIEW_TYPE,
-				active,
+				active: true,
 			});
 		}
-		if (leaf && active) {
-			// What revealLeaf does from 1.7.2 on: a sidebar left collapsed
-			// would otherwise keep the panel out of sight.
-			const root = leaf.getRoot();
-			for (const side of [workspace.leftSplit, workspace.rightSplit]) {
-				if (root === side && side.collapsed) {
-					side.expand();
-				}
+		// What revealLeaf does from 1.7.2 on, where its typings start: a
+		// sidebar left collapsed would otherwise keep the panel out of sight.
+		const root = leaf.getRoot();
+		for (const side of [workspace.leftSplit, workspace.rightSplit]) {
+			if (root === side && side.collapsed) {
+				side.expand();
 			}
-			workspace.setActiveLeaf(leaf, { focus: true });
 		}
-		return leaf;
+		workspace.setActiveLeaf(leaf, { focus: true });
 	}
 
 	/**

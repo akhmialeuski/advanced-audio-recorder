@@ -162,12 +162,17 @@ export function recordingsReferencedBy(
 	resolve: (link: string) => TFile | null,
 ): TFile[] {
 	const links = [...(cache?.embeds ?? []), ...(cache?.links ?? [])];
+	// A transcript links every line into the same recording, so each target
+	// is resolved once rather than once per line.
+	const targets = new Set(
+		// Without the `#t=` subpath a timecode link carries, which the
+		// resolver does not accept.
+		links.map(({ link }) => getLinkpath(link)),
+	);
 	const seen = new Set<string>();
 	const recordings: TFile[] = [];
-	for (const { link } of links) {
-		// Without the `#t=` subpath a timecode link into the recording carries,
-		// which the resolver does not accept.
-		const file = resolve(getLinkpath(link));
+	for (const target of targets) {
+		const file = resolve(target);
 		if (!file || !isAudioFile(file) || seen.has(file.path)) {
 			continue;
 		}

@@ -124,7 +124,6 @@ export function fullyPopulatedSettings(): Omit<
 		debug: true,
 		showReleaseNotes: false,
 		lastReleaseNotesVersion: '2.3.1',
-		recordingPanelPlaced: true,
 		insertAtOriginalPosition: true,
 		deleteSourceAfterConversion: false,
 		conversionLinkAction: 'after',

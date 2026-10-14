@@ -92,6 +92,7 @@ async function createSut(
 	toggleRecording: jest.Mock;
 	sidecarChanged: (path: string) => void;
 	getTranscript: jest.Mock;
+	settled: jest.Mock;
 }> {
 	const app = new App();
 	const mockApp = asMockApp(app);
@@ -118,6 +119,7 @@ async function createSut(
 		enhancedPlayerEnabled: true,
 	};
 	const saveSettings = jest.fn().mockResolvedValue(undefined);
+	const settled = jest.fn().mockResolvedValue(undefined);
 	const toggleRecording = jest.fn().mockResolvedValue(undefined);
 	const host: RecordingPanelHost = {
 		displayName: 'Advanced Audio Recorder',
@@ -132,6 +134,7 @@ async function createSut(
 					.fn()
 					.mockResolvedValue(options.failedParts ?? null),
 				isSidecarCorrupt: () => options.sidecarCorrupt ?? false,
+				settled,
 				onChange: (listener: (path: string) => void) => {
 					listeners.push(listener);
 					return () => undefined;
@@ -164,6 +167,7 @@ async function createSut(
 			listeners.forEach((listener) => listener(path));
 		},
 		getTranscript,
+		settled,
 	};
 }
 
@@ -528,15 +532,17 @@ describe('what the panel reads from the sidecar', () => {
 		).not.toBe('');
 	});
 
-	it('opens a note the transcript was written into', async () => {
-		const { view, app } = await createSut(transcribedInto('Meeting.md'));
+	it('opens a note the transcript was written into, whatever its name', async () => {
+		const { view, app } = await createSut(transcribedInto('Meeting #2.md'));
+		const [meeting] = asMockApp(app).vault.seed([
+			{ path: 'Meeting #2.md' },
+		]);
 
 		el(settingRow(view.contentEl, 'Note'), SETTING.extraButton).click();
 
-		expect(asMockApp(app).workspace.openLinkText).toHaveBeenCalledWith(
-			'Meeting.md',
-			'Meeting.md',
-			false,
+		// By the file, so the '#' in its name is not read as a heading.
+		expect(asMockApp(app).workspace.leaf.openFile).toHaveBeenCalledWith(
+			meeting,
 		);
 	});
 
@@ -839,5 +845,84 @@ describe('fixes from review', () => {
 		await flushMicrotasks();
 
 		expect(getTranscript).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('fixes from the second review', () => {
+	it('still redraws for new settings when a later refresh overtakes it', async () => {
+		const { view, settings, getTranscript } = await createSut({
+			active: recording('sync.webm'),
+		});
+		let release: () => void = () => undefined;
+		getTranscript.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					release = () => {
+						resolve(emptyTranscriptSection());
+					};
+				}),
+		);
+		settings.transcriptionEnabled = false;
+
+		const forced = view.refresh(true);
+		const later = view.refresh();
+		release();
+		await Promise.all([forced, later]);
+
+		expect(
+			hasSettingRow(view.contentEl, 'Transcribe after recording'),
+		).toBe(false);
+	});
+
+	it('logs a start or stop that failed', async () => {
+		const error = jest.spyOn(console, 'error').mockImplementation(() => {
+			// Asserted below
+		});
+		const { view, toggleRecording } = await createSut();
+		toggleRecording.mockRejectedValue(new Error('no microphone'));
+
+		headerAction(view, 'Start recording').click();
+		await flushMicrotasks();
+
+		expect(error).toHaveBeenCalledWith(
+			expect.stringContaining('Starting or stopping a recording'),
+			expect.any(Error),
+		);
+	});
+
+	it('counts failed parts of a run that wrote nothing', async () => {
+		const { view } = await createSut({
+			active: recording('sync.webm'),
+			failedParts: {
+				recordedAt: '2026-01-01T00:00:00Z',
+				parts: [
+					{ label: 'Part 1', message: 'timeout', startSeconds: 0 },
+					{ label: 'Part 2', message: 'timeout', startSeconds: 60 },
+				],
+			},
+		});
+
+		expect(rowDescription(settingRow(view.contentEl, 'Failed parts'))).toBe(
+			'2',
+		);
+	});
+
+	it('reads the sidecar after the store moved it on a rename', async () => {
+		const { app, getTranscript, settled } = await createSut({
+			active: recording('sync.webm'),
+		});
+		const order: string[] = [];
+		settled.mockImplementation(async () => {
+			order.push('settled');
+		});
+		getTranscript.mockImplementation(async () => {
+			order.push('read');
+			return emptyTranscriptSection();
+		});
+
+		app.vault.trigger('rename', recording('renamed.webm'), 'sync.webm');
+		await flushMicrotasks();
+
+		expect(order).toEqual(['settled', 'read']);
 	});
 });

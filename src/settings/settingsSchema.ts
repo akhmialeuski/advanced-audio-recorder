@@ -435,15 +435,6 @@ export interface AudioRecorderSettings {
 	 * dialog every release note the bundle carries.
 	 */
 	lastReleaseNotesVersion: string;
-	/**
-	 * Whether the recording panel was put in the right sidebar.
-	 *
-	 * The panel is placed once, the first time the plugin runs with it, and
-	 * from then on the workspace layout keeps it wherever the user moved it.
-	 * Recording that it was placed is what keeps a user who closed the panel
-	 * from finding it back on every start.
-	 */
-	recordingPanelPlaced: boolean;
 	/** Insert recording link at the note and cursor position where recording started */
 	insertAtOriginalPosition: boolean;
 	/** Delete original file after successful format conversion */
@@ -940,7 +931,6 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	debug: false,
 	showReleaseNotes: true,
 	lastReleaseNotesVersion: '',
-	recordingPanelPlaced: false,
 	insertAtOriginalPosition: false,
 	deleteSourceAfterConversion: false,
 	conversionLinkAction: ConversionLinkAction.Replace,

@@ -1668,8 +1668,6 @@ describe('AudioRecorderPlugin announcing what changed', () => {
 	it('says nothing when the running version is the one on record', async () => {
 		const { saveData } = await announceOver({
 			lastReleaseNotesVersion: RUNNING_VERSION,
-			// Placed already, so the panel's one-time write is not counted.
-			recordingPanelPlaced: true,
 		});
 
 		expect(modalInstances).toHaveLength(0);

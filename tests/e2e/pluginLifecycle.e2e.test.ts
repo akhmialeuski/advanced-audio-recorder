@@ -14,7 +14,6 @@
 
 import { COMMAND_IDS } from 'src/constants';
 import { at } from '../helpers/assertions';
-import { flushMicrotasks } from '../helpers/async';
 import { asMockPlugin } from '../helpers/obsidianMock';
 import { setPlatform } from '../helpers/platform';
 import { showDeviceSelectionModal } from 'src/ui/DeviceSelectionModal';
@@ -375,11 +374,9 @@ describe('the device selection command', () => {
 
 	it('remembers the device that was picked', async () => {
 		const { plugin, saveData } = await loadPlugin();
-		// The first run of a version records it as announced, and the first run
-		// with the recording panel places it, each a write of its own during
-		// load. Forgotten here so the count below belongs to the choice this
-		// test drives.
-		await flushMicrotasks();
+		// The first run of a version records it as announced, which is a write
+		// of its own during load. Forgotten here so the count below belongs to
+		// the choice this test drives.
 		saveData.mockClear();
 		setPlatform({ isMobile: false, isMobileApp: false });
 		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.selectAudioInputDevice);
