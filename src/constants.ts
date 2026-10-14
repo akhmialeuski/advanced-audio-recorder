@@ -339,13 +339,6 @@ export const PLAYER_LOOP = false;
 export const PLAYER_SEEK_KEYBOARD_STEP_SECONDS = 5;
 
 /**
- * Animation frames to wait for the embed to attach to the document before
- * giving up the editor-mode probe (the embed-registry path renders while
- * still detached). At ~60fps this is roughly 1.5 seconds.
- */
-export const PLAYER_ATTACH_WAIT_FRAMES = 90;
-
-/**
  * Animation frames to retry drawing the waveform while the seek area still
  * reports a zero width (layout has not settled yet).
  */
