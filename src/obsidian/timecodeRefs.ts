@@ -14,6 +14,7 @@ import { parseLinktext } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { parseTimecodeSubpath } from '../player/timecodeLinks';
 import type { TimecodeLinkBuilder } from '../transcription/transcriptFormat';
+import { linksInLine } from './sourceLinks';
 
 /** One link/embed of a note whose `#t=` subpath resolves to the audio. */
 export interface AudioTimecodeRef {
@@ -94,28 +95,6 @@ export function audioTimecodeRefs(
 }
 
 /**
- * A wikilink or a Markdown link in note source, either of them possibly an
- * embed, with its target captured: `[[target|alias]]` in group 1,
- * `[label](<target>)` in group 2, and `[label](target)` in group 3, where
- * Obsidian URL-encodes the target.
- */
-const SOURCE_LINK_PATTERN =
-	/!?\[\[([^\]|\n]+)(?:\|[^\]\n]*)?\]\]|!?\[[^\]\n]*\]\((?:<([^>\n]+)>|([^)\s]+))\)/g;
-
-/**
- * Decodes the target of a Markdown link the way the metadata cache reads it.
- * A malformed escape is left as written, since that is what the link says.
- * @param target - The target between the parentheses
- */
-function decodeLinkTarget(target: string): string {
-	try {
-		return decodeURI(target);
-	} catch {
-		return target;
-	}
-}
-
-/**
  * The first timecode link in one line of note source that resolves to a file
  * and carries a valid time: what ties a rendered transcript line to the
  * recording it transcribes. Read from the line's own text rather than from
@@ -132,12 +111,7 @@ export function lineTimecodeRef(
 	note: TFile,
 	lineText: string,
 ): LineTimecodeRef | null {
-	for (const match of lineText.matchAll(SOURCE_LINK_PATTERN)) {
-		const [, wikiTarget, bracketedTarget, encodedTarget] = match;
-		const link =
-			wikiTarget ??
-			bracketedTarget ??
-			decodeLinkTarget(String(encodedTarget));
+	for (const { link } of linksInLine(lineText)) {
 		const ref = resolveTimecodeLink(app, note, link);
 		if (ref && ref.seconds !== null) {
 			return { file: ref.file, seconds: ref.seconds };

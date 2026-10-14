@@ -35,7 +35,12 @@ import {
 	TFolder,
 } from 'obsidian';
 import { partial, commonActionServices } from '../helpers/doubles';
-import { createMockApp } from '../helpers/createApp';
+import { createFile, createMockApp } from '../helpers/createApp';
+import {
+	mountLiveEditor,
+	rangeOf,
+	type LiveEditor,
+} from '../helpers/liveEditor';
 import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
 import { AudioFileInfoModal } from 'src/ui/AudioFileInfoModal';
 import { SplitModal } from 'src/ui/SplitModal';
@@ -579,6 +584,44 @@ describe('ContextMenu', () => {
 			expect(titlesOf(menu)).toContain('Delete recording & link to file');
 		});
 
+		it.each([
+			{
+				name: 'a timecode link, without its subpath',
+				line: '[[audio.mp3#t=30|0:30]] Speaker 1',
+				ch: 5,
+				path: 'audio.mp3',
+			},
+			{
+				name: 'an encoded Markdown link, decoded',
+				line: 'Take [one](Recordings/my%20take.mp3)',
+				ch: 8,
+				path: 'Recordings/my take.mp3',
+			},
+			{
+				name: 'the link the cursor sits just past',
+				line: 'Text [[audio.mp3]] Text',
+				ch: 18,
+				path: 'audio.mp3',
+			},
+		])('resolves $name', ({ line, ch, path }) => {
+			const menu = new Menu();
+			(mockEditor.getLine as jest.Mock).mockReturnValue(line);
+			(mockEditor.getCursor as jest.Mock).mockReturnValue({
+				line: 0,
+				ch,
+			});
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(makeAudioFile());
+
+			editorMenuCallback(menu, mockEditor, {});
+
+			expect(mockMetadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
+				path,
+				'',
+			);
+		});
+
 		it('resolves the link without a source path when the view has no file', () => {
 			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue('[[audio.mp3]]');
@@ -890,24 +933,38 @@ describe('ContextMenu', () => {
 			expect(mockWorkspace.getActiveFile).not.toHaveBeenCalled();
 		});
 
+		/**
+		 * A right-click on the embed widget a Live Preview editor renders for
+		 * the first `![[...]]` of a note.
+		 * @param source - The note's source
+		 * @param embedText - The embed in it the widget stands for
+		 * @returns The event, and the editor the note is open in
+		 */
+		function rightClickOnRenderedEmbed(
+			source: string,
+			embedText: string,
+		): { event: MouseEvent; live: LiveEditor } {
+			const live = mountLiveEditor({
+				doc: source,
+				file: partial<TFile>({ path: 'note.md' }),
+				embeds: [{ ...rangeOf(source, embedText), src: 'audio.mp3' }],
+			});
+			const event = partial<MouseEvent>({
+				target: at(live.embeds(), 0),
+				preventDefault: jest.fn(),
+				stopPropagation: jest.fn(),
+			});
+			return { event, live };
+		}
+
 		it('offers "Delete recording & link to file" when the embed maps to an editor link', () => {
-			const event = makeEmbedEvent();
+			const { event } = rightClickOnRenderedEmbed(
+				'Intro\n![[audio.mp3]]',
+				'![[audio.mp3]]',
+			);
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
 			).mockReturnValue(makeAudioFile());
-
-			const mockEditor = partial<Editor>({
-				offsetToPos: jest.fn().mockReturnValue({ line: 0, ch: 0 }),
-				getLine: jest.fn().mockReturnValue('[[audio.mp3]]'),
-				getCursor: jest.fn().mockReturnValue({ line: 10, ch: 10 }),
-				replaceRange: jest.fn(),
-			});
-			Object.defineProperty(mockEditor, 'cm', {
-				get: () => ({ posAtDOM: jest.fn().mockReturnValue(0) }),
-			});
-			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
-				editor: mockEditor,
-			});
 
 			playerMenuCallback(event);
 
@@ -916,32 +973,55 @@ describe('ContextMenu', () => {
 			);
 		});
 
-		it('degrades gracefully when the editor link resolution throws', () => {
+		it('removes the link the embed was rendered from', async () => {
+			const { event, live } = rightClickOnRenderedEmbed(
+				'Intro\nBefore ![[audio.mp3|My take]] after',
+				'![[audio.mp3|My take]]',
+			);
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(makeAudioFile());
+			playerMenuCallback(event);
+
+			await clickItem(triggeredMenu(), 'Delete recording & link to file');
+
+			expect(live.text()).toBe('Intro\nBefore  after');
+		});
+
+		it('offers no link deletion when the source there links another file', () => {
+			// A widget spanning several lines, such as a table, maps to where
+			// it starts, and the link there need not be this recording's.
+			const { event } = rightClickOnRenderedEmbed(
+				'![[other.mp3]]',
+				'![[other.mp3]]',
+			);
+			const files: Record<string, TFile> = {
+				'audio.mp3': createFile('Recordings/audio.mp3'),
+				'other.mp3': createFile('Recordings/other.mp3'),
+			};
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockImplementation((path: string) => files[path] ?? null);
+
+			playerMenuCallback(event);
+
+			expect(titlesOf(triggeredMenu())).not.toContain(
+				'Delete recording & link to file',
+			);
+		});
+
+		it('offers no link deletion over an embed no editor rendered', () => {
+			// Reading view renders the embed outside any editor, so there is
+			// no source link under it to remove.
 			const event = makeEmbedEvent();
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
 			).mockReturnValue(makeAudioFile());
-			const consoleSpy = jest
-				.spyOn(console, 'error')
-				.mockImplementation();
-			const mockEditor = partial<Editor>({
-				get cm() {
-					return {
-						posAtDOM: jest.fn().mockImplementation(() => {
-							throw new Error('Test Error');
-						}),
-					};
-				},
-			});
-			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
-				editor: mockEditor,
-			});
 
 			playerMenuCallback(event);
 
-			expect(consoleSpy).toHaveBeenCalledWith(
-				'[AudioRecorder] Failed to resolve link position in editor:',
-				expect.any(Error),
+			expect(titlesOf(triggeredMenu())).not.toContain(
+				'Delete recording & link to file',
 			);
 		});
 	});

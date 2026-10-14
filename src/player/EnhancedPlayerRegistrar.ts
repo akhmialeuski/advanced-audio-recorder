@@ -32,7 +32,6 @@
 import { TFile, MarkdownView, Notice, debounce } from 'obsidian';
 import type {
 	App,
-	Editor,
 	MarkdownPostProcessorContext,
 	Plugin,
 	TAbstractFile,
@@ -62,8 +61,9 @@ import {
 	parseAudioLinkTarget,
 	isAudioFile,
 	parseTimecodeSubpath,
-	wikiLinkTargetAtCursor,
 } from './timecodeLinks';
+import { editorPositionOfNode } from '../obsidian/editorDomPosition';
+import { linkAtColumn } from '../obsidian/sourceLinks';
 import { probeMediaKind, MEDIA_KIND, type MediaKind } from './mediaProbe';
 import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
 import { markdownViewContaining } from '../utils/windowScopedViews';
@@ -872,46 +872,25 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Reads the wikilink target at a clicked node from the editor of the note
-	 * that actually contains the node, so a Live Preview timecode link clicked
-	 * in a pop-out window or a background split reads from that note's editor
-	 * rather than the globally active one, whose CodeMirror instance does not
-	 * own this node. Uses CodeMirror's DOM-to-offset mapping (the same internal
-	 * API the context menu uses) to find the line and column, then extracts the
-	 * link there. Falls back to the active view for a detached render, and
-	 * returns null when the click is not on a wikilink or the editor internals
-	 * are unavailable.
+	 * Reads the link target at a clicked node from the editor that rendered
+	 * the node, so a Live Preview timecode link clicked in a pop-out window or
+	 * a background split reads from that note's editor rather than the
+	 * globally active one. The editor and the clicked line and column come
+	 * from the shared DOM-to-source lookup the context menu uses too, and the
+	 * link there from the shared source-line reader.
 	 * @param node - The clicked DOM node inside the editor
-	 * @returns The wikilink target, or null when none is under the click
+	 * @returns The link target without its alias, or null when the node is not
+	 *   in an editor's content or no link is under it
 	 */
-	private resolveEditorLinkTarget(node: Node): string | null {
-		const view =
-			markdownViewContaining(this.app, node) ??
-			this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) {
+	private resolveEditorLinkTarget(node: HTMLElement): string | null {
+		const rendered = editorPositionOfNode(node);
+		if (!rendered) {
 			return null;
 		}
-		const cm = (view.editor as EditorWithCodeMirror).cm;
-		if (!cm?.posAtDOM) {
-			return null;
-		}
-		try {
-			const cursor = view.editor.offsetToPos(cm.posAtDOM(node));
-			return wikiLinkTargetAtCursor(
-				view.editor.getLine(cursor.line),
-				cursor.ch,
-			);
-		} catch (error) {
-			console.error(
-				`${PLUGIN_LOG_PREFIX} Failed to resolve a timecode link in the editor.`,
-				error,
-			);
-			return null;
-		}
+		const { editor, position } = rendered;
+		return (
+			linkAtColumn(editor.getLine(position.line), position.ch)?.link ??
+			null
+		);
 	}
-}
-
-/** CodeMirror view attached to an Obsidian Editor (internal API). */
-interface EditorWithCodeMirror extends Editor {
-	cm?: { posAtDOM?(node: Node): number };
 }
