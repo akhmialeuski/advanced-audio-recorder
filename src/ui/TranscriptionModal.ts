@@ -71,6 +71,7 @@ import {
 	ProfileKindId,
 } from '../settings/profiles';
 import type { SaveProgress } from '../types';
+import { errorMessage } from '../errors';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
 const DEFAULT_TRANSCRIBE_LABEL = 'Transcribing...';
@@ -1032,8 +1033,7 @@ export class TranscriptionModal extends PluginModal {
 				new Notice('Transcription cancelled.');
 				this.statusEl?.setText('Cancelled.');
 			} else {
-				const message =
-					error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				new Notice(`Transcription failed: ${message}`);
 				this.statusEl?.setText(`Failed: ${message}`);
 			}

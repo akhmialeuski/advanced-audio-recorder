@@ -19,6 +19,7 @@ import type { RunCostSink } from './SessionCostTracker';
 import { QueueEntryState, type TranscriptionQueue } from './TranscriptionQueue';
 import type { TranscribeFileOptions } from './runTranscription';
 import type { TranscribeRunCost } from './TranscriptionService';
+import { errorMessage } from '../errors';
 
 /** Transcribes one recording; the run entry point, narrowed to what is used. */
 export type QueueTranscriber = (
@@ -155,8 +156,7 @@ export class QueueRunner {
 				this.deps.queue.setState(path, QueueEntryState.Waiting);
 				return;
 			}
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Queued transcription of ${path} failed:`,
 				error,

@@ -113,6 +113,7 @@ import {
 	selectedEngineModel,
 	sumUsage,
 } from './costs';
+import { errorMessage } from '../errors';
 
 // Cancellation belongs to every long job, not to transcription alone, so it
 // lives in utils and is re-exported here for the callers that already reach
@@ -1462,8 +1463,7 @@ export class TranscriptionService {
 						'length; reporting it without subdividing further.',
 				);
 			}
-			const detail =
-				error instanceof Error ? error.message : String(error);
+			const detail = errorMessage(error);
 			// A single indivisible job has nothing to keep, so fail as before. A
 			// labelled part (one of several, or a subdivision) records the failure
 			// and carries on: discarding a completed - and, on a paid API, already

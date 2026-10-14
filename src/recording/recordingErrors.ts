@@ -3,6 +3,8 @@
  * @module recording/recordingErrors
  */
 
+import { errorMessage } from '../errors';
+
 /**
  * Maps a recording-start failure onto a user-friendly message. Media
  * capture failures surface as DOMExceptions with well-known names; those
@@ -23,6 +25,6 @@ export function describeRecordingError(error: unknown): string {
 		}
 		return `Recording error: ${error.message}`;
 	}
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	return `Error starting recording: ${message}`;
 }

@@ -11,7 +11,7 @@
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { AudioPlayerRegistry } from './AudioPlayerRegistry';
 import type { PlaybackControlsState } from './playbackControls';
-import { fileNameOf } from '../utils/paths';
+import { fileStemOf } from '../utils/paths';
 
 /** Application name shown beside the recording in the system controls. */
 const MEDIA_SESSION_ARTIST = 'Advanced Audio Recorder';
@@ -89,18 +89,6 @@ const TRANSPORT_ACTIONS: ReadonlyMap<MediaSessionAction, TransportHandler> =
 			},
 		],
 	]);
-
-/**
- * The recording's own name, without its folder or extension. The system
- * controls have room for a title and not for a path.
- * @param path - Vault-relative recording path
- * @returns The file name with no directory and no extension
- */
-function recordingTitle(path: string): string {
-	const name = fileNameOf(path);
-	const dot = name.lastIndexOf('.');
-	return dot > 0 ? name.slice(0, dot) : name;
-}
 
 /**
  * Mirrors the active playback into the system media session.
@@ -190,7 +178,7 @@ export class MediaSessionBridge {
 	 * @param state - Latest playback snapshot
 	 */
 	private showMetadata(state: PlaybackControlsState): void {
-		const title = recordingTitle(state.recordingPath);
+		const title = fileStemOf(state.recordingPath);
 		const album = state.chapterLabel ?? '';
 		const shown = `${title}${METADATA_KEY_SEPARATOR}${album}`;
 		if (this.shown === shown) {

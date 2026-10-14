@@ -29,6 +29,8 @@ import {
 } from './audioDsp';
 import { ChannelMode, normalizeChannelMode } from '../audio/downmix';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { errorMessage } from '../errors';
+import { delay } from '../utils/TimeUtils';
 
 /**
  * Audio-cleanup dialog for a single file.
@@ -195,7 +197,7 @@ export class AudioProcessingModal extends PluginModal {
 			status.setText('Processing...');
 			// Yield once so the "Processing..." label paints before the
 			// synchronous decode/gate work briefly occupies the main thread.
-			await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+			await delay(0);
 			try {
 				const service = new AudioProcessingService(this.app);
 				const outputPath = await service.process(
@@ -236,8 +238,7 @@ export class AudioProcessingModal extends PluginModal {
 				new Notice(`Processed audio saved to ${outputPath}`);
 				this.close();
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				new Notice(`Audio processing failed: ${message}`);
 				status.setText(`Failed: ${message}`);
 			} finally {

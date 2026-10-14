@@ -22,3 +22,16 @@ export function directoryOf(path: string): string {
 export function fileNameOf(path: string): string {
 	return path.slice(path.lastIndexOf('/') + 1);
 }
+
+/**
+ * Returns a file's own name without its folder or extension, the way
+ * Obsidian's `TFile.basename` reads, for a path that has no TFile behind it.
+ * A leading dot (`.env`) is part of the name, not an extension.
+ * @param path - Vault-relative file path
+ * @returns The file name with no directory and no extension
+ */
+export function fileStemOf(path: string): string {
+	const name = fileNameOf(path);
+	const dot = name.lastIndexOf('.');
+	return dot > 0 ? name.slice(0, dot) : name;
+}

@@ -70,6 +70,7 @@ import {
 	MediaRecorderCaptureTrack,
 	PcmCaptureTrack,
 } from './CaptureTrack';
+import { errorMessage } from '../errors';
 
 /** File-name part standing in for a device on a system-audio track. */
 const SYSTEM_AUDIO_SOURCE_NAME = 'SystemAudio';
@@ -897,8 +898,7 @@ export class RecordingManager {
 			this.finalizer.reportProgress(100, 'Saved');
 			new Notice('Recording stopped');
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			stopFailure = `Error stopping recording: ${message}`;
 			new Notice(stopFailure);
 			console.error(

@@ -28,6 +28,7 @@ import {
 	serviceRunner,
 	type RetryOutcome,
 } from '../transcription/retryFailedParts';
+import { errorMessage } from '../errors';
 
 /** Availability gate for actions with no extra conditions. */
 const always = (): boolean => true;
@@ -268,9 +269,7 @@ async function runFailedPartRetry(
 			error,
 		);
 		new Notice(
-			`Could not transcribe the missing parts: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
+			`Could not transcribe the missing parts: ${errorMessage(error)}`,
 		);
 	}
 }

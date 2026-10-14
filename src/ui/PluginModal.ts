@@ -17,6 +17,7 @@
 
 import { Modal, Notice, Setting } from 'obsidian';
 import type { App, ButtonComponent, TFile } from 'obsidian';
+import { errorMessage } from '../errors';
 
 /**
  * Obsidian's own layout for a dialog whose body can run to any length: the
@@ -186,8 +187,7 @@ export abstract class PluginModal extends Modal {
 		try {
 			await result;
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			new Notice(message);
 		}
 	}

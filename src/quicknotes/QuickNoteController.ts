@@ -43,6 +43,7 @@ import type {
 import { TranscriptionCancelledError } from '../transcription/TranscriptionService';
 import type { RunCostSink } from '../transcription/SessionCostTracker';
 import type { InsertionContext, SaveProgress } from '../types';
+import { errorMessage } from '../errors';
 
 /** What the quick note controller needs from the rest of the plugin. */
 export interface QuickNoteDeps {
@@ -200,7 +201,7 @@ export class QuickNoteController {
 				return false;
 			}
 			new Notice(
-				`Quick note could not open the microphone: ${error instanceof Error ? error.message : String(error)}`,
+				`Quick note could not open the microphone: ${errorMessage(error)}`,
 			);
 			this.setStatus(RecordingStatus.Idle);
 			return false;
@@ -263,9 +264,7 @@ export class QuickNoteController {
 		} catch (error) {
 			if (!(error instanceof TranscriptionCancelledError)) {
 				console.error(`${PLUGIN_LOG_PREFIX} Quick note failed:`, error);
-				new Notice(
-					`Quick note failed: ${error instanceof Error ? error.message : String(error)}`,
-				);
+				new Notice(`Quick note failed: ${errorMessage(error)}`);
 			}
 		} finally {
 			if (this.run === run) {

@@ -114,6 +114,7 @@ import {
 	isPcmWavCaptureSupported,
 } from '../platform/capabilities';
 import { effectiveWordTimestamps } from '../transcription/providers/capabilities';
+import { errorMessage } from '../errors';
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -982,8 +983,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		try {
 			return await readNoteText(this.app, note);
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			new Notice(
 				`${note.path} could not be read, ${consequence}: ${message}`,
 			);
@@ -1395,8 +1395,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			});
 			this.testAudioElement.addClass('aar-test-audio');
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			this.showTestStatus(
 				container,
 				`Test recording failed: ${message}`,
