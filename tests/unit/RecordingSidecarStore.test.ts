@@ -9,7 +9,8 @@
  */
 
 import type { App } from 'obsidian';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
+import { flushMicrotasks } from '../helpers/async';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { NoteOutput } from 'src/sidecar/recordingSidecarModel';
@@ -1375,6 +1376,35 @@ describe('what readers are and are not told', () => {
 		});
 
 		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it('waits for the last of two moves to the same path', async () => {
+		const { app } = makeApp();
+		const writer = new RecordingSidecarStore(app);
+		await writer.setMarkers('first.wav', [marker('first', 1)]);
+		await writer.setMarkers('second.wav', [marker('second', 2)]);
+		const rename = jest.mocked(app.vault.adapter.rename);
+		const moveFile = defined(rename.getMockImplementation(), 'rename');
+		let finishSecondMove: () => void = () => undefined;
+		rename.mockImplementationOnce(moveFile).mockImplementationOnce(
+			(from, to) =>
+				new Promise((resolve) => {
+					finishSecondMove = () => {
+						void moveFile(from, to).then(resolve);
+					};
+				}),
+		);
+		const store = new RecordingSidecarStore(app);
+		const firstMove = store.handleRename('first.wav', 'target.wav');
+		void store.handleRename('second.wav', 'target.wav');
+		await firstMove;
+
+		const read = store.getMarkers('target.wav');
+		// Long enough for a read that does not wait to reach the disk.
+		await flushMicrotasks();
+		finishSecondMove();
+
+		expect(await read).toEqual([marker('second', 2)]);
 	});
 
 	it('reads a renamed recording only after its sidecar was moved', async () => {

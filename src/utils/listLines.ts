@@ -16,6 +16,7 @@
  */
 
 import { getLinkpath } from 'obsidian';
+import { fileNameOf } from './paths';
 
 /** An ATX heading: a section title of the note, never an entry of the list. */
 const HEADING_LINE = /^\s{0,3}#{1,6}(?:\s|$)/;
@@ -103,7 +104,7 @@ function linkName(
 		return alias;
 	}
 	const path = getLinkpath(target);
-	return path.slice(path.lastIndexOf('/') + 1);
+	return fileNameOf(path);
 }
 
 /**

@@ -9,32 +9,38 @@ import type { PluginCommand } from 'src/actions/PluginAction';
 import { at } from '../helpers/assertions';
 import { asMockMenu } from '../helpers/obsidianMock';
 import { flushMicrotasks } from '../helpers/async';
+import { FAILING_RUNS } from '../helpers/doubles';
 
-/** An action whose run rejects. */
-function failingAction(): PluginCommand<null> {
+/** An action that fails the way its run does. */
+function failingAction(run: () => void | Promise<void>): PluginCommand<null> {
 	return {
 		commandId: 'broken-action',
 		title: 'Broken action',
 		icon: 'bug',
 		isAvailable: () => true,
-		run: () => Promise.reject(new Error('boom')),
+		run,
 	};
 }
 
 describe('a menu entry whose action fails', () => {
-	it('logs the failure under the action it came from', async () => {
-		const error = jest.spyOn(console, 'error').mockImplementation(() => {
-			// Asserted below
-		});
-		const menu = new Menu();
-		renderActionsIntoMenu(menu, [failingAction()], null, new Set());
+	it.each(FAILING_RUNS)(
+		'logs an action that %s under the action it came from',
+		async (_how, run) => {
+			const error = jest
+				.spyOn(console, 'error')
+				.mockImplementation(() => {
+					// Asserted below
+				});
+			const menu = new Menu();
+			renderActionsIntoMenu(menu, [failingAction(run)], null, new Set());
 
-		at(asMockMenu(menu).items, 0).click();
-		await flushMicrotasks();
+			at(asMockMenu(menu).items, 0).click();
+			await flushMicrotasks();
 
-		expect(error).toHaveBeenCalledWith(
-			expect.stringContaining('broken-action failed from a menu'),
-			expect.any(Error),
-		);
-	});
+			expect(error).toHaveBeenCalledWith(
+				expect.stringContaining('broken-action failed from a menu'),
+				expect.any(Error),
+			);
+		},
+	);
 });

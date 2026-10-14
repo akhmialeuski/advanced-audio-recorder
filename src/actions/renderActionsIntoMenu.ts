@@ -43,14 +43,15 @@ export function renderActionsIntoMenu<TContext>(
 					// Obsidian drops what a menu handler returns, so a failed
 					// action would otherwise surface as an unhandled rejection
 					// with nothing naming the action it came from.
-					void Promise.resolve(action.run(context)).catch(
-						(error: unknown) => {
+					// Run inside the chain, so a synchronous throw is caught too.
+					void Promise.resolve()
+						.then(() => action.run(context))
+						.catch((error: unknown) => {
 							console.error(
 								`${PLUGIN_LOG_PREFIX} ${action.commandId} failed from a menu:`,
 								error,
 							);
-						},
-					);
+						});
 				});
 		});
 	}

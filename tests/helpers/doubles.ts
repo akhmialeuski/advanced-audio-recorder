@@ -124,3 +124,18 @@ export function commonActionServices(): {
 		}),
 	};
 }
+
+/**
+ * The two ways an action's run can fail, for a test that checks a failure is
+ * logged whichever it is: a promise that rejects, and a synchronous throw
+ * before anything is returned - the one `Promise.resolve(run())` misses.
+ */
+export const FAILING_RUNS: readonly [string, () => void | Promise<void>][] = [
+	['rejects', (): Promise<void> => Promise.reject(new Error('boom'))],
+	[
+		'throws before it returns anything',
+		(): void => {
+			throw new Error('sync boom');
+		},
+	],
+];

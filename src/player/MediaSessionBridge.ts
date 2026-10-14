@@ -11,6 +11,7 @@
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { AudioPlayerRegistry } from './AudioPlayerRegistry';
 import type { PlaybackControlsState } from './playbackControls';
+import { fileNameOf } from '../utils/paths';
 
 /** Application name shown beside the recording in the system controls. */
 const MEDIA_SESSION_ARTIST = 'Advanced Audio Recorder';
@@ -96,7 +97,7 @@ const TRANSPORT_ACTIONS: ReadonlyMap<MediaSessionAction, TransportHandler> =
  * @returns The file name with no directory and no extension
  */
 function recordingTitle(path: string): string {
-	const name = path.slice(path.lastIndexOf('/') + 1);
+	const name = fileNameOf(path);
 	const dot = name.lastIndexOf('.');
 	return dot > 0 ? name.slice(0, dot) : name;
 }

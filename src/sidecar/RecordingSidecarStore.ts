@@ -425,7 +425,11 @@ export class RecordingSidecarStore {
 			// that newest state so the new path never serves a stale copy and
 			// no zombie entry lingers under the old path.
 			this.moveCacheEntry(oldPath, newPath);
-			this.pendingMoves.delete(newPath);
+			// Only this move's own entry: a later move to the same path may
+			// have replaced it, and that one is still to run.
+			if (this.pendingMoves.get(newPath) === moved) {
+				this.pendingMoves.delete(newPath);
+			}
 		});
 		this.pendingMoves.set(newPath, moved);
 		return moved;
@@ -523,8 +527,11 @@ export class RecordingSidecarStore {
 	/**
 	 * Subscribes to changes of any recording's document. The store writes
 	 * through the adapter, which raises no vault event, so a reader that
-	 * shows sidecar data - the recording panel - learns of a rename, a new
-	 * transcript, or a new chapter only from here.
+	 * shows sidecar data - the recording panel - learns of a new transcript,
+	 * a renamed speaker, or a new chapter only from here. Renames and deletes
+	 * of the recording itself are not announced: they are vault events, and a
+	 * reader hears of them there. Neither is a playback position, which no
+	 * reader shows.
 	 * @param listener - Called with the recording path after each change
 	 * @returns Unsubscribes the listener
 	 */

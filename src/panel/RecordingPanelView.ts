@@ -229,6 +229,11 @@ export class RecordingPanelView extends ItemView {
 		);
 		this.registerEvent(
 			vault.on('rename', (file, oldPath) => {
+				// The recording picked in the dropdown keeps being the one
+				// shown under its new name.
+				if (oldPath === this.selectedPath) {
+					this.selectedPath = file.path;
+				}
 				if (
 					this.shownPaths.has(oldPath) ||
 					oldPath === this.shownNotePath ||
@@ -681,12 +686,15 @@ export class RecordingPanelView extends ItemView {
 
 	/** Runs one file action, logging a failure it did not report itself. */
 	private runAction(action: FileAction, context: FileContext): void {
-		void Promise.resolve(action.run(context)).catch((error: unknown) => {
-			console.error(
-				`${PLUGIN_LOG_PREFIX} ${action.commandId} failed from the recording panel:`,
-				error,
-			);
-		});
+		// Run inside the chain, so a synchronous throw is caught too.
+		void Promise.resolve()
+			.then(() => action.run(context))
+			.catch((error: unknown) => {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} ${action.commandId} failed from the recording panel:`,
+					error,
+				);
+			});
 	}
 
 	/**

@@ -17,7 +17,7 @@ import type {
 	FileAction,
 	FileContext,
 } from 'src/actions/PluginAction';
-import { partial } from '../helpers/doubles';
+import { FAILING_RUNS, partial } from '../helpers/doubles';
 import {
 	asMockApp,
 	asMockMenu,
@@ -329,6 +329,7 @@ describe('the actions the panel offers', () => {
 			settingRow(view.contentEl, 'Transcribe audio'),
 			SETTING.extraButton,
 		)[0]?.click();
+		await flushMicrotasks();
 
 		expect(transcribe.run).toHaveBeenCalledWith(
 			expect.objectContaining<Partial<FileContext>>({ file }),
@@ -616,16 +617,17 @@ describe('the view menu and the header', () => {
 		view.onPaneMenu(menu, 'more-options');
 
 		at(asMockMenu(menu).items, 0).click();
+		await flushMicrotasks();
 
 		expect(info.run).toHaveBeenCalledTimes(1);
 	});
 
-	it('logs an action that failed', async () => {
+	it.each(FAILING_RUNS)('logs an action that %s', async (_how, run) => {
 		const error = jest.spyOn(console, 'error').mockImplementation(() => {
 			// Asserted below
 		});
 		const broken = fileAction(COMMAND_IDS.audioFileInfo, 'Audio file info');
-		broken.run.mockRejectedValue(new Error('boom'));
+		broken.run.mockImplementation(run);
 		const { view } = await createSut({
 			active: recording('sync.webm'),
 			actions: [broken],
@@ -952,5 +954,36 @@ describe('fixes from the third review', () => {
 		await view.refresh();
 
 		expect(settingRow(view.contentEl, 'File')).toBe(drawn);
+	});
+});
+
+describe('fixes from the fourth review', () => {
+	it('keeps showing the recording picked in the dropdown after it is renamed', async () => {
+		const files = {
+			a: recording('a.m4a'),
+			b: recording('b.m4a'),
+			renamed: recording('b2.m4a'),
+		};
+		const { view, app } = await createSut({
+			active: note('Meeting.md'),
+			cache: {
+				embeds: [{ link: 'a.m4a' }, { link: 'b.m4a' }],
+			} as CachedMetadata,
+			vaultFiles: [files.a, files.b, files.renamed],
+		});
+		const select = rowSelect(settingRow(view.contentEl, 'Shown'));
+		select.value = 'b.m4a';
+		select.dispatchEvent(new Event('change'));
+		await flushMicrotasks();
+		asMockApp(app).metadataCache.getFileCache.mockReturnValue({
+			embeds: [{ link: 'a.m4a' }, { link: 'b2.m4a' }],
+		});
+
+		app.vault.trigger('rename', files.renamed, 'b.m4a');
+		await flushMicrotasks();
+
+		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
+			'b2.m4a',
+		);
 	});
 });

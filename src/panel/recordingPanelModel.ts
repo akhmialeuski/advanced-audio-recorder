@@ -148,7 +148,8 @@ function lineTemplateFor(
 }
 
 /**
- * The recordings a note embeds or links to, embeds first and each once.
+ * The recordings a note embeds or links to, in its body or its properties,
+ * embeds first and each once.
  *
  * A meeting note usually embeds its recording, but a note that only links to
  * it is about the same meeting, so both count. The metadata cache already
@@ -161,7 +162,12 @@ export function recordingsReferencedBy(
 	cache: CachedMetadata | null,
 	resolve: (link: string) => TFile | null,
 ): TFile[] {
-	const links = [...(cache?.embeds ?? []), ...(cache?.links ?? [])];
+	const links = [
+		...(cache?.embeds ?? []),
+		...(cache?.links ?? []),
+		// A property such as `recording: "[[standup.webm]]"`.
+		...(cache?.frontmatterLinks ?? []),
+	];
 	// A transcript links every line into the same recording, so each target
 	// is resolved once rather than once per line.
 	const targets = new Set(

@@ -224,6 +224,19 @@ describe('the recordings a note refers to', () => {
 		expect(recordings.map((file) => file.path)).toEqual(['call.m4a']);
 	});
 
+	it('finds a recording a note property links to', () => {
+		const cache = partial<CachedMetadata>({
+			frontmatterLinks: [{ key: 'recording', link: 'standup.webm' }],
+		});
+
+		const recordings = recordingsReferencedBy(
+			cache,
+			resolver('standup.webm'),
+		);
+
+		expect(recordings.map((file) => file.path)).toEqual(['standup.webm']);
+	});
+
 	it('finds nothing in a note the cache has not parsed yet', () => {
 		expect(recordingsReferencedBy(null, resolver())).toEqual([]);
 	});
