@@ -26,7 +26,7 @@ LLM post-processing is an optional, second pass that runs **after** transcriptio
 - **Translate** - write the transcript in the language named in **Translate into**, one line per spoken segment, keeping the original beside it.
 - **Custom** - send your own verbatim instruction (e.g. "rewrite as meeting notes").
 
-The default Claude model is **`claude-opus-4-8`**. Requests use Anthropic's Messages API at `https://api.anthropic.com/v1`.
+The default Claude model is **`claude-opus-4-8`**. Requests use Anthropic's Messages API at `https://api.anthropic.com/v1`. Every request asks Claude for the lowest reasoning effort, because cleanup, summaries and chapter titles gain nothing from reasoning while it spends the same output budget the answer needs; a model that does not take the effort control, or that refuses the fixed temperature the context agents send, has that field dropped after its first refusal and the request is sent again without it.
 
 > Anthropic charges per token. The plugin makes one request per transcript (long transcripts may be split into several requests), so cost depends on the length of your recordings and how often you transcribe. Start with a small credit and watch your usage.
 

@@ -864,6 +864,18 @@ export const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
 export const ANTHROPIC_API_VERSION = '2023-06-01';
 
 /**
+ * Reasoning effort sent to Claude with every request.
+ *
+ * The same reason Gemini gets {@link GEMINI_LOW_THINKING_LEVEL}: cleanup,
+ * summaries, chapter titles and the context agents are deterministic tasks that
+ * gain nothing from reasoning, while Claude Opus 5.5 and Fable cannot turn
+ * thinking off at all and spend it out of the same `max_tokens` the answer
+ * needs. `low` is the floor every model with the control accepts; a model
+ * without it refuses the field, and the provider then drops it.
+ */
+export const ANTHROPIC_LOW_EFFORT = 'low';
+
+/**
  * Default Anthropic model for transcript post-processing. Kept at
  * `claude-opus-4-8` after the July 2026 catalog review: it is still a current
  * model and the provider's recommended default, while `claude-fable-5` above
