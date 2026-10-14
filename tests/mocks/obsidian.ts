@@ -1113,17 +1113,27 @@ export class Component {
 		el: EventTarget,
 		type: string,
 		callback: EventListenerOrEventListenerObject,
+		options?: boolean | AddEventListenerOptions,
 	): void {
 		// Faithful enough for tests: attach the listener and auto-remove it on
 		// unload, so delegated handlers actually fire when events are dispatched.
+		// The options travel to both calls, as they do in Obsidian: a capture
+		// listener is only removed by a call that names capture as well.
 		if (el && typeof el.addEventListener === 'function') {
-			el.addEventListener(type, callback);
-			this.register(() => el.removeEventListener(type, callback));
+			el.addEventListener(type, callback, options);
+			this.register(() => {
+				el.removeEventListener(type, callback, options);
+			});
 		}
 	}
 
-	registerInterval(_id: number): void {
-		// Mock implementation
+	registerInterval(id: number): number {
+		// Obsidian clears the interval on unload and hands the id back, so a
+		// caller can write `this.registerInterval(window.setInterval(...))`.
+		this.register(() => {
+			window.clearInterval(id);
+		});
+		return id;
 	}
 }
 

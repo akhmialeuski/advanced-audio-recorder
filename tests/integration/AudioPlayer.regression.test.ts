@@ -34,6 +34,7 @@ import {
 	app,
 	decoder,
 	makeContainer,
+	makeEditableContainer,
 	makeFakeAudio,
 	makeFile,
 	makeMarkerStore,
@@ -698,5 +699,81 @@ describe('render-scoped teardown across in-place re-renders (F1)', () => {
 		player.unload();
 
 		expect(CountingMutationObserver.live).toBe(0);
+	});
+});
+
+// A document outlives every render, so a listener a render pass put on it is
+// the one thing a re-render cannot take away by rebuilding the DOM. The
+// marker list puts two there, captured, and a capture listener is only
+// removed by a call that names capture as well.
+describe('document listeners of a render pass', () => {
+	const MARKERS_ON: ResolvedPlayerSettings = {
+		showWaveform: false,
+		enableMarkers: true,
+		skipSeconds: 10,
+	};
+
+	/**
+	 * Counts the listeners currently on the document, matching a removal to
+	 * its addition by type, listener and capture flag the way the DOM does.
+	 * @returns Reads the number of listeners still attached
+	 */
+	function liveDocumentListeners(): () => number {
+		const live: { type: string; listener: unknown; capture: boolean }[] =
+			[];
+		const captureOf = (
+			options?: boolean | EventListenerOptions,
+		): boolean =>
+			typeof options === 'boolean' ? options : Boolean(options?.capture);
+		jest.spyOn(document, 'addEventListener').mockImplementation(
+			(type, listener, options) => {
+				live.push({ type, listener, capture: captureOf(options) });
+			},
+		);
+		jest.spyOn(document, 'removeEventListener').mockImplementation(
+			(type, listener, options) => {
+				const index = live.findIndex(
+					(entry) =>
+						entry.type === type &&
+						entry.listener === listener &&
+						entry.capture === captureOf(options),
+				);
+				if (index >= 0) {
+					live.splice(index, 1);
+				}
+			},
+		);
+		return () => live.length;
+	}
+
+	it('keeps only the latest render pass listening across re-renders', () => {
+		const live = liveDocumentListeners();
+		const player = makePlayer(
+			makeEditableContainer(),
+			makeRegistry(makeFakeAudio()),
+			MARKERS_ON,
+		);
+		player.onload();
+		const afterOneRender = live();
+
+		player.applySettings({ ...MARKERS_ON, skipSeconds: 5 });
+		player.applySettings({ ...MARKERS_ON, skipSeconds: 15 });
+
+		expect(afterOneRender).toBeGreaterThan(0);
+		expect(live()).toBe(afterOneRender);
+	});
+
+	it('takes the last render pass off the document on unload', () => {
+		const live = liveDocumentListeners();
+		const player = makePlayer(
+			makeEditableContainer(),
+			makeRegistry(makeFakeAudio()),
+			MARKERS_ON,
+		);
+		player.load();
+
+		player.unload();
+
+		expect(live()).toBe(0);
 	});
 });

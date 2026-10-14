@@ -5,7 +5,7 @@
  * rename does not rebuild the list (so a focused rename input is preserved).
  */
 
-import { App, Modal } from 'obsidian';
+import { App, Component, Modal } from 'obsidian';
 import { at } from '../helpers/assertions';
 import { allEls, el } from '../helpers/dom';
 import { MARKER } from '../helpers/selectors';
@@ -27,30 +27,15 @@ function extendedEl(): HTMLElement {
 }
 
 /**
- * A host that attaches listeners directly, mirroring the player's
- * registerRenderDomEvent, and collects the teardown callbacks the player runs
- * on unload: every cleanup registered, and the removal of every listener with
- * the options it was added with.
- * @param teardowns - Collector the host pushes its cleanups into
- * @returns The host
+ * The host the player hands the view: the loaded Component of its current
+ * render pass, whose unload removes every listener with the options it was
+ * added with and runs every cleanup registered on it.
+ * @returns The host, loaded as a render pass is
  */
-function makeHost(teardowns: (() => void)[] = []): MarkerListHost {
-	return {
-		register: (cleanup) => {
-			teardowns.push(cleanup);
-		},
-		registerDomEvent: (el, type, callback, options) => {
-			const target: EventTarget = el;
-			target.addEventListener(type, callback as EventListener, options);
-			teardowns.push(() => {
-				target.removeEventListener(
-					type,
-					callback as EventListener,
-					options,
-				);
-			});
-		},
-	};
+function makeHost(): MarkerListHost & Component {
+	const host = new Component();
+	host.load();
+	return host;
 }
 
 function makeCallbacks(): jest.Mocked<MarkerListCallbacks> {
@@ -72,8 +57,8 @@ interface Setup {
 	listContainer: HTMLElement;
 	seekEl: HTMLElement;
 	callbacks: jest.Mocked<MarkerListCallbacks>;
-	/** The cleanups the host collected, run on unload by Obsidian. */
-	teardowns: (() => void)[];
+	/** Unloads the render pass the view was mounted in, as a re-render does. */
+	unload: () => void;
 }
 
 /**
@@ -90,8 +75,8 @@ function setup(
 	} = {},
 ): Setup {
 	const callbacks = makeCallbacks();
-	const teardowns: (() => void)[] = [];
-	const view = new MarkerListView(makeHost(teardowns), callbacks);
+	const host = makeHost();
+	const view = new MarkerListView(host, callbacks);
 	const listContainer = extendedEl();
 	const seekEl = extendedEl();
 	view.mountOverlay(seekEl);
@@ -99,7 +84,15 @@ function setup(
 	view.setEditable(editable);
 	view.setMarkers(options.markers ?? MARKERS);
 	view.render(options.duration === undefined ? 60 : options.duration, 0);
-	return { view, listContainer, seekEl, callbacks, teardowns };
+	return {
+		view,
+		listContainer,
+		seekEl,
+		callbacks,
+		unload: () => {
+			host.unload();
+		},
+	};
 }
 
 /** Dispatches a pointerdown the overlay's delegated handler will see. */
@@ -632,14 +625,12 @@ describe('MarkerListView teardown', () => {
 	it('drops a rename that had not been saved yet', () => {
 		// The debounce would otherwise fire against a player that is gone,
 		// writing to a file the user has closed.
-		const { listContainer, callbacks, teardowns } = setup(true);
+		const { listContainer, callbacks, unload } = setup(true);
 		const input = el<HTMLInputElement>(listContainer, MARKER.labelOf('b'));
 		input.value = 'Half-typed';
 		input.dispatchEvent(new Event('input', { bubbles: true }));
 
-		for (const teardown of teardowns) {
-			teardown();
-		}
+		unload();
 		jest.advanceTimersByTime(400);
 
 		expect(callbacks.onRename).not.toHaveBeenCalled();
@@ -714,13 +705,11 @@ describe('the note line of a row being worked in', () => {
 	// The listeners sit on the document, which outlives the player, so they
 	// have to leave with it rather than keep closing rows nobody renders.
 	it('stops listening to the document once the player unloads', () => {
-		const { listContainer, teardowns } = mounted;
+		const { listContainer, unload } = mounted;
 		const upper = at(allEls(listContainer, MARKER.editableRow), 0);
 		el(listContainer, MARKER.labelOf('a')).focus();
 
-		for (const teardown of teardowns) {
-			teardown();
-		}
+		unload();
 		at(allEls(listContainer, MARKER.timeEdit), 1).focus();
 		document.body.click();
 

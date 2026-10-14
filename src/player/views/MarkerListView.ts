@@ -18,6 +18,7 @@
  */
 
 import { setIcon } from 'obsidian';
+import type { Component } from 'obsidian';
 import { formatTimecode, parseTimecode } from '../../utils/TimeUtils';
 import {
 	activeMarkerIndex,
@@ -78,21 +79,13 @@ function jumpAction(kind: MarkerKind): string {
 	return kind === MARKER_KIND.chapter ? 'Jump to chapter' : 'Jump to marker';
 }
 
-/** Lifecycle hooks the view borrows from the owning render child. */
-export interface MarkerListHost {
-	/** Registers a cleanup callback that runs on the player's unload. */
-	register(cleanup: () => void): void;
-	/**
-	 * Registers an auto-cleaned DOM listener on an element or a document,
-	 * with the options addEventListener takes, capture included.
-	 */
-	registerDomEvent<K extends keyof HTMLElementEventMap>(
-		el: HTMLElement | Document,
-		type: K,
-		callback: (event: HTMLElementEventMap[K]) => void,
-		options?: boolean | AddEventListenerOptions,
-	): void;
-}
+/**
+ * Lifecycle hooks the view borrows from the owning render pass: a Component
+ * whose unload removes every listener the view added, on an element or a
+ * document, with the options it was added with, and runs every cleanup it
+ * registered.
+ */
+export type MarkerListHost = Pick<Component, 'register' | 'registerDomEvent'>;
 
 /** Actions the view invokes in response to user interaction. */
 export interface MarkerListCallbacks {
