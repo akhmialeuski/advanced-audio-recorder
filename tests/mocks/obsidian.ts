@@ -1245,6 +1245,16 @@ export class Modal {
 		return this;
 	}
 
+	setContent(content: string | DocumentFragment): this {
+		this.contentEl.empty();
+		if (typeof content === 'string') {
+			this.contentEl.setText(content);
+		} else {
+			this.contentEl.appendChild(content);
+		}
+		return this;
+	}
+
 	onOpen(): void {
 		// Mock implementation
 	}
@@ -1345,7 +1355,9 @@ export class ButtonComponent {
 	}
 
 	setDestructive(): this {
-		this.buttonEl.classList.add('mod-destructive');
+		// The same class the deprecated setWarning() applies, which is what
+		// themes style a destructive button by.
+		this.buttonEl.classList.add('mod-warning');
 		return this;
 	}
 
@@ -1368,6 +1380,77 @@ export class ButtonComponent {
 		// Clicking buttonEl triggers the handler, as in Obsidian
 		this.buttonEl.addEventListener('click', callback);
 		return this;
+	}
+}
+
+/**
+ * Mock ConfirmationButton: a button in a {@link ConfirmationModal}'s row.
+ * Clicking it closes the modal once the handler resolves, unless the handler
+ * returns a truthy value, as in Obsidian.
+ */
+export class ConfirmationButton extends ButtonComponent {
+	handler: ((evt: MouseEvent) => unknown) | null = null;
+
+	override onClick(handler: (evt: MouseEvent) => unknown): this {
+		this.handler = handler;
+		return this;
+	}
+
+	setInitialFocus(): this {
+		return this;
+	}
+
+	setSecondary(): this {
+		return this;
+	}
+
+	setCancel(): this {
+		return this;
+	}
+}
+
+/**
+ * Mock ConfirmationModal: Obsidian's confirm dialog. The buttons go into
+ * `buttonContainerEl`, which sits under the body as Obsidian lays it out.
+ */
+export class ConfirmationModal extends Modal {
+	buttonContainerEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+
+	constructor(app: App) {
+		super(app);
+		this.buttonContainerEl.addClass('modal-button-container');
+		this.modalEl.appendChild(this.buttonContainerEl);
+	}
+
+	addClass(cls: string): this {
+		this.modalEl.addClass(cls);
+		return this;
+	}
+
+	addCheckbox(_label: string, _cb: (value: boolean) => unknown): this {
+		return this;
+	}
+
+	addButton(cb: (btn: ConfirmationButton) => unknown): this {
+		const button = new ConfirmationButton();
+		cb(button);
+		this.buttonContainerEl.appendChild(button.buttonEl);
+		button.buttonEl.addEventListener('click', (evt) => {
+			void Promise.resolve(button.handler?.(evt)).then((keepOpen) => {
+				if (!keepOpen) {
+					this.close();
+				}
+			});
+		});
+		return this;
+	}
+
+	addCancelButton(text = 'Cancel'): this {
+		return this.addButton((button) =>
+			button.setButtonText(text).setCancel(),
+		);
 	}
 }
 
@@ -1514,36 +1597,109 @@ export class Setting {
 }
 
 /**
- * Mock PluginSettingTab class.
+ * What renders a tab's definitions once the tab is open: the stand-in for
+ * Obsidian's settings framework in `tests/mocks/settingsFramework.ts`.
  */
-export class PluginSettingTab {
+export interface SettingTabRenderer {
+	render(containerEl: HTMLElement, items: readonly unknown[]): void;
+	refreshState(): void;
+	release(): void;
+}
+
+/**
+ * Mock SettingTab: the declarative half of Obsidian's settings tab. `update()`
+ * re-reads `getSettingDefinitions()` into `settingItems`, as the real one
+ * does, and while the tab is open (see {@link __openSettingTab}) the stand-in
+ * renderer draws them into `containerEl`.
+ */
+export class SettingTab {
 	app: App;
 	containerEl: HTMLElement = addObsidianDomExtensions(
 		document.createElement('div'),
 	);
-	plugin: Plugin;
+	settingItems: unknown[] = [];
 
-	constructor(app: App, plugin: Plugin) {
+	/** The renderer drawing the tab while it is open, null while it is not. */
+	renderer: SettingTabRenderer | null = null;
+
+	constructor(app: App) {
 		this.app = app;
-		this.plugin = plugin;
 	}
 
+	getSettingDefinitions(): unknown[] {
+		return [];
+	}
+
+	update(): void {
+		this.settingItems = this.getSettingDefinitions();
+		this.renderer?.render(this.containerEl, this.settingItems);
+	}
+
+	getControlValue(_key: string): unknown {
+		// The real default reads the vault config, which no test reads.
+		return undefined;
+	}
+
+	setControlValue(_key: string, _value: unknown): void | Promise<void> {
+		// The real default writes the vault config, which no test reads.
+	}
+
+	refreshDomState(): void {
+		this.renderer?.refreshState();
+	}
+
+	/** Deprecated since 1.13 and never called for a declarative tab. */
 	display(): void {
 		// Mock implementation
 	}
 
+	/**
+	 * Hides the tab: the framework releases the rows it rendered, running the
+	 * cleanup each render definition returned.
+	 */
 	hide(): void {
-		// Mock implementation
+		this.renderer?.release();
+		this.renderer = null;
+	}
+}
+
+/**
+ * Opens a settings tab the way the user does from the settings window: the
+ * framework renders the tab's definitions and keeps the rows until the tab is
+ * hidden. The renderer is passed in by `tests/helpers/declarativeSettings.ts`,
+ * which is what keeps this module free of an import cycle with it.
+ * @param tab - The tab to open, an instance of this mock's SettingTab
+ * @param createRenderer - Builds the renderer bound to the tab's value hooks
+ */
+export function __openSettingTab(
+	tab: unknown,
+	createRenderer: (host: SettingTab) => SettingTabRenderer,
+): void {
+	if (!(tab instanceof SettingTab)) {
+		throw new TypeError('__openSettingTab expects a mock SettingTab');
+	}
+	tab.renderer?.release();
+	tab.renderer = createRenderer(tab);
+	tab.update();
+}
+
+/**
+ * Mock PluginSettingTab: a SettingTab whose values default to the plugin's
+ * `settings` object, as the real one's do.
+ */
+export class PluginSettingTab extends SettingTab {
+	plugin: Plugin;
+
+	constructor(app: App, plugin: Plugin) {
+		super(app);
+		this.plugin = plugin;
 	}
 
-	/**
-	 * Obsidian 1.13's declarative re-render, which re-reads
-	 * getSettingDefinitions() and renders the tab from it. Present here because
-	 * the plugin builds against 1.13; a test that models an older Obsidian
-	 * deletes it from this prototype before constructing its tab.
-	 */
-	update(): void {
-		// Mock implementation
+	override getControlValue(key: string): unknown {
+		const settings: unknown = Reflect.get(this.plugin, 'settings');
+		return typeof settings === 'object' && settings !== null
+			? Reflect.get(settings, key)
+			: undefined;
 	}
 }
 
@@ -2111,7 +2267,7 @@ export const Platform = {
  * answers from: a test that models an older Obsidian moves it (through
  * __setApiVersion) rather than keeping a second version beside this one.
  */
-export const DEFAULT_MOCK_API_VERSION = '1.13.1';
+export const DEFAULT_MOCK_API_VERSION = '1.14.4';
 
 export let apiVersion: string = DEFAULT_MOCK_API_VERSION;
 

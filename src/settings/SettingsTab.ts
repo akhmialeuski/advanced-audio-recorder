@@ -3,10 +3,9 @@
  *
  * The tab itself is described as data in
  * {@link module:settings/settingsDefinitions}; what lives here is everything
- * that tree needs from the plugin. Three things, in order of weight. The
- * version split: which Obsidian is running decides who renders the tree, and
- * {@link module:settings/settingsRenderMode} answers that once, in the
- * constructor. The value hooks: `getControlValue`/`setControlValue` are how
+ * that tree needs from the plugin. Obsidian renders the tree, indexes it for
+ * the settings search and re-renders it on `update()`; the tab supplies two
+ * things. The value hooks: `getControlValue`/`setControlValue` are how
  * every control reads and writes, routed through `plugin.saveSettings()` so a
  * Map-valued setting survives, the per-platform write-back happens, and the
  * recording manager and player registrar hear about the change. And the
@@ -21,22 +20,14 @@ import {
 	Notice,
 	PluginSettingTab,
 	Setting,
-	TFolder,
-	Vault,
 	debounce,
-	requireApiVersion,
 	setIcon,
 } from 'obsidian';
 import type { Plugin, TFile } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
 import {
-	createSettingsRenderMode,
-	type SettingsRenderMode,
-} from './settingsRenderMode';
-import {
 	CONTROL_WRITE_EFFECTS,
 	LAYOUT_TRACK_FIELDS,
-	SETTINGS_TAB_CLASS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
 	controlValue,
@@ -45,7 +36,6 @@ import {
 	type TrackControlField,
 	type ProfileCatalogue,
 } from './settingsDefinitions';
-import { LegacySettingsRenderer } from './legacySettingsRenderer';
 import {
 	TrackProcessingMode,
 	TrackSourceKind,
@@ -77,7 +67,6 @@ import {
 } from '../recording/AudioStreamHandler';
 import { getEncoderDescription } from '../ui/formatDescriptions';
 import { MemoryRecorder } from '../recording/MemoryRecorder';
-import { TextInputSuggest } from '../ui/TextInputSuggest';
 import { DOCS_URL, FORMAT_WAV } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
@@ -198,41 +187,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	);
 
 	/**
-	 * How this tab reaches the screen on the running Obsidian: through the
-	 * declarative definitions of 1.13+, or through display() below it. Chosen
-	 * once here - the app version cannot change under a live tab - so nothing
-	 * else in the tab has to know which Obsidian it is on.
-	 */
-	private readonly renderMode: SettingsRenderMode;
-
-	/**
-	 * Renders the definition tree on the Obsidian that has no declarative
-	 * settings API. Holds the rendered rows, so it can re-evaluate their
-	 * predicates and run their cleanups the way the framework does.
-	 */
-	private readonly legacyRenderer = new LegacySettingsRenderer(this, {
-		// The folder control is native from 1.13 on; below it, the tab's own
-		// suggester is what puts the vault's folders under the field.
-		attachFolderSuggest: (inputEl: HTMLInputElement): void => {
-			new TextInputSuggest(this.app, inputEl, () =>
-				this.getFolderOptions(),
-			);
-		},
-		// The same for the file control, narrowed by the filter it declares.
-		attachFileSuggest: (
-			inputEl: HTMLInputElement,
-			filter?: (file: TFile) => boolean,
-		): void => {
-			new TextInputSuggest(this.app, inputEl, () =>
-				this.app.vault
-					.getFiles()
-					.filter((file) => filter?.(file) ?? true)
-					.map((file) => file.path),
-			);
-		},
-	});
-
-	/**
 	 * Keys whose control is a text field, collected from the definition tree on
 	 * every build. Their writes are debounced: a text control fires a change per
 	 * keystroke, and each one would otherwise rewrite data.json.
@@ -280,37 +234,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: AudioRecorderPluginInterface) {
 		super(app, plugin);
 		this.plugin = plugin;
-		// The container belongs to this tab on both Obsidians and survives every
-		// render, so it is where the stylesheet is told which settings are ours.
-		this.containerEl.addClass(SETTINGS_TAB_CLASS);
-		// Obsidian 1.13 is where the declarative settings API begins, and with
-		// it SettingTab.update(), the framework's own re-render of the
-		// definitions. The typings declare that method unconditionally, so the
-		// running app is what has to be asked; below 1.13 the answer selects
-		// the imperative mode, which is what keeps the tab working down to
-		// minAppVersion. The re-render itself stays a call on the instance, so
-		// the framework - or a test double standing in for it - always drives
-		// its own pass.
-		this.renderMode = createSettingsRenderMode({
-			frameworkUpdate: requireApiVersion('1.13.0')
-				? (): void => {
-						this.update();
-					}
-				: undefined,
-			buildDefinitions: (): SettingDefinitionItem[] =>
-				this.buildDefinitions(),
-			renderLegacy: (): void => {
-				this.renderLegacy();
-			},
-		});
 	}
 
 	/**
-	 * Builds the tab's definition tree and notes which of its controls are text
-	 * fields, so their writes can be debounced.
+	 * The tab's definition tree, which Obsidian renders, indexes for the
+	 * settings search, and reads and writes values through. Rebuilt on every
+	 * call, which is every `update()`, and noting which of its controls are
+	 * text fields so their writes can be debounced.
 	 * @returns The definitions, in render order
 	 */
-	private buildDefinitions(): SettingDefinitionItem[] {
+	override getSettingDefinitions(): SettingDefinitionItem[] {
 		const definitions = buildSettingsDefinitions({
 			settings: this.plugin.settings,
 			sampleRates: getSupportedSampleRates(),
@@ -325,14 +258,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					this.renderSummaryRow(setting);
 				},
 			},
-			// Asked per build: the answer depends on the platform, which a tab
-			// outlives, and the tree is rebuilt for every pass anyway.
-			declareListAddRow: !this.renderMode.rendersListAddRow(),
 			renderDocumentationLink: (host): void => {
 				// The tab's "it reached the screen" signal, which is why this
-				// row stays first and stays a render row. From 1.13 nothing
-				// else says so: display() is not called, and
-				// getSettingDefinitions() also runs once at plugin load to
+				// row stays first and stays a render row. Nothing else says
+				// so: getSettingDefinitions() also runs once at plugin load to
 				// index the settings search, so enumerating there would leave
 				// a device listener open on a tab nobody opened. A render
 				// callback runs only when rows are actually drawn, which is
@@ -420,7 +349,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 	/**
 	 * Reads a control's value. Obsidian calls this on every render of a control
-	 * definition on 1.13+, and the legacy renderer calls it for the same reason.
+	 * definition.
 	 * @param key - The settings key the control is bound to
 	 * @returns The stored value
 	 */
@@ -563,7 +492,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// Source line. Drawn after this write returns, as every other
 			// redraw is, so the renderer finishes the change it is handling.
 			return Promise.resolve().then(() => {
-				this.rerender();
+				this.update();
 			});
 		}
 		const selection = this.profileSelectionFor(key);
@@ -631,7 +560,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// The rows this write changed are the rows already on screen, holding
 		// something else now, so they are read again rather than re-evaluated.
 		return saved.then(() => {
-			this.rerender();
+			this.update();
 		});
 	}
 
@@ -662,19 +591,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			return false;
 		}
 		return MediaRecorder.isTypeSupported(buildMimeType(format));
-	}
-
-	/**
-	 * Gets folder options for autocomplete.
-	 */
-	getFolderOptions(): string[] {
-		const folders: string[] = [];
-		Vault.recurseChildren(this.app.vault.getRoot(), (file) => {
-			if (file instanceof TFolder) {
-				folders.push(file.path);
-			}
-		});
-		return folders;
 	}
 
 	/**
@@ -791,44 +707,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			deviceId,
 			channelMode: current?.channelMode ?? ChannelMode.Source,
 		});
-	}
-
-	/**
-	 * Renders the tab into its own container. This is Obsidian's render call
-	 * before 1.13; from 1.13 on the framework renders the tab from
-	 * getSettingDefinitions() and never calls this.
-	 */
-	override display(): void {
-		this.renderLegacy();
-	}
-
-	/**
-	 * Declarative settings entry (Obsidian 1.13+): the tab's definition tree,
-	 * which the framework renders, indexes for the settings search, and reads
-	 * and writes values through. On older Obsidian the render mode returns no
-	 * definitions, which is what makes that Obsidian call display() instead;
-	 * both paths render the same tree.
-	 */
-	override getSettingDefinitions(): SettingDefinitionItem[] {
-		return this.renderMode.getDefinitions();
-	}
-
-	/**
-	 * Renders the definition tree with the pre-1.13 API. The render call on
-	 * older Obsidian, for the first render and for every re-render, since there
-	 * is no framework update() to hand the work back to.
-	 */
-	private renderLegacy(): void {
-		this.legacyRenderer.render(this.containerEl, this.buildDefinitions());
-	}
-
-	/**
-	 * Re-renders the tab after a change that adds or removes settings (for
-	 * example toggling multi-track or Save near active file), on whichever
-	 * terms the running Obsidian sets.
-	 */
-	private rerender(): void {
-		this.renderMode.rerender();
 	}
 
 	/**
@@ -1022,7 +900,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		if (noteText === null) {
 			// The field holds the path just picked. Drawn again, the page
 			// holds what is stored.
-			this.rerender();
+			this.update();
 			return;
 		}
 		const question =
@@ -1035,7 +913,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 		// The field holds the path just picked. Drawn again, the page holds
 		// what is stored, which is what stays when the question is cancelled.
-		this.rerender();
+		this.update();
 		new ConfirmModal(this.app, {
 			title: question.title,
 			message: question.message,
@@ -1124,7 +1002,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	private commit(): Promise<void> {
 		return this.plugin.saveSettings().then(() => {
-			this.rerender();
+			this.update();
 		});
 	}
 
@@ -1454,7 +1332,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			return;
 		}
 		this.deviceSignature = signature;
-		this.rerender();
+		this.update();
 	}
 
 	/**
@@ -1584,7 +1462,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	/**
 	 * Cleans up test recording resources when settings tab is hidden,
 	 * flushes a pending debounced text-setting save, and detaches the
-	 * device-change listener registered in display().
+	 * device-change listener the documentation row registered.
 	 */
 	override hide(): void {
 		// Invalidate every in-flight enumeration and probe before
@@ -1595,10 +1473,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// A switch to a note that was never picked stored nothing, so the
 		// next visit opens the page on the text it really applies.
 		this.profileText.forgetChoices();
-		// On the legacy path the renderer holds the rows and their cleanups;
-		// releasing it is what runs them when the tab is left. On 1.13 the
-		// framework runs them itself and this renderer holds nothing.
-		this.legacyRenderer.release();
 		this.cleanupTestRecording();
 		const devices = audioDeviceApi();
 		if (devices && this.deviceChangeHandler) {
@@ -1608,5 +1482,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			);
 		}
 		this.deviceChangeHandler = null;
+		// Obsidian's own teardown, which runs the cleanup every render row
+		// returned.
+		super.hide();
 	}
 }

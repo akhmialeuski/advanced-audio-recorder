@@ -106,7 +106,7 @@ async function pressMerge(
 		return null;
 	}
 	const asked = confirmation.contentEl.textContent;
-	rowButton(confirmation.contentEl, answer).click();
+	rowButton(confirmation.modalEl, answer).click();
 	await flushMicrotasks(20);
 	return asked;
 }

@@ -220,6 +220,27 @@ options, and the first is usually the better one:
 The mock has its own tests, under `tests/unit/mocks/`. A double complex enough
 to be wrong is complex enough to test.
 
+The settings tab is the largest case of this. Obsidian renders a tab from the
+definitions `getSettingDefinitions()` returns, and none of that renderer ships
+in the `obsidian` package, so `tests/mocks/settingsFramework.ts` stands in for
+it. It builds the rows, binds every control to the tab's
+`getControlValue`/`setControlValue`, applies the declared validators and the
+`visible` and `disabled` predicates, and runs the cleanup a render row returns
+when the tab is rendered again or hidden. A test opens the tab the way the user
+does and then reads it through the DOM:
+
+```ts
+const tab = new AudioRecorderSettingTab(app, plugin);
+
+openSettingTab(tab);
+
+expect(settingNames(tab.containerEl)).toContain('Input device');
+```
+
+`openSettingTab` lives in `tests/helpers/declarativeSettings.ts`. After it, the
+tab's own `update()` renders again and `hide()` releases the rows, exactly as
+they do in the app.
+
 ## 10. Assert on the UI, not on its CSS
 
 Rendered UI is read through four helper modules, and tests carry no CSS class

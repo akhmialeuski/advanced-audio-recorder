@@ -13,13 +13,14 @@ import {
 	renderThroughFramework,
 	rowIn,
 	rowOf,
-	withoutDeclarativeSettings,
+	openSettingTab,
 	type DeclarativeFrame,
 	type GroupDefinition,
 	type RenderDefinition,
 	type RowDefinition,
 } from '../helpers/declarativeSettings';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
+import { SystemDiagnostics } from 'src/diagnostics/SystemDiagnostics';
 import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
@@ -46,7 +47,6 @@ import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import {
 	rowButton,
 	rowDescription,
-	rowInput,
 	rowOptionValues,
 	rowSelect,
 	rowToggle,
@@ -64,7 +64,6 @@ import {
 } from '../helpers/mediaMocks';
 import { closeSettingsPage } from 'src/obsidian/settingsNavigation';
 import { listFormatAvailability } from 'src/audio/AudioCapabilityDetector';
-import { TextInputSuggest } from 'src/ui/TextInputSuggest';
 import { EngineLabel } from 'src/providers/providers';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
@@ -144,21 +143,6 @@ jest.mock('src/ui/ModelIdModal', () => ({
 			return { open: (): void => undefined };
 		}),
 }));
-
-// The real suggester, recorded: the candidates a field is offered are a
-// closure the tab hands over, and a test reads them through its arguments.
-jest.mock('src/ui/TextInputSuggest', () => {
-	const actual: {
-		TextInputSuggest: new (...args: unknown[]) => unknown;
-	} = jest.requireActual('src/ui/TextInputSuggest');
-	return {
-		TextInputSuggest: jest
-			.fn()
-			.mockImplementation(
-				(...args: unknown[]) => new actual.TextInputSuggest(...args),
-			),
-	};
-});
 
 /**
  * Plugin name as the manifest carries it. The tab names its declarative
@@ -995,30 +979,20 @@ describe('AudioRecorderSettingTab', () => {
 		});
 	});
 
-	describe('Obsidian before 1.13 (imperative display path)', () => {
-		let legacyTab: AudioRecorderSettingTab;
-
-		beforeEach(() => {
-			// The render mode is picked when the tab is constructed, so the
-			// older Obsidian only has to be modelled for that one call.
-			legacyTab = withoutDeclarativeSettings(
-				() => new AudioRecorderSettingTab(new App(), mockPlugin),
-			);
-		});
-
+	describe('opening the tab', () => {
 		it('renders the devices an enumeration finds while the tab is open', async () => {
 			(
 				navigator.mediaDevices.enumerateDevices as jest.Mock
 			).mockResolvedValue([mediaDevice('mic-1', 'Desk microphone')]);
 
-			legacyTab.display();
+			openSettingTab(tab);
 			await tick();
 
 			// The enumeration is asynchronous, so the first pass has no devices
 			// and the result is what asks for the second. Nothing else gates
 			// that: a flag saying the tab is shown would only be a second copy
 			// of the generation check, able to disagree with it.
-			expect(textsOf(legacyTab.containerEl, 'option')).toContain(
+			expect(textsOf(tab.containerEl, 'option')).toContain(
 				'Desk microphone',
 			);
 		});
@@ -1033,10 +1007,10 @@ describe('AudioRecorderSettingTab', () => {
 				mediaDevice('mic-1', 'Desk microphone'),
 			]);
 
-			legacyTab.display();
+			openSettingTab(tab);
 			await tick();
 
-			const options = textsOf(legacyTab.containerEl, 'option');
+			const options = textsOf(tab.containerEl, 'option');
 
 			expect(options).toContain(
 				'Stereo Mix (Realtek(R) Audio) (system audio)',
@@ -1058,51 +1032,35 @@ describe('AudioRecorderSettingTab', () => {
 						};
 					}),
 			);
-			legacyTab.display();
-			legacyTab.hide();
-			const afterHide = legacyTab.containerEl.innerHTML;
+			openSettingTab(tab);
+			tab.hide();
+			const afterHide = tab.containerEl.innerHTML;
 
 			answer();
 			await tick();
 
 			// hide() bumps the refresh generation, which is the whole guard:
 			// re-rendering here would rebuild a tab nobody is looking at.
-			expect(legacyTab.containerEl.innerHTML).toBe(afterHide);
-		});
-
-		it('declares no settings, so Obsidian renders through display()', () => {
-			// An empty list is the signal: 1.13's renderTab() falls back to
-			// display() only while there is nothing to render declaratively.
-			expect(legacyTab.getSettingDefinitions()).toEqual([]);
-		});
-
-		it('marks the container, which is what scopes the stylesheet here', () => {
-			// This Obsidian renders the tree as a flat list of rows with no
-			// group element to carry a class, so the tab's own container is the
-			// only handle the block separators have.
-			expect(
-				legacyTab.containerEl.classList.contains('aar-settings-tab'),
-			).toBe(true);
+			expect(tab.containerEl.innerHTML).toBe(afterHide);
 		});
 
 		it('renders the whole body into the tab container', () => {
-			legacyTab.display();
+			openSettingTab(tab);
 
-			const names = renderedNames(legacyTab.containerEl);
+			const names = renderedNames(tab.containerEl);
 			expect(names).toContain('Input device');
 			expect(names).toContain('Recording format');
 			expect(names).toContain('Debug mode');
 			expect(
-				maybeEl(legacyTab.containerEl, SETTING.docCalloutLink),
+				maybeEl(tab.containerEl, SETTING.docCalloutLink),
 			).not.toBeNull();
 		});
 
-		it('renders every declared row, so nothing is 1.13-only', () => {
-			// One tree, two renderers. This walks what the definitions
-			// describe and asserts the pre-1.13 renderer put all of it on
-			// screen, so a section can never reach 1.13 alone. Rows with a
-			// render callback are left out: their DOM is their own, and the
-			// ones hosting a hand-built block clear the name away.
+		it('puts every row the tree declares on screen', () => {
+			// The framework renders what the tree declares, so a row whose
+			// predicate holds has to reach the tab. Rows with a render callback
+			// are left out: their DOM is their own, and the ones hosting a
+			// hand-built block clear the name away.
 			mockSettings.transcriptionEnabled = true;
 			mockSettings.llmPostProcessEnabled = true;
 			mockSettings.enableMultiTrack = true;
@@ -1121,11 +1079,10 @@ describe('AudioRecorderSettingTab', () => {
 						continue;
 					}
 					if ('type' in entry) {
-						const group = entry;
-						if (group.heading) {
-							declared.push(group.heading);
+						if (entry.heading) {
+							declared.push(entry.heading);
 						}
-						walk(group.items ?? []);
+						walk(entry.items);
 						continue;
 					}
 					if (!entry.render) {
@@ -1140,30 +1097,56 @@ describe('AudioRecorderSettingTab', () => {
 			);
 			expect(declared.length).toBeGreaterThan(50);
 
-			legacyTab.display();
+			openSettingTab(tab);
 
-			const rendered = new Set(renderedNames(legacyTab.containerEl));
+			const rendered = new Set(renderedNames(tab.containerEl));
 			expect(
 				declared.filter((name) => !rendered.has(name)),
 			).toStrictEqual([]);
 		});
 
-		it('renders the migrated sections from the same definitions', () => {
-			legacyTab.display();
+		it('puts a saved model to work when its row is clicked', async () => {
+			mockSettings.transcriptionEnabled = true;
+			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
+			mockSettings.whisperApiModel = 'whisper-1';
+			openSettingTab(tab);
 
-			// One tree, two renderers: a section migrated for 1.13 reaches this
-			// Obsidian too, instead of being kept as a second implementation.
-			const names = renderedNames(legacyTab.containerEl);
-			expect(names).toContain('Diagnostics');
-			expect(names).toContain('Test recording');
-			expect(names).toContain('System info');
-			expect(names).toContain('Debug mode');
+			settingRow(tab.containerEl, 'whisper-large-v3').click();
+			await tick();
+
+			expect(mockSettings.whisperApiModel).toBe('whisper-large-v3');
+		});
+
+		it('collects the system report when System info is clicked', () => {
+			jest.mocked(SystemDiagnostics.collect).mockReturnValue(
+				new Promise(() => undefined),
+			);
+			openSettingTab(tab);
+
+			settingRow(tab.containerEl, 'System info').click();
+
+			expect(SystemDiagnostics.collect).toHaveBeenCalledWith(
+				mockSettings,
+				tab.app,
+			);
+		});
+
+		it('starts a test capture from the Test recording row', () => {
+			getUserMediaMock.mockReturnValue(new Promise(() => undefined));
+			openSettingTab(tab);
+
+			rowButton(
+				settingRow(tab.containerEl, 'Test recording'),
+				'Start test',
+			).click();
+
+			expect(getUserMediaMock).toHaveBeenCalledTimes(1);
 		});
 
 		it('hosts the sections still rendered by hand in a row of their own', () => {
-			legacyTab.display();
+			openSettingTab(tab);
 
-			const host = el(legacyTab.containerEl, SETTING.root);
+			const host = el(tab.containerEl, SETTING.root);
 			const link = el(host, SETTING.docCalloutLink);
 
 			// A link with no text or no href is a row the user cannot use.
@@ -1171,55 +1154,34 @@ describe('AudioRecorderSettingTab', () => {
 			expect(link.getAttribute('href')).toMatch(/^https?:\/\//);
 		});
 
-		it('rebuilds the container itself when the device list changes', async () => {
-			// No framework update() to ask on this version: the tab renders the
-			// tree again into its own container, exactly once.
+		it('renders the tab once more when the device list changes', async () => {
 			(
 				navigator.mediaDevices.enumerateDevices as jest.Mock
 			).mockResolvedValue([mediaDevice('mic-1', 'Built-in microphone')]);
 
-			legacyTab.display();
+			openSettingTab(tab);
 			await tick();
 
-			const names = renderedNames(legacyTab.containerEl);
+			const names = renderedNames(tab.containerEl);
 			expect(
 				names.filter((name) => name === 'Input device'),
 			).toHaveLength(1);
-			expect(
-				allEls(legacyTab.containerEl, SETTING.docCallout),
-			).toHaveLength(1);
+			expect(allEls(tab.containerEl, SETTING.docCallout)).toHaveLength(1);
 		});
 
 		it('renders again after hide(), the way reopening the tab does', () => {
-			legacyTab.display();
-			legacyTab.hide();
-			legacyTab.display();
+			openSettingTab(tab);
+			tab.hide();
+			openSettingTab(tab);
 
-			expect(
-				allEls(legacyTab.containerEl, SETTING.docCallout),
-			).toHaveLength(1);
-			expect(renderedNames(legacyTab.containerEl)).toContain(
-				'Input device',
-			);
-		});
-
-		it('keeps the device-change listener lifecycle of the newer path', () => {
-			legacyTab.display();
-			const handler = addEventListenerMock.mock.calls[0][1] as () => void;
-
-			legacyTab.hide();
-
-			expect(addEventListenerMock).toHaveBeenCalledTimes(1);
-			expect(removeEventListenerMock).toHaveBeenCalledWith(
-				'devicechange',
-				handler,
-			);
+			expect(allEls(tab.containerEl, SETTING.docCallout)).toHaveLength(1);
+			expect(renderedNames(tab.containerEl)).toContain('Input device');
 		});
 	});
 
 	describe('documentation link', () => {
 		it('renders a documentation callout linking to the docs', () => {
-			tab.display();
+			openSettingTab(tab);
 
 			const link = el<HTMLAnchorElement>(
 				tab.containerEl,
@@ -1229,7 +1191,7 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('opens the documentation link in a new tab safely', () => {
-			tab.display();
+			openSettingTab(tab);
 
 			const link = el<HTMLAnchorElement>(
 				tab.containerEl,
@@ -1241,11 +1203,11 @@ describe('AudioRecorderSettingTab', () => {
 			expect(link.getAttribute('rel')).toBe('noopener');
 		});
 
-		it('renders the callout only once per display() call', () => {
-			tab.display();
-			tab.display();
+		it('renders the callout only once however often the tab opens', () => {
+			openSettingTab(tab);
+			openSettingTab(tab);
 
-			// display() empties the container first, so a re-render must not
+			// Opening renders the tab afresh, so a second opening must not
 			// stack duplicate callouts.
 			expect(allEls(tab.containerEl, SETTING.docCallout)).toHaveLength(1);
 		});
@@ -1253,7 +1215,7 @@ describe('AudioRecorderSettingTab', () => {
 
 	describe('device-change listener lifecycle', () => {
 		it('registers the listener via addEventListener, not assignment', () => {
-			tab.display();
+			openSettingTab(tab);
 
 			expect(addEventListenerMock).toHaveBeenCalledTimes(1);
 			expect(addEventListenerMock).toHaveBeenCalledWith(
@@ -1267,16 +1229,16 @@ describe('AudioRecorderSettingTab', () => {
 			).toBeUndefined();
 		});
 
-		it('registers only once across repeated display() calls', () => {
-			tab.display();
-			tab.display();
-			tab.display();
+		it('registers only once across repeated openings', () => {
+			openSettingTab(tab);
+			openSettingTab(tab);
+			openSettingTab(tab);
 
 			expect(addEventListenerMock).toHaveBeenCalledTimes(1);
 		});
 
 		it('removes the listener in hide()', () => {
-			tab.display();
+			openSettingTab(tab);
 			const handler = addEventListenerMock.mock.calls[0][1] as () => void;
 
 			tab.hide();
@@ -1287,16 +1249,16 @@ describe('AudioRecorderSettingTab', () => {
 			);
 		});
 
-		it('res-register after hide() and display() again', () => {
-			tab.display();
+		it('registers again when the tab opens after hide()', () => {
+			openSettingTab(tab);
 			tab.hide();
-			tab.display();
+			openSettingTab(tab);
 
 			expect(addEventListenerMock).toHaveBeenCalledTimes(2);
 			expect(removeEventListenerMock).toHaveBeenCalledTimes(1);
 		});
 
-		it('does not remove anything when hidden without display()', () => {
+		it('does not remove anything when hidden without being opened', () => {
 			tab.hide();
 
 			expect(removeEventListenerMock).not.toHaveBeenCalled();
@@ -1549,22 +1511,16 @@ describe('AudioRecorderSettingTab', () => {
 			expect(maybeEl(frame.containerEl, SETTING.testAudio)).toBeNull();
 		});
 
-		it('releases the finished playback when the imperative path rebuilds', async () => {
-			const legacyTab = withoutDeclarativeSettings(
-				() => new AudioRecorderSettingTab(new App(), mockPlugin),
-			);
-			legacyTab.display();
-			await recordUntilPlayback(legacyTab, legacyTab.containerEl);
+		it('releases the finished playback when the tab renders again', async () => {
+			openSettingTab(tab);
+			await recordUntilPlayback(tab, tab.containerEl);
 
-			legacyTab.display();
+			tab.update();
 
-			// No framework cleanup to lean on here: the renderer releases the
-			// rows it is replacing before it rebuilds the container, so the
-			// same blob URL is revoked on this Obsidian too.
+			// update() releases the rows it is replacing before it renders the
+			// tree again, so the blob URL goes with the row that held it.
 			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
-			expect(
-				maybeEl(legacyTab.containerEl, SETTING.testAudio),
-			).toBeNull();
+			expect(maybeEl(tab.containerEl, SETTING.testAudio)).toBeNull();
 		});
 	});
 
@@ -2027,7 +1983,7 @@ describe('AudioRecorderSettingTab', () => {
 				/** Answers the question the pick opened with one of its buttons. */
 				const answer = async (button: string): Promise<void> => {
 					rowButton(
-						at(modalInstances, modalInstances.length - 1).contentEl,
+						at(modalInstances, modalInstances.length - 1).modalEl,
 						button,
 					).click();
 					await tick();
@@ -2218,16 +2174,14 @@ describe('AudioRecorderSettingTab', () => {
 					expect(sourceDesc()).toBe(`No note picked yet. ${TYPED}`);
 				});
 
-				it('trades the fields and the line below Obsidian 1.13 too', async () => {
+				it('trades the fields and the line on the rendered page', async () => {
 					mockSettings.transcriptionEnabled = true;
 					mockSettings.transcriptionAdvancedSettingsEnabled = true;
 					mockSettings.profiles = [
 						dictionaryProfile('g1', 'Standup', ''),
 					];
-					const legacyTab = withoutDeclarativeSettings(() =>
-						tabOver(mockSettings),
-					);
-					legacyTab.display();
+					const renderedTab = tabOver(mockSettings);
+					openSettingTab(renderedTab);
 					const hidden = (row: HTMLElement): boolean => {
 						for (
 							let el: HTMLElement | null = row;
@@ -2241,7 +2195,7 @@ describe('AudioRecorderSettingTab', () => {
 						return false;
 					};
 					const row = (name: string): HTMLElement =>
-						settingRow(legacyTab.containerEl, name);
+						settingRow(renderedTab.containerEl, name);
 					expect(hidden(row('Source'))).toBe(false);
 					expect(hidden(row('Terms'))).toBe(false);
 					expect(hidden(row('Note'))).toBe(true);
@@ -2339,36 +2293,6 @@ describe('AudioRecorderSettingTab', () => {
 				expect(profile.sourcePath).toBeUndefined();
 				expect(tab.getControlValue(sourceKey('gone'))).toBe('');
 			});
-
-			it('suggests only notes for the path below Obsidian 1.13', () => {
-				// The file control is native from 1.13; below it the tab's own
-				// suggester carries the filter the declaration names.
-				mockSettings.profiles = [
-					{
-						...dictionaryProfile('g1', 'Standup', ''),
-						sourcePath: NOTE,
-					},
-				];
-				const legacyTab = withoutDeclarativeSettings(() =>
-					tabOver(mockSettings),
-				);
-				asMockVault(legacyTab.app.vault).seed([
-					{ path: NOTE, content: '- Kubernetes' },
-					{ path: 'audio/rec.wav', data: new ArrayBuffer(4) },
-				]);
-
-				legacyTab.display();
-
-				const input = rowInput(
-					settingRow(legacyTab.containerEl, 'Note'),
-				);
-				const [, , candidates] =
-					jest
-						.mocked(TextInputSuggest)
-						.mock.calls.find(([, inputEl]) => inputEl === input) ??
-					[];
-				expect(candidates?.()).toEqual([NOTE]);
-			});
 		});
 
 		it('offers no model list for the engine that serves none', () => {
@@ -2389,7 +2313,7 @@ describe('AudioRecorderSettingTab', () => {
 	describe('section-scoped re-rendering', () => {
 		/** display() plus the async capability load and device fills. */
 		async function renderAndSettle(): Promise<void> {
-			tab.display();
+			openSettingTab(tab);
 			await tick();
 			await tick();
 		}
@@ -2469,7 +2393,7 @@ describe('AudioRecorderSettingTab', () => {
 				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
 			mockSettings.transcriptionWordTimestamps = false;
 
-			tab.display();
+			openSettingTab(tab);
 
 			expect(wordTimestampsOn()).toBe(true);
 		});
@@ -2479,7 +2403,7 @@ describe('AudioRecorderSettingTab', () => {
 				TRANSCRIPTION_PROVIDER_IDS.GEMINI;
 			mockSettings.transcriptionWordTimestamps = true;
 
-			tab.display();
+			openSettingTab(tab);
 
 			expect(wordTimestampsOn()).toBe(false);
 		});
@@ -2489,7 +2413,7 @@ describe('AudioRecorderSettingTab', () => {
 				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
 			mockSettings.transcriptionWordTimestamps = true;
 
-			tab.display();
+			openSettingTab(tab);
 
 			expect(wordTimestampsOn()).toBe(true);
 		});
@@ -2502,7 +2426,7 @@ describe('AudioRecorderSettingTab', () => {
 				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
 			mockSettings.transcriptionWordTimestamps = false;
 
-			tab.display();
+			openSettingTab(tab);
 
 			expect(mockSettings.transcriptionWordTimestamps).toBe(false);
 		});
@@ -2529,7 +2453,7 @@ describe('AudioRecorderSettingTab', () => {
 		}
 
 		it('keeps the hardware rows interactive on desktop', () => {
-			tab.display();
+			openSettingTab(tab);
 
 			expect(rowDimmed('Input device')).toBe(false);
 			expect(rowDimmed('Sample rate')).toBe(false);
@@ -2562,7 +2486,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.enableMultiTrack = true;
 			setPlatform({ isMobile: true });
 
-			tab.display();
+			openSettingTab(tab);
 
 			expect(rowToggleOn(rowNamed('Enable multi-track recording'))).toBe(
 				false,
@@ -2578,7 +2502,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.autoSplitEnabled = true;
 			setPlatform({ isMobile: true });
 
-			tab.display();
+			openSettingTab(tab);
 
 			expect(
 				rowToggleOn(rowNamed('Split recordings automatically')),
@@ -2599,7 +2523,7 @@ describe('AudioRecorderSettingTab', () => {
 		])('shows $name switched on where it does work', ({ row, key }) => {
 			mockSettings[key] = true;
 
-			tab.display();
+			openSettingTab(tab);
 
 			expect(rowToggleOn(rowNamed(row))).toBe(true);
 		});
@@ -2615,7 +2539,7 @@ describe('AudioRecorderSettingTab', () => {
 			).isTypeSupported.mockImplementation(
 				(type: string) => type === 'audio/mp4',
 			);
-			tab.display();
+			openSettingTab(tab);
 			// The availability probe is async: let it annotate the options
 			await tick();
 			await tick();
@@ -2649,7 +2573,7 @@ describe('AudioRecorderSettingTab', () => {
 			).isTypeSupported.mockImplementation(
 				(type: string) => type === 'audio/mp4',
 			);
-			tab.display();
+			openSettingTab(tab);
 			await tick();
 			await tick();
 
@@ -2666,7 +2590,7 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('keeps every recordable format selectable on a permissive desktop profile', async () => {
-			tab.display();
+			openSettingTab(tab);
 			await tick();
 			await tick();
 
@@ -2939,33 +2863,6 @@ describe('AudioRecorderSettingTab describing the recording formats', () => {
 	});
 });
 
-describe('AudioRecorderSettingTab offering the vault folders', () => {
-	it('lists every folder in the vault, however deep', () => {
-		// The recording-folder field autocompletes from this; a flat listing
-		// of the root would leave every nested folder untypeable by suggestion.
-		const app = new App();
-		const tab = new AudioRecorderSettingTab(
-			app,
-			partial<AudioRecorderPluginInterface>({
-				settings: { ...DEFAULT_SETTINGS },
-				saveSettings: jest.fn(),
-				manifest: {
-					id: 'advanced-audio-recorder',
-					name: PLUGIN_MANIFEST_NAME,
-				},
-			}),
-		);
-		asMockVault(app.vault).seed([
-			{ path: 'Recordings/take.webm' },
-			{ path: 'Archive/2024/old.webm' },
-		]);
-
-		expect(tab.getFolderOptions()).toEqual(
-			expect.arrayContaining(['Recordings', 'Archive', 'Archive/2024']),
-		);
-	});
-});
-
 describe('AudioRecorderSettingTab probing the output rows', () => {
 	let tab: AudioRecorderSettingTab;
 	let mockSettings: AudioRecorderSettings;
@@ -2977,7 +2874,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		dropdown: HTMLSelectElement;
 		descEl: HTMLElement;
 	} {
-		tab.display();
+		openSettingTab(tab);
 		const row = settingRow(tab.containerEl, 'Recording format');
 		return {
 			dropdown: rowSelect(row),
@@ -2987,7 +2884,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 
 	/** The dropdown the bitrate row rendered. */
 	function bitrateRow(): HTMLSelectElement {
-		tab.display();
+		openSettingTab(tab);
 		return rowSelect(settingRow(tab.containerEl, 'Audio bitrate'));
 	}
 
@@ -3078,7 +2975,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 
 	/** The text the output summary row rendered. */
 	function summaryText(): string {
-		tab.display();
+		openSettingTab(tab);
 		const row = settingRow(tab.containerEl, 'Output summary');
 		return el(row, SETTING.description).textContent ?? '';
 	}
@@ -3119,7 +3016,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 				format,
 			),
 		);
-		tab = withoutDeclarativeSettings(() => tabOver(mockSettings));
+		tab = tabOver(mockSettings);
 		device = null;
 	});
 
@@ -3344,7 +3241,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		);
 		const asked = probeOfflineEncodingSupport as jest.Mock;
 
-		tab.display();
+		openSettingTab(tab);
 		asked.mockClear();
 		await tick();
 		await tick();
@@ -3368,7 +3265,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		mockSettings.recordingFormat = 'flac';
 		mockSettings.bitrate = 24000;
 
-		tab.display();
+		openSettingTab(tab);
 		await tick();
 
 		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
@@ -3384,7 +3281,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		recordsOnly('audio/webm');
 		mockSettings.recordingFormat = 'wav';
 
-		tab.display();
+		openSettingTab(tab);
 		await tick();
 
 		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
@@ -3400,7 +3297,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		useDesktopPlatform();
 		mockSettings.recordingFormat = 'wav';
 
-		tab.display();
+		openSettingTab(tab);
 		await tick();
 
 		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(
@@ -3417,7 +3314,7 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		recordsOnly('audio/flac');
 		mockSettings.recordingFormat = 'flac';
 
-		tab.display();
+		openSettingTab(tab);
 		await tick();
 
 		expect(settingRow(tab.containerEl, 'Audio bitrate').style.display).toBe(

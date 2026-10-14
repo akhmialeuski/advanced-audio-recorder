@@ -165,7 +165,7 @@ describe('a queue a previous session left', () => {
 			at(
 				modalInstances,
 				modalInstances.length - 1,
-			).contentEl.querySelectorAll('button'),
+			).modalEl.querySelectorAll('button'),
 		);
 		buttons.find((b) => b.textContent === 'Continue')?.click();
 		await Promise.resolve();

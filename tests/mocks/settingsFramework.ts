@@ -1,22 +1,22 @@
 /**
- * Renders the tab's setting definitions on the Obsidian that has no declarative
- * settings API, so both generations render from one description instead of two
- * hand-kept implementations.
+ * The part of Obsidian that renders a settings tab from its definitions, as the
+ * test suite needs it.
  *
- * What Obsidian 1.13 does for a definition, this does with the `Setting` API
- * that has always existed: a group becomes a heading followed by its rows, a
- * control becomes the matching `add*` call bound to the host's read and write
- * hooks, an action becomes a clickable row, and a render definition is handed
- * the same `Setting` it would get from the framework - including the cleanup it
- * returns, which runs before the row is rendered again or dropped.
+ * From 1.13 a tab hands Obsidian a tree of setting definitions and the app does
+ * the rest: it builds the rows, binds each control to the tab's
+ * `getControlValue`/`setControlValue`, runs the declared validators,
+ * re-evaluates the `visible` and `disabled` predicates, and runs the cleanup a
+ * render callback returns. None of that ships in the `obsidian` package, so a
+ * suite asserting on the rendered tab needs a renderer of its own. This is it,
+ * wired into the mock `SettingTab` (see `tests/mocks/obsidian.ts`), which is
+ * the only place that constructs one.
  *
- * `visible` and `disabled` predicates are re-evaluated after every change, the
- * way the framework's own `refreshDomState()` does, so a row that reveals
- * another row does it here too without rebuilding the tab. That holds for a
- * whole block as much as for a row: the tree flattens here, so a hidden group
- * is one whose own elements and rows are hidden, never one that was skipped -
- * a block never built could not be revealed by the switch that gates it.
- * @module settings/legacySettingsRenderer
+ * It models the framework closely enough for the plugin's tests and no closer.
+ * A group, a list, or a page renders as a heading followed by its rows, because
+ * a test reads the tab as one column; the real app gives a page a navigable
+ * sub-page of its own. A list's search field, add row and empty state render as
+ * rows of their own with the classes below, so a test can find them.
+ * @module tests/mocks/settingsFramework
  */
 
 import { Setting, setIcon } from 'obsidian';
@@ -28,60 +28,91 @@ import type {
 	SettingDefinitionList,
 	SettingDefinitionPage,
 	SettingGroup,
-	TFile,
 } from 'obsidian';
-import { NUMBER_INPUT_CLASS } from './settingControls';
-import { numberControlRejection } from './settingsDefinitions';
 
-/** Class applied to a row whose whole surface runs an action when clicked. */
-export const LEGACY_ACTION_ROW_CLASS = 'aar-action-row';
+/** Class on a row whose whole surface runs an action when clicked. */
+export const FRAMEWORK_ACTION_ROW_CLASS = 'mock-setting-action-row';
 
-/** Class applied to the row that adds an entry to a list. */
-export const LEGACY_ADD_ITEM_CLASS = 'aar-add-item-row';
+/** Class on the row that adds an entry to a list. */
+export const FRAMEWORK_ADD_ITEM_CLASS = 'mock-setting-add-item-row';
 
-/** Class applied to the row shown in place of an empty list. */
-export const LEGACY_EMPTY_STATE_CLASS = 'aar-empty-state-row';
+/** Class on the row shown in place of an empty list. */
+export const FRAMEWORK_EMPTY_STATE_CLASS = 'mock-setting-empty-state-row';
 
-/** Class applied to the row holding a group's search field. */
-export const LEGACY_SEARCH_ROW_CLASS = 'aar-search-row';
+/** Class on the row holding a group's search field. */
+export const FRAMEWORK_SEARCH_ROW_CLASS = 'mock-setting-search-row';
 
-/**
- * Class applied to a row whose control is a text area. From 1.13 the framework
- * lays a text area out full width under its name; the older stylesheets put
- * every control in the narrow right-hand column, which is unusable for a
- * multi-sentence prompt, so the stylesheet stacks it here instead.
- */
-export const LEGACY_STACKED_CLASS = 'aar-setting-stacked';
+/** Class on a row whose control is a text area. */
+export const FRAMEWORK_STACKED_CLASS = 'mock-setting-stacked';
 
-/** Class applied to a text input holding a value its validator rejected. */
-const INVALID_INPUT_CLASS = 'aar-input-invalid';
+/** Class on a text input holding a value its validator refused. */
+export const FRAMEWORK_INVALID_INPUT_CLASS = 'mock-setting-input-invalid';
 
-/** Class applied to the line stating why a control refused a value. */
-export const LEGACY_SETTING_ERROR_CLASS = 'aar-setting-error';
+/** Class on the line stating why a control refused a value. */
+export const FRAMEWORK_SETTING_ERROR_CLASS = 'mock-setting-error';
 
 /**
- * The read and write path a rendered control is bound to. The same pair the
- * framework calls on 1.13, so a value reaches the plugin identically on both.
+ * Largest share of one step a value may miss its grid point by and still count
+ * as sitting on it. A grid of tenths cannot be walked in binary floating point
+ * - `0.5 + 7 * 0.05` is not `0.85` - so the comparison is made against the
+ * nearest grid point rather than by asking whether the quotient is an integer.
  */
-export interface LegacySettingsHost {
+const STEP_GRID_TOLERANCE = 1e-6;
+
+/**
+ * Why a number is outside what its control accepts, or undefined when it is
+ * inside.
+ *
+ * A number control declares its whole value space: the bounds the value lies
+ * between and the grid it sits on, which is `min + n * step`. Obsidian enforces
+ * that space itself, refusing anything between two grid points, and this is
+ * the same rule. It follows that a bound no grid point reaches is a declaration
+ * that cannot be satisfied, which is why the definition tree is tested against
+ * it rather than left to be discovered as a setting that will not save.
+ * @param control - The number control the value was entered into
+ * @param value - The number the field produced
+ * @returns The reason it is refused, or undefined when it is accepted
+ */
+export function numberControlRejection(
+	control: {
+		min?: number | undefined;
+		max?: number | undefined;
+		/** `'any'` is the input's own way of declaring no grid at all. */
+		step?: number | 'any' | undefined;
+	},
+	value: number,
+): string | undefined {
+	if (!Number.isFinite(value)) {
+		return 'Enter a number.';
+	}
+	const { min, max, step } = control;
+	if (min !== undefined && value < min) {
+		return `Enter ${String(min)} or more.`;
+	}
+	if (max !== undefined && value > max) {
+		return `Enter ${String(max)} or less.`;
+	}
+	if (step === undefined || step === 'any' || step <= 0) {
+		return undefined;
+	}
+	const base = min ?? 0;
+	const snapped = base + Math.round((value - base) / step) * step;
+	return Math.abs(value - snapped) > step * STEP_GRID_TOLERANCE
+		? `Enter a multiple of ${String(step)}${
+				min === undefined ? '' : ` above ${String(min)}`
+			}.`
+		: undefined;
+}
+
+/**
+ * The read and write path a rendered control is bound to: the tab's own
+ * `getControlValue`/`setControlValue`, as Obsidian calls them.
+ */
+export interface SettingsFrameworkHost {
 	/** Current value of a control key. */
 	getControlValue(key: string): unknown;
 	/** Persists a new value for a control key. */
 	setControlValue(key: string, value: unknown): void | Promise<void>;
-}
-
-/**
- * What this renderer cannot do on its own. Obsidian brings these from 1.13;
- * below it they are the plugin's own, and the tab passes them in.
- */
-export interface LegacyRenderExtras {
-	/** Puts the vault's folders under a folder field, as the folder control does. */
-	attachFolderSuggest(inputEl: HTMLInputElement): void;
-	/** Puts the vault's files under a file field, as the file control does. */
-	attachFileSuggest(
-		inputEl: HTMLInputElement,
-		filter?: (file: TFile) => boolean,
-	): void;
 }
 
 /**
@@ -104,14 +135,10 @@ interface RenderedRow {
 
 /**
  * A rendered container, kept for the same reason a row is: its `visible`
- * predicate has to be re-evaluated after every change.
- *
- * The tree flattens here - this Obsidian has no group element to hide - so a
- * container is remembered by the elements it contributed itself (its heading
- * and a list's own affordance rows) plus the ancestors that can hide it in
- * turn. Skipping a hidden container at render time instead, which is what this
- * renderer did first, left it unable to ever appear: turning transcription on
- * revealed nothing, because the blocks it reveals had never been built.
+ * predicate has to be re-evaluated after every change. The tree renders as one
+ * column here, so a container is remembered by the elements it contributed
+ * itself (its heading and a list's own affordance rows) plus the ancestors that
+ * can hide it in turn.
  */
 interface RenderedContainer {
 	readonly definition: SettingContainer;
@@ -123,17 +150,8 @@ interface RenderedContainer {
 
 /**
  * Why a control's own validator refuses a value, or undefined when it takes it.
- *
- * Every kind of control carries a validator from 1.13 and the framework applies
- * it to all of them, refusing the change and stating why rather than storing
- * what the declaration rules out. So this renderer applies it to all of them
- * too: honouring it on the text fields alone left a dropdown accepting values
- * the newer Obsidian refuses, which is the divergence one declaration exists to
- * rule out.
- *
- * Only a synchronous verdict is applied. An asynchronous one could arrive only
- * after the value had already been written, which is not a refusal at all, and
- * nothing in this plugin declares one.
+ * Only a synchronous verdict is applied, since nothing in the plugin declares
+ * an asynchronous one.
  * @param validate - The control's declared validator, when it has one
  * @param value - The value the control produced
  * @returns The message it is refused with, or undefined when it is accepted
@@ -149,8 +167,7 @@ function validatorRejection<V>(
 
 /**
  * The line a refusal is stated on, created only once there is something to
- * state. Written under the row's own description, which is where the framework
- * puts it from 1.13, so a row whose value is accepted carries no empty element.
+ * state, under the row's own description.
  * @param setting - The row being reported on
  * @returns Shows a message, or clears the line when given undefined
  */
@@ -164,7 +181,7 @@ function rejectionReporter(
 				return;
 			}
 			errorEl = setting.descEl.createDiv({
-				cls: LEGACY_SETTING_ERROR_CLASS,
+				cls: FRAMEWORK_SETTING_ERROR_CLASS,
 			});
 		}
 		errorEl.setText(message ?? '');
@@ -197,39 +214,30 @@ function evaluate(
 }
 
 /**
- * Renders setting definitions with the pre-1.13 API and keeps enough state to
- * refresh their predicates and release what they own.
+ * Renders setting definitions the way Obsidian's settings framework does, and
+ * keeps enough state to refresh their predicates and release what they own.
  */
-export class LegacySettingsRenderer {
+export class SettingsFramework {
 	private rows: RenderedRow[] = [];
 
 	/** Every rendered group, list, and page, so their predicates can be reapplied. */
 	private containers: RenderedContainer[] = [];
 
 	/**
-	 * The query typed into each group's search field.
-	 *
-	 * One per group rather than one for the renderer: this Obsidian has no
-	 * sub-pages, so the whole tree flattens into a single column and every
-	 * list's filter is on screen at once. A single query would be replaced by
-	 * whichever field was typed into last, leaving the others displaying a
-	 * query that narrows nothing.
+	 * The query typed into each group's search field. One per group, since the
+	 * tree renders as one column and every list's filter is on screen at once.
 	 */
 	private readonly filters = new Map<SettingDefinitionGroup, string>();
 
 	/**
-	 * Creates a renderer bound to a settings store.
+	 * Creates a renderer bound to a settings tab.
 	 * @param host - Where rendered controls read and write their values
-	 * @param extras - What this renderer cannot build on its own, supplied by
-	 * the tab (the folder suggester Obsidian brings from 1.13)
 	 */
-	constructor(
-		private readonly host: LegacySettingsHost,
-		private readonly extras?: LegacyRenderExtras,
-	) {}
+	constructor(private readonly host: SettingsFrameworkHost) {}
 
 	/**
-	 * Clears the container and renders the definitions into it.
+	 * Clears the container and renders the definitions into it, releasing the
+	 * previous rows first, which is what Obsidian does on every `update()`.
 	 * @param containerEl - Element the tab body is rendered into
 	 * @param items - The tab's definition tree
 	 */
@@ -247,9 +255,7 @@ export class LegacySettingsRenderer {
 
 	/**
 	 * Re-evaluates every rendered `visible` and `disabled` predicate and applies
-	 * the result, the way the framework's `refreshDomState()` does. Containers
-	 * are re-evaluated alongside rows, so a block revealed by a switch appears
-	 * without rebuilding the tab.
+	 * the result in place: `SettingTab.refreshDomState()`.
 	 */
 	refreshState(): void {
 		// One evaluation per container, reused by everything inside it: a
@@ -276,9 +282,6 @@ export class LegacySettingsRenderer {
 				containerVisible(row.ancestors) &&
 				evaluate(row.definition.visible, true) &&
 				this.matchesFilter(row);
-			// Obsidian's own toggle(), which is show()/hide() by another name:
-			// a hidden row leaves the layout without needing a class the older
-			// stylesheets do not have.
 			row.settingEl.toggle(visible);
 			const disabled = evaluate(disabledPredicate(row.definition), false);
 			row.setDisabled?.(disabled);
@@ -286,11 +289,9 @@ export class LegacySettingsRenderer {
 	}
 
 	/**
-	 * Whether a row passes the search field of every group that filters it.
-	 *
-	 * A group filters only its own entries, so a row is tested against the
-	 * queries of the groups it belongs to and ignored by the rest. Rows the
-	 * definition marks unsearchable always show, as they do in the framework.
+	 * Whether a row passes the search field of every group that filters it. A
+	 * group filters only its own entries, and rows the definition marks
+	 * unsearchable always show.
 	 * @param row - The rendered row to test
 	 */
 	private matchesFilter(row: RenderedRow): boolean {
@@ -311,7 +312,7 @@ export class LegacySettingsRenderer {
 
 	/**
 	 * Runs the cleanup every render definition returned and forgets what was
-	 * rendered. Called before a re-render and when the tab is left.
+	 * rendered. Called before a re-render and when the tab is hidden.
 	 */
 	release(): void {
 		for (const row of this.rows) {
@@ -325,17 +326,13 @@ export class LegacySettingsRenderer {
 		}
 		this.rows = [];
 		this.containers = [];
-		// A query belongs to the field it was typed into, and the fields go
-		// with the rows.
 		this.filters.clear();
 	}
 
 	/**
-	 * Renders one item of the tree.
-	 *
-	 * A container is rendered whether or not its predicate currently holds, and
-	 * hidden by {@link refreshState} when it does not, because a container
-	 * skipped here could never be revealed by a later change.
+	 * Renders one item of the tree. A container is rendered whether or not its
+	 * predicate currently holds and hidden by {@link refreshState} when it does
+	 * not, so a later change can reveal it.
 	 * @param containerEl - Element to render into
 	 * @param item - A definition, a group, a list, or a page
 	 * @param ancestors - The containers this item sits inside, outermost first
@@ -352,9 +349,6 @@ export class LegacySettingsRenderer {
 		const els: HTMLElement[] = [];
 		this.containers.push({ definition: item, els, ancestors });
 		const nested = [...ancestors, item];
-		// Groups, lists, and pages all flatten to a heading and its rows: this
-		// Obsidian has no group cards and no navigable sub-pages. A page's own
-		// name is its heading here, since there is nothing to navigate to.
 		const heading = item.type === 'page' ? item.name : item.heading;
 		if (heading) {
 			const headingRow = new Setting(containerEl)
@@ -378,7 +372,7 @@ export class LegacySettingsRenderer {
 		}
 		if (list && items.length === 0 && list.emptyState) {
 			const empty = new Setting(containerEl).setName(list.emptyState);
-			empty.settingEl.addClass(LEGACY_EMPTY_STATE_CLASS);
+			empty.settingEl.addClass(FRAMEWORK_EMPTY_STATE_CLASS);
 			els.push(empty.settingEl);
 		}
 		items.forEach((child, index) => {
@@ -396,9 +390,8 @@ export class LegacySettingsRenderer {
 	}
 
 	/**
-	 * Renders a list's add affordance. Obsidian puts a plus button in the group
-	 * header from 1.13 on; this Obsidian has no group header, so it is a row of
-	 * its own at the end of the list, which is what the framework does on mobile.
+	 * Renders a list's add affordance as a row closing the list, which is what
+	 * Obsidian draws on mobile and the shape a test finds most easily.
 	 * @param containerEl - Element to render into
 	 * @param addItem - The list's add-entry configuration
 	 * @returns The row, which belongs to the list and is hidden with it
@@ -408,7 +401,7 @@ export class LegacySettingsRenderer {
 		addItem: { name: string; action: (el: HTMLElement) => void },
 	): HTMLElement {
 		const setting = new Setting(containerEl).setName(addItem.name);
-		setting.settingEl.addClass(LEGACY_ADD_ITEM_CLASS);
+		setting.settingEl.addClass(FRAMEWORK_ADD_ITEM_CLASS);
 		setting.addButton((button) =>
 			button.setIcon('lucide-plus').onClick(() => {
 				addItem.action(setting.settingEl);
@@ -419,9 +412,7 @@ export class LegacySettingsRenderer {
 
 	/**
 	 * Renders a group's search field, which filters its rows by the group's own
-	 * predicate. The framework keeps the query across re-renders; here the field
-	 * lives and dies with the rows it filters, which is the same behaviour for a
-	 * list that is only re-rendered when its own data changes.
+	 * predicate.
 	 * @param containerEl - Element to render into
 	 * @param group - The group whose rows are filtered
 	 * @returns The row, which belongs to the group and is hidden with it
@@ -431,7 +422,7 @@ export class LegacySettingsRenderer {
 		group: SettingDefinitionGroup,
 	): HTMLElement {
 		const setting = new Setting(containerEl);
-		setting.settingEl.addClass(LEGACY_SEARCH_ROW_CLASS);
+		setting.settingEl.addClass(FRAMEWORK_SEARCH_ROW_CLASS);
 		setting.addSearch((search) => {
 			if (group.search?.placeholder) {
 				search.setPlaceholder(group.search.placeholder);
@@ -475,14 +466,8 @@ export class LegacySettingsRenderer {
 			const onDelete = list.onDelete;
 			setting.addExtraButton((button) => {
 				button.setIcon('lucide-x').setTooltip('Delete');
-				// Bound on the element rather than through onClick(), which is
-				// handed no event: the row this button sits in may run an
-				// action of its own on any click that reaches it, so a delete
-				// has to end the click here. On a model catalogue it did not,
-				// and deleting an id immediately selected it again. Ending the
-				// click is also what keeps the rule independent of the element
-				// Obsidian builds the button from - it is a clickable-icon
-				// div, which no list of interactive tag names catches.
+				// A delete ends the click where it lands, as Obsidian's does, so
+				// a row with an action of its own does not also run it.
 				button.extraSettingsEl.addEventListener('click', (event) => {
 					event.stopPropagation();
 					onDelete(index);
@@ -496,9 +481,8 @@ export class LegacySettingsRenderer {
 		} else if (definition.action) {
 			this.bindAction(setting, definition.action, index);
 		} else if (definition.render) {
-			// The framework passes the group the row belongs to; nothing in this
-			// plugin's render callbacks reads it, and the class it is an instance
-			// of does not exist on the Obsidian this renderer serves.
+			// The framework passes the group the row belongs to; nothing in the
+			// plugin's render callbacks reads it.
 			const cleanup = definition.render(
 				setting,
 				undefined as unknown as SettingGroup,
@@ -509,13 +493,8 @@ export class LegacySettingsRenderer {
 	}
 
 	/**
-	 * Makes the whole row run an action when clicked, which is what a 1.13
-	 * action row does. The chevron is the affordance that says so.
-	 *
-	 * A control inside the row keeps its own click by ending it where it is
-	 * handled, the way the delete button of a list row does: the row's action
-	 * is what clicking the row means, not what clicking everything within it
-	 * means.
+	 * Makes the whole row run an action when clicked, with the chevron that says
+	 * so.
 	 * @param setting - The row being bound
 	 * @param action - The definition's action callback
 	 * @param index - The row's position among its siblings
@@ -525,7 +504,7 @@ export class LegacySettingsRenderer {
 		action: (el: HTMLElement, index: number) => void,
 		index: number,
 	): void {
-		setting.settingEl.addClass(LEGACY_ACTION_ROW_CLASS);
+		setting.settingEl.addClass(FRAMEWORK_ACTION_ROW_CLASS);
 		setting.settingEl.addEventListener('click', () => {
 			action(setting.settingEl, index);
 		});
@@ -546,8 +525,7 @@ export class LegacySettingsRenderer {
 		const report = rejectionReporter(setting);
 		const persist = (value: unknown): void => {
 			void this.host.setControlValue(control.key, value);
-			// The framework refreshes predicates after every change it persists;
-			// a row revealed by this one appears here for the same reason.
+			// The framework refreshes predicates after every change it persists.
 			this.refreshState();
 		};
 		switch (control.type) {
@@ -564,9 +542,6 @@ export class LegacySettingsRenderer {
 							rejectionOf: (value) =>
 								validatorRejection(control.validate, value),
 							report,
-							// A switch has two states and both are on screen, so a
-							// refused flip is put back rather than left showing a
-							// position nothing was stored for.
 							restore: () => {
 								toggle.setValue(seed);
 							},
@@ -597,9 +572,6 @@ export class LegacySettingsRenderer {
 							rejectionOf: (value) =>
 								validatorRejection(control.validate, value),
 							report,
-							// The options are the whole value space and the chosen
-							// one is what the row reads as, so a refused choice is
-							// put back to what is actually stored.
 							restore: () => {
 								dropdown.setValue(seed);
 							},
@@ -613,63 +585,29 @@ export class LegacySettingsRenderer {
 				return hook;
 			}
 			case 'text':
-			case 'textarea': {
+			case 'textarea':
+			case 'folder':
+			case 'file':
+				// The two path controls are text fields with a suggester the
+				// app draws under them; the value is the path as typed.
 				return this.bindTextControl(setting, control, stored, {
 					report,
 					persist,
 				});
-			}
-			case 'folder':
-			case 'file': {
-				let hook: ((disabled: boolean) => void) | undefined;
-				setting.addText((text) => {
-					// The two path controls differ only in what they suggest.
-					if (control.type === 'folder') {
-						this.extras?.attachFolderSuggest(text.inputEl);
-					} else {
-						this.extras?.attachFileSuggest(
-							text.inputEl,
-							control.filter,
-						);
-					}
-					if (control.placeholder) {
-						text.setPlaceholder(control.placeholder);
-					}
-					const seed =
-						typeof stored === 'string'
-							? stored
-							: (control.defaultValue ?? '');
-					text.setValue(seed).onChange(
-						guardedWrite({
-							seed,
-							rejectionOf: (value) =>
-								validatorRejection(control.validate, value),
-							report: markingInput(text.inputEl, report),
-							write: persist,
-						}),
-					);
-					hook = (disabled): void => {
-						text.setDisabled(disabled);
-					};
-				});
-				return hook;
-			}
-			case 'number': {
+			case 'number':
 				return this.bindNumberControl(setting, control, stored, {
 					report,
 					persist,
 				});
-			}
 			default:
-				// Control types this plugin does not use yet render as a plain
-				// row rather than as a broken one.
+				// Control types the plugin does not use render as a plain row.
 				return undefined;
 		}
 	}
 
 	/**
-	 * Renders a text or text-area control, rejecting values its validator
-	 * refuses the way the framework's inline error does.
+	 * Renders a text, text-area, folder or file control, rejecting values its
+	 * validator refuses.
 	 * @param setting - The row the input is added to
 	 * @param control - The text control being rendered
 	 * @param stored - The current stored value
@@ -677,7 +615,10 @@ export class LegacySettingsRenderer {
 	 */
 	private bindTextControl(
 		setting: Setting,
-		control: Extract<SettingControl, { type: 'text' | 'textarea' }>,
+		control: Extract<
+			SettingControl,
+			{ type: 'text' | 'textarea' | 'folder' | 'file' }
+		>,
 		stored: unknown,
 		hooks: ControlWriteHooks,
 	): (disabled: boolean) => void {
@@ -703,9 +644,6 @@ export class LegacySettingsRenderer {
 					rejectionOf: (value: string) =>
 						validatorRejection(control.validate, value),
 					report: markingInput(text.inputEl, hooks.report),
-					// Free text is typed a character at a time, so a value that
-					// is not finished yet is marked rather than replaced: putting
-					// the field back mid-word would fight the person typing.
 					write: hooks.persist,
 				}),
 			);
@@ -720,7 +658,7 @@ export class LegacySettingsRenderer {
 				}
 				bind(text);
 			});
-			setting.settingEl.addClass(LEGACY_STACKED_CLASS);
+			setting.settingEl.addClass(FRAMEWORK_STACKED_CLASS);
 			return hook;
 		}
 		setting.addText(bind);
@@ -728,8 +666,8 @@ export class LegacySettingsRenderer {
 	}
 
 	/**
-	 * Renders a numeric control as the number input the framework renders,
-	 * committing on change and rejecting values its declaration refuses.
+	 * Renders a numeric control as a number input, committing on change and
+	 * rejecting values its declaration refuses.
 	 * @param setting - The row the input is added to
 	 * @param control - The number control being rendered
 	 * @param stored - The current stored value
@@ -745,7 +683,6 @@ export class LegacySettingsRenderer {
 		setting.addText((text) => {
 			const input = text.inputEl;
 			input.type = 'number';
-			input.inputMode = 'decimal';
 			if (control.min !== undefined) {
 				input.min = String(control.min);
 			}
@@ -755,7 +692,6 @@ export class LegacySettingsRenderer {
 			if (control.step !== undefined) {
 				input.step = String(control.step);
 			}
-			input.addClass(NUMBER_INPUT_CLASS);
 			const seed =
 				typeof stored === 'number'
 					? stored
@@ -763,10 +699,6 @@ export class LegacySettingsRenderer {
 			text.setValue(String(seed));
 			const commit = guardedWrite({
 				seed,
-				// The value space is the control's own declaration: the bounds and
-				// the grid it lies on, and then whatever its validator adds. This
-				// Obsidian therefore accepts exactly what 1.13 accepts instead of
-				// storing what the newer one would refuse.
 				rejectionOf: (value: number) =>
 					numberControlRejection(control, value) ??
 					validatorRejection(control.validate, value),
@@ -809,22 +741,15 @@ interface GuardedWrite<V> {
 /**
  * The write path of one control: what its declaration refuses is not stored,
  * the reason is stated on the row, and a control whose value space is discrete
- * is put back to what actually is stored.
- *
- * The seeded value is checked once as the row is built, which is what the
- * framework does from 1.13: a config written by an older version, or synced
- * from a device with other capabilities, is how a row arrives already holding
- * something its own declaration refuses. Reported, never rewritten - the stored
- * value is the user's, and silently replacing it is how a setting changes
- * without anyone asking for it.
+ * is put back to what actually is stored. The seeded value is checked once as
+ * the row is built and reported, never rewritten.
  * @param guard - The seed, the rule, and where the outcome goes
  * @returns The control's onChange handler
  */
 function guardedWrite<V>(guard: GuardedWrite<V>): (value: V) => void {
 	guard.report(guard.rejectionOf(guard.seed));
-	// Restoring a control re-enters its own change handler on Obsidian, whose
-	// components notify on setValue; without this the put-back would be taken
-	// for a fresh edit and stored.
+	// Restoring a control re-enters its own change handler, whose components
+	// notify on setValue; without this the put-back would be stored.
 	let restoring = false;
 	return (value: V): void => {
 		if (restoring) {
@@ -846,8 +771,7 @@ function guardedWrite<V>(guard: GuardedWrite<V>): (value: V) => void {
 }
 
 /**
- * A reporter that also marks the input a refused value sits in, which is the
- * affordance a field has and a switch or a dropdown does not.
+ * A reporter that also marks the input a refused value sits in.
  * @param inputEl - The field holding the value
  * @param report - The row's own reporter
  */
@@ -856,18 +780,18 @@ function markingInput(
 	report: (message: string | undefined) => void,
 ): (message: string | undefined) => void {
 	return (message): void => {
-		inputEl.toggleClass(INVALID_INPUT_CLASS, message !== undefined);
+		inputEl.toggleClass(
+			FRAMEWORK_INVALID_INPUT_CLASS,
+			message !== undefined,
+		);
 		report(message);
 	};
 }
 
 /**
  * The entry of a group that a rendered row speaks for, or undefined when the
- * row belongs to some other part of the tree.
- *
- * A group's entries are matched, not its rows: where the entries are plain
- * settings the two are the same thing, but where an entry is an entity with a
- * page of its own (a profile), the rows on screen are that page's while the
+ * row belongs to some other part of the tree. Where an entry is an entity with
+ * a page of its own (a profile), the rows on screen are that page's while the
  * name the user is filtering by is the entry's.
  * @param group - The group whose entries are being looked through
  * @param row - The rendered row to place
@@ -881,8 +805,6 @@ function entryOf(
 		entries.includes(row.definition)
 			? row.definition
 			: row.ancestors.find((ancestor) => entries.includes(ancestor));
-	// A group's entries are rows or pages, both of which carry a name; a plain
-	// group is neither, so it is not an entry of anything.
 	return entry && 'name' in entry ? entry : undefined;
 }
 

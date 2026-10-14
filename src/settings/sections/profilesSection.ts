@@ -18,7 +18,7 @@ import {
 	STACKED_TEXT_CLASS,
 } from './context';
 import { profileControlKey } from './controlKeys';
-import { addItemRow, nameFilter } from './rowHelpers';
+import { nameFilter } from './rowHelpers';
 import type { SettingGroupItem } from 'obsidian';
 
 /** Visible lines a profile body field opens with. */
@@ -171,13 +171,10 @@ function profilePage(
  * collection to read: the name of the thing, the value in use, and a way in.
  * @param settings - Live settings, read by the predicates
  * @param catalogue - The profile kind being declared
- * @param declareAddRow - Whether this tree owes the list a labelled add row,
- * which is the case wherever the renderer draws only a plus icon
  */
 function profileGroups(
 	settings: AudioRecorderSettings,
 	catalogue: ProfileCatalogue,
-	declareAddRow: boolean,
 ): SettingGroupItem[] {
 	const entries = catalogue.entries(settings);
 	const visible = (): boolean => catalogue.visible(settings);
@@ -241,18 +238,6 @@ function profileGroups(
 						profilePage(catalogue, entry),
 					),
 				},
-				// Beside the list rather than in it: a row inside would be
-				// filtered away by the list's own search, exactly when an empty
-				// result makes adding one the obvious next move.
-				...(declareAddRow
-					? [
-							addItemRow(
-								'Add profile',
-								'Creates an empty profile at the end of the list.',
-								add,
-							),
-						]
-					: []),
 			],
 		},
 	];
@@ -270,7 +255,5 @@ export function profileCatalogues(
 ): SettingGroupItem[] {
 	return ctx.profiles
 		.filter((catalogue) => catalogue.section === section)
-		.flatMap((catalogue) =>
-			profileGroups(ctx.settings, catalogue, ctx.declareListAddRow),
-		);
+		.flatMap((catalogue) => profileGroups(ctx.settings, catalogue));
 }

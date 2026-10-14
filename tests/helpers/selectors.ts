@@ -158,8 +158,8 @@ export const SETTING = {
 	/** The icon-only button a row adds with addExtraButton. */
 	extraButton: '.extra-setting-button',
 	root: '.aar-settings-root',
-	searchInput: '.aar-search-row input',
-	addItemButton: '.aar-add-item-row button',
+	searchInput: '.mock-setting-search-row input',
+	addItemButton: '.mock-setting-add-item-row button',
 	custom: '.aar-custom',
 	docCallout: '.aar-doc-callout',
 	docCalloutLink: '.aar-doc-callout-link',

@@ -46,7 +46,7 @@ If recording does not work, run **Test recording** from settings and check **Sys
 
 ## From the command line
 
-On Obsidian 1.12.2 and later, the desktop app takes commands from a terminal, and the plugin answers four of them. Nothing here exists on mobile, or on an older desktop build.
+The desktop app takes commands from a terminal, and the plugin answers four of them. Nothing here exists on mobile.
 
 | Command                                            | What it does                                                                            |
 | -------------------------------------------------- | --------------------------------------------------------------------------------------- |

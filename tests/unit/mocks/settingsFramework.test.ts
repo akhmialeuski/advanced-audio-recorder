@@ -1,14 +1,14 @@
 /**
- * Unit tests for the pre-1.13 renderer: the same definition tree Obsidian 1.13
- * renders natively has to reach the screen, and behave, on the Obsidian that
- * has no declarative settings API.
- * @module tests/unit/legacySettingsRenderer.test
+ * Unit tests for the suite's stand-in for Obsidian's settings framework: the
+ * settings tab's tests read the rendered tab through it, so it has to render
+ * and bind a definition tree the way the app does.
+ * @module tests/unit/mocks/settingsFramework.test
  */
 
-import type { SettingDefinitionItem, TFile } from 'obsidian';
-import { at } from '../helpers/assertions';
-import { allEls, el, maybeEl } from '../helpers/dom';
-import { SETTING } from '../helpers/selectors';
+import type { SettingDefinitionItem } from 'obsidian';
+import { at } from '../../helpers/assertions';
+import { allEls, el, maybeEl } from '../../helpers/dom';
+import { SETTING } from '../../helpers/selectors';
 import {
 	rowInput,
 	rowSelect,
@@ -16,28 +16,22 @@ import {
 	rowToggle,
 	settingNames,
 	settingRow,
-} from '../helpers/settingRows';
+} from '../../helpers/settingRows';
 import {
-	LLM_MAX_TOKENS_STEP,
-	MAX_LLM_MAX_TOKENS,
-	MIN_LLM_MAX_TOKENS,
-	TRANSCRIPTION_PROVIDER_IDS,
-} from 'src/constants';
-import {
-	LEGACY_ACTION_ROW_CLASS,
-	LEGACY_SETTING_ERROR_CLASS,
-	LEGACY_STACKED_CLASS,
-	LegacySettingsRenderer,
-	type LegacySettingsHost,
-} from 'src/settings/legacySettingsRenderer';
-import { partial } from '../helpers/doubles';
-import { EngineLabel } from 'src/providers/providers';
+	FRAMEWORK_ACTION_ROW_CLASS,
+	FRAMEWORK_INVALID_INPUT_CLASS,
+	FRAMEWORK_SETTING_ERROR_CLASS,
+	FRAMEWORK_STACKED_CLASS,
+	SettingsFramework,
+	type SettingsFrameworkHost,
+} from '../../mocks/settingsFramework';
+import { partial } from '../../helpers/doubles';
 
-describe('LegacySettingsRenderer', () => {
+describe('SettingsFramework', () => {
 	let values: Record<string, unknown>;
 	let setControlValue: jest.Mock;
-	let host: LegacySettingsHost;
-	let renderer: LegacySettingsRenderer;
+	let host: SettingsFrameworkHost;
+	let renderer: SettingsFramework;
 	let containerEl: HTMLElement;
 
 	beforeEach(() => {
@@ -49,7 +43,7 @@ describe('LegacySettingsRenderer', () => {
 			getControlValue: (key: string): unknown => values[key],
 			setControlValue,
 		};
-		renderer = new LegacySettingsRenderer(host);
+		renderer = new SettingsFramework(host);
 		containerEl = createDiv();
 	});
 
@@ -77,7 +71,7 @@ describe('LegacySettingsRenderer', () => {
 			expect(renderedNames()).toEqual(['Diagnostics', 'Debug mode']);
 		});
 
-		it('flattens a sub-page into a heading, since this Obsidian has none', () => {
+		it('renders a sub-page as its heading followed by its rows', () => {
 			renderer.render(containerEl, [
 				{
 					type: 'page',
@@ -130,7 +124,7 @@ describe('LegacySettingsRenderer', () => {
 			expect(setControlValue).toHaveBeenCalledWith('debug', false);
 		});
 
-		it('stacks a text area, which the old layout would leave unusable', () => {
+		it('stacks a text area under its name', () => {
 			values['terms'] = 'kubectl, Kubernetes';
 			renderer.render(containerEl, [
 				{
@@ -143,10 +137,8 @@ describe('LegacySettingsRenderer', () => {
 			const textarea = rowTextarea(row);
 			expect(textarea.value).toBe('kubectl, Kubernetes');
 			expect(textarea.rows).toBe(8);
-			// From 1.13 the framework lays a text area out full width under its
-			// name. The older stylesheets put every control in the narrow right
-			// column, which cannot hold a multi-sentence prompt.
-			expect(row.classList.contains(LEGACY_STACKED_CLASS)).toBe(true);
+			// The framework lays a text area out full width under its name.
+			expect(row.classList.contains(FRAMEWORK_STACKED_CLASS)).toBe(true);
 		});
 
 		it('writes a dropdown selection back through the host', () => {
@@ -255,7 +247,9 @@ describe('LegacySettingsRenderer', () => {
 			input.dispatchEvent(new Event('input'));
 
 			expect(setControlValue).not.toHaveBeenCalled();
-			expect(input.classList.contains('aar-input-invalid')).toBe(true);
+			expect(
+				input.classList.contains(FRAMEWORK_INVALID_INPUT_CLASS),
+			).toBe(true);
 		});
 
 		it('rejects a number outside the control bounds', () => {
@@ -304,48 +298,24 @@ describe('LegacySettingsRenderer', () => {
 			input.value = '137';
 			input.dispatchEvent(new Event('change'));
 			expect(setControlValue).not.toHaveBeenCalled();
-			expect(input.classList.contains('aar-input-invalid')).toBe(true);
+			expect(
+				input.classList.contains(FRAMEWORK_INVALID_INPUT_CLASS),
+			).toBe(true);
 
 			input.value = '135';
 			input.dispatchEvent(new Event('change'));
 
 			expect(setControlValue).toHaveBeenCalledWith('cutoffHz', 135);
-			expect(input.classList.contains('aar-input-invalid')).toBe(false);
-		});
-
-		it('stores the ceiling of a bound the declaration says is reachable', () => {
-			// The reported defect, on the renderer that never rejected it: a
-			// ceiling has to be enterable on both, or the two disagree about
-			// what the same tree means.
-			values['maxTokens'] = 4096;
-			renderer.render(containerEl, [
-				{
-					name: 'Max output tokens',
-					control: {
-						type: 'number',
-						key: 'maxTokens',
-						min: MIN_LLM_MAX_TOKENS,
-						max: MAX_LLM_MAX_TOKENS,
-						step: LLM_MAX_TOKENS_STEP,
-					},
-				},
-			]);
-
-			const input = rowInput(rowFor('Max output tokens'));
-			input.value = String(MAX_LLM_MAX_TOKENS);
-			input.dispatchEvent(new Event('change'));
-
-			expect(setControlValue).toHaveBeenCalledWith(
-				'maxTokens',
-				MAX_LLM_MAX_TOKENS,
-			);
+			expect(
+				input.classList.contains(FRAMEWORK_INVALID_INPUT_CLASS),
+			).toBe(false);
 		});
 	});
 
 	describe('the declared validator, which every control carries', () => {
 		/** The refusal stated under a row, or '' when the row states none. */
 		const rejectionOn = (name: string): string =>
-			maybeEl(rowFor(name), `.${LEGACY_SETTING_ERROR_CLASS}`)
+			maybeEl(rowFor(name), `.${FRAMEWORK_SETTING_ERROR_CLASS}`)
 				?.textContent ?? '';
 
 		/** A tree with one engine dropdown that refuses one of its options. */
@@ -356,13 +326,11 @@ describe('LegacySettingsRenderer', () => {
 					type: 'dropdown',
 					key: 'engine',
 					options: {
-						[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]:
-							EngineLabel.WhisperApi,
-						[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]:
-							EngineLabel.LocalWhisper,
+						['whisper-api']: 'Whisper API',
+						['local-whisper']: 'Local whisper.cpp',
 					},
 					validate: (value: string) =>
-						value === TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER
+						value === 'local-whisper'
 							? 'Not available on this device.'
 							: undefined,
 				},
@@ -370,14 +338,13 @@ describe('LegacySettingsRenderer', () => {
 		];
 
 		it('refuses a dropdown option its validator rules out', () => {
-			// The declaration is one declaration: from 1.13 the framework refuses
-			// the change and states why, so an engine this device cannot run must
-			// not become the stored engine here either.
-			values['engine'] = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			// The framework refuses the change and states why, so an engine this
+			// device cannot run never becomes the stored engine.
+			values['engine'] = 'whisper-api';
 			renderer.render(containerEl, engineTree());
 
 			const select = rowSelect(rowFor('Transcription engine'));
-			select.value = TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
+			select.value = 'local-whisper';
 			select.dispatchEvent(new Event('change'));
 
 			expect(setControlValue).not.toHaveBeenCalled();
@@ -386,22 +353,22 @@ describe('LegacySettingsRenderer', () => {
 			);
 			// Put back to what is stored: a refused choice left on screen reads
 			// as a choice that was taken.
-			expect(select.value).toBe(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API);
+			expect(select.value).toBe('whisper-api');
 		});
 
 		it('takes a dropdown option its validator accepts, and clears the refusal', () => {
-			values['engine'] = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			values['engine'] = 'whisper-api';
 			renderer.render(containerEl, engineTree());
 
 			const select = rowSelect(rowFor('Transcription engine'));
-			select.value = TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
+			select.value = 'local-whisper';
 			select.dispatchEvent(new Event('change'));
-			select.value = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			select.value = 'whisper-api';
 			select.dispatchEvent(new Event('change'));
 
 			expect(setControlValue).toHaveBeenCalledWith(
 				'engine',
-				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				'whisper-api',
 			);
 			expect(rejectionOn('Transcription engine')).toBe('');
 		});
@@ -411,26 +378,24 @@ describe('LegacySettingsRenderer', () => {
 			// validates the seeded value on mount and shows the message without
 			// replacing what is stored, because the value is the user's and it
 			// works again the moment the vault is opened where it came from.
-			values['engine'] = TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
+			values['engine'] = 'local-whisper';
 			renderer.render(containerEl, engineTree());
 
 			expect(rejectionOn('Transcription engine')).toBe(
 				'Not available on this device.',
 			);
 			expect(setControlValue).not.toHaveBeenCalled();
-			expect(values['engine']).toBe(
-				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
-			);
+			expect(values['engine']).toBe('local-whisper');
 		});
 
 		it('grows no error line on a row whose value is accepted', () => {
-			values['engine'] = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			values['engine'] = 'whisper-api';
 			renderer.render(containerEl, engineTree());
 
 			expect(
 				maybeEl(
 					rowFor('Transcription engine'),
-					`.${LEGACY_SETTING_ERROR_CLASS}`,
+					`.${FRAMEWORK_SETTING_ERROR_CLASS}`,
 				),
 			).toBeNull();
 		});
@@ -481,30 +446,21 @@ describe('LegacySettingsRenderer', () => {
 			input.dispatchEvent(new Event('input'));
 
 			expect(setControlValue).not.toHaveBeenCalled();
-			expect(input.classList.contains('aar-input-invalid')).toBe(true);
+			expect(
+				input.classList.contains(FRAMEWORK_INVALID_INPUT_CLASS),
+			).toBe(true);
 			expect(rejectionOn('Recording folder')).toBe(
 				'Use a vault-relative path.',
 			);
 		});
 
-		it('suggests files for a file control, narrowed by the filter it declares', () => {
-			// The file control is native from 1.13 on; below it the tab supplies
-			// the suggester, and the filter has to reach it or every file in the
-			// vault would be offered as a note.
-			const attachFolderSuggest = jest.fn();
-			const attachFileSuggest = jest.fn();
-			renderer = new LegacySettingsRenderer(host, {
-				attachFolderSuggest,
-				attachFileSuggest,
-			});
-			const filter = (file: TFile): boolean => file.extension === 'md';
+		it('refuses a file path its validator rules out and stores one it accepts', () => {
 			renderer.render(containerEl, [
 				{
 					name: 'Source note',
 					control: {
 						type: 'file',
 						key: 'note',
-						filter,
 						validate: (value: string) =>
 							value === '' || value.endsWith('.md')
 								? undefined
@@ -512,10 +468,7 @@ describe('LegacySettingsRenderer', () => {
 					},
 				},
 			]);
-
 			const input = rowInput(rowFor('Source note'));
-			expect(attachFileSuggest).toHaveBeenCalledWith(input, filter);
-			expect(attachFolderSuggest).not.toHaveBeenCalled();
 
 			input.value = 'Glossaries/Stand';
 			input.dispatchEvent(new Event('input'));
@@ -559,7 +512,9 @@ describe('LegacySettingsRenderer', () => {
 			expect(rejectionOn('Upload chunk size')).toBe(
 				'This engine accepts 25 MB per request.',
 			);
-			expect(input.classList.contains('aar-input-invalid')).toBe(true);
+			expect(
+				input.classList.contains(FRAMEWORK_INVALID_INPUT_CLASS),
+			).toBe(true);
 		});
 
 		it('leaves a free-text field to be finished rather than putting it back', () => {
@@ -960,7 +915,9 @@ describe('LegacySettingsRenderer', () => {
 			renderer.render(containerEl, [{ name: 'System info', action }]);
 
 			const row = rowFor('System info');
-			expect(row.classList.contains(LEGACY_ACTION_ROW_CLASS)).toBe(true);
+			expect(row.classList.contains(FRAMEWORK_ACTION_ROW_CLASS)).toBe(
+				true,
+			);
 			row.click();
 
 			expect(action).toHaveBeenCalledTimes(1);

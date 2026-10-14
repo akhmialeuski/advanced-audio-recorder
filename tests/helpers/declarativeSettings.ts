@@ -1,5 +1,5 @@
 /**
- * Drives a settings tab's render definition the way Obsidian 1.13 drives it,
+ * Drives a settings tab and its render definitions the way Obsidian drives them,
  * so a test sees the DOM the framework actually leaves behind rather than the
  * DOM the render callback happened to produce.
  *
@@ -15,9 +15,10 @@
  * @module tests/helpers/declarativeSettings
  */
 
-import { PluginSettingTab, Setting, apiVersion } from 'obsidian';
-import type { SettingDefinitionItem } from 'obsidian';
-import { withApiVersion } from './apiVersion';
+import { Setting } from 'obsidian';
+import type { PluginSettingTab, SettingDefinitionItem } from 'obsidian';
+import { __openSettingTab } from '../mocks/obsidian';
+import { SettingsFramework } from '../mocks/settingsFramework';
 
 /**
  * A tab's render definition, in the shape a test reads it: the framework
@@ -353,27 +354,13 @@ export const releaseThroughFramework = (frame: DeclarativeFrame): void => {
 };
 
 /**
- * Runs a body against an Obsidian older than 1.13, the version that brought
- * the declarative settings API and the `SettingTab.update()` that re-renders
- * from it. The reported app version is what a tab asks when it picks the
- * imperative path, and since that choice is made in the constructor, the tab
- * under test has to be built inside the body. `update()` goes with the version
- * it arrived in, so the older prototype does not carry it either.
- * @param body - Runs while the mock models the older Obsidian
- * @returns Whatever the body returned
+ * Opens a settings tab the way the user does: Obsidian renders the tab's
+ * definitions into its container and keeps the rows until the tab is hidden.
+ * The rendering is the suite's stand-in for the settings framework
+ * ({@link SettingsFramework}), bound to the tab's own value hooks, so a test
+ * reads and drives the tab through the DOM the way a user would.
+ * @param tab - The tab to open
  */
-export const withoutDeclarativeSettings = <T>(body: () => T): T => {
-	const base = PluginSettingTab.prototype as { update?: () => void };
-	const update = base.update;
-	const version = apiVersion;
-	delete base.update;
-	withApiVersion('1.12.3');
-	try {
-		return body();
-	} finally {
-		withApiVersion(version);
-		if (update) {
-			base.update = update;
-		}
-	}
+export const openSettingTab = (tab: PluginSettingTab): void => {
+	__openSettingTab(tab, (host) => new SettingsFramework(host));
 };

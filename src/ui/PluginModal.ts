@@ -143,11 +143,7 @@ export abstract class PluginModal extends Modal {
 					button.setCta();
 				}
 				if (action.destructive) {
-					// The class both setWarning (deprecated) and setDestructive
-					// (Obsidian 1.13+) apply. Setting it directly is the one form
-					// that works on every version down to the plugin's declared
-					// minAppVersion without calling a deprecated API.
-					button.buttonEl.addClass('mod-warning');
+					button.setDestructive();
 				}
 				if (action.disabled) {
 					button.setDisabled(true);

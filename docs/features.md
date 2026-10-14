@@ -45,7 +45,7 @@ Learn more: [Recording](recording.md)
 
 ## Command line (desktop)
 
-On Obsidian 1.12.2 and later the desktop app takes commands from a terminal, and the plugin answers four: `advanced-audio-recorder` reports what the recorder is doing, `:record` starts a session, `:stop` stops and saves it, and `:transcribe --file <path>` transcribes an audio file in the vault. Each answers with one line - the state it left behind, or the reason it did nothing, including the reason a start failed or a transcription cannot run. Nothing here exists on mobile, or on an older desktop build.
+The desktop app takes commands from a terminal, and the plugin answers four: `advanced-audio-recorder` reports what the recorder is doing, `:record` starts a session, `:stop` stops and saves it, and `:transcribe --file <path>` transcribes an audio file in the vault. Each answers with one line - the state it left behind, or the reason it did nothing, including the reason a start failed or a transcription cannot run. Nothing here exists on mobile, or on an older desktop build.
 
 Learn more: [From the command line](recording.md#from-the-command-line)
 
@@ -227,7 +227,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | ----------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
 | Recording                     | Start/stop capture; ribbon, status bar, save-progress feedback             | Ribbon icon / command palette                   | [Recording](recording.md)                                      |
 | Switch input device           | Quick-pick modal to change the microphone                                  | Command palette                                 | [Recording](recording.md#switching-the-input-device)           |
-| Command line (desktop)        | Start, stop, report state, transcribe a file from a terminal               | Obsidian CLI (1.12.2+)                          | [Recording](recording.md#from-the-command-line)                |
+| Command line (desktop)        | Start, stop, report state, transcribe a file from a terminal               | Obsidian CLI                          | [Recording](recording.md#from-the-command-line)                |
 | Pause and resume              | Pause and continue a session without losing progress                       | Command palette / status bar                    | [Recording](recording.md#pausing-and-resuming)                 |
 | Markers while recording       | Drop a bookmark or chapter at the live position                            | Status bar / command palette (markers enabled)  | [Recording](recording.md#marking-moments-while-recording)      |
 | Crash recovery                | Recover audio after a crash, power loss, or mid-recording disable          | Automatic modal on next launch                  | [Recording](recording.md#crash-recovery)                       |

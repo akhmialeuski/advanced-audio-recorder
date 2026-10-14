@@ -12,6 +12,7 @@ import { confirmAction, ConfirmModal } from 'src/ui/ConfirmModal';
 import type { App } from 'obsidian';
 import { at } from '../helpers/assertions';
 import { modalInstances } from '../mocks/obsidian';
+import { tick } from '../helpers/async';
 
 /** Opens a confirm dialog and exposes its rendered buttons. */
 function open(
@@ -28,10 +29,10 @@ function open(
 		onConfirm,
 		...(onCancel ? { onCancel } : {}),
 	});
-	modal.onOpen();
+	modal.open();
 	return {
 		modal,
-		buttons: Array.from(modal.contentEl.querySelectorAll('button')),
+		buttons: Array.from(modal.buttonContainerEl.querySelectorAll('button')),
 	};
 }
 
@@ -56,35 +57,36 @@ describe('ConfirmModal', () => {
 		expect(at(buttons, 0).classList.contains('mod-warning')).toBe(true);
 	});
 
-	it('runs the action exactly once on confirm', () => {
+	it('runs the action exactly once on confirm, then closes', async () => {
 		const onConfirm = jest.fn();
 		const { modal, buttons } = open(onConfirm);
 		const close = jest.spyOn(modal, 'close');
 
 		at(buttons, 0).click();
+		await tick();
 
 		expect(onConfirm).toHaveBeenCalledTimes(1);
-		// Closed before the action runs, so a slow action does not leave the
-		// dialog on screen looking unresponsive.
-		expect(close).toHaveBeenCalled();
+		expect(close).toHaveBeenCalledTimes(1);
 	});
 
-	it('runs nothing on cancel', () => {
+	it('runs nothing on cancel', async () => {
 		const onConfirm = jest.fn();
 		const { modal, buttons } = open(onConfirm);
 		const close = jest.spyOn(modal, 'close');
 
 		at(buttons, 1).click();
+		await tick();
 
 		expect(onConfirm).not.toHaveBeenCalled();
-		expect(close).toHaveBeenCalled();
+		expect(close).toHaveBeenCalledTimes(1);
 	});
 
-	it('reports the no exactly once on cancel', () => {
+	it('reports the no exactly once on cancel', async () => {
 		const onCancel = jest.fn();
 		const { buttons } = open(() => undefined, onCancel);
 
 		at(buttons, 1).click();
+		await tick();
 
 		// A caller that awaits the answer hangs forever without it.
 		expect(onCancel).toHaveBeenCalledTimes(1);
@@ -101,21 +103,14 @@ describe('ConfirmModal', () => {
 		expect(onCancel).toHaveBeenCalledTimes(1);
 	});
 
-	it('reports no cancel once the action was confirmed', () => {
+	it('reports no cancel once the action was confirmed', async () => {
 		const onCancel = jest.fn();
 		const { buttons } = open(() => undefined, onCancel);
 
 		at(buttons, 0).click();
+		await tick();
 
 		expect(onCancel).not.toHaveBeenCalled();
-	});
-
-	it('empties its body on close', () => {
-		const { modal } = open(() => undefined);
-
-		modal.onClose();
-
-		expect(modal.contentEl.children).toHaveLength(0);
 	});
 });
 
@@ -129,7 +124,7 @@ describe('confirmAction', () => {
 		});
 		const dialog = at(modalInstances, modalInstances.length - 1);
 		at(
-			Array.from(dialog.contentEl.querySelectorAll('button')),
+			Array.from(dialog.modalEl.querySelectorAll('button')),
 			button,
 		).click();
 		return answered;

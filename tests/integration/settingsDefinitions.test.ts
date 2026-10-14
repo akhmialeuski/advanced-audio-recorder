@@ -57,11 +57,11 @@ import {
 	STACKED_TEXT_CLASS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
-	numberControlRejection,
 	type DiagnosticsActions,
 	type ProfileCatalogue,
 	type SettingsDefinitionContext,
 } from 'src/settings/settingsDefinitions';
+import { numberControlRejection } from '../mocks/settingsFramework';
 import {
 	setPlatform,
 	useDesktopPlatform,
@@ -95,7 +95,6 @@ describe('settings definitions', () => {
 	let profileReadsNote: boolean;
 	let profileEntries: ReturnType<ProfileCatalogue['entries']>;
 	let selectedProfileId: string;
-	let declareListAddRow: boolean;
 	let removeModel: jest.Mock;
 	let selectModel: jest.Mock;
 	let renderSummaryRow: jest.Mock;
@@ -134,7 +133,6 @@ describe('settings definitions', () => {
 			},
 		];
 		selectedProfileId = 'b';
-		declareListAddRow = false;
 		removeModel = jest.fn();
 		selectModel = jest.fn();
 		renderSummaryRow = jest.fn();
@@ -177,7 +175,6 @@ describe('settings definitions', () => {
 			catalogue('transcription', 'Participant profiles', 'Participants'),
 			catalogue('quickNotes', 'Quick note profiles', 'Instruction'),
 		],
-		declareListAddRow,
 		transcriptionBlocks: {
 			renderProviderKey: renderTranscriptionRest as (
 				host: HTMLElement,
@@ -443,6 +440,17 @@ describe('settings definitions', () => {
 			settings.whisperApiModel = '';
 
 			expect(displayValue(EngineLabel.WhisperApi)).toBe('No model');
+		});
+
+		it('says an engine has no key before anything about its model', () => {
+			settings.transcriptionEnabled = true;
+			settings.deepgramApiKey = '';
+
+			// Without a key the engine cannot be reached at all, so its model
+			// is beside the point until one is entered.
+			expect(entryValueOf(pageOf(build(), EngineLabel.Deepgram))).toBe(
+				'No key',
+			);
 		});
 
 		it('counts a configured engine by its account, not by its engines', () => {
@@ -1422,27 +1430,6 @@ describe('settings definitions', () => {
 			listOf('Chapter guidance profiles').addItem?.action(createDiv());
 
 			expect(addProfile).toHaveBeenCalledTimes(1);
-		});
-
-		/** Whether a page declares a row of its own under a name. */
-		const hasRow = (page: GroupDefinition, name: string): boolean =>
-			page.items.some((item) => !('type' in item) && item.name === name);
-
-		it('declares a labelled add row only where the renderer draws none', () => {
-			expect(
-				hasRow(pageOf(build(), 'Dictionary profiles'), 'Add profile'),
-			).toBe(false);
-
-			declareListAddRow = true;
-			const page = pageOf(build(), 'Dictionary profiles');
-			rowIn(page, 'Add profile').action?.(createDiv(), 0);
-
-			expect(addProfile).toHaveBeenCalledTimes(1);
-			// Beside the list, not in it: a row inside would be filtered away
-			// by the list's own search exactly when nothing matches.
-			expect(listIn(page).items.map((item) => item.name)).not.toContain(
-				'Add profile',
-			);
 		});
 	});
 

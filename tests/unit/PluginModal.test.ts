@@ -7,7 +7,7 @@
  * @module tests/unit/PluginModal.test
  */
 
-import { Notice } from 'obsidian';
+import { ButtonComponent, Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PluginModal } from 'src/ui/PluginModal';
 import { el, maybeEl, textOf } from '../helpers/dom';
@@ -60,15 +60,22 @@ describe('PluginModal action row', () => {
 		expect(buttons[1]?.classList.contains('mod-cta')).toBe(false);
 	});
 
-	it('marks a destructive action without calling a deprecated API', () => {
+	it('marks a destructive action through setDestructive()', () => {
+		const setDestructive = jest.spyOn(
+			ButtonComponent.prototype,
+			'setDestructive',
+		);
+		const setWarning = jest.spyOn(ButtonComponent.prototype, 'setWarning');
 		const modal = createModal();
+
 		modal.actions({
 			text: 'Replace',
 			destructive: true,
 			onClick: () => undefined,
 		});
-		const button = modal.contentEl.querySelector('button');
-		expect(button?.classList.contains('mod-warning')).toBe(true);
+
+		expect(setDestructive).toHaveBeenCalledTimes(1);
+		expect(setWarning).not.toHaveBeenCalled();
 	});
 
 	it('honours the initial disabled state and hands the component back', () => {

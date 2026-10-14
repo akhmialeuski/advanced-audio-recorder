@@ -352,8 +352,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
 		this.registerCommands();
 		// The desktop command line, where the app has one. Reports whether it
-		// registered, which is what the CLI-less platforms and the Obsidians
-		// below 1.12.2 answer.
+		// registered, which is what the CLI-less platforms answer.
 		registerCliCommands(this, this.createCliHost());
 		// Named after the plugin, because Obsidian's own Audio recorder puts a
 		// button with the same job in the same ribbon under the tooltip
