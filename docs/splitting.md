@@ -93,7 +93,7 @@ The dialog header shows the **Source** file name and exposes these options. Each
 | **Delete source file**    | Remove the original file after a successful split, through Obsidian's own **Deleted files** handling.                                                                          | On / Off                                                          | Your **Delete source after split** setting (`Off`)                     |
 | **Update links in notes** | How to rewrite the links that point at the source file across your vault - see [How link updating works](#how-link-updating-works).                                            | `Do nothing` / `Replace source link` / `Insert after source link` | Your **Update links after conversion** setting (`Replace source link`) |
 
-Click **Split** to run. The dialog shows live progress text (`Reading source file…`, `Decoding audio…`, `Writing part N of M…`, `Updating links…`, `Removing source file…`). When it finishes, a notice reports the number of parts and the first part's name.
+Click **Split** to run. The dialog shows live progress text (`Reading source file…`, `Opening audio…` for a compressed source, `Writing part N of M…`, `Updating links…`, `Removing source file…`). `Decoding audio…` appears instead of `Opening audio…` when the recording has to be decoded whole first - see [Lossless vs lossy splitting](#lossless-vs-lossy-splitting). When it finishes, a notice reports the number of parts and the first part's name.
 
 You do not have to wait on the open dialog. If you close it while a split is still running, the operation continues in the background and a persistent notice mirrors its progress until it completes.
 
@@ -118,7 +118,7 @@ A recording that carries chapters can be cut **at them** instead of every N minu
 
 The names come from the chapter titles, with the characters a file name cannot carry replaced and a number appended when two chapters share a title. The audio before the first chapter, when a recording has any, is a part of its own named after the recording rather than after a chapter that starts later.
 
-Everything else is unchanged. An uncompressed WAV is still cut **without decoding**, so a recording too large to hold in memory can still be split; every other format still goes through the decode path; and links to the original are rewritten by the same rules an even split follows.
+Everything else is unchanged. An uncompressed WAV is still cut **without decoding**, so a recording too large to hold in memory can still be split; every other format is cut out of the decoded audio exactly as an even split is; and links to the original are rewritten by the same rules an even split follows.
 
 Bookmarks are left out. A cut divides the recording into parts, and a bookmark marks a point rather than a division.
 
@@ -165,15 +165,17 @@ After splitting into three parts with **Replace source link**:
 
 The plugin picks the cheapest correct method based on the source format:
 
-| Source                 | Method                                                                                                                                                                                 | Quality              | Memory                                                             |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------ |
-| **WAV** (raw PCM)      | **Lossless byte-level split.** The raw sample data is sliced at whole-frame boundaries and each part reuses the original header with patched chunk sizes. No decoding, no re-encoding. | **No loss.**         | One part at a time - **multi-gigabyte files are safe.**            |
-| **Compressed** formats | **Decode once, re-encode per part.** The file is decoded fully into memory, then each part is sliced from the decoded audio and re-encoded at the chosen bitrate.                      | Minor loss possible. | Needs enough free memory to hold the **entire decoded** recording. |
+| Source                 | Method                                                                                                                                                                                  | Quality              | Memory                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | -------------------------------------------------------- |
+| **WAV** (raw PCM)      | **Lossless byte-level split.** The raw sample data is sliced at whole-frame boundaries and each part reuses the original header with patched chunk sizes. No decoding, no re-encoding.  | **No loss.**         | One part at a time - **multi-gigabyte files are safe.**  |
+| **Compressed** formats | **Decode once, re-encode per part.** The file is decoded from start to end in one pass, and each part is cut from the decoded audio as it arrives and re-encoded at the chosen bitrate. | Minor loss possible. | The file plus the part being encoded, **at any length**. |
 
 Notes:
 
 - **WAV is the safe choice for very long files.** Because byte-level splitting builds one part buffer at a time and never decodes the audio, even multi-gigabyte WAV recordings are split without loading the whole thing into memory. Sample format, channel layout, and sample rate are all preserved exactly.
-- **Compressed sources are re-encoded**, so a small amount of quality loss is possible (lossy formats lose a little each time they are re-encoded), and a very long compressed file needs enough free memory for the decoded audio. If the source's format has no offline encoder available, the parts are written as **WAV** and a notice explains the fallback.
+- **Compressed sources are re-encoded**, so a small amount of quality loss is possible (lossy formats lose a little each time they are re-encoded). If the source's format has no offline encoder available, the parts are written as **WAV** and a notice explains the fallback.
+- **Compressed parts are cut on exact sample frames**, at the same points a WAV split would cut, out of one continuous decode, so no audio is doubled or lost between parts and every part starts with a decoder that has heard what came before it. The number of parts is planned from the length the file's container states, which can differ from the decoded length by a few hundredths of a second, so the plan stops a quarter of a second short: a remainder shorter than that stays at the end of the last part rather than becoming a part of its own, and a file at most a quarter of a second longer than one part counts as shorter than one part.
+- **A device that cannot decode the format as it splits** - for example an iOS version whose WebView lacks the WebCodecs audio decoder - decodes the whole file into memory first and slices the parts out of that, as earlier versions always did. That needs room for the **entire decoded** recording, so it is refused above the same size ceiling as the other features that decode a whole file (**1 GB** on the desktop, **256 MB** in the mobile app). The same path takes over, after removing any part already written, if splitting while decoding fails partway.
 - **Parts are saved next to the source file**, in the same vault folder.
 
 A source must be **longer than one part** to split. If the file is shorter than the configured part duration, the plugin shows _"File is shorter than one part."_ and does nothing.

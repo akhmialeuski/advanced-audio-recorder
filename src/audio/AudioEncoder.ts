@@ -12,7 +12,7 @@ import {
 	canEncodeAudio,
 	Quality,
 } from 'mediabunny';
-import type { AudioCodec, OutputFormat } from 'mediabunny';
+import type { AudioCodec, AudioEncodingConfig, OutputFormat } from 'mediabunny';
 import { EncodingError } from '../errors';
 import { FORMAT_MP3, FORMAT_FLAC } from '../constants';
 import { FORMAT_REGISTRY, getFormatDescriptor } from './formatRegistry';
@@ -136,6 +136,45 @@ export async function encodeAudioBuffer(
 }
 
 /**
+ * The encoder configuration for one format at one bitrate, for audio of a
+ * known layout and rate. Shared by every encode the plugin feeds itself - a
+ * decoded buffer here, decoded samples in the streamed split - so they ask
+ * the encoder the same question the probe asked.
+ *
+ * PCM is uncompressed: passing a bitrate is invalid for it. The rest ask
+ * through Quality, the field mediabunny still supports - its bare `bitrate`
+ * is deprecated, and phrasing the encode differently from the probe in
+ * probeOfflineEncodingSupport is what lets the two drift. The codec string is
+ * settled the same way the probe settles it, on the layout and rate the audio
+ * really has.
+ * @param format - Target audio format
+ * @param bitrate - Bitrate in bits per second, ignored for PCM
+ * @param layout - Channels and sample rate of the audio being encoded
+ * @returns The configuration for a mediabunny audio source
+ * @throws EncodingError for a format the registry does not know
+ */
+export async function encodingConfigFor(
+	format: string,
+	bitrate: number,
+	layout: { numberOfChannels: number; sampleRate: number },
+): Promise<AudioEncodingConfig> {
+	const descriptor = getFormatDescriptor(format);
+	if (!descriptor) {
+		throw new EncodingError(`No codec mapping for "${format}"`, format);
+	}
+	const { codec } = descriptor;
+	if (descriptor.isPcm) {
+		return { codec };
+	}
+	const quality = new Quality({ bitrate });
+	return {
+		codec,
+		quality,
+		...(await codecStringFor(codec, { ...layout, quality })),
+	};
+}
+
+/**
  * Encodes AudioBuffer using Mediabunny (WebCodecs-backed for Opus/AAC,
  * extension-backed for FLAC and MP3).
  */
@@ -145,12 +184,6 @@ async function encodeWithMediabunny(
 	onProgress?: ProgressCallback,
 ): Promise<Blob> {
 	const { format, bitrate } = options;
-	const descriptor = getFormatDescriptor(format);
-
-	if (!descriptor) {
-		throw new EncodingError(`No codec mapping for "${format}"`, format);
-	}
-	const codec = descriptor.codec;
 
 	try {
 		await ensureEncoderRegistered(format);
@@ -159,25 +192,11 @@ async function encodeWithMediabunny(
 		const target = new BufferTarget();
 		const output = new Output({ format: outputFormat, target });
 
-		// PCM is uncompressed: passing a bitrate is invalid for it. The rest
-		// ask through Quality, the field mediabunny still supports - its bare
-		// `bitrate` is deprecated, and phrasing the encode differently from
-		// the probe in probeOfflineEncodingSupport is what lets the two drift.
-		// The codec string is settled the same way the probe settles it, on
-		// the layout and rate the buffer really has.
-		const quality = new Quality({ bitrate });
 		const audioSource = new AudioBufferSource(
-			descriptor.isPcm
-				? { codec }
-				: {
-						codec,
-						quality,
-						...(await codecStringFor(codec, {
-							numberOfChannels: buffer.numberOfChannels,
-							sampleRate: buffer.sampleRate,
-							quality,
-						})),
-					},
+			await encodingConfigFor(format, bitrate, {
+				numberOfChannels: buffer.numberOfChannels,
+				sampleRate: buffer.sampleRate,
+			}),
 		);
 		output.addAudioTrack(audioSource);
 

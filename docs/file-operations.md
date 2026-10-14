@@ -153,7 +153,7 @@ This is the same vault-wide link engine used by [splitting](splitting.md), so th
 
 **Split audio into parts** divides a long recording into fixed-duration segments. It opens a dialog with the part duration, a part-name suffix, an optional bitrate (for compressed sources), a **Delete source file** toggle, and the same **Update links in notes** options as conversion.
 
-WAV files are split losslessly at the byte level without re-encoding; compressed formats are decoded once and re-encoded per part. The parts are written next to the source, and the split aborts if any target part file already exists.
+WAV files are split losslessly at the byte level without re-encoding; compressed formats are decoded in one pass and each part is re-encoded as it is cut. The parts are written next to the source, and the split aborts if any target part file already exists.
 
 The full reference - duration ranges, naming rules, link handling, and limits - lives in [Splitting](splitting.md).
 

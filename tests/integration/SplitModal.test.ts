@@ -31,6 +31,12 @@ jest.mock('src/audio/AudioCapabilityDetector', () =>
 	require('../mocks/modules/audioCapabilityDetector'),
 );
 
+// The dialog's compressed sources take the decode-everything path: this
+// device cannot stream them, which is what the double answers by default.
+jest.mock('src/audio/streamingSplit', () =>
+	require('../mocks/modules/streamingSplit'),
+);
+
 // Mock the decoder: the compressed path decodes once via this function
 jest.mock('src/audio/AudioFormatConverter', () => ({
 	...require('../mocks/modules/audioFormatConverter'),

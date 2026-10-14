@@ -62,6 +62,8 @@ export const OPUS_STREAM: EncodedStream = {
  * @param stream - What the packets claim to be
  * @param packetCount - How many packets to write
  * @param packetBytes - Size of each packet's placeholder payload
+ * @param firstTimestamp - When the first packet starts, in seconds; below
+ *   zero for a stream that primes its decoder before the recording begins
  * @returns The finished file
  */
 export async function muxPlaceholderPackets(
@@ -69,6 +71,7 @@ export async function muxPlaceholderPackets(
 	stream: EncodedStream,
 	packetCount: number,
 	packetBytes = 16,
+	firstTimestamp = 0,
 ): Promise<ArrayBuffer> {
 	const target = new BufferTarget();
 	const output = new Output({ format, target });
@@ -79,7 +82,7 @@ export async function muxPlaceholderPackets(
 		const packet = new EncodedPacket(
 			new Uint8Array(packetBytes).fill(index % 256),
 			'key',
-			index * stream.packetSeconds,
+			firstTimestamp + index * stream.packetSeconds,
 			stream.packetSeconds,
 		);
 		await source.add(
