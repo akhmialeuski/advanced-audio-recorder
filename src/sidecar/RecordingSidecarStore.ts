@@ -11,10 +11,17 @@
  * rename can never fork the document), renames of written outputs update the
  * recorded paths, and an unreadable sidecar blocks writes instead of being
  * silently overwritten with an empty document.
+ *
+ * A sidecar is an ordinary file in the vault, so every operation on it goes
+ * through the Vault and FileManager API rather than the raw adapter: the
+ * vault index, the other plugins listening to vault events and the user's
+ * "Deleted files" preference all see it the way they see any other file. A
+ * deleted recording's sidecar therefore goes to the same trash as the
+ * recording, and restoring both brings the markers and transcript data back.
  * @module sidecar/RecordingSidecarStore
  */
 
-import type { App } from 'obsidian';
+import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { PlayerMarker } from '../markers/markerModel';
 import type { PartFailure } from '../transcription/partFailure';
@@ -42,6 +49,28 @@ import {
 
 /** Suffix appended to a recording's path to form its sidecar path. */
 export const SIDECAR_SUFFIX = '.markers.json';
+
+/**
+ * Where a sidecar file stands when it exists on disk but the vault index does
+ * not list it. Obsidian builds its index while plugins load (it fires `create`
+ * for every existing file during that scan), so a read or a write early in
+ * startup can ask for a file the index has not reached yet. Taking such a
+ * file for absent would hide its markers, and let the next write replace it
+ * with a document built from nothing, so reads and writes reach it through
+ * the adapter instead - the only API that can.
+ */
+const UNINDEXED = Symbol('unindexed');
+
+/** A sidecar file as {@link RecordingSidecarStore} finds it, or null when absent. */
+type LocatedSidecar = TFile | typeof UNINDEXED | null;
+
+/**
+ * How many times one mutation is applied before the store gives up on a
+ * sidecar file that keeps appearing under it. The second attempt reads the
+ * file that appeared, so it only fails again when that file vanished and
+ * another took its place in between; a third would be chasing a sync loop.
+ */
+const MAX_WRITE_ATTEMPTS = 2;
 
 /**
  * File extensions a recorded output can have: notes plus the transcript file
@@ -77,6 +106,18 @@ export class RecordingSidecarStore {
 	 * next to valid cached data would silently drop every write forever).
 	 */
 	private readonly corruptPaths = new Set<string>();
+	/**
+	 * Cached documents that no file stands behind: read as absent, or left
+	 * behind when the store removed their emptied file. Before such a
+	 * document is written the store makes sure no file has appeared at its
+	 * path in the meantime - typically sync delivering the sidecar of a
+	 * recording that arrived a moment earlier. If one has, the change is
+	 * applied to that file's document instead of replacing it with one built
+	 * from nothing, which would erase markers made on another device. Tracked
+	 * per document rather than per path, so the mark travels with a document
+	 * through a rename and is dropped with it on eviction.
+	 */
+	private readonly unbacked = new WeakSet<RecordingSidecar>();
 	/** Serializes mutations so concurrent saves never interleave. */
 	private writeChain: Promise<void> = Promise.resolve();
 	/** Readers told which recording's document just changed. */
@@ -100,7 +141,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getMarkers(path: string): Promise<PlayerMarker[]> {
-		return serializeMarkers((await this.read(path)).markers);
+		return serializeMarkers((await this.loadAfterMoves(path)).markers);
 	}
 
 	/**
@@ -149,7 +190,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getFailedParts(path: string): Promise<FailedPartsSection | null> {
-		const stored = (await this.read(path)).failedParts;
+		const stored = (await this.loadAfterMoves(path)).failedParts;
 		return stored
 			? {
 					recordedAt: stored.recordedAt,
@@ -191,7 +232,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getPlayback(path: string): Promise<PlaybackState | null> {
-		const stored = (await this.read(path)).playback;
+		const stored = (await this.loadAfterMoves(path)).playback;
 		return stored ? { ...stored } : null;
 	}
 
@@ -235,7 +276,9 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getTranscript(path: string): Promise<TranscriptSection> {
-		return cloneTranscriptSection((await this.read(path)).transcript);
+		return cloneTranscriptSection(
+			(await this.loadAfterMoves(path)).transcript,
+		);
 	}
 
 	/**
@@ -401,18 +444,25 @@ export class RecordingSidecarStore {
 	 * path at once, and again inside the queued task, adopting any state a
 	 * mutation queued before this rename re-established under the old path -
 	 * without that, the new path would keep serving a pre-mutation snapshot.
+	 *
+	 * The file is moved with `Vault.rename`, not `FileManager.renameFile`:
+	 * the latter exists to rewrite the links pointing at a file, and nothing
+	 * links to a sidecar - the notes link to the recording, whose own rename
+	 * already updated them - so it would only scan the link graph for
+	 * nothing. The rename event the vault fires for the sidecar reaches the
+	 * output-rename hook, which ignores sidecar paths.
 	 * @param oldPath - Previous recording path
 	 * @param newPath - New recording path
 	 */
 	async handleRename(oldPath: string, newPath: string): Promise<void> {
 		this.moveCacheEntry(oldPath, newPath);
+		const carried = this.cache.get(newPath);
 		const moved = this.enqueue(async () => {
-			const from = this.sidecarPath(oldPath);
-			const to = this.sidecarPath(newPath);
 			try {
-				if (await this.app.vault.adapter.exists(from)) {
-					await this.app.vault.adapter.rename(from, to);
-				}
+				await this.moveSidecarFile(
+					this.sidecarPath(oldPath),
+					this.sidecarPath(newPath),
+				);
 			} catch (error) {
 				console.warn(
 					`${PLUGIN_LOG_PREFIX} Failed to move sidecar ${oldPath} -> ${newPath}:`,
@@ -423,8 +473,18 @@ export class RecordingSidecarStore {
 			// re-cached (and updated) the document there; its write also
 			// preceded the rename above, so the moved file carries it. Adopt
 			// that newest state so the new path never serves a stale copy and
-			// no zombie entry lingers under the old path.
-			this.moveCacheEntry(oldPath, newPath);
+			// no zombie entry lingers under the old path. A document cached
+			// under the new path that is not the one carried over was read
+			// while the file was still on its way - as absent, or as the
+			// orphan the move just replaced - so it is dropped too, and the
+			// next read sees the file that is there now.
+			if (
+				this.cache.has(oldPath) ||
+				this.corruptPaths.has(oldPath) ||
+				this.cache.get(newPath) !== carried
+			) {
+				this.moveCacheEntry(oldPath, newPath);
+			}
 			// Only this move's own entry: a later move to the same path may
 			// have replaced it, and that one is still to run.
 			if (this.pendingMoves.get(newPath) === moved) {
@@ -436,22 +496,30 @@ export class RecordingSidecarStore {
 	}
 
 	/**
-	 * Removes a recording's sidecar when the recording is deleted, so no
-	 * orphan sidecar is left behind. The cache is evicted twice: synchronously
-	 * for immediate readers, and again inside the queued task, purging any
-	 * entry a mutation queued before this delete re-established - without
-	 * that, a recording re-created at this path would resurrect the dead
-	 * document.
+	 * Sends a recording's sidecar to the trash when the recording is deleted,
+	 * so no orphan sidecar is left behind. `FileManager.trashFile` follows
+	 * the user's "Deleted files" preference, exactly as the deletion of the
+	 * recording itself did, so a recording restored from the system or the
+	 * Obsidian trash can be restored together with its markers and
+	 * transcript data instead of coming back without them. The cache is
+	 * evicted twice: synchronously for immediate readers, and again inside
+	 * the queued task, purging any entry a mutation queued before this
+	 * delete re-established - without that, a recording re-created at this
+	 * path would resurrect the dead document.
+	 *
+	 * Only a sidecar the vault index lists is trashed (see
+	 * {@link moveSidecarFile} for why the adapter is not consulted here).
 	 * @param path - Deleted recording path
 	 */
 	async handleDelete(path: string): Promise<void> {
-		this.cache.delete(path);
-		this.corruptPaths.delete(path);
+		this.forget(path);
 		return this.enqueue(async () => {
-			const sidecar = this.sidecarPath(path);
+			const sidecar = this.app.vault.getFileByPath(
+				this.sidecarPath(path),
+			);
 			try {
-				if (await this.app.vault.adapter.exists(sidecar)) {
-					await this.app.vault.adapter.remove(sidecar);
+				if (sidecar) {
+					await this.app.fileManager.trashFile(sidecar);
 				}
 			} catch (error) {
 				console.warn(
@@ -462,8 +530,7 @@ export class RecordingSidecarStore {
 			// Purge both again: a mutation queued before this delete may have
 			// re-established either (the corrupt flag included - its load of
 			// the now-deleted path can have failed and re-flagged it).
-			this.cache.delete(path);
-			this.corruptPaths.delete(path);
+			this.forget(path);
 		});
 	}
 
@@ -525,11 +592,22 @@ export class RecordingSidecarStore {
 	}
 
 	/**
-	 * Subscribes to changes of any recording's document. The store writes
-	 * through the adapter, which raises no vault event, so a reader that
-	 * shows sidecar data - the recording panel - learns of a new transcript,
-	 * a renamed speaker, or a new chapter only from here. Renames and deletes
-	 * of the recording itself are not announced: they are vault events, and a
+	 * Drops the in-memory cache so later reads re-read from disk. Used when
+	 * the feature is torn down.
+	 */
+	clearCache(): void {
+		this.cache.clear();
+		this.corruptPaths.clear();
+	}
+
+	/**
+	 * Subscribes to changes of any recording's document. The vault does
+	 * raise events for the sidecar file, but under the sidecar's own path
+	 * and only once the write has landed, so a reader that shows sidecar
+	 * data - the recording panel - learns of a new transcript, a renamed
+	 * speaker, or a new chapter from here, under the recording's path, as
+	 * soon as the cached document changes. Renames and deletes of the
+	 * recording itself are not announced: they are vault events, and a
 	 * reader hears of them there. Neither is a playback position, which no
 	 * reader shows.
 	 * @param listener - Called with the recording path after each change
@@ -543,18 +621,9 @@ export class RecordingSidecarStore {
 	}
 
 	/**
-	 * Drops the in-memory cache so later reads re-read from disk. Used when
-	 * the feature is torn down.
-	 */
-	clearCache(): void {
-		this.cache.clear();
-		this.corruptPaths.clear();
-	}
-
-	/**
 	 * Every recording in the vault that has a sidecar, with the document it
 	 * holds. One pass over the vault's files, and each sidecar is parsed and
-	 * cached at most once through {@link read} - a later call finds them all
+	 * cached at most once through {@link loadAfterMoves} - a later call finds them all
 	 * cached and touches the disk not at all. The reads run concurrently
 	 * rather than one await at a time, which is what keeps a vault with
 	 * hundreds of recordings from paying hundreds of serialized round-trips.
@@ -574,7 +643,7 @@ export class RecordingSidecarStore {
 		return Promise.all(
 			recordings.map(async (path) => ({
 				path,
-				sidecar: await this.read(path),
+				sidecar: await this.loadAfterMoves(path),
 			})),
 		);
 	}
@@ -606,23 +675,65 @@ export class RecordingSidecarStore {
 	}
 
 	/**
-	 * Moves the cache entry (and the corrupt flag) from one recording path to
-	 * another, keeping whichever document is newest under the old path. The
-	 * invariant "a cached document is never flagged corrupt" is preserved: a
-	 * document moved into place is authoritative for its new path, and the
-	 * flag is only carried over when the new path holds no document (a stray
-	 * flag next to a valid cache entry would silently drop every write).
+	 * Hands the state held under one recording path - the cached document or
+	 * the corrupt flag - over to another, replacing whatever the new path
+	 * held. What was cached under the new path describes the file that used
+	 * to live there, not the one the rename puts in its place, so it never
+	 * survives the move. The invariant "a cached document is never flagged
+	 * corrupt" is preserved, since at most one of the two is carried over (a
+	 * stray flag next to a valid cache entry would silently drop every
+	 * write).
 	 */
 	private moveCacheEntry(oldPath: string, newPath: string): void {
 		const cached = this.cache.get(oldPath);
-		this.cache.delete(oldPath);
-		const wasCorrupt = this.corruptPaths.delete(oldPath);
+		const wasCorrupt = this.corruptPaths.has(oldPath);
+		this.forget(oldPath);
+		this.forget(newPath);
 		if (cached) {
 			this.cache.set(newPath, cached);
-			this.corruptPaths.delete(newPath);
-		} else if (wasCorrupt && !this.cache.has(newPath)) {
+		} else if (wasCorrupt) {
 			this.corruptPaths.add(newPath);
 		}
+	}
+
+	/** Drops everything the store holds for a recording path. */
+	private forget(path: string): void {
+		this.cache.delete(path);
+		this.corruptPaths.delete(path);
+	}
+
+	/**
+	 * Moves a sidecar file to follow its recording.
+	 *
+	 * Only a file the vault index lists is moved. This runs in answer to a
+	 * vault event about the recording, and the vault only fires those for
+	 * files it has indexed, so a sidecar it does not list at that moment is
+	 * one it has already carried along - a renamed or trashed folder moves
+	 * its children and fires an event for each - or is about to. Moving it
+	 * through the adapter as well would race the vault's own move, while
+	 * leaving it alone loses nothing.
+	 *
+	 * A file already sitting at the destination cannot belong to the
+	 * recording, which did not exist under that name until now: it is an
+	 * orphan, left by a recording deleted outside Obsidian. It goes to the
+	 * trash rather than blocking the move, so the recording keeps its own
+	 * data and the orphan can still be recovered.
+	 * @param from - Current sidecar path
+	 * @param to - Sidecar path of the renamed recording
+	 */
+	private async moveSidecarFile(from: string, to: string): Promise<void> {
+		const { vault } = this.app;
+		const file = vault.getFileByPath(from);
+		if (!file) {
+			return;
+		}
+		const occupant = vault.getFileByPath(to);
+		// The same file can answer for both paths on a case-insensitive
+		// file system, when the rename only changed the case.
+		if (occupant && occupant !== file) {
+			await this.app.fileManager.trashFile(occupant);
+		}
+		await vault.rename(file, to);
 	}
 
 	/**
@@ -640,7 +751,7 @@ export class RecordingSidecarStore {
 	 * queued before them, and one queued before a move must not wait on it.
 	 * @param path - Vault-relative recording path
 	 */
-	private async read(path: string): Promise<RecordingSidecar> {
+	private async loadAfterMoves(path: string): Promise<RecordingSidecar> {
 		const move = this.pendingMoves.get(path);
 		if (move && !this.cache.has(path)) {
 			await move;
@@ -649,14 +760,43 @@ export class RecordingSidecarStore {
 	}
 
 	/**
+	 * Finds a sidecar file: the vault's own file when the index lists it,
+	 * {@link UNINDEXED} when only the disk has it, or null when there is none.
+	 * The disk is asked only after the index came up empty, so a sidecar the
+	 * vault knows costs no I/O to find.
+	 * @param filePath - Vault-relative sidecar path
+	 */
+	private async locate(filePath: string): Promise<LocatedSidecar> {
+		const file = this.app.vault.getFileByPath(filePath);
+		if (file) {
+			return file;
+		}
+		return (await this.app.vault.adapter.exists(filePath))
+			? UNINDEXED
+			: null;
+	}
+
+	/**
 	 * Returns the cached document for a path, reading and parsing it on the
-	 * first access. A missing file maps to an empty document. A file that
-	 * exists but cannot be read maps to an empty document too, but is NOT
-	 * cached and flags the path corrupt, so every later access retries the
-	 * read and mutations refuse to overwrite the possibly intact file.
+	 * first access. A missing file maps to an empty document, and so does a
+	 * file that exists but cannot be read (see {@link tryLoad}).
 	 * @param path - Vault-relative recording path
 	 */
 	private async load(path: string): Promise<RecordingSidecar> {
+		return (await this.tryLoad(path)) ?? emptyRecordingSidecar();
+	}
+
+	/**
+	 * Returns the cached document for a path, reading and parsing it on the
+	 * first access. A missing file maps to an empty document. A file that
+	 * exists but cannot be read maps to null, is NOT cached and flags the
+	 * path corrupt, so every later access retries the read and mutations
+	 * refuse to overwrite the possibly intact file. Answering null rather
+	 * than leaving the caller to consult the flag keeps the verdict tied to
+	 * this read: a concurrent load finishing in between cannot clear it.
+	 * @param path - Vault-relative recording path
+	 */
+	private async tryLoad(path: string): Promise<RecordingSidecar | null> {
 		const cached = this.cache.get(path);
 		if (cached) {
 			// A cached document is authoritative, so any corrupt flag next to
@@ -665,12 +805,44 @@ export class RecordingSidecarStore {
 			this.corruptPaths.delete(path);
 			return cached;
 		}
-		const file = this.sidecarPath(path);
+		return this.read(path, false);
+	}
+
+	/**
+	 * Reads a sidecar file and caches its document.
+	 *
+	 * The text comes from `Vault.cachedRead`. The vault refreshes that cache
+	 * whenever it learns of a change to the file - its own writes, and the
+	 * modify events its watcher raises for an edit made by sync or another
+	 * program - so the only content it can miss is a change the vault has
+	 * not been told about yet, a window of milliseconds. `Vault.read` would
+	 * close that window and nothing more: once read, the document is cached
+	 * for the session and stays authoritative over the file, which is what
+	 * lets queued mutations and readers share one object. A file that is
+	 * unreadable mid-sync is flagged corrupt and re-read on every access, and
+	 * by the time sync has finished writing it the vault has refreshed it.
+	 * @param path - Vault-relative recording path
+	 * @param replace - Whether the document read replaces one already cached
+	 *   (a mutation re-reading a file that appeared under a document no file
+	 *   stood behind), instead of yielding to it (a concurrent first load)
+	 * @returns The document, or null when the file exists but cannot be read
+	 */
+	private async read(
+		path: string,
+		replace: boolean,
+	): Promise<RecordingSidecar | null> {
+		const filePath = this.sidecarPath(path);
 		let sidecar = emptyRecordingSidecar();
+		let backed = false;
 		try {
-			if (await this.app.vault.adapter.exists(file)) {
-				const raw = await this.app.vault.adapter.read(file);
+			const located = await this.locate(filePath);
+			if (located !== null) {
+				const raw =
+					located === UNINDEXED
+						? await this.app.vault.adapter.read(filePath)
+						: await this.app.vault.cachedRead(located);
 				sidecar = parseRecordingSidecar(JSON.parse(raw));
+				backed = true;
 			}
 		} catch (error) {
 			// A concurrent load may have read the file successfully while
@@ -678,22 +850,29 @@ export class RecordingSidecarStore {
 			// its cached document wins and the path must not be flagged, or
 			// every later write would be dropped despite valid cached data.
 			const raced = this.cache.get(path);
-			if (raced) {
+			if (raced && !replace) {
 				return raced;
 			}
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Sidecar for ${path} exists but could not be read; treating as empty and protecting the file from writes:`,
 				error,
 			);
+			// A replacing read drops the document it was meant to replace:
+			// that one was built without the file, which now exists and has
+			// to be protected like any other unreadable sidecar.
+			this.cache.delete(path);
 			this.corruptPaths.add(path);
-			return emptyRecordingSidecar();
+			return null;
 		}
 		this.corruptPaths.delete(path);
 		// A concurrent load may have cached the document first; keep the
 		// existing instance so queued mutations and readers share one object.
 		const raced = this.cache.get(path);
-		if (raced) {
+		if (raced && !replace) {
 			return raced;
+		}
+		if (!backed) {
+			this.unbacked.add(sidecar);
 		}
 		this.cache.set(path, sidecar);
 		return sidecar;
@@ -710,6 +889,12 @@ export class RecordingSidecarStore {
 	 * let callers present unsaved state as saved. (A failed disk write after
 	 * a successful mutation only warns - the cache did change, so reads stay
 	 * consistent and the next write retries the file.)
+	 *
+	 * When a file turns up under a document no file stood behind, nothing is
+	 * written: the document is dropped, the file is read in its place, and
+	 * the change is applied again to what the file holds. A change only reads
+	 * and edits the document it is handed, so running it a second time on
+	 * another document is safe, where writing the first one would not be.
 	 * @param path - Vault-relative recording path
 	 * @param change - Mutation applied to the cached document; return false
 	 *   to signal nothing changed
@@ -722,38 +907,37 @@ export class RecordingSidecarStore {
 	): Promise<void> {
 		let blocked = false;
 		await this.enqueue(async () => {
-			const sidecar = await this.load(path);
-			if (this.corruptPaths.has(path)) {
-				blocked = true;
-				return;
-			}
-			if (change(sidecar) === false) {
-				return;
-			}
-			// After the cached document changed rather than after the write:
-			// reads answer from the cache, so a listener re-reading now sees
-			// the change even when the disk write below fails.
-			if (announce) {
-				this.notify(path);
-			}
-			const file = this.sidecarPath(path);
-			try {
-				if (isSidecarEmpty(sidecar)) {
-					if (await this.app.vault.adapter.exists(file)) {
-						await this.app.vault.adapter.remove(file);
-					}
+			let sidecar = await this.tryLoad(path);
+			for (let attempt = 1; sidecar; attempt++) {
+				if (change(sidecar) === false) {
 					return;
 				}
-				await this.app.vault.adapter.write(
-					file,
-					JSON.stringify(serializeRecordingSidecar(sidecar)),
-				);
-			} catch (error) {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Failed to write sidecar for ${path}:`,
-					error,
-				);
+				// After the cached document changed rather than after the
+				// write: reads answer from the cache, so a listener re-reading
+				// now sees the change even when the disk write below fails.
+				if (announce) {
+					this.notify(path);
+				}
+				try {
+					if (await this.persist(path, sidecar)) {
+						return;
+					}
+				} catch (error) {
+					console.warn(
+						`${PLUGIN_LOG_PREFIX} Failed to write sidecar for ${path}:`,
+						error,
+					);
+					return;
+				}
+				if (attempt === MAX_WRITE_ATTEMPTS) {
+					console.warn(
+						`${PLUGIN_LOG_PREFIX} Gave up writing the sidecar for ${path}: a file kept appearing at its path while the store wrote it.`,
+					);
+					return;
+				}
+				sidecar = await this.read(path, true);
 			}
+			blocked = true;
 		});
 		// Thrown outside the queued task, so the write chain itself stays
 		// alive while the caller receives the rejection.
@@ -783,6 +967,119 @@ export class RecordingSidecarStore {
 				);
 			}
 		}
+	}
+
+	/**
+	 * Puts a document on disk, or removes its file once the document holds
+	 * nothing worth keeping.
+	 * @param path - Vault-relative recording path
+	 * @param sidecar - The cached document to persist
+	 * @returns false when a file turned up at the sidecar path while no file
+	 *   stood behind the document: nothing was written, and the caller has
+	 *   to read that file before writing anything over it
+	 */
+	private async persist(
+		path: string,
+		sidecar: RecordingSidecar,
+	): Promise<boolean> {
+		const filePath = this.sidecarPath(path);
+		if (isSidecarEmpty(sidecar)) {
+			return this.removeFile(filePath, sidecar);
+		}
+		return this.writeFile(
+			filePath,
+			sidecar,
+			JSON.stringify(serializeRecordingSidecar(sidecar)),
+		);
+	}
+
+	/**
+	 * Writes a document through the vault: `Vault.modify` for a file the
+	 * vault lists, `Vault.create` for a new one. A read-modify-write through
+	 * `Vault.process` would not fit, because the base of every mutation is
+	 * the cached document rather than the file's text - that is what keeps a
+	 * marker edit and a transcript write from clobbering each other - so the
+	 * text it hands over would only be thrown away.
+	 *
+	 * `Vault.create` refuses a path that is taken, and one can be taken by
+	 * the time it runs even though the lookup just found nothing: sync can
+	 * deliver the file in between, and early in startup the file can exist
+	 * on disk before the index lists it. What happens then depends on what
+	 * the document is. One no file stood behind was built without the file
+	 * that appeared, so writing it would erase that file; it is handed back
+	 * to be re-read. One read from a file is the store's own state for that
+	 * file and simply replaces it, through the vault when the index has
+	 * caught up and through the adapter while it has not.
+	 * @returns false when a file appeared under a document no file stood behind
+	 */
+	private async writeFile(
+		filePath: string,
+		sidecar: RecordingSidecar,
+		data: string,
+	): Promise<boolean> {
+		const { vault } = this.app;
+		const unbacked = this.unbacked.has(sidecar);
+		const existing = vault.getFileByPath(filePath);
+		if (existing) {
+			if (unbacked) {
+				return false;
+			}
+			await vault.modify(existing, data);
+		} else {
+			try {
+				await vault.create(filePath, data);
+			} catch (error) {
+				const located = await this.locate(filePath);
+				if (located === null) {
+					throw error;
+				}
+				if (unbacked) {
+					return false;
+				}
+				await (located === UNINDEXED
+					? vault.adapter.write(filePath, data)
+					: vault.modify(located, data));
+			}
+		}
+		this.unbacked.delete(sidecar);
+		return true;
+	}
+
+	/**
+	 * Removes the file of a document that became empty because the user
+	 * cleared the last thing in it, with `Vault.delete` rather than
+	 * `FileManager.trashFile`. This is the store tidying its own data, not a
+	 * user deleting a file: what the user removed was a marker, a position or
+	 * a record, each through its own control, and the file only goes because
+	 * nothing is left to keep in it. It happens routinely - a sidecar holding
+	 * only a playback position is emptied every time a recording is heard to
+	 * the end - so trashing it would leave a stray JSON file in the user's
+	 * trash after every finished listen. The vault still fires its delete
+	 * event, which is what takes the recording out of the marker search.
+	 * The obsidianmd `prefer-file-manager-trash-file` lint warning on the call
+	 * is expected: the rule's config forbids silencing it inline, and the
+	 * advice it gives is right for a file the user deletes, which this is not.
+	 *
+	 * A file that turned up under a document no file stood behind is left
+	 * alone, for the same reason {@link writeFile} will not overwrite it: the
+	 * store has not read it, so it cannot know the file is empty too.
+	 * @returns false when a file appeared under a document no file stood behind
+	 */
+	private async removeFile(
+		filePath: string,
+		sidecar: RecordingSidecar,
+	): Promise<boolean> {
+		const located = await this.locate(filePath);
+		if (located !== null) {
+			if (this.unbacked.has(sidecar)) {
+				return false;
+			}
+			await (located === UNINDEXED
+				? this.app.vault.adapter.remove(filePath)
+				: this.app.vault.delete(located));
+		}
+		this.unbacked.add(sidecar);
+		return true;
 	}
 
 	/**
