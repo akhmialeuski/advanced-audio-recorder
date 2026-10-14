@@ -7,8 +7,8 @@
  */
 
 import { App, Notice, TFile } from 'obsidian';
-import { ALL_FORMATS, BufferSource, Input, UrlSource } from 'mediabunny';
-import type { InputAudioTrack, Source } from 'mediabunny';
+import { BufferSource } from 'mediabunny';
+import type { Input, InputAudioTrack } from 'mediabunny';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	audioMimeForExtension,
@@ -22,7 +22,8 @@ import {
 } from './mediaDuration';
 import { formatByteSize } from './formatBytes';
 import { formatTimecode } from './TimeUtils';
-import { autoClosing, disposableOf } from './disposables';
+import { autoClosing } from './disposables';
+import { resourceSource, withMediaInput } from '../audio/mediaInput';
 
 /**
  * Represents detailed information about an audio file.
@@ -270,7 +271,7 @@ async function probeAtAddress<T extends ProbedAudioMetadata>(
 	read: (input: Input) => Promise<T | null>,
 ): Promise<{ url: string; metadata: T | null }> {
 	const url = app.vault.getResourcePath(file);
-	const ranged = await withInput(new UrlSource(url), read);
+	const ranged = await withMediaInput(resourceSource(url), read);
 	return {
 		url,
 		metadata: ranged
@@ -364,7 +365,7 @@ async function readBytes<T extends ProbedAudioMetadata>(
 	parse: (input: Input) => Promise<T | null>,
 	fromDecode: (decoded: ProbedAudioMetadata) => T,
 ): Promise<T | null> {
-	const probed = await withInput(new BufferSource(data), parse);
+	const probed = await withMediaInput(new BufferSource(data), parse);
 	if (probed) {
 		return await withReadDuration(probed, () =>
 			probeBlobDurationSeconds(
@@ -392,24 +393,6 @@ function extensionOf(path: string): string {
 }
 
 /**
- * Opens a container over a source and reads it, releasing the input however
- * the read ends. The source is either the resource URL, read by range so only
- * the header and index are fetched, or bytes already in memory.
- * @param source - Where the bytes come from
- * @param read - What to read from the opened container
- * @returns What the read returned
- */
-async function withInput<T>(
-	source: Source,
-	read: (input: Input) => Promise<T>,
-): Promise<T> {
-	using input = disposableOf(new Input({ source, formats: ALL_FORMATS }));
-	// Awaited, never returned: see openPrimaryTrack on what disposal does to
-	// a read still in flight.
-	return await read(input);
-}
-
-/**
  * Reads duration, sample rate, and channel count from the container
  * headers via mediabunny - no PCM decode, so the cost stays flat no
  * matter how long the recording is. Returns null when the container
@@ -421,7 +404,7 @@ export async function probeAudioMetadata(
 	data: ArrayBuffer,
 	path: string,
 ): Promise<ProbedAudioMetadata | null> {
-	return await withInput(new BufferSource(data), (input) =>
+	return await withMediaInput(new BufferSource(data), (input) =>
 		readTrackMetadata(input, path),
 	);
 }
@@ -532,12 +515,8 @@ function isUsableRate(bitsPerSecond: number): boolean {
  * probes, which differ only in where their bytes come from - so a container
  * the one can read, the other can too.
  *
- * Every caller awaits this inside the scope that owns the input. A `using`
- * binding disposes at the end of its own scope, and an async function's scope
- * ends the moment it returns a promise rather than when that promise settles,
- * so handing this one back unawaited disposes the input under a read that has
- * only just started. Mediabunny answers such a read with InputDisposedError,
- * and the probe then reports a perfectly readable container as unparseable.
+ * Every caller runs inside withMediaInput, which awaits the read before the
+ * input is disposed; see there for what an unawaited read costs.
  * @param input - An opened mediabunny input
  * @param path - Vault path, for the warning log only
  * @returns The numbers and the track, or null when there is no audio track or

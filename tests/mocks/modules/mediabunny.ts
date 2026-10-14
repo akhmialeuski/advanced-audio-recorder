@@ -44,13 +44,20 @@ export const inputDispose = jest.fn();
 export const getMimeType = jest.fn();
 
 /**
- * Each input remembers its own disposal and hands itself to the track spy, so
- * a suite can answer a read the way mediabunny does once the input is gone.
+ * `Input.getVideoTracks`; resolve it with the list the container carries, an
+ * empty one for an audio-only file. Handed the input, like the audio spy.
+ */
+export const getVideoTracks = jest.fn();
+
+/**
+ * Each input remembers its own disposal and hands itself to the track spies,
+ * so a suite can answer a read the way mediabunny does once the input is gone.
  */
 export const Input = jest.fn().mockImplementation(() => {
 	const input = {
 		disposed: false,
 		getPrimaryAudioTrack: (): unknown => getPrimaryAudioTrack(input),
+		getVideoTracks: (): unknown => getVideoTracks(input),
 		computeDuration: (): unknown => computeDuration(),
 		getMimeType: (): unknown => getMimeType(),
 		dispose: (): void => {
@@ -68,6 +75,22 @@ export const BlobSource = jest.fn();
 /** The sources a probe reads: bytes already in memory, or a URL read by range. */
 export const BufferSource = jest.fn();
 export const UrlSource = jest.fn();
+
+/** The options of a `UrlSource` a suite reads back. */
+export interface UrlSourceOptionsDouble {
+	getRetryDelay?: (previousAttempts: number) => number | null;
+}
+
+/**
+ * The options the first `UrlSource` was built with, which say how the reader
+ * asked for its bytes: mediabunny keeps them private, so the call is the only
+ * place they can be read.
+ * @returns The options, or an empty object when none were passed
+ */
+export function firstUrlSourceOptions(): UrlSourceOptionsDouble {
+	const [call] = UrlSource.mock.calls as [string, UrlSourceOptionsDouble?][];
+	return call?.[1] ?? {};
+}
 
 export const BufferTarget = jest.fn().mockImplementation(() => ({
 	buffer: convertedBuffer,

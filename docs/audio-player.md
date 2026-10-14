@@ -348,6 +348,8 @@ The enhanced player takes over **audio-only** files. Other media is left to Obsi
 
 Crucially, the media kind is classified from the file's **container metadata, not its extension**. Each file is probed once and cached. This means an **audio-only `.mp4` or `.webm`** recording still gets the enhanced player, even though those containers can also hold video. A file that has not been probed yet renders natively for a moment and is then upgraded to the enhanced player in place once the probe confirms it is audio-only.
 
+The probe reads the container's list of tracks from its headers, fetching only the part of the file that holds them, so the answer arrives without loading a decoder and does not depend on how quickly the file starts to play. A file whose headers the plugin cannot read, or whose audio type the app does not say it plays, is instead loaded into a hidden media element, which tries the file for real: a load error means the app cannot play it. Only if that too gives no answer within four seconds is the file treated as audio for the current session, without remembering that guess for the next one.
+
 The waveform is drawn for supported audio files up to the decode ceiling of **1 GB** on the desktop and **256 MB** in the mobile app. A larger or undecodable file falls back to the plain (still seekable) bar, as described under [Waveform seek bar](#waveform-seek-bar).
 
 ---

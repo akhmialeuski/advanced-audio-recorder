@@ -15,6 +15,7 @@ import type { TFile } from 'obsidian';
 import { createFile } from '../helpers/createApp';
 import {
 	computeDuration as mockComputeDuration,
+	firstUrlSourceOptions,
 	getMimeType as mockGetMimeType,
 	getPrimaryAudioTrack as mockGetPrimaryAudioTrack,
 	inputDispose as mockDispose,
@@ -193,8 +194,24 @@ describe('getAudioFileInfo', () => {
 		const { UrlSource } = jest.requireMock<{ UrlSource: jest.Mock }>(
 			'mediabunny',
 		);
-		expect(UrlSource).toHaveBeenCalledWith('app://vault/test.webm');
+		expect(UrlSource).toHaveBeenCalledWith(
+			'app://vault/test.webm',
+			expect.anything(),
+		);
 		expect(app.vault.readBinary).not.toHaveBeenCalled();
+	});
+
+	it('gives up on a failed request instead of retrying it', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue(parsedTrack());
+		mockComputeDuration.mockResolvedValue(90);
+
+		await getAudioFileInfo(app, file);
+
+		// Mediabunny's default retries a rejected fetch forever unless it
+		// suspects a cross-origin refusal, and the mobile WebView serves the
+		// vault from its own origin: the dialog waited on a file that would
+		// never answer. No retry hands the failure to the buffered read.
+		expect(firstUrlSourceOptions().getRetryDelay?.(1)).toBeNull();
 	});
 
 	it('falls back to the whole-file read when the ranged probe cannot parse', async () => {
