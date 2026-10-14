@@ -24,7 +24,6 @@ import {
 	PLAYER_PLAYBACK_RATE_PRESETS,
 	PLAYER_LOOP,
 	PLAYER_PLAYBACK_RATE,
-	PLAYER_ATTACH_WAIT_FRAMES,
 } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
 import { playbackProgress } from './playbackProgress';
@@ -861,8 +860,15 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	/**
 	 * Runs the callback once the embed is attached to the document (the
 	 * embed-registry path renders while still detached), so DOM-context
-	 * checks like the editor-mode probe are reliable. Gives up after a
-	 * short budget, leaving the editable default untouched.
+	 * checks like the editor-mode probe are reliable. Until then the
+	 * editable default stays untouched.
+	 *
+	 * Obsidian's own insertion signal does the waiting. It used to be a poll
+	 * over animation frames of the main window, which gave up after a budget
+	 * and stalled altogether for an embed in a pop-out while the main window
+	 * was hidden, since a hidden window runs no frames. The signal costs
+	 * nothing while it waits, so it needs no budget, and it is removed with
+	 * the render pass on a re-render or unload.
 	 * @param run - Callback to run once attached
 	 */
 	private whenAttached(run: () => void): void {
@@ -870,27 +876,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			run();
 			return;
 		}
-		let attempts = PLAYER_ATTACH_WAIT_FRAMES;
-		let rafId = 0;
-		const tick = (): void => {
-			if (this.unloaded) {
-				return;
-			}
-			if (this.containerEl.isConnected) {
-				run();
-				return;
-			}
-			if (attempts-- <= 0) {
-				return;
-			}
-			rafId = window.requestAnimationFrame(tick);
-		};
-		rafId = window.requestAnimationFrame(tick);
-		// Cancel outright on re-render/unload instead of relying on the
-		// unloaded flag alone to fizzle the loop.
-		this.renderScope.register(() => {
-			window.cancelAnimationFrame(rafId);
-		});
+		this.renderScope.register(this.containerEl.onNodeInserted(run, true));
 	}
 
 	/**

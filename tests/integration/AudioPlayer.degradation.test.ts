@@ -14,15 +14,16 @@ import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
-import {
-	PLAYER_ATTACH_WAIT_FRAMES,
-	PLAYER_PLAYBACK_RATE_PRESETS,
-} from 'src/constants';
+import { PLAYER_PLAYBACK_RATE_PRESETS } from 'src/constants';
 import { App as ObsidianApp, Modal } from 'obsidian';
 import { at } from '../helpers/assertions';
 import { PLAYER } from '../helpers/selectors';
-import { tick } from '../helpers/async';
-import { menuInstances, noticeMessages } from '../mocks/obsidian';
+import { flushMicrotasks, tick } from '../helpers/async';
+import {
+	addObsidianDomExtensions,
+	menuInstances,
+	noticeMessages,
+} from '../mocks/obsidian';
 import type { Menu as MockMenu } from '../mocks/obsidian';
 import {
 	app,
@@ -67,6 +68,7 @@ interface PlayerInternals {
 	copyTimestampLink: (time?: number) => Promise<void>;
 	whenEmbedReady: (run: () => void) => void;
 	isEmbedLoaded: () => boolean;
+	applyMode: () => void;
 }
 
 /**
@@ -231,29 +233,16 @@ describe('waiting for Obsidian to populate the embed', () => {
 
 // The embed registry renders a player before Obsidian has put the embed in
 // the document, and "is this Live Preview or Reading view" cannot be told
-// from a detached element. The mode is therefore resolved on the first frame
-// where the container is attached - or not at all.
+// from a detached element. The mode is therefore resolved once Obsidian
+// reports the container inserted - or not at all.
 describe('waiting for the embed to be attached to the document', () => {
+	afterEach(() => {
+		document.body.innerHTML = '';
+	});
+
 	/** A container built outside the document, as the registry renders into. */
 	function detachedContainer(): HTMLElement {
 		return new Modal(new ObsidianApp()).contentEl.createDiv();
-	}
-
-	/** Takes over requestAnimationFrame so a test can step frame by frame. */
-	function manualFrames(): { step: () => void; count: () => number } {
-		const pending: FrameRequestCallback[] = [];
-		jest.spyOn(window, 'requestAnimationFrame').mockImplementation(
-			(callback) => {
-				pending.push(callback);
-				return pending.length;
-			},
-		);
-		return {
-			step: () => {
-				pending.shift()?.(0);
-			},
-			count: () => pending.length,
-		};
 	}
 
 	it('resolves the mode at once when the container is already attached', () => {
@@ -264,58 +253,73 @@ describe('waiting for the embed to be attached to the document', () => {
 		expect(container.matches(PLAYER.readonly)).toBe(true);
 	});
 
-	it('holds off while the container is still detached', () => {
-		const frames = manualFrames();
+	it('holds off while the container is still detached', async () => {
 		const container = detachedContainer();
 
 		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
-		frames.step();
+		await flushMicrotasks();
 
 		expect(container.matches(PLAYER.readonly)).toBe(false);
 	});
 
-	it('resolves the mode on the first frame after it is attached', () => {
-		const frames = manualFrames();
+	it('resolves the mode once the container is attached', async () => {
 		const container = detachedContainer();
 		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
 
-		frames.step();
 		document.body.appendChild(container);
-		frames.step();
+		await flushMicrotasks();
 
 		expect(container.matches(PLAYER.readonly)).toBe(true);
 	});
 
-	// A note closed while the embed was still detached leaves a callback
-	// holding the container; it has to fizzle rather than touch it.
-	it('stops waiting when the player unloads first', () => {
-		const frames = manualFrames();
+	// The wait used to poll the main window's animation frames, and a hidden
+	// main window runs none, so an embed opened in a pop-out never learned its
+	// mode. Obsidian's insertion signal comes from the embed's own window.
+	it('resolves the mode in a pop-out while the main window runs no frames', async () => {
+		jest.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
+		const frame = document.body.appendChild(
+			document.createElement('iframe'),
+		);
+		const popoutDoc = frame.contentDocument as Document;
+		const container = addObsidianDomExtensions(
+			popoutDoc.createElement('div'),
+		);
+		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
+
+		popoutDoc.body.appendChild(container);
+		await flushMicrotasks();
+
+		expect(container.matches(PLAYER.readonly)).toBe(true);
+	});
+
+	// A note closed while the embed was still detached must not leave a
+	// listener holding the container; inserted later, it touches nothing.
+	it('stops waiting when the player unloads first', async () => {
 		const container = detachedContainer();
 		const player = makePlayer(container, makeRegistry(makeFakeAudio()));
-		// load(), not onload(): the flag the wait checks is set by a
-		// registration, and unload() only runs those for a component the
-		// framework actually loaded.
 		player.load();
 
 		player.unload();
 		document.body.appendChild(container);
-		frames.step();
+		await flushMicrotasks();
 
 		expect(container.matches(PLAYER.readonly)).toBe(false);
 	});
 
-	// An embed that never attaches must not keep a frame callback alive for
-	// the life of the note.
-	it('gives up after a bounded number of frames', () => {
-		const frames = manualFrames();
+	// Each render waits on its own, and a re-render while still detached
+	// must hand the wait over rather than add a second one beside it.
+	it('resolves the mode once however many renders waited for it', async () => {
 		const container = detachedContainer();
-		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
+		const player = makePlayer(container, makeRegistry(makeFakeAudio()));
+		player.onload();
+		player.applySettings({ ...PLAIN, skipSeconds: 5 });
+		player.applySettings({ ...PLAIN, skipSeconds: 15 });
+		const applyMode = jest.spyOn(internals(player), 'applyMode');
 
-		for (let i = 0; i <= PLAYER_ATTACH_WAIT_FRAMES; i++) {
-			frames.step();
-		}
+		document.body.appendChild(container);
+		await flushMicrotasks();
 
-		expect(frames.count()).toBe(0);
+		expect(applyMode).toHaveBeenCalledTimes(1);
 	});
 });
 
