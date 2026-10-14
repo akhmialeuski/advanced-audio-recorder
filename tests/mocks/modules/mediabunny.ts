@@ -38,6 +38,12 @@ export const computeDuration = jest.fn();
 export const inputDispose = jest.fn();
 
 /**
+ * `Input.getMimeType`; resolve it with the full type the container reports,
+ * codec parameters included, as mediabunny does.
+ */
+export const getMimeType = jest.fn();
+
+/**
  * Each input remembers its own disposal and hands itself to the track spy, so
  * a suite can answer a read the way mediabunny does once the input is gone.
  */
@@ -46,6 +52,7 @@ export const Input = jest.fn().mockImplementation(() => {
 		disposed: false,
 		getPrimaryAudioTrack: (): unknown => getPrimaryAudioTrack(input),
 		computeDuration: (): unknown => computeDuration(),
+		getMimeType: (): unknown => getMimeType(),
 		dispose: (): void => {
 			input.disposed = true;
 			inputDispose();

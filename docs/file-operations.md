@@ -60,9 +60,9 @@ The modal lists the following fields:
 | **File Name**        | The file name with its extension.                                                                                | `recording.webm` |
 | **File Size**        | On-disk size, formatted (Bytes / KB / MB / GB).                                                                  | `4.2 MB`         |
 | **Duration**         | Length as `m:ss`, or `h:mm:ss` once the recording passes an hour, or `unknown` when no reader could produce one. | `12:34`          |
-| **Container Format** | The container's MIME type, inferred from the extension.                                                          | `audio/webm`     |
-| **Audio Codec**      | The likely codec, inferred from the extension.                                                                   | `opus`           |
-| **Bitrate**          | Average bitrate computed from file size and duration, or `unknown` without a duration.                           | `128 kbps`       |
+| **Container Format** | The container's MIME type, as its headers name it.                                                               | `audio/webm`     |
+| **Audio Codec**      | The codec of the audio track, as its headers name it.                                                            | `opus`           |
+| **Bitrate**          | The audio's own average bitrate, or `unknown` when neither the file nor its length gives one.                    | `128 kbps`       |
 | **Sample Rate**      | The sample rate in hertz.                                                                                        | `48000 Hz`       |
 | **Channels**         | Channel count with a label (`1 (Mono)`, `2 (Stereo)`).                                                           | `2 (Stereo)`     |
 
@@ -71,8 +71,8 @@ A few notes on how these values are derived:
 - **Duration**, **Sample Rate**, and **Channels** are read from the container's own headers, which costs nothing no matter how long the recording is. Only a container the plugin cannot parse at all falls back to decoding the audio with the browser's audio engine.
 - **Duration** has one extra step behind it, because a recorder streaming into a container writes no length into a segment it has not finished, which is what the plugin's own recordings look like until they are closed. When the headers carry no length, the plugin asks the browser to read the file the way the player does and report the length it finds, so a live-written recording still shows its real duration.
 - **Duration** and **Bitrate** read `unknown` when none of those steps could produce a length. That is deliberate: a recording whose length was never read is not a recording that lasts no time, so the modal says nothing rather than showing a `0:00` that looks like a measurement.
-- **Bitrate** is a calculated average (`file size × 8 ÷ duration`), not a value read from the container header. For variable-bitrate files it is an approximation.
-- **Container Format** and **Audio Codec** are inferred from the file extension, not parsed from the bytes. The codec mapping is: `webm` > `opus`, `ogg` > `opus/vorbis`, `mp4`/`m4a`/`aac` > `aac`, `mp3` > `mp3`, `wav` > `pcm`, `flac` > `flac`.
+- **Bitrate** is the bitrate of the audio itself, without the container around it or any artwork embedded in it. It is the figure the track declares where the container stores one, which MP4 does, and otherwise it is measured from the sizes of the audio packets, reading their headers only. That measurement covers at most the first thirty thousand packets, about ten minutes of Opus or AAC, so for a longer variable-bitrate recording it is the average of that opening stretch. Where neither is available the modal falls back to the file size divided by the duration.
+- **Container Format** and **Audio Codec** are read from the same headers, so a file whose extension does not match its contents, such as Vorbis in a `.webm` or a renamed file, is described as what it really is. The codec is named the way the plugin's audio library names it, which for WAV also gives the sample width: `pcm-s16`, `pcm-s24`, or `pcm-f32`. Only a file that could be read by decoding alone is described by its extension instead: `webm` > `opus`, `ogg` > `opus/vorbis`, `mp4`/`m4a`/`aac` > `aac`, `mp3` > `mp3`, `wav` > `pcm`, `flac` > `flac`.
 
 If the file cannot be decoded (it is empty, corrupted, or in a container the app cannot read), the plugin shows a notice instead of the modal.
 
