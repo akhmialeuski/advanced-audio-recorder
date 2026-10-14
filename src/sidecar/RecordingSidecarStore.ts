@@ -554,7 +554,7 @@ export class RecordingSidecarStore {
 	/**
 	 * Every recording in the vault that has a sidecar, with the document it
 	 * holds. One pass over the vault's files, and each sidecar is parsed and
-	 * cached at most once through {@link load} - a later call finds them all
+	 * cached at most once through {@link read} - a later call finds them all
 	 * cached and touches the disk not at all. The reads run concurrently
 	 * rather than one await at a time, which is what keeps a vault with
 	 * hundreds of recordings from paying hundreds of serialized round-trips.
@@ -574,7 +574,7 @@ export class RecordingSidecarStore {
 		return Promise.all(
 			recordings.map(async (path) => ({
 				path,
-				sidecar: await this.load(path),
+				sidecar: await this.read(path),
 			})),
 		);
 	}

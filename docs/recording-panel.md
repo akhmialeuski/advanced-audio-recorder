@@ -38,7 +38,7 @@ The template is the one used for the note you are looking at when the transcript
 
 ## Actions and settings
 
-The **Actions** section lists the same actions the file menu offers for the recording: **Audio file info**, **Convert audio format**, **Split audio into parts**, **Clean up audio**, **Transcribe audio**, **Rename speakers**, **Generate chapters from transcript** and the others, each shown under the same settings that gate it in the menu. **Delete recording** is left to the menus. The same list is in the panel's **More options** menu.
+The **Actions** section lists the same actions the file menu offers for the recording: **Audio file info**, **Convert audio format**, **Split audio into parts**, **Clean up audio**, **Transcribe audio**, **Rename speakers**, **Generate chapters from transcript** and the others, each shown under the same settings that gate it in the menu. **Delete recording** is not in the panel body, where it would sit one mis-click away from the action you meant. The panel's **More options** menu lists the same actions with **Delete recording** included, and **Transcribe the parts that failed** is shown only when the last run actually lost parts.
 
 The panel's header has three buttons:
 

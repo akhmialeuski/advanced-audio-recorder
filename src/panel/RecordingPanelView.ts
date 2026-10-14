@@ -255,6 +255,15 @@ export class RecordingPanelView extends ItemView {
 			}),
 		);
 		this.registerEvent(
+			// A link the note already had starts resolving once the file it
+			// names arrives - synced in, or created after the link was typed.
+			metadataCache.on('resolved', () => {
+				if (this.shownNotePath !== '') {
+					void this.refresh();
+				}
+			}),
+		);
+		this.registerEvent(
 			// A recording rewritten in place: its size and length changed.
 			vault.on('modify', (file) => {
 				if (this.shownPaths.has(file.path)) {
@@ -299,10 +308,9 @@ export class RecordingPanelView extends ItemView {
 		if (source === 'more-options' && this.shownFile) {
 			renderActionsIntoMenu(
 				menu,
-				this.availableActions({
-					file: this.shownFile,
-					services: this.host.services,
-				}),
+				// Every file action, delete included: this menu closes like
+				// the file menu, so it is no more a mis-click away here.
+				this.offeredActions(this.host.actions),
 				{ file: this.shownFile, services: this.host.services },
 				new Set(),
 			);
@@ -636,13 +644,12 @@ export class RecordingPanelView extends ItemView {
 					.setIcon(action.icon)
 					.setTooltip(action.title)
 					.onClick(() => {
-						this.runAction(action, context);
+						runActionLogged(action, context, 'the recording panel');
 					}),
 			);
 		}
 	}
 
-	/** Switches for the settings a recording session reaches for most. */
 	/** Sets every drawn switch to the value its setting now holds. */
 	private syncToggles(): void {
 		const settings = this.host.services.getSettings();
@@ -653,6 +660,7 @@ export class RecordingPanelView extends ItemView {
 		}
 	}
 
+	/** Switches for the settings a recording session reaches for most. */
 	private renderQuickSettings(root: HTMLElement): void {
 		new Setting(root).setName('Settings').setHeading();
 		this.toggles.clear();
@@ -667,7 +675,15 @@ export class RecordingPanelView extends ItemView {
 					// Read again rather than captured: settings synced in from
 					// another device replace the object, and a change made to
 					// the old one would be saved nowhere.
-					this.host.services.getSettings()[entry.key] = value;
+					const live = this.host.services.getSettings();
+					// Obsidian also calls this when the switch is set in place
+					// to a value the settings already hold. Saving then would
+					// write a synced data.json straight back to where it came
+					// from, so only the user's own flip is saved.
+					if (live[entry.key] === value) {
+						return;
+					}
+					live[entry.key] = value;
 					await this.host.services
 						.saveSettings()
 						.catch((error: unknown) => {
@@ -723,19 +739,23 @@ export class RecordingPanelView extends ItemView {
 
 	/** The file actions available for a recording, in menu order. */
 	private availableActions(context: FileContext): FileAction[] {
-		return this.panelActions().filter(
-			(action) =>
-				action.isAvailable(context) &&
-				!(
-					action.commandId === COMMAND_IDS.retryFailedParts &&
-					this.failedParts === 0
-				),
+		return this.offeredActions(this.panelActions()).filter((action) =>
+			action.isAvailable(context),
 		);
 	}
 
-	/** Runs one file action, logging a failure it did not report itself. */
-	private runAction(action: FileAction, context: FileContext): void {
-		runActionLogged(action, context, 'the recording panel');
+	/**
+	 * Leaves out the top-up when the recording has no failed parts. The
+	 * menus offer it whatever the count, because their availability is
+	 * decided before anything is read; the panel has read it.
+	 * @param actions - Actions to filter
+	 */
+	private offeredActions(actions: readonly FileAction[]): FileAction[] {
+		return actions.filter(
+			(action) =>
+				action.commandId !== COMMAND_IDS.retryFailedParts ||
+				this.failedParts !== 0,
+		);
 	}
 
 	/**
@@ -755,6 +775,14 @@ export class RecordingPanelView extends ItemView {
 						error,
 					);
 					return null;
+				})
+				.then((read) => {
+					// A failed read may be a passing one - a file synced in a
+					// moment ago - so the next redraw asks again.
+					if (read === null && this.duration?.key === key) {
+						this.duration = null;
+					}
+					return read;
 				});
 			this.duration = { key, seconds };
 		}

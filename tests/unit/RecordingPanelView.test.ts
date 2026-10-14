@@ -17,7 +17,7 @@ import type {
 	FileAction,
 	FileContext,
 } from 'src/actions/PluginAction';
-import { FAILING_RUNS, partial } from '../helpers/doubles';
+import { FAILING_RUNS, internalsOf, partial } from '../helpers/doubles';
 import {
 	asMockApp,
 	asMockMenu,
@@ -1104,3 +1104,75 @@ function holdNextTranscriptRead(getTranscript: jest.Mock): () => void {
 		release();
 	};
 }
+
+describe('the panel staying in step without writing back', () => {
+	it('saves nothing when a switch is set in place to the value already held', async () => {
+		const { view, settings, saveSettings } = await createSut();
+		settings.enhancedPlayerEnabled = false;
+		await view.refresh();
+		const toggles = internalsOf<{
+			toggles: Map<string, { changeCallback: (value: boolean) => void }>;
+		}>(view).toggles;
+
+		// What Obsidian's setValue does on the switch it was just set in place.
+		toggles.get('enhancedPlayerEnabled')?.changeCallback(false);
+		await flushMicrotasks();
+
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
+	it('shows a recording once a link the note already had resolves', async () => {
+		const audio = recording('later.webm');
+		const { view, app } = await createSut({
+			active: note('Meeting.md'),
+			cache: { embeds: [{ link: 'later.webm' }] } as CachedMetadata,
+		});
+		asMockApp(app).metadataCache.getFirstLinkpathDest.mockReturnValue(
+			audio,
+		);
+
+		app.metadataCache.trigger('resolved');
+		await flushMicrotasks();
+
+		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
+			'later.webm',
+		);
+	});
+
+	it('asks for a length again after a read that failed', async () => {
+		const readDuration = jest
+			.fn()
+			.mockResolvedValueOnce(null)
+			.mockResolvedValue(95);
+		const transcript = emptyTranscriptSection();
+		const { view, getTranscript } = await createSut({
+			active: recording('sync.webm'),
+			readDuration,
+		});
+		transcript.participants = ['Anna'];
+		getTranscript.mockResolvedValue(transcript);
+
+		await view.refresh();
+		await flushMicrotasks();
+
+		expect(rowDescription(settingRow(view.contentEl, 'Duration'))).toBe(
+			'1:35',
+		);
+	});
+
+	it('offers deleting the recording in the view menu, which closes', async () => {
+		const { view } = await createSut({
+			active: recording('sync.webm'),
+			actions: [
+				fileAction(COMMAND_IDS.deleteRecording, 'Delete recording'),
+			],
+		});
+		const menu = new Menu();
+
+		view.onPaneMenu(menu, 'more-options');
+
+		expect(asMockMenu(menu).items.map((item) => item.title)).toEqual([
+			'Delete recording',
+		]);
+	});
+});
