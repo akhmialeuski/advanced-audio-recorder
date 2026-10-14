@@ -447,6 +447,33 @@ describe('AudioPlayerRegistry', () => {
 		}
 	});
 
+	// The element outlives the registry's interest in it: a freed element is
+	// still the same object a late media event can arrive on. Every other
+	// listener answers only while its playback is the active one, so a play,
+	// which makes it active, is the event a leaked listener would show on.
+	// All eight leave on the same signal.
+	it('stops hearing an element the grace period has freed', () => {
+		jest.useFakeTimers();
+		const harness = installControlledAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const listener = jest.fn<void, [PlaybackControlsState | null]>();
+			const key = playbackKey('rec.wav', null);
+			registry.subscribePlayback(listener);
+			registry.acquireAudio(key, 'app://rec');
+			void harness.audio.play();
+			registry.releaseAudio(key);
+			jest.advanceTimersByTime(1000);
+			const callsAfterRelease = listener.mock.calls.length;
+
+			harness.audio.dispatchEvent(new Event('play'));
+
+			expect(listener).toHaveBeenCalledTimes(callsAfterRelease);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
 	it('hides marker actions without an eligible live player', () => {
 		const harness = installControlledAudio();
 		const registry = new AudioPlayerRegistry();
