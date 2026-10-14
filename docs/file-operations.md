@@ -190,7 +190,7 @@ Two delete actions hand the file to Obsidian, which disposes of it the way your 
 
 ![The two delete entries side by side, Delete recording above Delete recording & link to file](images/context-menu-delete.png)
 
-If a recording has marker or chapter data, its sidecar (`recording.webm.markers.json`) is moved or removed automatically with the file - see [Audio player](audio-player.md#markers-and-chapters).
+If a recording has marker or chapter data, its sidecar (`recording.webm.markers.json`) follows the file automatically: it is moved on a rename or move, and on a delete it goes to the same trash as the recording, as set under **Settings > Files and links > Deleted files**. Restore both files from the trash to get the recording back with its markers and speaker names - see [Audio player](audio-player.md#markers-and-chapters).
 
 ---
 

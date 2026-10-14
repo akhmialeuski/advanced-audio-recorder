@@ -141,7 +141,7 @@ A recording you leave part-heard **remembers where you stopped**, and the next t
 
 Two boundaries keep the memory useful. A position in the **first 15 seconds** is not remembered, because resuming there saves nothing. A position in the **last 15 seconds** counts as heard out, and so does playing a recording to its end: either clears the stored position, so a recording you have finished starts from the beginning next time.
 
-The position lives in the recording's [sidecar file](transcription.md), next to its markers and chapters, so it travels with the recording through a rename and is removed with it. A recording that carries nothing else gets a sidecar of its own once it is left part-heard, and that file is deleted again as soon as the position is cleared.
+The position lives in the recording's [sidecar file](transcription.md), next to its markers and chapters, so it travels with the recording through a rename and goes to the trash with it. A recording that carries nothing else gets a sidecar of its own once it is left part-heard, and that file is deleted again, without a trip to the trash, as soon as the position is cleared.
 
 A [timecode link](#timecode-links) outranks the remembered position. An embed that names a position, such as `![[recording#t=1:30]]`, starts at the position the link asks for, because that is an explicit request and the memory is not.
 
@@ -268,7 +268,10 @@ Markers are stored in a **sidecar file** next to each recording, named `<recordi
 
 - Markers **survive a plugin reinstall**.
 - They **travel with the vault**.
-- Renaming, moving, or deleting the recording **moves or removes its sidecar automatically**, so markers stay attached and never orphan. Deleting all of a recording's markers removes the sidecar once it holds no transcript data either, so the vault is not left with empty files.
+- Renaming or moving the recording **moves its sidecar with it**, so markers stay attached and never orphan. If a leftover sidecar from an earlier recording already sits at the new name, it goes to the trash and the moved recording keeps its own.
+- Deleting the recording **sends its sidecar to the same trash**: the system trash, Obsidian's `.trash` folder, or permanent deletion, whichever **Settings > Files and links > Deleted files** names. To bring a deleted recording back with its markers, chapters, and speaker names, restore **both** files, `recording.webm` and `recording.webm.markers.json`.
+- Deleting all of a recording's markers removes the sidecar once it holds no transcript data or playback position either, so the vault is not left with empty files. That file is removed outright rather than trashed: it had nothing left in it, and a trash entry for every cleared marker list or finished listen would only be clutter.
+- A sidecar that **sync delivers late** - the recording arrives from another device a moment before its sidecar does - is not overwritten by a position or marker saved in between: the plugin reads the arriving file and applies the change to it, so markers made on the other device are kept.
 - A sidecar file that exists but **cannot be read** (damaged JSON, a sync conflict) is treated as unreachable rather than empty: the plugin pauses writes to it so the possibly intact data is never overwritten, and re-reads the file on every access, so fixing or removing it recovers without a restart. A marker edit refused this way is **said out loud**: the player shows why the save failed and rolls the view back instead of pretending the marker was added.
 
 Markers can also be added **while recording**, before the file even exists as a player - see [Marking moments while recording](recording.md#marking-moments-while-recording). Those markers attach to the recording's sidecar at save and show up in the player once the recording stops.
