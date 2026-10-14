@@ -1,10 +1,13 @@
 /**
  * Pure helpers for resolving audio embeds and timecode links. Kept free
- * of DOM and Obsidian-runtime dependencies so the parsing logic can be
- * unit tested in isolation.
+ * of DOM dependencies so the parsing logic can be unit tested in
+ * isolation; the one piece of Obsidian they use, `parseLinktext`, is a
+ * pure function too, and it is what decides where the path ends so a
+ * link is split here exactly as Obsidian splits it when it resolves one.
  * @module player/timecodeLinks
  */
 
+import { parseLinktext } from 'obsidian';
 import { parseTimecode } from '../utils/TimeUtils';
 
 /**
@@ -24,16 +27,8 @@ export interface AudioLinkTarget {
  * @returns Link path and parsed start offset (null when absent)
  */
 export function parseAudioLinkTarget(src: string): AudioLinkTarget {
-	const hashIndex = src.indexOf('#');
-	if (hashIndex < 0) {
-		return { linkPath: src, startSeconds: null };
-	}
-	const linkPath = src.slice(0, hashIndex);
-	const subpath = src.slice(hashIndex + 1);
-	if (!subpath.startsWith('t=')) {
-		return { linkPath, startSeconds: null };
-	}
-	return { linkPath, startSeconds: parseTimecode(subpath.slice(2)) };
+	const { path, subpath } = parseLinktext(src);
+	return { linkPath: path, startSeconds: parseTimecodeSubpath(subpath) };
 }
 
 /**
