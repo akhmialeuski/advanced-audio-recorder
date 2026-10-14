@@ -1276,9 +1276,142 @@ export const MarkdownRenderer = {
  */
 export const modalInstances: Modal[] = [];
 
+/** A modifier a hotkey names, as Obsidian spells it. */
+export type Modifier = 'Mod' | 'Ctrl' | 'Meta' | 'Shift' | 'Alt';
+
+/** What a keymap listener is told about the keys that reached it. */
+export interface KeymapContext {
+	modifiers: string | null;
+	key: string | null;
+	vkey: string;
+}
+
+/** A listener registered on a scope; returning false prevents the default. */
+export type KeymapEventListener = (
+	evt: KeyboardEvent,
+	ctx: KeymapContext,
+) => unknown;
+
+/** The handle {@link Scope.register} returns, for {@link Scope.unregister}. */
+export interface KeymapEventHandler {
+	scope: Scope;
+	modifiers: string | null;
+	key: string | null;
+}
+
+/** One registration, with what it answers to. */
+interface ScopeEntry {
+	handler: KeymapEventHandler;
+	modifiers: Modifier[] | null;
+	func: KeymapEventListener;
+}
+
+/**
+ * Mock Scope: the keymap scope a modal makes active while it is open.
+ *
+ * Obsidian's keymap hears every keydown and hands it to the active scope,
+ * which runs the first listener whose key and modifiers match, or defers to
+ * its parent when none does; a listener that returns false has the default
+ * prevented. {@link Scope.handleKey} is that step, and the mock Modal calls it
+ * for keydowns inside the dialog while it is open. A key matches regardless
+ * of case, and `Mod` is Ctrl, as on Windows and Linux. A listener receives
+ * the event as it is, IME composition included: whether Obsidian's keymap
+ * filters composition keystrokes is not part of its documented API, so the
+ * double leaves that to the listener.
+ */
+export class Scope {
+	private readonly entries: ScopeEntry[] = [];
+
+	constructor(private readonly parent?: Scope) {}
+
+	register(
+		modifiers: Modifier[] | null,
+		key: string | null,
+		func: KeymapEventListener,
+	): KeymapEventHandler {
+		const handler: KeymapEventHandler = {
+			scope: this,
+			modifiers: modifiers === null ? null : modifiers.join(','),
+			key,
+		};
+		this.entries.push({ handler, modifiers, func });
+		return handler;
+	}
+
+	unregister(handler: KeymapEventHandler): void {
+		const index = this.entries.findIndex(
+			(entry) => entry.handler === handler,
+		);
+		if (index >= 0) {
+			this.entries.splice(index, 1);
+		}
+	}
+
+	/**
+	 * Mock-only: what the keymap does with a keydown while this scope is
+	 * active. Runs the first matching listener, or the parent's, and
+	 * prevents the default when the listener returns false.
+	 * @param evt - The keydown
+	 * @returns Whether a listener of this scope or a parent answered it
+	 */
+	handleKey(evt: KeyboardEvent): boolean {
+		const entry = this.entries.find((candidate) =>
+			Scope.matches(candidate, evt),
+		);
+		if (!entry) {
+			return this.parent?.handleKey(evt) ?? false;
+		}
+		const result = entry.func(evt, {
+			modifiers: entry.handler.modifiers,
+			key: entry.handler.key,
+			vkey: evt.key,
+		});
+		if (result === false) {
+			evt.preventDefault();
+		}
+		return true;
+	}
+
+	/** Whether a registration answers to a keydown. */
+	private static matches(entry: ScopeEntry, evt: KeyboardEvent): boolean {
+		const { key } = entry.handler;
+		if (key !== null && key.toLowerCase() !== evt.key.toLowerCase()) {
+			return false;
+		}
+		if (entry.modifiers === null) {
+			return true;
+		}
+		const wanted = new Set<Modifier>(
+			entry.modifiers.map((modifier) =>
+				modifier === 'Mod' ? 'Ctrl' : modifier,
+			),
+		);
+		const pressed: [Modifier, boolean][] = [
+			['Ctrl', evt.ctrlKey],
+			['Meta', evt.metaKey],
+			['Shift', evt.shiftKey],
+			['Alt', evt.altKey],
+		];
+		return pressed.every(
+			([modifier, down]) => wanted.has(modifier) === down,
+		);
+	}
+}
+
 export class Modal {
 	app: App;
 	contentEl: HTMLElement;
+
+	/**
+	 * The keymap scope that is active while the dialog is open, as in
+	 * Obsidian. Keydowns inside the dialog reach it from open() to close().
+	 */
+	scope: Scope = new Scope();
+
+	/** Routes keydowns to {@link scope} while the dialog is open. */
+	private readonly routeKeys = (evt: KeyboardEvent): void => {
+		this.scope.handleKey(evt);
+	};
 
 	/**
 	 * The dialog's own element, holding the title and the body the way
@@ -1311,11 +1444,16 @@ export class Modal {
 	// and an instance-level jest.fn would put neither within reach of spyOn.
 	open(): void {
 		modalInstances.push(this);
+		// Mirrors Obsidian: an open dialog's scope is the active one. Obsidian
+		// hears keys on the window; the mock hears them on the dialog, in the
+		// capture phase, so every keydown inside it reaches the scope.
+		this.modalEl.addEventListener('keydown', this.routeKeys, true);
 		// Mirrors Obsidian: opening renders the modal contents
 		this.onOpen();
 	}
 
 	close(): void {
+		this.modalEl.removeEventListener('keydown', this.routeKeys, true);
 		// Mirrors Obsidian: closing tears the contents down
 		this.onClose();
 	}
