@@ -87,7 +87,7 @@ Learn more: [Multi-track recording](multi-track-recording.md)
 
 ## Output formats and encoding
 
-The plugin supports 8 output formats - **WebM** (default), **OGG**, **WAV**, **MP3**, **FLAC**, **MP4**, **M4A**, and **AAC** - with availability detected at runtime from your platform's MediaRecorder support. **Online** formats are written in real time by the browser's MediaRecorder; **offline** formats (MP3, FLAC, and sometimes MP4/M4A/AAC) are captured in an intermediate container and re-encoded after you stop, with packets copied without re-encoding when the codec already matches. The settings tab marks offline formats with an `(offline)` label.
+The plugin supports 8 output formats - **WebM** (default), **OGG**, **WAV**, **MP3**, **FLAC**, **MP4**, **M4A**, and **AAC** - with availability detected at runtime from your platform's MediaRecorder support. **Online** formats are written in real time by the browser's MediaRecorder; **offline** formats (MP3, FLAC, AAC, and sometimes MP4/M4A) are captured in an intermediate container and re-encoded after you stop, with packets copied without re-encoding when the codec already matches. The settings tab marks offline formats with an `(offline)` label.
 
 Learn more: [Formats](formats.md)
 

@@ -124,8 +124,8 @@ The recording plays back entirely in one ear. This is the normal result of recor
 The format dropdown is missing an option, **Test recording** reports `Format "<format>" is not supported in this browser.`, or a recording produces an empty file.
 
 - Format availability depends on your platform and the Electron/Chromium build Obsidian ships. Not every format can be captured everywhere.
-- **Online** formats (WebM, OGG, WAV, MP4, M4A, AAC) are written in real time by `MediaRecorder`; if the browser does not support a format's MIME type it cannot be used.
-- **Offline** formats (MP3, FLAC, and the offline paths for MP4/M4A) are re-encoded after the recording stops and do not depend on `MediaRecorder` support; the settings dropdown marks them **(offline)**.
+- **Online** formats (WebM, OGG, WAV, MP4, M4A) are written in real time by `MediaRecorder`; if the browser does not support a format's MIME type it cannot be used.
+- **Offline** formats (MP3, FLAC, AAC, and the offline paths for MP4/M4A) are re-encoded after the recording stops and do not depend on `MediaRecorder` support; the settings dropdown marks them **(offline)**.
 - Open **System info** and look at **Audio capabilities > supported formats** and **codec support** to see exactly what this environment offers, and at **Active recording config** to see the resolved MIME type and whether it is supported.
 - If your preferred format is unavailable, record in a supported one (WebM is the reliable default; WAV is the most robust for long recordings) and then **Convert audio format** afterwards from the right-click menu.
 

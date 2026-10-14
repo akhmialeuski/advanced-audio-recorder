@@ -9,6 +9,7 @@
  */
 
 import {
+	AdtsOutputFormat,
 	Mp4OutputFormat,
 	WebMOutputFormat,
 	OggOutputFormat,
@@ -236,7 +237,12 @@ export const FORMAT_REGISTRY = {
 	},
 	[FORMAT_AAC]: {
 		codec: 'aac',
-		createOutputFormat: (): OutputFormat => new Mp4OutputFormat(),
+		// A bare AAC stream framed as ADTS, which is what a .aac file and the
+		// audio/aac type promise. An MP4 container under this name played only
+		// where a reader sniffed the bytes instead of trusting the name, and an
+		// upload declared as audio/aac handed the engine a file it was told was
+		// something else.
+		createOutputFormat: (): OutputFormat => new AdtsOutputFormat(),
 		isPcm: false,
 		lossless: false,
 		minBitrate: noBitrateFloor,

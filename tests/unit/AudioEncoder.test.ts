@@ -36,6 +36,7 @@ jest.mock('mediabunny', () => ({
 	AudioBufferSource: jest.fn().mockImplementation(() => ({
 		add: mockAdd,
 	})),
+	AdtsOutputFormat: jest.fn(),
 	Mp4OutputFormat: jest.fn(),
 	WebMOutputFormat: jest.fn(),
 	OggOutputFormat: jest.fn(),
@@ -201,7 +202,7 @@ describe('AudioEncoder', () => {
 			},
 			{
 				format: 'aac',
-				container: 'Mp4OutputFormat',
+				container: 'AdtsOutputFormat',
 				codec: 'aac',
 				mime: 'audio/aac',
 			},

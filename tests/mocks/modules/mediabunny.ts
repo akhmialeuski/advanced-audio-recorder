@@ -74,6 +74,7 @@ export const ALL_FORMATS: unknown[] = [];
  * to exist, and a suite that pulls the registry in gets them for free rather
  * than repeating the list.
  */
+export const AdtsOutputFormat = jest.fn();
 export const Mp4OutputFormat = jest.fn();
 export const WebMOutputFormat = jest.fn();
 export const OggOutputFormat = jest.fn();
