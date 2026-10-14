@@ -914,16 +914,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		const actions: PlayerEmbedActions = {
 			// Adding markers/chapters from the context menu is edit-only
 			markersEnabled: this.settings.enableMarkers && this.editable,
-			// The copy-timestamp action is a fixed control, always available
-			timestampLinksEnabled: true,
 			timeAtClientX: (clientX: number) =>
 				this.seekCtl.timeAtClientX(clientX),
-			addMarkerAtTime: (time: number, kind: MarkerKind) => {
-				void this.markerCtl.addAt(time, kind);
-			},
-			copyTimestampAtTime: (time: number) => {
-				void this.copyTimestampLink(time);
-			},
 			togglePlayback: () => {
 				this.togglePlay();
 			},

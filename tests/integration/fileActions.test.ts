@@ -10,7 +10,9 @@
  */
 
 import { Notice, TFile } from 'obsidian';
-import { describeRetryOutcome, FILE_ACTIONS } from 'src/actions/fileActions';
+import type { Editor } from 'obsidian';
+import { FILE_ACTIONS } from 'src/actions/fileActions';
+import { describeRetryOutcome } from 'src/actions/recordingEdits';
 import type { ActionServices } from 'src/actions/PluginAction';
 import { COMMAND_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
@@ -29,7 +31,11 @@ import { ChapterExportModal } from 'src/ui/ChapterExportModal';
 import { AudioProcessingModal } from 'src/cleanup/AudioProcessingModal';
 import { getAudioFileInfo } from 'src/utils/AudioFileAnalyzer';
 import { insertProcessedAudioEmbed } from 'src/recording/NoteInserter';
-import { silenceConsole, queueServicesDouble } from '../helpers/doubles';
+import {
+	partial,
+	silenceConsole,
+	queueServicesDouble,
+} from '../helpers/doubles';
 
 // Each dialog is a spy that records the arguments and exposes open(): what an
 // action owes its surface is that picking it opens the right dialog over the
@@ -128,6 +134,7 @@ function createServices(
 			autoChapters: {} as ActionServices['autoChapters'],
 			recordingSidecar: sidecar,
 			transcriptionQueue: queueServicesDouble(),
+			onMarkersChanged: jest.fn(),
 			transcriptionCosts: { recordLlmCall: jest.fn(), recordRun },
 		},
 	};
@@ -166,6 +173,7 @@ describe('FILE_ACTIONS registry', () => {
 			COMMAND_IDS.generateChapters,
 			COMMAND_IDS.exportChapters,
 			COMMAND_IDS.deleteRecording,
+			COMMAND_IDS.deleteRecordingAndLink,
 		]);
 	});
 
@@ -312,15 +320,37 @@ describe('FILE_ACTIONS dialogs', () => {
 			replaceSource: true,
 		});
 
+		// No note was reached through, so the active one is linked into.
 		expect(insertProcessedAudioEmbed).toHaveBeenCalledWith(
 			services.app,
 			file,
 			'Recordings/clean.webm',
 			true,
+			undefined,
 		);
 		expect(primeForEnhancement).toHaveBeenCalledWith([
 			'Recordings/clean.webm',
 		]);
+	});
+
+	it('links the cleaned-up file into the note it was reached through', async () => {
+		const { services } = createServices();
+		const note = createFile('Meetings/standup.md');
+		await action(COMMAND_IDS.cleanupAudio).run({ file, services, note });
+		const onDone = at(jest.mocked(AudioProcessingModal).mock.calls, 0)[3];
+
+		await onDone?.({
+			outputPath: 'Recordings/clean.wav',
+			replaceSource: false,
+		});
+
+		expect(insertProcessedAudioEmbed).toHaveBeenCalledWith(
+			services.app,
+			file,
+			'Recordings/clean.wav',
+			false,
+			note,
+		);
 	});
 });
 
@@ -393,9 +423,75 @@ describe('the transcribe action', () => {
 
 		await action(COMMAND_IDS.transcribeAudio).run({ file, services });
 
-		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toBe(
-			options,
+		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
+			...options,
+			notePath: undefined,
+		});
+	});
+
+	it('writes into the note the recording was reached through', async () => {
+		const { services } = createServices();
+		const note = createFile('Meetings/standup.md');
+
+		await action(COMMAND_IDS.transcribeAudio).run({ file, services, note });
+
+		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
+			notePath: 'Meetings/standup.md',
+		});
+	});
+});
+
+describe('deleting a recording with its link', () => {
+	it('is offered only where a note was reached through', () => {
+		const { services } = createServices();
+		const remove = action(COMMAND_IDS.deleteRecordingAndLink);
+
+		expect(remove.isAvailable({ file, services })).toBe(false);
+		expect(
+			remove.isAvailable({
+				file,
+				services,
+				note: createFile('Meetings/standup.md'),
+			}),
+		).toBe(true);
+	});
+
+	it('trashes the recording and removes the link it was opened on', async () => {
+		const { services } = createServices();
+		const replaceRange = jest.fn();
+		const editor = partial<Editor>({ replaceRange });
+
+		await action(COMMAND_IDS.deleteRecordingAndLink).run({
+			file,
+			services,
+			note: createFile('Meetings/standup.md'),
+			link: { editor, line: 4, start: 2, end: 20 },
+		});
+
+		expect(services.app.fileManager.trashFile).toHaveBeenCalledWith(file);
+		expect(replaceRange).toHaveBeenCalledWith(
+			'',
+			{ line: 4, ch: 2 },
+			{ line: 4, ch: 20 },
 		);
+		expect(noticeMessages()).toContain('Recording and link deleted');
+	});
+
+	it('says it failed when the recording cannot be trashed', async () => {
+		const error = silenceConsole('error');
+		const { services } = createServices();
+		jest.mocked(services.app.fileManager.trashFile).mockRejectedValue(
+			new Error('locked'),
+		);
+
+		await action(COMMAND_IDS.deleteRecordingAndLink).run({
+			file,
+			services,
+			note: createFile('Meetings/standup.md'),
+		});
+
+		expect(noticeMessages()).toContain('Failed to delete recording');
+		error.mockRestore();
 	});
 });
 

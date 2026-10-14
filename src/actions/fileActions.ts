@@ -1,14 +1,13 @@
 /**
  * The per-file actions offered by the plugin, defined once. The context
- * menus render this list and the palette registers it as commands, so a
- * feature added here appears in every surface (and becomes
- * hotkey-assignable) automatically.
+ * menus render this list, the palette registers it as commands, and the
+ * command line answers it, so a feature added here appears in every surface
+ * (and becomes hotkey-assignable) automatically.
  * @module actions/fileActions
  */
 
-import { Notice, TFile } from 'obsidian';
+import { Notice } from 'obsidian';
 import { COMMAND_IDS, PLUGIN_LOG_PREFIX } from '../constants';
-import { isAudioFile } from '../utils/audioFile';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from '../ui/AudioFileInfoModal';
 import { ConversionModal } from '../ui/ConversionModal';
@@ -21,42 +20,56 @@ import type { PlayerMarker } from '../markers/markerModel';
 import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
 import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
-import type { ActionServices, FileAction, FileContext } from './PluginAction';
-import { TranscriptionService } from '../transcription/TranscriptionService';
+import type {
+	ActionFamily,
+	ActionServices,
+	FileAction,
+	FileContext,
+} from './PluginAction';
 import {
-	FailedPartRetry,
-	serviceRunner,
-	type RetryOutcome,
-} from '../transcription/retryFailedParts';
-import { errorMessage } from '../errors';
+	activeRecordings,
+	describeRecording,
+	namedRecordings,
+	RECORDING_TARGET_PARAMS,
+} from './recordingTargets';
+import {
+	CLEANUP_PARAMS,
+	cleanupFromCli,
+	CONVERT_PARAMS,
+	convertFromCli,
+	INFO_PARAMS,
+	infoFromCli,
+	SPLIT_PARAMS,
+	splitFromCli,
+} from './audioJobsCli';
+import { TRANSCRIBE_PARAMS, transcribeFromCli } from './transcribeCli';
+import { SPEAKER_PARAMS, speakersFromCli } from './speakersCli';
+import {
+	CHAPTER_PARAMS,
+	deleteRecordingWithLink,
+	EXPORT_PARAMS,
+	exportChaptersFromCli,
+	generateChaptersFromCli,
+	retryFailedParts,
+} from './recordingEdits';
 
 /** Availability gate for actions with no extra conditions. */
 const always = (): boolean => true;
 
-/**
- * Builds the resolver the palette uses for file actions: the active file
- * when it is audio, and nothing otherwise, which is what keeps every file
- * command out of the palette while a note or an image is open.
- * @param services - Injected services every file action shares
- * @returns Resolver producing the context, or null when there is no
- *   active audio file
- */
-export function activeAudioFile(
-	services: ActionServices,
-): () => FileContext | null {
-	return (): FileContext | null => {
-		const file = services.app.workspace.getActiveFile();
-		return file instanceof TFile && isAudioFile(file)
-			? { file, services }
-			: null;
-	};
-}
+/** Availability gate for the actions that need transcription switched on. */
+const whileTranscribing = ({ services }: FileContext): boolean =>
+	services.getSettings().transcriptionEnabled;
+
+/** What the command line says when transcription is switched off. */
+const transcriptionOff = (): string =>
+	'Transcription is switched off in settings.';
 
 /**
  * All per-file actions in menu order: info, convert, split, clean up,
- * transcribe, rename speakers, generate chapters, delete. "Delete recording" is excluded
- * from the editor menu, which offers the link-aware delete variant
- * instead.
+ * transcribe, rename speakers, generate chapters, export, and the two
+ * deletes. "Delete recording" is excluded from the editor menu, which offers
+ * the link-aware delete instead; that one needs the note the recording was
+ * reached through, so the file explorer, which has none, never offers it.
  */
 export const FILE_ACTIONS: readonly FileAction[] = [
 	{
@@ -70,6 +83,13 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 			if (info) {
 				new AudioFileInfoModal(services.app, info).open();
 			}
+		},
+		cli: {
+			name: 'info',
+			description: 'Report the properties of a recording.',
+			params: INFO_PARAMS,
+			opensDialog: true,
+			execute: infoFromCli,
 		},
 	},
 	{
@@ -89,6 +109,13 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				getWorkerClient: services.getWorkerClient,
 			}).open();
 		},
+		cli: {
+			name: 'convert',
+			description: 'Convert a recording to another format.',
+			params: CONVERT_PARAMS,
+			opensDialog: true,
+			execute: convertFromCli,
+		},
 	},
 	{
 		commandId: COMMAND_IDS.splitAudio,
@@ -104,6 +131,14 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				services.recordingSidecar,
 			).open();
 		},
+		cli: {
+			name: 'split',
+			description:
+				'Split a recording into parts of a fixed length or at its chapters.',
+			params: SPLIT_PARAMS,
+			opensDialog: true,
+			execute: splitFromCli,
+		},
 	},
 	{
 		commandId: COMMAND_IDS.cleanupAudio,
@@ -111,7 +146,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		icon: 'wand-2',
 		showInEditorMenu: true,
 		isAvailable: always,
-		run: ({ file, services }: FileContext): void => {
+		run: ({ file, services, note }: FileContext): void => {
 			new AudioProcessingModal(
 				services.app,
 				file,
@@ -125,10 +160,19 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 						file,
 						outputPath,
 						replaceSource,
+						note,
 					);
 					services.primeForEnhancement([outputPath]);
 				},
 			).open();
+		},
+		cli: {
+			name: 'cleanup',
+			description:
+				'Write a cleaned-up WAV copy of a recording: high-pass, noise gate, leveling.',
+			params: CLEANUP_PARAMS,
+			opensDialog: true,
+			execute: cleanupFromCli,
 		},
 	},
 	{
@@ -136,15 +180,21 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Transcribe audio',
 		icon: 'captions',
 		showInEditorMenu: true,
-		isAvailable: ({ services }: FileContext): boolean =>
-			services.getSettings().transcriptionEnabled,
-		run: ({ file, services }: FileContext): void => {
-			new TranscriptionModal(
-				services.app,
-				file,
-				services.getSettings,
-				services.createTranscriptionModalOptions(),
-			).open();
+		isAvailable: whileTranscribing,
+		run: ({ file, services, note }: FileContext): void => {
+			new TranscriptionModal(services.app, file, services.getSettings, {
+				...services.createTranscriptionModalOptions(),
+				notePath: note?.path,
+			}).open();
+		},
+		cli: {
+			name: 'transcribe',
+			description:
+				'Transcribe a recording in Obsidian, into the note it belongs to.',
+			params: TRANSCRIBE_PARAMS,
+			opensDialog: true,
+			unavailable: transcriptionOff,
+			execute: transcribeFromCli,
 		},
 	},
 	{
@@ -152,10 +202,18 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Transcribe the parts that failed',
 		icon: 'refresh-cw',
 		showInEditorMenu: true,
-		isAvailable: ({ services }: FileContext): boolean =>
-			services.getSettings().transcriptionEnabled,
-		run: ({ file, services }: FileContext): Promise<void> =>
-			runFailedPartRetry(file, services),
+		isAvailable: whileTranscribing,
+		run: async ({ file, services }: FileContext): Promise<void> => {
+			new Notice(await retryFailedParts(file, services));
+		},
+		cli: {
+			name: 'retry-failed',
+			description:
+				'Transcribe again the parts of a recording the engine failed on.',
+			unavailable: transcriptionOff,
+			execute: ({ file, services }: FileContext): Promise<string> =>
+				retryFailedParts(file, services),
+		},
 	},
 	{
 		commandId: COMMAND_IDS.renameSpeakers,
@@ -170,6 +228,16 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				saveSettings: services.saveSettings,
 				sidecar: services.recordingSidecar,
 			}).open();
+		},
+		cli: {
+			name: 'speakers',
+			description:
+				'List the speakers of a recording, or rename them in every transcript.',
+			params: SPEAKER_PARAMS,
+			opensDialog: true,
+			unavailable: (): string =>
+				'Rename speakers is switched off in settings.',
+			execute: speakersFromCli,
 		},
 	},
 	{
@@ -189,6 +257,16 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				sidecar: services.recordingSidecar,
 			}).open();
 		},
+		cli: {
+			name: 'chapters',
+			description:
+				'Generate the chapters of a recording from its transcript with an LLM.',
+			params: CHAPTER_PARAMS,
+			opensDialog: true,
+			unavailable: (): string =>
+				'Auto chapters are switched off in settings.',
+			execute: generateChaptersFromCli,
+		},
 	},
 	{
 		commandId: COMMAND_IDS.exportChapters,
@@ -198,9 +276,17 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		// Whether the recording has markers needs a sidecar read, and
 		// availability is decided synchronously; the dialog reads them and
 		// says so when there are none.
-		isAvailable: (): boolean => true,
-		run: ({ file, services }: FileContext): Promise<void> =>
-			openChapterExport(file, services),
+		isAvailable: always,
+		run: (context: FileContext): Promise<void> =>
+			openChapterExport(context),
+		cli: {
+			name: 'export-chapters',
+			description:
+				'Write the chapters and markers of a recording as a list, a cue sheet or an outline.',
+			params: EXPORT_PARAMS,
+			opensDialog: true,
+			execute: exportChaptersFromCli,
+		},
 	},
 	{
 		commandId: COMMAND_IDS.deleteRecording,
@@ -217,96 +303,59 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				console.error('Failed to delete recording:', error);
 			}
 		},
+		cli: {
+			name: 'delete',
+			description: 'Move a recording to the trash.',
+			execute: async ({
+				file,
+				services,
+			}: FileContext): Promise<string> => {
+				await services.app.fileManager.trashFile(file);
+				return `Moved ${file.path} to the trash.`;
+			},
+		},
+	},
+	{
+		commandId: COMMAND_IDS.deleteRecordingAndLink,
+		title: 'Delete recording & link to file',
+		icon: 'trash',
+		showInEditorMenu: true,
+		// Only where there is a link to remove: the one the menu or the cursor
+		// was on - an editor need not show a note file, as a canvas card does
+		// not - or the links of the note the recording was reached through.
+		// The file explorer reaches it through neither.
+		isAvailable: ({ note, link }: FileContext): boolean =>
+			note !== undefined || link !== undefined,
+		run: async (context: FileContext): Promise<void> => {
+			try {
+				new Notice(await deleteRecordingWithLink(context));
+			} catch (error) {
+				new Notice('Failed to delete recording');
+				console.error('Failed to delete recording:', error);
+			}
+		},
+		cli: {
+			name: 'delete-with-links',
+			description:
+				'Move a recording to the trash and remove its links from the note named.',
+			unavailable: ({ file }: FileContext): string =>
+				`Name the note to remove the links of ${file.path} from: file=<note>, or note=<note> beside path=<recording>.`,
+			execute: deleteRecordingWithLink,
+		},
 	},
 ];
-
-/**
- * Tops up a recording's transcript with the parts that failed, and reports
- * what happened in one notice.
- *
- * Whether anything is missing cannot be known without reading the sidecar,
- * and an action's availability is decided synchronously, so the action is
- * always offered and a recording with nothing missing is told so. Offering it
- * only after something warmed a cache would hide it exactly when it is
- * wanted.
- * @param file - The recording to top up
- * @param services - Injected services
- */
-async function runFailedPartRetry(
-	file: TFile,
-	services: ActionServices,
-): Promise<void> {
-	const retry = new FailedPartRetry(
-		services.app,
-		file,
-		services.recordingSidecar,
-		serviceRunner(
-			new TranscriptionService(services.app, services.getSettings, {
-				costSink: services.transcriptionCosts,
-			}),
-			// The same sidecar the retry reads its failed parts from, so the
-			// recovered segments come back under the speaker names the user
-			// assigned rather than the engine's own labels.
-			services.recordingSidecar,
-		),
-	);
-	try {
-		const outcome = await retry.retry();
-		if (outcome.cost) {
-			// A top-up calls the same paid engine a full run does, so it goes
-			// into the session total by the same rule, priced against the
-			// stretches it actually sent rather than the whole recording.
-			services.transcriptionCosts?.recordRun(
-				outcome.cost,
-				services.getSettings(),
-				outcome.sentSeconds,
-			);
-		}
-		new Notice(describeRetryOutcome(outcome));
-	} catch (error) {
-		console.error(
-			`${PLUGIN_LOG_PREFIX} Failed to transcribe the missing parts of ${file.path}:`,
-			error,
-		);
-		new Notice(
-			`Could not transcribe the missing parts: ${errorMessage(error)}`,
-		);
-	}
-}
-
-/**
- * One sentence saying what the top-up did.
- * @param outcome - What the retry reports
- * @returns The notice text
- */
-export function describeRetryOutcome(outcome: RetryOutcome): string {
-	if (outcome.blocked) {
-		return outcome.blocked;
-	}
-	const recovered = `Recovered ${String(outcome.recovered)} segment${
-		outcome.recovered === 1 ? '' : 's'
-	} and rewrote ${String(outcome.rewritten)} transcript file${
-		outcome.rewritten === 1 ? '' : 's'
-	}.`;
-	return outcome.stillMissing.length === 0
-		? recovered
-		: `${recovered} ${String(outcome.stillMissing.length)} part${
-				outcome.stillMissing.length === 1 ? '' : 's'
-			} failed again.`;
-}
 
 /**
  * Reads a recording's markers and opens the export dialog over them.
  *
  * The link builder is the one transcripts use, so an outline timecode is a
- * real link into the recording rather than text that looks like one.
- * @param file - The recording whose markers are exported
- * @param services - Injected services
+ * real link into the recording rather than text that looks like one. The
+ * outline goes into the note the recording was reached through, or the
+ * active note when it was reached directly.
+ * @param context - The recording and the note it was reached through
  */
-async function openChapterExport(
-	file: TFile,
-	services: ActionServices,
-): Promise<void> {
+async function openChapterExport(context: FileContext): Promise<void> {
+	const { file, services } = context;
 	let markers: PlayerMarker[];
 	try {
 		markers = await services.recordingSidecar.getMarkers(file.path);
@@ -322,11 +371,34 @@ async function openChapterExport(
 		new Notice('This recording has no chapters or markers to export.');
 		return;
 	}
-	const notePath = services.app.workspace.getActiveFile()?.path ?? '';
+	const notePath =
+		context.note?.path ??
+		services.app.workspace.getActiveFile()?.path ??
+		'';
 	new ChapterExportModal(services.app, {
 		file,
 		markers,
 		notePath: notePath === file.path ? '' : notePath,
 		linkBuilder: timecodeLinkBuilder(services.app, file, notePath),
 	}).open();
+}
+
+/**
+ * The file actions as a family: the palette acts on the recordings of what
+ * is active, the command line on the recordings it names.
+ * @param services - Injected services every action shares
+ * @returns The family
+ */
+export function fileActionFamily(
+	services: ActionServices,
+): ActionFamily<FileContext> {
+	return {
+		actions: FILE_ACTIONS,
+		activeTargets: () => activeRecordings(services),
+		cliTarget: {
+			params: RECORDING_TARGET_PARAMS,
+			resolve: (args) => namedRecordings(services, args),
+		},
+		describe: describeRecording,
+	};
 }

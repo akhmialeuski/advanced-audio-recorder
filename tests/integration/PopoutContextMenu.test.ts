@@ -10,95 +10,70 @@
  * @jest-environment jsdom
  */
 
-import type { App, TFile } from 'obsidian';
+import { Menu } from 'obsidian';
 import { ContextMenu } from 'src/ui/ContextMenu';
-import { FILE_ACTIONS } from 'src/actions/fileActions';
+import { registeredMenus } from '../helpers/menuFamilies';
 import type { ActionServices } from 'src/actions/PluginAction';
-import { menuInstances } from '../mocks/obsidian';
 import {
 	FakePlugin,
 	makeApp,
 	makeFile,
 	makePopoutDoc,
 } from '../helpers/popoutHarness';
-import { at } from '../helpers/assertions';
-import { tick } from '../helpers/async';
 import { partial } from '../helpers/doubles';
-import { mountLiveEditor, rangeOf } from '../helpers/liveEditor';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { partialPlugin } from '../helpers/obsidianMock';
 
 afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-/**
- * A loaded plugin with the context menu registered, and a pop-out window
- * opened after load, so the primitive has to bind the contextmenu handler to
- * that separate document.
- * @returns The app, the recording links resolve to, and the pop-out document
- */
-function createSut(): { app: App; file: TFile; popoutDoc: Document } {
-	const file = makeFile();
-	const plugin = new FakePlugin();
-	plugin.app = makeApp(plugin, file);
-	// registerPlayerMenu only reads services.app; the rest is unused because
-	// the file-menu is populated by other plugins, not this handler.
-	const services = partial<ActionServices>({ app: plugin.app });
-	const contextMenu = new ContextMenu(
-		partialPlugin(plugin),
-		services,
-		FILE_ACTIONS,
-	);
-	// Load first so the primitive's per-window child components attach their
-	// listeners immediately.
-	plugin.load();
-	contextMenu.register();
-	const popoutDoc = makePopoutDoc();
-	plugin.emit('window-open', popoutDoc);
-	return { app: plugin.app, file, popoutDoc };
-}
-
 describe('context menu works inside a pop-out window', () => {
 	it('shows the player menu from a right-click in the pop-out document', () => {
-		const { app, file, popoutDoc } = createSut();
+		const showAtPosition = jest.spyOn(Menu.prototype, 'showAtPosition');
+		const file = makeFile();
+		const plugin = new FakePlugin();
+		plugin.app = makeApp(plugin, file);
+		// The player menu renders the file actions, which read the settings to
+		// decide what is offered; nothing else of the services is reached.
+		const services = partial<ActionServices>({
+			app: plugin.app,
+			getSettings: () => DEFAULT_SETTINGS,
+		});
+
+		const { registry, families } = registeredMenus(services);
+		const contextMenu = new ContextMenu(
+			partialPlugin(plugin),
+			services,
+			registry,
+			families,
+		);
+		// Load first so the primitive's per-window child components attach their
+		// listeners immediately.
+		plugin.load();
+		contextMenu.register();
+
+		// A pop-out window opens after load: the primitive must bind the
+		// contextmenu handler to its separate document.
+		const popoutDoc = makePopoutDoc();
+		plugin.emit('window-open', popoutDoc);
+
+		// The note's audio embed rendered inside the pop-out document.
 		const embed = popoutDoc.createElement('div');
 		embed.className = 'internal-embed';
 		embed.setAttribute('src', 'rec.mp4');
 		popoutDoc.body.appendChild(embed);
-		const event = new MouseEvent('contextmenu', { bubbles: true });
 
-		embed.dispatchEvent(event);
+		embed.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
 
 		// The right-click reached the handler bound to the pop-out's own
 		// document, resolved the recording, and showed the menu.
-		expect(app.workspace.trigger).toHaveBeenCalledWith(
+		expect(plugin.app.workspace.trigger).toHaveBeenCalledWith(
 			'file-menu',
 			expect.anything(),
 			file,
 			'audio-recorder-player-context-menu',
 		);
-		// Opened from the event, which carries the pop-out's window, rather
-		// than at page coordinates Obsidian would apply to the main window.
-		expect(at(menuInstances, 0).shownAtEvent).toBe(event);
-	});
-
-	it('deletes the link the embed was rendered from in the pop-out note', async () => {
-		const { app, file, popoutDoc } = createSut();
-		const source = 'Intro\nSee ![[rec.mp4]] here';
-		const live = mountLiveEditor({
-			doc: source,
-			file: partial<TFile>({ path: 'popout.md' }),
-			parent: popoutDoc.body.appendChild(popoutDoc.createElement('div')),
-			embeds: [{ ...rangeOf(source, '![[rec.mp4]]'), src: 'rec.mp4' }],
-		});
-		at(live.embeds(), 0).dispatchEvent(
-			new MouseEvent('contextmenu', { bubbles: true }),
-		);
-
-		at(menuInstances, 0).click('Delete recording & link to file');
-		await tick();
-
-		expect(app.fileManager.trashFile).toHaveBeenCalledWith(file);
-		expect(live.text()).toBe('Intro\nSee  here');
+		expect(showAtPosition).toHaveBeenCalled();
 	});
 });

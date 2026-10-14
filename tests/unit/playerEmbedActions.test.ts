@@ -14,10 +14,7 @@ import {
 function makeActions(): PlayerEmbedActions {
 	return {
 		markersEnabled: true,
-		timestampLinksEnabled: true,
 		timeAtClientX: () => 0,
-		addMarkerAtTime: () => undefined,
-		copyTimestampAtTime: () => undefined,
 		togglePlayback: () => undefined,
 	};
 }

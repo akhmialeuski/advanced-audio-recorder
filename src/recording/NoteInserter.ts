@@ -172,6 +172,8 @@ export function insertTextAtCursor(
  * @param sourceFile - The original audio file that was processed
  * @param processedPath - Vault path of the processed output
  * @param replaceSource - Replace the source embeds instead of inserting after
+ * @param note - The note to link into, when the caller knows which one the
+ *   recording was reached through; the active note otherwise
  * @returns The note path the embed was inserted into, or null when none matched
  */
 export async function insertProcessedAudioEmbed(
@@ -179,8 +181,8 @@ export async function insertProcessedAudioEmbed(
 	sourceFile: TFile,
 	processedPath: string,
 	replaceSource: boolean,
+	note: TFile | null = app.workspace.getActiveFile(),
 ): Promise<string | null> {
-	const note = app.workspace.getActiveFile();
 	if (!note || note.extension !== 'md') {
 		return null;
 	}

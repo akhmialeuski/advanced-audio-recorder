@@ -15,7 +15,8 @@ import { menuInstances } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
 import { allEls, clickControl, control, el } from '../helpers/dom';
 import { MARKER, PLAYBACK, PLAYER } from '../helpers/selectors';
-import { PLAYBACK_ACTIONS } from 'src/actions/playbackActions';
+import { playbackActionFamily } from 'src/actions/playbackActions';
+import { positionActionFamily } from 'src/actions/positionActions';
 import { renderPlaybackStatusBar } from 'src/ui/StatusBar';
 import { registerActionCommands } from 'src/actions/registerActionCommands';
 import { AudioPlayer } from 'src/player/AudioPlayer';
@@ -45,6 +46,10 @@ import {
 } from '../helpers/mediaSession';
 import { asMockPlugin, mockPluginHost } from '../helpers/obsidianMock';
 import { makePopoutWindow } from '../helpers/popoutHarness';
+import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
+import type { ActionServices } from 'src/actions/PluginAction';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 const app = makePlayerApp();
 
@@ -158,13 +163,19 @@ function sharedAudio(): ReturnType<typeof installSharedAudio> {
 
 /**
  * Registers the real playback commands the way the plugin does at load: they
- * pull the live playback from the registry on every check. A subscriber
- * records what the status bar is pushed alongside, so a case can assert that
- * the two agree instead of assuming it.
+ * pull the live playback from the registry on every check. The marker
+ * commands are position actions over the same playback, writing the store
+ * the players read and telling them to read it again, as the plugin wires
+ * them. A subscriber records what the status bar is pushed alongside, so a
+ * case can assert that the two agree instead of assuming it.
  * @param registry - The registry publishing the active playback
+ * @param store - The sidecar the marker commands write
  * @returns The plugin holding the commands and a reader for what was pushed
  */
-function withPlaybackCommands(registry: AudioPlayerRegistry): {
+function withPlaybackCommands(
+	registry: AudioPlayerRegistry,
+	store: RecordingSidecarStore = makeMarkerStore(),
+): {
 	plugin: ReturnType<typeof asMockPlugin>;
 	snapshot: () => PlaybackControlsState | null;
 } {
@@ -173,8 +184,29 @@ function withPlaybackCommands(registry: AudioPlayerRegistry): {
 	registry.subscribePlayback((state) => {
 		latest = state;
 	});
-	registerActionCommands(plugin, PLAYBACK_ACTIONS, () =>
-		registry.currentPlaybackState(),
+	const playback = (): PlaybackControlsState | null =>
+		registry.currentPlaybackState();
+	const pickNothing = jest.fn();
+	registerActionCommands(plugin, playbackActionFamily(playback), pickNothing);
+	registerActionCommands(
+		plugin,
+		positionActionFamily(
+			partial<ActionServices>({
+				app: createMockApp({
+					vault: { getFileByPath: () => makePlayerFile() },
+				}).app,
+				getSettings: () =>
+					partial<AudioRecorderSettings>({
+						playerEnableMarkers: true,
+					}),
+				recordingSidecar: store,
+				onMarkersChanged: (path: string) => {
+					registry.reloadMarkers(path, null);
+				},
+			}),
+			playback,
+		),
+		pickNothing,
 	);
 	return { plugin: asMockPlugin(plugin), snapshot: () => latest };
 }
@@ -523,9 +555,10 @@ describe('playback commands drive the same playback as the controls', () => {
 
 		const ids = plugin.registeredCommands.map((command) => command.id);
 
-		// Every playback command is registered, and every one of them reports
+		// Every playback command is registered - the transport, and the three
+		// that act at the playing position - and every one of them reports
 		// itself unavailable, so none reaches the palette or fires a hotkey
-		expect(ids).toHaveLength(12);
+		expect(ids).toHaveLength(13);
 		expect(ids.filter((id) => plugin.invokeCommand(id))).toEqual([]);
 	});
 
@@ -645,8 +678,8 @@ describe('playback commands drive the same playback as the controls', () => {
 		const shared = installSharedAudio();
 		try {
 			const registry = new AudioPlayerRegistry();
-			const { plugin } = withPlaybackCommands(registry);
 			const store = makeMarkerStore();
+			const { plugin } = withPlaybackCommands(registry, store);
 			// Reading view container (not inside a CodeMirror editor)
 			mountMarkerPlayer(registry, store, makePlayerContainer());
 			await tick();
@@ -669,8 +702,8 @@ describe('playback commands drive the same playback as the controls', () => {
 		const shared = installSharedAudio();
 		try {
 			const registry = new AudioPlayerRegistry();
-			const { plugin } = withPlaybackCommands(registry);
 			const store = makeMarkerStore();
+			const { plugin } = withPlaybackCommands(registry, store);
 			// Live Preview container (inside a CodeMirror editor)
 			const container = makeEditableContainer();
 			mountMarkerPlayer(registry, store, container);

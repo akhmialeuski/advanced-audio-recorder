@@ -222,14 +222,14 @@ export function speakerSources(
  * Read from the editor, like the selected lines themselves, so lines the
  * metadata cache has not caught up with are never skipped or doubled.
  * @param app - Obsidian App
- * @param editor - The editor holding the note
+ * @param editor - The note's lines, as the editor or the file holds them
  * @param note - The note the lines are in
  * @param audio - The recording the lines belong to
  * @param line - The line whose successor is looked for
  */
 export function nextLineSeconds(
 	app: App,
-	editor: Editor,
+	editor: Pick<Editor, 'getLine' | 'lineCount'>,
 	note: TFile,
 	audio: TFile,
 	line: number,

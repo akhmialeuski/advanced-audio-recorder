@@ -13,7 +13,11 @@ import { TranscriptionQueueModal } from '../ui/TranscriptionQueueModal';
 import { buildCostEstimate } from './costs';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { QueueRunner } from './QueueRunner';
-import { QueueEntryState, type TranscriptionQueue } from './TranscriptionQueue';
+import {
+	QueueEntryState,
+	type QueueEntry,
+	type TranscriptionQueue,
+} from './TranscriptionQueue';
 
 /** What the coordinator needs. */
 export interface QueueCoordinatorDeps {
@@ -54,19 +58,78 @@ export class QueueCoordinator {
 	 * @param folder - The folder to queue
 	 */
 	async queueFolder(folder: TFolder): Promise<void> {
-		await this.deps.queue.load();
-		const paths = recordingsIn(folder);
-		if (paths.length === 0) {
+		const { found, added } = await this.enqueueFolder(folder);
+		if (found === 0) {
 			new Notice(`${folder.name} holds no recordings to transcribe.`);
 			return;
 		}
-		const added = this.deps.queue.add(paths);
 		if (added === 0) {
 			new Notice(
 				`Every recording in ${folder.name} is already in the queue.`,
 			);
 		}
 		this.open();
+	}
+
+	/**
+	 * Queues every recording in a folder without showing anything, for a
+	 * caller that reports the result itself.
+	 * @param folder - The folder to queue
+	 * @returns How many recordings it holds, and how many were not queued yet
+	 */
+	async enqueueFolder(
+		folder: TFolder,
+	): Promise<{ found: number; added: number }> {
+		await this.deps.queue.load();
+		const paths = recordingsIn(folder);
+		return {
+			found: paths.length,
+			added: paths.length === 0 ? 0 : this.deps.queue.add(paths),
+		};
+	}
+
+	/**
+	 * What the queue holds, read from storage first if it was not read yet.
+	 * @returns The entries, and whether it is paused or running
+	 */
+	async status(): Promise<{
+		entries: QueueEntry[];
+		paused: boolean;
+		running: boolean;
+	}> {
+		await this.deps.queue.load();
+		return {
+			entries: this.deps.queue.entries(),
+			paused: this.deps.queue.isPaused(),
+			running: this.deps.runner.isRunning(),
+		};
+	}
+
+	/**
+	 * Starts, or resumes, transcribing what waits: the dialog's Start and
+	 * Resume. The drain un-pauses the queue itself.
+	 */
+	start(): void {
+		void this.deps.runner.drain();
+	}
+
+	/** Pauses after the recording being transcribed: the dialog's Pause. */
+	pause(): void {
+		this.deps.queue.setPaused(true);
+	}
+
+	/** Removes every entry that is not running: the dialog's Clear. */
+	clear(): void {
+		this.deps.queue.clear();
+	}
+
+	/**
+	 * Removes one entry: the dialog's remove button.
+	 * @param path - Vault path of the recording
+	 * @returns Whether it was removed; a running entry is not
+	 */
+	remove(path: string): boolean {
+		return this.deps.queue.remove(path);
 	}
 
 	/**

@@ -48,7 +48,10 @@ import { resolveVoiceBoostStages } from '../cleanup/audioDsp';
 import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 import { DetachedPlayback } from './DetachedPlayback';
 import { MediaSessionBridge } from './MediaSessionBridge';
-import { MarkerSearchIndex } from '../markers/MarkerSearchIndex';
+import {
+	MarkerSearchIndex,
+	type MarkerHit,
+} from '../markers/MarkerSearchIndex';
 import { MarkerSearchModal } from '../ui/MarkerSearchModal';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
 import type {
@@ -303,6 +306,15 @@ export class EnhancedPlayerRegistrar {
 		if (recording !== null) {
 			void this.markerSearch.refresh(recording);
 		}
+	}
+
+	/**
+	 * Every marker of every recording, from the index the search opens over,
+	 * built on the first call of the session.
+	 * @returns The markers, by recording and time
+	 */
+	markerHits(): Promise<MarkerHit[]> {
+		return this.markerSearch.all();
 	}
 
 	/**

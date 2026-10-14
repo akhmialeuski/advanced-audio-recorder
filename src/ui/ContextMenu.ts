@@ -1,5 +1,11 @@
 /**
- * Handles context menu registrations and events for the plugin.
+ * The plugin's entries in Obsidian's context menus: a file's menu, a folder's
+ * menu, the editor's menu, and the menu of an audio player in a note.
+ *
+ * Every entry is an action of a family the action registry registered, so
+ * every entry is also a palette command and a command-line command. What this
+ * class adds is only what a menu knows and nothing else does: which file,
+ * folder, link, selection or point of the player it was opened on.
  * @module ui/ContextMenu
  */
 
@@ -9,46 +15,63 @@ import {
 	TFile,
 	TAbstractFile,
 	Plugin,
-	Editor,
-	Notice,
 	MarkdownView,
 	TFolder,
-	parseLinktext,
 } from 'obsidian';
-import type { MarkdownFileInfo } from 'obsidian';
-import type { MenuItem } from 'obsidian';
-import { AAR_MENU_SECTION } from '../constants';
+import type { Editor, MarkdownFileInfo } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
 import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
-import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
-import { hasTimecodeSubpath } from '../player/timecodeLinks';
+import { linkAtCursor } from '../obsidian/linkAtCursor';
 import type {
 	ActionServices,
-	FileAction,
-	TranscriptAction,
+	FileContext,
+	FolderContext,
+	LinkLocation,
+	PositionContext,
+	TranscriptSelectionContext,
 } from '../actions/PluginAction';
-import { renderActionsIntoMenu } from '../actions/renderActionsIntoMenu';
+import type {
+	ActionRegistry,
+	RegisteredFamily,
+} from '../actions/ActionRegistry';
+import { FILE_ACTIONS } from '../actions/fileActions';
 import { transcriptSelectionIn } from '../actions/transcriptActions';
-import { editorPositionOfNode } from '../obsidian/editorDomPosition';
-import { linkAtColumn, type SourceLink } from '../obsidian/sourceLinks';
 
 export type { EnhancementPrimer } from '../actions/PluginAction';
 
+/** CodeMirror view attached to Editor (internal Obsidian API). */
+interface EditorCodeMirrorView {
+	posAtDOM?(node: Node): number;
+}
+
+interface EditorWithCM extends Editor {
+	cm?: EditorCodeMirrorView;
+}
+
+/** The registered families the menus render. */
+export interface MenuFamilies {
+	/** Actions on a recording. */
+	readonly file: RegisteredFamily<FileContext>;
+	/** Actions on a selection over transcript lines. */
+	readonly transcript: RegisteredFamily<TranscriptSelectionContext>;
+	/** Actions on a point of a recording. */
+	readonly position: RegisteredFamily<PositionContext>;
+	/** Actions on a folder. */
+	readonly folder: RegisteredFamily<FolderContext>;
+}
+
 /**
- * The `source` the player menu passes with its file-menu event, so the
- * plugin's own file-menu listener can tell what was right-clicked. A player
- * that starts at a timestamp has a source of its own: it stands for a moment
- * in the recording, as a timestamp link does, and is offered what such a link
- * is offered in the editor rather than the whole file menu.
+ * The file actions the editor menu leaves out: plain "Delete recording",
+ * where the link-aware delete is offered instead.
  */
-const PlayerMenuSource = {
-	/** A player embedded without a timestamp. */
-	Embed: 'audio-recorder-player-context-menu',
-	/** A player embedded at a timestamp (`![[rec.m4a#t=30]]`). */
-	Timestamp: 'audio-recorder-timestamp-player-context-menu',
-} as const;
+const NOT_IN_EDITOR_MENU: ReadonlySet<string> = new Set(
+	FILE_ACTIONS.filter((action) => !action.showInEditorMenu).map(
+		(action) => action.commandId,
+	),
+);
 
 /**
  * Manages context menu items for audio files.
@@ -67,15 +90,14 @@ export class ContextMenu {
 	 * Creates a new ContextMenu instance.
 	 * @param plugin - The plugin instance.
 	 * @param services - Injected action services (app, settings, ...).
-	 * @param fileActions - Per-file actions in display order.
-	 * @param transcriptActions - Actions on a selection inside a transcript
-	 *   line, offered by the editor menu.
+	 * @param registry - The registry the families were added to.
+	 * @param families - The families the menus render.
 	 */
 	constructor(
 		private plugin: Plugin,
 		private services: ActionServices,
-		private fileActions: readonly FileAction[],
-		private transcriptActions: readonly TranscriptAction[] = [],
+		private registry: ActionRegistry,
+		private families: MenuFamilies,
 	) {
 		this.app = services.app;
 	}
@@ -132,216 +154,154 @@ export class ContextMenu {
 				// the globally active file. This is what keeps a relative link
 				// correct when the embed lives in a pop-out window or a
 				// background split, whose note is not the active one.
-				// Only the path is resolved: an embed that starts at a
-				// timestamp carries it in src (`rec.m4a#t=30`), and no file
-				// goes by a name that still holds the subpath.
-				const sourcePath = this.resolveEmbedSource(
-					embed as HTMLElement,
-				);
-				const { path, subpath } = parseLinktext(src);
+				const { sourcePath, view: owningView } =
+					this.resolveEmbedSource(embed as HTMLElement);
 				const file = this.app.metadataCache.getFirstLinkpathDest(
-					path,
+					src,
 					sourcePath,
 				);
 
-				if (!file) {
+				if (!(file instanceof TFile) || !isAudioFile(file)) {
 					return;
 				}
+				// Prevent the default browser context menu
+				event.preventDefault();
+				event.stopPropagation();
 
-				if (file instanceof TFile && isAudioFile(file)) {
-					// Prevent the default browser context menu
-					event.preventDefault();
-					event.stopPropagation();
+				const menu = new Menu();
+				const rendered = this.renderedSetFor(menu);
+				const note = owningView?.file ?? undefined;
 
-					const menu = new Menu();
-
-					this.addDeleteItemForRenderedEmbed(
+				// The point of the player that was clicked, when the embed is
+				// an enhanced player: "here" is where the user clicked rather
+				// than where the playback is.
+				const actions = getPlayerEmbedActions(embed as HTMLElement);
+				const seconds = actions?.timeAtClientX(event.clientX) ?? null;
+				if (actions && seconds !== null) {
+					this.registry.renderInto(
 						menu,
-						file,
-						embed as HTMLElement,
+						this.families.position,
+						{
+							file,
+							seconds,
+							editable: actions.markersEnabled,
+							...(note ? { note } : {}),
+							services: this.services,
+						},
+						rendered,
 					);
-
-					// Trigger the 'file-menu' event to allow Obsidian and other plugins (including this one)
-					// to populate the menu with valid actions for this file.
-					// Offer position-aware actions when the embed is an
-					// enhanced player (add marker/chapter, copy timestamp).
-					this.addEnhancedPlayerMenuItems(
-						menu,
-						embed as HTMLElement,
-						event,
-					);
-
-					this.app.workspace.trigger(
-						'file-menu',
-						menu,
-						file,
-						hasTimecodeSubpath(subpath)
-							? PlayerMenuSource.Timestamp
-							: PlayerMenuSource.Embed,
-					);
-
-					// Opened from the event rather than from page coordinates:
-					// the event carries the window it happened in, so the menu
-					// for an embed in a pop-out opens in that pop-out instead
-					// of at the same coordinates in the main window.
-					menu.showAtMouseEvent(event);
 				}
+
+				// The note the embed is in, and its link, so the link-aware
+				// delete removes the embed that was right-clicked.
+				const link = owningView
+					? this.linkOfEmbed(owningView.editor, embed as HTMLElement)
+					: null;
+				this.registry.renderInto(
+					menu,
+					this.families.file,
+					{
+						file,
+						services: this.services,
+						...(note ? { note } : {}),
+						...(link ? { link } : {}),
+					},
+					rendered,
+				);
+
+				// Lets Obsidian and other plugins add their own entries for the
+				// file; this plugin's own handler finds its actions already in.
+				this.app.workspace.trigger(
+					'file-menu',
+					menu,
+					file,
+					'audio-recorder-player-context-menu',
+				);
+
+				menu.showAtPosition({ x: event.pageX, y: event.pageY });
 			},
 			{ capture: true },
 		);
 	}
 
 	/**
-	 * Resolves the path of the note that contains an audio embed. The embed is
-	 * matched to the MarkdownView whose container holds it, so a right-click
-	 * resolves against the note the embed is actually in - a pop-out window or
-	 * a background split as well as the active pane - rather than the globally
-	 * active file. Falls back to the active file when the embed cannot be tied
-	 * to a view (e.g. a detached render).
-	 * @param embed - The right-clicked `.internal-embed` element
-	 * @returns The source path to resolve the embed's link against
+	 * The link an embed was rendered from, located in the editor of the note
+	 * it is in.
+	 * @param editor - The note's editor
+	 * @param embed - The right-clicked embed
+	 * @returns The link, or null when its position could not be resolved
 	 */
-	private resolveEmbedSource(embed: HTMLElement): string {
+	private linkOfEmbed(
+		editor: Editor,
+		embed: HTMLElement,
+	): LinkLocation | null {
+		const editorView = (editor as EditorWithCM).cm;
+		if (!editorView?.posAtDOM) {
+			return null;
+		}
+		try {
+			const pos = editorView.posAtDOM(embed);
+			const cursor = editor.offsetToPos(pos);
+			const found = linkAtCursor(editor.getLine(cursor.line), cursor.ch);
+			return found
+				? {
+						editor,
+						line: cursor.line,
+						start: found.start,
+						end: found.end,
+					}
+				: null;
+		} catch (e) {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Failed to resolve link position in editor:`,
+				e,
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Resolves the note that contains an audio embed and its source path. The
+	 * embed is matched to the MarkdownView whose container holds it, so a
+	 * right-click resolves against the note the embed is actually in - a
+	 * pop-out window or a background split as well as the active pane - rather
+	 * than the globally active file. Falls back to the active file and view
+	 * when the embed cannot be tied to a view (e.g. a detached render).
+	 * @param embed - The right-clicked `.internal-embed` element
+	 * @returns The resolved source path and owning MarkdownView, or the active
+	 *   file and view as a fallback
+	 */
+	private resolveEmbedSource(embed: HTMLElement): {
+		sourcePath: string;
+		view: MarkdownView | null;
+	} {
 		const owningView = markdownViewContaining(this.app, embed);
 		if (owningView) {
-			return owningView.file?.path ?? '';
+			return {
+				sourcePath: owningView.file?.path ?? '',
+				view: owningView,
+			};
 		}
-		return this.app.workspace.getActiveFile()?.path ?? '';
-	}
-
-	/**
-	 * Offers "Delete recording & link to file" for an embed rendered by an
-	 * editor, which is what Live Preview shows in place of the link. The
-	 * editor is found from the embed itself, so a pop-out window or a split
-	 * edits its own note, and the link is read from the source line the embed
-	 * was rendered from. Reading view renders no editor, so it offers nothing
-	 * here and keeps plain "Delete recording".
-	 *
-	 * The link found there must resolve to the right-clicked file before the
-	 * entry is offered. A widget that covers more than one line, such as a
-	 * table, maps to where the whole widget starts, and that column may hold a
-	 * different link; deleting it would remove a link the user never pointed
-	 * at.
-	 * @param menu - The context menu being built
-	 * @param file - The recording the embed shows
-	 * @param embed - The right-clicked `.internal-embed` element
-	 */
-	private addDeleteItemForRenderedEmbed(
-		menu: Menu,
-		file: TFile,
-		embed: HTMLElement,
-	): void {
-		const rendered = editorPositionOfNode(embed);
-		if (!rendered) {
-			return;
-		}
-		const { editor, position } = rendered;
-		const link = linkAtColumn(editor.getLine(position.line), position.ch);
-		if (
-			link &&
-			this.linkTarget(link, rendered.file?.path ?? '')?.path === file.path
-		) {
-			this.addDeleteRecordingAndLinkMenuItem(
-				menu,
-				file,
-				editor,
-				position.line,
-				link,
-			);
-		}
-	}
-
-	/**
-	 * Resolves a link read from note source to the file it points at. Only the
-	 * path is resolved: a subpath such as a `#t=` timecode names a place in
-	 * the file, and `getFirstLinkpathDest` would find no file under a name
-	 * that still carries it.
-	 * @param link - The link as read from the source line
-	 * @param sourcePath - Path of the note the link is written in
-	 * @returns The file, or null when the link resolves to none
-	 */
-	private linkTarget(link: SourceLink, sourcePath: string): TFile | null {
-		return this.app.metadataCache.getFirstLinkpathDest(
-			link.path,
-			sourcePath,
-		);
-	}
-
-	/**
-	 * Adds position-aware enhanced-player actions to the menu when the
-	 * right-clicked embed is an enhanced player. The clicked time is
-	 * derived from the cursor position over the seek area, so "add marker
-	 * here" lands where the user clicked rather than at playback.
-	 * @param menu - The context menu being built
-	 * @param embed - The right-clicked embed element
-	 * @param event - The originating mouse event
-	 */
-	private addEnhancedPlayerMenuItems(
-		menu: Menu,
-		embed: HTMLElement,
-		event: MouseEvent,
-	): void {
-		const actions = getPlayerEmbedActions(embed);
-		if (!actions) {
-			return;
-		}
-		const time = actions.timeAtClientX(event.clientX);
-		if (time === null) {
-			return;
-		}
-		const addMarkerItem = (
-			title: string,
-			icon: string,
-			kind: MarkerKind,
-		): void => {
-			menu.addItem((item: MenuItem) => {
-				item.setTitle(title)
-					.setIcon(icon)
-					.setSection(AAR_MENU_SECTION)
-					.onClick(() => {
-						actions.addMarkerAtTime(time, kind);
-					});
-			});
+		const activeFile = this.app.workspace.getActiveFile();
+		return {
+			sourcePath: activeFile ? activeFile.path : '',
+			view: this.app.workspace.getActiveViewOfType(MarkdownView),
 		};
-		if (actions.markersEnabled) {
-			addMarkerItem(
-				'Add marker here',
-				'bookmark-plus',
-				MARKER_KIND.bookmark,
-			);
-			addMarkerItem('Add chapter here', 'list-plus', MARKER_KIND.chapter);
-		}
-		if (actions.timestampLinksEnabled) {
-			menu.addItem((item: MenuItem) => {
-				item.setTitle('Copy timestamp link here')
-					.setIcon('link')
-					.setSection(AAR_MENU_SECTION)
-					.onClick(() => {
-						actions.copyTimestampAtTime(time);
-					});
-			});
-		}
 	}
 
 	/**
-	 * Registers the file menu event (File Explorer).
-	 * Adds a "Delete recording" option for audio files.
+	 * Registers the file menu event (File Explorer): the file actions for an
+	 * audio file, the folder actions for a folder.
 	 */
 	private registerFileMenu(): void {
 		this.plugin.registerEvent(
 			this.app.workspace.on(
 				'file-menu',
-				(menu: Menu, file: TAbstractFile, source: string) => {
+				(menu: Menu, file: TAbstractFile) => {
 					if (file instanceof TFile && isAudioFile(file)) {
-						renderActionsIntoMenu(
+						this.registry.renderInto(
 							menu,
-							// A timestamp player gets the set a timestamp link
-							// gets in the editor, which holds no deletion.
-							source === PlayerMenuSource.Timestamp
-								? this.fileActions.filter(
-										(action) => action.showInEditorMenu,
-									)
-								: this.fileActions,
+							this.families.file,
 							{ file, services: this.services },
 							this.renderedSetFor(menu),
 						);
@@ -350,7 +310,12 @@ export class ContextMenu {
 					// A folder is not a file action: it targets no recording
 					// and every entry in that list would be wrong for it.
 					if (file instanceof TFolder) {
-						this.addFolderQueueItem(menu, file);
+						this.registry.renderInto(
+							menu,
+							this.families.folder,
+							{ folder: file, services: this.services },
+							this.renderedSetFor(menu),
+						);
 					}
 				},
 			),
@@ -358,26 +323,9 @@ export class ContextMenu {
 	}
 
 	/**
-	 * Adds the queue-this-folder entry to a folder's menu.
-	 * @param menu - The folder's context menu
-	 * @param folder - The folder that was right-clicked
-	 */
-	private addFolderQueueItem(menu: Menu, folder: TFolder): void {
-		if (!this.services.getSettings().transcriptionEnabled) {
-			return;
-		}
-		menu.addItem((item) => {
-			item.setTitle('Transcribe every recording in this folder')
-				.setIcon('list-plus')
-				.onClick(() => {
-					void this.services.transcriptionQueue.queueFolder(folder);
-				});
-		});
-	}
-
-	/**
-	 * Registers the editor menu event.
-	 * Adds a "Delete recording & link to file" option for audio file links/embeds.
+	 * Registers the editor menu event: the transcript actions for a
+	 * selection in a transcript line, and the file actions for the audio
+	 * link under the cursor.
 	 */
 	private registerEditorMenu(): void {
 		this.plugin.registerEvent(
@@ -407,30 +355,41 @@ export class ContextMenu {
 	): void {
 		this.addTranscriptSelectionItems(menu, editor, view);
 		const cursor = editor.getCursor();
-		const linkMatch = linkAtColumn(editor.getLine(cursor.line), cursor.ch);
-
-		if (!linkMatch) {
+		const found = linkAtCursor(editor.getLine(cursor.line), cursor.ch);
+		if (!found) {
 			return;
 		}
 
-		const file = this.linkTarget(linkMatch, view.file?.path ?? '');
+		const file = this.app.metadataCache.getFirstLinkpathDest(
+			found.path,
+			view.file ? view.file.path : '',
+		);
 
 		if (!(file instanceof TFile) || !isAudioFile(file)) {
 			return;
 		}
 
-		renderActionsIntoMenu(
+		const rendered = this.renderedSetFor(menu);
+		// Marked as rendered without being added: the editor menu offers the
+		// link-aware delete in their place.
+		for (const id of NOT_IN_EDITOR_MENU) {
+			rendered.add(id);
+		}
+		this.registry.renderInto(
 			menu,
-			this.fileActions.filter((action) => action.showInEditorMenu),
-			{ file, services: this.services },
-			this.renderedSetFor(menu),
-		);
-		this.addDeleteRecordingAndLinkMenuItem(
-			menu,
-			file,
-			editor,
-			cursor.line,
-			linkMatch,
+			this.families.file,
+			{
+				file,
+				services: this.services,
+				...(view.file ? { note: view.file } : {}),
+				link: {
+					editor,
+					line: cursor.line,
+					start: found.start,
+					end: found.end,
+				},
+			},
+			rendered,
 		);
 	}
 
@@ -454,79 +413,11 @@ export class ContextMenu {
 		if (!context) {
 			return;
 		}
-		renderActionsIntoMenu(
+		this.registry.renderInto(
 			menu,
-			this.transcriptActions,
+			this.families.transcript,
 			context,
 			this.renderedSetFor(menu),
 		);
-	}
-
-	/**
-	 * Deletes the recording file and removes the link from the editor.
-	 * @param file - The file to delete.
-	 * @param editor - The editor instance.
-	 * @param line - The line number where the link is located.
-	 * @param linkMatch - The link match object containing start and end indices.
-	 */
-	private async deleteRecordingAndLink(
-		file: TFile,
-		editor: Editor,
-		line: number,
-		linkMatch: { start: number; end: number },
-	): Promise<void> {
-		try {
-			await this.app.fileManager.trashFile(file);
-			// Remove the link from editor
-			editor.replaceRange(
-				'',
-				{
-					line,
-					ch: linkMatch.start,
-				},
-				{
-					line,
-					ch: linkMatch.end,
-				},
-			);
-			new Notice('Recording and link deleted');
-		} catch (error) {
-			new Notice('Failed to delete recording');
-			console.error('Failed to delete recording:', error);
-		}
-	}
-
-	/**
-	 * Adds a "Delete recording & link to file" item to the menu, unless the
-	 * link points at a moment in the recording (`#t=...`). Such a link is a
-	 * transcript timestamp, and a transcript holds dozens of them to the same
-	 * recording: trashing the recording from one of them is not what a
-	 * right-click on a timestamp asks for, and it would leave every other
-	 * timestamp pointing at nothing. The non-destructive file actions stay
-	 * on offer for it; only this entry is held back.
-	 * @param menu - The menu to add the item to.
-	 * @param file - The file to delete.
-	 * @param editor - The editor instance.
-	 * @param line - The line number where the link is located.
-	 * @param linkMatch - The link at the click, with its span and subpath.
-	 */
-	private addDeleteRecordingAndLinkMenuItem(
-		menu: Menu,
-		file: TFile,
-		editor: Editor,
-		line: number,
-		linkMatch: SourceLink,
-	): void {
-		if (hasTimecodeSubpath(linkMatch.subpath)) {
-			return;
-		}
-		menu.addItem((item: MenuItem) => {
-			item.setTitle('Delete recording & link to file')
-				.setIcon('trash')
-				.setSection(AAR_MENU_SECTION)
-				.onClick(() =>
-					this.deleteRecordingAndLink(file, editor, line, linkMatch),
-				);
-		});
 	}
 }

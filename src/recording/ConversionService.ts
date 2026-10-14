@@ -4,7 +4,7 @@
  * @module recording/ConversionService
  */
 
-import { Notice, normalizePath } from 'obsidian';
+import { normalizePath } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
 import { convertBlobToFormatBuffer } from '../audio/AudioFormatConverter';
@@ -14,6 +14,7 @@ import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { ConversionLinkAction } from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
+import { showNotice, type Notify } from '../utils/notify';
 
 /**
  * Parameters of one conversion operation.
@@ -38,8 +39,9 @@ export interface ConversionRequest {
 }
 
 /**
- * Outcome of a conversion. Failure details are already surfaced to
- * the user via Notices by the pipeline.
+ * Outcome of a conversion. Failure details are already told to the
+ * user through the service's reporter, a notice unless the caller passed
+ * another.
  */
 export type ConversionOutcome =
 	| { status: 'completed'; newFileName: string; newPath: string }
@@ -54,11 +56,14 @@ export class ConversionService {
 	/**
 	 * Creates a new ConversionService.
 	 * @param app - The Obsidian App instance
+	 * @param getWorkerClient - The encoding worker, when one is running
+	 * @param notify - Where failures and warnings are told to the user
 	 */
 	constructor(
 		private readonly app: App,
 		private readonly getWorkerClient: () => EncodingWorkerClient | null = () =>
 			null,
+		private readonly notify: Notify = showNotice,
 	) {}
 
 	/**
@@ -94,7 +99,7 @@ export class ConversionService {
 			// source, and a channel-preserving request is refused because
 			// it would just re-encode the file into itself
 			if (!isMonoChannelMode(request.channelMode ?? ChannelMode.Source)) {
-				new Notice(
+				this.notify(
 					'Converting to the same format requires a mono channels option.',
 				);
 				return { status: 'aborted' };
@@ -109,7 +114,7 @@ export class ConversionService {
 		try {
 			// Check if target file already exists
 			if (await this.app.vault.adapter.exists(newPath)) {
-				new Notice(
+				this.notify(
 					`File "${newFileName}" already exists. Choose a different format or rename the existing file.`,
 				);
 				return { status: 'aborted' };
@@ -123,7 +128,7 @@ export class ConversionService {
 			// bounded by decodeAudioBlob, where the allocation is, on the
 			// last rung of the ladder.
 			if (!isReadableSize(request.sourceFile.stat.size)) {
-				new Notice(tooLargeMessage('convert'));
+				this.notify(tooLargeMessage('convert'));
 				return { status: 'aborted' };
 			}
 
@@ -162,7 +167,7 @@ export class ConversionService {
 		} catch (error) {
 			const message = errorMessage(error);
 			onProgress(`Error: ${message}`);
-			new Notice(`Conversion failed: ${message}`);
+			this.notify(`Conversion failed: ${message}`);
 			return { status: 'aborted' };
 		}
 
@@ -213,13 +218,13 @@ export class ConversionService {
 			} catch (error) {
 				const message = errorMessage(error);
 				onProgress(`Error: ${message}`);
-				new Notice(
+				this.notify(
 					`"${newFileName}" was created, but updating links failed: ${message}. The source file was kept.`,
 				);
 				return false;
 			}
 			if (linkResult.frontmatterReferences > 0) {
-				new Notice(
+				this.notify(
 					`${String(linkResult.frontmatterReferences)} frontmatter link(s) still point to the source file and must be updated manually.`,
 				);
 			}
@@ -227,7 +232,7 @@ export class ConversionService {
 
 		if (request.deleteSource) {
 			if (linkResult !== null && linkResult.skippedReferences > 0) {
-				new Notice(
+				this.notify(
 					`Source file kept: ${String(linkResult.skippedReferences)} link(s) could not be updated.`,
 				);
 			} else {
@@ -237,7 +242,7 @@ export class ConversionService {
 				} catch (error) {
 					const message = errorMessage(error);
 					onProgress(`Error: ${message}`);
-					new Notice(
+					this.notify(
 						`"${newFileName}" was created, but the source file could not be deleted: ${message}`,
 					);
 					return false;

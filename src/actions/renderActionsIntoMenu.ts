@@ -36,7 +36,7 @@ export function renderActionsIntoMenu<TContext>(
 		}
 		rendered.add(action.commandId);
 		menu.addItem((item: MenuItem) => {
-			item.setTitle(action.title)
+			item.setTitle(action.menuTitle ?? action.title)
 				.setIcon(action.icon)
 				.setSection(AAR_MENU_SECTION)
 				.onClick(() => {

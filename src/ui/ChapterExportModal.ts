@@ -14,33 +14,13 @@ import type { App } from 'obsidian';
 import { PluginModal } from './PluginModal';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import {
-	formatChapterList,
-	formatChapterOutline,
-	formatCueSheet,
-} from '../chapters/chapterExport';
-import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
-import { directoryOf } from '../utils/paths';
+	chapterExportText,
+	ChapterExportView,
+	writeChapterExportFile,
+} from '../chapters/chapterExportFiles';
 import { insertTranscriptIntoNote } from '../transcription/transcriptOutput';
 import type { PlayerMarker } from '../markers/markerModel';
 import { errorMessage } from '../errors';
-
-/**
- * The representations the markers can be written in. Not stored: the dialog
- * starts on the first one every time. The keys are declared in the order the
- * dropdown offers them, which is the order {@link VIEW_LABELS} repeats.
- */
-export const ChapterExportView = {
-	/** A timecoded list, as a video description carries one. */
-	List: 'list',
-	/** A cue sheet, as players and audio editors read one. */
-	Cue: 'cue',
-	/** A Markdown outline whose timecodes are clickable. */
-	Outline: 'outline',
-} as const;
-
-/** One representation (derived from {@link ChapterExportView}). */
-export type ChapterExportView =
-	(typeof ChapterExportView)[keyof typeof ChapterExportView];
 
 /** What each representation is called, and what it is for. */
 const VIEW_LABELS: Record<ChapterExportView, string> = {
@@ -167,22 +147,13 @@ export class ChapterExportModal extends PluginModal {
 	 * @returns What to tell the user
 	 */
 	private async writeFile(): Promise<string> {
-		const base = this.options.file.path.replace(/\.[^.]+$/, '');
-		const isCue = this.view === ChapterExportView.Cue;
-		const content = isCue
-			? formatCueSheet(this.options.markers, {
-					fileName: this.options.file.name,
-					title: this.options.file.basename,
-				})
-			: formatChapterList(this.options.markers);
-		const desired = `${base}.${isCue ? 'cue' : 'chapters.txt'}`;
-		const directory = directoryOf(desired);
-		const target = await resolveUniquePathInDirectory(
-			directory,
-			desired.slice(directory.length === 0 ? 0 : directory.length + 1),
+		const target = await writeChapterExportFile(
 			this.app,
+			this.view === ChapterExportView.Cue
+				? ChapterExportView.Cue
+				: ChapterExportView.List,
+			this.options,
 		);
-		await this.app.vault.create(target, content);
 		return `Markers written to ${target}.`;
 	}
 
@@ -191,9 +162,9 @@ export class ChapterExportModal extends PluginModal {
 	 * @returns What to tell the user
 	 */
 	private async writeOutline(): Promise<string> {
-		const outline = formatChapterOutline(
-			this.options.markers,
-			this.options.linkBuilder,
+		const outline = chapterExportText(
+			ChapterExportView.Outline,
+			this.options,
 		);
 		if (this.target === 'clipboard') {
 			await navigator.clipboard.writeText(outline);
