@@ -12,10 +12,55 @@ import {
 	canEncodeAudio,
 	Quality,
 } from 'mediabunny';
-import type { OutputFormat } from 'mediabunny';
+import type { AudioCodec, OutputFormat } from 'mediabunny';
 import { EncodingError } from '../errors';
 import { FORMAT_MP3, FORMAT_FLAC } from '../constants';
 import { FORMAT_REGISTRY, getFormatDescriptor } from './formatRegistry';
+
+/**
+ * The codec string of AAC-LC, the profile every AAC file this plugin writes is
+ * asked for.
+ *
+ * Left to itself, mediabunny picks the profile from the layout: at 24 kHz and
+ * below it builds an HE-AAC string, v2 for stereo and v1 for mono, on the
+ * guess that a low rate means a low bitrate. No guess is needed here, since
+ * the plugin always wants plain AAC-LC, and the guess cost real files: an
+ * encoder without HE-AAC, which is every Chromium build, was asked about a
+ * profile it does not have and refused a rate it may well encode as AAC-LC.
+ */
+const AAC_LC_CODEC_STRING = 'mp4a.40.2';
+
+/** The encoding parameters an encoder is asked about. */
+interface EncoderQuestion {
+	numberOfChannels?: number;
+	sampleRate?: number;
+	quality?: Quality;
+}
+
+/**
+ * The codec string to encode with, when it is not mediabunny's own choice.
+ *
+ * AAC asks for AAC-LC first. Only where the encoder refuses that does it fall
+ * back to the string mediabunny builds, so a platform whose encoder takes an
+ * HE-AAC profile at a rate where it refuses AAC-LC still encodes, as it did
+ * before; nothing that was encodable stops being so. Every other codec has
+ * one string, which mediabunny builds.
+ * @param codec - Codec being encoded
+ * @param question - Layout, rate and quality of the encode
+ * @returns The extra encoding option, or nothing to leave the choice alone
+ */
+async function codecStringFor(
+	codec: AudioCodec,
+	question: EncoderQuestion,
+): Promise<{ fullCodecString?: string }> {
+	if (codec !== 'aac') {
+		return {};
+	}
+	const lowComplexity = { fullCodecString: AAC_LC_CODEC_STRING };
+	return (await canEncodeAudio(codec, { ...question, ...lowComplexity }))
+		? lowComplexity
+		: {};
+}
 
 /**
  * Options for offline audio encoding.
@@ -118,10 +163,21 @@ async function encodeWithMediabunny(
 		// ask through Quality, the field mediabunny still supports - its bare
 		// `bitrate` is deprecated, and phrasing the encode differently from
 		// the probe in probeOfflineEncodingSupport is what lets the two drift.
+		// The codec string is settled the same way the probe settles it, on
+		// the layout and rate the buffer really has.
+		const quality = new Quality({ bitrate });
 		const audioSource = new AudioBufferSource(
 			descriptor.isPcm
 				? { codec }
-				: { codec, quality: new Quality({ bitrate }) },
+				: {
+						codec,
+						quality,
+						...(await codecStringFor(codec, {
+							numberOfChannels: buffer.numberOfChannels,
+							sampleRate: buffer.sampleRate,
+							quality,
+						})),
+					},
 		);
 		output.addAudioTrack(audioSource);
 
@@ -209,14 +265,23 @@ export async function probeOfflineEncodingSupport(
 	try {
 		await ensureEncoderRegistered(format);
 		const { bitrate, ...dimensions } = quality ?? {};
-		return await canEncodeAudio(descriptor.codec, {
+		const question: EncoderQuestion = {
 			...dimensions,
 			// PCM is uncompressed, so nothing is asked about its bitrate,
 			// the same veto encodeAudioBuffer applies.
 			...(descriptor.isPcm || bitrate === undefined
 				? {}
 				: { quality: new Quality({ bitrate }) }),
-		});
+		};
+		// An encoder that takes AAC-LC has answered; only one that refuses it
+		// is asked about mediabunny's own profile, exactly as the encode
+		// falls back.
+		if (
+			(await codecStringFor(descriptor.codec, question)).fullCodecString
+		) {
+			return true;
+		}
+		return await canEncodeAudio(descriptor.codec, question);
 	} catch {
 		// A failed registration or probe means encoding cannot work
 		return false;

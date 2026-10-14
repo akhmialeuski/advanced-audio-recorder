@@ -1254,9 +1254,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const generation = ++this.formatAvailabilityGeneration;
 		// Asked about the audio these settings will produce, not the codec
 		// alone: a merged multi-track MP4 is encoded by mediabunny after the
-		// mix, and at 22.05 kHz that asks Chromium for HE-AAC, which it does
-		// not have. The codec alone said yes and the recording failed at its
-		// end.
+		// mix, at a rate the platform AAC encoder may not take. The codec
+		// alone said yes and the recording failed at its end.
 		const encoding = recordingEncodingFor(this.plugin.settings);
 		let entries: FormatAvailabilityEntry[];
 		try {

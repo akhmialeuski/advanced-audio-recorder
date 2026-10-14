@@ -425,9 +425,9 @@ export class SystemDiagnostics {
 		// One encoding, read once and asked about in full. Taking the layout
 		// from it and the rate from the settings had the report measure a file
 		// nobody writes: at 22.05 kHz in the settings on a 48 kHz device the
-		// AAC probe answered for HE-AAC and reported no reachable bitrate at
-		// all, while the recording encodes the 48 kHz mix and the bitrate row
-		// lists what it accepts.
+		// AAC probe answered for a rate no encode runs at and reported no
+		// reachable bitrate at all, while the recording encodes the 48 kHz mix
+		// and the bitrate row lists what it accepts.
 		const encoding = recordingEncodingFor(settings);
 		const [audioDevices, audioCapabilities, activeRecordingConfig] =
 			await Promise.all([

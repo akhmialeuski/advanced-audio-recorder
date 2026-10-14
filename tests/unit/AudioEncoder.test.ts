@@ -235,6 +235,52 @@ describe('AudioEncoder', () => {
 			},
 		);
 
+		it('encodes AAC as AAC-LC where the encoder takes it, on the buffer it is handed', async () => {
+			const { AudioBufferSource } = jest.requireMock('mediabunny');
+			jest.mocked(canEncodeAudio).mockImplementation((_codec, options) =>
+				Promise.resolve(options?.fullCodecString === 'mp4a.40.2'),
+			);
+			const buffer = createMockAudioBuffer(1, 4096, 22050);
+
+			await encodeAudioBuffer(buffer, {
+				...defaultOptions,
+				format: 'm4a',
+				bitrate: 64000,
+			});
+
+			// Asked about the layout and rate the buffer really has, which is
+			// the question the probe asked before the recording started.
+			expect(jest.mocked(canEncodeAudio)).toHaveBeenCalledWith('aac', {
+				numberOfChannels: 1,
+				sampleRate: 22050,
+				quality: expect.anything(),
+				fullCodecString: 'mp4a.40.2',
+			});
+			expect(AudioBufferSource).toHaveBeenCalledWith(
+				expect.objectContaining({
+					codec: 'aac',
+					fullCodecString: 'mp4a.40.2',
+				}),
+			);
+		});
+
+		it('leaves the AAC profile to mediabunny where AAC-LC is refused', async () => {
+			const { AudioBufferSource } = jest.requireMock('mediabunny');
+			jest.mocked(canEncodeAudio).mockResolvedValue(false);
+			const buffer = createMockAudioBuffer(2, 4096, 22050);
+
+			await encodeAudioBuffer(buffer, {
+				...defaultOptions,
+				format: 'aac',
+			});
+
+			expect(AudioBufferSource).toHaveBeenCalledWith(
+				expect.not.objectContaining({
+					fullCodecString: expect.anything(),
+				}),
+			);
+		});
+
 		it('throws EncodingError for unsupported format', async () => {
 			const buffer = createMockAudioBuffer(1, 1024, 44100);
 
@@ -384,10 +430,62 @@ describe('AudioEncoder', () => {
 			expect(jest.mocked(canEncodeAudio)).toHaveBeenCalledWith('aac', {
 				sampleRate: 44100,
 				quality: expect.anything(),
+				fullCodecString: 'mp4a.40.2',
 			});
 			expect(jest.mocked(Quality)).toHaveBeenCalledWith({
 				bitrate: 24000,
 			});
+		});
+
+		it('asks an AAC encoder about AAC-LC at a rate where mediabunny would pick HE-AAC', async () => {
+			// Left alone, mediabunny builds an HE-AAC string at 24 kHz and
+			// below, and a Chromium encoder, which has only AAC-LC, refused
+			// the format there before the rate was ever considered.
+			jest.mocked(canEncodeAudio).mockImplementation((_codec, options) =>
+				Promise.resolve(options?.fullCodecString === 'mp4a.40.2'),
+			);
+
+			const supported = await probeOfflineEncodingSupport('m4a', {
+				numberOfChannels: 1,
+				sampleRate: 22050,
+				bitrate: 64000,
+			});
+
+			expect(supported).toBe(true);
+		});
+
+		it('falls back to the profile mediabunny picks when AAC-LC is refused', async () => {
+			// What was encodable before stays encodable: an encoder that
+			// takes only the profile mediabunny builds is still asked about
+			// that profile.
+			jest.mocked(canEncodeAudio).mockImplementation((_codec, options) =>
+				Promise.resolve(options?.fullCodecString === undefined),
+			);
+
+			const supported = await probeOfflineEncodingSupport('aac', {
+				sampleRate: 22050,
+			});
+
+			expect(supported).toBe(true);
+			expect(jest.mocked(canEncodeAudio)).toHaveBeenLastCalledWith(
+				'aac',
+				{ sampleRate: 22050 },
+			);
+		});
+
+		it('names no codec string for a codec with only one', async () => {
+			jest.mocked(canEncodeAudio).mockResolvedValue(true);
+
+			await probeOfflineEncodingSupport('webm', {
+				sampleRate: 22050,
+				bitrate: 64000,
+			});
+
+			expect(jest.mocked(canEncodeAudio)).toHaveBeenCalledWith('opus', {
+				sampleRate: 22050,
+				quality: expect.anything(),
+			});
+			expect(jest.mocked(canEncodeAudio)).toHaveBeenCalledTimes(1);
 		});
 
 		it('asks nothing about the bitrate of a PCM target', async () => {
