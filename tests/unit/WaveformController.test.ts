@@ -386,6 +386,39 @@ describe('the decode pipeline', () => {
 		expect(canvas.rects.length).toBeGreaterThan(0);
 	});
 
+	// The player renders itself again when the note moves into a pop-out or
+	// another view edits its markers, and either can happen while a long
+	// recording is still decoding. The pass that asks then waits on that
+	// decode instead of reading and decoding the whole file a second time.
+	it('lets a decode still running serve the pass rendered after it', async () => {
+		let finishDecode: (buffer: AudioBuffer) => void = () => undefined;
+		const sut = createSut({
+			decode: () =>
+				new Promise<AudioBuffer>((resolve) => {
+					finishDecode = resolve;
+				}),
+		});
+		const laterSeekEl = createSeekEl(200);
+		const original = globalThis.IntersectionObserver;
+		Reflect.deleteProperty(globalThis, 'IntersectionObserver');
+		try {
+			sut.controller.mount(createSeekEl(200));
+			sut.controller.scheduleLoad(document.createElement('div'));
+			await jest.advanceTimersByTimeAsync(0);
+			sut.controller.reset();
+			sut.controller.mount(laterSeekEl);
+			sut.controller.scheduleLoad(document.createElement('div'));
+
+			finishDecode(createMockAudioBuffer(1, 8, 8));
+			await jest.runAllTimersAsync();
+		} finally {
+			globalThis.IntersectionObserver = original;
+		}
+
+		expect(sut.decode).toHaveBeenCalledTimes(1);
+		expect(canvas.rectsOf(laterSeekEl).length).toBeGreaterThan(0);
+	});
+
 	it('caches the peaks under the file path, size, and mtime', async () => {
 		const sut = createSut();
 
