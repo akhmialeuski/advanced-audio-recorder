@@ -77,7 +77,9 @@ describe('context menu works inside a pop-out window', () => {
 			file,
 			'audio-recorder-player-context-menu',
 		);
-		expect(at(menuInstances, 0).shown).toBe(true);
+		// Opened from the event, which carries the pop-out's window, rather
+		// than at page coordinates Obsidian would apply to the main window.
+		expect(at(menuInstances, 0).shownAtEvent).toBe(event);
 	});
 
 	it('deletes the link the embed was rendered from in the pop-out note', async () => {

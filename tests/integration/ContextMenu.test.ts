@@ -853,10 +853,7 @@ describe('ContextMenu', () => {
 				'audio.mp3',
 				'active.md',
 			);
-			expect(asMockMenu(triggeredMenu()).shownAtPosition).toEqual({
-				x: 100,
-				y: 200,
-			});
+			expect(asMockMenu(triggeredMenu()).shownAtEvent).toBe(event);
 		});
 
 		it('does nothing when the file cannot be resolved', () => {

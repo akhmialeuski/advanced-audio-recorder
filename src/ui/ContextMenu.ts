@@ -158,7 +158,11 @@ export class ContextMenu {
 						'audio-recorder-player-context-menu',
 					);
 
-					menu.showAtPosition({ x: event.pageX, y: event.pageY });
+					// Opened from the event rather than from page coordinates:
+					// the event carries the window it happened in, so the menu
+					// for an embed in a pop-out opens in that pop-out instead
+					// of at the same coordinates in the main window.
+					menu.showAtMouseEvent(event);
 				}
 			},
 			{ capture: true },
