@@ -54,6 +54,7 @@ import type {
 } from './PluginAction';
 import { FILE_TARGET_PARAMS, namedVaultFile } from './recordingTargets';
 import { editorLines, noteLines } from './transcriptLines';
+import { findNoteView } from '../utils/noteViews';
 
 /** The lines a selection holds text on, and where it starts and ends. */
 interface SelectedLines {
@@ -465,8 +466,9 @@ function columnsOf(
 
 /**
  * The selection the command line names: lines of a note by number, and the
- * words of the first one. The note's lines are read once, here, and written
- * back by the edit only where they still read the same.
+ * words of the first one. The note's lines are read once, here, from its
+ * editor where it is open, and written back by the edit only where they
+ * still read the same.
  * @param services - Injected services
  * @param args - The arguments as typed
  * @returns The selection, or the refusal
@@ -484,8 +486,13 @@ async function namedSelection(
 	if (!(note instanceof TFile) || note.extension !== 'md') {
 		return 'Name the note of the transcript with file=<name> or path=<vault path>, or open it in Obsidian.';
 	}
-	const content = await app.vault.read(note);
-	const lines = noteLines(app, note, content);
+	// An open note is edited where it is open: the line numbers are the ones
+	// its editor shows, including what is not saved yet, and the edit can be
+	// undone there. A note that is not open is edited on disk.
+	const view = findNoteView(app, note.path);
+	const lines = view
+		? editorLines(view.editor)
+		: noteLines(app, note, await app.vault.read(note));
 	const range = { min: 1, max: lines.lineCount(), integer: true };
 	const first = cliNumber(args, LINE_PARAM, range);
 	if (isRefusal(first)) {

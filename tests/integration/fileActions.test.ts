@@ -17,7 +17,7 @@ import type { ActionServices } from 'src/actions/PluginAction';
 import { COMMAND_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 import { createFile, createMockApp } from '../helpers/createApp';
 import { noticeMessages } from '../mocks/obsidian';
 
@@ -196,13 +196,44 @@ describe('FILE_ACTIONS registry', () => {
 		}
 	});
 
-	it('keeps only the link-aware delete out of the editor menu', () => {
-		const hidden = FILE_ACTIONS.filter(
-			(entry) => !entry.showInEditorMenu,
-		).map((entry) => entry.commandId);
+	it.each([
+		{
+			reached: 'on its own',
+			extra: {},
+			offered: COMMAND_IDS.deleteRecording,
+		},
+		{
+			reached: 'through a note',
+			extra: { note: createFile('Meetings/standup.md') },
+			offered: COMMAND_IDS.deleteRecordingAndLink,
+		},
+		{
+			reached: 'through its link',
+			extra: {
+				link: {
+					editor: partial<Editor>({}),
+					line: 0,
+					start: 0,
+					end: 9,
+				},
+			},
+			offered: COMMAND_IDS.deleteRecordingAndLink,
+		},
+	])(
+		'offers one delete for a recording reached $reached',
+		({ extra, offered }) => {
+			const { services } = createServices();
+			const deletes = FILE_ACTIONS.filter(
+				(entry) =>
+					(entry.commandId === COMMAND_IDS.deleteRecording ||
+						entry.commandId ===
+							COMMAND_IDS.deleteRecordingAndLink) &&
+					entry.isAvailable({ file, services, ...extra }),
+			).map((entry) => entry.commandId);
 
-		expect(hidden).toEqual([COMMAND_IDS.deleteRecording]);
-	});
+			expect(deletes).toEqual([offered]);
+		},
+	);
 });
 
 describe('FILE_ACTIONS availability', () => {
@@ -450,6 +481,47 @@ describe('the transcribe action', () => {
 		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
 			notePath: 'Meetings/standup.md',
 		});
+	});
+});
+
+describe('a dialog opened for a recording the command line named', () => {
+	it('transcribes into no note when none was named', async () => {
+		const { services } = createServices();
+
+		await action(COMMAND_IDS.transcribeAudio).run({
+			file,
+			services,
+			named: true,
+		});
+
+		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
+			notePath: '',
+		});
+	});
+
+	it('links the cleaned copy into no note when none was named', async () => {
+		const { services } = createServices();
+		await action(COMMAND_IDS.cleanupAudio).run({
+			file,
+			services,
+			named: true,
+		});
+		const onProcessed = defined(
+			at(jest.mocked(AudioProcessingModal).mock.calls, 0)[3],
+		);
+
+		await onProcessed({
+			outputPath: 'Recordings/take-processed.wav',
+			replaceSource: false,
+		});
+
+		expect(insertProcessedAudioEmbed).toHaveBeenCalledWith(
+			services.app,
+			file,
+			'Recordings/take-processed.wav',
+			false,
+			null,
+		);
 	});
 });
 
@@ -753,6 +825,33 @@ describe('exporting chapters and markers', () => {
 		);
 	});
 
+	it('links from no note for a recording the command line named alone', async () => {
+		const { services } = createServices(
+			{},
+			sidecarDouble({
+				getMarkers: jest
+					.fn()
+					.mockResolvedValue([
+						{ id: 'a', time: 0, label: 'Intro', kind: 'chapter' },
+					]),
+			}),
+		);
+		jest.mocked(services.app.workspace.getActiveFile).mockReturnValue(
+			createFile('Meetings/other.md'),
+		);
+
+		await action(COMMAND_IDS.exportChapters).run({
+			file,
+			services,
+			named: true,
+		});
+
+		expect(ChapterExportModal).toHaveBeenCalledWith(
+			services.app,
+			expect.objectContaining({ notePath: '' }),
+		);
+	});
+
 	it('inserts into no note when the recording itself is what is open', async () => {
 		// Its own path is not a note to write an outline into
 		const { services } = createServices(
@@ -834,15 +933,24 @@ describe('the file actions on the command line', () => {
 			said: 'Auto chapters are switched off in settings.',
 		},
 		{
+			commandId: COMMAND_IDS.deleteRecording,
+			note: createFile('Meetings/standup.md'),
+			said: `${file.path} was named through a note, whose links to it a plain delete would leave broken. Use delete-with-links to remove them too, or name the recording alone with path=<recording>.`,
+		},
+		{
 			commandId: COMMAND_IDS.deleteRecordingAndLink,
 			said: `Name the note to remove the links of ${file.path} from: file=<note>, or note=<note> beside path=<recording>.`,
 		},
-	])('says why $commandId is not offered', ({ commandId, said }) => {
+	])('says why $commandId is not offered', ({ commandId, note, said }) => {
 		const { services } = createServices();
 
-		expect(action(commandId).cli.unavailable?.({ file, services })).toBe(
-			said,
-		);
+		expect(
+			action(commandId).cli.unavailable?.({
+				file,
+				services,
+				...(note ? { note } : {}),
+			}),
+		).toBe(said);
 	});
 
 	it('trashes the recording and says so', async () => {

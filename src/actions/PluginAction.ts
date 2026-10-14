@@ -86,6 +86,13 @@ export interface ActionCli<TContext> {
 	 */
 	readonly opensDialog?: boolean;
 	/**
+	 * The flag that makes {@link execute} answer only once the job it starts
+	 * is over, for an action that otherwise answers as soon as it started
+	 * one. The command line sets it on every target when there are several,
+	 * so they run one after another rather than all at once.
+	 */
+	readonly waitFlag?: string;
+	/**
 	 * Why the action is not available for this target, said where a menu
 	 * would simply leave the entry out. Without it a generic sentence is used.
 	 * @param context - The target the action was asked for
@@ -198,6 +205,13 @@ export interface FileContext {
 	 * one: the one link an action that removes "the link" removes.
 	 */
 	readonly link?: LinkLocation;
+	/**
+	 * Set when the command line named the recording. Its note is then the
+	 * one named or none, never the note that happens to be active in the app,
+	 * which a script cannot see: a dialog opened for it falls back to no
+	 * note where one opened from a menu falls back to the active one.
+	 */
+	readonly named?: true;
 }
 
 /** One link in an open editor. */
@@ -290,19 +304,11 @@ export interface SessionServices {
 
 /**
  * An action on a single audio file. Rendered into the file, editor, and
- * player context menus, and registered as a palette command that
- * resolves the active file.
+ * player context menus, and registered as a palette command and a command
+ * line command. Where it is offered follows from its availability over the
+ * context alone: a recording reached through a note carries that note.
  */
-export interface FileAction extends PluginCommand<FileContext> {
-	/**
-	 * Whether the action is offered in the editor menu. The file
-	 * explorer menu and the palette always offer available actions;
-	 * the editor menu can substitute a link-aware variant instead. A
-	 * player embedded at a timestamp offers this same set, since it
-	 * stands for a moment in the recording as a timestamp link does.
-	 */
-	readonly showInEditorMenu: boolean;
-}
+export type FileAction = PluginCommand<FileContext>;
 
 /**
  * A selection over rendered transcript lines: the lines it was made in, the

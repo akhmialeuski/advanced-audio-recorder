@@ -171,6 +171,12 @@ export async function speakersFromCli(
 	const withNotes = (answer: string): string =>
 		[answer, ...notes.messages].join('\n');
 	if (cliFlag(args, UNDO_FLAG)) {
+		// Only what a rename recorded can be undone, as the dialog offers
+		// Undo only then: names that came with the transcript are no rename,
+		// and stepping back from them would strip them to the engine labels.
+		if (section.history.length === 0) {
+			return `No rename of the speakers of ${file.path} to undo.`;
+		}
 		return withNotes(await undoSpeakerRename(deps, section, allowBroad));
 	}
 	const map = cliText(args, MAP_PARAM);

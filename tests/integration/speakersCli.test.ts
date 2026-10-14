@@ -365,8 +365,28 @@ describe('undoing the last rename', () => {
 		expect(sut.sidecar.popHistory).toHaveBeenCalledWith(TAKE);
 	});
 
-	it('takes undo over names typed alongside it', async () => {
+	it('undoes nothing when no rename was made, keeping the names it came with', async () => {
 		const sut = createSut();
+
+		await expect(sut.run({ undo: 'true' })).resolves.toBe(
+			`No rename of the speakers of ${TAKE} to undo.`,
+		);
+		expect(applySpeakerRenamesWithSidecar).not.toHaveBeenCalled();
+		expect(sut.sidecar.setSpeakers).not.toHaveBeenCalled();
+		expect(sut.sidecar.popHistory).not.toHaveBeenCalled();
+	});
+
+	it('takes undo over names typed alongside it', async () => {
+		const sut = createSut(
+			roster({
+				history: [
+					{
+						at: '2026-01-01T00:00:00Z',
+						names: { 'Speaker 1': 'Alex' },
+					},
+				],
+			}),
+		);
 
 		await sut.run({ undo: 'true', map: 'Speaker 2=Bea' });
 

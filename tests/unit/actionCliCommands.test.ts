@@ -140,6 +140,51 @@ describe('what a command answers', () => {
 		await expect(run()).resolves.toBe('Acted on a.\nActed on b.');
 	});
 
+	it('makes each of several targets wait for its job before the next', async () => {
+		const execute = jest.fn(
+			(target: Target, args: CliData) =>
+				`${target.name} waited: ${args.wait ?? 'no'}`,
+		);
+		const { run } = createSut(
+			makeAction({ waitFlag: 'wait', execute }),
+			() => [
+				{ name: 'a', takes: true },
+				{ name: 'b', takes: true },
+			],
+		);
+
+		await expect(run({ language: 'de' })).resolves.toBe(
+			'a waited: true\nb waited: true',
+		);
+		expect(execute).toHaveBeenCalledWith(
+			{ name: 'a', takes: true },
+			{ language: 'de', wait: 'true' },
+		);
+	});
+
+	it('leaves one target to answer as the action does', async () => {
+		const execute = jest.fn(
+			(target: Target, args: CliData) =>
+				`${target.name} waited: ${args.wait ?? 'no'}`,
+		);
+		const { run } = createSut(makeAction({ waitFlag: 'wait', execute }));
+
+		await expect(run()).resolves.toBe('a waited: no');
+	});
+
+	it('opens no dialog over several targets', async () => {
+		const action = makeAction({ opensDialog: true });
+		const { run } = createSut(action, () => [
+			{ name: 'a', takes: true },
+			{ name: 'b', takes: true },
+		]);
+
+		await expect(run({ [DIALOG_FLAG]: 'true' })).resolves.toBe(
+			'dialog opens the dialog on one target: name one rather than 2.',
+		);
+		expect(action.run).not.toHaveBeenCalled();
+	});
+
 	it('says an action is not available, in its own words', async () => {
 		const action = makeAction({
 			unavailable: (target) => `${target.name} is switched off.`,

@@ -45,7 +45,7 @@
 			},
 			"src/actions/audioJobsCli.ts": {
 				"statements": 100,
-				"branches": 98.03,
+				"branches": 98.11,
 				"functions": 100,
 				"lines": 100
 			},

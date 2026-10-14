@@ -16,6 +16,7 @@ import {
 import { RecordingStatus } from 'src/types';
 import type { CliData, Plugin } from 'obsidian';
 import { partial } from '../helpers/doubles';
+import { at } from '../helpers/assertions';
 
 const PLUGIN_ID = 'advanced-audio-recorder';
 
@@ -253,7 +254,20 @@ describe('registerCliCommands', () => {
 		).toBe(false);
 	});
 
-	it('survives a registration that throws, which a duplicate id does', () => {
+	it('refuses two of its own commands of one id before registering any', () => {
+		const registerCliHandler = jest.fn();
+		const commands = cliCommands(makeHost(), PLUGIN_ID);
+		const twice = [...commands, at(commands, 1)];
+
+		expect(() =>
+			registerCliCommands(pluginWith(registerCliHandler), twice),
+		).toThrow(
+			`Two command-line commands share the id ${PLUGIN_ID}:record.`,
+		);
+		expect(registerCliHandler).not.toHaveBeenCalled();
+	});
+
+	it('survives a registration the app refuses', () => {
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
 			/* the message is the point, not the output */
 		});

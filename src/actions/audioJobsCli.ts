@@ -546,6 +546,12 @@ export async function cleanupFromCli(
 	if (isRefusal(deleteSource)) {
 		return deleteSource.refusal;
 	}
+	// The source goes once its copy is linked where it was, and the copy is
+	// linked only into a note the command named: trashing it with no note
+	// would leave every link to it broken and the copy linked nowhere.
+	if (deleteSource.value && !note) {
+		return `source=delete trashes ${file.path} once its copy is linked into its note: name the note with file=<note>, or note=<note> beside path=<recording>.`;
+	}
 	const result = await cleanUpRecording(services.app, file, config.value, {
 		deleteSource: deleteSource.value,
 		onProcessed: async ({ outputPath, replaceSource }) => {

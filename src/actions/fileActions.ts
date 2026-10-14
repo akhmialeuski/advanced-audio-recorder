@@ -42,7 +42,11 @@ import {
 	SPLIT_PARAMS,
 	splitFromCli,
 } from './audioJobsCli';
-import { TRANSCRIBE_PARAMS, transcribeFromCli } from './transcribeCli';
+import {
+	TRANSCRIBE_PARAMS,
+	transcribeFromCli,
+	WAIT_FLAG,
+} from './transcribeCli';
 import { SPEAKER_PARAMS, speakersFromCli } from './speakersCli';
 import {
 	CHAPTER_PARAMS,
@@ -76,7 +80,6 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.audioFileInfo,
 		title: 'Audio file info',
 		icon: 'info',
-		showInEditorMenu: true,
 		isAvailable: always,
 		run: async ({ file, services }: FileContext): Promise<void> => {
 			const info = await getAudioFileInfo(services.app, file);
@@ -96,7 +99,6 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.convertAudioFormat,
 		title: 'Convert audio format',
 		icon: 'file-audio',
-		showInEditorMenu: true,
 		isAvailable: always,
 		run: ({ file, services }: FileContext): void => {
 			new ConversionModal(services.app, file, services.getSettings, {
@@ -121,7 +123,6 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.splitAudio,
 		title: 'Split audio into parts',
 		icon: 'scissors',
-		showInEditorMenu: true,
 		isAvailable: always,
 		run: ({ file, services }: FileContext): void => {
 			new SplitModal(
@@ -144,9 +145,8 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.cleanupAudio,
 		title: 'Clean up audio',
 		icon: 'wand-2',
-		showInEditorMenu: true,
 		isAvailable: always,
-		run: ({ file, services, note }: FileContext): void => {
+		run: ({ file, services, note, named }: FileContext): void => {
 			new AudioProcessingModal(
 				services.app,
 				file,
@@ -160,7 +160,8 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 						file,
 						outputPath,
 						replaceSource,
-						note,
+						// Undefined lets the inserter take the active note.
+						note ?? (named ? null : undefined),
 					);
 					services.primeForEnhancement([outputPath]);
 				},
@@ -179,12 +180,12 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.transcribeAudio,
 		title: 'Transcribe audio',
 		icon: 'captions',
-		showInEditorMenu: true,
 		isAvailable: whileTranscribing,
-		run: ({ file, services, note }: FileContext): void => {
+		run: ({ file, services, note, named }: FileContext): void => {
 			new TranscriptionModal(services.app, file, services.getSettings, {
 				...services.createTranscriptionModalOptions(),
-				notePath: note?.path,
+				// Undefined lets the dialog take the active note.
+				notePath: note?.path ?? (named ? '' : undefined),
 			}).open();
 		},
 		cli: {
@@ -192,6 +193,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 			description:
 				'Transcribe a recording in Obsidian, into the note it belongs to.',
 			params: TRANSCRIBE_PARAMS,
+			waitFlag: WAIT_FLAG,
 			opensDialog: true,
 			unavailable: transcriptionOff,
 			execute: transcribeFromCli,
@@ -201,7 +203,6 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.retryFailedParts,
 		title: 'Transcribe the parts that failed',
 		icon: 'refresh-cw',
-		showInEditorMenu: true,
 		isAvailable: whileTranscribing,
 		run: async ({ file, services }: FileContext): Promise<void> => {
 			new Notice(await retryFailedParts(file, services));
@@ -219,7 +220,6 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.renameSpeakers,
 		title: 'Rename speakers',
 		icon: 'users',
-		showInEditorMenu: true,
 		isAvailable: ({ services }: FileContext): boolean =>
 			services.getSettings().transcriptionSpeakerRenameEnabled,
 		run: ({ file, services }: FileContext): void => {
@@ -244,7 +244,6 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.generateChapters,
 		title: 'Generate chapters from transcript',
 		icon: 'sparkles',
-		showInEditorMenu: true,
 		isAvailable: ({ services }: FileContext): boolean =>
 			services.getSettings().transcriptionAutoChaptersEnabled,
 		run: ({ file, services }: FileContext): void => {
@@ -272,7 +271,6 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.exportChapters,
 		title: 'Export chapters and markers',
 		icon: 'file-output',
-		showInEditorMenu: true,
 		// Whether the recording has markers needs a sidecar read, and
 		// availability is decided synchronously; the dialog reads them and
 		// says so when there are none.
@@ -292,8 +290,12 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.deleteRecording,
 		title: 'Delete recording',
 		icon: 'trash',
-		showInEditorMenu: false,
-		isAvailable: always,
+		// Only a recording reached on its own, as the file explorer reaches
+		// it. One reached through a note - its link in the editor, its player,
+		// the palette in that note - has links there that a plain delete
+		// would leave broken, so the link-aware delete is offered instead.
+		isAvailable: ({ note, link }: FileContext): boolean =>
+			note === undefined && link === undefined,
 		run: async ({ file, services }: FileContext): Promise<void> => {
 			try {
 				await services.app.fileManager.trashFile(file);
@@ -306,6 +308,8 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		cli: {
 			name: 'delete',
 			description: 'Move a recording to the trash.',
+			unavailable: ({ file }: FileContext): string =>
+				`${file.path} was named through a note, whose links to it a plain delete would leave broken. Use delete-with-links to remove them too, or name the recording alone with path=<recording>.`,
 			execute: async ({
 				file,
 				services,
@@ -319,7 +323,6 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.deleteRecordingAndLink,
 		title: 'Delete recording & link to file',
 		icon: 'trash',
-		showInEditorMenu: true,
 		// Only where there is a link to remove: the one the menu or the cursor
 		// was on - an editor need not show a note file, as a canvas card does
 		// not - or the links of the note the recording was reached through.
@@ -373,8 +376,9 @@ async function openChapterExport(context: FileContext): Promise<void> {
 	}
 	const notePath =
 		context.note?.path ??
-		services.app.workspace.getActiveFile()?.path ??
-		'';
+		(context.named
+			? ''
+			: (services.app.workspace.getActiveFile()?.path ?? ''));
 	new ChapterExportModal(services.app, {
 		file,
 		markers,

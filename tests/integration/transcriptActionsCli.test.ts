@@ -460,6 +460,50 @@ describe('the lines the palette acts on', () => {
 	});
 });
 
+describe('a transcript note open in Obsidian', () => {
+	/**
+	 * Opens the note in an editor holding a line not saved yet above the
+	 * transcript, which the file on disk does not have.
+	 * @param sut - The recording and its note
+	 */
+	function openWithUnsavedLine(sut: Sut): void {
+		sut.editor
+			.asEditor()
+			.replaceRange(
+				'Agenda: hiring\n',
+				{ line: 1, ch: 0 },
+				{ line: 1, ch: 0 },
+			);
+		const view = createMarkdownView({ file: sut.note });
+		Object.assign(view, { editor: sut.editor.asEditor() });
+		asMockApp(sut.app).workspace.getLeavesOfType.mockReturnValue([
+			{ view },
+		]);
+	}
+
+	it('is edited in its editor, by the line numbers the editor shows', async () => {
+		const sut = createSut();
+		openWithUnsavedLine(sut);
+		const shown = String(
+			sut.editor.content
+				.split('\n')
+				.findIndex((line) => line.includes(MIXED_TURN)) + 1,
+		);
+
+		await execute(sut, COMMAND_IDS.splitTranscriptSelection, {
+			line: shown,
+			text: 'Wait, I have a question.',
+			speaker: 'Bob',
+		});
+
+		expect(sut.editor.content).toContain(
+			'**Bob** Wait, I have a question.',
+		);
+		expect(sut.editor.content).toContain('Agenda: hiring');
+		await expect(noteNow(sut)).resolves.toBe(renderedNote());
+	});
+});
+
 describe('lines whose recording cannot be edited', () => {
 	it.each([
 		COMMAND_IDS.splitTranscriptSelection,

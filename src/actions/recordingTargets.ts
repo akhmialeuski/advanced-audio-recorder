@@ -84,11 +84,16 @@ export function recordingsInNote(app: App, note: TFile): TFile[] {
 		(a, b) => a.position.start.offset - b.position.start.offset,
 	);
 	const recordings = new Map<string, TFile>();
+	// A transcript links its recording once per line, each a different
+	// moment of the same file, so each link path is resolved only once.
+	const resolved = new Map<string, TFile | null>();
 	for (const reference of references) {
-		const file = app.metadataCache.getFirstLinkpathDest(
-			getLinkpath(reference.link),
-			note.path,
-		);
+		const linkpath = getLinkpath(reference.link);
+		let file = resolved.get(linkpath);
+		if (file === undefined) {
+			file = app.metadataCache.getFirstLinkpathDest(linkpath, note.path);
+			resolved.set(linkpath, file);
+		}
 		if (file && isAudioFile(file) && !recordings.has(file.path)) {
 			recordings.set(file.path, file);
 		}
@@ -258,7 +263,7 @@ function recordingsOfNote(
 		return `${note.path} links no recording.`;
 	}
 	const toContexts = (files: readonly TFile[]): FileContext[] =>
-		files.map((file) => ({ file, note, services }));
+		files.map((file) => ({ file, note, services, named: true }));
 	const name = cliText(args, RECORDING_PARAM);
 	if (name !== null) {
 		const picked = pickRecording(services.app, note, recordings, name);
@@ -302,8 +307,8 @@ export function namedRecordings(
 		}
 		return [
 			note.value
-				? { file: target, note: note.value, services }
-				: { file: target, services },
+				? { file: target, note: note.value, services, named: true }
+				: { file: target, services, named: true },
 		];
 	}
 	if (target.extension !== 'md') {

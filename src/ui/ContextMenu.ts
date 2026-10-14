@@ -37,7 +37,6 @@ import type {
 	ActionRegistry,
 	RegisteredFamily,
 } from '../actions/ActionRegistry';
-import { FILE_ACTIONS } from '../actions/fileActions';
 import { transcriptSelectionIn } from '../actions/transcriptActions';
 
 export type { EnhancementPrimer } from '../actions/PluginAction';
@@ -62,16 +61,6 @@ export interface MenuFamilies {
 	/** Actions on a folder. */
 	readonly folder: RegisteredFamily<FolderContext>;
 }
-
-/**
- * The file actions the editor menu leaves out: plain "Delete recording",
- * where the link-aware delete is offered instead.
- */
-const NOT_IN_EDITOR_MENU: ReadonlySet<string> = new Set(
-	FILE_ACTIONS.filter((action) => !action.showInEditorMenu).map(
-		(action) => action.commandId,
-	),
-);
 
 /**
  * Manages context menu items for audio files.
@@ -369,12 +358,8 @@ export class ContextMenu {
 			return;
 		}
 
-		const rendered = this.renderedSetFor(menu);
-		// Marked as rendered without being added: the editor menu offers the
-		// link-aware delete in their place.
-		for (const id of NOT_IN_EDITOR_MENU) {
-			rendered.add(id);
-		}
+		// The link the cursor is on is what makes the link-aware delete the
+		// one offered here, in place of the plain one.
 		this.registry.renderInto(
 			menu,
 			this.families.file,
@@ -389,7 +374,7 @@ export class ContextMenu {
 					end: found.end,
 				},
 			},
-			rendered,
+			this.renderedSetFor(menu),
 		);
 	}
 

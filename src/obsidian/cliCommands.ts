@@ -182,6 +182,17 @@ export function registerCliCommands(
 	plugin: Plugin,
 	commands: readonly CliCommand[],
 ): boolean {
+	// Checked over every command, the hand-written ones here and the ones the
+	// action registry built, before any is registered: the host refuses a
+	// second command of one id partway through, which would leave the rest
+	// off the command line while the plugin loads as if nothing happened.
+	const seen = new Set<string>();
+	for (const { id } of commands) {
+		if (seen.has(id)) {
+			throw new Error(`Two command-line commands share the id ${id}.`);
+		}
+		seen.add(id);
+	}
 	// The typings declare the method on every platform, but only the desktop
 	// app has a command line, so the method is asked for rather than assumed.
 	if (

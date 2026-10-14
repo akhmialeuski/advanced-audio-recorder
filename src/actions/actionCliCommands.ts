@@ -94,12 +94,28 @@ async function runOnTarget<TContext>(
 }
 
 /**
+ * The arguments each of several targets runs with: the action's wait flag
+ * set, so a job the action would only start is finished before the next
+ * target's begins.
+ * @param action - The action
+ * @param args - Everything typed after the command
+ */
+function argsForEach<TContext>(
+	action: PluginCommand<TContext>,
+	args: CliData,
+): CliData {
+	const { waitFlag } = action.cli;
+	return waitFlag === undefined ? args : { ...args, [waitFlag]: 'true' };
+}
+
+/**
  * The command-line commands of a family, one per action.
  *
  * Several targets - every recording of a note, when the command asked for
  * all of them - run one after the other rather than at once: they share the
  * engine, the encoder and the vault, and the answer lists them in the order
- * they ran.
+ * they ran. An action that answers once its job started is made to wait for
+ * each, and a dialog, which is opened on one target, is refused for several.
  * @param family - The actions and how their targets are named
  * @param pluginId - The plugin id every command is named under
  * @returns One command per action, in the family's order
@@ -117,9 +133,21 @@ export function actionCliCommands<TContext>(
 			if (typeof targets === 'string') {
 				return targets;
 			}
+			if (targets.length === 1) {
+				return runOnTarget(
+					family,
+					action,
+					targets[0] as TContext,
+					args,
+				);
+			}
+			if (action.cli.opensDialog && cliFlag(args, DIALOG_FLAG)) {
+				return `${DIALOG_FLAG} opens the dialog on one target: name one rather than ${String(targets.length)}.`;
+			}
+			const each = argsForEach(action, args);
 			const answers: string[] = [];
 			for (const target of targets) {
-				answers.push(await runOnTarget(family, action, target, args));
+				answers.push(await runOnTarget(family, action, target, each));
 			}
 			return answers.join('\n');
 		},

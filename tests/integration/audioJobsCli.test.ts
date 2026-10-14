@@ -473,6 +473,26 @@ describe('cleaning up a recording', () => {
 		).resolves.not.toContain('take-processed');
 	});
 
+	it('replaces the source with its copy in the note, then trashes it', async () => {
+		const { sut } = await cleanup({ source: 'delete' }, true);
+
+		const note = await sut.app.vault.read(sut.file(MEETING));
+		expect(note).toContain('![[take-processed.wav]]');
+		expect(note).not.toContain('![[take.webm]]');
+		expect(sut.app.fileManager.trashFile).toHaveBeenCalledWith(
+			expect.objectContaining({ path: TAKE }),
+		);
+	});
+
+	it('trashes no source whose copy no note would link', async () => {
+		const { answer, process } = await cleanup({ source: 'delete' });
+
+		expect(answer).toBe(
+			`source=delete trashes ${TAKE} once its copy is linked into its note: name the note with file=<note>, or note=<note> beside path=<recording>.`,
+		);
+		expect(process).not.toHaveBeenCalled();
+	});
+
 	it('refuses a run that would change nothing', async () => {
 		const { answer, process } = await cleanup({ highpass: 'off' });
 

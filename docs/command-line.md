@@ -110,7 +110,7 @@ A refusal says what to change: `Meetings/standup.md links 2 recordings: Recordin
 
 ## Running a dialog instead
 
-Every command whose action opens a dialog in the app also takes the `dialog` flag. With it, the command opens that dialog in Obsidian on the recording it names and answers at once, so the choices are made in the app:
+Every command whose action opens a dialog in the app also takes the `dialog` flag. With it, the command opens that dialog in Obsidian on the recording it names and answers at once, so the choices are made in the app. A dialog opens on one recording, so `dialog` is refused together with `all`, and a dialog for a recording named without its note writes into no note, as the command itself would:
 
 ```bash
 obsidian advanced-audio-recorder:convert file=standup.webm dialog
@@ -151,9 +151,9 @@ Each of these takes the target parameters described [above](#which-recording-a-c
 
 `export-chapters` writes the list or the cue sheet next to the recording, or prints it with `print`. The outline is a Markdown list of timecode links, which belongs in a note, so it is always printed - pipe it into Obsidian's `append` to add it to one.
 
-`delete-with-links` removes the links that point at the whole recording; a timecode link such as `[[standup.webm#t=90]]` points at a moment of it and is kept. It needs the note: name it with `file=<note>`, or `note=<note>` beside `path=<recording>`.
+`delete` trashes a recording named on its own, with `path=` or `file=`; a recording named through a note is refused, since the note's links to it would be left broken, and `delete-with-links` is the command for it. `delete-with-links` removes the links that point at the whole recording; a timecode link such as `[[standup.webm#t=90]]` points at a moment of it and is kept. It needs the note: name it with `file=<note>`, or `note=<note>` beside `path=<recording>`.
 
-`convert` and `split` refuse a format the device cannot encode, `cleanup` refuses a run that would change nothing, and each answers with what it wrote.
+`convert` and `split` refuse a format the device cannot encode, `cleanup` refuses a run that would change nothing, and each answers with what it wrote. `cleanup source=delete` needs the note: it trashes the recording only once its cleaned copy has replaced it there.
 
 ## Transcribing
 
@@ -178,7 +178,7 @@ The choices apply to this run only and leave the settings as they are, except a 
 
 The transcript goes into the note the command named - `file=standup` names the note, or `note=` beside the recording - and into no other note. With no note named it is written as a file next to the recording. A run's answer says which: `Transcribed Recordings/standup.webm into Meetings/standup.md.`, and when the engine failed on parts of a long recording, how many, which `retry-failed` transcribes again.
 
-With `all`, add `wait` so the recordings are transcribed one after another; without it each opens its own dialog at once. For many recordings, [`transcribe-folder`](#folders-and-the-transcription-queue) queues them instead.
+With `all`, the recordings are transcribed one after another, each run finished before the next starts, as if `wait` were given. For many recordings, [`transcribe-folder`](#folders-and-the-transcription-queue) queues them instead.
 
 `retry-failed` transcribes again only the parts the engine failed on, and answers with what it recovered.
 
@@ -218,7 +218,7 @@ The two [transcript edits](transcription.md#splitting-a-line-between-speakers) w
 
 `text` is the words on the line, as the selection in the dialog would be; without it the whole line is meant. Each speaker parameter starts where the dialog starts: the words go to the first other speaker, the rest of the line keeps its speaker, and a merged line takes the speaker of the first line. A merge of more than two lines needs `confirm`, as the dialog asks before it.
 
-An edit reads the lines once and writes them back only if they still read the same, so an edit made in the app in the meantime is never overwritten; the command answers that the lines changed and can be run again.
+A note open in Obsidian is edited in its editor, by the line numbers the editor shows, including what is not saved yet, and the edit can be undone there; a note that is not open is edited on disk. An edit reads the lines once and writes them back only if they still read the same, so an edit made in the app in the meantime is never overwritten; the command answers that the lines changed and can be run again.
 
 ## Playback
 

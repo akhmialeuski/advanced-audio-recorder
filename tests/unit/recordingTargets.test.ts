@@ -69,6 +69,25 @@ describe('the recordings a note links', () => {
 		).toEqual([RETRO]);
 	});
 
+	it('resolves a recording a transcript links on every line only once', () => {
+		const lines = Array.from(
+			{ length: 50 },
+			(_, second) =>
+				`[[standup.webm#t=${String(second)}|0:00]] **Ann** Hi.`,
+		);
+		const sut = recordingVault({
+			recordings: [STANDUP],
+			notes: { [MEETING]: lines.join('\n') },
+		});
+		const resolve = jest.spyOn(
+			sut.app.metadataCache,
+			'getFirstLinkpathDest',
+		);
+
+		expect(recordingsInNote(sut.app, sut.file(MEETING))).toHaveLength(1);
+		expect(resolve).toHaveBeenCalledTimes(1);
+	});
+
 	it('finds nothing in a note the cache has not read', () => {
 		const sut = createSut();
 
