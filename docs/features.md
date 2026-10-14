@@ -27,6 +27,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 - [LLM post-processing](#llm-post-processing)
 - [Auto chapters](#auto-chapters)
 - [Quick notes](#quick-notes)
+- [Recording panel](#recording-panel)
 - [Diagnostics](#diagnostics)
 - [Feature matrix](#feature-matrix)
 
@@ -202,6 +203,12 @@ With **Enable quick notes** on its own settings entry, a waveform button joins t
 
 Learn more: [Quick notes](quick-notes.md)
 
+## Recording panel
+
+A sidebar tab under the plugin's microphone icon, placed in the right sidebar the first time the plugin runs with it, shows what the plugin knows about the recording in front of you: the recording opened on its own, or the one a meeting note embeds or links to. It lists the file's duration, size and format, when and with which model and line template the recording was transcribed and where the transcript went, the participants and the names given to each speaker, and the chapter and bookmark counts. Below that are the recording's file actions, the same ones the file menu offers, and two switches for **Transcribe after recording** and **Enhanced audio player**. Its header starts and stops a recording, shows the transcription queue and opens the settings. **Open the recording panel** brings a closed panel back.
+
+Learn more: [Recording panel](recording-panel.md)
+
 ## Diagnostics
 
 Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian, Electron and Chromium versions, platform, devices, supported formats and codecs, active configuration, and the recording-related settings) plus a **Copy to clipboard** button. API keys and the transcription, player and cleanup settings are left out of it. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
@@ -243,6 +250,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM            | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
 | Auto chapters                 | LLM-generated titled chapters from an existing transcript                  | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
 | Quick notes                   | Dictate text at the cursor, optionally rewritten by an LLM profile         | Settings > Quick notes                          | [Quick notes](quick-notes.md)                                  |
+| Recording panel               | Sidebar tab with a recording's details, participants and actions           | Right sidebar / palette > Open the panel        | [Recording panel](recording-panel.md)                          |
 | Diagnostics                   | Test recording, system info, debug mode                                    | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
 
 ---

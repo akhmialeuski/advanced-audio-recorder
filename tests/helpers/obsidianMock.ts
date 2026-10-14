@@ -11,6 +11,7 @@
  * @module tests/helpers/obsidianMock
  */
 
+import { TFile, WorkspaceLeaf } from 'obsidian';
 import type {
 	App,
 	Menu,
@@ -19,7 +20,7 @@ import type {
 	Vault,
 	Workspace,
 } from 'obsidian';
-import { partial } from './doubles';
+import { internalsOf, partial } from './doubles';
 import { Plugin as MockPluginClass } from '../mocks/obsidian';
 import type {
 	App as MockApp,
@@ -108,4 +109,55 @@ export function mockPluginHost(app: App): Plugin {
 		app as unknown as ConstructorParameters<typeof MockPluginClass>[0],
 		partial<PluginManifest>({}),
 	) as unknown as Plugin;
+}
+
+/**
+ * A vault file at a path. The shared mock's TFile takes the path that its real
+ * counterpart only receives from the vault, which the real typings do not
+ * declare.
+ * @param path - Vault path of the file
+ * @returns The file
+ */
+export function fileAt(path: string): TFile {
+	return new (TFile as unknown as new (path: string) => TFile)(path);
+}
+
+/**
+ * A workspace leaf over an app, the way the mock workspace builds one for a
+ * sidebar tab. The real typings construct a leaf with no arguments.
+ * @param app - The app the leaf hands its view
+ * @returns The leaf
+ */
+export function leafOver(app: App): WorkspaceLeaf {
+	return new (WorkspaceLeaf as unknown as new (app: App) => WorkspaceLeaf)(
+		app,
+	);
+}
+
+/**
+ * The header action a view added under a label, as the shared mock's
+ * ItemView records them. The real view keeps them in its header element.
+ * @param view - The view
+ * @param label - The action's accessible label
+ * @returns The action's element
+ */
+export function headerAction(view: object, label: string): HTMLElement {
+	const actions = internalsOf<{ actions: { el: HTMLElement }[] }>(
+		view,
+	).actions;
+	const action = actions.find(
+		(entry) => entry.el.getAttribute('aria-label') === label,
+	);
+	if (!action) {
+		throw new Error(
+			`No header action "${label}". Actions: ` +
+				actions
+					.map(
+						(entry) =>
+							`"${entry.el.getAttribute('aria-label') ?? ''}"`,
+					)
+					.join(', '),
+		);
+	}
+	return action.el;
 }

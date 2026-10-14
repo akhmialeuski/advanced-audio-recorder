@@ -198,6 +198,19 @@ export class Plugin {
 		this.settingTabs.push(settingTab);
 	}
 
+	/** View factories the plugin registered, by view type. */
+	readonly registeredViews = new Map<
+		string,
+		(leaf: WorkspaceLeaf) => ItemView
+	>();
+
+	registerView(
+		type: string,
+		factory: (leaf: WorkspaceLeaf) => ItemView,
+	): void {
+		this.registeredViews.set(type, factory);
+	}
+
 	addStatusBarItem(): HTMLElement {
 		const el = addObsidianDomExtensions(document.createElement('div'));
 		this.statusBarItems.push(el);
@@ -300,6 +313,7 @@ export class Plugin {
 export class App {
 	vault: Vault = new Vault();
 	workspace: Workspace = new Workspace();
+
 	metadataCache: MetadataCache = new MetadataCache();
 	fileManager: FileManager = new FileManager(this.vault);
 	/**
@@ -311,6 +325,11 @@ export class App {
 		open?: () => void;
 		openTabById?: (id: string) => void;
 	};
+
+	constructor() {
+		// The workspace builds leaves, and a leaf hands its view the app.
+		this.workspace.app = this;
+	}
 }
 
 /**
@@ -674,6 +693,47 @@ export class Workspace extends Events {
 		// No leaves unless a test seeds them
 	});
 
+	/** Leaves opened in the right sidebar, in order. */
+	readonly rightLeaves: WorkspaceLeaf[] = [];
+
+	getRightLeaf = jest.fn((_split: boolean): WorkspaceLeaf | null => {
+		const leaf = new WorkspaceLeaf(this.app);
+		this.rightLeaves.push(leaf);
+		return leaf;
+	});
+
+	ensureSideLeaf = jest.fn(
+		async (
+			type: string,
+			_side: 'left' | 'right',
+			options: { active?: boolean; reveal?: boolean } = {},
+		): Promise<WorkspaceLeaf> => {
+			const leaf = new WorkspaceLeaf(this.app);
+			this.rightLeaves.push(leaf);
+			await leaf.setViewState({
+				type,
+				...(options.active === undefined
+					? {}
+					: { active: options.active }),
+			});
+			return leaf;
+		},
+	);
+
+	setActiveLeaf = jest.fn(
+		(_leaf: WorkspaceLeaf, _params?: { focus?: boolean }): void => {
+			// Nothing to focus in a test
+		},
+	);
+
+	openLinkText = jest.fn(
+		(_linktext: string, _sourcePath: string, _newLeaf?: boolean) =>
+			Promise.resolve(),
+	);
+
+	/** The app this workspace belongs to, set by the mock App. */
+	app: App | null = null;
+
 	/**
 	 * Sets what getActiveViewOfType answers with.
 	 * @param view - View to report as active, or null for none
@@ -999,6 +1059,83 @@ export class Component {
 }
 
 /**
+ * Mock WorkspaceLeaf: holds the view state it was given, the way a sidebar
+ * tab the plugin opened would.
+ */
+export class WorkspaceLeaf {
+	/** The view this leaf shows, when a test or setViewState put one there. */
+	view: unknown = null;
+	/** The last state set on the leaf. */
+	viewState: { type: string; active?: boolean } | null = null;
+
+	constructor(readonly app: App | null = null) {}
+
+	setViewState = jest.fn(
+		(state: { type: string; active?: boolean }): Promise<void> => {
+			this.viewState = state;
+			return Promise.resolve();
+		},
+	);
+}
+
+/**
+ * Mock ItemView: a Component over a leaf, with the container Obsidian gives a
+ * view and its content element, and the header actions it adds recorded so a
+ * test can click them.
+ */
+export abstract class ItemView extends Component {
+	app: App;
+	containerEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+	contentEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+	/** Header actions added through addAction, in order. */
+	readonly actions: { icon: string; title: string; el: HTMLElement }[] = [];
+
+	constructor(readonly leaf: WorkspaceLeaf) {
+		super();
+		this.app = leaf.app ?? new App();
+		this.containerEl.appendChild(this.contentEl);
+	}
+
+	abstract getViewType(): string;
+	abstract getDisplayText(): string;
+
+	getIcon(): string {
+		return '';
+	}
+
+	onOpen(): Promise<void> {
+		return Promise.resolve();
+	}
+
+	onClose(): Promise<void> {
+		return Promise.resolve();
+	}
+
+	addAction(
+		icon: string,
+		title: string,
+		callback: (event: MouseEvent) => unknown,
+	): HTMLElement {
+		const el = addObsidianDomExtensions(document.createElement('a'));
+		el.setAttribute('aria-label', title);
+		el.setAttribute('data-icon', icon);
+		el.addEventListener('click', (event) => {
+			callback(event);
+		});
+		this.actions.push({ icon, title, el });
+		return el;
+	}
+
+	onPaneMenu(_menu: Menu, _source: string): void {
+		// Obsidian adds its own pane entries here; none matter to a test
+	}
+}
+
+/**
  * Mock MarkdownRenderChild bound to a container element.
  */
 export class MarkdownRenderChild extends Component {
@@ -1278,6 +1415,9 @@ export class Setting {
 	}
 
 	setHeading(): this {
+		// Obsidian's own heading row class, so a test can tell a heading from
+		// a row with a value.
+		this.settingEl.classList.add('setting-item-heading');
 		return this;
 	}
 

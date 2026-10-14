@@ -56,6 +56,8 @@ describe('Settings', () => {
 			// Nothing has been announced in a fresh config, which is what
 			// keeps a first install from being greeted with the history.
 			{ key: 'lastReleaseNotesVersion', value: '' },
+			// Not placed yet, so the first start puts the panel in the sidebar.
+			{ key: 'recordingPanelPlaced', value: false },
 			{ key: 'insertAtOriginalPosition', value: false },
 			{ key: 'autoSplitEnabled', value: false },
 			{ key: 'splitChunkMinutes', value: 15 },

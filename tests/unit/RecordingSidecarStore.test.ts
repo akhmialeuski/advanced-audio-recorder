@@ -1312,3 +1312,52 @@ describe('RecordingSidecarStore', () => {
 		});
 	});
 });
+
+describe('telling readers a recording changed', () => {
+	it('names the recording whose document a write changed', async () => {
+		const { app } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const changed: string[] = [];
+		store.onChange((path) => changed.push(path));
+
+		await store.setMarkers('rec.wav', [marker('a', 1)]);
+
+		expect(changed).toEqual(['rec.wav']);
+	});
+
+	it('stays quiet for a write that changed nothing', async () => {
+		const { app } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const listener = jest.fn();
+		store.onChange(listener);
+
+		await store.popHistory('rec.wav');
+
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it('stops telling a reader that unsubscribed', async () => {
+		const { app } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const listener = jest.fn();
+		const unsubscribe = store.onChange(listener);
+
+		unsubscribe();
+		await store.setMarkers('rec.wav', [marker('a', 1)]);
+
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it('keeps the write when a reader throws', async () => {
+		const { app, files } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+		store.onChange(() => {
+			throw new Error('broken reader');
+		});
+
+		await store.setMarkers('rec.wav', [marker('a', 1)]);
+
+		expect(rawSidecar(files).markers).toEqual([marker('a', 1)]);
+	});
+});

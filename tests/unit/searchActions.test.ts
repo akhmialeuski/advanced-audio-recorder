@@ -12,11 +12,15 @@ import { at } from '../helpers/assertions';
 /** The one search action, with a services double to run it against. */
 function createSut(): {
 	action: (typeof SEARCH_ACTIONS)[number];
-	services: SearchServices & { openMarkerSearch: jest.Mock };
+	services: SearchServices & {
+		openMarkerSearch: jest.Mock;
+		openRecordingPanel: jest.Mock;
+	};
 } {
 	const services = {
 		openMarkerSearch: jest.fn().mockResolvedValue(undefined),
 		openTranscriptionQueue: jest.fn(),
+		openRecordingPanel: jest.fn().mockResolvedValue(undefined),
 	};
 	return { action: at(SEARCH_ACTIONS, 0), services };
 }
@@ -26,6 +30,7 @@ describe('the vault-wide actions', () => {
 		expect(SEARCH_ACTIONS.map((action) => action.commandId)).toEqual([
 			COMMAND_IDS.searchMarkers,
 			COMMAND_IDS.openTranscriptionQueue,
+			COMMAND_IDS.openRecordingPanel,
 		]);
 	});
 
@@ -57,5 +62,21 @@ describe('showing the transcription queue', () => {
 		await at(SEARCH_ACTIONS, 1).run(services);
 
 		expect(services.openTranscriptionQueue).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('opening the recording panel', () => {
+	it('is offered with nothing open, since the panel explains what is', () => {
+		const { services } = createSut();
+
+		expect(at(SEARCH_ACTIONS, 2).isAvailable(services)).toBe(true);
+	});
+
+	it('asks the plugin to show the panel', async () => {
+		const { services } = createSut();
+
+		await at(SEARCH_ACTIONS, 2).run(services);
+
+		expect(services.openRecordingPanel).toHaveBeenCalledTimes(1);
 	});
 });

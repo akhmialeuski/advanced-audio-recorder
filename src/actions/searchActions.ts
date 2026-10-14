@@ -6,7 +6,7 @@
  * @module actions/searchActions
  */
 
-import { COMMAND_IDS, PLAYER_ICONS } from '../constants';
+import { COMMAND_IDS, PLAYER_ICONS, RECORDING_PANEL_ICON } from '../constants';
 import type { SearchAction } from './PluginAction';
 
 /** Needs nothing beyond the plugin being loaded. */
@@ -29,5 +29,12 @@ export const SEARCH_ACTIONS: readonly SearchAction[] = [
 		run: (services): void => {
 			services.openTranscriptionQueue();
 		},
+	},
+	{
+		commandId: COMMAND_IDS.openRecordingPanel,
+		title: 'Open the recording panel',
+		icon: RECORDING_PANEL_ICON,
+		isAvailable: always,
+		run: (services): Promise<void> => services.openRecordingPanel(),
 	},
 ];

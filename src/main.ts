@@ -3,15 +3,15 @@
  * @module main
  */
 
-import { Notice, Plugin } from 'obsidian';
-import type { TFile } from 'obsidian';
+import { Notice, Plugin, requireApiVersion } from 'obsidian';
+import type { TFile, WorkspaceLeaf } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
 	SaveProgress,
 	RecordingControls,
 	RecordingSaveResult,
 } from './types';
-import { PLUGIN_LOG_PREFIX } from './constants';
+import { PLUGIN_LOG_PREFIX, RECORDING_PANEL_VIEW_TYPE } from './constants';
 import { isRecordingBannerSupported } from './platform/capabilities';
 import type { AudioRecorderSettings } from './settings/settingsSchema';
 import { setSelectedProfileId, type ProfileKindId } from './settings/profiles';
@@ -94,6 +94,11 @@ import { QUEUE_ASSUMED_RECORDING_SECONDS } from './constants';
 import { transcribeFile } from './transcription/runTranscription';
 import { releaseNotesSince } from './release/releaseNotes';
 import { ReleaseNotesModal } from './ui/ReleaseNotesModal';
+import {
+	RecordingPanelView,
+	type RecordingPanelHost,
+} from './panel/RecordingPanelView';
+import { probeFileMetadata } from './utils/AudioFileAnalyzer';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
 const SETTINGS_READ_RETRY_DELAY_MS = 250;
@@ -372,6 +377,15 @@ export default class AudioRecorderPlugin extends Plugin {
 		);
 		this.contextMenu.register();
 
+		// The panel is built by Obsidian whenever it opens one, including on
+		// startup for a panel the saved layout restores, so the factory is
+		// registered before the layout is.
+		this.registerView(
+			RECORDING_PANEL_VIEW_TYPE,
+			(leaf) =>
+				new RecordingPanelView(leaf, this.createRecordingPanelHost()),
+		);
+
 		// The queue outlives a session, so it is built before anything can
 		// queue into it and offered back once the workspace is up.
 		const queue = new TranscriptionQueue(
@@ -453,6 +467,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			// user has to answer first, so it belongs on top of the stack.
 			this.announceReleaseNotes();
 			void this.checkForInterruptedSessions();
+			void this.placeRecordingPanel();
 		});
 	}
 
@@ -1030,6 +1045,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			openTranscriptionQueue: () => {
 				this.transcriptionQueue?.open();
 			},
+			openRecordingPanel: () => this.openRecordingPanel(),
 		}));
 
 		// Asked for deliberately rather than met after an update, so it shows
@@ -1040,6 +1056,103 @@ export default class AudioRecorderPlugin extends Plugin {
 				new ReleaseNotesModal(this.app, releaseNotesSince('')).open();
 			},
 		}));
+	}
+
+	/**
+	 * What the recording panel is built over: the same services and file
+	 * actions the menus use, the recorder for its start/stop button, and a
+	 * length reader that answers null instead of raising a notice, since the
+	 * panel reads a length nobody asked for.
+	 * @returns The host every panel instance shares
+	 */
+	private createRecordingPanelHost(): RecordingPanelHost {
+		return {
+			displayName: this.manifest.name,
+			services: this.createActionServices(),
+			actions: FILE_ACTIONS,
+			recording: this.recordingManager,
+			readDuration: async (file) =>
+				(await probeFileMetadata(this.app, file))?.durationSeconds ??
+				null,
+			openSettings: () => {
+				openPluginSettings(this.app, this.manifest.id);
+			},
+			openTranscriptionQueue: () => {
+				this.transcriptionQueue?.open();
+			},
+		};
+	}
+
+	/**
+	 * Puts the recording panel in the right sidebar the first time the plugin
+	 * runs with it, without switching to it. After that the saved layout owns
+	 * the panel: it stays wherever the user moved it, and a user who closed it
+	 * opens it again from the palette rather than finding it back on every
+	 * start.
+	 */
+	private async placeRecordingPanel(): Promise<void> {
+		if (this.settingsLoadFailed || this.settings.recordingPanelPlaced) {
+			return;
+		}
+		try {
+			if (
+				this.app.workspace.getLeavesOfType(RECORDING_PANEL_VIEW_TYPE)
+					.length === 0
+			) {
+				await this.sidebarPanelLeaf(false);
+			}
+			this.settings.recordingPanelPlaced = true;
+			await this.saveSettings();
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Placing the recording panel failed:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Shows the recording panel, opening it in the right sidebar when it is
+	 * not open anywhere.
+	 */
+	private async openRecordingPanel(): Promise<void> {
+		await this.sidebarPanelLeaf(true);
+	}
+
+	/**
+	 * The leaf showing the recording panel, opened in the right sidebar when
+	 * there is none, through the workspace call made for exactly that where
+	 * the app has it: it finds an open panel before it creates one, and brings
+	 * it into view when asked to.
+	 * @param active - Whether the panel is brought into view and selected
+	 * @returns The panel's leaf, or null when there is no sidebar
+	 */
+	private async sidebarPanelLeaf(
+		active: boolean,
+	): Promise<WorkspaceLeaf | null> {
+		const { workspace } = this.app;
+		if (requireApiVersion('1.7.2')) {
+			return workspace.ensureSideLeaf(
+				RECORDING_PANEL_VIEW_TYPE,
+				'right',
+				{
+					active,
+					reveal: active,
+				},
+			);
+		}
+		const open = workspace.getLeavesOfType(RECORDING_PANEL_VIEW_TYPE)[0];
+		const leaf = open ?? workspace.getRightLeaf(false);
+		if (leaf && !open) {
+			await leaf.setViewState({
+				type: RECORDING_PANEL_VIEW_TYPE,
+				active,
+			});
+		}
+		if (leaf && active) {
+			workspace.setActiveLeaf(leaf, { focus: true });
+		}
+		return leaf;
 	}
 
 	/**
@@ -1559,6 +1672,13 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.renderStatusBar();
 		updateRibbonIcon(this.ribbonIconEl, status);
 		this.renderRecordingBanner();
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			RECORDING_PANEL_VIEW_TYPE,
+		)) {
+			if (leaf.view instanceof RecordingPanelView) {
+				leaf.view.refreshRecordingState();
+			}
+		}
 	}
 
 	/**

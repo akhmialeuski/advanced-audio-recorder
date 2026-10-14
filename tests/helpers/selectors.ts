@@ -153,6 +153,10 @@ export const SETTING = {
 	checkbox: '.checkbox-container',
 	/** A toggle rendered in its on state. */
 	toggleOn: '.checkbox-container.is-enabled',
+	/** A row Obsidian draws as a section heading. */
+	heading: '.setting-item-heading',
+	/** The icon-only button a row adds with addExtraButton. */
+	extraButton: '.extra-setting-button',
 	root: '.aar-settings-root',
 	searchInput: '.aar-search-row input',
 	addItemButton: '.aar-add-item-row button',

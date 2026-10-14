@@ -79,6 +79,8 @@ export class RecordingSidecarStore {
 	private readonly corruptPaths = new Set<string>();
 	/** Serializes mutations so concurrent saves never interleave. */
 	private writeChain: Promise<void> = Promise.resolve();
+	/** Readers told which recording's document just changed. */
+	private readonly listeners = new Set<(path: string) => void>();
 
 	/**
 	 * @param app - Obsidian App instance
@@ -503,6 +505,21 @@ export class RecordingSidecarStore {
 	}
 
 	/**
+	 * Subscribes to changes of any recording's document. The store writes
+	 * through the adapter, which raises no vault event, so a reader that
+	 * shows sidecar data - the recording panel - learns of a rename, a new
+	 * transcript, or a new chapter only from here.
+	 * @param listener - Called with the recording path after each change
+	 * @returns Unsubscribes the listener
+	 */
+	onChange(listener: (path: string) => void): () => void {
+		this.listeners.add(listener);
+		return () => {
+			this.listeners.delete(listener);
+		};
+	}
+
+	/**
 	 * Drops the in-memory cache so later reads re-read from disk. Used when
 	 * the feature is torn down.
 	 */
@@ -673,6 +690,10 @@ export class RecordingSidecarStore {
 			if (change(sidecar) === false) {
 				return;
 			}
+			// After the cached document changed rather than after the write:
+			// reads answer from the cache, so a listener re-reading now sees
+			// the change even when the disk write below fails.
+			this.notify(path);
 			const file = this.sidecarPath(path);
 			try {
 				if (isSidecarEmpty(sidecar)) {
@@ -700,6 +721,25 @@ export class RecordingSidecarStore {
 					'writes to it are paused so the stored data is not overwritten. ' +
 					'Restore or remove the file to resume.',
 			);
+		}
+	}
+
+	/**
+	 * Tells every listener a recording's document changed. A listener that
+	 * throws is logged and skipped, so one broken reader can neither fail the
+	 * mutation nor keep the others from hearing of it.
+	 * @param path - Vault-relative recording path
+	 */
+	private notify(path: string): void {
+		for (const listener of this.listeners) {
+			try {
+				listener(path);
+			} catch (error) {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} A sidecar change listener failed:`,
+					error,
+				);
+			}
 		}
 	}
 

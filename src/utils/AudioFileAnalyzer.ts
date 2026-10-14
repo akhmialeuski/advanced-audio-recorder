@@ -184,7 +184,7 @@ async function withReadDuration(
  * @param file - The recording to measure
  * @returns The metadata, or null when neither path could read it
  */
-async function probeFileMetadata(
+export async function probeFileMetadata(
 	app: App,
 	file: TFile,
 ): Promise<ProbedAudioMetadata | null> {

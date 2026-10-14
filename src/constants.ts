@@ -1455,8 +1455,18 @@ export const COMMAND_IDS = {
 	searchMarkers: 'search-markers',
 	retryFailedParts: 'retry-failed-transcription-parts',
 	openTranscriptionQueue: 'open-transcription-queue',
+	openRecordingPanel: 'open-recording-panel',
 	exportChapters: 'export-chapters-and-markers',
 	addPlaybackBookmark: 'add-playback-bookmark',
 	addPlaybackChapter: 'add-playback-chapter',
 	showReleaseNotes: 'show-release-notes',
 } as const;
+
+/** View type the recording panel is registered under. */
+export const RECORDING_PANEL_VIEW_TYPE = 'advanced-audio-recorder-panel';
+
+/**
+ * Icon of the recording panel's sidebar tab: the microphone the plugin's
+ * ribbon button carries, so the tab reads as this plugin's at a glance.
+ */
+export const RECORDING_PANEL_ICON = 'mic-vocal';
