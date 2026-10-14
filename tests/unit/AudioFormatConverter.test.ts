@@ -748,7 +748,10 @@ describe('AudioFormatConverter', () => {
 
 			expect(conversionInit).toHaveBeenCalledWith(
 				expect.objectContaining({
-					audio: { codec: 'aac', bitrate: 128000 },
+					audio: {
+						codec: 'aac',
+						quality: { options: { bitrate: 128000 } },
+					},
 					// Discarded tracks are handled by the plugin, so
 					// mediabunny's own console warnings are disabled
 					showWarnings: false,
@@ -824,7 +827,10 @@ describe('AudioFormatConverter', () => {
 
 			expect(conversionInit).toHaveBeenCalledWith(
 				expect.objectContaining({
-					audio: { codec: 'opus', bitrate: 64000 },
+					audio: {
+						codec: 'opus',
+						quality: { options: { bitrate: 64000 } },
+					},
 				}),
 			);
 			expect(mockConversionExecute).toHaveBeenCalledTimes(1);

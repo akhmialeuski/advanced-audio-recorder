@@ -16,6 +16,7 @@ import {
 	ALL_FORMATS,
 	AudioSample,
 	Conversion,
+	Quality,
 } from 'mediabunny';
 import type { AudioCodec, ConversionAudioOptions } from 'mediabunny';
 import { ensureEncoderRegistered, createOutputFormat } from './AudioEncoder';
@@ -56,9 +57,18 @@ export function extractChannelSample(
  * Builds a mono AudioSample holding the plain average of every channel
  * of the input sample. Used as the mediabunny `process` hook for the
  * mono mix mode so the conversion downmix is sample-identical to the
- * PCM capture worklet and downmixChannelData - mediabunny's own
- * numberOfChannels remixing follows the Web Audio speaker rules
- * instead, which weight 5.1 layouts and drop the LFE. Exported for
+ * PCM capture worklet and downmixChannelData.
+ *
+ * Mediabunny's own `numberOfChannels: 1` is not a substitute, not even for
+ * stereo, where its mixer computes the same 0.5 * (L + R). The remix runs
+ * inside its resampler, which interpolates every output frame between two
+ * source frames at a position computed in floating point, so at an unchanged
+ * rate the fraction is a rounding residue rather than zero: measured against
+ * this hook, about one sample in ten comes out one float32 step away. The
+ * resampler also cuts the stream into buffers of its own and sums decoded
+ * samples whose timestamps overlap, where this hook passes each one through
+ * as it was decoded. Beyond two channels it follows the Web Audio speaker
+ * rules instead, which weight 5.1 layouts and drop the LFE. Exported for
  * unit tests.
  * @param sample - Decoded input sample (any channel count)
  * @returns Mono sample at the input's rate and timestamp
@@ -200,8 +210,13 @@ async function convertWithInput(
 	// quality instead of the configured one
 	const remuxEligible =
 		allowRemux && inputCodec === codec && monoProcess === null;
+	// The bitrate is asked through Quality, as the offline encoder asks it:
+	// mediabunny deprecated the bare field, and any quality still forces the
+	// re-encode the remux rule above relies on.
 	let audio: ConversionAudioOptions =
-		remuxEligible || isPcmTarget ? { codec } : { codec, bitrate };
+		remuxEligible || isPcmTarget
+			? { codec }
+			: { codec, quality: new Quality({ bitrate }) };
 	if (monoProcess) {
 		audio = {
 			...audio,
