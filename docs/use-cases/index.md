@@ -58,6 +58,7 @@ These guides combine several features into one end-to-end procedure.
 | ------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | [Transcribe automatically after recording](transcribe-after-recording.md) | Turn on **Transcribe after recording** so every clip produces a transcript. |
 | [Record and summarize a meeting](meeting-notes-workflow.md)               | Record a meeting, transcribe it with diarization, and add an LLM summary.   |
+| [A meeting from a script](../command-line.md#a-meeting-from-a-script)     | Transcribe, name speakers, chapter and split a meeting from a terminal.     |
 | [Record a voice memo or lecture on your phone](record-on-mobile.md)       | Record on the Obsidian mobile app and optionally transcribe in the cloud.   |
 
 The meeting-notes workflow produces a single note with the recording, a diarized transcript, and an LLM summary - see the finished example in that guide.

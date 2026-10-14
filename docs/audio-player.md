@@ -186,25 +186,26 @@ The announcement is **taken down** when playback stops and when the plugin unloa
 
 Every playback action is also a **command**, so a recording can be driven entirely from the keyboard while your hands stay on the transcript. The plugin assigns **no default hotkeys**; bind the ones you use under **Settings > Hotkeys** and search for `Advanced Audio Recorder`.
 
-| Command                                   | What it does                                                                            |
-| ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| Play/pause playback                       | Starts the paused recording or pauses the running one, exactly as the play button does. |
-| Stop playback                             | Stops playback, resets it to the start, and dismisses the status-bar strip.             |
-| Skip playback back                        | Moves back by the same step the skip buttons use.                                       |
-| Skip playback forward                     | Moves forward by that same step.                                                        |
-| Mute/unmute playback                      | Toggles the output without touching the volume level.                                   |
-| Increase playback speed                   | Steps up to the next speed preset and stops at the fastest one.                         |
-| Decrease playback speed                   | Steps down to the previous preset and stops at the slowest one.                         |
-| Go to previous chapter                    | Jumps to the chapter before the current position, or to the start when there is none.   |
-| Go to next chapter                        | Jumps to the chapter after the current position.                                        |
-| Repeat current chapter                    | Turns repeating of the chapter playback is inside on or off.                            |
-| Search markers and chapters               | Opens the vault-wide marker search; offered with nothing playing.                       |
-| Add bookmark at current playback position | Drops a bookmark where playback stands.                                                 |
-| Add chapter at current playback position  | Drops a chapter where playback stands.                                                  |
+| Command                                          | What it does                                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Play/pause playback                              | Starts the paused recording or pauses the running one, exactly as the play button does.      |
+| Stop playback                                    | Stops playback, resets it to the start, and dismisses the status-bar strip.                  |
+| Skip playback back                               | Moves back by the same step the skip buttons use.                                            |
+| Skip playback forward                            | Moves forward by that same step.                                                             |
+| Mute/unmute playback                             | Toggles the output without touching the volume level.                                        |
+| Increase playback speed                          | Steps up to the next speed preset and stops at the fastest one.                              |
+| Decrease playback speed                          | Steps down to the previous preset and stops at the slowest one.                              |
+| Go to previous chapter                           | Jumps to the chapter before the current position, or to the start when there is none.        |
+| Go to next chapter                               | Jumps to the chapter after the current position.                                             |
+| Repeat current chapter                           | Turns repeating of the chapter playback is inside on or off.                                 |
+| Search markers and chapters                      | Opens the vault-wide marker search; offered with nothing playing.                            |
+| Add bookmark at current playback position        | Drops a bookmark where playback stands.                                                      |
+| Add chapter at current playback position         | Drops a chapter where playback stands.                                                       |
+| Copy timestamp link at current playback position | Copies a link to where playback stands, as the player menu's entry does for a clicked point. |
 
 The marker search is the exception to everything that follows: it is bound to no recording, so it is always offered. The commands below exist **only while something is playing**. Obsidian hides a command whose availability check fails, so with nothing active none of them appear in the command palette and a bound hotkey stays inert, which leaves the key free for whatever else it is used for. Stopping playback, or letting a recording reach its end, withdraws them again; pausing keeps them, so the same key resumes what it paused.
 
-Three of them carry a further condition. The chapter jumps and the chapter repeat are offered only when **Markers and chapters** is enabled for the recording that is playing, because a recording without them defines no chapters to move between or to repeat. The two add commands need that setting **and** an editable view, exactly like the add buttons in the embed and in the status bar, so a player rendered in Reading view offers neither.
+The player menu's **Add marker here**, **Add chapter here** and **Copy timestamp link here** are the same three actions at the point you right-clicked, and the [command line](command-line.md#markers-and-links-at-a-time) runs them at a time it names. Three of them carry a further condition. The chapter jumps and the chapter repeat are offered only when **Markers and chapters** is enabled for the recording that is playing, because a recording without them defines no chapters to move between or to repeat. The two add commands need that setting **and** an editable view, exactly like the add buttons in the embed and in the status bar, so a player rendered in Reading view offers neither.
 
 The speed commands move between the same presets the embed's speed button lists, so a hotkey can never land on a speed that button cannot show. Every command drives the **same shared audio element** as the embedded control row and the status-bar strip, which is why a speed change from a hotkey updates the embed's speed button and a chapter jump moves the time readout in both surfaces at once.
 

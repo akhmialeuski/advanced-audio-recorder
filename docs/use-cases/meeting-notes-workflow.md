@@ -223,6 +223,8 @@ Once the setup above is done, each meeting is fast.
 
 9. **Read the summary and action items.** Because **LLM post-processing** is on with the **Summarize** task, the LLM-written summary is produced alongside the transcript. Read the key points and action items, then assign owners or copy them into your task tracker.
 
+Every step after the recording has a terminal command too, so a meeting can also be processed by a script: transcribed into its note, its speakers named, chaptered and split. See [A meeting from a script](../command-line.md#a-meeting-from-a-script).
+
 ---
 
 ## Cleanup tips for noisy rooms and large files

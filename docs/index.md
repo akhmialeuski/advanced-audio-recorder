@@ -45,7 +45,7 @@ It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.14
 - **LLM post-processing** - clean up, summarize, or run a custom instruction over the transcript. See [LLM post-processing](llm-post-processing.md).
 - **Crash recovery and settings backup** - interrupted recordings can be recovered, and settings are auto-restored from a backup. See [Recording](recording.md) and [Settings reference](settings-reference.md).
 - **Desktop and mobile** - record, play back in the enhanced player, convert, split, and transcribe with a cloud engine on iOS and Android, with a few features desktop-only. See [Mobile support](mobile-support.md).
-- **Driven from a terminal** - start, stop, report state, or transcribe a file with the desktop app's command line. See [From the command line](recording.md#from-the-command-line).
+- **Driven from a terminal** - every action of the plugin is also a command of the desktop app's command line, so a script can record, transcribe into a note, name speakers, chapter and split a meeting. See [Command line](command-line.md).
 - **Built-in diagnostics** - a 5-second test recording, a full system-info report, and a verbose debug mode. See [Troubleshooting](troubleshooting.md).
 
 ---
@@ -72,6 +72,7 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 | [Splitting](splitting.md)                         | Automatic split into fixed-duration parts while recording, and manual split of existing files.       |
 | [File operations](file-operations.md)             | Context-menu actions: audio file info, format conversion, delete, and link updates.                  |
 | [Recording panel](recording-panel.md)             | The sidebar tab showing a recording's details, participants, and actions.                            |
+| [Command line](command-line.md)                   | Every action as a terminal command: parameters, targets, answers, and a meeting scripted end to end. |
 
 ### Playback
 

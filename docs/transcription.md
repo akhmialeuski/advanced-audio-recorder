@@ -475,6 +475,8 @@ A part whose transcript overruns the model's **output-token limit** (which Gemin
 
 Right-click a folder and choose **Transcribe every recording in this folder** to queue all the recordings in it, including those in the folders under it. The dialog that opens lists what will run and roughly what it will cost, so a month of recordings is approved once instead of opened one at a time.
 
+The same action is the palette command **Transcribe every recording in a folder**, which asks for the folder in a picker listing every folder that holds a recording. From a terminal, `advanced-audio-recorder:transcribe-folder` queues a folder and `advanced-audio-recorder:queue` shows and drives the queue - see [Command line](command-line.md#folders-and-the-transcription-queue).
+
 The queue runs **one recording at a time**. The engines it calls are paid, rate limited, and slow on a long recording, and firing a folder's worth of requests at once is the way to be refused by all of them at once. Each recording's state is shown as it goes: waiting, transcribing, done, or failed with the reason the engine gave. A recording that fails does not stop the rest.
 
 While it runs you can **pause** it, which lets the recording in flight finish and starts nothing after it, **resume** it, or **drop** a single entry. The dialog can be closed at any point: the queue keeps running, and **Show the transcription queue** in the command palette brings it back.

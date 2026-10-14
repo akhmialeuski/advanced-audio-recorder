@@ -26,7 +26,7 @@ The full documentation lives in the [docs](docs/index.md) folder, and the same l
 - Quick notes: dictate into the note at the cursor from a ribbon button, with the audio never saved and an optional LLM rewrite from a profile of your own.
 - Audio cleanup: high-pass filter, noise gate, and loudness leveling, written to a fresh copy.
 - Formats and file operations: convert between WAV, WebM, OGG, MP3, MP4, M4A, AAC, and FLAC (with an optional mono downmix), and split long files from the right-click menu.
-- Command line (desktop): start or stop a recording, ask what the recorder is doing, or transcribe a vault file from a terminal.
+- Command line (desktop): every action of the plugin is a terminal command too - record, transcribe into a note, name speakers, chapter, split, mark, drive the queue - and every one is also a palette command and a context-menu entry, defined once.
 
 Recording is fast and forgiving. Start and stop from the ribbon or a command, follow live feedback in the status bar, and pause or resume without losing anything. Capture up to eight input devices at once for multi-microphone interviews, let long sessions split into fixed-length parts automatically, and recover the audio on the next launch if Obsidian closes mid-recording. See [Recording](docs/recording.md) and [Multi-track recording](docs/multi-track-recording.md).
 
