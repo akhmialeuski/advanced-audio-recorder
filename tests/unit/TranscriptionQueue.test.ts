@@ -443,6 +443,28 @@ describe('surviving a restart', () => {
 		warn.mockRestore();
 	});
 
+	// A hand-edited file can hold valid JSON that is no object at all, and
+	// reading a field of null would throw instead of starting empty.
+	it.each([
+		{ name: 'null', stored: null },
+		{ name: 'a number', stored: 42 },
+	])(
+		'starts empty, and says so, for a file holding $name',
+		async ({ stored }) => {
+			const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+				// The discard is expected and asserted below
+			});
+			const { queue } = createSut(stored);
+
+			await queue.load();
+
+			expect(queue.entries()).toEqual([]);
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining('is not a queue this version reads'),
+			);
+		},
+	);
+
 	it('waits again for a recording that was running when the window closed', async () => {
 		// Nothing will finish it, and leaving it running strands the queue
 		const { queue } = createSut({

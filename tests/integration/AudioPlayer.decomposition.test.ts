@@ -296,9 +296,46 @@ describe('pointer and keyboard seeking (SeekController wiring)', () => {
 		// The skip engaged the start (30) and then moved relative to it
 		expect(audio.currentTime).toBeGreaterThan(30);
 	});
+
+	// A live stream has no end to jump to, so End only does what any seek
+	// would have done first: the embed stops showing its #t= start and
+	// follows the real position from then on.
+	it('End on a live stream lets go of the #t= start without seeking', () => {
+		const audio = makeFakeAudio();
+		audio.duration = Number.POSITIVE_INFINITY;
+		const container = makeContainer();
+		makePlayer(
+			container,
+			makeRegistry(audio),
+			PLAIN,
+			makeMarkerStore(),
+			30,
+		).onload();
+
+		seekArea(container).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'End' }),
+		);
+		audio.emit('timeupdate');
+
+		expect(audio.currentTime).toBe(0);
+		expect(container).toShowTime('0:00 / 0:00');
+	});
 });
 
 describe('infinite-duration resolution (DurationProbe wiring)', () => {
+	it('takes a usable duration as it is, without probing', () => {
+		const audio = makeFakeAudio();
+		audio.duration = 60;
+		const container = makeContainer();
+		makePlayer(container, makeRegistry(audio)).onload();
+
+		audio.emit('loadedmetadata');
+
+		// The probe would have parked playback far past the end
+		expect(audio.currentTime).toBe(0);
+		expect(container).toShowTime('0:00 / 1:00');
+	});
+
 	it('probes a far position on an unusable duration and restores the start on resolution', () => {
 		const audio = makeFakeAudio();
 		audio.duration = Infinity;
