@@ -8,7 +8,6 @@ import {
 	ICON_QUICK_NOTE,
 	QUICK_NOTE_GLYPHS,
 	updateRibbonIcon,
-	initializeRibbonIcon,
 } from 'src/ui/RibbonIcon';
 import { RecordingStatus } from 'src/types';
 
@@ -108,26 +107,6 @@ describe('RibbonIcon', () => {
 
 			// Force an unknown status value to test default case
 			updateRibbonIcon(ribbonElement, 'unknown' as RecordingStatus);
-
-			expect(ribbonElement.getAttribute('data-icon')).toBe('mic-vocal');
-			expect(ribbonElement.classList.contains('is-recording')).toBe(
-				false,
-			);
-		});
-	});
-
-	describe('initializeRibbonIcon', () => {
-		it('handles null element gracefully', () => {
-			expect(() => {
-				initializeRibbonIcon(null);
-			}).not.toThrow();
-		});
-
-		it('sets ribbon icon to idle state', () => {
-			ribbonElement.classList.add('is-recording');
-			ribbonElement.setAttribute('data-icon', 'mic-vocal');
-
-			initializeRibbonIcon(ribbonElement);
 
 			expect(ribbonElement.getAttribute('data-icon')).toBe('mic-vocal');
 			expect(ribbonElement.classList.contains('is-recording')).toBe(

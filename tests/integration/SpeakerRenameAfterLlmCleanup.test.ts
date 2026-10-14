@@ -151,7 +151,7 @@ function makeApp(): { app: App; files: Map<string, string> } {
 			getFiles: () => [...files.keys()].map((path) => tf(path)),
 			getFileByPath: (path: string): TFile | null =>
 				files.has(path) ? tf(path) : null,
-			read: (file: TFile): Promise<string> =>
+			cachedRead: (file: TFile): Promise<string> =>
 				Promise.resolve(files.get(file.path) ?? ''),
 			process: (
 				file: TFile,

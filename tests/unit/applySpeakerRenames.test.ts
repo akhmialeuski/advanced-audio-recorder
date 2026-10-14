@@ -43,7 +43,7 @@ function makeApp(
 		vault: {
 			getFileByPath: (path: string): TFile | null =>
 				files.has(path) ? createFile(path) : null,
-			read: async (file: TFile): Promise<string> =>
+			cachedRead: async (file: TFile): Promise<string> =>
 				files.get(file.path) ?? '',
 			process: async (
 				file: TFile,
@@ -726,13 +726,13 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			['audio/rec.wav', ''],
 			['audio/rec.txt', '[0:00] Speaker 1: live edit'],
 		]);
-		// read returns a stale snapshot while process operates on the current
+		// cachedRead returns a stale snapshot while process operates on the current
 		// content, mimicking an edit landing between the two calls.
 		const app = createMockApp({
 			vault: {
 				getFileByPath: (path: string): TFile | null =>
 					live.has(path) ? createFile(path) : null,
-				read: async (): Promise<string> =>
+				cachedRead: async (): Promise<string> =>
 					'[0:00] Speaker 1: stale snapshot',
 				process: async (
 					file: TFile,

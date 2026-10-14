@@ -41,7 +41,7 @@ function makeApp(
 				[...files.keys()].map((path) => createFile(path)),
 			getFileByPath: (path: string): TFile | null =>
 				files.has(path) ? createFile(path) : null,
-			read: async (file: TFile): Promise<string> =>
+			cachedRead: async (file: TFile): Promise<string> =>
 				files.get(file.path) ?? '',
 		},
 		metadataCache: {

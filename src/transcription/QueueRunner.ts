@@ -9,7 +9,8 @@
  * @module transcription/QueueRunner
  */
 
-import { Notice, TFile } from 'obsidian';
+import { Notice } from 'obsidian';
+import type { TFile } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { CancellationSource } from '../utils/cancellation';
@@ -116,8 +117,8 @@ export class QueueRunner {
 	 * @param path - Vault-relative recording path
 	 */
 	private async runOne(path: string): Promise<void> {
-		const file = this.deps.app.vault.getAbstractFileByPath(path);
-		if (!(file instanceof TFile)) {
+		const file = this.deps.app.vault.getFileByPath(path);
+		if (!file) {
 			this.deps.queue.setState(
 				path,
 				QueueEntryState.Failed,

@@ -49,7 +49,7 @@ function createSut(stored: { path: string; state: string }[] = []): Sut {
 	const transcribed: string[] = [];
 	const app = createMockApp({
 		vault: {
-			getAbstractFileByPath: (path: string) =>
+			getFileByPath: (path: string) =>
 				Object.assign(Object.create(TFile.prototype), {
 					path,
 					name: path,

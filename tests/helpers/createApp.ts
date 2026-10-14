@@ -29,6 +29,7 @@ export interface MockApp {
 		create: jest.Mock;
 		readBinary: jest.Mock;
 		read: jest.Mock;
+		cachedRead: jest.Mock;
 		modify: jest.Mock;
 		process: jest.Mock;
 		rename: jest.Mock;
@@ -102,6 +103,7 @@ export function createMockApp(overrides: MockAppOverrides = {}): {
 			create: jest.fn().mockResolvedValue(undefined),
 			readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
 			read: jest.fn().mockResolvedValue(''),
+			cachedRead: jest.fn().mockResolvedValue(''),
 			modify: jest.fn().mockResolvedValue(undefined),
 			process: jest.fn().mockResolvedValue(''),
 			rename: jest.fn().mockResolvedValue(undefined),

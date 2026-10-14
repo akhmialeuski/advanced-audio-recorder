@@ -1752,6 +1752,11 @@ export class TAbstractFile {
  */
 export class TFolder extends TAbstractFile {
 	children: TAbstractFile[] = [];
+
+	/** Whether this is the vault root, whose path Obsidian writes as '/'. */
+	isRoot(): boolean {
+		return this.path === '/' || this.path === '';
+	}
 }
 
 /**

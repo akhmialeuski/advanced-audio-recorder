@@ -105,11 +105,12 @@ function createServices(
 } {
 	const { app } = createMockApp({
 		vault: {
-			getAbstractFileByPath: (path: string) =>
+			getFileByPath: (path: string) =>
 				path in files
 					? Object.assign(Object.create(TFile.prototype), { path })
 					: null,
-			read: (target: TFile) => Promise.resolve(files[target.path] ?? ''),
+			cachedRead: (target: TFile) =>
+				Promise.resolve(files[target.path] ?? ''),
 		},
 	});
 	const primeForEnhancement = jest.fn();

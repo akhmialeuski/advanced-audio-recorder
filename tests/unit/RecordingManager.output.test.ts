@@ -28,6 +28,7 @@ import {
 import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
+import { fileInFolder } from '../helpers/obsidianMock';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 import {
 	encodeAudioBuffer,
@@ -554,9 +555,9 @@ describe('RecordingManager', () => {
 				mockSettings,
 				statusChangeCallback,
 			);
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Meetings/2026/Meeting Note.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Meetings/2026/Meeting Note.md'),
+			);
 
 			const mockMediaRecorder = makeMediaRecorderDouble();
 
@@ -583,9 +584,9 @@ describe('RecordingManager', () => {
 				mockSettings,
 				statusChangeCallback,
 			);
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Meetings/2026/Meeting Note.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Meetings/2026/Meeting Note.md'),
+			);
 
 			const mockMediaRecorder = makeMediaRecorderDouble();
 
@@ -616,9 +617,9 @@ describe('RecordingManager', () => {
 				mockSettings,
 				statusChangeCallback,
 			);
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Meetings/2026/Meeting Note.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Meetings/2026/Meeting Note.md'),
+			);
 
 			const mockMediaRecorder = makeMediaRecorderDouble();
 
@@ -672,9 +673,9 @@ describe('RecordingManager', () => {
 				mockSettings,
 				statusChangeCallback,
 			);
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Projects/Notes/Daily.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Projects/Notes/Daily.md'),
+			);
 
 			const mockReplaceSelection = jest.fn();
 			(

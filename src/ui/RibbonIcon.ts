@@ -97,11 +97,3 @@ export function updateRibbonIcon(
 			break;
 	}
 }
-
-/**
- * Initializes the ribbon icon to idle state.
- * @param ribbonIconEl - The ribbon icon HTML element
- */
-export function initializeRibbonIcon(ribbonIconEl: HTMLElement | null): void {
-	updateRibbonIcon(ribbonIconEl, RecordingStatus.Idle);
-}

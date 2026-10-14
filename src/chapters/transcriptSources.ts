@@ -337,7 +337,7 @@ async function linesFromNote(
 	if (times.size === 0) {
 		return [];
 	}
-	const content = await app.vault.read(note);
+	const content = await app.vault.cachedRead(note);
 	const noteLines = content.split('\n');
 	const lines: TimedLine[] = [];
 	for (const [index, time] of times) {
@@ -437,7 +437,7 @@ async function loadFromRecordedOutputs(
 		try {
 			const { lines, language } = linesFromSidecar(
 				output.format,
-				await app.vault.read(file),
+				await app.vault.cachedRead(file),
 			);
 			if (lines.length > 0) {
 				lines.sort((a, b) => a.time - b.time);
@@ -496,7 +496,7 @@ async function loadByDiscovery(
 		try {
 			const { lines, language } = linesFromSidecar(
 				format,
-				await app.vault.read(file),
+				await app.vault.cachedRead(file),
 			);
 			if (lines.length > 0) {
 				lines.sort((a, b) => a.time - b.time);

@@ -91,11 +91,12 @@ function createSut(
 	const unwritable = new Set(options.unwritable ?? []);
 	const app = createMockApp({
 		vault: {
-			getAbstractFileByPath: (path: string) =>
+			getFileByPath: (path: string) =>
 				path in files
 					? Object.assign(Object.create(TFile.prototype), { path })
 					: null,
-			read: (file: TFile) => Promise.resolve(files[file.path] ?? ''),
+			cachedRead: (file: TFile) =>
+				Promise.resolve(files[file.path] ?? ''),
 			modify: (file: TFile, data: string) => {
 				if (unwritable.has(file.path)) {
 					return Promise.reject(new Error('the file is read-only'));

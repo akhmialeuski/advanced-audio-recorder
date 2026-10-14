@@ -3,7 +3,7 @@
  * @module main
  */
 
-import { Notice, Plugin } from 'obsidian';
+import { Notice, Plugin, normalizePath } from 'obsidian';
 import type { TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
@@ -51,7 +51,6 @@ import {
 	QUICK_NOTE_GLYPHS,
 	RIBBON_HIDDEN_CLASS,
 	updateRibbonIcon,
-	initializeRibbonIcon,
 } from './ui/RibbonIcon';
 import { ContextMenu } from './ui/ContextMenu';
 import type { ActionServices, SessionServices } from './actions/PluginAction';
@@ -644,8 +643,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.playerRegistrar.dispose();
 		this.encodingWorker?.terminate();
 		this.encodingWorker = null;
-		initializeStatusBar(this.statusBarItem);
-		initializeRibbonIcon(this.ribbonIconEl);
+		// The status bar item and the ribbon icon are not reset here: Obsidian
+		// removes both when the plugin unloads.
 	}
 
 	/**
@@ -971,7 +970,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		if (!pluginDir) {
 			return null;
 		}
-		return `${pluginDir}/${fileName}`;
+		return normalizePath(`${pluginDir}/${fileName}`);
 	}
 
 	/**

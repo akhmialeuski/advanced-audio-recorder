@@ -12,7 +12,6 @@
  * @module transcription/recordedTranscript
  */
 
-import { TFile } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { FileOutput } from '../sidecar/recordingSidecarModel';
@@ -56,12 +55,12 @@ export async function readRecordedTranscript(
 	if (!json) {
 		return null;
 	}
-	const file = app.vault.getAbstractFileByPath(json.path);
-	if (!(file instanceof TFile)) {
+	const file = app.vault.getFileByPath(json.path);
+	if (!file) {
 		return null;
 	}
 	try {
-		const parsed: unknown = JSON.parse(await app.vault.read(file));
+		const parsed: unknown = JSON.parse(await app.vault.cachedRead(file));
 		return isTranscript(parsed) ? { transcript: parsed, outputs } : null;
 	} catch (error) {
 		console.warn(
@@ -90,8 +89,8 @@ export async function rewriteRecordedTranscriptFiles(
 ): Promise<number> {
 	let rewritten = 0;
 	for (const output of outputs) {
-		const file = app.vault.getAbstractFileByPath(output.path);
-		if (!(file instanceof TFile)) {
+		const file = app.vault.getFileByPath(output.path);
+		if (!file) {
 			continue;
 		}
 		try {

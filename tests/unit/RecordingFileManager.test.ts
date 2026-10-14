@@ -4,7 +4,8 @@
  * @module tests/unit/RecordingFileManager.test
  */
 
-import type { App, TFile } from 'obsidian';
+import type { App } from 'obsidian';
+import { fileInFolder } from '../helpers/obsidianMock';
 import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
@@ -19,7 +20,6 @@ import {
 	removeTemporaryArtifacts,
 	cleanupIntermediateFiles,
 } from 'src/audio/RecordingFileManager';
-import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { at } from '../helpers/assertions';
 import { createTarget } from '../helpers/recordingFixtures';
@@ -92,7 +92,7 @@ describe('RecordingFileManager', () => {
 			// file" is on, so anything that is not a note in a folder has to
 			// fall back to the configured folder rather than guess.
 			jest.mocked(mockApp.workspace.getActiveFile).mockReturnValue(
-				path === null ? null : partial<TFile>({ path }),
+				path === null ? null : fileInFolder(path),
 			);
 
 			expect(getActiveFileDirectory(mockApp)).toBe(expected);
@@ -115,9 +115,9 @@ describe('RecordingFileManager', () => {
 		it('returns active file directory when saveNearActiveFile is true and subfolder is empty', () => {
 			mockSettings.saveNearActiveFile = true;
 			mockSettings.activeFileSubfolder = '';
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Notes/Daily/today.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Notes/Daily/today.md'),
+			);
 
 			const result = getBaseSaveDirectory(mockSettings, mockApp);
 
@@ -127,9 +127,9 @@ describe('RecordingFileManager', () => {
 		it('returns active file directory + subfolder when saveNearActiveFile is true and subfolder set', () => {
 			mockSettings.saveNearActiveFile = true;
 			mockSettings.activeFileSubfolder = 'audio';
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Notes/Daily/today.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Notes/Daily/today.md'),
+			);
 
 			const result = getBaseSaveDirectory(mockSettings, mockApp);
 
@@ -139,9 +139,9 @@ describe('RecordingFileManager', () => {
 		it('handles whitespace-only subfolder as empty', () => {
 			mockSettings.saveNearActiveFile = true;
 			mockSettings.activeFileSubfolder = '   ';
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Notes/today.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Notes/today.md'),
+			);
 
 			const result = getBaseSaveDirectory(mockSettings, mockApp);
 
