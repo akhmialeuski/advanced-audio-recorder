@@ -26,6 +26,7 @@ import type {
 import {
 	FILE_PARAM,
 	PATH_PARAM,
+	NOTE_PARAM,
 	RECORDING_PARAM,
 	SINGLE_RECORDING_PARAMS,
 	namedRecordings,
@@ -225,9 +226,11 @@ function namedPosition(
 	if (isRefusal(at)) {
 		return at.refusal;
 	}
-	const named =
-		cliText(args, FILE_PARAM) !== null ||
-		cliText(args, PATH_PARAM) !== null;
+	// Any parameter naming a recording or its note names the target; only
+	// with none of them is the recording playing in Obsidian the one meant.
+	const named = [FILE_PARAM, PATH_PARAM, RECORDING_PARAM, NOTE_PARAM].some(
+		(param) => cliText(args, param) !== null,
+	);
 	if (!named) {
 		const playing = playbackPosition(services, playback());
 		if (playing) {

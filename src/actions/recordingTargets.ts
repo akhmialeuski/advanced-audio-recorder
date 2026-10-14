@@ -17,7 +17,7 @@
 import { getLinkpath, MarkdownView, TFile } from 'obsidian';
 import type { App, CliData, CliFlags } from 'obsidian';
 import { isAudioFile } from '../utils/audioFile';
-import { linkAtCursor, pointsAtWholeFile } from '../obsidian/linkAtCursor';
+import { linkAtCursor } from '../obsidian/linkAtCursor';
 import {
 	cliFlag,
 	cliText,
@@ -150,15 +150,15 @@ function namedNote(app: App, args: CliData): CliRead<TFile | null> {
 
 /**
  * The recording under the cursor of the active editor, when the note in it
- * is the given one, with the link the cursor stands on when that links the
- * whole recording. A timecode link picks the recording all the same.
+ * is the given one, with the link the cursor stands on: a link to the whole
+ * recording or, as a transcript line carries, to a moment of it.
  * @param app - Obsidian App
  * @param note - The active note
  */
 function recordingUnderCursor(
 	app: App,
 	note: TFile,
-): { file: TFile; link?: LinkLocation } | null {
+): { file: TFile; link: LinkLocation } | null {
 	const view = app.workspace.getActiveViewOfType(MarkdownView);
 	const editor = view?.file === note ? view.editor : null;
 	if (!editor) {
@@ -173,10 +173,7 @@ function recordingUnderCursor(
 		getLinkpath(link.path),
 		note.path,
 	);
-	if (!file || !isAudioFile(file)) {
-		return null;
-	}
-	return pointsAtWholeFile(link)
+	return file && isAudioFile(file)
 		? {
 				file,
 				link: {
@@ -186,7 +183,7 @@ function recordingUnderCursor(
 					end: link.end,
 				},
 			}
-		: { file };
+		: null;
 }
 
 /**

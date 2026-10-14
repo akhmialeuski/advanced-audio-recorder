@@ -176,7 +176,7 @@ describe('the recordings the palette acts on', () => {
 		});
 	});
 
-	it('picks the recording of a timecode link, which is not the link to remove', () => {
+	it('picks the recording of a timecode link, with the link it stands on', () => {
 		const sut = createSut({ active: MEETING });
 		const view = createMarkdownView({
 			file: sut.file(MEETING),
@@ -190,7 +190,9 @@ describe('the recordings the palette acts on', () => {
 		const [target] = activeRecordings(sut.services);
 
 		expect(target?.file.path).toBe(RETRO);
-		expect(target?.link).toBeUndefined();
+		expect(target?.link).toEqual(
+			expect.objectContaining({ line: 4, start: 0, end: 23 }),
+		);
 	});
 
 	it('falls back to the whole note when the cursor is on a link to no recording', () => {

@@ -39,7 +39,7 @@ Which actions appear depends on where you click and on your settings:
 | **Generate chapters from transcript** | Yes           | Yes        | Yes    | When **Auto chapters** is enabled       |
 | **Export chapters and markers**       | Yes           | Yes        | Yes    | Always                                  |
 | **Delete recording**                  | Yes           | No         | No     | When reached on its own                 |
-| **Delete recording & link to file**   | No            | Yes        | Yes    | When the file is reached through a note |
+| **Delete recording & link to file**   | No            | Yes        | Yes    | When reached through a note or a link   |
 
 Wherever the recording is reached through a note - its **embed link** in the editor, its **player**, or the palette in that note - plain **Delete recording** is replaced by **Delete recording & link to file**: deleting a file a note links should also clean up the link, rather than leave it broken. The two are never offered together. When you right-click an **enhanced player**, the menu also offers position-aware actions at the clicked point - **Add marker here**, **Add chapter here**, and **Copy timestamp link here** - alongside the file actions above. Those are documented in [Audio player](audio-player.md#markers-and-chapters).
 

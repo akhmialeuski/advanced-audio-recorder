@@ -291,6 +291,26 @@ describe('the point a command line names', () => {
 		]);
 	});
 
+	it('takes the recording named, not the one playing', async () => {
+		const sut = createSut({
+			playback: makePlaybackState({
+				recordingPath: LECTURE,
+				currentTime: 30,
+			}),
+		});
+		asMockWorkspace(sut.app.workspace).seedActiveFile(sut.file(NOTES));
+
+		const [target] = (await sut.resolve({
+			recording: 'lecture',
+			at: '5',
+		})) as PositionContext[];
+
+		// Reached through the active note, as recording= names it, at the
+		// time typed rather than where the playback stands.
+		expect(target?.seconds).toBe(5);
+		expect(target?.note?.path).toBe(NOTES);
+	});
+
 	it('moves off the playback by the time typed', async () => {
 		const sut = createSut({
 			playback: makePlaybackState({ recordingPath: LECTURE }),

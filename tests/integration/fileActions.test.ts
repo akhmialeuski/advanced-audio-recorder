@@ -543,7 +543,10 @@ describe('deleting a recording with its link', () => {
 	it('trashes the recording and removes the link it was opened on', async () => {
 		const { services } = createServices();
 		const replaceRange = jest.fn();
-		const editor = partial<Editor>({ replaceRange });
+		const editor = partial<Editor>({
+			replaceRange,
+			getLine: () => 'A ![[take.webm]] and more',
+		});
 
 		await action(COMMAND_IDS.deleteRecordingAndLink).run({
 			file,

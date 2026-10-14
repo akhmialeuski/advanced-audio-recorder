@@ -19,13 +19,14 @@ import {
 	TFolder,
 	getLinkpath,
 } from 'obsidian';
+import type { WorkspaceLeaf } from 'obsidian';
 import type { Editor, MarkdownFileInfo } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
 import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { isAudioFile } from '../utils/audioFile';
-import { linkAtCursor, pointsAtWholeFile } from '../obsidian/linkAtCursor';
+import { linkAtCursor } from '../obsidian/linkAtCursor';
 import type {
 	ActionServices,
 	FileContext,
@@ -44,8 +45,16 @@ export type { EnhancementPrimer } from '../actions/PluginAction';
 
 /** CodeMirror view attached to Editor (internal Obsidian API). */
 interface EditorCodeMirrorView {
+	/** The editor's own DOM, which holds the widgets it renders. */
+	dom?: HTMLElement;
 	posAtDOM?(node: Node): number;
 }
+
+/** The source the player menu re-triggers file-menu with. */
+const PLAYER_MENU_SOURCE = 'audio-recorder-player-context-menu';
+
+/** The source Obsidian raises file-menu with for a link right-clicked in a note. */
+const LINK_MENU_SOURCE = 'link-context-menu';
 
 interface EditorWithCM extends Editor {
 	cm?: EditorCodeMirrorView;
@@ -210,7 +219,7 @@ export class ContextMenu {
 					'file-menu',
 					menu,
 					file,
-					'audio-recorder-player-context-menu',
+					PLAYER_MENU_SOURCE,
 				);
 
 				menu.showAtPosition({ x: event.pageX, y: event.pageY });
@@ -227,7 +236,7 @@ export class ContextMenu {
 	 * @param file - The recording the embed plays
 	 * @param sourcePath - The note its links resolve from
 	 * @returns The link, or null when its position could not be resolved to
-	 *   a link of the whole recording
+	 *   a link of the recording
 	 */
 	private linkOfEmbed(
 		editor: Editor,
@@ -236,19 +245,19 @@ export class ContextMenu {
 		sourcePath: string,
 	): LinkLocation | null {
 		const editorView = (editor as EditorWithCM).cm;
-		if (!editorView?.posAtDOM) {
+		// Only a player the editor itself renders has a position in its text;
+		// one drawn in reading view maps to whatever line is nearest.
+		if (!editorView?.posAtDOM || !editorView.dom?.contains(embed)) {
 			return null;
 		}
 		try {
 			const pos = editorView.posAtDOM(embed);
 			const cursor = editor.offsetToPos(pos);
 			const found = linkAtCursor(editor.getLine(cursor.line), cursor.ch);
-			// The position maps the embed to a line of the source, which is
-			// only the embed's own link when it links this very recording -
-			// a player drawn outside the text maps elsewhere - and as a whole.
+			// The line holds the embed's own link only if that link reaches
+			// this very recording.
 			const isThisLink =
 				found !== null &&
-				pointsAtWholeFile(found) &&
 				this.app.metadataCache.getFirstLinkpathDest(
 					getLinkpath(found.path),
 					sourcePath,
@@ -300,6 +309,19 @@ export class ContextMenu {
 	}
 
 	/**
+	 * The note a link was right-clicked in: the note of the leaf the menu
+	 * came from, or else the active note.
+	 * @param leaf - The leaf Obsidian named, if any
+	 */
+	private noteOfLinkMenu(leaf: WorkspaceLeaf | undefined): TFile | null {
+		const view =
+			leaf?.view instanceof MarkdownView
+				? leaf.view
+				: this.app.workspace.getActiveViewOfType(MarkdownView);
+		return view?.file ?? null;
+	}
+
+	/**
 	 * Registers the file menu event (File Explorer): the file actions for an
 	 * audio file, the folder actions for a folder.
 	 */
@@ -307,12 +329,34 @@ export class ContextMenu {
 		this.plugin.registerEvent(
 			this.app.workspace.on(
 				'file-menu',
-				(menu: Menu, file: TAbstractFile) => {
+				(
+					menu: Menu,
+					file: TAbstractFile,
+					source: string,
+					leaf?: WorkspaceLeaf,
+				) => {
 					if (file instanceof TFile && isAudioFile(file)) {
+						// The player menu rendered these with the note the
+						// player is in before it re-triggered the event, for
+						// Obsidian and other plugins to add theirs.
+						if (source === PLAYER_MENU_SOURCE) {
+							return;
+						}
+						// A link right-clicked in a note reaches the recording
+						// through that note, which the menu then acts on: the
+						// link-aware delete rather than the plain one.
+						const note =
+							source === LINK_MENU_SOURCE
+								? this.noteOfLinkMenu(leaf)
+								: null;
 						this.registry.renderInto(
 							menu,
 							this.families.file,
-							{ file, services: this.services },
+							{
+								file,
+								services: this.services,
+								...(note ? { note } : {}),
+							},
 							this.renderedSetFor(menu),
 						);
 						return;
@@ -370,8 +414,10 @@ export class ContextMenu {
 			return;
 		}
 
+		// The path without its subpath: a timecode link reaches its
+		// recording as a whole-file link does.
 		const file = this.app.metadataCache.getFirstLinkpathDest(
-			found.path,
+			getLinkpath(found.path),
 			view.file ? view.file.path : '',
 		);
 
@@ -379,9 +425,9 @@ export class ContextMenu {
 			return;
 		}
 
-		// The note the editor shows, and the link the cursor is on when it
-		// links the whole recording, are what make the link-aware delete the
-		// one offered here, in place of the plain one.
+		// The link the cursor is on is what makes the link-aware delete the
+		// one offered here, in place of the plain one; what of it the delete
+		// removes is the delete's to decide.
 		this.registry.renderInto(
 			menu,
 			this.families.file,
@@ -389,16 +435,12 @@ export class ContextMenu {
 				file,
 				services: this.services,
 				...(view.file ? { note: view.file } : {}),
-				...(pointsAtWholeFile(found)
-					? {
-							link: {
-								editor,
-								line: cursor.line,
-								start: found.start,
-								end: found.end,
-							},
-						}
-					: {}),
+				link: {
+					editor,
+					line: cursor.line,
+					start: found.start,
+					end: found.end,
+				},
 			},
 			this.renderedSetFor(menu),
 		);

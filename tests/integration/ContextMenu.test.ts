@@ -101,6 +101,9 @@ function titlesOf(menu: Menu): string[] {
  * @param menu - The rendered menu
  * @param title - Exact item title
  */
+/** An editor DOM that holds every embed, as one in live preview does. */
+const HOLDS_EVERY_EMBED = { contains: (): boolean => true };
+
 async function clickItem(menu: Menu, title: string): Promise<void> {
 	asMockMenu(menu).click(title);
 	// The handlers are async and fire-and-forget from the menu's point of
@@ -228,6 +231,63 @@ describe('ContextMenu', () => {
 				expect(titlesOf(menu)).toContain('Delete recording');
 			},
 		);
+
+		it('acts on a link right-clicked in a note through that note', () => {
+			const menu = new Menu();
+			const note = Object.assign(Object.create(TFile.prototype), {
+				path: 'Meetings/standup.md',
+				extension: 'md',
+			}) as TFile;
+			const leaf = {
+				view: Object.assign(
+					Object.create(
+						(MarkdownView as unknown as { prototype: object })
+							.prototype,
+					),
+					{ file: note },
+				),
+			};
+
+			(
+				fileMenuCallback as (
+					menu: Menu,
+					file: TFile,
+					source: string,
+					leaf: unknown,
+				) => void
+			)(menu, makeAudioFile(), 'link-context-menu', leaf);
+
+			expect(titlesOf(menu)).toContain('Delete recording & link to file');
+			expect(titlesOf(menu)).not.toContain('Delete recording');
+		});
+
+		it.each([
+			{
+				name: 'the active note when Obsidian names no leaf',
+				active: { file: { path: 'Meetings/standup.md' } },
+				offered: 'Delete recording & link to file',
+			},
+			{
+				name: 'no note when none is open',
+				active: null,
+				offered: 'Delete recording',
+			},
+		])('takes a link right-clicked from $name', ({ active, offered }) => {
+			const menu = new Menu();
+			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue(
+				active,
+			);
+
+			(
+				fileMenuCallback as (
+					menu: Menu,
+					file: TFile,
+					source: string,
+				) => void
+			)(menu, makeAudioFile(), 'link-context-menu');
+
+			expect(titlesOf(menu)).toContain(offered);
+		});
 
 		it('offers the full action set for an audio file (transcription off)', () => {
 			const menu = new Menu();
@@ -488,7 +548,7 @@ describe('ContextMenu', () => {
 			},
 		);
 
-		it('takes a timecode link for its recording, but not as the link to remove', () => {
+		it('takes a timecode link for its recording, but leaves it in its line', async () => {
 			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue(
 				'[[audio.mp3#t=90|1:30]] **Ann** Budget.',
@@ -501,14 +561,15 @@ describe('ContextMenu', () => {
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
 			).mockReturnValue(makeAudioFile());
 
-			// An editor showing no note file, as a canvas card does: with the
-			// timecode link no link to remove, only the plain delete is left.
+			// An editor showing no note file, as a canvas card does. The link
+			// is reached all the same, so the link-aware delete is offered; a
+			// timecode link is part of its line, so it is not what it removes.
 			editorMenuCallback(menu, mockEditor, {});
+			await clickItem(menu, 'Delete recording & link to file');
 
-			expect(titlesOf(menu)).toContain('Delete recording');
-			expect(titlesOf(menu)).not.toContain(
-				'Delete recording & link to file',
-			);
+			expect(titlesOf(menu)).not.toContain('Delete recording');
+			expect(mockApp.fileManager.trashFile).toHaveBeenCalledTimes(1);
+			expect(mockEditor.replaceRange).not.toHaveBeenCalled();
 		});
 
 		it('offers nothing when no link is at the cursor', () => {
@@ -917,7 +978,10 @@ describe('ContextMenu', () => {
 				replaceRange: jest.fn(),
 			});
 			Object.defineProperty(mockEditor, 'cm', {
-				get: () => ({ posAtDOM: jest.fn().mockReturnValue(0) }),
+				get: () => ({
+					dom: HOLDS_EVERY_EMBED,
+					posAtDOM: jest.fn().mockReturnValue(0),
+				}),
 			});
 			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
 				editor: mockEditor,
@@ -943,7 +1007,10 @@ describe('ContextMenu', () => {
 				getLine: jest.fn().mockReturnValue('[[Other note]]'),
 			});
 			Object.defineProperty(mockEditor, 'cm', {
-				get: () => ({ posAtDOM: jest.fn().mockReturnValue(0) }),
+				get: () => ({
+					dom: HOLDS_EVERY_EMBED,
+					posAtDOM: jest.fn().mockReturnValue(0),
+				}),
 			});
 			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
 				editor: mockEditor,
@@ -959,6 +1026,29 @@ describe('ContextMenu', () => {
 			);
 		});
 
+		it('locates no link for a player its editor does not render', () => {
+			const event = makeEmbedEvent();
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(makeAudioFile());
+			const posAtDOM = jest.fn().mockReturnValue(0);
+			const mockEditor = partial<Editor>({
+				getLine: jest.fn().mockReturnValue('![[audio.mp3]]'),
+			});
+			// Reading view: the player is drawn outside the editor's DOM.
+			Object.defineProperty(mockEditor, 'cm', {
+				get: () => ({ dom: { contains: () => false }, posAtDOM }),
+			});
+			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
+				editor: mockEditor,
+			});
+
+			playerMenuCallback(event);
+
+			expect(posAtDOM).not.toHaveBeenCalled();
+			expect(titlesOf(triggeredMenu())).toContain('Delete recording');
+		});
+
 		it('degrades gracefully when the editor link resolution throws', () => {
 			const event = makeEmbedEvent();
 			(
@@ -970,6 +1060,7 @@ describe('ContextMenu', () => {
 			const mockEditor = partial<Editor>({
 				get cm() {
 					return {
+						dom: HOLDS_EVERY_EMBED,
 						posAtDOM: jest.fn().mockImplementation(() => {
 							throw new Error('Test Error');
 						}),
@@ -1160,7 +1251,10 @@ describe('ContextMenu', () => {
 				getLine: jest.fn().mockReturnValue('Notes from the call'),
 			});
 			Object.defineProperty(editor, 'cm', {
-				get: () => ({ posAtDOM: jest.fn().mockReturnValue(0) }),
+				get: () => ({
+					dom: HOLDS_EVERY_EMBED,
+					posAtDOM: jest.fn().mockReturnValue(0),
+				}),
 			});
 			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
 				file: { path: 'Meetings/standup.md' },
@@ -1185,20 +1279,20 @@ describe('ContextMenu', () => {
 				editor: partial<Editor>({}),
 			});
 			playerMenu()(rightClickOnPlayer({}));
-			const [, menu, file] = defined(
+			const [, menu, file, source] = defined(
 				(mockWorkspace.trigger as jest.Mock).mock.calls.find(
 					(args: unknown[]) => args[0] === 'file-menu',
 				),
-			) as [string, Menu, TFile];
+			) as [string, Menu, TFile, string];
 			const fileMenu = defined(
 				(mockWorkspace.on as jest.Mock).mock.calls.find(
 					(args: unknown[]) => args[0] === 'file-menu',
 				),
-			)[1] as (menu: Menu, file: TFile) => void;
+			)[1] as (menu: Menu, file: TFile, source: string) => void;
 
 			// What Obsidian does with the event the player menu triggers: every
 			// file-menu handler runs, this plugin's own among them.
-			fileMenu(menu, file);
+			fileMenu(menu, file, source);
 
 			expect(menuTitles()).toContain('Delete recording & link to file');
 			expect(menuTitles()).not.toContain('Delete recording');

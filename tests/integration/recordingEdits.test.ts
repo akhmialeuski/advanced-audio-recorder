@@ -52,7 +52,10 @@ describe('deleting a recording with its links', () => {
 		const answer = await deleteRecordingWithLink({
 			...sut.context,
 			link: {
-				editor: partial<Editor>({ replaceRange }),
+				editor: partial<Editor>({
+					replaceRange,
+					getLine: () => '![[standup.webm]]',
+				}),
 				line: 0,
 				start: 0,
 				end: 17,
@@ -66,6 +69,34 @@ describe('deleting a recording with its links', () => {
 			{ line: 0, ch: 17 },
 		);
 		expect(sut.app.vault.getFileByPath(STANDUP)).toBeNull();
+	});
+
+	it('keeps a timecode link it was opened on, removing the whole-file links instead', async () => {
+		const sut = createSut(
+			'![[standup.webm]]\n[[standup.webm#t=90|1:30]] Budget.',
+		);
+		const replaceRange = jest.fn();
+
+		const answer = await deleteRecordingWithLink({
+			...sut.context,
+			link: {
+				editor: partial<Editor>({
+					replaceRange,
+					getLine: () => '[[standup.webm#t=90|1:30]] Budget.',
+				}),
+				line: 1,
+				start: 0,
+				end: 26,
+			},
+		});
+
+		expect(replaceRange).not.toHaveBeenCalled();
+		expect(answer).toBe(
+			`Deleted ${STANDUP} and removed 1 link(s) to it from ${MEETING}.`,
+		);
+		await expect(sut.read()).resolves.toBe(
+			'\n[[standup.webm#t=90|1:30]] Budget.',
+		);
 	});
 
 	it('removes every link to the whole recording from the note named', async () => {
