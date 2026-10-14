@@ -184,7 +184,7 @@ async function withReadDuration(
  * @param file - The recording to measure
  * @returns The metadata, or null when neither path could read it
  */
-export async function probeFileMetadata(
+async function probeFileMetadata(
 	app: App,
 	file: TFile,
 ): Promise<ProbedAudioMetadata | null> {
@@ -197,6 +197,25 @@ export async function probeFileMetadata(
 	}
 	const bytes = await app.vault.readBinary(file);
 	return await readAudioMetadata(bytes, file.path);
+}
+
+/**
+ * A recording's length, read only through the cheap readers: the container
+ * headers over ranged reads, then the browser's own media pipeline at the
+ * same address. Never the bytes: a caller that merely displays a length - the
+ * recording panel, which reads it because a note was opened - must not hold a
+ * multi-hour file in memory, or decode it, for a number nobody asked for.
+ * @param app - Obsidian App
+ * @param file - The recording to measure
+ * @returns The length in seconds, or null when neither reader could give one
+ */
+export async function probeDurationSeconds(
+	app: App,
+	file: TFile,
+): Promise<number | null> {
+	const url = app.vault.getResourcePath(file);
+	const probed = await probeAudioMetadataAt(url, file.path);
+	return probed?.durationSeconds ?? (await probeMediaDurationSeconds(url));
 }
 
 /**

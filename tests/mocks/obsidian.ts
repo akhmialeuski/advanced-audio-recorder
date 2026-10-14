@@ -696,8 +696,12 @@ export class Workspace extends Events {
 	/** Leaves opened in the right sidebar, in order. */
 	readonly rightLeaves: WorkspaceLeaf[] = [];
 
+	/** The two sidebars, collapsed or not as a test sets them. */
+	readonly leftSplit = new WorkspaceSidedock();
+	readonly rightSplit = new WorkspaceSidedock();
+
 	getRightLeaf = jest.fn((_split: boolean): WorkspaceLeaf | null => {
-		const leaf = new WorkspaceLeaf(this.app);
+		const leaf = new WorkspaceLeaf(this.app, this.rightSplit);
 		this.rightLeaves.push(leaf);
 		return leaf;
 	});
@@ -1058,6 +1062,15 @@ export class Component {
 	}
 }
 
+/** Mock WorkspaceSidedock: a sidebar that can be collapsed and expanded. */
+export class WorkspaceSidedock {
+	collapsed = false;
+
+	expand = jest.fn((): void => {
+		this.collapsed = false;
+	});
+}
+
 /**
  * Mock WorkspaceLeaf: holds the view state it was given, the way a sidebar
  * tab the plugin opened would.
@@ -1068,7 +1081,15 @@ export class WorkspaceLeaf {
 	/** The last state set on the leaf. */
 	viewState: { type: string; active?: boolean } | null = null;
 
-	constructor(readonly app: App | null = null) {}
+	constructor(
+		readonly app: App | null = null,
+		private readonly root: unknown = null,
+	) {}
+
+	/** The sidebar or split the leaf sits in. */
+	getRoot(): unknown {
+		return this.root;
+	}
 
 	setViewState = jest.fn(
 		(state: { type: string; active?: boolean }): Promise<void> => {

@@ -31,9 +31,11 @@ import type {
 	ActionServices,
 	FileAction,
 	FileContext,
-	RecordingSessionPort,
 } from '../actions/PluginAction';
+import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
+import { RecordingStatus } from '../types';
 import { isAudioFile } from '../utils/audioFile';
+import { fileNameOf } from '../utils/paths';
 import { formatByteSize } from '../utils/formatBytes';
 import { formatTimecode } from '../utils/TimeUtils';
 import {
@@ -48,6 +50,16 @@ const UNKNOWN_VALUE = 'unknown';
 
 /** Shown while the length of a recording is still being read. */
 const READING_VALUE = 'reading...';
+
+/** What loadSummary answers for a sidecar that exists but cannot be read. */
+const UNREADABLE = 'unreadable';
+
+/** The record button in each state the recorder can be in. */
+const RECORD_BUTTON = {
+	idle: { icon: RECORDING_PANEL_ICON, label: 'Start recording' },
+	live: { icon: 'square', label: 'Stop recording' },
+	saving: { icon: 'loader', label: 'Saving the recording' },
+} as const;
 
 /**
  * Actions the panel leaves to the menus. Deleting a recording is one click in
@@ -94,10 +106,12 @@ export interface RecordingPanelHost {
 	/** The file actions to offer, in the order the menus list them. */
 	readonly actions: readonly FileAction[];
 	/** The recorder, for the start/stop button. */
-	readonly recording: Pick<
-		RecordingSessionPort,
-		'toggleRecording' | 'isSessionActive'
-	>;
+	readonly recording: {
+		/** Starts capture, or stops and saves a running session. */
+		toggleRecording(): Promise<void>;
+		/** What the recorder is doing. */
+		getStatus(): RecordingStatus;
+	};
 	/** Reads a recording's length in seconds, or null when it cannot. */
 	readonly readDuration: (file: TFile) => Promise<number | null>;
 	/** Opens the plugin's settings tab. */
@@ -129,8 +143,18 @@ export class RecordingPanelView extends ItemView {
 	private shownNotePath = '';
 	/** Bumped per refresh, so a slower earlier one never draws over a later. */
 	private generation = 0;
-	/** Lengths already asked for, keyed by path and modification time. */
-	private readonly durations = new Map<string, Promise<number | null>>();
+	/**
+	 * The length last asked for, keyed by path and modification time. One
+	 * entry: a redraw of the same recording reuses it, and moving on to
+	 * another recording replaces it rather than keeping every one ever shown.
+	 */
+	private duration: { key: string; seconds: Promise<number | null> } | null =
+		null;
+	/**
+	 * What the last drawing showed, so a change that leaves it the same - a
+	 * playback position written to the sidecar, say - does not rebuild it.
+	 */
+	private shownKey = '';
 	/** The start/stop header action, redrawn when the recorder changes. */
 	private recordAction: HTMLElement | null = null;
 
@@ -168,6 +192,9 @@ export class RecordingPanelView extends ItemView {
 			RECORDING_PANEL_ICON,
 			'Start recording',
 			() => {
+				if (this.recorderState() === 'saving') {
+					return;
+				}
 				void this.host.recording.toggleRecording().finally(() => {
 					this.refreshRecordingState();
 				});
@@ -189,8 +216,14 @@ export class RecordingPanelView extends ItemView {
 			}),
 		);
 		this.registerEvent(
-			vault.on('rename', () => {
-				void this.refresh();
+			vault.on('rename', (file, oldPath) => {
+				if (
+					this.shownPaths.has(oldPath) ||
+					oldPath === this.shownNotePath ||
+					file.path === this.shownNotePath
+				) {
+					void this.refresh();
+				}
 			}),
 		);
 		this.registerEvent(
@@ -251,17 +284,36 @@ export class RecordingPanelView extends ItemView {
 		if (!this.recordAction) {
 			return;
 		}
-		const active = this.host.recording.isSessionActive();
-		const label = active ? 'Stop recording' : 'Start recording';
-		setIcon(this.recordAction, active ? 'square' : RECORDING_PANEL_ICON);
+		const { icon, label } = RECORD_BUTTON[this.recorderState()];
+		setIcon(this.recordAction, icon);
 		this.recordAction.setAttribute('aria-label', label);
 	}
 
 	/**
-	 * Re-reads what the active file refers to and redraws the panel.
+	 * What the record button can do now. A session that is saving can be
+	 * neither started nor stopped, so the button says so instead of offering
+	 * a start the recorder would answer with a refusal.
+	 */
+	private recorderState(): keyof typeof RECORD_BUTTON {
+		switch (this.host.recording.getStatus()) {
+			case RecordingStatus.Recording:
+			case RecordingStatus.Paused:
+				return 'live';
+			case RecordingStatus.Idle:
+				return 'idle';
+			default:
+				return 'saving';
+		}
+	}
+
+	/**
+	 * Re-reads what the active file refers to and redraws the panel when what
+	 * it shows changed.
+	 * @param force - Redraw even when the data is the same, for a change the
+	 *   data does not carry (the settings that gate the actions and switches)
 	 * @returns Resolves once the panel shows the current state
 	 */
-	async refresh(): Promise<void> {
+	async refresh(force = false): Promise<void> {
 		const generation = ++this.generation;
 		const target = this.resolveTarget();
 		const selected =
@@ -274,6 +326,20 @@ export class RecordingPanelView extends ItemView {
 		if (generation !== this.generation) {
 			return;
 		}
+		const key = JSON.stringify([
+			target.notePath,
+			target.recordings.map((file) => file.path),
+			selected && [
+				selected.path,
+				selected.stat.mtime,
+				selected.stat.size,
+			],
+			summary,
+		]);
+		if (!force && key === this.shownKey) {
+			return;
+		}
+		this.shownKey = key;
 		this.shownNotePath = target.notePath;
 		this.shownPaths = new Set(target.recordings.map((file) => file.path));
 		this.selectedPath = selected?.path ?? null;
@@ -302,16 +368,17 @@ export class RecordingPanelView extends ItemView {
 	}
 
 	/**
-	 * Reads what the sidecar stores about a recording. A read that fails is
-	 * logged and shown as nothing stored, so a broken sidecar never takes the
-	 * file details and the actions down with it.
+	 * Reads what the sidecar stores about a recording. A sidecar that exists
+	 * but cannot be read answers as an empty document, which would read as a
+	 * recording nobody transcribed, so it is reported as unreadable instead;
+	 * either way the file details and the actions still show.
 	 * @param file - The recording
 	 * @param notePath - The note in view, or ''
 	 */
 	private async loadSummary(
 		file: TFile,
 		notePath: string,
-	): Promise<RecordingPanelSummary | null> {
+	): Promise<RecordingPanelSummary | typeof UNREADABLE> {
 		const sidecar = this.host.services.recordingSidecar;
 		try {
 			const [transcript, markers, failedParts] = await Promise.all([
@@ -319,6 +386,9 @@ export class RecordingPanelView extends ItemView {
 				sidecar.getMarkers(file.path),
 				sidecar.getFailedParts(file.path),
 			]);
+			if (sidecar.isSidecarCorrupt(file.path)) {
+				return UNREADABLE;
+			}
 			return summarizeRecording({
 				transcript,
 				markers,
@@ -331,7 +401,7 @@ export class RecordingPanelView extends ItemView {
 				`${PLUGIN_LOG_PREFIX} Could not read the stored data of ${file.path}:`,
 				error,
 			);
-			return null;
+			return UNREADABLE;
 		}
 	}
 
@@ -339,12 +409,12 @@ export class RecordingPanelView extends ItemView {
 	 * Draws the whole panel.
 	 * @param target - What the active file refers to
 	 * @param selected - The recording shown, or null for none
-	 * @param summary - What its sidecar holds, or null when unread
+	 * @param summary - What its sidecar holds, null with nothing selected
 	 */
 	private render(
 		target: PanelTarget,
 		selected: TFile | null,
-		summary: RecordingPanelSummary | null,
+		summary: RecordingPanelSummary | typeof UNREADABLE | null,
 	): void {
 		const root = this.contentEl;
 		root.empty();
@@ -354,7 +424,11 @@ export class RecordingPanelView extends ItemView {
 			);
 		} else {
 			this.renderFileSection(root, target.recordings, selected);
-			if (summary) {
+			if (summary === UNREADABLE) {
+				new Setting(root).setDesc(
+					`The stored data of this recording could not be read. Restore or remove ${selected.name}${SIDECAR_SUFFIX} to see it here.`,
+				);
+			} else if (summary) {
 				this.renderTranscriptSection(root, summary);
 				this.renderPeopleSection(root, summary);
 				this.renderMarkerSection(root, summary);
@@ -427,13 +501,13 @@ export class RecordingPanelView extends ItemView {
 			this.row(root, 'Template', summary.lineTemplate);
 		}
 		for (const path of summary.noteOutputs) {
-			this.linkRow(root, 'Note', path, baseName(path));
+			this.linkRow(root, 'Note', path, fileNameOf(path));
 		}
 		for (const output of summary.fileOutputs) {
 			const label = output.language
 				? `${output.format} (${output.language})`
 				: output.format;
-			this.linkRow(root, label, output.path, baseName(output.path));
+			this.linkRow(root, label, output.path, fileNameOf(output.path));
 		}
 		if (summary.failedParts > 0) {
 			this.row(root, 'Failed parts', String(summary.failedParts));
@@ -506,7 +580,10 @@ export class RecordingPanelView extends ItemView {
 			}
 			new Setting(root).setName(entry.name).addToggle((toggle) =>
 				toggle.setValue(settings[entry.key]).onChange(async (value) => {
-					settings[entry.key] = value;
+					// Read again rather than captured: settings synced in from
+					// another device replace the object, and a change made to
+					// the old one would be saved nowhere.
+					this.host.services.getSettings()[entry.key] = value;
 					await this.host.services.saveSettings();
 				}),
 			);
@@ -576,25 +653,18 @@ export class RecordingPanelView extends ItemView {
 	 */
 	private durationOf(file: TFile): Promise<number | null> {
 		const key = `${file.path}@${String(file.stat.mtime)}`;
-		let pending = this.durations.get(key);
-		if (!pending) {
-			pending = this.host.readDuration(file).catch((error: unknown) => {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Could not read the length of ${file.path}:`,
-					error,
-				);
-				return null;
-			});
-			this.durations.set(key, pending);
+		if (this.duration?.key !== key) {
+			const seconds = this.host
+				.readDuration(file)
+				.catch((error: unknown) => {
+					console.warn(
+						`${PLUGIN_LOG_PREFIX} Could not read the length of ${file.path}:`,
+						error,
+					);
+					return null;
+				});
+			this.duration = { key, seconds };
 		}
-		return pending;
+		return this.duration.seconds;
 	}
-}
-
-/**
- * The file name of a vault path, without its folders.
- * @param path - Vault path
- */
-function baseName(path: string): string {
-	return path.slice(path.lastIndexOf('/') + 1);
 }

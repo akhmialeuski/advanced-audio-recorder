@@ -34,7 +34,7 @@ The panel updates on its own when you open another file, when the links in the n
 | **Participants** | The participants profile the names came from, the participant names, and each speaker label with the name you gave it. Shown only for a recording with participants or a diarized transcript. |
 | **Markers**      | How many chapters and bookmarks the recording carries. Shown only when it has some.                                                                                                           |
 
-The template is the one used for the note you are looking at when the transcript was written there, and otherwise the one of the latest write. A recording the plugin never transcribed reads **Not transcribed yet.**
+The template is the one used for the note you are looking at when the transcript was written there, and otherwise the one of the latest write. A recording the plugin never transcribed reads **Not transcribed yet.** When the recording's stored data (its `.markers.json` file) exists but cannot be read, the panel says so instead of showing the sections, and still shows the file and its actions.
 
 ## Actions and settings
 
@@ -42,7 +42,7 @@ The **Actions** section lists the same actions the file menu offers for the reco
 
 The panel's header has three buttons:
 
-- **Start recording** starts a recording and turns into **Stop recording** while one runs.
+- **Start recording** starts a recording and turns into **Stop recording** while one runs. While a stopped recording is being saved, it reads **Saving the recording** and does nothing until the save is done.
 - **Show the transcription queue** opens the [transcription queue](transcription.md).
 - **Open settings** opens the plugin's settings tab.
 

@@ -67,7 +67,8 @@ async function createSut(
 		vaultFiles?: TFile[];
 		transcript?: ReturnType<typeof emptyTranscriptSection>;
 		actions?: FileAction[];
-		sessionActive?: boolean;
+		/** What the recorder reports, idle when not given. */
+		status?: ReturnType<RecordingPanelHost['recording']['getStatus']>;
 		transcriptionEnabled?: boolean;
 		/** Stored markers, as the sidecar answers them. */
 		markers?: object[];
@@ -77,12 +78,16 @@ async function createSut(
 		profiles?: object[];
 		readDuration?: jest.Mock;
 		sidecarFails?: boolean;
+		/** Whether the store reports the sidecar as unreadable. */
+		sidecarCorrupt?: boolean;
 	} = {},
 ): Promise<{
 	view: RecordingPanelView;
 	app: App;
 	host: RecordingPanelHost;
 	settings: Record<string, unknown>;
+	/** Swaps the settings object, the way a sync from another device does. */
+	replaceSettings: (next: Record<string, unknown>) => void;
 	saveSettings: jest.Mock;
 	toggleRecording: jest.Mock;
 	sidecarChanged: (path: string) => void;
@@ -106,7 +111,7 @@ async function createSut(
 				.mockResolvedValue(
 					options.transcript ?? emptyTranscriptSection(),
 				);
-	const settings: Record<string, unknown> = {
+	let settings: Record<string, unknown> = {
 		profiles: options.profiles ?? [],
 		transcriptionEnabled: options.transcriptionEnabled ?? true,
 		transcribeOnSave: false,
@@ -126,6 +131,7 @@ async function createSut(
 				getFailedParts: jest
 					.fn()
 					.mockResolvedValue(options.failedParts ?? null),
+				isSidecarCorrupt: () => options.sidecarCorrupt ?? false,
 				onChange: (listener: (path: string) => void) => {
 					listeners.push(listener);
 					return () => undefined;
@@ -135,7 +141,7 @@ async function createSut(
 		actions: options.actions ?? [],
 		recording: {
 			toggleRecording,
-			isSessionActive: () => options.sessionActive ?? false,
+			getStatus: () => options.status ?? 'idle',
 		},
 		readDuration: options.readDuration ?? jest.fn().mockResolvedValue(95),
 		openSettings: jest.fn(),
@@ -149,6 +155,9 @@ async function createSut(
 		app,
 		host,
 		settings,
+		replaceSettings: (next) => {
+			settings = next;
+		},
 		saveSettings,
 		toggleRecording,
 		sidecarChanged: (path) => {
@@ -355,7 +364,7 @@ describe('the panel header', () => {
 	});
 
 	it('offers to stop while a session is running', async () => {
-		const { view } = await createSut({ sessionActive: true });
+		const { view } = await createSut({ status: 'recording' });
 
 		expect(headerAction(view, 'Stop recording').dataset.icon).toBe(
 			'square',
@@ -751,3 +760,84 @@ function transcribedInto(notePath: string): Parameters<typeof createSut>[0] {
 		transcript,
 	};
 }
+
+describe('fixes from review', () => {
+	it('labels the record button as saving while a recording is saved', async () => {
+		const { view } = await createSut({ status: 'saving' });
+
+		expect(headerAction(view, 'Saving the recording').dataset.icon).toBe(
+			'loader',
+		);
+	});
+
+	it('does not start or stop anything while a recording is saved', async () => {
+		const { view, toggleRecording } = await createSut({ status: 'saving' });
+
+		headerAction(view, 'Saving the recording').click();
+
+		expect(toggleRecording).not.toHaveBeenCalled();
+	});
+
+	it('says a sidecar it cannot read is unreadable rather than empty', async () => {
+		const { view } = await createSut({
+			active: recording('sync.webm'),
+			sidecarCorrupt: true,
+		});
+
+		expect(textsOfDescriptions(view)).toContain(
+			'The stored data of this recording could not be read. Restore or remove sync.webm.markers.json to see it here.',
+		);
+	});
+
+	it('writes a switch into settings that were replaced since it was drawn', async () => {
+		const { view, replaceSettings, saveSettings } = await createSut();
+		const synced: Record<string, unknown> = {
+			profiles: [],
+			transcriptionEnabled: true,
+			enhancedPlayerEnabled: true,
+		};
+		replaceSettings(synced);
+
+		rowToggle(settingRow(view.contentEl, 'Enhanced audio player')).click();
+		await flushMicrotasks();
+
+		expect([
+			synced.enhancedPlayerEnabled,
+			saveSettings.mock.calls.length,
+		]).toEqual([false, 1]);
+	});
+
+	it('redraws for new settings when asked to, though its data is the same', async () => {
+		const { view, settings } = await createSut();
+		settings.transcriptionEnabled = false;
+
+		await view.refresh(true);
+
+		expect(
+			hasSettingRow(view.contentEl, 'Transcribe after recording'),
+		).toBe(false);
+	});
+
+	it('keeps what it drew when a sidecar change leaves the data the same', async () => {
+		const { view, sidecarChanged } = await createSut({
+			active: recording('sync.webm'),
+		});
+		const drawn = settingRow(view.contentEl, 'File');
+
+		sidecarChanged('sync.webm');
+		await flushMicrotasks();
+
+		expect(settingRow(view.contentEl, 'File')).toBe(drawn);
+	});
+
+	it('ignores the rename of a file it does not show', async () => {
+		const { app, getTranscript } = await createSut({
+			active: recording('sync.webm'),
+		});
+
+		app.vault.trigger('rename', recording('b.png'), 'a.png');
+		await flushMicrotasks();
+
+		expect(getTranscript).toHaveBeenCalledTimes(1);
+	});
+});

@@ -13,7 +13,11 @@ import {
 	asMockWorkspace,
 	headerAction,
 } from '../helpers/obsidianMock';
-import { rowDescription, settingRow } from '../helpers/settingRows';
+import {
+	hasSettingRow,
+	rowDescription,
+	settingRow,
+} from '../helpers/settingRows';
 import { modalInstances } from '../mocks/obsidian';
 import { loadPlugin } from '../helpers/pluginHarness';
 import { RecordingPanelView } from 'src/panel/RecordingPanelView';
@@ -22,13 +26,13 @@ import { RecordingStatus } from 'src/types';
 import { at } from '../helpers/assertions';
 import { withApiVersion } from '../helpers/apiVersion';
 import type { RecorderDouble } from '../mocks/modules/recordingManager';
-import { probeFileMetadata } from 'src/utils/AudioFileAnalyzer';
+import { probeDurationSeconds } from 'src/utils/AudioFileAnalyzer';
 
 // The container probe reads real media, which jsdom cannot play; what is
 // under test is what the panel makes of its answer.
 jest.mock('src/utils/AudioFileAnalyzer', () => ({
 	...jest.requireActual<object>('src/utils/AudioFileAnalyzer'),
-	probeFileMetadata: jest.fn(),
+	probeDurationSeconds: jest.fn(),
 }));
 
 describe('the recording panel', () => {
@@ -165,6 +169,53 @@ describe('the recording panel on an Obsidian without side-leaf support', () => {
 	});
 });
 
+describe('opening the panel on an Obsidian without side-leaf support', () => {
+	it('expands the sidebar it sits in when that sidebar is collapsed', async () => {
+		withApiVersion('1.6.6');
+		const { plugin, app } = await loadPlugin({
+			recordingPanelPlaced: true,
+		});
+		const workspace = asMockWorkspace(app.workspace);
+		workspace.getLeavesOfType.mockReturnValue([
+			workspace.getRightLeaf(false),
+		]);
+		workspace.rightSplit.collapsed = true;
+
+		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.openRecordingPanel);
+		await flushMicrotasks();
+
+		expect(workspace.rightSplit.collapsed).toBe(false);
+	});
+
+	it('tries again on the next start when there was no sidebar to put it in', async () => {
+		withApiVersion('1.6.6');
+		const app = new App();
+		asMockWorkspace(app.workspace).getRightLeaf.mockReturnValue(null);
+
+		const { plugin } = await loadPlugin(null, app);
+		await flushMicrotasks();
+
+		expect(plugin.settings.recordingPanelPlaced).toBe(false);
+	});
+});
+
+describe('settings changing under an open panel', () => {
+	it('redraws the panel so its switches follow', async () => {
+		const { view, app, plugin } = await openPanel();
+		asMockWorkspace(app.workspace).getLeavesOfType.mockReturnValue([
+			view.leaf,
+		]);
+		plugin.settings.transcriptionEnabled = true;
+
+		await plugin.saveSettings();
+		await flushMicrotasks();
+
+		expect(
+			hasSettingRow(view.contentEl, 'Transcribe after recording'),
+		).toBe(true);
+	});
+});
+
 describe('the recording panel wired to the plugin', () => {
 	it('is titled with the plugin name', async () => {
 		const { view } = await openPanel();
@@ -190,7 +241,7 @@ describe('the recording panel wired to the plugin', () => {
 		asMockWorkspace(app.workspace).getLeavesOfType.mockReturnValue([
 			view.leaf,
 		]);
-		recorder.isSessionActive.mockReturnValue(true);
+		recorder.getStatus.mockReturnValue(RecordingStatus.Recording);
 
 		onStatus(RecordingStatus.Recording);
 
@@ -220,11 +271,7 @@ describe('the recording panel wired to the plugin', () => {
 	});
 
 	it('reads the length of the recording shown', async () => {
-		jest.mocked(probeFileMetadata).mockResolvedValue({
-			durationSeconds: 95,
-			sampleRate: 48000,
-			channels: 1,
-		});
+		jest.mocked(probeDurationSeconds).mockResolvedValue(95);
 
 		const view = await panelOverRecording();
 
@@ -232,7 +279,7 @@ describe('the recording panel wired to the plugin', () => {
 	});
 
 	it('shows the length as unknown when the file could not be read', async () => {
-		jest.mocked(probeFileMetadata).mockResolvedValue(null);
+		jest.mocked(probeDurationSeconds).mockResolvedValue(null);
 
 		const view = await panelOverRecording();
 
