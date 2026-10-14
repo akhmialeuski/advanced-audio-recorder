@@ -34,21 +34,29 @@ export function linkAtCursor(
 	lineText: string,
 	cursorCh: number,
 ): LinkAtCursor | null {
-	const links: LinkAtCursor[] = [];
-	for (const [pattern, group] of [
-		[WIKI_LINK, 1],
-		[MARKDOWN_LINK, 2],
-	] as const) {
-		for (const match of lineText.matchAll(pattern)) {
-			const start = match.index;
-			links.push({
-				// The group takes part in every match, if only as ''.
-				path: String(match[group]),
-				start,
-				end: start + match[0].length,
-			});
-		}
-	}
+	const found = (
+		text: string,
+		pattern: RegExp,
+		group: number,
+	): LinkAtCursor[] =>
+		[...text.matchAll(pattern)].map((match) => ({
+			// The group takes part in every match, if only as ''.
+			path: String(match[group]),
+			start: match.index,
+			end: match.index + match[0].length,
+		}));
+	const wikilinks = found(lineText, WIKI_LINK, 1);
+	// Markdown links are looked for with the wikilinks blanked out, columns
+	// kept: the lazy Markdown pattern would otherwise start at a wikilink's
+	// bracket and run on to a Markdown link later in the line.
+	const outsideWikilinks = wikilinks.reduce(
+		(text, wiki) =>
+			text.slice(0, wiki.start) +
+			' '.repeat(wiki.end - wiki.start) +
+			text.slice(wiki.end),
+		lineText,
+	);
+	const links = [...wikilinks, ...found(outsideWikilinks, MARKDOWN_LINK, 2)];
 	// A column where one link ends and the next begins is the next one's:
 	// a position mapped to the start of an embed, or a cursor in front of a
 	// link, means that link and not the one before it.

@@ -271,7 +271,7 @@ function recordingsOfNote(
 		return `${note.path} links no recording.`;
 	}
 	const toContexts = (files: readonly TFile[]): FileContext[] =>
-		files.map((file) => ({ file, note, services, named: true }));
+		files.map((file) => ({ file, note, services, noteFixed: true }));
 	const name = cliText(args, RECORDING_PARAM);
 	if (name !== null) {
 		const picked = pickRecording(services.app, note, recordings, name);
@@ -323,8 +323,8 @@ export function namedRecordings(
 		}
 		return [
 			note.value
-				? { file: target, note: note.value, services, named: true }
-				: { file: target, services, named: true },
+				? { file: target, note: note.value, services, noteFixed: true }
+				: { file: target, services, noteFixed: true },
 		];
 	}
 	if (target.extension !== 'md') {

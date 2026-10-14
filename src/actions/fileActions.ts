@@ -146,7 +146,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Clean up audio',
 		icon: 'wand-2',
 		isAvailable: always,
-		run: ({ file, services, note, named }: FileContext): void => {
+		run: ({ file, services, note, noteFixed }: FileContext): void => {
 			new AudioProcessingModal(
 				services.app,
 				file,
@@ -161,7 +161,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 						outputPath,
 						replaceSource,
 						// Undefined lets the inserter take the active note.
-						note ?? (named ? null : undefined),
+						note ?? (noteFixed ? null : undefined),
 					);
 					services.primeForEnhancement([outputPath]);
 				},
@@ -181,11 +181,11 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Transcribe audio',
 		icon: 'captions',
 		isAvailable: whileTranscribing,
-		run: ({ file, services, note, named }: FileContext): void => {
+		run: ({ file, services, note, noteFixed }: FileContext): void => {
 			new TranscriptionModal(services.app, file, services.getSettings, {
 				...services.createTranscriptionModalOptions(),
 				// Undefined lets the dialog take the active note.
-				notePath: note?.path ?? (named ? '' : undefined),
+				notePath: note?.path ?? (noteFixed ? '' : undefined),
 			}).open();
 		},
 		cli: {
@@ -377,7 +377,7 @@ async function openChapterExport(context: FileContext): Promise<void> {
 	}
 	const notePath =
 		context.note?.path ??
-		(context.named
+		(context.noteFixed
 			? ''
 			: (services.app.workspace.getActiveFile()?.path ?? ''));
 	new ChapterExportModal(services.app, {

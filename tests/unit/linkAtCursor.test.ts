@@ -65,6 +65,18 @@ describe('the link at a cursor', () => {
 	});
 
 	it.each([
+		{ ch: 13, path: 'rec.webm' },
+		{ ch: 28, path: 'notes.md' },
+	])(
+		'keeps a wikilink and a later Markdown link apart: column $ch',
+		({ ch, path }) => {
+			expect(
+				linkAtCursor('![[rec.webm]] see [notes](notes.md)', ch)?.path,
+			).toBe(path);
+		},
+	);
+
+	it.each([
 		{ name: 'on text beside a link', line: 'Text [[rec.webm]]', ch: 2 },
 		{ name: 'on a line without links', line: 'Just text', ch: 3 },
 		{ name: 'on an empty line', line: '', ch: 0 },

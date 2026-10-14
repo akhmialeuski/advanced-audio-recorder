@@ -1318,6 +1318,55 @@ describe('ContextMenu', () => {
 			expect(menuTitles()).not.toContain('Delete recording');
 		});
 
+		it('reaches a player in a transcluded note through the note it is written in', async () => {
+			const event = rightClickOnPlayer({});
+			const transclusion = document.createElement('div');
+			transclusion.className = 'internal-embed markdown-embed';
+			transclusion.setAttribute('src', 'Meeting');
+			transclusion.appendChild(
+				(event.target as HTMLElement).parentElement as HTMLElement,
+			);
+			const recording = makeAudioFile();
+			const meeting = Object.assign(Object.create(TFile.prototype), {
+				path: 'Meetings/Meeting.md',
+				extension: 'md',
+			}) as TFile;
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockImplementation((path: string) =>
+				path === 'Meeting' ? meeting : recording,
+			);
+			(mockMetadataCache.getFileCache as jest.Mock).mockImplementation(
+				(note: TFile) =>
+					note === meeting
+						? {
+								embeds: [
+									{
+										link: 'audio.mp3',
+										position: { start: { offset: 0 } },
+									},
+								],
+							}
+						: null,
+			);
+			Object.defineProperty(navigator, 'clipboard', {
+				value: { writeText: jest.fn().mockResolvedValue(undefined) },
+				configurable: true,
+			});
+
+			playerMenu()(event);
+			await clickPlayerItem('Copy timestamp link here');
+
+			expect(
+				mockApp.fileManager.generateMarkdownLink,
+			).toHaveBeenCalledWith(
+				recording,
+				'Meetings/Meeting.md',
+				'#t=42',
+				'0:42',
+			);
+		});
+
 		it('reaches a player shown from a transcluded note through no note', async () => {
 			// The note on screen embeds another note, and the player is that
 			// note's: the note on screen links nothing it could act on.

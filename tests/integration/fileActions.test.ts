@@ -497,7 +497,7 @@ describe('a dialog opened for a recording the command line named', () => {
 		await action(COMMAND_IDS.transcribeAudio).run({
 			file,
 			services,
-			named: true,
+			noteFixed: true,
 		});
 
 		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
@@ -510,7 +510,7 @@ describe('a dialog opened for a recording the command line named', () => {
 		await action(COMMAND_IDS.cleanupAudio).run({
 			file,
 			services,
-			named: true,
+			noteFixed: true,
 		});
 		const onProcessed = defined(
 			at(jest.mocked(AudioProcessingModal).mock.calls, 0)[3],
@@ -849,7 +849,7 @@ describe('exporting chapters and markers', () => {
 		await action(COMMAND_IDS.exportChapters).run({
 			file,
 			services,
-			named: true,
+			noteFixed: true,
 		});
 
 		expect(ChapterExportModal).toHaveBeenCalledWith(

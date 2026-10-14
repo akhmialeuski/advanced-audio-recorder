@@ -213,12 +213,14 @@ export interface FileContext {
 	 */
 	readonly throughLink?: true;
 	/**
-	 * Set when the command line named the recording. Its note is then the
-	 * one named or none, never the note that happens to be active in the app,
-	 * which a script cannot see: a dialog opened for it falls back to no
-	 * note where one opened from a menu falls back to the active one.
+	 * Set when the context's note is the whole truth: the note it has, or
+	 * none. A dialog opened for it then falls back to no note, where one
+	 * opened without it falls back to the note active in the app. The command
+	 * line sets it, since it names the note or names none and a script cannot
+	 * see which note is active; so does a menu that knows the recording was
+	 * reached through some note but cannot tell which.
 	 */
-	readonly named?: true;
+	readonly noteFixed?: true;
 }
 
 /** One link in an open editor. */

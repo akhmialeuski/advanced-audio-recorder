@@ -148,6 +148,9 @@ export class ContextMenu {
 			throughLink?: boolean;
 		},
 	): FileContext {
+		// Every menu that knows a link knows the note it is in, or that there
+		// is none to tell: a dialog it opens must not guess the active one.
+		const fixed = known.throughLink === true || known.link !== undefined;
 		let contexts = this.fileContexts.get(menu);
 		if (!contexts) {
 			contexts = new Map();
@@ -167,21 +170,49 @@ export class ContextMenu {
 		if (known.throughLink) {
 			context.throughLink = true;
 		}
+		if (fixed) {
+			context.noteFixed = true;
+		}
 		return context;
 	}
 
 	/**
-	 * The note of a view, when it links the recording: a note a player or a
-	 * link is merely shown in - transcluded from another note - is not the
-	 * note the recording was reached through.
-	 * @param view - The view the menu was opened in
+	 * A note, when it links the recording: a note a player or a link is only
+	 * shown in is not the one the recording was reached through.
+	 * @param note - The note the menu found
 	 * @param file - The recording
 	 */
-	private noteLinking(view: MarkdownView | null, file: TFile): TFile | null {
-		const note = view?.file ?? null;
+	private noteLinking(note: TFile | null, file: TFile): TFile | null {
 		return note && recordingsInNote(this.app, note).includes(file)
 			? note
 			: null;
+	}
+
+	/**
+	 * The note an embed is written in when that is a note transcluded into
+	 * the one on screen: the transclusion around it names it.
+	 * @param embed - The right-clicked embed
+	 * @param sourcePath - The note on screen, which the transclusion's link
+	 *   resolves from
+	 * @returns The transcluded note, or null when the embed is in the note
+	 *   on screen itself
+	 */
+	private transclusionOf(
+		embed: HTMLElement,
+		sourcePath: string,
+	): TFile | null {
+		const host = embed.parentElement?.closest(
+			'.internal-embed.markdown-embed',
+		);
+		const src = host?.getAttribute('src');
+		if (!src) {
+			return null;
+		}
+		// A markdown embed transcludes a note, which its link resolves to.
+		return this.app.metadataCache.getFirstLinkpathDest(
+			getLinkpath(src),
+			sourcePath,
+		);
 	}
 
 	/**
@@ -228,9 +259,15 @@ export class ContextMenu {
 				// background split, whose note is not the active one.
 				const { sourcePath, view: owningView } =
 					this.resolveEmbedSource(embed as HTMLElement);
+				// A player in a note transcluded into the one on screen is
+				// written in that note, which its link resolves from.
+				const host = this.transclusionOf(
+					embed as HTMLElement,
+					sourcePath,
+				);
 				const file = this.app.metadataCache.getFirstLinkpathDest(
 					src,
-					sourcePath,
+					host?.path ?? sourcePath,
 				);
 
 				if (!(file instanceof TFile) || !isAudioFile(file)) {
@@ -242,7 +279,10 @@ export class ContextMenu {
 
 				const menu = new Menu();
 				const rendered = this.renderedSetFor(menu);
-				const linkingNote = this.noteLinking(owningView, file);
+				const linkingNote = this.noteLinking(
+					host ?? owningView?.file ?? null,
+					file,
+				);
 				const note = linkingNote ?? undefined;
 
 				// The point of the player that was clicked, when the embed is
@@ -419,7 +459,10 @@ export class ContextMenu {
 							menu,
 							this.families.file,
 							this.fileContextFor(menu, file, {
-								note: this.noteLinking(view, file),
+								note: this.noteLinking(
+									view?.file ?? null,
+									file,
+								),
 								throughLink,
 							}),
 							this.renderedSetFor(menu),
