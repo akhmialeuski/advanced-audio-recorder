@@ -306,6 +306,55 @@ describe('surviving a restart', () => {
 		}
 	});
 
+	// A drain moves an entry more often than twice a second, and a wait that
+	// started over with every change would put the write off until the whole
+	// drain went quiet, losing all of it to a crash in between. The wait is
+	// anchored on the first change of a burst instead.
+	it('writes half a second after the first change while changes keep coming', async () => {
+		jest.useFakeTimers();
+		try {
+			const { queue, adapter } = await queued();
+			await jest.advanceTimersByTimeAsync(300);
+			queue.add(['b.webm']);
+
+			await jest.advanceTimersByTimeAsync(200);
+
+			expect(adapter.write).toHaveBeenCalledTimes(1);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('writes a change that comes after the last write on its own', async () => {
+		jest.useFakeTimers();
+		try {
+			const { queue, adapter, files } = await queued();
+			await jest.advanceTimersByTimeAsync(500);
+			queue.add(['b.webm']);
+
+			await jest.advanceTimersByTimeAsync(500);
+
+			expect(adapter.write).toHaveBeenCalledTimes(2);
+			expect(onDisk(files).entries).toHaveLength(2);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('does not write a second time once a flush has taken the pending change', async () => {
+		jest.useFakeTimers();
+		try {
+			const { queue, adapter } = await queued();
+
+			await queue.flush();
+			await jest.advanceTimersByTimeAsync(500);
+
+			expect(adapter.write).toHaveBeenCalledTimes(1);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
 	// A queue is losable by design, so a vault that refuses the write says so
 	// in the console and lets the session carry on. Throwing here would take
 	// down whatever asked, which at unload is the plugin's own teardown.
