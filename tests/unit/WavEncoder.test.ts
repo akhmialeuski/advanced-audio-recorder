@@ -16,6 +16,7 @@ import {
 	WAV_SIZE_LIMIT_MESSAGE,
 	encodeFloatsAsInt16Wav,
 	int16WavByteLength,
+	writeInt16Frames,
 } from 'src/audio/WavEncoder';
 import { PcmSampleFormat, floatToInt16 } from 'src/audio/pcm';
 import { ALL_FORMATS, AudioSampleSink, BufferSource, Input } from 'mediabunny';
@@ -548,6 +549,76 @@ describe('the header of each representation', () => {
 				PcmSampleFormat.Float32,
 			),
 		).toThrow(/cannot exceed 4 GB/);
+	});
+});
+
+describe('writeInt16Frames', () => {
+	/**
+	 * Writes into a fresh region and reads it back as 16-bit samples.
+	 * @param frames - Frames the region holds
+	 * @param channels - Channels interleaved in each frame
+	 * @param write - The write into the region's view
+	 * @returns Every sample of the region, interleaved
+	 */
+	function region(
+		frames: number,
+		channels: number,
+		write: (pcm: DataView) => void,
+	): number[] {
+		const pcm = new DataView(new ArrayBuffer(frames * channels * 2));
+		write(pcm);
+		return Array.from(new Int16Array(pcm.buffer));
+	}
+
+	it('starts at the destination frame and leaves the frames before it alone', () => {
+		const samples = region(3, 1, (pcm) => {
+			writeInt16Frames(pcm, [new Float32Array([0.5])], 0, 1, 2);
+		});
+
+		expect(samples).toEqual([0, 0, floatToInt16(0.5)]);
+	});
+
+	// The cleanup drops the filters' warm-up at the head of each segment by
+	// starting past it, so the frames before srcFrom must never be written.
+	it('reads from the source frame it is given', () => {
+		const samples = region(2, 1, (pcm) => {
+			writeInt16Frames(
+				pcm,
+				[new Float32Array([0.9, 0.25, -0.25])],
+				1,
+				2,
+				0,
+			);
+		});
+
+		expect(samples).toEqual([floatToInt16(0.25), floatToInt16(-0.25)]);
+	});
+
+	it('writes silence for a channel shorter than the rest', () => {
+		const samples = region(2, 2, (pcm) => {
+			writeInt16Frames(
+				pcm,
+				[new Float32Array([0.5, 0.5]), new Float32Array([0.5])],
+				0,
+				2,
+				0,
+			);
+		});
+
+		expect(samples).toEqual([
+			floatToInt16(0.5),
+			floatToInt16(0.5),
+			floatToInt16(0.5),
+			0,
+		]);
+	});
+
+	it('clips samples beyond full scale instead of wrapping them', () => {
+		const samples = region(2, 1, (pcm) => {
+			writeInt16Frames(pcm, [new Float32Array([1.5, -1.5])], 0, 2, 0);
+		});
+
+		expect(samples).toEqual([0x7fff, -0x8000]);
 	});
 });
 
