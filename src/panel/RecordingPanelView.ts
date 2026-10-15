@@ -39,10 +39,8 @@ import type {
 	FileContext,
 } from '../actions/PluginAction';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
-import {
-	renderActionsIntoMenu,
-	runActionLogged,
-} from '../actions/renderActionsIntoMenu';
+import { renderActionsIntoMenu } from '../actions/renderActionsIntoMenu';
+import { runReported } from '../actions/registerActionCommands';
 import { RecordingStatus } from '../types';
 import { isAudioFile } from '../utils/audioFile';
 import { formatByteSize } from '../utils/formatBytes';
@@ -569,7 +567,7 @@ export class RecordingPanelView extends ItemView {
 					.setIcon(action.icon)
 					.setTooltip(action.title)
 					.onClick(() => {
-						runActionLogged(action, context, 'the recording panel');
+						runReported(action, context, 'the recording panel');
 					});
 			}
 		}

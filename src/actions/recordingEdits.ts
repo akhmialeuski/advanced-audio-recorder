@@ -12,6 +12,7 @@
 
 import type { CliData, CliFlags } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { errorMessage } from '../errors';
 import { TranscriptionService } from '../transcription/TranscriptionService';
 import {
 	FailedPartRetry,
@@ -40,7 +41,6 @@ import {
 	valueParam,
 } from '../obsidian/cliArgs';
 import type { ActionServices, FileContext } from './PluginAction';
-import { pointsAtWholeFile } from '../obsidian/linkAtCursor';
 import type { TFile } from 'obsidian';
 
 /**
@@ -112,9 +112,7 @@ export async function retryFailedParts(
 			`${PLUGIN_LOG_PREFIX} Failed to transcribe the missing parts of ${file.path}:`,
 			error,
 		);
-		return `Could not transcribe the missing parts: ${
-			error instanceof Error ? error.message : String(error)
-		}`;
+		return `Could not transcribe the missing parts: ${errorMessage(error)}`;
 	}
 }
 
@@ -254,9 +252,9 @@ export async function deleteRecordingWithLink(
 	const { file, services, note, link } = context;
 	const { app } = services;
 	// The link the menu or the cursor was on goes with the recording when it
-	// links the whole recording. A timecode link points at a moment and is
-	// part of a transcript line, so the note's whole-file links go instead.
-	if (link && pointsAtWholeFile(link)) {
+	// links the whole recording. A link into a part of it is not "the link"
+	// to the recording, so the note's whole-file links go instead.
+	if (link?.subpath === '') {
 		await app.fileManager.trashFile(file);
 		link.editor.replaceRange(
 			'',

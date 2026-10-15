@@ -14,6 +14,7 @@
 
 import type { CliData, CliFlags } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { errorMessage } from '../errors';
 import { cliFlag, flagParam } from '../obsidian/cliArgs';
 import type { CliCommand } from '../obsidian/cliCommands';
 import type { ActionFamily, PluginCommand } from './PluginAction';
@@ -87,9 +88,7 @@ async function runOnTarget<TContext>(
 			`${PLUGIN_LOG_PREFIX} CLI command ${action.cli.name} failed for ${name}:`,
 			error,
 		);
-		return `${action.title} failed for ${name}: ${
-			error instanceof Error ? error.message : String(error)
-		}`;
+		return `${action.title} failed for ${name}: ${errorMessage(error)}`;
 	}
 }
 

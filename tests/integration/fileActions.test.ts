@@ -212,7 +212,7 @@ describe('FILE_ACTIONS registry', () => {
 			extra: {
 				link: {
 					editor: partial<Editor>({}),
-					path: 'take.webm',
+					subpath: '',
 					line: 0,
 					start: 0,
 					end: 9,
@@ -240,6 +240,33 @@ describe('FILE_ACTIONS registry', () => {
 			expect(deletes).toEqual([offered]);
 		},
 	);
+
+	it.each([
+		{ reached: 'at a moment on its own', extra: {} },
+		{
+			reached: 'at a moment through a note',
+			extra: { note: createFile('Meetings/standup.md') },
+		},
+		{
+			reached: 'at a moment through a link',
+			extra: { throughLink: true as const },
+		},
+	])('offers no delete for a recording reached $reached', ({ extra }) => {
+		const { services } = createServices();
+		const deletes = FILE_ACTIONS.filter(
+			(entry) =>
+				(entry.commandId === COMMAND_IDS.deleteRecording ||
+					entry.commandId === COMMAND_IDS.deleteRecordingAndLink) &&
+				entry.isAvailable({
+					file,
+					services,
+					atMoment: true,
+					...extra,
+				}),
+		);
+
+		expect(deletes).toEqual([]);
+	});
 });
 
 describe('FILE_ACTIONS availability', () => {
@@ -555,7 +582,7 @@ describe('deleting a recording with its link', () => {
 			file,
 			services,
 			note: createFile('Meetings/standup.md'),
-			link: { editor, path: 'take.webm', line: 4, start: 2, end: 20 },
+			link: { editor, subpath: '', line: 4, start: 2, end: 20 },
 		});
 
 		expect(services.app.fileManager.trashFile).toHaveBeenCalledWith(file);

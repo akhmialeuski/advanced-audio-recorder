@@ -19,6 +19,7 @@ function failingAction(run: () => void | Promise<void>): PluginCommand<null> {
 		icon: 'bug',
 		isAvailable: () => true,
 		run,
+		cli: { name: 'broken', description: 'Broken.', execute: () => '' },
 	};
 }
 

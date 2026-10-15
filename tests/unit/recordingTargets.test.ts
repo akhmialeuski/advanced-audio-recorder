@@ -204,7 +204,7 @@ describe('the recordings the palette acts on', () => {
 		expect(target?.file.path).toBe(RETRO);
 		expect(target?.link).toEqual({
 			editor: view.editor,
-			path: 'retro.mp3',
+			subpath: '',
 			line: 4,
 			start: 0,
 			end: 14,
@@ -226,8 +226,15 @@ describe('the recordings the palette acts on', () => {
 
 		expect(target?.file.path).toBe(RETRO);
 		expect(target?.link).toEqual(
-			expect.objectContaining({ line: 4, start: 0, end: 23 }),
+			expect.objectContaining({
+				subpath: '#t=90',
+				line: 4,
+				start: 0,
+				end: 23,
+			}),
 		);
+		// A moment of the recording, which no delete is offered for.
+		expect(target?.atMoment).toBe(true);
 	});
 
 	it('falls back to the whole note when the cursor is on a link to no recording', () => {

@@ -26,22 +26,25 @@ export type TargetPicker = <TContext>(
 ) => void;
 
 /**
- * Runs an action on a target and reports a rejection.
+ * Runs an action on a target from a surface that drops what its handler
+ * returns - the palette, a menu item, a button - and reports a failure.
  *
- * Obsidian discards whatever a command returns, so without this the only
- * trace of a failed action would be an unhandled rejection with nothing
- * naming the command it came from. The action owns whatever it tells the
- * user; this is the diagnostic that survives when it tells them nothing.
+ * Obsidian discards whatever a command or a menu handler returns, so without
+ * this the only trace of a failed action would be an unhandled rejection with
+ * nothing naming the action it came from. The action owns whatever it tells
+ * the user; this is the diagnostic that survives when it tells them nothing.
  * @param action - The action to run
  * @param context - The target it runs on
+ * @param origin - Where it was run from, for the log
  */
 export function runReported<TContext>(
 	action: PluginCommand<TContext>,
 	context: TContext,
+	origin: string,
 ): void {
 	const report = (error: unknown): void => {
 		console.error(
-			`${PLUGIN_LOG_PREFIX} Command ${action.commandId} failed:`,
+			`${PLUGIN_LOG_PREFIX} ${action.commandId} failed from ${origin}:`,
 			error,
 		);
 	};
@@ -88,10 +91,10 @@ export function registerActionCommands<TContext>(
 				}
 				if (!checking) {
 					if (targets.length === 1) {
-						runReported(action, only);
+						runReported(action, only, 'the palette');
 					} else {
 						pickTarget(targets, family.describe, (chosen) => {
-							runReported(action, chosen);
+							runReported(action, chosen, 'the palette');
 						});
 					}
 				}

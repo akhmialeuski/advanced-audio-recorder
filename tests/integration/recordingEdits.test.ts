@@ -53,7 +53,7 @@ describe('deleting a recording with its links', () => {
 			...sut.context,
 			link: {
 				editor: partial<Editor>({ replaceRange }),
-				path: 'standup.webm',
+				subpath: '',
 				line: 0,
 				start: 0,
 				end: 17,
@@ -79,7 +79,7 @@ describe('deleting a recording with its links', () => {
 			...sut.context,
 			link: {
 				editor: partial<Editor>({ replaceRange }),
-				path: 'standup.webm#t=90',
+				subpath: '#t=90',
 				line: 1,
 				start: 0,
 				end: 26,

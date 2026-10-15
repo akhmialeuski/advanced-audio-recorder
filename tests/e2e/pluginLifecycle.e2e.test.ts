@@ -171,6 +171,7 @@ describe('the command line', () => {
 				'transcribe-folder',
 				'markers',
 				'queue',
+				'panel',
 				'whats-new',
 			].map((name) => `${MANIFEST.id}:${name}`),
 		]);

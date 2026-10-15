@@ -17,7 +17,8 @@
 import { getLinkpath, MarkdownView, TFile } from 'obsidian';
 import type { App, CliData, CliFlags } from 'obsidian';
 import { isAudioFile } from '../utils/audioFile';
-import { linkAtCursor } from '../obsidian/linkAtCursor';
+import { linkAtColumn } from '../obsidian/sourceLinks';
+import { hasTimecodeSubpath } from '../player/timecodeLinks';
 import {
 	cliFlag,
 	cliText,
@@ -164,31 +165,31 @@ function namedNote(app: App, args: CliData): CliRead<TFile | null> {
 function recordingUnderCursor(
 	app: App,
 	note: TFile,
-): { file: TFile; link: LinkLocation } | null {
+): { file: TFile; link: LinkLocation; atMoment?: true } | null {
 	const view = app.workspace.getActiveViewOfType(MarkdownView);
 	const editor = view?.file === note ? view.editor : null;
 	if (!editor) {
 		return null;
 	}
 	const cursor = editor.getCursor();
-	const link = linkAtCursor(editor.getLine(cursor.line), cursor.ch);
+	const link = linkAtColumn(editor.getLine(cursor.line), cursor.ch);
 	if (!link) {
 		return null;
 	}
-	const file = app.metadataCache.getFirstLinkpathDest(
-		getLinkpath(link.path),
-		note.path,
-	);
+	const file = app.metadataCache.getFirstLinkpathDest(link.path, note.path);
 	return file && isAudioFile(file)
 		? {
 				file,
 				link: {
 					editor,
-					path: link.path,
+					subpath: link.subpath,
 					line: cursor.line,
 					start: link.start,
 					end: link.end,
 				},
+				...(hasTimecodeSubpath(link.subpath)
+					? { atMoment: true as const }
+					: {}),
 			}
 		: null;
 }

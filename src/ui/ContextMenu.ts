@@ -18,15 +18,17 @@ import {
 	MarkdownView,
 	TFolder,
 	getLinkpath,
+	parseLinktext,
 } from 'obsidian';
 import type { WorkspaceLeaf } from 'obsidian';
 import type { Editor, MarkdownFileInfo } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
 import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
 import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { isAudioFile } from '../utils/audioFile';
-import { linkAtCursor } from '../obsidian/linkAtCursor';
+import { editorPositionOfNode } from '../obsidian/editorDomPosition';
+import { linkAtColumn } from '../obsidian/sourceLinks';
+import { hasTimecodeSubpath } from '../player/timecodeLinks';
 import type {
 	ActionServices,
 	FileContext,
@@ -44,13 +46,6 @@ import { recordingsInNote } from '../actions/recordingTargets';
 
 export type { EnhancementPrimer } from '../actions/PluginAction';
 
-/** CodeMirror view attached to Editor (internal Obsidian API). */
-interface EditorCodeMirrorView {
-	/** The editor's own DOM, which holds the widgets it renders. */
-	dom?: HTMLElement;
-	posAtDOM?(node: Node): number;
-}
-
 /** The element Obsidian draws a note transcluded into another one in. */
 const TRANSCLUSION = '.internal-embed.markdown-embed[src]';
 
@@ -59,10 +54,6 @@ const PLAYER_MENU_SOURCE = 'audio-recorder-player-context-menu';
 
 /** The source Obsidian raises file-menu with for a link right-clicked in a note. */
 const LINK_MENU_SOURCE = 'link-context-menu';
-
-interface EditorWithCM extends Editor {
-	cm?: EditorCodeMirrorView;
-}
 
 /** What a menu learns about how a recording was reached, filled in by each handler. */
 type MutableFileContext = {
@@ -149,6 +140,7 @@ export class ContextMenu {
 			note?: TFile | null;
 			link?: LinkLocation | null;
 			throughLink?: boolean;
+			atMoment?: boolean;
 		},
 	): FileContext {
 		// Every menu that knows a link knows the note it is in, or that there
@@ -172,6 +164,9 @@ export class ContextMenu {
 		}
 		if (known.throughLink) {
 			context.throughLink = true;
+		}
+		if (known.atMoment) {
+			context.atMoment = true;
 		}
 		if (fixed) {
 			context.noteFixed = true;
@@ -265,6 +260,10 @@ export class ContextMenu {
 				if (!src) {
 					return;
 				}
+				// Only the path is resolved: an embed that starts at a
+				// timestamp carries it in src (`rec.m4a#t=30`), and no file
+				// goes by a name that still holds the subpath.
+				const { path, subpath } = parseLinktext(src);
 
 				// Resolve the file from the link text against the note that
 				// actually contains this embed, located from the DOM rather than
@@ -280,7 +279,7 @@ export class ContextMenu {
 					sourcePath,
 				);
 				const file = this.app.metadataCache.getFirstLinkpathDest(
-					src,
+					path,
 					host?.path ?? sourcePath,
 				);
 
@@ -323,15 +322,9 @@ export class ContextMenu {
 				// an embed of the recording whether or not either is found.
 				// The editor on screen holds the text of its own note only; a
 				// transcluded player's link is in another note's text.
-				const link =
-					owningView && !host
-						? this.linkOfEmbed(
-								owningView.editor,
-								embed as HTMLElement,
-								file,
-								sourcePath,
-							)
-						: null;
+				const link = host
+					? null
+					: this.linkOfEmbed(embed as HTMLElement, file);
 				this.registry.renderInto(
 					menu,
 					this.families.file,
@@ -339,6 +332,9 @@ export class ContextMenu {
 						note: playerNote,
 						link,
 						throughLink: true,
+						// A player that starts at a timestamp stands for that
+						// moment, as a timestamp link does.
+						atMoment: hasTimecodeSubpath(subpath),
 					}),
 					rendered,
 				);
@@ -352,62 +348,52 @@ export class ContextMenu {
 					PLAYER_MENU_SOURCE,
 				);
 
-				menu.showAtPosition({ x: event.pageX, y: event.pageY });
+				// Opened from the event rather than from page coordinates:
+				// the event carries the window it happened in, so the menu
+				// for an embed in a pop-out opens in that pop-out instead
+				// of at the same coordinates in the main window.
+				menu.showAtMouseEvent(event);
 			},
 			{ capture: true },
 		);
 	}
 
 	/**
-	 * The link an embed was rendered from, located in the editor of the note
-	 * it is in.
-	 * @param editor - The note's editor
+	 * The link an embed was rendered from, read from the source line of the
+	 * editor that rendered it. Reading view renders no editor, so a player
+	 * there has no link to offer.
+	 *
+	 * The link found there must resolve to the right-clicked recording. A
+	 * widget that covers more than one line, such as a table, maps to where
+	 * the whole widget starts, and that column may hold a different link;
+	 * deleting it would remove a link the user never pointed at.
 	 * @param embed - The right-clicked embed
 	 * @param file - The recording the embed plays
-	 * @param sourcePath - The note its links resolve from
-	 * @returns The link, or null when its position could not be resolved to
-	 *   a link of the recording
+	 * @returns The link, or null when the embed maps to no link of the
+	 *   recording
 	 */
-	private linkOfEmbed(
-		editor: Editor,
-		embed: HTMLElement,
-		file: TFile,
-		sourcePath: string,
-	): LinkLocation | null {
-		const editorView = (editor as EditorWithCM).cm;
-		// Only a player the editor itself renders has a position in its text;
-		// one drawn in reading view maps to whatever line is nearest.
-		if (!editorView?.posAtDOM || !editorView.dom?.contains(embed)) {
+	private linkOfEmbed(embed: HTMLElement, file: TFile): LinkLocation | null {
+		const rendered = editorPositionOfNode(embed);
+		if (!rendered) {
 			return null;
 		}
-		try {
-			const pos = editorView.posAtDOM(embed);
-			const cursor = editor.offsetToPos(pos);
-			const found = linkAtCursor(editor.getLine(cursor.line), cursor.ch);
-			// The line holds the embed's own link only if that link reaches
-			// this very recording.
-			const isThisLink =
-				found !== null &&
-				this.app.metadataCache.getFirstLinkpathDest(
-					getLinkpath(found.path),
-					sourcePath,
-				) === file;
-			return found && isThisLink
-				? {
-						editor,
-						path: found.path,
-						line: cursor.line,
-						start: found.start,
-						end: found.end,
-					}
-				: null;
-		} catch (e) {
-			console.error(
-				`${PLUGIN_LOG_PREFIX} Failed to resolve link position in editor:`,
-				e,
-			);
-			return null;
-		}
+		const { editor, position } = rendered;
+		const found = linkAtColumn(editor.getLine(position.line), position.ch);
+		const target = found
+			? this.app.metadataCache.getFirstLinkpathDest(
+					found.path,
+					rendered.file?.path ?? '',
+				)
+			: null;
+		return found && target === file
+			? {
+					editor,
+					subpath: found.subpath,
+					line: position.line,
+					start: found.start,
+					end: found.end,
+				}
+			: null;
 	}
 
 	/**
@@ -533,7 +519,7 @@ export class ContextMenu {
 	): void {
 		this.addTranscriptSelectionItems(menu, editor, view);
 		const cursor = editor.getCursor();
-		const found = linkAtCursor(editor.getLine(cursor.line), cursor.ch);
+		const found = linkAtColumn(editor.getLine(cursor.line), cursor.ch);
 		if (!found) {
 			return;
 		}
@@ -541,7 +527,7 @@ export class ContextMenu {
 		// The path without its subpath: a timecode link reaches its
 		// recording as a whole-file link does.
 		const file = this.app.metadataCache.getFirstLinkpathDest(
-			getLinkpath(found.path),
+			found.path,
 			view.file ? view.file.path : '',
 		);
 
@@ -559,11 +545,12 @@ export class ContextMenu {
 				note: view.file,
 				link: {
 					editor,
-					path: found.path,
+					subpath: found.subpath,
 					line: cursor.line,
 					start: found.start,
 					end: found.end,
 				},
+				atMoment: hasTimecodeSubpath(found.subpath),
 			}),
 			this.renderedSetFor(menu),
 		);

@@ -213,6 +213,14 @@ export interface FileContext {
 	 */
 	readonly throughLink?: true;
 	/**
+	 * Set when the recording was reached at a moment of it: a timecode link,
+	 * or a player embedded at a timestamp. A transcript holds dozens of those
+	 * to one recording, so neither delete is offered from one: trashing the
+	 * recording is not what a right-click on a moment asks for, and it would
+	 * leave every other timestamp pointing at nothing.
+	 */
+	readonly atMoment?: true;
+	/**
 	 * Set when the context's note is the whole truth: the note it has, or
 	 * none. A dialog opened for it then falls back to no note, where one
 	 * opened without it falls back to the note active in the app. The command
@@ -227,8 +235,11 @@ export interface FileContext {
 export interface LinkLocation {
 	/** The editor holding it. */
 	readonly editor: Editor;
-	/** Its target as written, subpath included: `rec.webm#t=90`. */
-	readonly path: string;
+	/**
+	 * The subpath of its target with the `#`, as in `#t=90`, or an empty
+	 * string for a link to the whole file.
+	 */
+	readonly subpath: string;
 	/** Zero-based line. */
 	readonly line: number;
 	/** Column the link starts at. */

@@ -283,8 +283,7 @@ describe('the participant profile the names grow', () => {
 	 */
 	function profileNamesWentTo(sut: ReturnType<typeof createSut>): unknown {
 		const commit = sut.sidecar.commitRename.mock.lastCall as
-			| [string, unknown, unknown, { profileId: string }]
-			| undefined;
+			[string, unknown, unknown, { profileId: string }] | undefined;
 		return commit?.[3].profileId;
 	}
 

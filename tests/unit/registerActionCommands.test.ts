@@ -175,13 +175,13 @@ describe('an action that fails', () => {
 			.spyOn(console, 'error')
 			.mockImplementation(() => undefined);
 
-		runReported(makeAction(run), { name: 'a', takes: true });
+		runReported(makeAction(run), { name: 'a', takes: true }, 'the palette');
 		await tick();
 
 		// Obsidian discards whatever a command returns, so this line is the
 		// only trace a failed action leaves behind.
 		expect(reported).toHaveBeenCalledWith(
-			'[AudioRecorder] Command act failed:',
+			'[AudioRecorder] act failed from the palette:',
 			new Error('refused'),
 		);
 	});

@@ -41,9 +41,9 @@ function fileAction(
 		commandId,
 		title,
 		icon: 'info',
-		showInEditorMenu: true,
 		isAvailable: () => true,
 		run: jest.fn(),
+		cli: { name: commandId, description: title, execute: () => '' },
 	};
 }
 

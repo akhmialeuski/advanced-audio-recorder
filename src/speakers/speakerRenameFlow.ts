@@ -13,6 +13,7 @@
 
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { errorMessage } from '../errors';
 import { findProfile, ProfileKindId } from '../settings/profiles';
 import { appendParticipantsToNote } from '../settings/ProfileNoteStore';
 import { ProfileTextSource } from '../settings/ProfileTextSource';
@@ -381,7 +382,7 @@ async function rememberNames(
 			await deps.saveSettings();
 		}
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		console.warn(
 			`${PLUGIN_LOG_PREFIX} Failed to add names to profile ${target.name}:`,
 			error,

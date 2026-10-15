@@ -350,7 +350,8 @@ describe('ChapterGenerationModal with existing chapters', () => {
 		at(buttons(modal), 0).click();
 
 		const confirm = modalInstances.at(-1);
-		[...defined(confirm).contentEl.querySelectorAll('button')]
+		// Obsidian's confirmation dialog draws its buttons outside the content.
+		[...defined(confirm).modalEl.querySelectorAll('button')]
 			.find((button) => button.textContent === 'Continue')
 			?.click();
 		await flushMicrotasks();

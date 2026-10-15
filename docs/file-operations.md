@@ -27,19 +27,19 @@ The plugin recognizes a file as audio by its extension. Supported extensions are
 
 Which actions appear depends on where you click and on your settings:
 
-| Action                                | File Explorer | Embed link | Player | Condition                               |
-| ------------------------------------- | ------------- | ---------- | ------ | --------------------------------------- |
-| **Audio file info**                   | Yes           | Yes        | Yes    | Always                                  |
-| **Convert audio format**              | Yes           | Yes        | Yes    | Always                                  |
-| **Split audio into parts**            | Yes           | Yes        | Yes    | Always                                  |
-| **Clean up audio**                    | Yes           | Yes        | Yes    | Always                                  |
-| **Transcribe audio**                  | Yes           | Yes        | Yes    | When transcription is enabled           |
-| **Transcribe the parts that failed**  | Yes           | Yes        | Yes    | When transcription is enabled           |
-| **Rename speakers**                   | Yes           | Yes        | Yes    | When **Rename speakers** is enabled     |
-| **Generate chapters from transcript** | Yes           | Yes        | Yes    | When **Auto chapters** is enabled       |
-| **Export chapters and markers**       | Yes           | Yes        | Yes    | Always                                  |
-| **Delete recording**                  | Yes           | No         | No     | When reached on its own                 |
-| **Delete recording & link to file**   | No            | Yes        | Yes    | When reached through a note or a link   |
+| Action                                | File Explorer | Embed link | Player | Condition                                                 |
+| ------------------------------------- | ------------- | ---------- | ------ | --------------------------------------------------------- |
+| **Audio file info**                   | Yes           | Yes        | Yes    | Always                                                    |
+| **Convert audio format**              | Yes           | Yes        | Yes    | Always                                                    |
+| **Split audio into parts**            | Yes           | Yes        | Yes    | Always                                                    |
+| **Clean up audio**                    | Yes           | Yes        | Yes    | Always                                                    |
+| **Transcribe audio**                  | Yes           | Yes        | Yes    | When transcription is enabled                             |
+| **Transcribe the parts that failed**  | Yes           | Yes        | Yes    | When transcription is enabled                             |
+| **Rename speakers**                   | Yes           | Yes        | Yes    | When **Rename speakers** is enabled                       |
+| **Generate chapters from transcript** | Yes           | Yes        | Yes    | When **Auto chapters** is enabled                         |
+| **Export chapters and markers**       | Yes           | Yes        | Yes    | Always                                                    |
+| **Delete recording**                  | Yes           | No         | No     | When reached on its own                                   |
+| **Delete recording & link to file**   | No            | Yes        | Yes    | When reached through a note or a link, not at a timestamp |
 
 Wherever the recording is reached through a note - its **embed link** in the editor, its **player**, or the palette in that note - plain **Delete recording** is replaced by **Delete recording & link to file**: deleting a file a note links should also clean up the link, rather than leave it broken. The two are never offered together. When you right-click an **enhanced player**, the menu also offers position-aware actions at the clicked point - **Add marker here**, **Add chapter here**, and **Copy timestamp link here** - alongside the file actions above. Those are documented in [Audio player](audio-player.md#markers-and-chapters).
 
@@ -60,9 +60,9 @@ The modal lists the following fields:
 | **File Name**        | The file name with its extension.                                                                                | `recording.webm` |
 | **File Size**        | On-disk size, formatted (Bytes / KB / MB / GB).                                                                  | `4.2 MB`         |
 | **Duration**         | Length as `m:ss`, or `h:mm:ss` once the recording passes an hour, or `unknown` when no reader could produce one. | `12:34`          |
-| **Container Format** | The container's MIME type, inferred from the extension.                                                          | `audio/webm`     |
-| **Audio Codec**      | The likely codec, inferred from the extension.                                                                   | `opus`           |
-| **Bitrate**          | Average bitrate computed from file size and duration, or `unknown` without a duration.                           | `128 kbps`       |
+| **Container Format** | The container's MIME type, as its headers name it.                                                               | `audio/webm`     |
+| **Audio Codec**      | The codec of the audio track, as its headers name it.                                                            | `opus`           |
+| **Bitrate**          | The audio's own average bitrate, or `unknown` when neither the file nor its length gives one.                    | `128 kbps`       |
 | **Sample Rate**      | The sample rate in hertz.                                                                                        | `48000 Hz`       |
 | **Channels**         | Channel count with a label (`1 (Mono)`, `2 (Stereo)`).                                                           | `2 (Stereo)`     |
 
@@ -71,8 +71,8 @@ A few notes on how these values are derived:
 - **Duration**, **Sample Rate**, and **Channels** are read from the container's own headers, which costs nothing no matter how long the recording is. Only a container the plugin cannot parse at all falls back to decoding the audio with the browser's audio engine.
 - **Duration** has one extra step behind it, because a recorder streaming into a container writes no length into a segment it has not finished, which is what the plugin's own recordings look like until they are closed. When the headers carry no length, the plugin asks the browser to read the file the way the player does and report the length it finds, so a live-written recording still shows its real duration.
 - **Duration** and **Bitrate** read `unknown` when none of those steps could produce a length. That is deliberate: a recording whose length was never read is not a recording that lasts no time, so the modal says nothing rather than showing a `0:00` that looks like a measurement.
-- **Bitrate** is a calculated average (`file size × 8 ÷ duration`), not a value read from the container header. For variable-bitrate files it is an approximation.
-- **Container Format** and **Audio Codec** are inferred from the file extension, not parsed from the bytes. The codec mapping is: `webm` > `opus`, `ogg` > `opus/vorbis`, `mp4`/`m4a`/`aac` > `aac`, `mp3` > `mp3`, `wav` > `pcm`, `flac` > `flac`.
+- **Bitrate** is the bitrate of the audio itself, without the container around it or any artwork embedded in it. It is the figure the track declares where the container stores one, which MP4 does, and otherwise it is measured from the sizes of the audio packets, reading their headers only. That measurement covers at most the first thirty thousand packets, about ten minutes of Opus or AAC, so for a longer variable-bitrate recording it is the average of that opening stretch. Where neither is available the modal falls back to the file size divided by the duration.
+- **Container Format** and **Audio Codec** are read from the same headers, so a file whose extension does not match its contents, such as Vorbis in a `.webm` or a renamed file, is described as what it really is. The codec is named the way the plugin's audio library names it, which for WAV also gives the sample width: `pcm-s16`, `pcm-s24`, or `pcm-f32`. Only a file that could be read by decoding alone is described by its extension instead: `webm` > `opus`, `ogg` > `opus/vorbis`, `mp4`/`m4a`/`aac` > `aac`, `mp3` > `mp3`, `wav` > `pcm`, `flac` > `flac`.
 
 If the file cannot be decoded (it is empty, corrupted, or in a container the app cannot read), the plugin shows a notice instead of the modal.
 
@@ -128,7 +128,7 @@ Click **Convert** to run. Progress text appears in the dialog (`Reading source f
 
 - The source bytes are read once, then transcoded to the target format through the **streaming Mediabunny pipeline**: the audio is processed in chunks instead of being decoded fully into memory, and it is **always re-encoded at the bitrate you selected** (the conversion never copies packets, so your bitrate choice is always honored).
 - If the source container cannot be processed by the streaming pipeline, the plugin **falls back to a full decode and re-encode**, so every supported format keeps working even when its container is not stream-readable.
-- **Converting to WAV always performs a full decode** first, because the streaming pipeline only targets compressed formats.
+- **Converting to WAV uses the same streaming pipeline**, so a long recording is written as WAV without first being held in memory as decoded audio, and the WAV keeps the source's own sample rate. Only the full-decode fallback above changes the rate, to the one this device's audio runs at.
 - A mono **Channels** option downmixes inside the same pipeline: the mix is the plain average of every channel - sample-identical to the [recording-time downmix](recording.md#recording-in-mono) - and the left/right options keep one channel untouched. A right-channel pick on a file that is already mono falls back to the only channel instead of producing silence.
 - The converted file is written **next to the source** as `<source-name>.<target-format>`. If a file with that name already exists, the conversion is **aborted** with a notice - choose a different format or rename the existing file.
 - A **same-format mono downmix** (for example stereo `WAV` to mono `WAV`) is written as `<source-name>-mono.<format>`, so it never collides with the source. Same-format conversion without a mono option is refused - it would only re-encode the file into itself.
@@ -153,7 +153,7 @@ This is the same vault-wide link engine used by [splitting](splitting.md), so th
 
 **Split audio into parts** divides a long recording into fixed-duration segments. It opens a dialog with the part duration, a part-name suffix, an optional bitrate (for compressed sources), a **Delete source file** toggle, and the same **Update links in notes** options as conversion.
 
-WAV files are split losslessly at the byte level without re-encoding; compressed formats are decoded once and re-encoded per part. The parts are written next to the source, and the split aborts if any target part file already exists.
+WAV files are split losslessly at the byte level without re-encoding; compressed formats are decoded in one pass and each part is re-encoded as it is cut. The parts are written next to the source, and the split aborts if any target part file already exists.
 
 The full reference - duration ranges, naming rules, link handling, and limits - lives in [Splitting](splitting.md).
 
@@ -186,9 +186,9 @@ A progress dialog shows the elapsed timer and lets you **Cancel** or **Minimize*
 Two delete actions hand the file to Obsidian, which disposes of it the way your vault's **Deleted files** preference says: the system trash, the vault's own `.trash` folder, or permanent deletion.
 
 - **Delete recording** - trashes the audio file. Offered where the file is reached on its own: the File Explorer, or the palette with the audio file itself open.
-- **Delete recording & link to file** - trashes the audio file **and** removes its link in the same step. Offered where the file is reached through a note: a **link** in the editor or an **embedded player**, where it removes the link at the click, and the palette in a note, where it removes the link under the cursor or, with the cursor elsewhere, every link to the whole file in the note. A timecode link points at a moment of the file and is part of a transcript line, so it is never the link removed.
+- **Delete recording & link to file** - trashes the audio file **and** removes its link in the same step. Offered where the file is reached through a note: a **link** in the editor or an **embedded player**, where it removes the link at the click, and the palette in a note, where it removes the link under the cursor or, with the cursor elsewhere, every link to the whole file in the note. In Reading view no editor holds the link a player was rendered from, so there every link to the whole file in the note goes instead. Any link to the recording counts, whether it is a wikilink or a Markdown link (including one whose path is written with `%20` for spaces), an embed or a plain link, with or without an alias, except a [timecode link](audio-player.md#timecode-links) such as a transcript's timestamp. A transcript holds dozens of timestamps to the same recording, so deleting the recording from one of them would leave all the others pointing at nothing; right-clicking a timestamp therefore offers the other file actions, such as **Transcribe audio** or **Convert audio format**, but neither delete. The same holds for a player whose embed starts at a timestamp, and for the palette with the cursor on one.
 
-If a recording has marker or chapter data, its sidecar (`recording.webm.markers.json`) is moved or removed automatically with the file - see [Audio player](audio-player.md#markers-and-chapters).
+If a recording has marker or chapter data, its sidecar (`recording.webm.markers.json`) follows the file automatically: it is moved on a rename or move, and on a delete it goes to the same trash as the recording, as set under **Settings > Files and links > Deleted files**. Restore both files from the trash to get the recording back with its markers and speaker names - see [Audio player](audio-player.md#markers-and-chapters).
 
 ---
 
@@ -208,7 +208,7 @@ If a recording has marker or chapter data, its sidecar (`recording.webm.markers.
 | **Generate chapters from transcript**    | Asks the configured LLM to divide the transcript into titled chapters.                  | File Explorer, embed link, player (if on)        | [Transcription](transcription.md)                                   |
 | **Export chapters and markers**          | Writes the markup as a timecoded list, a cue sheet, or a Markdown outline.              | File Explorer, embed link, player                | [Audio player](audio-player.md#exporting-chapters-and-markers)      |
 | **Delete recording**                     | Hands the audio file to Obsidian's own Deleted files handling.                          | File Explorer                                    | [This page](#delete-recording)                                      |
-| **Delete recording & link to file**      | Trashes the audio file and removes its embed link from the editor.                      | Embed link, player                               | [This page](#delete-recording)                                      |
+| **Delete recording & link to file**      | Trashes the audio file and removes its embed link from the editor.                      | Embed link, player (not on a timestamp link)     | [This page](#delete-recording)                                      |
 | **Add marker here**                      | Adds a bookmark at the clicked point on the seek bar.                                   | Enhanced player (markers on, editing)            | [Audio player](audio-player.md#markers-and-chapters)                |
 | **Add chapter here**                     | Adds a chapter at the clicked point on the seek bar.                                    | Enhanced player (markers on, editing)            | [Audio player](audio-player.md#markers-and-chapters)                |
 | **Copy timestamp link here**             | Copies a link to the clicked position, e.g. `[[recording#t=90\|1:30]]`.                 | Enhanced player                                  | [Audio player](audio-player.md#timecode-links)                      |
