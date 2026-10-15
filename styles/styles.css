@@ -250,12 +250,29 @@ If your plugin does not need CSS, delete this file.
     z-index: var(--layer-notice, 100);
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 0 4px 0 14px;
-    border-radius: 20px;
+    gap: var(--size-4-2);
+    /* The notice's own side padding on the text side; the stop button brings
+       its touch target to the other */
+    padding: 0 var(--size-4-1) 0 var(--size-4-3);
+    /*
+     * It floats over the note the way a notice does, so it takes the notice's
+     * corner shape and shadow. The radius is the one a phone's notice draws
+     * (--touch-radius-xxs) rather than --notice-radius, which is the desktop
+     * notice's, so the banner stays a pill on a tablet too.
+     *
+     * The notice's own colours are not taken: --notice-background is a
+     * near-black overlay in both themes, on which the muted dot of a paused
+     * recording, the hover of the stop button and the theme's focus ring all
+     * lose their contrast. The banner keeps the theme's surface and text.
+     */
+    border-radius: var(--touch-radius-xxs);
+    corner-shape: var(--notice-corner-shape);
     background-color: var(--background-secondary);
-    border: 1px solid var(--background-modifier-border);
-    box-shadow: var(--shadow-s);
+    border: var(--border-width) solid var(--background-modifier-border);
+    box-shadow: var(--notice-shadow);
+    /* Stated rather than inherited from the body, so the timer follows the
+       system text size, which --font-ui-medium is derived from on mobile */
+    font-size: var(--font-ui-medium);
     font-variant-numeric: tabular-nums;
 }
 
@@ -326,20 +343,20 @@ If your plugin does not need CSS, delete this file.
     background-color: var(--text-muted);
 }
 
-/* The icon stays 16px, while the control around it is a full touch target */
+/*
+ * The icon stays small while the control around it is a full touch target.
+ * Obsidian's icon-button class draws the hover, the press and the focus ring;
+ * the red goes in through its icon colours, so every one of those states keeps
+ * it. The icon size is the app's small mobile icon, which also scales with the
+ * system text size.
+ */
 .aar-recording-banner-stop {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    --icon-color: var(--color-red);
+    --icon-color-hover: var(--color-red);
+    --icon-color-focused: var(--color-red);
+    --icon-size: var(--icon-s);
     min-width: var(--touch-size-m);
     min-height: var(--touch-size-m);
-    cursor: pointer;
-    color: var(--color-red);
-}
-
-.aar-recording-banner-stop svg {
-    width: 16px;
-    height: 16px;
 }
 
 /* Save progress */

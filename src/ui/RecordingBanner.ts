@@ -6,7 +6,7 @@
  * @module ui/RecordingBanner
  */
 
-import { setIcon } from 'obsidian';
+import { setIcon, setTooltip } from 'obsidian';
 import { RecordingBannerAnchor } from '../settings/settingsSchema';
 import { formatTimecode } from '../utils/TimeUtils';
 
@@ -133,13 +133,19 @@ export class RecordingBanner {
 			cls: 'aar-recording-banner-time',
 			text: '0:00',
 		});
-		const stop = el.createSpan({ cls: 'aar-recording-banner-stop' });
-		stop.setAttribute('aria-label', 'Stop recording');
-		stop.setAttribute('role', 'button');
-		stop.setAttribute('tabindex', '0');
+		// A native button in Obsidian's icon-button class: the platform makes
+		// it focusable and activates it from Enter and Space, and the class
+		// gives it the app's hover, press and focus ring. Its name doubles as
+		// the tooltip, as everywhere in the app.
+		const stop = el.createEl('button', {
+			cls: 'clickable-icon aar-recording-banner-stop',
+			attr: { type: 'button' },
+		});
 		setIcon(stop, 'square');
-		// The listeners live on elements hide() removes, so they go with them
-		// rather than accumulating on the plugin for every recording.
+		setTooltip(stop, 'Stop recording');
+		// The listener lives on an element hide() removes, so it goes with it
+		// rather than accumulating on the plugin for every recording. A key
+		// press reaches it as a click as well.
 		stop.addEventListener('click', (event) => {
 			event.stopPropagation();
 			if (this.suppressNextClick) {
@@ -147,14 +153,6 @@ export class RecordingBanner {
 				return;
 			}
 			this.callbacks.onStop();
-		});
-		// A role="button" element must also activate on Enter/Space
-		stop.addEventListener('keydown', (event) => {
-			if (event.key === 'Enter' || event.key === ' ') {
-				event.preventDefault();
-				event.stopPropagation();
-				this.callbacks.onStop();
-			}
 		});
 		this.registerDrag(el);
 		return el;

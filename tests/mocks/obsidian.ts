@@ -2415,6 +2415,41 @@ export const setIcon = jest.fn((el: HTMLElement, iconId: string): void => {
 	el.setAttribute('data-icon', iconId);
 });
 
+/** The options Obsidian's setTooltip takes, as far as the mock records them. */
+export interface TooltipOptions {
+	placement?: 'bottom' | 'right' | 'left' | 'top';
+	classes?: string[];
+	gap?: number;
+	delay?: number;
+}
+
+/**
+ * Mock setTooltip, doing what Obsidian's does to the element: the tooltip
+ * text becomes the element's `aria-label`, which is also what a screen reader
+ * announces, and each option lands in the `data-tooltip-*` attribute the app's
+ * tooltip reads it from. Bottom is the app's default placement and is not
+ * written, as in Obsidian.
+ */
+export function setTooltip(
+	el: HTMLElement,
+	tooltip: string,
+	options: TooltipOptions = {},
+): void {
+	el.setAttribute('aria-label', tooltip);
+	if (options.placement && options.placement !== 'bottom') {
+		el.setAttribute('data-tooltip-position', options.placement);
+	}
+	if (options.classes) {
+		el.setAttribute('data-tooltip-classes', options.classes.join(' '));
+	}
+	if (options.delay) {
+		el.setAttribute('data-tooltip-delay', String(options.delay));
+	}
+	if (options.gap) {
+		el.setAttribute('data-tooltip-gap', String(options.gap));
+	}
+}
+
 /**
  * Mock getFrontMatterInfo: locates the frontmatter block a note opens with the
  * way Obsidian's does, so a note read by the plugin loses it in tests too.
