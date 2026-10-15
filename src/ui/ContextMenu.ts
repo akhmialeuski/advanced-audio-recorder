@@ -13,6 +13,7 @@ import {
 	Notice,
 	MarkdownView,
 	TFolder,
+	parseLinktext,
 } from 'obsidian';
 import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
@@ -22,10 +23,7 @@ import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
-import {
-	hasTimecodeSubpath,
-	parseAudioLinkTarget,
-} from '../player/timecodeLinks';
+import { hasTimecodeSubpath } from '../player/timecodeLinks';
 import type {
 	ActionServices,
 	FileAction,
@@ -37,6 +35,20 @@ import { editorPositionOfNode } from '../obsidian/editorDomPosition';
 import { linkAtColumn, type SourceLink } from '../obsidian/sourceLinks';
 
 export type { EnhancementPrimer } from '../actions/PluginAction';
+
+/**
+ * The `source` the player menu passes with its file-menu event, so the
+ * plugin's own file-menu listener can tell what was right-clicked. A player
+ * that starts at a timestamp has a source of its own: it stands for a moment
+ * in the recording, as a timestamp link does, and is offered what such a link
+ * is offered in the editor rather than the whole file menu.
+ */
+const PlayerMenuSource = {
+	/** A player embedded without a timestamp. */
+	Embed: 'audio-recorder-player-context-menu',
+	/** A player embedded at a timestamp (`![[rec.m4a#t=30]]`). */
+	Timestamp: 'audio-recorder-timestamp-player-context-menu',
+} as const;
 
 /**
  * Manages context menu items for audio files.
@@ -126,8 +138,9 @@ export class ContextMenu {
 				const sourcePath = this.resolveEmbedSource(
 					embed as HTMLElement,
 				);
+				const { path, subpath } = parseLinktext(src);
 				const file = this.app.metadataCache.getFirstLinkpathDest(
-					parseAudioLinkTarget(src).linkPath,
+					path,
 					sourcePath,
 				);
 
@@ -162,7 +175,9 @@ export class ContextMenu {
 						'file-menu',
 						menu,
 						file,
-						'audio-recorder-player-context-menu',
+						hasTimecodeSubpath(subpath)
+							? PlayerMenuSource.Timestamp
+							: PlayerMenuSource.Embed,
 					);
 
 					// Opened from the event rather than from page coordinates:
@@ -316,11 +331,17 @@ export class ContextMenu {
 		this.plugin.registerEvent(
 			this.app.workspace.on(
 				'file-menu',
-				(menu: Menu, file: TAbstractFile) => {
+				(menu: Menu, file: TAbstractFile, source: string) => {
 					if (file instanceof TFile && isAudioFile(file)) {
 						renderActionsIntoMenu(
 							menu,
-							this.fileActions,
+							// A timestamp player gets the set a timestamp link
+							// gets in the editor, which holds no deletion.
+							source === PlayerMenuSource.Timestamp
+								? this.fileActions.filter(
+										(action) => action.showInEditorMenu,
+									)
+								: this.fileActions,
 							{ file, services: this.services },
 							this.renderedSetFor(menu),
 						);
