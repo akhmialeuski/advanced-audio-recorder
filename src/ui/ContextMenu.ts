@@ -51,6 +51,9 @@ interface EditorCodeMirrorView {
 	posAtDOM?(node: Node): number;
 }
 
+/** The element Obsidian draws a note transcluded into another one in. */
+const TRANSCLUSION = '.internal-embed.markdown-embed[src]';
+
 /** The source the player menu re-triggers file-menu with. */
 const PLAYER_MENU_SOURCE = 'audio-recorder-player-context-menu';
 
@@ -190,29 +193,40 @@ export class ContextMenu {
 
 	/**
 	 * The note an embed is written in when that is a note transcluded into
-	 * the one on screen: the transclusion around it names it.
+	 * the one on screen: the innermost transclusion around it names it, each
+	 * transclusion's link resolving from the note around it in turn.
 	 * @param embed - The right-clicked embed
-	 * @param sourcePath - The note on screen, which the transclusion's link
-	 *   resolves from
+	 * @param sourcePath - The note on screen, which the outermost
+	 *   transclusion's link resolves from
 	 * @returns The transcluded note, or null when the embed is in the note
-	 *   on screen itself
+	 *   on screen itself, or a transclusion around it does not resolve
 	 */
 	private transclusionOf(
 		embed: HTMLElement,
 		sourcePath: string,
 	): TFile | null {
-		const host = embed.parentElement?.closest(
-			'.internal-embed.markdown-embed',
-		);
-		const src = host?.getAttribute('src');
-		if (!src) {
-			return null;
+		const hosts: Element[] = [];
+		for (
+			let host = embed.parentElement?.closest(TRANSCLUSION);
+			host;
+			host = host.parentElement?.closest(TRANSCLUSION)
+		) {
+			hosts.unshift(host);
 		}
-		// A markdown embed transcludes a note, which its link resolves to.
-		return this.app.metadataCache.getFirstLinkpathDest(
-			getLinkpath(src),
-			sourcePath,
-		);
+		let note: TFile | null = null;
+		let from = sourcePath;
+		for (const host of hosts) {
+			// A markdown embed transcludes a note, which its link resolves to.
+			note = this.app.metadataCache.getFirstLinkpathDest(
+				getLinkpath(String(host.getAttribute('src'))),
+				from,
+			);
+			if (!note) {
+				return null;
+			}
+			from = note.path;
+		}
+		return note;
 	}
 
 	/**
@@ -279,11 +293,10 @@ export class ContextMenu {
 
 				const menu = new Menu();
 				const rendered = this.renderedSetFor(menu);
-				const linkingNote = this.noteLinking(
-					host ?? owningView?.file ?? null,
-					file,
-				);
-				const note = linkingNote ?? undefined;
+				// The player is in the note it is drawn in, as the page itself
+				// says, whether or not the cache has read the embed yet.
+				const playerNote = host ?? owningView?.file ?? null;
+				const note = playerNote ?? undefined;
 
 				// The point of the player that was clicked, when the embed is
 				// an enhanced player: "here" is where the user clicked rather
@@ -308,19 +321,22 @@ export class ContextMenu {
 				// The note the embed is in, and its link, so the link-aware
 				// delete removes the embed that was right-clicked. A player is
 				// an embed of the recording whether or not either is found.
-				const link = owningView
-					? this.linkOfEmbed(
-							owningView.editor,
-							embed as HTMLElement,
-							file,
-							sourcePath,
-						)
-					: null;
+				// The editor on screen holds the text of its own note only; a
+				// transcluded player's link is in another note's text.
+				const link =
+					owningView && !host
+						? this.linkOfEmbed(
+								owningView.editor,
+								embed as HTMLElement,
+								file,
+								sourcePath,
+							)
+						: null;
 				this.registry.renderInto(
 					menu,
 					this.families.file,
 					this.fileContextFor(menu, file, {
-						note: linkingNote,
+						note: playerNote,
 						link,
 						throughLink: true,
 					}),

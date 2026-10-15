@@ -19,8 +19,30 @@ export interface LinkAtCursor {
 /** `![[target]]` or `[[target|alias]]`, target in group 1. */
 const WIKI_LINK = /!?\[\[(.*?)(?:\|.*?)?\]\]/g;
 
-/** `![alt](target)` or `[text](target)`, target in group 2. */
-const MARKDOWN_LINK = /!?\[(.*?)\]\((.*?)\)/g;
+/**
+ * `![alt](target)` or `[text](target)`, target in group 2. The text holds no
+ * bracket, so a task box or a footnote earlier in the line - `- [ ] see
+ * [call](rec.webm)` - is never taken for the start of the link.
+ */
+const MARKDOWN_LINK = /!?\[([^[\]]*)\]\(([^()]*)\)/g;
+
+/**
+ * A Markdown link's target as the vault names the file: Obsidian writes a
+ * path with spaces percent-encoded, or wraps it in angle brackets.
+ * @param target - The target as written
+ */
+function markdownTarget(target: string): string {
+	const bare =
+		target.startsWith('<') && target.endsWith('>')
+			? target.slice(1, -1)
+			: target;
+	try {
+		return decodeURIComponent(bare);
+	} catch {
+		// A lone % is a character of the name, not an escape.
+		return bare;
+	}
+}
 
 /**
  * Finds the wikilink or Markdown link, embed or not, that a cursor column
@@ -56,7 +78,13 @@ export function linkAtCursor(
 			text.slice(wiki.end),
 		lineText,
 	);
-	const links = [...wikilinks, ...found(outsideWikilinks, MARKDOWN_LINK, 2)];
+	const links = [
+		...wikilinks,
+		...found(outsideWikilinks, MARKDOWN_LINK, 2).map((link) => ({
+			...link,
+			path: markdownTarget(link.path),
+		})),
+	];
 	// A column where one link ends and the next begins is the next one's:
 	// a position mapped to the start of an embed, or a cursor in front of a
 	// link, means that link and not the one before it.

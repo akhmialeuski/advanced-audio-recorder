@@ -77,6 +77,30 @@ describe('the link at a cursor', () => {
 	);
 
 	it.each([
+		{ name: 'a task box', line: '- [ ] see [call](rec.webm)' },
+		{ name: 'a footnote', line: 'Note[^1] and [call](rec.webm)' },
+	])('starts a Markdown link at its own bracket, after $name', ({ line }) => {
+		const link = linkAtCursor(line, line.length - 3);
+
+		expect(link?.path).toBe('rec.webm');
+		expect(line.slice(link?.start, link?.end)).toBe('[call](rec.webm)');
+	});
+
+	it.each([
+		{
+			line: '![](Recording%202026-10-14.webm)',
+			path: 'Recording 2026-10-14.webm',
+		},
+		{
+			line: '![](<Recording 2026-10-14.webm>)',
+			path: 'Recording 2026-10-14.webm',
+		},
+		{ line: '[50% off](deal%.webm)', path: 'deal%.webm' },
+	])('reads the target of $line as the vault names it', ({ line, path }) => {
+		expect(linkAtCursor(line, 5)?.path).toBe(path);
+	});
+
+	it.each([
 		{ name: 'on text beside a link', line: 'Text [[rec.webm]]', ch: 2 },
 		{ name: 'on a line without links', line: 'Just text', ch: 3 },
 		{ name: 'on an empty line', line: '', ch: 0 },

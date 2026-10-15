@@ -14,6 +14,7 @@ import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
 import { at, defined } from '../helpers/assertions';
+import { noticeMessages } from '../mocks/obsidian';
 import { tick } from '../helpers/async';
 import { asMockMenu, partialPlugin } from '../helpers/obsidianMock';
 import { setPlayerEmbedActions } from 'src/player/playerEmbedActions';
@@ -232,6 +233,35 @@ describe('ContextMenu', () => {
 				expect(titlesOf(menu)).toContain('Delete recording');
 			},
 		);
+
+		it('removes the links of the note a link was right-clicked in', async () => {
+			const menu = new Menu();
+			const recording = makeAudioFile();
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(recording);
+			(mockMetadataCache.getFileCache as jest.Mock).mockReturnValue({
+				embeds: [
+					{ link: 'audio.mp3', position: { start: { offset: 0 } } },
+				],
+			});
+			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
+				file: { path: 'Meetings/standup.md' },
+			});
+
+			(
+				fileMenuCallback as (
+					menu: Menu,
+					file: TFile,
+					source: string,
+				) => void
+			)(menu, recording, 'link-context-menu');
+			await clickItem(menu, 'Delete recording & link to file');
+
+			expect(noticeMessages().join(' ')).toContain(
+				'from Meetings/standup.md',
+			);
+		});
 
 		it('acts on a link right-clicked in a note through that note', () => {
 			const menu = new Menu();
@@ -1367,37 +1397,83 @@ describe('ContextMenu', () => {
 			);
 		});
 
-		it('reaches a player shown from a transcluded note through no note', async () => {
-			// The note on screen embeds another note, and the player is that
-			// note's: the note on screen links nothing it could act on.
-			(mockMetadataCache.getFileCache as jest.Mock).mockReturnValue({
-				embeds: [
-					{ link: 'Other note', position: { start: { offset: 0 } } },
-				],
-			});
+		it('falls back to the note on screen when a transclusion does not resolve', async () => {
+			const event = rightClickOnPlayer({});
+			const gone = document.createElement('div');
+			gone.className = 'internal-embed markdown-embed';
+			gone.setAttribute('src', 'Gone');
+			gone.appendChild(
+				(event.target as HTMLElement).parentElement as HTMLElement,
+			);
 			const recording = makeAudioFile();
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
 			).mockImplementation((path: string) =>
-				path === 'audio.mp3' ? recording : makeAudioFile('md'),
+				path === 'Gone' ? null : recording,
 			);
 			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
 				file: { path: 'Meetings/standup.md' },
 				editor: partial<Editor>({}),
 			});
+			Object.defineProperty(navigator, 'clipboard', {
+				value: { writeText: jest.fn().mockResolvedValue(undefined) },
+				configurable: true,
+			});
 
-			await copyLinkHere();
+			playerMenu()(event);
+			await clickPlayerItem('Copy timestamp link here');
 
 			expect(
 				mockApp.fileManager.generateMarkdownLink,
 			).toHaveBeenCalledWith(
-				expect.objectContaining({ extension: 'mp3' }),
-				'',
+				recording,
+				'Meetings/standup.md',
 				'#t=42',
 				'0:42',
 			);
-			expect(menuTitles()).toContain('Delete recording & link to file');
-			expect(menuTitles()).not.toContain('Delete recording');
+		});
+
+		it('follows nested transclusions, each from the note around it', async () => {
+			const event = rightClickOnPlayer({});
+			const inner = document.createElement('div');
+			inner.className = 'internal-embed markdown-embed';
+			inner.setAttribute('src', 'C');
+			inner.appendChild(
+				(event.target as HTMLElement).parentElement as HTMLElement,
+			);
+			const outer = document.createElement('div');
+			outer.className = 'internal-embed markdown-embed';
+			outer.setAttribute('src', 'B');
+			outer.appendChild(inner);
+			const note = (path: string): TFile =>
+				Object.assign(Object.create(TFile.prototype), {
+					path,
+					extension: 'md',
+				}) as TFile;
+			const recording = makeAudioFile();
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockImplementation((path: string, from: string) => {
+				if (path === 'B') {
+					return note('Y/B.md');
+				}
+				if (path === 'C') {
+					// Two notes are called C; the one B links is beside it.
+					return note(from === 'Y/B.md' ? 'Y/C.md' : 'X/C.md');
+				}
+				return recording;
+			});
+			Object.defineProperty(navigator, 'clipboard', {
+				value: { writeText: jest.fn().mockResolvedValue(undefined) },
+				configurable: true,
+			});
+
+			playerMenu()(event);
+			await clickPlayerItem('Copy timestamp link here');
+
+			expect(
+				mockApp.fileManager.generateMarkdownLink,
+			).toHaveBeenCalledWith(recording, 'Y/C.md', '#t=42', '0:42');
 		});
 
 		it('resolves a player in a view that shows no file from the vault root', () => {
