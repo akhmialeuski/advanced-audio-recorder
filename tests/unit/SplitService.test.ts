@@ -565,4 +565,91 @@ describe('SplitService', () => {
 			).toHaveLength(1);
 		});
 	});
+
+	// A device that cannot stream the source decodes it whole, and it has to
+	// cut the recording into the parts a streaming device cuts, or the same
+	// file splits differently on a phone and on a desktop.
+	describe('planning the parts of a whole-file decode', () => {
+		const RATE = 44100;
+
+		/** Makes the next whole-file decode return a recording this long. */
+		const decodedLength = (seconds: number): void => {
+			const length = Math.round(seconds * RATE);
+			jest.requireMock<{ decodeAudioBlob: jest.Mock }>(
+				'src/audio/AudioFormatConverter',
+			).decodeAudioBlob.mockResolvedValueOnce({
+				length,
+				sampleRate: RATE,
+				numberOfChannels: 1,
+				getChannelData: jest
+					.fn()
+					.mockReturnValue(new Float32Array(length)),
+			});
+		};
+
+		/** The sample ranges the decoded parts were sliced out of. */
+		const slicedRanges = (): [number, number][] =>
+			jest
+				.requireMock<{ sliceAudioBuffer: jest.Mock }>(
+					'src/recording/AudioSplitter',
+				)
+				.sliceAudioBuffer.mock.calls.map(
+					([, start, end]: [unknown, number, number]) => [start, end],
+				);
+
+		beforeEach(() => {
+			jest.requireMock<{ sliceAudioBuffer: jest.Mock }>(
+				'src/recording/AudioSplitter',
+			).sliceAudioBuffer.mockClear();
+		});
+
+		it('refuses a recording whose only extra is shorter than the tail, as a streamed split does', async () => {
+			// 10.1 s into 10 s parts: the streamed split plans 9.85 s and
+			// refuses, so the decode must not write a 0.1 s second part.
+			decodedLength(10.1);
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			expect(outcome).toEqual({ status: 'aborted' });
+			expect(createdFiles).toEqual([]);
+			expect(noticeMessages()).toContain(
+				'File is shorter than one part.',
+			);
+		});
+
+		it('lets a remainder shorter than the tail ride on the last part', async () => {
+			decodedLength(20.1);
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			expect(outcome).toEqual({
+				status: 'completed',
+				partCount: 2,
+				firstPartName: 'recording-part1.mp3',
+			});
+			// The last part runs to the end of the decoded audio, the way the
+			// streamed split's last part runs to the end of the decode.
+			expect(slicedRanges()).toEqual([
+				[0, 10 * RATE],
+				[10 * RATE, Math.round(20.1 * RATE)],
+			]);
+		});
+
+		it('opens no part for a chapter that starts inside the tail', async () => {
+			decodedLength(20);
+
+			await service.split(
+				createRequest({
+					cuts: [
+						{ startSeconds: 0, title: 'Intro' },
+						{ startSeconds: 19.9, title: 'Too late' },
+					],
+				}),
+				jest.fn(),
+			);
+
+			expect(createdFiles).toEqual(['Audio/Intro.mp3']);
+			expect(slicedRanges()).toEqual([[0, 20 * RATE]]);
+		});
+	});
 });

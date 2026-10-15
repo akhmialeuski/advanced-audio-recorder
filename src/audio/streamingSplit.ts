@@ -52,8 +52,12 @@ import { errorMessage } from '../errors';
  * ended, which would be a file with nothing in it. Planning this much short
  * means the decoded audio always reaches the last part; a remainder shorter
  * than this rides on the part before it instead of becoming one of its own.
+ *
+ * The split that decodes the whole file first plans the same distance short
+ * of its exact length, so a device that cannot stream a recording cuts it
+ * into the parts a device that can would cut.
  */
-export const STREAMED_SPLIT_TAIL_SECONDS = 0.25;
+export const SPLIT_TAIL_SECONDS = 0.25;
 
 /**
  * The next decoded sample a player would present, with the frames before
@@ -175,9 +179,7 @@ export class StreamedSplit implements Disposable {
 				return null;
 			}
 			const seconds =
-				end -
-				Math.max(0, sample.timestamp) -
-				STREAMED_SPLIT_TAIL_SECONDS;
+				end - Math.max(0, sample.timestamp) - SPLIT_TAIL_SECONDS;
 			return new StreamedSplit(
 				input,
 				samples,

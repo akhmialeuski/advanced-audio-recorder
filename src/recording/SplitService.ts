@@ -21,7 +21,11 @@ import {
 	tooLargeMessage,
 } from '../platform/capabilities';
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
-import { StreamedSplit, StreamedSplitError } from '../audio/streamingSplit';
+import {
+	SPLIT_TAIL_SECONDS,
+	StreamedSplit,
+	StreamedSplitError,
+} from '../audio/streamingSplit';
 import {
 	parseWavLayout,
 	buildWavPart,
@@ -483,9 +487,18 @@ export class SplitService {
 		onProgress('Decoding audio...');
 		const audioBuffer = await decodeAudioBlob(sourceBytes, 'split');
 		const partSamples = request.partSeconds * audioBuffer.sampleRate;
+		// Planned short of the end by the tail the streamed split plans short
+		// by, so a remainder too short to be a part of its own rides on the
+		// part before it here as well, and the last part still runs to the
+		// end of the audio.
+		const plannedSamples = Math.max(
+			0,
+			audioBuffer.length -
+				Math.floor(SPLIT_TAIL_SECONDS * audioBuffer.sampleRate),
+		);
 		// A chapter split has no fixed part length to be shorter than: its
 		// parts are as long as the chapters make them.
-		if (!request.cuts && audioBuffer.length <= partSamples) {
+		if (!request.cuts && plannedSamples <= partSamples) {
 			new Notice('File is shorter than one part.');
 			return null;
 		}
@@ -502,11 +515,12 @@ export class SplitService {
 					baseName,
 					targetFormat,
 					audioBuffer,
+					plannedSamples,
 				),
 			);
 		}
 
-		const partCount = computePartCount(audioBuffer.length, partSamples);
+		const partCount = computePartCount(plannedSamples, partSamples);
 		return holdingNothing(
 			Array.from({ length: partCount }, (_, index) => ({
 				fileName: buildPartFileName(
@@ -519,7 +533,9 @@ export class SplitService {
 					const slice = sliceAudioBuffer(
 						audioBuffer,
 						index * partSamples,
-						(index + 1) * partSamples,
+						index === partCount - 1
+							? audioBuffer.length
+							: (index + 1) * partSamples,
 					);
 					const blob = await encodeAudioBuffer(slice, {
 						format: targetFormat,
@@ -658,6 +674,8 @@ function chapterWavParts(
  * @param baseName - Name of the recording, used when a title yields nothing
  * @param targetFormat - Extension the parts are encoded to
  * @param audioBuffer - The decoded recording
+ * @param plannedSamples - Length the cuts are placed within, short of the
+ *   end by SPLIT_TAIL_SECONDS; the last part still runs to the end
  * @returns The parts, each encoded lazily
  */
 function chapterDecodedParts(
@@ -666,13 +684,15 @@ function chapterDecodedParts(
 	baseName: string,
 	targetFormat: string,
 	audioBuffer: AudioBuffer,
+	plannedSamples: number,
 ): PreparedPart[] {
 	const taken = new Set<string>();
-	return computeCutRanges(
+	const ranges = computeCutRanges(
 		cuts,
 		(seconds) => Math.floor(Math.max(0, seconds) * audioBuffer.sampleRate),
-		audioBuffer.length,
-	).map((range, index) => ({
+		plannedSamples,
+	);
+	return ranges.map((range, index) => ({
 		fileName: chapterPartName(
 			range.cut,
 			index,
@@ -681,7 +701,11 @@ function chapterDecodedParts(
 			taken,
 		),
 		data: async () => {
-			const slice = sliceAudioBuffer(audioBuffer, range.start, range.end);
+			const slice = sliceAudioBuffer(
+				audioBuffer,
+				range.start,
+				index === ranges.length - 1 ? audioBuffer.length : range.end,
+			);
 			const blob = await encodeAudioBuffer(slice, {
 				format: targetFormat,
 				bitrate: request.bitrate,
@@ -708,7 +732,7 @@ function announceWavParts(sourceExtension: string): void {
  * Planned on the same frame arithmetic the decoded path uses - part k ends at
  * k times the part length in frames, a chapter part at the floor of its start
  * time in frames - and over the length the container states, a little short
- * of it (see STREAMED_SPLIT_TAIL_SECONDS). The last part runs to the end of
+ * of it (see SPLIT_TAIL_SECONDS). The last part runs to the end of
  * whatever the decoder produces, so nothing past the plan is lost. Each data
  * callback continues the one decode where the previous part stopped, which is
  * why the parts must be written in order, as writePartFiles writes them.

@@ -25,7 +25,7 @@ const actual = jest.requireActual<typeof import('src/audio/streamingSplit')>(
 );
 
 export const StreamedSplitError = actual.StreamedSplitError;
-export const STREAMED_SPLIT_TAIL_SECONDS = actual.STREAMED_SPLIT_TAIL_SECONDS;
+export const SPLIT_TAIL_SECONDS = actual.SPLIT_TAIL_SECONDS;
 
 /** `StreamedSplit.open`; answers that this device cannot stream the source. */
 export const StreamedSplit = {

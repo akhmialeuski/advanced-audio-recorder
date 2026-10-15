@@ -11,7 +11,7 @@
  */
 
 import {
-	STREAMED_SPLIT_TAIL_SECONDS,
+	SPLIT_TAIL_SECONDS,
 	StreamedSplit,
 	StreamedSplitError,
 } from 'src/audio/streamingSplit';
@@ -112,7 +112,7 @@ describe('a streamed split', () => {
 		// A plan reaching the stated end could open a last part after the
 		// decoded audio has stopped, and that part would hold nothing.
 		expect(split.plannedFrames).toBe(
-			Math.floor((10 - STREAMED_SPLIT_TAIL_SECONDS) * SAMPLE_RATE),
+			Math.floor((10 - SPLIT_TAIL_SECONDS) * SAMPLE_RATE),
 		);
 	});
 
