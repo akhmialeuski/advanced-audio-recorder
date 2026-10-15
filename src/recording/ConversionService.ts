@@ -63,9 +63,9 @@ export class ConversionService {
 
 	/**
 	 * Executes the conversion pipeline: existence pre-check, convert, write
-	 * the converted file, update links, optionally delete the source. Failures before the converted file exists abort
-	 * the conversion; failures after that are reported as partial
-	 * success.
+	 * the converted file, update links, optionally delete the source.
+	 * Failures before the converted file exists abort the conversion;
+	 * failures after that are reported as partial success.
 	 * @param request - Conversion parameters
 	 * @param onProgress - Receives pipeline progress text
 	 * @returns Conversion outcome
