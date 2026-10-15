@@ -242,6 +242,11 @@ export class EnhancedPlayerRegistrar {
 					this.mediaKindStore?.handleRename(oldPath, file.path);
 					return;
 				}
+				// A sidecar that arrives at a path by a rename is a new sidecar
+				// there, the same as one created: the store moves a recording's
+				// sidecar this way, and trashing an orphan at the destination
+				// first has already dropped that path from the search.
+				this.reindexSidecar(file);
 				void this.markerStore.handleOutputRename(oldPath, file.path);
 			}),
 		);

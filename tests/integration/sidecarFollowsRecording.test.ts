@@ -13,12 +13,14 @@
  */
 
 import { App } from 'obsidian';
+import { modalInstances } from '../mocks/obsidian';
 // The files a test seeds and reads back are the mock's own objects, and its
 // affordances (seed, the spied file manager) are deliberately absent from the
 // published type definitions.
 import type { TFile } from '../mocks/obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
+import { MarkerSearchModal } from 'src/ui/MarkerSearchModal';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { asMockApp, partialPlugin } from '../helpers/obsidianMock';
 import { waitFor } from '../helpers/async';
@@ -37,10 +39,12 @@ const SIDECAR_BODY = JSON.stringify({
 /**
  * A vault holding one recording with markers, with the registrar listening to
  * it and the real sidecar store behind the registrar.
- * @returns The app, the recording, its sidecar, and the console.warn spy
+ * @returns The app, the registrar, the recording, its sidecar, and the
+ *   console.warn spy
  */
 function createSut(): {
 	app: App;
+	registrar: EnhancedPlayerRegistrar;
 	audio: TFile;
 	sidecar: TFile;
 	warn: jest.SpyInstance;
@@ -65,13 +69,30 @@ function createSut(): {
 		registerEvent: jest.fn(),
 		addChild: jest.fn(),
 	});
-	new EnhancedPlayerRegistrar(
+	const registrar = new EnhancedPlayerRegistrar(
 		plugin,
 		app,
 		() => ({ ...DEFAULT_SETTINGS, enhancedPlayerEnabled: true }),
 		new RecordingSidecarStore(app),
-	).register();
-	return { app, audio, sidecar, warn };
+	);
+	registrar.register();
+	return { app, registrar, audio, sidecar, warn };
+}
+
+/**
+ * What the marker search offers, as recording path and marker label.
+ * @param registrar - The registrar whose search is opened
+ * @returns One entry per marker the search lists
+ */
+async function searchResults(
+	registrar: EnhancedPlayerRegistrar,
+): Promise<string[]> {
+	await registrar.openMarkerSearch();
+	const modal = modalInstances.at(-1);
+	if (!(modal instanceof MarkerSearchModal)) {
+		throw new Error('The registrar opened no marker search');
+	}
+	return modal.getItems().map((hit) => `${hit.recordingPath}: ${hit.label}`);
 }
 
 /** Every path the vault index lists, sorted. */
@@ -110,6 +131,45 @@ describe('a recording with markers, moved in the vault', () => {
 		});
 
 		expect(vaultPaths(app)).toEqual([MOVED_AUDIO, MOVED_SIDECAR]);
+	});
+
+	// The orphan goes to the trash, and the vault reports that as the delete
+	// of a sidecar at the recording's new path, which drops that path from the
+	// marker search. The moved sidecar then arrives there by a rename, so the
+	// search has to read it again or lose the recording's markers.
+	it('stays findable in the marker search when an orphan held its new name', async () => {
+		const { app, registrar, audio } = createSut();
+		asMockApp(app).vault.seed([
+			{
+				path: MOVED_SIDECAR,
+				content: JSON.stringify({
+					version: 2,
+					markers: [
+						{
+							id: 'o1',
+							time: 3,
+							label: 'Orphan',
+							kind: 'bookmark',
+						},
+					],
+				}),
+			},
+		]);
+		await searchResults(registrar);
+
+		await asMockApp(app).vault.rename(audio, MOVED_AUDIO);
+
+		await waitFor(
+			async () =>
+				(await searchResults(registrar)).includes(
+					`${MOVED_AUDIO}: Intro`,
+				),
+			{ message: 'the moved recording dropped out of the marker search' },
+		);
+
+		expect(await searchResults(registrar)).toEqual([
+			`${MOVED_AUDIO}: Intro`,
+		]);
 	});
 
 	it('reports no sidecar failure along the way', async () => {
