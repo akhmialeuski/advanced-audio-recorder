@@ -8,7 +8,7 @@ The plugin also includes [built-in transcription](docs/transcription.md). You ca
 
 All audio and generated files stay in your vault. API keys are stored locally and are never sent anywhere except to the providers you choose, which are the transcription engine a run uses and, when post-processing is on, the LLM vendor it calls.
 
-Works on desktop and mobile (iOS and Android). Some features are desktop-only (multi-track recording, local whisper.cpp transcription, input device selection); see [Mobile support](docs/mobile-support.md) for the platform differences. Requires Obsidian 1.6.6 or newer. MIT licensed.
+Works on desktop and mobile (iOS and Android). Some features are desktop-only (multi-track recording, local whisper.cpp transcription, input device selection); see [Mobile support](docs/mobile-support.md) for the platform differences. Requires Obsidian 1.13.1 or newer. MIT licensed.
 
 The full documentation lives in the [docs](docs/index.md) folder, and the same link is built into the plugin's settings tab.
 
@@ -22,6 +22,7 @@ The full documentation lives in the [docs](docs/index.md) folder, and the same l
 - Enhanced audio player: inline waveform with adjustable speed, skip, loop, volume, a voice-boost toggle that applies the cleanup chain to the recording as it plays, per-recording bookmarks, chapters, and clickable timestamp links.
 - Transcription: OpenAI-compatible Whisper API, Deepgram, Google Gemini, Mistral Voxtral, or fully offline whisper.cpp, with speaker diarization and JSON, SRT, WebVTT, or plain-text output.
 - LLM post-processing: optionally clean up or summarize any transcript with OpenAI, Anthropic, Gemini, Mistral, or DeepSeek.
+- Recording panel: a sidebar tab with the details of the recording in front of you - duration, format, transcription, participants - and its actions one click away.
 - Quick notes: dictate into the note at the cursor from a ribbon button, with the audio never saved and an optional LLM rewrite from a profile of your own.
 - Audio cleanup: high-pass filter, noise gate, and loudness leveling, written to a fresh copy.
 - Formats and file operations: convert between WAV, WebM, OGG, MP3, MP4, M4A, AAC, and FLAC (with an optional mono downmix), and split long files from the right-click menu.

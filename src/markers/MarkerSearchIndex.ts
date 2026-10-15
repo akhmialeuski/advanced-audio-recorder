@@ -11,6 +11,7 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import type { MarkerKind, PlayerMarker } from './markerModel';
 import { sortMarkers } from './markerModel';
+import { fileNameOf } from '../utils/paths';
 
 /** One marker, with the recording it belongs to. */
 export interface MarkerHit {
@@ -36,7 +37,7 @@ export interface MarkerHit {
  * @returns The file name with no directory and no extension
  */
 function recordingName(path: string): string {
-	const name = path.slice(path.lastIndexOf('/') + 1);
+	const name = fileNameOf(path);
 	const dot = name.lastIndexOf('.');
 	return dot > 0 ? name.slice(0, dot) : name;
 }

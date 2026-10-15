@@ -79,6 +79,15 @@ export class RecordingSidecarStore {
 	private readonly corruptPaths = new Set<string>();
 	/** Serializes mutations so concurrent saves never interleave. */
 	private writeChain: Promise<void> = Promise.resolve();
+	/** Readers told which recording's document just changed. */
+	private readonly listeners = new Set<(path: string) => void>();
+	/**
+	 * Sidecar moves still queued, by the recording path they move to. A read
+	 * of that path waits for its move: the document is not on disk there yet,
+	 * and caching the empty answer would let the next write replace the moved
+	 * document with it.
+	 */
+	private readonly pendingMoves = new Map<string, Promise<void>>();
 
 	/**
 	 * @param app - Obsidian App instance
@@ -91,7 +100,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getMarkers(path: string): Promise<PlayerMarker[]> {
-		return serializeMarkers((await this.load(path)).markers);
+		return serializeMarkers((await this.read(path)).markers);
 	}
 
 	/**
@@ -140,7 +149,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getFailedParts(path: string): Promise<FailedPartsSection | null> {
-		const stored = (await this.load(path)).failedParts;
+		const stored = (await this.read(path)).failedParts;
 		return stored
 			? {
 					recordedAt: stored.recordedAt,
@@ -182,7 +191,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getPlayback(path: string): Promise<PlaybackState | null> {
-		const stored = (await this.load(path)).playback;
+		const stored = (await this.read(path)).playback;
 		return stored ? { ...stored } : null;
 	}
 
@@ -197,20 +206,26 @@ export class RecordingSidecarStore {
 		path: string,
 		state: PlaybackState | null,
 	): Promise<void> {
-		return this.mutate(path, (sidecar) => {
-			if (!state) {
-				if (!sidecar.playback) {
+		// Written on every pause, and shown by no reader that listens, so it
+		// is not announced: a reader would re-read the document for nothing.
+		return this.mutate(
+			path,
+			(sidecar) => {
+				if (!state) {
+					if (!sidecar.playback) {
+						return false;
+					}
+					delete sidecar.playback;
+					return true;
+				}
+				if (sidecar.playback?.position === state.position) {
 					return false;
 				}
-				delete sidecar.playback;
+				sidecar.playback = { ...state };
 				return true;
-			}
-			if (sidecar.playback?.position === state.position) {
-				return false;
-			}
-			sidecar.playback = { ...state };
-			return true;
-		});
+			},
+			false,
+		);
 	}
 
 	/**
@@ -220,7 +235,7 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async getTranscript(path: string): Promise<TranscriptSection> {
-		return cloneTranscriptSection((await this.load(path)).transcript);
+		return cloneTranscriptSection((await this.read(path)).transcript);
 	}
 
 	/**
@@ -391,7 +406,7 @@ export class RecordingSidecarStore {
 	 */
 	async handleRename(oldPath: string, newPath: string): Promise<void> {
 		this.moveCacheEntry(oldPath, newPath);
-		return this.enqueue(async () => {
+		const moved = this.enqueue(async () => {
 			const from = this.sidecarPath(oldPath);
 			const to = this.sidecarPath(newPath);
 			try {
@@ -410,7 +425,14 @@ export class RecordingSidecarStore {
 			// that newest state so the new path never serves a stale copy and
 			// no zombie entry lingers under the old path.
 			this.moveCacheEntry(oldPath, newPath);
+			// Only this move's own entry: a later move to the same path may
+			// have replaced it, and that one is still to run.
+			if (this.pendingMoves.get(newPath) === moved) {
+				this.pendingMoves.delete(newPath);
+			}
 		});
+		this.pendingMoves.set(newPath, moved);
+		return moved;
 	}
 
 	/**
@@ -503,6 +525,24 @@ export class RecordingSidecarStore {
 	}
 
 	/**
+	 * Subscribes to changes of any recording's document. The store writes
+	 * through the adapter, which raises no vault event, so a reader that
+	 * shows sidecar data - the recording panel - learns of a new transcript,
+	 * a renamed speaker, or a new chapter only from here. Renames and deletes
+	 * of the recording itself are not announced: they are vault events, and a
+	 * reader hears of them there. Neither is a playback position, which no
+	 * reader shows.
+	 * @param listener - Called with the recording path after each change
+	 * @returns Unsubscribes the listener
+	 */
+	onChange(listener: (path: string) => void): () => void {
+		this.listeners.add(listener);
+		return () => {
+			this.listeners.delete(listener);
+		};
+	}
+
+	/**
 	 * Drops the in-memory cache so later reads re-read from disk. Used when
 	 * the feature is torn down.
 	 */
@@ -514,7 +554,7 @@ export class RecordingSidecarStore {
 	/**
 	 * Every recording in the vault that has a sidecar, with the document it
 	 * holds. One pass over the vault's files, and each sidecar is parsed and
-	 * cached at most once through {@link load} - a later call finds them all
+	 * cached at most once through {@link read} - a later call finds them all
 	 * cached and touches the disk not at all. The reads run concurrently
 	 * rather than one await at a time, which is what keeps a vault with
 	 * hundreds of recordings from paying hundreds of serialized round-trips.
@@ -534,7 +574,7 @@ export class RecordingSidecarStore {
 		return Promise.all(
 			recordings.map(async (path) => ({
 				path,
-				sidecar: await this.load(path),
+				sidecar: await this.read(path),
 			})),
 		);
 	}
@@ -591,6 +631,21 @@ export class RecordingSidecarStore {
 	 */
 	private sidecarPath(path: string): string {
 		return `${path}${SIDECAR_SUFFIX}`;
+	}
+
+	/**
+	 * Returns the document for a reader outside the write chain, after any
+	 * queued move of the sidecar to this path. Tasks inside the chain call
+	 * {@link load} directly: the chain already runs them after every move
+	 * queued before them, and one queued before a move must not wait on it.
+	 * @param path - Vault-relative recording path
+	 */
+	private async read(path: string): Promise<RecordingSidecar> {
+		const move = this.pendingMoves.get(path);
+		if (move && !this.cache.has(path)) {
+			await move;
+		}
+		return this.load(path);
 	}
 
 	/**
@@ -658,10 +713,12 @@ export class RecordingSidecarStore {
 	 * @param path - Vault-relative recording path
 	 * @param change - Mutation applied to the cached document; return false
 	 *   to signal nothing changed
+	 * @param announce - Whether listeners hear of the change
 	 */
 	private async mutate(
 		path: string,
 		change: (sidecar: RecordingSidecar) => void | boolean,
+		announce = true,
 	): Promise<void> {
 		let blocked = false;
 		await this.enqueue(async () => {
@@ -672,6 +729,12 @@ export class RecordingSidecarStore {
 			}
 			if (change(sidecar) === false) {
 				return;
+			}
+			// After the cached document changed rather than after the write:
+			// reads answer from the cache, so a listener re-reading now sees
+			// the change even when the disk write below fails.
+			if (announce) {
+				this.notify(path);
 			}
 			const file = this.sidecarPath(path);
 			try {
@@ -700,6 +763,25 @@ export class RecordingSidecarStore {
 					'writes to it are paused so the stored data is not overwritten. ' +
 					'Restore or remove the file to resume.',
 			);
+		}
+	}
+
+	/**
+	 * Tells every listener a recording's document changed. A listener that
+	 * throws is logged and skipped, so one broken reader can neither fail the
+	 * mutation nor keep the others from hearing of it.
+	 * @param path - Vault-relative recording path
+	 */
+	private notify(path: string): void {
+		for (const listener of this.listeners) {
+			try {
+				listener(path);
+			} catch (error) {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} A sidecar change listener failed:`,
+					error,
+				);
+			}
 		}
 	}
 

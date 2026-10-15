@@ -1455,8 +1455,19 @@ export const COMMAND_IDS = {
 	searchMarkers: 'search-markers',
 	retryFailedParts: 'retry-failed-transcription-parts',
 	openTranscriptionQueue: 'open-transcription-queue',
+	openRecordingPanel: 'open-recording-panel',
 	exportChapters: 'export-chapters-and-markers',
 	addPlaybackBookmark: 'add-playback-bookmark',
 	addPlaybackChapter: 'add-playback-chapter',
 	showReleaseNotes: 'show-release-notes',
 } as const;
+
+/** View type the recording panel is registered under. */
+export const RECORDING_PANEL_VIEW_TYPE = 'advanced-audio-recorder-panel';
+
+/**
+ * Local-storage key recording that the recording panel was placed in the
+ * sidebar on this device, so a panel the user closed is not put back.
+ */
+export const RECORDING_PANEL_PLACED_KEY =
+	'advanced-audio-recorder-panel-placed';

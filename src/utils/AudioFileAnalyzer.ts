@@ -188,15 +188,60 @@ async function probeFileMetadata(
 	app: App,
 	file: TFile,
 ): Promise<ProbedAudioMetadata | null> {
-	const url = app.vault.getResourcePath(file);
-	const ranged = await probeAudioMetadataAt(url, file.path);
-	if (ranged) {
-		return await withReadDuration(ranged, () =>
-			probeMediaDurationSeconds(url),
-		);
+	const { metadata } = await probeAtAddress(app, file);
+	if (metadata) {
+		return metadata;
 	}
 	const bytes = await app.vault.readBinary(file);
 	return await readAudioMetadata(bytes, file.path);
+}
+
+/**
+ * The cheap half of {@link probeFileMetadata}: the container headers over
+ * ranged reads, completed with a length from the media element at the same
+ * address when the headers lack one. Shared with {@link probeDurationSeconds}
+ * so the two cannot disagree on what a recording's length is.
+ * @param app - Obsidian App
+ * @param file - The recording to measure
+ * @returns The resource address, and the metadata or null when the
+ *   container could not be parsed
+ */
+async function probeAtAddress(
+	app: App,
+	file: TFile,
+): Promise<{ url: string; metadata: ProbedAudioMetadata | null }> {
+	const url = app.vault.getResourcePath(file);
+	const ranged = await probeAudioMetadataAt(url, file.path);
+	return {
+		url,
+		metadata: ranged
+			? await withReadDuration(ranged, () =>
+					probeMediaDurationSeconds(url),
+				)
+			: null,
+	};
+}
+
+/**
+ * A recording's length, read only through the cheap readers: the container
+ * headers over ranged reads, then the browser's own media pipeline at the
+ * same address. Never the bytes: a caller that merely displays a length - the
+ * recording panel, which reads it because a note was opened - must not hold a
+ * multi-hour file in memory, or decode it, for a number nobody asked for.
+ * @param app - Obsidian App
+ * @param file - The recording to measure
+ * @returns The length in seconds, or null when neither reader could give one
+ */
+export async function probeDurationSeconds(
+	app: App,
+	file: TFile,
+): Promise<number | null> {
+	const { url, metadata } = await probeAtAddress(app, file);
+	// A container the probe cannot parse can still be played, and playing
+	// its metadata is what reads a length without the bytes.
+	return metadata
+		? metadata.durationSeconds
+		: await probeMediaDurationSeconds(url);
 }
 
 /**

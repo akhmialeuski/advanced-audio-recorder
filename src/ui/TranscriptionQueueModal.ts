@@ -17,6 +17,7 @@ import {
 	QueueEntryState,
 } from '../transcription/TranscriptionQueue';
 import type { TranscriptionQueue } from '../transcription/TranscriptionQueue';
+import { fileNameOf } from '../utils/paths';
 
 /** Root class of the queue list. */
 const QUEUE_LIST_CLASS = 'aar-queue-list';
@@ -151,7 +152,7 @@ export class TranscriptionQueueModal extends PluginModal {
 	private renderRow(list: HTMLElement, entry: QueueEntry): void {
 		const row = list.createDiv({ cls: QUEUE_ROW_CLASS });
 		row.createSpan({
-			text: entry.path.slice(entry.path.lastIndexOf('/') + 1),
+			text: fileNameOf(entry.path),
 		});
 		row.createSpan({
 			cls: QUEUE_STATE_CLASS,

@@ -9,7 +9,8 @@
  */
 
 import type { App } from 'obsidian';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
+import { flushMicrotasks } from '../helpers/async';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { NoteOutput } from 'src/sidecar/recordingSidecarModel';
@@ -1310,5 +1311,113 @@ describe('RecordingSidecarStore', () => {
 
 			expect(files.has('rec.wav.markers.json')).toBe(false);
 		});
+	});
+});
+
+describe('telling readers a recording changed', () => {
+	it('names the recording whose document a write changed', async () => {
+		const { app } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const changed: string[] = [];
+		store.onChange((path) => changed.push(path));
+
+		await store.setMarkers('rec.wav', [marker('a', 1)]);
+
+		expect(changed).toEqual(['rec.wav']);
+	});
+
+	it('stays quiet for a write that changed nothing', async () => {
+		const { app } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const listener = jest.fn();
+		store.onChange(listener);
+
+		await store.popHistory('rec.wav');
+
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it('stops telling a reader that unsubscribed', async () => {
+		const { app } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const listener = jest.fn();
+		const unsubscribe = store.onChange(listener);
+
+		unsubscribe();
+		await store.setMarkers('rec.wav', [marker('a', 1)]);
+
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it('keeps the write when a reader throws', async () => {
+		const { app, files } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+		store.onChange(() => {
+			throw new Error('broken reader');
+		});
+
+		await store.setMarkers('rec.wav', [marker('a', 1)]);
+
+		expect(rawSidecar(files).markers).toEqual([marker('a', 1)]);
+	});
+});
+
+describe('what readers are and are not told', () => {
+	it('does not announce a playback position, which no reader shows', async () => {
+		const { app } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const listener = jest.fn();
+		store.onChange(listener);
+
+		await store.setPlayback('rec.wav', {
+			position: 30,
+			updatedAt: '2026-01-01T00:00:00Z',
+		});
+
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it('waits for the last of two moves to the same path', async () => {
+		const { app } = makeApp();
+		const writer = new RecordingSidecarStore(app);
+		await writer.setMarkers('first.wav', [marker('first', 1)]);
+		await writer.setMarkers('second.wav', [marker('second', 2)]);
+		const rename = jest.mocked(app.vault.adapter.rename);
+		const moveFile = defined(rename.getMockImplementation(), 'rename');
+		let finishSecondMove: () => void = () => undefined;
+		rename.mockImplementationOnce(moveFile).mockImplementationOnce(
+			(from, to) =>
+				new Promise((resolve) => {
+					finishSecondMove = () => {
+						void moveFile(from, to).then(resolve);
+					};
+				}),
+		);
+		const store = new RecordingSidecarStore(app);
+		const firstMove = store.handleRename('first.wav', 'target.wav');
+		void store.handleRename('second.wav', 'target.wav');
+		await firstMove;
+
+		const read = store.getMarkers('target.wav');
+		// Long enough for a read that does not wait to reach the disk.
+		await flushMicrotasks();
+		finishSecondMove();
+
+		expect(await read).toEqual([marker('second', 2)]);
+	});
+
+	it('reads a renamed recording only after its sidecar was moved', async () => {
+		const { app } = makeApp();
+		await new RecordingSidecarStore(app).setMarkers('rec.wav', [
+			marker('a', 1),
+		]);
+		// A store that has not read the document yet, so nothing is cached.
+		const store = new RecordingSidecarStore(app);
+		void store.handleRename('rec.wav', 'moved.wav');
+
+		const markers = await store.getMarkers('moved.wav');
+
+		expect(markers).toEqual([marker('a', 1)]);
 	});
 });

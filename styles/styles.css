@@ -1826,3 +1826,43 @@ button.aar-player-marker-row {
     color: var(--text-muted);
     cursor: pointer;
 }
+
+/* Recording panel. Its sections reuse the classes of Obsidian's Properties block, so only
+   the picker width, the row of buttons and the space between sections are set here */
+.aar-recording-panel .dropdown {
+    width: 100%;
+}
+
+.aar-recording-panel-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2-1);
+    margin-block: var(--size-4-2);
+}
+
+/* The panel's own buttons close the row, apart from the file actions */
+.aar-recording-panel-tools {
+    display: flex;
+    gap: var(--size-2-1);
+    margin-inline-start: auto;
+}
+
+.aar-recording-panel .metadata-container {
+    margin-block: var(--size-4-2) 0;
+}
+
+/* The Properties block shows its fold arrow only on hover, in the note's left margin.
+   The panel has no margin there, so the arrow sits in the heading and always shows */
+.aar-recording-panel .metadata-properties-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2-2);
+    cursor: var(--cursor);
+}
+
+.aar-recording-panel .metadata-properties-heading .collapse-indicator {
+    position: static;
+    padding: 0;
+    opacity: 1;
+}

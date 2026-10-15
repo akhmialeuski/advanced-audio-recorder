@@ -55,23 +55,13 @@ export function addObsidianDomExtensions<T extends HTMLElement>(el: T): T {
 		return child;
 	};
 
-	extended['createDiv'] = (opts?: {
-		cls?: string;
-		text?: string;
-	}): HTMLElement => {
+	// Obsidian's createDiv takes the same DomElementInfo as createEl.
+	extended['createDiv'] = (opts?: Record<string, unknown>): HTMLElement => {
 		const createEl = extended['createEl'] as (
 			tag: string,
-			opts?: { cls?: string; text?: string },
+			opts?: Record<string, unknown>,
 		) => HTMLElement;
-		return createEl(
-			'div',
-			opts
-				? {
-						...(opts.cls === undefined ? {} : { cls: opts.cls }),
-						...(opts.text === undefined ? {} : { text: opts.text }),
-					}
-				: undefined,
-		);
+		return createEl('div', opts);
 	};
 
 	extended['setText'] = (text: string): void => {

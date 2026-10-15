@@ -153,6 +153,10 @@ export const SETTING = {
 	checkbox: '.checkbox-container',
 	/** A toggle rendered in its on state. */
 	toggleOn: '.checkbox-container.is-enabled',
+	/** A row Obsidian draws as a section heading. */
+	heading: '.setting-item-heading',
+	/** The icon-only button a row adds with addExtraButton. */
+	extraButton: '.extra-setting-button',
 	root: '.aar-settings-root',
 	searchInput: '.aar-search-row input',
 	addItemButton: '.aar-add-item-row button',
@@ -164,6 +168,40 @@ export const SETTING = {
 	speakerPreview: 'button.aar-speaker-preview',
 	silentChannelConvert: '.aar-silent-channel-convert',
 	formatFallbackNote: '.aar-format-fallback-note',
+} as const;
+
+/** The recording panel, built from the classes of Obsidian's Properties block. */
+export const RECORDING_PANEL = {
+	/** One of the panel's own buttons at the end of its toolbar, by its label. */
+	button: (label: string): string =>
+		`.aar-recording-panel-tools [aria-label="${label}"]`,
+	/** The panel's own buttons, in order. */
+	buttons: '.aar-recording-panel-tools .extra-setting-button',
+	/** The icon button of a file action, by its label. */
+	action: (label: string): string =>
+		`.aar-recording-panel-toolbar > [aria-label="${label}"]`,
+	/** Every file action button, in order. */
+	actions: '.aar-recording-panel-toolbar > .extra-setting-button',
+	/** Every button of the toolbar, file actions first, in order. */
+	toolbarButtons: '.aar-recording-panel-toolbar .extra-setting-button',
+	/** A foldable section. */
+	section: '.metadata-container',
+	/** The heading that folds a section. */
+	sectionHeading: '.metadata-properties-heading',
+	/** A section's title. */
+	sectionTitle: '.metadata-properties-title',
+	/** A section's fold arrow. */
+	foldArrow: '.collapse-indicator',
+	/** One property row. */
+	property: '.metadata-property',
+	/** A property row's key field. */
+	propertyKey: '.metadata-property-key-input',
+	/** A property row's value. */
+	propertyValue: '.metadata-property-value',
+	/** A link in a property value. */
+	propertyLink: '.metadata-property-value .internal-link',
+	/** The hint shown in place of the sections. */
+	hint: '.pane-empty',
 } as const;
 
 /** Modal bodies this plugin renders. */

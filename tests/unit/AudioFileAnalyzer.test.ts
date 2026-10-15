@@ -6,6 +6,7 @@
 import {
 	getAudioFileInfo,
 	isKnownLongerThan,
+	probeDurationSeconds,
 	readAudioMetadata,
 } from 'src/utils/AudioFileAnalyzer';
 import { App, Notice } from 'obsidian';
@@ -587,5 +588,45 @@ describe('isKnownLongerThan', () => {
 		// check that exists to keep it out.
 		expect(isKnownLongerThan(null, 60)).toBe(false);
 		expect(isKnownLongerThan(null, 0)).toBe(false);
+	});
+});
+
+describe('probeDurationSeconds', () => {
+	/** An app with a recording whose bytes a test can watch being read. */
+	function createSut(): { app: App; file: TFile } {
+		const app = new App();
+		const file = createFile('long.webm', { size: 900_000_000 });
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 1,
+		});
+		return { app, file };
+	}
+
+	it('answers the length the container headers carry', async () => {
+		const { app, file } = createSut();
+		mockComputeDuration.mockResolvedValue(3600);
+
+		expect(await probeDurationSeconds(app, file)).toBe(3600);
+	});
+
+	it('asks the browser for a length the headers do not carry', async () => {
+		const { app, file } = createSut();
+		mockComputeDuration.mockResolvedValue(0);
+		mediaDuration = 42;
+
+		expect(await probeDurationSeconds(app, file)).toBe(42);
+	});
+
+	it('never reads the bytes of a container the probe cannot parse', async () => {
+		const { app, file } = createSut();
+		mockGetPrimaryAudioTrack.mockRejectedValue(
+			new Error('unparseable container'),
+		);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+		await probeDurationSeconds(app, file);
+
+		expect(app.vault.readBinary).not.toHaveBeenCalled();
 	});
 });

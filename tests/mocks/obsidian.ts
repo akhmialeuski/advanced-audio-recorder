@@ -198,6 +198,19 @@ export class Plugin {
 		this.settingTabs.push(settingTab);
 	}
 
+	/** View factories the plugin registered, by view type. */
+	readonly registeredViews = new Map<
+		string,
+		(leaf: WorkspaceLeaf) => ItemView
+	>();
+
+	registerView(
+		type: string,
+		factory: (leaf: WorkspaceLeaf) => ItemView,
+	): void {
+		this.registeredViews.set(type, factory);
+	}
+
 	addStatusBarItem(): HTMLElement {
 		const el = addObsidianDomExtensions(document.createElement('div'));
 		this.statusBarItems.push(el);
@@ -300,6 +313,7 @@ export class Plugin {
 export class App {
 	vault: Vault = new Vault();
 	workspace: Workspace = new Workspace();
+
 	metadataCache: MetadataCache = new MetadataCache();
 	fileManager: FileManager = new FileManager(this.vault);
 	/**
@@ -311,6 +325,26 @@ export class App {
 		open?: () => void;
 		openTabById?: (id: string) => void;
 	};
+
+	constructor() {
+		// The workspace builds leaves, and a leaf hands its view the app.
+		this.workspace.app = this;
+	}
+
+	/** What the app keeps in this device's local storage for the vault. */
+	readonly localStorage = new Map<string, unknown>();
+
+	loadLocalStorage = jest.fn(
+		(key: string): unknown => this.localStorage.get(key) ?? null,
+	);
+
+	saveLocalStorage = jest.fn((key: string, data: unknown): void => {
+		if (data === null) {
+			this.localStorage.delete(key);
+		} else {
+			this.localStorage.set(key, data);
+		}
+	});
 }
 
 /**
@@ -670,9 +704,34 @@ export class Workspace extends Events {
 
 	getLeaf = jest.fn((_newLeaf?: unknown) => this.leaf);
 
+	/** Obsidian's debounced layout save, recorded rather than run. */
+	requestSaveLayout = jest.fn((): void => {
+		// Nothing is saved in a test
+	});
+
 	iterateAllLeaves = jest.fn((_callback: (leaf: unknown) => void): void => {
 		// No leaves unless a test seeds them
 	});
+
+	ensureSideLeaf = jest.fn(
+		async (
+			type: string,
+			_side: 'left' | 'right',
+			options: { active?: boolean; reveal?: boolean } = {},
+		): Promise<WorkspaceLeaf> => {
+			const leaf = new WorkspaceLeaf(this.app);
+			await leaf.setViewState({
+				type,
+				...(options.active === undefined
+					? {}
+					: { active: options.active }),
+			});
+			return leaf;
+		},
+	);
+
+	/** The app this workspace belongs to, set by the mock App. */
+	app: App | null = null;
 
 	/**
 	 * Sets what getActiveViewOfType answers with.
@@ -998,6 +1057,92 @@ export class Component {
 	}
 }
 
+/** Mock WorkspaceSidedock: a sidebar that can be collapsed and expanded. */
+/**
+ * Mock WorkspaceLeaf: holds the view state it was given, the way a sidebar
+ * tab the plugin opened would.
+ */
+export class WorkspaceLeaf {
+	/** The view this leaf shows, when a test or setViewState put one there. */
+	view: unknown = null;
+	/** The last state set on the leaf. */
+	viewState: { type: string; active?: boolean } | null = null;
+
+	constructor(readonly app: App | null = null) {}
+
+	setViewState = jest.fn(
+		(state: { type: string; active?: boolean }): Promise<void> => {
+			this.viewState = state;
+			return Promise.resolve();
+		},
+	);
+}
+
+/**
+ * Mock ItemView: a Component over a leaf, with the container Obsidian gives a
+ * view and its content element, and the header actions it adds recorded so a
+ * test can click them.
+ */
+export abstract class ItemView extends Component {
+	app: App;
+	containerEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+	contentEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+	/** Header actions added through addAction, in order. */
+	readonly actions: { icon: string; title: string; el: HTMLElement }[] = [];
+
+	constructor(readonly leaf: WorkspaceLeaf) {
+		super();
+		this.app = leaf.app ?? new App();
+		this.containerEl.appendChild(this.contentEl);
+	}
+
+	abstract getViewType(): string;
+	abstract getDisplayText(): string;
+
+	getIcon(): string {
+		return '';
+	}
+
+	onOpen(): Promise<void> {
+		return Promise.resolve();
+	}
+
+	onClose(): Promise<void> {
+		return Promise.resolve();
+	}
+
+	getState(): Record<string, unknown> {
+		return {};
+	}
+
+	setState(_state: unknown, _result: unknown): Promise<void> {
+		return Promise.resolve();
+	}
+
+	addAction(
+		icon: string,
+		title: string,
+		callback: (event: MouseEvent) => unknown,
+	): HTMLElement {
+		const el = addObsidianDomExtensions(document.createElement('a'));
+		el.setAttribute('aria-label', title);
+		el.setAttribute('data-icon', icon);
+		el.addEventListener('click', (event) => {
+			callback(event);
+		});
+		this.actions.push({ icon, title, el });
+		return el;
+	}
+
+	onPaneMenu(_menu: Menu, _source: string): void {
+		// Obsidian adds its own pane entries here; none matter to a test
+	}
+}
+
 /**
  * Mock MarkdownRenderChild bound to a container element.
  */
@@ -1278,6 +1423,9 @@ export class Setting {
 	}
 
 	setHeading(): this {
+		// Obsidian's own heading row class, so a test can tell a heading from
+		// a row with a value.
+		this.settingEl.classList.add('setting-item-heading');
 		return this;
 	}
 
@@ -1487,6 +1635,14 @@ export class DropdownComponent {
 	/** Change handler, stored as Obsidian does for test triggering. */
 	changeCallback: ((value: string) => void) | null = null;
 
+	/**
+	 * @param containerEl - Where Obsidian puts the dropdown when it is built
+	 *   on its own; a Setting row attaches it itself
+	 */
+	constructor(containerEl?: HTMLElement) {
+		containerEl?.appendChild(this.selectEl);
+	}
+
 	addOption(value: string, display: string): this {
 		const option = document.createElement('option');
 		option.value = value;
@@ -1645,13 +1801,24 @@ export class ExtraButtonComponent {
 		document.createElement('div'),
 	);
 	disabled = false;
+	private clickCallback: (() => void) | null = null;
 
-	constructor() {
+	/**
+	 * @param containerEl - Where Obsidian puts the button when it is built on
+	 *   its own; a Setting row attaches it itself
+	 */
+	constructor(containerEl?: HTMLElement) {
+		containerEl?.appendChild(this.extraSettingsEl);
 		this.extraSettingsEl.classList.add(
 			'clickable-icon',
 			'extra-setting-button',
 		);
 		this.extraSettingsEl.setAttribute('tabindex', '0');
+		this.extraSettingsEl.addEventListener('click', () => {
+			if (!this.disabled) {
+				this.clickCallback?.();
+			}
+		});
 	}
 
 	setIcon(icon: string): this {
@@ -1679,8 +1846,13 @@ export class ExtraButtonComponent {
 		return this;
 	}
 
+	/**
+	 * Obsidian's own onClick: one handler, replaced by the next call, and not
+	 * called while the button is disabled.
+	 * @param callback - What a click runs
+	 */
 	onClick(callback: () => void): this {
-		this.extraSettingsEl.addEventListener('click', callback);
+		this.clickCallback = callback;
 		return this;
 	}
 }
@@ -1729,6 +1901,10 @@ export class ToggleComponent {
 		// that the toggle is off passes however it was set.
 		this.toggleEl.classList.toggle('is-enabled', value);
 		return this;
+	}
+
+	getValue(): boolean {
+		return this.value;
 	}
 
 	setDisabled(disabled: boolean): this {
@@ -1935,7 +2111,7 @@ export const Platform = {
  * answers from: a test that models an older Obsidian moves it (through
  * __setApiVersion) rather than keeping a second version beside this one.
  */
-export const DEFAULT_MOCK_API_VERSION = '1.13.0';
+export const DEFAULT_MOCK_API_VERSION = '1.13.1';
 
 export let apiVersion: string = DEFAULT_MOCK_API_VERSION;
 

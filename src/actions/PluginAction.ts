@@ -215,6 +215,8 @@ export interface SearchServices {
 	readonly openMarkerSearch: () => Promise<void>;
 	/** Shows the transcription queue, whatever state it is in. */
 	readonly openTranscriptionQueue: () => void;
+	/** Opens the recording panel in the sidebar, creating it if closed. */
+	readonly openRecordingPanel: () => Promise<void>;
 }
 
 /**
