@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 99.09,
-			"branches": 96.12,
-			"functions": 99.22,
-			"lines": 99.1
+			"statements": 99.11,
+			"branches": 96.22,
+			"functions": 99.23,
+			"lines": 99.11
 		},
 		"files": {
 			"src/constants.ts": {
@@ -20,10 +20,10 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 99.59,
-				"branches": 97.67,
-				"functions": 99.19,
-				"lines": 99.79
+				"statements": 99.6,
+				"branches": 97.72,
+				"functions": 99.21,
+				"lines": 99.8
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -548,16 +548,16 @@
 				"lines": 100
 			},
 			"src/providers/engineSettings.ts": {
-				"statements": 98.5,
-				"branches": 88.63,
+				"statements": 98.52,
+				"branches": 97.91,
 				"functions": 100,
-				"lines": 98.5
+				"lines": 98.52
 			},
 			"src/providers/providers.ts": {
-				"statements": 97.6,
+				"statements": 97.81,
 				"branches": 83.33,
-				"functions": 98.86,
-				"lines": 97.52
+				"functions": 99,
+				"lines": 97.74
 			},
 			"src/quicknotes/QuickNoteController.ts": {
 				"statements": 100,
@@ -650,10 +650,10 @@
 				"lines": 96.39
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 99.07,
+				"statements": 99.06,
 				"branches": 93.33,
 				"functions": 100,
-				"lines": 99.06
+				"lines": 99.05
 			},
 			"src/recording/RecordingMarkerCoordinator.ts": {
 				"statements": 100,
@@ -746,10 +746,16 @@
 				"lines": 100
 			},
 			"src/settings/SettingsTab.ts": {
-				"statements": 96.76,
+				"statements": 96.74,
 				"branches": 95.23,
-				"functions": 94.31,
-				"lines": 96.74
+				"functions": 94.18,
+				"lines": 96.72
+			},
+			"src/settings/apiKeySecrets.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
 			},
 			"src/settings/controlValues.ts": {
 				"statements": 100,
@@ -788,10 +794,10 @@
 				"lines": 100
 			},
 			"src/settings/settingControls.ts": {
-				"statements": 99.48,
-				"branches": 98.76,
+				"statements": 100,
+				"branches": 100,
 				"functions": 100,
-				"lines": 99.47
+				"lines": 100
 			},
 			"src/settings/settingsAttention.ts": {
 				"statements": 100,
@@ -812,10 +818,10 @@
 				"lines": 100
 			},
 			"src/settings/settingsSerialization.ts": {
-				"statements": 99,
-				"branches": 95.89,
+				"statements": 99.04,
+				"branches": 95.97,
 				"functions": 100,
-				"lines": 99
+				"lines": 99.03
 			},
 			"src/settings/settingsValidation.ts": {
 				"statements": 100,
@@ -878,10 +884,10 @@
 				"lines": 100
 			},
 			"src/settings/sections/enginesSection.ts": {
-				"statements": 98.41,
+				"statements": 98.38,
 				"branches": 94.11,
 				"functions": 100,
-				"lines": 98.41
+				"lines": 98.38
 			},
 			"src/settings/sections/fileStorageSection.ts": {
 				"statements": 100,
@@ -944,10 +950,10 @@
 				"lines": 100
 			},
 			"src/settings/sections/transcriptionEngineSection.ts": {
-				"statements": 96,
-				"branches": 75,
+				"statements": 100,
+				"branches": 100,
 				"functions": 100,
-				"lines": 96
+				"lines": 100
 			},
 			"src/settings/sections/transcriptionSection.ts": {
 				"statements": 100,
@@ -1347,7 +1353,7 @@
 			},
 			"src/ui/ContextMenu.ts": {
 				"statements": 100,
-				"branches": 98.85,
+				"branches": 99.04,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1477,6 +1483,18 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/ui/iconButton.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/ui/progressBar.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/ui/transcriptLineDialog.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -1484,6 +1502,12 @@
 				"lines": 100
 			},
 			"src/ui/transcriptLineEdits.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/ui/volumeSlider.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -1618,9 +1642,9 @@
 		}
 	},
 	"suite": {
-		"suites": 306,
-		"tests": 7415,
-		"passed": 7415,
+		"suites": 319,
+		"tests": 7574,
+		"passed": 7574,
 		"failed": 0,
 		"todo": 0
 	}
