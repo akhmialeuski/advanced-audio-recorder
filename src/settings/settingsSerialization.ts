@@ -13,6 +13,7 @@ import { isDeviceSelectionSupported } from '../platform/capabilities';
 import { LLM_JOBS, LLM_VENDORS } from '../transcription/llm/vendors';
 import { TRANSCRIPTION_ENGINES } from '../transcription/providers/engines';
 import {
+	ACCOUNTS,
 	ENGINES,
 	ENGINE_IDS,
 	accountOf,
@@ -21,6 +22,7 @@ import {
 	type EngineDescriptor,
 } from '../providers/providers';
 import { reconcileEngineSettings } from '../providers/engineSettings';
+import { normalizeApiKeySecretIds } from './apiKeySecrets';
 import {
 	MIN_TRACK_GAIN_DB,
 	MAX_TRACK_GAIN_DB,
@@ -240,6 +242,13 @@ export function normalizePerPlatformSettings(
  * device fields are written back into its `perPlatform` branch, and the
  * flat legacy fields are dropped from the output so platform-scoped
  * values live in exactly one place on disk.
+ *
+ * An API key is written only for an account that links no keychain secret.
+ * With an ID the key field is a runtime copy of the secret, and writing it
+ * would put the key back into data.json and into the backup beside it, which
+ * is what keeping it in the keychain is for. Without one the field is the key
+ * itself - a key the keychain refused, or one a local endpoint never needed -
+ * and dropping it would lose it.
  * @param settings - Live settings to serialize
  * @param platformKind - Platform whose branch receives the active flat
  *   fields (defaults to the current platform)
@@ -264,7 +273,7 @@ export function serializeSettings(
 			trackAudioSources,
 		},
 	};
-	return {
+	const serialized: SerializedAudioRecorderSettings = {
 		...rest,
 		perPlatform: {
 			[PlatformKind.Desktop]: serializePlatformScopedSettings(
@@ -275,6 +284,13 @@ export function serializeSettings(
 			),
 		},
 	};
+	const fields = serialized as unknown as Record<string, unknown>;
+	for (const account of Object.values(ACCOUNTS)) {
+		if (account.apiKeySecret(settings) !== '') {
+			fields[account.apiKeyKey] = '';
+		}
+	}
+	return serialized;
 }
 
 /**
@@ -320,6 +336,9 @@ export function mergeSettings(
 	// transcription back at. A field a migration resolves through a registry has
 	// to name something by the time the migration asks.
 	reconcileTranscriptionEngines(merged, userSettings);
+	// Before the legacy key is carried over: whether an account already links a
+	// secret is asked of the ID field, which disk data may hold as anything.
+	normalizeApiKeySecretIds(merged);
 	migrateLegacyLlmSettings(merged, userSettings);
 	migrateModelCatalogues(merged, userSettings);
 	// The same rule that holds after an edit on an engine's page, applied to a
@@ -839,8 +858,16 @@ function migrateLegacyLlmSettings(
 		const account = accountOf(engine);
 		const legacyKey = legacyString(raw.llmApiKey);
 		// A key already set is never overwritten, so the migration cannot
-		// clobber a freshly entered token.
-		if (account && legacyKey && !account.apiKey(merged)) {
+		// clobber a freshly entered token, and neither is an account that
+		// links a keychain secret: its key is the secret's, whatever the field
+		// holds on disk. A key carried over here is plain text for the moment
+		// and is moved into the keychain once the plugin has loaded.
+		if (
+			account &&
+			legacyKey &&
+			!account.apiKey(merged) &&
+			!account.apiKeySecret(merged)
+		) {
 			account.setApiKey(merged, legacyKey);
 		}
 		adoptLegacyChatModel(merged, engine, legacyString(raw.llmModel).trim());
