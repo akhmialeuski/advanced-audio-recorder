@@ -2,7 +2,7 @@
 	"coverage": {
 		"total": {
 			"statements": 98.97,
-			"branches": 95.69,
+			"branches": 95.71,
 			"functions": 98.97,
 			"lines": 98.97
 		},
@@ -86,10 +86,10 @@
 				"lines": 97.87
 			},
 			"src/audio/AudioEncoder.ts": {
-				"statements": 94.8,
+				"statements": 94.73,
 				"branches": 89.47,
 				"functions": 100,
-				"lines": 94.8
+				"lines": 94.73
 			},
 			"src/audio/AudioFormatConverter.ts": {
 				"statements": 100,
@@ -189,8 +189,8 @@
 			},
 			"src/cleanup/AudioProcessingService.ts": {
 				"statements": 100,
-				"branches": 88.37,
-				"functions": 90.9,
+				"branches": 90.24,
+				"functions": 90,
 				"lines": 100
 			},
 			"src/cleanup/audioDsp.ts": {
@@ -860,10 +860,10 @@
 				"lines": 100
 			},
 			"src/sidecar/RecordingSidecarStore.ts": {
-				"statements": 98.92,
-				"branches": 97.61,
+				"statements": 98.93,
+				"branches": 97.65,
 				"functions": 98.71,
-				"lines": 98.89
+				"lines": 98.9
 			},
 			"src/sidecar/recordingSidecarModel.ts": {
 				"statements": 97.67,
@@ -1498,9 +1498,9 @@
 		}
 	},
 	"suite": {
-		"suites": 283,
-		"tests": 6892,
-		"passed": 6892,
+		"suites": 284,
+		"tests": 6905,
+		"passed": 6905,
 		"failed": 0,
 		"todo": 0
 	}
