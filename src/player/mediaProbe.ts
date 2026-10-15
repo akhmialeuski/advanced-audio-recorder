@@ -26,11 +26,19 @@ export const MEDIA_KIND = {
 export type MediaKind = (typeof MEDIA_KIND)[keyof typeof MEDIA_KIND];
 
 /**
- * How long either reader may take before it is given up on: the header read
- * before the element is tried, and the element before a plain audio file is
- * assumed.
+ * How long the whole probe may take before a plain audio file is assumed:
+ * the header read and the element together, so a stalled header read does
+ * not add the element's wait on top of its own.
  */
 const PROBE_TIMEOUT_MS = 4000;
+
+/**
+ * How much of {@link PROBE_TIMEOUT_MS} the header read may use before the
+ * element is tried. The resource is a local file read by range, which
+ * answers in milliseconds, so a read still pending after this has stalled,
+ * and the element keeps the rest of the budget to answer in.
+ */
+const HEADER_READ_TIMEOUT_MS = 1000;
 
 /**
  * A probe's classification plus whether it came from real metadata.
@@ -56,9 +64,10 @@ export interface MediaProbeResult {
 export async function probeMediaKind(
 	resourceUrl: string,
 ): Promise<MediaProbeResult> {
+	const deadline = Date.now() + PROBE_TIMEOUT_MS;
 	return (
 		(await classifyFromHeaders(resourceUrl)) ??
-		(await probeWithElement(resourceUrl))
+		(await probeWithElement(resourceUrl, deadline - Date.now()))
 	);
 }
 
@@ -100,7 +109,7 @@ async function classifyFromHeaders(
 					// the scope disposes the input, which cancels it.
 					timer = window.setTimeout(() => {
 						resolve(null);
-					}, PROBE_TIMEOUT_MS);
+					}, HEADER_READ_TIMEOUT_MS);
 				}),
 			]),
 		);
@@ -127,8 +136,12 @@ function canPlayType(mimeType: string): boolean {
  * metadata without video is audio; a load error is unsupported. Resolves
  * to audio, not confident, if metadata never arrives.
  * @param resourceUrl - Resource URL of the file
+ * @param timeoutMs - What is left of the probe's deadline
  */
-function probeWithElement(resourceUrl: string): Promise<MediaProbeResult> {
+function probeWithElement(
+	resourceUrl: string,
+	timeoutMs: number,
+): Promise<MediaProbeResult> {
 	return new Promise((resolve) => {
 		const el = createEl('video');
 		el.preload = 'metadata';
@@ -167,7 +180,7 @@ function probeWithElement(resourceUrl: string): Promise<MediaProbeResult> {
 		);
 		timer = window.setTimeout(() => {
 			settle(MEDIA_KIND.audio, false);
-		}, PROBE_TIMEOUT_MS);
+		}, timeoutMs);
 		el.src = resourceUrl;
 	});
 }

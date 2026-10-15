@@ -196,10 +196,10 @@ describe('probeMediaKind from the container headers', () => {
 			getVideoTracks.mockReturnValue(new Promise(() => {}));
 
 			const result = probeMediaKind('app://media');
-			await jest.advanceTimersByTimeAsync(4000);
+			await jest.advanceTimersByTimeAsync(1000);
 
 			// The stalled read was cancelled by disposing its input, and the
-			// element took over with its own deadline.
+			// element took over with what is left of the probe's deadline.
 			expect(inputDispose).toHaveBeenCalledTimes(1);
 			expect(fakeVideo.src).toBe('app://media');
 			fakeVideo.fire('loadedmetadata');
@@ -207,6 +207,26 @@ describe('probeMediaKind from the container headers', () => {
 				kind: 'audio',
 				confident: true,
 			});
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	// The two readers share one deadline: a stalled header read and a silent
+	// element together keep the embed waiting no longer than the element
+	// alone used to.
+	it('settles within one probe deadline when neither reader answers', async () => {
+		jest.useFakeTimers();
+		try {
+			getVideoTracks.mockReturnValue(new Promise(() => {}));
+			let settled: unknown = null;
+			void probeMediaKind('app://media').then((value) => {
+				settled = value;
+			});
+
+			await jest.advanceTimersByTimeAsync(4000);
+
+			expect(settled).toEqual({ kind: 'audio', confident: false });
 		} finally {
 			jest.useRealTimers();
 		}
