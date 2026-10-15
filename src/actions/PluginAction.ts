@@ -140,6 +140,17 @@ export interface ActionFamily<TContext> {
 	 * Resolved on every palette check, so it never holds a stale target.
 	 */
 	activeTargets(): readonly TContext[];
+	/**
+	 * Answers the palette's check without listing the targets, for a family
+	 * whose targets take a pass over the vault to find. Obsidian runs the
+	 * check for every command each time the palette opens, so such a family
+	 * says from the settings alone whether the action is offered, and its
+	 * targets are listed only when the command runs. A family whose targets
+	 * come from what is active leaves it out.
+	 */
+	readonly offeredWithoutTargets?: (
+		action: PluginCommand<TContext>,
+	) => boolean;
 	/** How the command line names a target. */
 	readonly cliTarget: CliTarget<TContext>;
 	/** Names a target in a picker row and in a command-line answer. */

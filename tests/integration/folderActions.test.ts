@@ -69,6 +69,26 @@ describe('the folders the palette offers', () => {
 		]);
 	});
 
+	it.each([
+		{ state: 'on', settings: RUNNABLE, offered: true },
+		{
+			state: 'off',
+			settings: { ...RUNNABLE, transcriptionEnabled: false },
+			offered: false,
+		},
+	])(
+		'answers the palette with transcription $state without reading the files',
+		({ settings, offered }) => {
+			const sut = createSut(settings);
+			const files = jest.spyOn(sut.app.vault, 'getFiles');
+
+			expect(
+				sut.family.offeredWithoutTargets?.(at(FOLDER_ACTIONS, 0)),
+			).toBe(offered);
+			expect(files).not.toHaveBeenCalled();
+		},
+	);
+
 	it('queues the folder picked', async () => {
 		const sut = createSut();
 		const recordings = at(sut.family.activeTargets(), 1);
@@ -100,6 +120,9 @@ describe('the folders the palette offers', () => {
 describe('the folder a command line names', () => {
 	it.each([
 		{ folder: 'Recordings/2026', named: 'Recordings/2026' },
+		// Written the way a shell completes a directory, or from the root.
+		{ folder: 'Recordings/2026/', named: 'Recordings/2026' },
+		{ folder: '/Recordings', named: 'Recordings' },
 		{ folder: '/', named: 'the whole vault' },
 	])('finds $folder', async ({ folder, named }) => {
 		const sut = createSut();

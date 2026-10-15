@@ -15,6 +15,7 @@ import type { ActionFamily, PluginCommand } from 'src/actions/PluginAction';
 import { asMockPlugin, mockPluginHost } from '../helpers/obsidianMock';
 import { createMockApp } from '../helpers/createApp';
 import { tick } from '../helpers/async';
+import { noticeMessages } from '../mocks/obsidian';
 
 /** A target of the test family: a name, and whether the action takes it. */
 interface Target {
@@ -143,6 +144,50 @@ describe('a family registered on the palette', () => {
 
 		expect(describe(targets[0] as Target)).toBe('a');
 		expect(run).toHaveBeenCalledWith(targets[1]);
+	});
+
+	it('answers a check without listing the targets when the family can', () => {
+		const run = jest.fn();
+		const targets = jest.fn((): Target[] => [{ name: 'a', takes: true }]);
+		const plugin: Plugin = mockPluginHost(createMockApp().app);
+		registerActionCommands(
+			plugin,
+			{
+				actions: [makeAction(run)],
+				activeTargets: targets,
+				offeredWithoutTargets: () => true,
+				cliTarget: { params: {}, resolve: () => [] },
+				describe: (target) => target.name,
+			},
+			jest.fn(),
+		);
+		const command = asMockPlugin(plugin).registeredCommands[0];
+
+		expect(command?.checkCallback?.(true)).toBe(true);
+		expect(targets).not.toHaveBeenCalled();
+
+		command?.checkCallback?.(false);
+
+		expect(run).toHaveBeenCalledWith({ name: 'a', takes: true });
+	});
+
+	it('says so when a command offered unlisted finds nothing to run on', () => {
+		const plugin: Plugin = mockPluginHost(createMockApp().app);
+		registerActionCommands(
+			plugin,
+			{
+				actions: [makeAction()],
+				activeTargets: () => [],
+				offeredWithoutTargets: () => true,
+				cliTarget: { params: {}, resolve: () => [] },
+				describe: (target) => target.name,
+			},
+			jest.fn(),
+		);
+
+		asMockPlugin(plugin).registeredCommands[0]?.checkCallback?.(false);
+
+		expect(noticeMessages()).toContain('"Act" has nothing to run on.');
 	});
 
 	it('does not run while only checking', () => {

@@ -10,6 +10,7 @@
  * @module actions/registerActionCommands
  */
 
+import { Notice } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { ActionFamily, PluginCommand } from './PluginAction';
@@ -82,11 +83,19 @@ export function registerActionCommands<TContext>(
 			name: action.title,
 			icon: action.icon,
 			checkCallback: (checking: boolean): boolean => {
+				if (checking && family.offeredWithoutTargets) {
+					return family.offeredWithoutTargets(action);
+				}
 				const targets = family
 					.activeTargets()
 					.filter((target) => action.isAvailable(target));
 				const [only] = targets;
 				if (only === undefined) {
+					if (!checking) {
+						// Offered on the settings alone, and nothing turned up
+						// to run it on once the targets were listed.
+						new Notice(`"${action.title}" has nothing to run on.`);
+					}
 					return false;
 				}
 				if (!checking) {

@@ -6,7 +6,7 @@
  * @module actions/folderActions
  */
 
-import { TFile, TFolder } from 'obsidian';
+import { normalizePath, TFile, TFolder } from 'obsidian';
 import type { App, CliData } from 'obsidian';
 import { COMMAND_IDS } from '../constants';
 import { isAudioFile } from '../utils/audioFile';
@@ -119,7 +119,7 @@ function namedFolder(
 	const folder =
 		path === '/'
 			? services.app.vault.getRoot()
-			: services.app.vault.getAbstractFileByPath(path);
+			: services.app.vault.getAbstractFileByPath(normalizePath(path));
 	if (folder instanceof TFolder) {
 		return [{ folder, services }];
 	}
@@ -153,6 +153,14 @@ export function folderActionFamily(
 				folder,
 				services,
 			})),
+		// Finding the folders is a pass over every file of the vault, too much
+		// for a check that runs each time the palette opens; whether the
+		// action is offered depends on the settings alone.
+		offeredWithoutTargets: (action) =>
+			action.isAvailable({
+				folder: services.app.vault.getRoot(),
+				services,
+			}),
 		cliTarget: {
 			params: {
 				[FOLDER_PARAM]: valueParam(
