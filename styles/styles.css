@@ -1561,6 +1561,41 @@ button.aar-player-marker-row {
     padding-top: var(--size-4-4);
 }
 
+/* A list declared without a heading still gets a header row on the desktop,
+   because Obsidian puts the list's add button there, as a plus icon whose
+   tooltip names the entry. The row then holds nothing but that icon and stands
+   empty above the filter. The icon moves onto the filter's line instead, so the
+   list opens with one row of controls. The mobile app draws its add row inside
+   the list and builds no header, and a list with nothing in it shows no
+   filter, so neither matches and both keep Obsidian's layout. */
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-group-search {
+    grid-row: 1;
+    grid-column: 1;
+}
+
+/* The header copies the filter's own block padding, so the icon sits level
+   with the input rather than with the top of the row. */
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-item-heading {
+    grid-row: 1;
+    grid-column: 2;
+    margin-bottom: 0;
+    padding-block: var(--size-4-4) var(--setting-items-padding-y);
+    padding-inline: 0 var(--setting-items-padding-x);
+}
+
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-item-heading > .setting-item-name {
+    display: none;
+}
+
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-items {
+    grid-column: 1 / -1;
+}
+
 /* A row that opens a page is a link, and Obsidian marks it with a chevron and
    the pointer cursor of the moment - it declares the transition for a hover
    background on such a row but never sets one on the desktop, so the row reads
