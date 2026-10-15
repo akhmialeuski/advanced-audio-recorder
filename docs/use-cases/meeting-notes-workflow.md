@@ -72,7 +72,7 @@ For a multi-hour meeting, Deepgram sends the whole file in one request, so speak
 
 1. Set **Transcription engine** to **Deepgram**, **Google Gemini**, or **Mistral Voxtral**.
 2. Open **Engines**, then that engine's page, and paste the **API key** for it (follow the linked guide above).
-3. Leave **Model** on its default (`nova-3` for Deepgram, `gemini-3.5-flash` for Gemini, `voxtral-mini-latest` for Voxtral) unless you have a reason to change it.
+3. Leave **Model** on its default (`nova-3` for Deepgram, `gemini-3.8-flash` for Gemini, `voxtral-mini-latest` for Voxtral) unless you have a reason to change it.
 
 ### 2. Enable speaker diarization
 
@@ -133,9 +133,9 @@ This is what turns a wall of transcript text into a usable summary with action i
 
 Each provider starts on its own default model:
 
-- **OpenAI** runs `gpt-5.6-sol` by default.
-- **Anthropic** runs `claude-opus-4-8` by default.
-- **Gemini** runs `gemini-3.5-flash` by default.
+- **OpenAI** runs `gpt-6.1-sol` by default.
+- **Anthropic** runs `claude-opus-5-5` by default.
+- **Gemini** runs `gemini-3.8-flash` by default.
 - **Mistral** runs `mistral-medium-latest` by default.
 - **DeepSeek** runs `deepseek-flash` by default.
 

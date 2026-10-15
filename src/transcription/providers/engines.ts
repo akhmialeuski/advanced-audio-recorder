@@ -164,22 +164,25 @@ export interface TranscriptionEngineDescriptor {
  * USD per audio minute.
  */
 const WHISPER_API_RATES: readonly [string, number][] = [
-	// Groq-hosted Whisper models (priced per hour: $0.02 / $0.04 / $0.111).
-	['distil-whisper-large-v3-en', 0.02 / 60],
+	// Groq-hosted Whisper models (priced per hour: $0.04 / $0.111).
 	['whisper-large-v3-turbo', 0.04 / 60],
 	['whisper-large-v3', 0.111 / 60],
 	// OpenAI whisper-1.
 	['whisper-1', 0.006],
 ];
 
-/** Approximate Deepgram pre-recorded pay-as-you-go rates, USD per minute. */
+/**
+ * Approximate Deepgram pre-recorded pay-as-you-go rates, USD per minute.
+ * Enhanced and Base are published per hour ($0.99 and $0.87) and converted
+ * here.
+ */
 const DEEPGRAM_RATES: readonly [string, number][] = [
-	['enhanced', 0.0145],
+	['enhanced', 0.0165],
 	['whisper', 0.0048],
 	['nova-3', 0.0043],
 	['nova-2', 0.0043],
 	['nova', 0.0043],
-	['base', 0.0125],
+	['base', 0.0145],
 ];
 
 /**
@@ -198,9 +201,9 @@ const VOXTRAL_RATES: readonly [string, number][] = [
 /**
  * Finds the rate whose model-id fragment appears in the (normalized) model id,
  * preferring the longest fragment so more specific entries win: a
- * `whisper-large-v3-turbo` id never resolves through `whisper-large-v3`, and
- * `distil-whisper-large-v3-en` (a distinct, cheaper model) never resolves
- * through the full `whisper-large-v3` rate.
+ * `whisper-large-v3-turbo` id never resolves through the dearer
+ * `whisper-large-v3` rate, and a `claude-opus-5-5` id never resolves through
+ * `claude-opus-5`.
  * @param rates - Rate table as (model-id fragment, rate) pairs
  * @param model - The model id to price
  */

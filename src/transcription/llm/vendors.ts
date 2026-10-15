@@ -102,15 +102,20 @@ export interface LlmVendorDescriptor {
 }
 
 /**
- * Approximate OpenAI chat rates, USD per million tokens. The GPT-5.6 family is
- * the current seeded generation; the 4.x and o-series entries below it were
- * dropped from the seed list but stay priced because the API still serves them
- * for user-saved model lists.
+ * Approximate OpenAI chat rates, USD per million tokens. The GPT-6 family is
+ * the current seeded generation; the GPT-5.6, 4.x and o-series entries below
+ * it were dropped from the seed list but stay priced because the API still
+ * serves them for user-saved model lists. GPT-5.6 Sol is priced at the
+ * promotional rate OpenAI holds at least through November 21, 2026.
  */
 const OPENAI_RATES: readonly [string, LlmRate][] = [
-	['gpt-5.6-sol', { input: 5, output: 30 }],
-	['gpt-5.6-terra', { input: 2.5, output: 15 }],
-	['gpt-5.6-luna', { input: 1, output: 6 }],
+	['gpt-6-astra', { input: 10, output: 50 }],
+	['gpt-6.1-sol', { input: 2, output: 10 }],
+	['gpt-6-sol', { input: 2, output: 10 }],
+	['gpt-6-luna', { input: 0.1, output: 0.5 }],
+	['gpt-5.6-sol', { input: 4, output: 20 }],
+	['gpt-5.6-terra', { input: 2, output: 12 }],
+	['gpt-5.6-luna', { input: 0.2, output: 1.2 }],
 	['gpt-4o-mini', { input: 0.15, output: 0.6 }],
 	['gpt-4.1-mini', { input: 0.4, output: 1.6 }],
 	['gpt-4.1', { input: 2.0, output: 8.0 }],
@@ -122,11 +127,19 @@ const OPENAI_RATES: readonly [string, LlmRate][] = [
  * Approximate Anthropic rates, USD per million tokens. The bare
  * `claude-opus-4` fragment prices the $5/$25 Opus 4.5-4.8 tier; the longer
  * `claude-opus-4-1`/`claude-opus-4-0` fragments win the longest-match rule for
- * the legacy $15/$75 models so they do not inherit the cheaper rate.
+ * the legacy $15/$75 models so they do not inherit the cheaper rate. The same
+ * rule lets `claude-opus-5-5` win over the $5/$25 `claude-opus-5`, while
+ * `claude-fable-5` and `claude-sonnet-5` price their 5.1 and 5.5 successors,
+ * which cost the same. Haiku 5.5 is billed five times higher once a prompt
+ * passes 100K tokens; a transcript that long is rare, so the lower tier is
+ * stored and such a run costs more than the estimate.
  */
 const ANTHROPIC_RATES: readonly [string, LlmRate][] = [
 	['claude-fable-5', { input: 10, output: 50 }],
-	['claude-sonnet-5', { input: 3, output: 15 }],
+	['claude-opus-5-5', { input: 4, output: 20 }],
+	['claude-opus-5', { input: 5, output: 25 }],
+	['claude-sonnet-5', { input: 2, output: 10 }],
+	['claude-haiku-5', { input: 0.1, output: 0.5 }],
 	['claude-opus-4-1', { input: 15, output: 75 }],
 	['claude-opus-4-0', { input: 15, output: 75 }],
 	['claude-opus-4', { input: 5, output: 25 }],

@@ -7,6 +7,7 @@
 
 import {
 	ANTHROPIC_API_VERSION,
+	ANTHROPIC_LOW_EFFORT,
 	GEMINI_API_KEY_HEADER,
 	LLM_PROVIDER_IDS,
 	LLM_REQUEST_TIMEOUT_MS,
@@ -148,17 +149,17 @@ type OutputTokenParam =
 const HTTP_BAD_REQUEST = 400;
 
 /**
- * Whether a failure is the endpoint saying it does not know this parameter,
- * which is the one failure worth re-sending under the other name.
+ * Whether a failure is the endpoint saying it does not take this parameter,
+ * which is the one failure worth re-sending without it or under another name.
  *
  * Narrow on purpose: a 400 naming the very field just sent. Anything else - a
  * bad key, a rate limit, a model that does not exist - is the caller's answer
- * and is raised as it came, rather than retried under a name that would fail
- * the same way.
+ * and is raised as it came, rather than retried in a shape that would fail the
+ * same way.
  * @param error - The failure the request threw
  * @param param - The parameter name that request carried
  */
-function rejectedTokenParam(error: unknown, param: OutputTokenParam): boolean {
+function rejectedParam(error: unknown, param: string): boolean {
 	return (
 		error instanceof HttpError &&
 		error.status === HTTP_BAD_REQUEST &&
@@ -237,7 +238,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 			} catch (error) {
 				lastError = error;
 				const isLast = index === candidates.length - 1;
-				if (isLast || !rejectedTokenParam(error, param)) {
+				if (isLast || !rejectedParam(error, param)) {
 					throw error;
 				}
 				continue;
@@ -305,12 +306,41 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 }
 
 /**
+ * The optional request fields the Anthropic provider sends that a model may
+ * refuse. A refusal is recognised by this name or by the body key the field
+ * travels under, because the wording of a refusal is not documented.
+ */
+const AnthropicOptionalField = {
+	/** The caller's sampling temperature, refused by Opus 4.7 and later. */
+	Temperature: 'temperature',
+	/**
+	 * The reasoning effort under `output_config`, refused by Sonnet 4.5,
+	 * Haiku 4.5 and older models.
+	 */
+	Effort: 'effort',
+} as const;
+
+/** One optional Anthropic field (derived from {@link AnthropicOptionalField}). */
+type AnthropicOptionalField =
+	(typeof AnthropicOptionalField)[keyof typeof AnthropicOptionalField];
+
+/**
  * Anthropic Messages API provider (Claude). Uses `x-api-key` auth and the
  * direct-browser-access header so the request works from the renderer.
  */
 export class AnthropicLlmProvider implements LlmProvider {
 	readonly id = LLM_PROVIDER_IDS.ANTHROPIC;
 	readonly label = EngineLabel.Anthropic;
+
+	/**
+	 * The optional fields this endpoint has refused, once it has answered.
+	 *
+	 * Which fields a model takes is a fact about the model rather than about
+	 * the call, so a refusal is remembered: the advanced two-pass mode drives
+	 * six sequential agent calls through one provider, and re-learning it on
+	 * each of them pays the refused request six times over.
+	 */
+	private readonly refusedFields = new Set<AnthropicOptionalField>();
 
 	constructor(private readonly config: LlmConfig) {}
 
@@ -319,31 +349,81 @@ export class AnthropicLlmProvider implements LlmProvider {
 		maxTokens: number,
 		options?: LlmCompleteOptions,
 	): Promise<LlmCompletion> {
-		const json = await requestJson({
-			url: `${trimTrailingSlash(this.config.baseUrl)}/messages`,
-			method: 'POST',
-			headers: {
-				...authHeader('x-api-key', this.config.apiKey),
-				'anthropic-version': ANTHROPIC_API_VERSION,
-				'anthropic-dangerous-direct-browser-access': 'true',
-			},
-			contentType: 'application/json',
-			body: JSON.stringify({
-				model: this.config.model,
-				max_tokens: maxTokens,
-				...(options?.temperature !== undefined
-					? { temperature: options.temperature }
-					: {}),
-				system: prompt.system,
-				messages: [{ role: 'user', content: prompt.user }],
-			}),
-			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
-			signal: options?.signal,
-		});
-		return withUsage(
-			extractAnthropicText(json),
-			extractAnthropicUsage(json),
-		);
+		// Each optional field can be refused at most once, so the last attempt
+		// is the one that carries none of the fields still in question.
+		for (;;) {
+			const fields = this.optionalFields(options?.temperature);
+			try {
+				const json = await requestJson({
+					url: `${trimTrailingSlash(this.config.baseUrl)}/messages`,
+					method: 'POST',
+					headers: {
+						...authHeader('x-api-key', this.config.apiKey),
+						'anthropic-version': ANTHROPIC_API_VERSION,
+						'anthropic-dangerous-direct-browser-access': 'true',
+					},
+					contentType: 'application/json',
+					body: JSON.stringify({
+						model: this.config.model,
+						max_tokens: maxTokens,
+						...Object.assign({}, ...fields.values()),
+						system: prompt.system,
+						messages: [{ role: 'user', content: prompt.user }],
+					}),
+					timeoutMs: LLM_REQUEST_TIMEOUT_MS,
+					signal: options?.signal,
+				});
+				return withUsage(
+					extractAnthropicText(json),
+					extractAnthropicUsage(json),
+				);
+			} catch (error) {
+				// A refusal may name the field or only the body key it travels
+				// under, such as `output_config` for the effort.
+				const refused = [...fields].find(([field, fragment]) =>
+					[field, ...Object.keys(fragment)].some((name) =>
+						rejectedParam(error, name),
+					),
+				)?.[0];
+				if (!refused) {
+					throw error;
+				}
+				this.refusedFields.add(refused);
+			}
+		}
+	}
+
+	/**
+	 * The optional fields this request carries: the lowest reasoning effort and
+	 * the caller's temperature, less whatever the endpoint already refused.
+	 *
+	 * Which models take each field moves with every release and runs in both
+	 * directions - Claude Opus 4.7 and later refuse a non-default temperature,
+	 * Sonnet 4.5, Haiku 4.5 and older refuse the effort control - so the
+	 * endpoint is asked rather than a model list consulted, the same way the
+	 * OpenAI client settles its output-token parameter.
+	 * @param temperature - What the caller asked for, if anything
+	 * @returns Each field sent, with the fragment it adds to the request body
+	 */
+	private optionalFields(
+		temperature?: number,
+	): Map<AnthropicOptionalField, Record<string, unknown>> {
+		const fields = new Map<
+			AnthropicOptionalField,
+			Record<string, unknown>
+		>();
+		if (!this.refusedFields.has(AnthropicOptionalField.Effort)) {
+			fields.set(AnthropicOptionalField.Effort, {
+				output_config: { effort: ANTHROPIC_LOW_EFFORT },
+			});
+		}
+		if (
+			temperature !== undefined &&
+			!this.refusedFields.has(AnthropicOptionalField.Temperature)
+		) {
+			fields.set(AnthropicOptionalField.Temperature, { temperature });
+		}
+		return fields;
 	}
 }
 

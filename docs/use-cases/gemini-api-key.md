@@ -19,13 +19,13 @@ Gemini reads the audio itself rather than running a dedicated speech model, whic
 - **Speaker diarization.** Gemini can label distinct speakers (`Speaker 1`, `Speaker 2`, and real names when clearly stated) - useful for meetings and interviews. Diarization is off by default and is only available on Gemini, Deepgram, and Mistral Voxtral.
 - **Free tier.** Google AI Studio includes a free quota to get started; heavier use moves to paid billing.
 - **One key, two features.** The same Gemini key transcribes audio **and** drives Gemini-based [LLM post-processing](../llm-post-processing.md) (clean up, summarize, translate, or a custom instruction).
-- **Sensible default model.** The plugin ships with **`gemini-3.5-flash`** selected - fast and cheap enough for transcription, with `gemini-2.5-pro` available for difficult audio.
+- **Sensible default model.** The plugin ships with **`gemini-3.8-flash`** selected - fast and cheap enough for transcription, with `gemini-4-argon` available for difficult audio.
 
 | Property                | Value                                                              |
 | ----------------------- | ------------------------------------------------------------------ |
 | Engine name in settings | **Google Gemini**                                                  |
 | Default base URL        | `https://generativelanguage.googleapis.com`                        |
-| Default model           | `gemini-3.5-flash`                                                 |
+| Default model           | `gemini-3.8-flash`                                                 |
 | Max file size           | 2 GB (uploaded whole via the File API)                             |
 | Diarization             | Supported (off by default)                                         |
 | Word-level timestamps   | Not available - Gemini returns segment-level timing only           |
@@ -57,12 +57,12 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 3. Open **Engines** and then the **Google Gemini** page, where the service itself is configured.
 4. In **Base URL**, leave the default `https://generativelanguage.googleapis.com` unless you have a specific reason to change it.
 5. Paste your key into **Google Gemini API key**.
-6. Under **Model**, pick `gemini-3.5-flash` (default) or `gemini-2.5-pro` for harder audio. Open the **Model catalogue** entry below it to add any other model id, to drop one with the button on its row, or follow the **Gemini model list** link at the end of the **Model** row's description to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
+6. Under **Model**, pick `gemini-3.8-flash` (default) or `gemini-4-argon` for harder audio. Open the **Model catalogue** entry below it to add any other model id, to drop one with the button on its row, or follow the **Gemini model list** link at the end of the **Model** row's description to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
 7. (Optional) Back under **Transcription**, set **Language** to `auto` (default) or an ISO code such as `en`, `ru`, or `es`. Gemini transcribes each segment in the language actually spoken regardless, but a hint can help.
 8. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is only enabled for Gemini, Deepgram, and Mistral Voxtral.
 9. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
 
-![The Gemini Model row on gemini-3.5-flash, above the Model catalogue list of all seven seeded ids with a filter box and In use under the selected one](../images/settings-gemini-model-picker.png)
+![The Gemini Model row on gemini-3.8-flash, above the Model catalogue list of all four seeded ids with a filter box and In use under the selected one](../images/settings-gemini-model-picker.png)
 
 The table below summarizes the fields you set:
 
@@ -71,7 +71,7 @@ The table below summarizes the fields you set:
 | **Transcription engine**  | Google Gemini                                            | Transcription           |
 | **Base URL**              | `https://generativelanguage.googleapis.com` (default)    | Engines > Google Gemini |
 | **Google Gemini API key** | The key you copied from AI Studio                        | Engines > Google Gemini |
-| **Model**                 | `gemini-3.5-flash` (default) or `gemini-2.5-pro`         | Engines > Google Gemini |
+| **Model**                 | `gemini-3.8-flash` (default) or `gemini-4-argon`         | Engines > Google Gemini |
 | **Language**              | `auto` (default), or an ISO code like `en` / `ru` / `es` | Transcription           |
 | **Speaker diarization**   | On for meetings and interviews, off for a single speaker | Transcription           |
 
@@ -101,7 +101,7 @@ To enable it:
 2. Turn on **Enable LLM post-processing**.
 3. Pick a **Task**: Clean up (default), Summarize, Translate, or Custom.
 4. Set its **Post-processing engine** to **Google Gemini**, which settles only which service does the work.
-5. Open **Engines** and then **Google Gemini** to confirm the **Base URL** reads `https://generativelanguage.googleapis.com`, pick a **Model** (default `gemini-3.5-flash`), and adjust **Max output tokens** if needed (default 4096, range 512-200000, with the model's own maximum as the real limit). One catalogue serves transcription and prompts alike, because Gemini answers both with the same family of ids.
+5. Open **Engines** and then **Google Gemini** to confirm the **Base URL** reads `https://generativelanguage.googleapis.com`, pick a **Model** (default `gemini-3.8-flash`), and adjust **Max output tokens** if needed (default 4096, range 512-200000, with the model's own maximum as the real limit). One catalogue serves transcription and prompts alike, because Gemini answers both with the same family of ids.
 
 ![Google Gemini engine settings with the base URL, API key, model and max output tokens rows](../images/settings-llm-gemini-provider.png)
 
@@ -125,8 +125,8 @@ If a transcript appears with speaker labels (when diarization is on) and clickab
 | Symptom                                                     | Likely cause and fix                                                                                                                                                                                                                                                                                          |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `API key not valid` / `permission denied` / `401` / `403`   | The key is wrong, truncated, or restricted. Recopy it from [AI Studio](https://aistudio.google.com/apikey) into **Google Gemini API key**, with no spaces.                                                                                                                                                    |
-| `429` / quota or rate-limit error                           | You hit the free-tier or project quota. Wait, or enable billing in Google AI Studio / Google Cloud. Try `gemini-2.5-flash` (cheaper) if you were using Pro.                                                                                                                                                   |
-| `404` / model not found                                     | The model id is unknown to your account. Pick `gemini-2.5-flash` or another id from the [model catalogue](https://ai.google.dev/gemini-api/docs/models).                                                                                                                                                      |
+| `429` / quota or rate-limit error                           | You hit the free-tier or project quota. Wait, or enable billing in Google AI Studio / Google Cloud. Try `gemini-3.5-flash-lite` (cheaper) if you were using `gemini-4-argon`.                                                                                                                                 |
+| `404` / model not found                                     | The model id is unknown to your account. Pick `gemini-3.8-flash` or another id from the [model catalogue](https://ai.google.dev/gemini-api/docs/models).                                                                                                                                                      |
 | Speaker numbers seem to restart partway through a long file | Expected: a recording over 15 minutes is split and diarization resets per part (a warning is shown). Use [Deepgram](deepgram-api-key.md) for whole-file diarization.                                                                                                                                          |
 | Request times out on a long recording                       | Raise **Request timeout** (up to 60 minutes), or split the recording first. See [Splitting recordings](../splitting.md).                                                                                                                                                                                      |
 | Transcript is empty or truncated                            | The response hit the model's output-token limit. The plugin retries an overrunning part automatically in smaller halves (down to one-minute segments; each retry is a normal billed request), so a persisting error means even that failed. Choose a model with a larger output limit or split the recording. |

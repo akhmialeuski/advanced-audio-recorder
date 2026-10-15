@@ -135,4 +135,39 @@ describe('model list settings defaults', () => {
 		);
 		expect(merged.modelSeedGeneration).toBe(MODEL_SEED_GENERATION);
 	});
+
+	it('offers the October 2026 models to a list saved on the July seeds, keeping its choice', () => {
+		// A config written by the previous release: the July seeds as they were
+		// shipped, and the defaults of that release still selected.
+		const merged = mergeSettings({
+			modelSeedGeneration: 2,
+			llmAnthropicModels: [
+				'claude-opus-4-8',
+				'claude-sonnet-5',
+				'claude-haiku-4-5',
+				'claude-fable-5',
+			],
+			llmAnthropicModel: 'claude-opus-4-8',
+			geminiModels: ['gemini-3.5-flash', 'gemini-2.0-flash'],
+			geminiModel: 'gemini-3.5-flash',
+		});
+
+		expect(merged.llmAnthropicModels).toEqual([
+			'claude-opus-4-8',
+			'claude-sonnet-5',
+			'claude-haiku-4-5',
+			'claude-fable-5',
+			...LLM_ANTHROPIC_MODEL_SUGGESTIONS,
+		]);
+		expect(merged.geminiModels).toEqual(
+			expect.arrayContaining([
+				'gemini-3.5-flash',
+				'gemini-3.8-flash',
+				'gemini-4-argon',
+			]),
+		);
+		// The top-up offers ids; the model a user runs on is theirs to move.
+		expect(merged.llmAnthropicModel).toBe('claude-opus-4-8');
+		expect(merged.geminiModel).toBe('gemini-3.5-flash');
+	});
 });

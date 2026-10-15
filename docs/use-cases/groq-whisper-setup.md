@@ -89,13 +89,12 @@ The exact field labels, order, and conditional rows are described in the [Transc
 
 The **Model** dropdown offers the saved ids, and the **Model catalogue** entry below it is where one is added or deleted. For Groq, choose one of the large Whisper models - they support `verbose_json` with segment timestamps, which the plugin requires.
 
-| Model                        | Use it for                                                 | Trade-off                                |
-| ---------------------------- | ---------------------------------------------------------- | ---------------------------------------- |
-| `whisper-large-v3`           | Best accuracy, full multilingual support.                  | Slightly slower than the turbo variant.  |
-| `whisper-large-v3-turbo`     | Fast multilingual transcription at near-large-v3 accuracy. | Marginally lower accuracy on hard audio. |
-| `distil-whisper-large-v3-en` | English-only, smallest/fastest distilled model.            | English only; not for other languages.   |
+| Model                    | Use it for                                                 | Trade-off                                |
+| ------------------------ | ---------------------------------------------------------- | ---------------------------------------- |
+| `whisper-large-v3`       | Best accuracy, full multilingual support.                  | Slightly slower than the turbo variant.  |
+| `whisper-large-v3-turbo` | Fast multilingual transcription at near-large-v3 accuracy. | Marginally lower accuracy on hard audio. |
 
-The catalogue already holds four ids - `whisper-1`, `whisper-large-v3`, `whisper-large-v3-turbo`, and `distil-whisper-large-v3-en` - so for Groq you can usually select one directly. If a model you want is not listed, use the add button on the **Model catalogue** page, type the exact id (for example `whisper-large-v3-turbo`), and then tap its row to put it to work. If Groq later renames or adds a model, add the new id the same way. The **Whisper API models** link at the end of the **Model** row's description opens the OpenAI speech-to-text reference (<https://developers.openai.com/api/docs/guides/speech-to-text>) for the API shape, while Groq's own model list is on the Groq Console.
+The catalogue already holds three ids - `whisper-1`, `whisper-large-v3`, and `whisper-large-v3-turbo` - so for Groq you can usually select one directly. If a model you want is not listed, use the add button on the **Model catalogue** page, type the exact id (for example `whisper-large-v3-turbo`), and then tap its row to put it to work. If Groq later renames or adds a model, add the new id the same way. The **Whisper API models** link at the end of the **Model** row's description opens the OpenAI speech-to-text reference (<https://developers.openai.com/api/docs/guides/speech-to-text>) for the API shape, while Groq's own model list is on the Groq Console.
 
 > **Important:** The model must return `verbose_json` **with timestamps**. The plugin relies on timed segments to build clickable timecode links and sidecar files. The large Whisper models above all qualify; OpenAI's newer `gpt-4o-transcribe` family does **not** and is intentionally not offered.
 
