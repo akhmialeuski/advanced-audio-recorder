@@ -1873,3 +1873,26 @@ button.aar-player-marker-row {
     padding: 0;
     opacity: 1;
 }
+
+/*
+ * With reduced motion asked for, nothing pulses and nothing slides. Every
+ * state still reads without the movement: the recording dot and the ribbon
+ * icon stay red, a saving icon keeps the accent, and a bar or a meter jumps
+ * straight to its new length instead of growing into it.
+ */
+@media (prefers-reduced-motion: reduce) {
+    .side-dock-ribbon-action.is-recording svg,
+    .side-dock-ribbon-action.is-saving svg,
+    .aar-recording-banner-dot,
+    .aar-test-recording {
+        animation: none;
+    }
+
+    .aar-control-btn,
+    .aar-input-meter-fill,
+    .aar-save-progress-bar,
+    .aar-transcribe-progress-bar,
+    .aar-player .aar-player-btn {
+        transition: none;
+    }
+}
