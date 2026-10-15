@@ -8,9 +8,10 @@
  */
 
 import { setIcon } from 'obsidian';
-import { PLAYER_ICONS, PLAYER_VOLUME_SLIDER_STEP } from '../../constants';
+import { PLAYER_ICONS } from '../../constants';
 import { MARKER_KIND, type MarkerKind } from '../../markers/markerModel';
 import { formatTimecode } from '../../utils/TimeUtils';
+import { createVolumeSlider } from '../../ui/volumeSlider';
 import { formatPlaybackRate } from '../playbackRate';
 
 /**
@@ -182,25 +183,17 @@ export class PlayerControlsView {
 		);
 		this.setMuted(state.muted);
 
-		const volume = controls.createEl('input', {
-			cls: 'aar-player-volume slider',
-			attr: {
-				type: 'range',
-				min: '0',
-				max: '1',
-				step: String(PLAYER_VOLUME_SLIDER_STEP),
-				// Reflect the shared audio's current volume on re-render
-				value: String(state.volume),
-				'aria-label': 'Volume',
+		// Reflects the shared audio's current volume on re-render. The
+		// slider's listeners live on its own input, which the next render
+		// pass empties out of the container along with the rest of the row.
+		createVolumeSlider(
+			controls,
+			'aar-player-volume',
+			state.volume,
+			(volume) => {
+				this.callbacks.onVolumeInput(volume);
 			},
-		});
-		// The app's own slider fill: its class draws the track in the accent
-		// up to this ratio, and the range runs 0 to 1, so the value is the ratio.
-		volume.setCssProps({ '--slider-fill-ratio': volume.value });
-		this.host.registerDomEvent(volume, 'input', () => {
-			volume.setCssProps({ '--slider-fill-ratio': volume.value });
-			this.callbacks.onVolumeInput(Number(volume.value));
-		});
+		);
 
 		if (state.voiceBoostAvailable) {
 			// Beside the sound controls rather than at the end of the row: it

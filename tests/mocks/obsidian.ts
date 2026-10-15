@@ -2354,39 +2354,130 @@ export class ToggleComponent {
 }
 
 /**
- * Mock SliderComponent class.
+ * Mock SliderComponent, built the way Obsidian 1.14 builds it: a
+ * `span.slider-value` that shows the value inline, followed by an
+ * `input[type=range].slider`, both appended to the container it is given.
+ *
+ * The parts the plugin depends on are modelled after the app's own code:
+ *
+ * - The track fill: every change of value writes `--slider-fill-ratio`,
+ *   which the app's slider class paints the accent up to.
+ * - When the change callback fires. Dragging fires `input`, releasing fires
+ *   `change`; the callback runs on the first only after `setInstant(true)`,
+ *   and on the second only without it.
+ * - `setValue` calls the change callback too, whenever the value differs
+ *   from the one shown. That is easy to miss and matters: code that pushes
+ *   an outside value into the slider hears it back as though the user moved
+ *   it.
  */
 export class SliderComponent {
-	sliderEl: HTMLInputElement = addObsidianDomExtensions(
+	readonly valueEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('span'),
+	);
+	readonly sliderEl: HTMLInputElement = addObsidianDomExtensions(
 		document.createElement('input'),
 	);
-	value = 0;
 	disabled = false;
+	instant = false;
 
 	/** Change handler, stored as Obsidian does for test triggering. */
 	changeCallback: ((value: number) => void) | null = null;
 
-	setLimits(_min: number, _max: number, _step: number): this {
+	private displayFormat: ((value: number) => string) | null = null;
+
+	constructor(containerEl?: HTMLElement) {
+		this.valueEl.classList.add('slider-value');
+		this.sliderEl.type = 'range';
+		this.sliderEl.classList.add('slider');
+		// The app keeps a drag on the slider from opening a sidebar on mobile
+		this.sliderEl.dataset['ignoreSwipe'] = 'true';
+		containerEl?.append(this.valueEl, this.sliderEl);
+		this.sliderEl.addEventListener('input', () => {
+			this.updateDisplay();
+			if (this.instant) {
+				this.changeCallback?.(this.getValue());
+			}
+		});
+		this.sliderEl.addEventListener('change', () => {
+			if (!this.instant) {
+				this.changeCallback?.(this.getValue());
+			}
+		});
+		this.updateDisplay();
+	}
+
+	setLimits(
+		min: number | null,
+		max: number | null,
+		step: number | 'any',
+	): this {
+		this.sliderEl.setAttribute('min', String(min));
+		this.sliderEl.setAttribute('max', String(max));
+		this.sliderEl.setAttribute('step', String(step));
+		this.updateDisplay();
 		return this;
+	}
+
+	getValue(): number {
+		return Number(this.sliderEl.value);
 	}
 
 	setValue(value: number): this {
-		this.value = value;
+		if (this.getValue() !== value) {
+			this.sliderEl.value = String(value);
+			this.updateDisplay();
+			this.changeCallback?.(value);
+		}
 		return this;
 	}
 
+	setInstant(instant: boolean): this {
+		this.instant = instant;
+		return this;
+	}
+
+	setDisplayFormat(format: (value: number) => string): this {
+		this.displayFormat = format;
+		this.updateDisplay();
+		return this;
+	}
+
+	/** The text the inline value shows, formatted as the app formats it. */
+	getValuePretty(): string {
+		const value = this.getValue();
+		if (this.displayFormat) {
+			return this.displayFormat(value);
+		}
+		const step = this.sliderEl.getAttribute('step') ?? '1';
+		return step === 'any' || parseFloat(step) < 1
+			? value.toFixed(2)
+			: value.toString();
+	}
+
+	/** Deprecated in Obsidian, which now always shows the value inline. */
 	setDynamicTooltip(): this {
 		return this;
 	}
 
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
+		this.sliderEl.disabled = disabled;
 		return this;
 	}
 
 	onChange(callback: (value: number) => void): this {
 		this.changeCallback = callback;
 		return this;
+	}
+
+	private updateDisplay(): void {
+		this.valueEl.textContent = this.getValuePretty();
+		const min = parseFloat(this.sliderEl.getAttribute('min') ?? '');
+		const max = parseFloat(this.sliderEl.getAttribute('max') ?? '');
+		const low = Number.isFinite(min) ? min : 0;
+		const high = Number.isFinite(max) ? max : 100;
+		const ratio = high > low ? (this.getValue() - low) / (high - low) : 0;
+		this.sliderEl.style.setProperty('--slider-fill-ratio', String(ratio));
 	}
 }
 

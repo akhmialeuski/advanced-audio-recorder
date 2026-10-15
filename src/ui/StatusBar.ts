@@ -4,17 +4,14 @@
  */
 
 import { setIcon, setTooltip } from 'obsidian';
-import {
-	PLAYER_ICONS,
-	PLAYER_SKIP_SECONDS,
-	PLAYER_VOLUME_SLIDER_STEP,
-} from '../constants';
+import { PLAYER_ICONS, PLAYER_SKIP_SECONDS } from '../constants';
 import { MARKER_KIND } from '../markers/markerModel';
 import type { PlaybackControlsState } from '../player/playbackControls';
 import { RecordingStatus } from '../types';
 import type { SaveProgress, RecordingControls } from '../types';
 import { formatTimecode } from '../utils/TimeUtils';
 import { formatByteSize } from '../utils/formatBytes';
+import { createVolumeSlider, type VolumeSlider } from './volumeSlider';
 
 /**
  * Where a status-bar tooltip opens. The bar sits on the bottom edge of the
@@ -25,6 +22,9 @@ const STATUS_BAR_TOOLTIP = { placement: 'top' } as const;
 
 /** Latest command snapshot used by the persistent playback controls DOM. */
 const playbackStates = new WeakMap<HTMLElement, PlaybackControlsState>();
+
+/** The slider behind each mounted volume input, found again on update. */
+const volumeSliders = new WeakMap<Element, VolumeSlider>();
 
 /**
  * Class names of the persistent playback controls. Each is referenced both
@@ -396,24 +396,15 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 			playbackStates.get(statusBarItem)?.onToggleMute();
 		},
 	).addClass(PLAYBACK_MUTE_CLASS);
-	const volume = audioControls.createEl('input', {
-		cls: `${PLAYBACK_VOLUME_CLASS} slider`,
-		attr: {
-			type: 'range',
-			min: '0',
-			max: '1',
-			step: String(PLAYER_VOLUME_SLIDER_STEP),
-			value: '1',
-			'aria-label': 'Volume',
+	const volume = createVolumeSlider(
+		audioControls,
+		PLAYBACK_VOLUME_CLASS,
+		1,
+		(value) => {
+			playbackStates.get(statusBarItem)?.onVolumeInput(value);
 		},
-	});
-	// The app's own slider fill: its class draws the track in the accent up
-	// to this ratio, and the range runs 0 to 1, so the value is the ratio.
-	volume.setCssProps({ '--slider-fill-ratio': volume.value });
-	volume.addEventListener('input', () => {
-		volume.setCssProps({ '--slider-fill-ratio': volume.value });
-		playbackStates.get(statusBarItem)?.onVolumeInput(Number(volume.value));
-	});
+	);
+	volumeSliders.set(volume.el, volume);
 
 	const markerControls = container.createSpan({
 		cls: PLAYBACK_MARKER_CONTROLS_CLASS,
@@ -512,16 +503,11 @@ function updatePlaybackControls(
 		mute.setAttribute('aria-pressed', String(state.muted));
 	}
 
-	const volume = container.querySelector<HTMLInputElement>(
-		`.${PLAYBACK_VOLUME_CLASS}`,
-	);
-	if (volume) {
-		if (activeDocument.activeElement !== volume) {
-			volume.value = String(state.volume);
-		}
-		// The fill follows what the slider shows, whether the value came from
-		// the playback or from the drag still in progress
-		volume.setCssProps({ '--slider-fill-ratio': volume.value });
+	const volumeEl = container.querySelector(`.${PLAYBACK_VOLUME_CLASS}`);
+	const volume = volumeEl && volumeSliders.get(volumeEl);
+	// A slider the user is holding keeps the value under their finger
+	if (volume && activeDocument.activeElement !== volume.el) {
+		volume.show(state.volume);
 	}
 
 	const markerControls = container.querySelector<HTMLElement>(
