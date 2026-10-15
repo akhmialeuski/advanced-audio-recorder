@@ -354,14 +354,15 @@ export default class AudioRecorderPlugin extends Plugin {
 		const registry = new ActionRegistry(this, (targets, describe, run) => {
 			new ActionTargetModal(this.app, targets, describe, run).open();
 		});
+		// The recorder's own command-line commands first, then one per action,
+		// all under the registry's one check that no two share an id.
+		registry.addCliCommands(
+			cliCommands(this.createCliHost(), this.manifest.id),
+		);
 		const menuFamilies = this.registerCommands(registry);
-		// The desktop command line, where the app has one: the recorder's own
-		// commands, then one per action the registry registered. Reports
-		// whether it registered, which is what the CLI-less platforms answer.
-		registerCliCommands(this, [
-			...cliCommands(this.createCliHost(), this.manifest.id),
-			...registry.cliCommands(),
-		]);
+		// The desktop command line, where the app has one. Reports whether it
+		// registered, which is what the CLI-less platforms answer.
+		registerCliCommands(this, registry.cliCommands());
 		// Named after the plugin, because Obsidian's own Audio recorder puts a
 		// button with the same job in the same ribbon under the tooltip
 		// "Start/stop recording", and the ribbon's context menu, where a

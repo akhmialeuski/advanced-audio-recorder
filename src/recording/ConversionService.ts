@@ -15,6 +15,29 @@ import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { ConversionLinkAction } from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
 import { showNotice, type Notify } from '../utils/notify';
+import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
+import { AUDIO_EXTENSIONS } from '../constants';
+
+/**
+ * The formats a recording can be converted to on this device. The source's
+ * own format is left out of a conversion that keeps the channels, since the
+ * same format in and out would only be a lossy re-encode, and offered for
+ * the mono modes, so a stereo file can become a mono one of its format.
+ * Shared by the conversion dialog and the command line.
+ * @param sourceFormat - The source extension, lower case
+ * @param channelMode - The channel layout asked for
+ * @returns The target formats, in the order the dialog lists them
+ */
+export function conversionTargets(
+	sourceFormat: string,
+	channelMode: ChannelMode,
+): string[] {
+	return AUDIO_EXTENSIONS.filter(
+		(format) =>
+			isOfflineEncodingSupported(format) &&
+			(format !== sourceFormat || isMonoChannelMode(channelMode)),
+	);
+}
 
 /**
  * Parameters of one conversion operation.

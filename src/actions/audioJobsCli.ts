@@ -13,9 +13,7 @@
 
 import type { CliData, CliFlags } from 'obsidian';
 import {
-	AUDIO_EXTENSIONS,
 	DEFAULT_SAMPLE_RATE,
-	DEFAULT_SPLIT_PART_SUFFIX,
 	MAX_CLEANUP_GATE_THRESHOLD_DB,
 	MAX_CLEANUP_HIGHPASS_HZ,
 	MAX_CLEANUP_LEVELING_MAKEUP_DB,
@@ -28,13 +26,22 @@ import {
 	SPLIT_PART_SUFFIX_PATTERN,
 	SPLIT_PART_SUFFIX_RULE_TEXT,
 } from '../constants';
-import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { effectiveBitrate } from '../audio/AudioCapabilityDetector';
 import { offlineEncodeSampleRate } from '../audio/AudioFormatConverter';
-import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
-import { ConversionService } from '../recording/ConversionService';
-import { clampSplitMinutes } from '../recording/AudioSplitter';
-import { SplitService, type ChapterCut } from '../recording/SplitService';
+import { ChannelMode } from '../audio/downmix';
+import {
+	ConversionService,
+	conversionTargets,
+} from '../recording/ConversionService';
+import {
+	clampSplitMinutes,
+	sanitizePartSuffix,
+} from '../recording/AudioSplitter';
+import {
+	chapterCutsOf,
+	SplitService,
+	type ChapterCut,
+} from '../recording/SplitService';
 import { embedsOf, insertProcessedAudioEmbed } from '../recording/NoteInserter';
 import { cleanUpRecording, describeCleanup } from '../cleanup/cleanupRun';
 import {
@@ -42,7 +49,6 @@ import {
 	resolveAudioDspConfig,
 	type AudioDspConfig,
 } from '../cleanup/audioDsp';
-import { chapters } from '../markers/markerModel';
 import { ConversionLinkAction } from '../types';
 import {
 	formatAudioFileInfo,
@@ -59,10 +65,6 @@ import {
 	type CliRead,
 } from '../obsidian/cliArgs';
 import type { FileContext } from './PluginAction';
-
-/** What an answer lists after a job's own sentence. */
-const andSaid = (answer: string, said: readonly string[]): string =>
-	[answer, ...said].join('\n');
 
 /** Every channel layout the conversion and the cleanup offer. */
 const CHANNEL_MODES: readonly ChannelMode[] = Object.values(ChannelMode);
@@ -187,23 +189,6 @@ export const CONVERT_PARAMS: CliFlags = {
 };
 
 /**
- * The formats a conversion of this file offers, as the dialog lists them: the
- * ones this device encodes, the source's own only for a mono downmix.
- * @param sourceFormat - The source extension, lower case
- * @param channelMode - The channel layout asked for
- */
-function conversionTargets(
-	sourceFormat: string,
-	channelMode: ChannelMode,
-): string[] {
-	return AUDIO_EXTENSIONS.filter(
-		(format) =>
-			isOfflineEncodingSupported(format) &&
-			(format !== sourceFormat || isMonoChannelMode(channelMode)),
-	);
-}
-
-/**
  * Converts a recording to another format.
  * @param context - The recording
  * @param args - The arguments as typed
@@ -259,19 +244,15 @@ export async function convertFromCli(
 		() => undefined,
 	);
 	if (outcome.status === 'aborted') {
-		return andSaid(`Did not convert ${file.path}.`, said.messages);
+		return said.answer(`Did not convert ${file.path}.`);
 	}
 	if (outcome.status === 'partial') {
-		return andSaid(
+		return said.answer(
 			`Converted ${file.path}, but not every step after it finished.`,
-			said.messages,
 		);
 	}
 	services.primeForEnhancement([outcome.newPath]);
-	return andSaid(
-		`Converted ${file.path} to ${outcome.newPath}.`,
-		said.messages,
-	);
+	return said.answer(`Converted ${file.path} to ${outcome.newPath}.`);
 }
 
 /** The parameters of the split command, beyond its target. */
@@ -302,10 +283,7 @@ async function chapterCuts(
 	const markers = await context.services.recordingSidecar.getMarkers(
 		context.file.path,
 	);
-	const cuts = chapters(markers).map((chapter) => ({
-		startSeconds: chapter.time,
-		title: chapter.label,
-	}));
+	const cuts = chapterCutsOf(markers);
 	return cuts.length > 0
 		? cuts
 		: `${context.file.path} has no chapters to cut at.`;
@@ -346,8 +324,7 @@ export async function splitFromCli(
 		return linkAction.refusal;
 	}
 	const suffix =
-		cliText(args, 'suffix') ??
-		(settings.splitPartSuffix.trim() || DEFAULT_SPLIT_PART_SUFFIX);
+		cliText(args, 'suffix') ?? sanitizePartSuffix(settings.splitPartSuffix);
 	if (!SPLIT_PART_SUFFIX_PATTERN.test(suffix)) {
 		return SPLIT_PART_SUFFIX_RULE_TEXT;
 	}
@@ -384,17 +361,15 @@ export async function splitFromCli(
 		() => undefined,
 	);
 	if (outcome.status === 'aborted') {
-		return andSaid(`Did not split ${file.path}.`, said.messages);
+		return said.answer(`Did not split ${file.path}.`);
 	}
 	if (outcome.status === 'partial') {
-		return andSaid(
+		return said.answer(
 			`Split ${file.path}, but not every step after it finished.`,
-			said.messages,
 		);
 	}
-	return andSaid(
+	return said.answer(
 		`Split ${file.path} into ${String(outcome.partCount)} parts, the first ${outcome.firstPartName}.`,
-		said.messages,
 	);
 }
 

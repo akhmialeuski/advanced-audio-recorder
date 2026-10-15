@@ -40,6 +40,7 @@ import type {
 } from '../actions/PluginAction';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
 import { renderActionsIntoMenu } from '../actions/renderActionsIntoMenu';
+import { recordingsInNote } from '../obsidian/noteRecordings';
 import { runReported } from '../actions/registerActionCommands';
 import { RecordingStatus } from '../types';
 import { isAudioFile } from '../utils/audioFile';
@@ -47,7 +48,6 @@ import { formatByteSize } from '../utils/formatBytes';
 import { formatTimecode } from '../utils/TimeUtils';
 import {
 	formatPanelDate,
-	recordingsReferencedBy,
 	summarizeRecording,
 	type RecordingPanelSummary,
 } from './recordingPanelModel';
@@ -440,11 +440,7 @@ export class RecordingPanelView extends ItemView {
 		if (isAudioFile(active)) {
 			return { notePath: '', recordings: [active] };
 		}
-		const recordings = recordingsReferencedBy(
-			this.app.metadataCache.getFileCache(active),
-			(link) =>
-				this.app.metadataCache.getFirstLinkpathDest(link, active.path),
-		);
+		const recordings = recordingsInNote(this.app, active);
 		return { notePath: active.path, recordings };
 	}
 

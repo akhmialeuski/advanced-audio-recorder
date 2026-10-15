@@ -10,7 +10,7 @@
  * @module obsidian/timecodeRefs
  */
 
-import { parseLinktext } from 'obsidian';
+import { Notice, parseLinktext } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import {
 	hasTimecodeSubpath,
@@ -18,6 +18,8 @@ import {
 } from '../player/timecodeLinks';
 import type { TimecodeLinkBuilder } from '../transcription/transcriptFormat';
 import { linksInLine } from './sourceLinks';
+import { PLUGIN_LOG_PREFIX } from '../constants';
+import { formatTimecode } from '../utils/TimeUtils';
 
 /** One link/embed of a note whose `#t=` subpath resolves to the audio. */
 export interface AudioTimecodeRef {
@@ -147,4 +149,35 @@ export function timecodeLinkBuilder(
 			`#t=${String(Math.floor(seconds))}`,
 			label,
 		);
+}
+
+/**
+ * Copies a timecode link to a moment of a recording to the clipboard and
+ * says so, the one copy the player's button and its right-click menu, the
+ * palette and the position actions share.
+ * @param app - Obsidian App
+ * @param file - The recording
+ * @param notePath - Vault path of the note the link is meant for
+ * @param seconds - The moment; a fraction is dropped and a negative clamped
+ */
+export async function copyTimecodeLink(
+	app: App,
+	file: TFile,
+	notePath: string,
+	seconds: number,
+): Promise<void> {
+	const whole = Math.floor(Math.max(0, seconds));
+	const label = formatTimecode(whole);
+	try {
+		await navigator.clipboard.writeText(
+			timecodeLinkBuilder(app, file, notePath)(whole, label),
+		);
+		new Notice(`Copied timestamp link at ${label}`);
+	} catch (error) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Failed to copy timestamp link:`,
+			error,
+		);
+		new Notice('Could not copy timestamp link to the clipboard.');
+	}
 }

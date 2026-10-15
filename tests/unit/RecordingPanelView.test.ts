@@ -328,13 +328,35 @@ describe('the recording panel on an open recording', () => {
 	});
 });
 
+/**
+ * A note's cached metadata embedding the given links, one per line, with the
+ * positions Obsidian's cache always carries.
+ * @param links - The link texts, in note order
+ */
+function embedding(...links: string[]): CachedMetadata {
+	return partial<CachedMetadata>({
+		embeds: links.map((link, line) => ({
+			link,
+			original: `![[${link}]]`,
+			position: {
+				start: { line, col: 0, offset: line * 100 },
+				end: {
+					line,
+					col: link.length + 5,
+					offset: line * 100 + link.length + 5,
+				},
+			},
+		})),
+	});
+}
+
 describe('the recording panel on a meeting note', () => {
 	it('shows the recording the note embeds', async () => {
 		const audio = recording('rec/meeting.m4a');
 
 		const { view } = await createSut({
 			active: note('Meeting.md'),
-			cache: { embeds: [{ link: 'rec/meeting.m4a' }] } as CachedMetadata,
+			cache: embedding('rec/meeting.m4a'),
 			vaultFiles: [audio],
 		});
 
@@ -344,9 +366,7 @@ describe('the recording panel on a meeting note', () => {
 	/** A meeting note embedding two recordings. */
 	const twoRecordings = {
 		active: note('Meeting.md'),
-		cache: {
-			embeds: [{ link: 'a.m4a' }, { link: 'b.m4a' }],
-		} as CachedMetadata,
+		cache: embedding('a.m4a', 'b.m4a'),
 		vaultFiles: [recording('a.m4a'), recording('b.m4a')],
 	};
 
@@ -377,12 +397,7 @@ describe('the recording panel on a meeting note', () => {
 	it('names recordings that share a file name by their path', async () => {
 		const { view } = await createSut({
 			active: note('Meeting.md'),
-			cache: {
-				embeds: [
-					{ link: '2024/standup.webm' },
-					{ link: '2025/standup.webm' },
-				],
-			} as CachedMetadata,
+			cache: embedding('2024/standup.webm', '2025/standup.webm'),
 			vaultFiles: [
 				recording('2024/standup.webm'),
 				recording('2025/standup.webm'),
@@ -999,7 +1014,7 @@ describe('what makes the panel read again', () => {
 		const audio = recording('later.webm');
 		const { view, app } = await createSut({
 			active: note('Meeting.md'),
-			cache: { embeds: [{ link: 'later.webm' }] } as CachedMetadata,
+			cache: embedding('later.webm'),
 		});
 		asMockApp(app).metadataCache.getFirstLinkpathDest.mockReturnValue(
 			audio,
@@ -1082,9 +1097,7 @@ describe('when the panel redraws', () => {
 		};
 		const { view, app } = await createSut({
 			active: note('Meeting.md'),
-			cache: {
-				embeds: [{ link: 'a.m4a' }, { link: 'b.m4a' }],
-			} as CachedMetadata,
+			cache: embedding('a.m4a', 'b.m4a'),
 			vaultFiles: [files.a, files.b],
 		});
 		await pick(view, 'b.m4a');
@@ -1099,9 +1112,7 @@ describe('when the panel redraws', () => {
 		// The rename is seen first, while the note still links the old name.
 		app.vault.trigger('rename', files.renamed, 'b.m4a');
 		await flushMicrotasks();
-		metadata.getFileCache.mockReturnValue({
-			embeds: [{ link: 'a.m4a' }, { link: 'b2.m4a' }],
-		});
+		metadata.getFileCache.mockReturnValue(embedding('a.m4a', 'b2.m4a'));
 
 		app.metadataCache.trigger('changed', note('Meeting.md'));
 		await flushMicrotasks();
@@ -1117,7 +1128,7 @@ describe('when the panel redraws', () => {
 function meetingNote(): Parameters<typeof createSut>[0] {
 	return {
 		active: note('Meeting.md'),
-		cache: { embeds: [{ link: 'sync.webm' }] } as CachedMetadata,
+		cache: embedding('sync.webm'),
 		vaultFiles: [recording('sync.webm')],
 	};
 }

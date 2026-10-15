@@ -25,6 +25,11 @@ export interface CollectingNotify {
 	readonly notify: Notify;
 	/** Everything said through it, in order. */
 	readonly messages: readonly string[];
+	/**
+	 * A command line's answer with what was said along the way under it.
+	 * @param line - What the command did
+	 */
+	answer(line: string): string;
 }
 
 /**
@@ -40,5 +45,6 @@ export function collectingNotify(): CollectingNotify {
 			showNotice(message);
 		},
 		messages,
+		answer: (line: string): string => [line, ...messages].join('\n'),
 	};
 }

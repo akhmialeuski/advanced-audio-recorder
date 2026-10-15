@@ -335,10 +335,16 @@ describe('splitting a recording', () => {
 
 	it.each([
 		{ name: 'the one the settings name', setting: 'clip', suffix: 'clip' },
-		// An empty setting is the default, as the dialog's empty field is.
+		// A setting the dialog would not start on is the default here too,
+		// rather than a refusal of a suffix nobody typed.
 		{
 			name: 'the default for a blank setting',
 			setting: '  ',
+			suffix: 'part',
+		},
+		{
+			name: 'the default for a setting no file name can carry',
+			setting: 'part 1',
 			suffix: 'part',
 		},
 	])('names the parts with $name', async ({ setting, suffix }) => {

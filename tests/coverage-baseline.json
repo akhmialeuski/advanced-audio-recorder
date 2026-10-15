@@ -20,7 +20,7 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 99.58,
+				"statements": 99.59,
 				"branches": 97.67,
 				"functions": 99.19,
 				"lines": 99.79
@@ -337,6 +337,12 @@
 				"functions": 100,
 				"lines": 100
 			},
+			"src/obsidian/noteRecordings.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
 			"src/obsidian/settingsNavigation.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -386,10 +392,10 @@
 				"lines": 100
 			},
 			"src/player/AudioPlayer.ts": {
-				"statements": 99.45,
+				"statements": 99.44,
 				"branches": 93.65,
 				"functions": 99.19,
-				"lines": 99.45
+				"lines": 99.44
 			},
 			"src/player/AudioPlayerRegistry.ts": {
 				"statements": 99.57,
@@ -591,7 +597,7 @@
 			},
 			"src/recording/ConversionService.ts": {
 				"statements": 100,
-				"branches": 90.62,
+				"branches": 91.42,
 				"functions": 100,
 				"lines": 100
 			},
@@ -668,7 +674,7 @@
 				"lines": 98.38
 			},
 			"src/recording/SplitService.ts": {
-				"statements": 99.46,
+				"statements": 99.47,
 				"branches": 97.75,
 				"functions": 100,
 				"lines": 99.45
@@ -1341,15 +1347,15 @@
 			},
 			"src/ui/ContextMenu.ts": {
 				"statements": 100,
-				"branches": 97.89,
+				"branches": 98.85,
 				"functions": 100,
 				"lines": 100
 			},
 			"src/ui/ConversionModal.ts": {
-				"statements": 97.84,
-				"branches": 91.66,
+				"statements": 97.77,
+				"branches": 90.47,
 				"functions": 100,
-				"lines": 97.84
+				"lines": 97.77
 			},
 			"src/ui/DeviceSelectionModal.ts": {
 				"statements": 100,
@@ -1613,8 +1619,8 @@
 	},
 	"suite": {
 		"suites": 306,
-		"tests": 7408,
-		"passed": 7408,
+		"tests": 7415,
+		"passed": 7415,
 		"failed": 0,
 		"todo": 0
 	}

@@ -14,10 +14,11 @@
  * @module actions/recordingTargets
  */
 
-import { getLinkpath, MarkdownView, TFile } from 'obsidian';
-import type { App, CliData, CliFlags } from 'obsidian';
+import { getLinkpath, MarkdownView, normalizePath, TFile } from 'obsidian';
+import type { App, CliData, CliFlags, Editor, EditorPosition } from 'obsidian';
 import { isAudioFile } from '../utils/audioFile';
 import { linkAtColumn } from '../obsidian/sourceLinks';
+import { recordingsInNote } from '../obsidian/noteRecordings';
 import { hasTimecodeSubpath } from '../player/timecodeLinks';
 import {
 	cliFlag,
@@ -72,43 +73,6 @@ export const RECORDING_TARGET_PARAMS: CliFlags = {
 };
 
 /**
- * Every recording a note links or embeds, in the order the note mentions
- * them, each once: its properties first, as they head the note, then its
- * body. A transcript links its recording on every line, which is why
- * repeats are folded rather than listed.
- * @param app - Obsidian App
- * @param note - The note to read
- * @returns The recordings, in document order
- */
-export function recordingsInNote(app: App, note: TFile): TFile[] {
-	const cache = app.metadataCache.getFileCache(note);
-	const references = [
-		// A property such as `audio: "[[standup.webm]]"` links the recording
-		// as surely as an embed does; it carries no position, and comes first.
-		...(cache?.frontmatterLinks ?? []),
-		...[...(cache?.links ?? []), ...(cache?.embeds ?? [])].sort(
-			(a, b) => a.position.start.offset - b.position.start.offset,
-		),
-	];
-	const recordings = new Map<string, TFile>();
-	// A transcript links its recording once per line, each a different
-	// moment of the same file, so each link path is resolved only once.
-	const resolved = new Map<string, TFile | null>();
-	for (const reference of references) {
-		const linkpath = getLinkpath(reference.link);
-		let file = resolved.get(linkpath);
-		if (file === undefined) {
-			file = app.metadataCache.getFirstLinkpathDest(linkpath, note.path);
-			resolved.set(linkpath, file);
-		}
-		if (file && isAudioFile(file) && !recordings.has(file.path)) {
-			recordings.set(file.path, file);
-		}
-	}
-	return [...recordings.values()];
-}
-
-/**
  * The file a `file=` or `path=` parameter names. `file=` takes an exact path
  * too, since that is what a script most often has at hand and what this
  * plugin's command line took before it followed the Obsidian convention.
@@ -119,7 +83,7 @@ export function recordingsInNote(app: App, note: TFile): TFile[] {
 export function namedVaultFile(app: App, args: CliData): CliRead<TFile | null> {
 	const path = cliText(args, PATH_PARAM);
 	if (path !== null) {
-		const file = app.vault.getFileByPath(path);
+		const file = app.vault.getFileByPath(normalizePath(path));
 		return file
 			? { value: file }
 			: { refusal: `No file at "${path}" in this vault.` };
@@ -128,12 +92,25 @@ export function namedVaultFile(app: App, args: CliData): CliRead<TFile | null> {
 	if (name === null) {
 		return { value: null };
 	}
-	const file =
-		app.vault.getFileByPath(name) ??
-		app.metadataCache.getFirstLinkpathDest(name, '');
+	const file = fileNamed(app, name);
 	return file
 		? { value: file }
 		: { refusal: `No file named "${name}" in this vault.` };
+}
+
+/**
+ * The file a name typed on the command line stands for: its exact vault path,
+ * or else the file a wikilink of that text would open, as Obsidian's own
+ * `file=` resolves. A heading or a moment after `#` is dropped, as a link
+ * drops it to find its file.
+ * @param app - Obsidian App
+ * @param name - The name as typed
+ */
+function fileNamed(app: App, name: string): TFile | null {
+	return (
+		app.vault.getFileByPath(normalizePath(name)) ??
+		app.metadataCache.getFirstLinkpathDest(getLinkpath(name), '')
+	);
 }
 
 /**
@@ -147,51 +124,60 @@ function namedNote(app: App, args: CliData): CliRead<TFile | null> {
 	if (name === null) {
 		return { value: null };
 	}
-	const note =
-		app.vault.getFileByPath(name) ??
-		app.metadataCache.getFirstLinkpathDest(name, '');
+	const note = fileNamed(app, name);
 	return note?.extension === 'md'
 		? { value: note }
 		: { refusal: `No note named "${name}" in this vault.` };
 }
 
+/** A recording reached through a link in an editor. */
+export interface RecordingLink {
+	/** The recording the link resolves to. */
+	readonly file: TFile;
+	/** Where the link is. */
+	readonly link: LinkLocation;
+	/** Set when the link points at a moment of the recording. */
+	readonly atMoment?: true;
+}
+
 /**
- * The recording under the cursor of the active editor, when the note in it
- * is the given one, with the link the cursor stands on: a link to the whole
- * recording or, as a transcript line carries, to a moment of it.
+ * The recording a link at a position of an editor reaches: the one place the
+ * editor menu, a player's menu and the palette read "the recording under the
+ * cursor" from, a link to the whole recording or, as a transcript line
+ * carries, to a moment of it.
  * @param app - Obsidian App
- * @param note - The active note
+ * @param editor - The editor holding the line
+ * @param position - The position, a cursor or a rendered embed's start
+ * @param sourcePath - The note the link resolves from
+ * @returns The recording and its link, or null when no link to a recording
+ *   is there
  */
-function recordingUnderCursor(
+export function recordingLinkAt(
 	app: App,
-	note: TFile,
-): { file: TFile; link: LinkLocation; atMoment?: true } | null {
-	const view = app.workspace.getActiveViewOfType(MarkdownView);
-	const editor = view?.file === note ? view.editor : null;
-	if (!editor) {
-		return null;
-	}
-	const cursor = editor.getCursor();
-	const link = linkAtColumn(editor.getLine(cursor.line), cursor.ch);
-	if (!link) {
-		return null;
-	}
-	const file = app.metadataCache.getFirstLinkpathDest(link.path, note.path);
-	return file && isAudioFile(file)
-		? {
-				file,
-				link: {
-					editor,
-					subpath: link.subpath,
-					line: cursor.line,
-					start: link.start,
-					end: link.end,
-				},
-				...(hasTimecodeSubpath(link.subpath)
-					? { atMoment: true as const }
-					: {}),
-			}
+	editor: Editor,
+	position: EditorPosition,
+	sourcePath: string,
+): RecordingLink | null {
+	const link = linkAtColumn(editor.getLine(position.line), position.ch);
+	const file = link
+		? app.metadataCache.getFirstLinkpathDest(link.path, sourcePath)
 		: null;
+	if (!link || !file || !isAudioFile(file)) {
+		return null;
+	}
+	return {
+		file,
+		link: {
+			editor,
+			subpath: link.subpath,
+			line: position.line,
+			start: link.start,
+			end: link.end,
+		},
+		...(hasTimecodeSubpath(link.subpath)
+			? { atMoment: true as const }
+			: {}),
+	};
 }
 
 /**
@@ -213,7 +199,16 @@ export function activeRecordings(services: ActionServices): FileContext[] {
 	if (active.extension !== 'md') {
 		return [];
 	}
-	const underCursor = recordingUnderCursor(app, active);
+	const view = app.workspace.getActiveViewOfType(MarkdownView);
+	const underCursor =
+		view?.file === active
+			? recordingLinkAt(
+					app,
+					view.editor,
+					view.editor.getCursor(),
+					active.path,
+				)
+			: null;
 	if (underCursor) {
 		return [{ ...underCursor, note: active, services }];
 	}

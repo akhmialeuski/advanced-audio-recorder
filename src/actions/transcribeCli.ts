@@ -26,6 +26,7 @@ import {
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
+	type LabeledOption,
 } from '../settings/labels';
 import { transcriptionRefusal } from '../settings/settingsAttention';
 import { TranscriptDestination } from '../transcription/api';
@@ -42,22 +43,69 @@ import {
 	flagParam,
 	isRefusal,
 	valueParam,
+	type CliRead,
 } from '../obsidian/cliArgs';
 import type { FileContext } from './PluginAction';
 
 /** Answers once the run is over instead of once it started. */
 export const WAIT_FLAG = 'wait';
 
-/** Values of a dropdown the dialog offers, as the command line accepts them. */
-const valuesOf = (options: readonly { value: string }[]): string[] =>
-	options.map((option) => option.value);
+/** The settings a dropdown of the dialog sets for one run. */
+type ChoiceSetting =
+	| 'transcriptionProvider'
+	| 'transcriptDestination'
+	| 'transcriptFileFormat'
+	| 'llmPostProcessTask';
 
 /** A dropdown of the dialog, as a parameter. */
 interface ChoiceOption {
 	readonly param: string;
 	readonly values: readonly string[];
 	readonly description: string;
-	readonly apply: (run: AudioRecorderSettings, value: string) => void;
+	/**
+	 * Reads the parameter and, when it was given, sets the run to it.
+	 * @returns The change to make, null when not given, or the refusal
+	 */
+	readonly read: (
+		args: CliData,
+	) => CliRead<((run: AudioRecorderSettings) => void) | null>;
+}
+
+/**
+ * A dropdown of the dialog as a parameter, typed by the setting it sets, so
+ * a value the command line accepts is one the setting can hold.
+ * @param param - The parameter name
+ * @param setting - The setting it sets for the run
+ * @param options - The dropdown's options
+ * @param description - One line for the help output
+ */
+function choice<K extends ChoiceSetting>(
+	param: string,
+	setting: K,
+	options: readonly LabeledOption<AudioRecorderSettings[K]>[],
+	description: string,
+): ChoiceOption {
+	const values = options.map((option) => option.value);
+	return {
+		param,
+		values,
+		description,
+		read: (args) => {
+			const read = cliChoice(args, param, values);
+			if (isRefusal(read)) {
+				return read;
+			}
+			const { value } = read;
+			return {
+				value:
+					value === null
+						? null
+						: (run: AudioRecorderSettings): void => {
+								run[setting] = value;
+							},
+			};
+		},
+	};
 }
 
 /** A switch of the dialog, as a parameter. */
@@ -76,42 +124,30 @@ interface ProfileOption {
 
 /** The dialog's dropdowns. */
 const CHOICES: readonly ChoiceOption[] = [
-	{
-		param: 'engine',
-		values: valuesOf(TRANSCRIPTION_PROVIDER_OPTIONS),
-		description: 'Transcription engine for this run.',
-		apply: (run, value) => {
-			run.transcriptionProvider =
-				value as AudioRecorderSettings['transcriptionProvider'];
-		},
-	},
-	{
-		param: 'destination',
-		values: valuesOf(TRANSCRIPT_DESTINATION_OPTIONS),
-		description: 'Where the transcript goes.',
-		apply: (run, value) => {
-			run.transcriptDestination =
-				value as AudioRecorderSettings['transcriptDestination'];
-		},
-	},
-	{
-		param: 'format',
-		values: valuesOf(TRANSCRIPT_FILE_FORMAT_OPTIONS),
-		description: 'Format of the transcript file.',
-		apply: (run, value) => {
-			run.transcriptFileFormat =
-				value as AudioRecorderSettings['transcriptFileFormat'];
-		},
-	},
-	{
-		param: 'task',
-		values: valuesOf(LLM_TASK_OPTIONS),
-		description: 'LLM post-processing task.',
-		apply: (run, value) => {
-			run.llmPostProcessTask =
-				value as AudioRecorderSettings['llmPostProcessTask'];
-		},
-	},
+	choice(
+		'engine',
+		'transcriptionProvider',
+		TRANSCRIPTION_PROVIDER_OPTIONS,
+		'Transcription engine for this run.',
+	),
+	choice(
+		'destination',
+		'transcriptDestination',
+		TRANSCRIPT_DESTINATION_OPTIONS,
+		'Where the transcript goes.',
+	),
+	choice(
+		'format',
+		'transcriptFileFormat',
+		TRANSCRIPT_FILE_FORMAT_OPTIONS,
+		'Format of the transcript file.',
+	),
+	choice(
+		'task',
+		'llmPostProcessTask',
+		LLM_TASK_OPTIONS,
+		'LLM post-processing task.',
+	),
 ];
 
 /** The dialog's switches. */
@@ -259,15 +295,12 @@ export function transcriptionRun(
 		});
 	}
 	for (const option of CHOICES) {
-		const read = cliChoice(args, option.param, option.values);
+		const read = option.read(args);
 		if (isRefusal(read)) {
 			return read.refusal;
 		}
-		const { value } = read;
-		if (value !== null) {
-			changes.push((run) => {
-				option.apply(run, value);
-			});
+		if (read.value !== null) {
+			changes.push(read.value);
 		}
 	}
 	for (const option of SWITCHES) {

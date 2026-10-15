@@ -1,19 +1,15 @@
 /**
  * Tests for what the recording panel says about a recording: which pieces of
- * the sidecar it gathers, who it lists as having taken part, how it names the
- * profile, and which recordings a note is taken to be about.
+ * the sidecar it gathers, who it lists as having taken part, and how it names the
+ * profile.
  */
 
-import type { CachedMetadata, TFile } from 'obsidian';
 import {
 	formatPanelDate,
-	recordingsReferencedBy,
 	summarizeRecording,
 	type RecordingPanelSources,
 } from 'src/panel/recordingPanelModel';
 import { emptyTranscriptSection } from 'src/sidecar/recordingSidecarModel';
-import { partial } from '../helpers/doubles';
-import { fileAt } from '../helpers/obsidianMock';
 
 /** Sources for a recording nothing was ever done with, with overrides. */
 function sources(
@@ -144,61 +140,6 @@ describe('summarizing a recording', () => {
 		);
 
 		expect(summary.failedParts).toBe(1);
-	});
-});
-
-describe('the recordings a note refers to', () => {
-	/** Resolves link texts against a fixed set of files. */
-	function resolver(...paths: string[]): (link: string) => TFile | null {
-		const files = new Map(paths.map((path) => [path, fileAt(path)]));
-		return (link) => files.get(link) ?? null;
-	}
-
-	it('lists embeds before links, each recording once', () => {
-		const cache = partial<CachedMetadata>({
-			embeds: [{ link: 'b.webm' }],
-			links: [{ link: 'a.mp3' }, { link: 'b.webm#t=30' }],
-		});
-
-		const recordings = recordingsReferencedBy(
-			cache,
-			resolver('a.mp3', 'b.webm'),
-		);
-
-		expect(recordings.map((file) => file.path)).toEqual([
-			'b.webm',
-			'a.mp3',
-		]);
-	});
-
-	it('leaves out links to files that are not audio', () => {
-		const cache = partial<CachedMetadata>({
-			embeds: [{ link: 'diagram.png' }, { link: 'call.m4a' }],
-		});
-
-		const recordings = recordingsReferencedBy(
-			cache,
-			resolver('diagram.png', 'call.m4a'),
-		);
-
-		expect(recordings.map((file) => file.path)).toEqual(['call.m4a']);
-	});
-
-	it('finds a recording a note property links to', () => {
-		const cache = partial<CachedMetadata>({
-			frontmatterLinks: [{ key: 'recording', link: 'standup.webm' }],
-		});
-
-		const recordings = recordingsReferencedBy(
-			cache,
-			resolver('standup.webm'),
-		);
-
-		expect(recordings.map((file) => file.path)).toEqual(['standup.webm']);
-	});
-
-	it('finds nothing in a note the cache has not parsed yet', () => {
-		expect(recordingsReferencedBy(null, resolver())).toEqual([]);
 	});
 });
 

@@ -45,6 +45,7 @@ import { delay } from '../utils/TimeUtils';
 import { ConversionLinkAction } from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
 import { showNotice, type Notify } from '../utils/notify';
+import { chapters, type PlayerMarker } from '../markers/markerModel';
 
 /**
  * The way out of a desktop size ceiling for the splitter, which cannot use
@@ -67,6 +68,20 @@ export interface ChapterCut {
 	startSeconds: number;
 	/** The chapter's title, which names the part's file. */
 	title: string;
+}
+
+/**
+ * The cuts a split at chapters makes: one part per chapter of the
+ * recording, named after it. Shared by the split dialog and the command
+ * line, so both cut a recording the same way.
+ * @param markers - The recording's markers, bookmarks among them
+ * @returns The cuts, empty when the recording has no chapters
+ */
+export function chapterCutsOf(markers: readonly PlayerMarker[]): ChapterCut[] {
+	return chapters(markers).map((chapter) => ({
+		startSeconds: chapter.time,
+		title: chapter.label,
+	}));
 }
 
 /**

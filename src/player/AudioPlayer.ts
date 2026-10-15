@@ -26,6 +26,7 @@ import {
 	PLAYER_PLAYBACK_RATE,
 } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
+import { copyTimecodeLink } from '../obsidian/timecodeRefs';
 import { playbackProgress } from './playbackProgress';
 import {
 	playAudio,
@@ -1301,26 +1302,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * link-format preference.
 	 * @param time - Offset in seconds (defaults to the current position)
 	 */
-	private async copyTimestampLink(
-		time = this.audio.currentTime,
-	): Promise<void> {
-		const seconds = Math.floor(Math.max(0, time));
-		const link = this.app.fileManager.generateMarkdownLink(
+	private copyTimestampLink(time = this.audio.currentTime): Promise<void> {
+		return copyTimecodeLink(
+			this.app,
 			this.file,
 			this.options.sourcePath,
-			`#t=${String(seconds)}`,
-			formatTimecode(seconds),
+			time,
 		);
-		try {
-			await navigator.clipboard.writeText(link);
-			new Notice(`Copied timestamp link at ${formatTimecode(seconds)}`);
-		} catch (error) {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Failed to copy timestamp link:`,
-				error,
-			);
-			new Notice('Could not copy timestamp link to the clipboard.');
-		}
 	}
 
 	/**

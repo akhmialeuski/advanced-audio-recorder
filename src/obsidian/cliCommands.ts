@@ -169,11 +169,13 @@ export function cliCommands(host: CliHost, pluginId: string): CliCommand[] {
 /**
  * Registers the CLI commands, where the running Obsidian has a CLI at all.
  *
- * A registration that throws - which is what a duplicate id does - is reported
- * rather than allowed to fail `onload`: the CLI is a convenience, and a plugin
- * that refuses to load over one is not. The commands registered before the
- * one that threw stay registered, since the API offers no way to take one
- * back short of unloading.
+ * Two commands of one id cannot reach here, since the action registry refuses
+ * the second when it is added. A registration the host still refuses, a clash
+ * with another plugin's command for one, is reported rather than allowed to
+ * fail `onload`: the CLI is a convenience, and a plugin that refuses to load
+ * over one is not. The commands registered before the refused one stay
+ * registered, since the API offers no way to take one back short of
+ * unloading.
  * @param plugin - The plugin registering them
  * @param commands - Every command, the plugin's own and its actions'
  * @returns Whether every command was registered
@@ -182,22 +184,6 @@ export function registerCliCommands(
 	plugin: Plugin,
 	commands: readonly CliCommand[],
 ): boolean {
-	// Checked over every command, the hand-written ones here and the ones the
-	// action registry built, before any is registered: the host refuses a
-	// second command of one id partway through, which would leave the rest
-	// off the command line with nothing said. A clash is a bug in this
-	// plugin, which the plugin's load must survive - and which its tests,
-	// counting the commands registered, catch.
-	const seen = new Set<string>();
-	for (const { id } of commands) {
-		if (seen.has(id)) {
-			console.error(
-				`${PLUGIN_LOG_PREFIX} CLI commands were not registered: two share the id ${id}.`,
-			);
-			return false;
-		}
-		seen.add(id);
-	}
 	// The typings declare the method on every platform, but only the desktop
 	// app has a command line, so the method is asked for rather than assumed.
 	if (

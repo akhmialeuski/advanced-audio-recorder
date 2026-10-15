@@ -6,14 +6,12 @@
 import { App, Notice, Setting, TFile } from 'obsidian';
 import { PluginModal } from './PluginModal';
 import type { DropdownComponent } from 'obsidian';
-import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
 	ChannelMode,
 	channelCountFor,
-	isMonoChannelMode,
 	normalizeChannelMode,
 } from '../audio/downmix';
-import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
+import { FORMAT_WAV } from '../constants';
 import {
 	addBitrateSetting,
 	type BitrateRow,
@@ -21,7 +19,7 @@ import {
 	addLinkActionSetting,
 } from '../settings/settingControls';
 import { getEncoderDescription } from './formatDescriptions';
-import { ConversionService } from '../recording/api';
+import { ConversionService, conversionTargets } from '../recording/api';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type {
 	AudioRecorderSettings,
@@ -192,12 +190,9 @@ export class ConversionModal extends PluginModal {
 	 * modes, so a stereo file can become a mono file of the same format.
 	 */
 	private availableFormats(): string[] {
-		const sourceFormat = this.sourceFile.extension.toLowerCase();
-		return AUDIO_EXTENSIONS.filter(
-			(format) =>
-				isOfflineEncodingSupported(format) &&
-				(format !== sourceFormat ||
-					isMonoChannelMode(this.channelMode)),
+		return conversionTargets(
+			this.sourceFile.extension.toLowerCase(),
+			this.channelMode,
 		);
 	}
 

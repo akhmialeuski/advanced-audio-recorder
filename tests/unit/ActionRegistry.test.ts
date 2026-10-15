@@ -1,7 +1,7 @@
 /**
  * Tests for the action registry: adding a family puts every action on the
  * palette and keeps its command-line commands, the menus render only what was
- * added, and two actions can never share an id.
+ * added, and no two commands, of a family or not, can share an id.
  * @module tests/unit/ActionRegistry.test
  */
 
@@ -14,6 +14,7 @@ import {
 	mockPluginHost,
 } from '../helpers/obsidianMock';
 import { createMockApp } from '../helpers/createApp';
+import type { CliCommand } from 'src/obsidian/cliCommands';
 
 /** An action over plain strings, named by its id. */
 function action(id: string, name = id): PluginCommand<string> {
@@ -35,6 +36,11 @@ function family(actions: PluginCommand<string>[]): ActionFamily<string> {
 		cliTarget: { params: {}, resolve: () => ['it'] },
 		describe: (target) => target,
 	};
+}
+
+/** A command-line command of no family. */
+function cliCommand(id: string): CliCommand {
+	return { id, description: id, flags: null, handler: () => id };
 }
 
 /** A registry over a plugin double. */
@@ -82,7 +88,30 @@ describe('adding a family', () => {
 		registry.add(family([action('one')]));
 
 		expect(() => registry.add(family([second]))).toThrow(
-			/Two plugin actions share the id/,
+			/Two plugin commands share the id/,
+		);
+	});
+});
+
+describe('the command line beside the families', () => {
+	it('keeps commands of no family ahead of the ones added after them', () => {
+		const { registry } = createSut();
+		registry.addCliCommands([cliCommand('aar:status')]);
+
+		registry.add(family([action('one')]));
+
+		expect(registry.cliCommands().map((command) => command.id)).toEqual([
+			'aar:status',
+			'aar:one',
+		]);
+	});
+
+	it('refuses one whose id a family took', () => {
+		const { registry } = createSut();
+		registry.add(family([action('one')]));
+
+		expect(() => registry.addCliCommands([cliCommand('aar:one')])).toThrow(
+			/Two plugin commands share the id "aar:one"/,
 		);
 	});
 });

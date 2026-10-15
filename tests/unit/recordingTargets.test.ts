@@ -11,8 +11,8 @@ import {
 	describeRecording,
 	namedRecordings,
 	namedVaultFile,
-	recordingsInNote,
 } from 'src/actions/recordingTargets';
+import { recordingsInNote } from 'src/obsidian/noteRecordings';
 import type { FileContext } from 'src/actions/PluginAction';
 import { recordingVault } from '../helpers/recordingVault';
 import { createMarkdownView } from '../helpers/createApp';
@@ -276,6 +276,30 @@ describe('the recordings a command line names', () => {
 		expect(paths(namedRecordings(sut.services, { path: STANDUP }))).toEqual(
 			[[STANDUP, undefined]],
 		);
+	});
+
+	it.each([
+		{
+			how: 'its path from the root',
+			args: { path: `/${STANDUP}` },
+			note: undefined,
+		},
+		{
+			how: 'a name with a moment after it',
+			args: { file: 'standup#t=90' },
+			note: undefined,
+		},
+		{
+			how: 'a note name with a heading after it',
+			args: { path: STANDUP, note: 'Team Meeting#Notes' },
+			note: MEETING,
+		},
+	])('is found by $how, as Obsidian finds a file', ({ args, note }) => {
+		const sut = createSut();
+
+		expect(paths(namedRecordings(sut.services, args))).toEqual([
+			[STANDUP, note],
+		]);
 	});
 
 	it('carries the note named beside it', () => {

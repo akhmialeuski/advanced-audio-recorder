@@ -10,14 +10,11 @@
  * @module panel/recordingPanelModel
  */
 
-import { getLinkpath } from 'obsidian';
-import type { CachedMetadata, TFile } from 'obsidian';
 import { findProfile, type Profile } from '../settings/profiles';
 import type {
 	FailedPartsSection,
 	TranscriptSection,
 } from '../sidecar/recordingSidecarModel';
-import { isAudioFile } from '../utils/audioFile';
 
 /** One person who took part in the recording, as the panel lists them. */
 export interface PanelParticipant {
@@ -102,47 +99,6 @@ function participantsOf(transcript: TranscriptSection): PanelParticipant[] {
 		name,
 		speaker: speakerOf.get(name) ?? null,
 	}));
-}
-
-/**
- * The recordings a note embeds or links to, in its body or its properties,
- * embeds first and each once.
- *
- * A meeting note usually embeds its recording, but a note that only links to
- * it is about the same meeting, so both count. The metadata cache already
- * holds the note's parsed links, so nothing is read from disk here.
- * @param cache - The note's cached metadata, or null when not parsed yet
- * @param resolve - Resolves a link text to the file it points at
- * @returns The audio files the note refers to, in the order they appear
- */
-export function recordingsReferencedBy(
-	cache: CachedMetadata | null,
-	resolve: (link: string) => TFile | null,
-): TFile[] {
-	const links = [
-		...(cache?.embeds ?? []),
-		...(cache?.links ?? []),
-		// A property such as `recording: "[[standup.webm]]"`.
-		...(cache?.frontmatterLinks ?? []),
-	];
-	// A transcript links every line into the same recording, so each target
-	// is resolved once rather than once per line.
-	const targets = new Set(
-		// Without the `#t=` subpath a timecode link carries, which the
-		// resolver does not accept.
-		links.map(({ link }) => getLinkpath(link)),
-	);
-	const seen = new Set<string>();
-	const recordings: TFile[] = [];
-	for (const target of targets) {
-		const file = resolve(target);
-		if (!file || !isAudioFile(file) || seen.has(file.path)) {
-			continue;
-		}
-		seen.add(file.path);
-		recordings.push(file);
-	}
-	return recordings;
 }
 
 /**

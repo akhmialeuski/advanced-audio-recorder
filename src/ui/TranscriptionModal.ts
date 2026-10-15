@@ -472,9 +472,7 @@ export class TranscriptionModal extends PluginModal {
 			// matching the settings tab.
 			options: TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => ({
 				...option,
-				disabled: !isProviderAvailableOnPlatform(
-					option.value as TranscriptionProviderId,
-				),
+				disabled: !isProviderAvailableOnPlatform(option.value),
 			})),
 			get: () => s.transcriptionProvider,
 			set: (v) =>

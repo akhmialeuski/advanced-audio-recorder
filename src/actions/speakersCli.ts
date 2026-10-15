@@ -168,8 +168,6 @@ export async function speakersFromCli(
 		notify: notes.notify,
 	};
 	const allowBroad = cliFlag(args, BROAD_FLAG);
-	const withNotes = (answer: string): string =>
-		[answer, ...notes.messages].join('\n');
 	if (cliFlag(args, UNDO_FLAG)) {
 		// Only what a rename recorded can be undone, as the dialog offers
 		// Undo only then: names that came with the transcript are no rename,
@@ -177,7 +175,7 @@ export async function speakersFromCli(
 		if (section.history.length === 0) {
 			return `No rename of the speakers of ${file.path} to undo.`;
 		}
-		return withNotes(await undoSpeakerRename(deps, section, allowBroad));
+		return notes.answer(await undoSpeakerRename(deps, section, allowBroad));
 	}
 	const map = cliText(args, MAP_PARAM);
 	if (map === null) {
@@ -210,5 +208,5 @@ export async function speakersFromCli(
 	if (outcome.kind === 'declined') {
 		return `${describeMerges(unconfirmed)}. Merged speakers cannot be told apart again; add ${MERGE_FLAG} to do it anyway.`;
 	}
-	return withNotes(outcome.message);
+	return notes.answer(outcome.message);
 }

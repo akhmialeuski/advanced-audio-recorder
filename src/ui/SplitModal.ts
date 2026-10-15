@@ -23,16 +23,17 @@ import {
 	addNumberInputTo,
 } from '../settings/settingControls';
 import {
+	chapterCutsOf,
 	clampSplitMinutes,
 	sanitizePartSuffix,
 	SplitService,
+	type ChapterCut,
 } from '../recording/api';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
 } from '../settings/settingsSchema';
-import type { ChapterCut } from '../recording/SplitService';
-import { chapters, type PlayerMarker } from '../markers/markerModel';
+import type { PlayerMarker } from '../markers/markerModel';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
@@ -210,10 +211,7 @@ export class SplitModal extends PluginModal {
 		hideWhenByChapters: readonly Setting[],
 	): Promise<void> {
 		const markers = await this.readMarkers();
-		this.chapterCuts = chapters(markers).map((chapter) => ({
-			startSeconds: chapter.time,
-			title: chapter.label,
-		}));
+		this.chapterCuts = chapterCutsOf(markers);
 		if (this.chapterCuts.length === 0) {
 			return;
 		}

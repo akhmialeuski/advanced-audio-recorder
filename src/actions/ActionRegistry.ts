@@ -61,18 +61,41 @@ export class ActionRegistry {
 	 */
 	add<TContext>(family: ActionFamily<TContext>): RegisteredFamily<TContext> {
 		const commands = actionCliCommands(family, this.plugin.manifest.id);
-		for (const id of [
+		this.claim([
 			...family.actions.map((action) => action.commandId),
 			...commands.map((command) => command.id),
-		]) {
-			if (this.ids.has(id)) {
-				throw new Error(`Two plugin actions share the id "${id}".`);
-			}
-			this.ids.add(id);
-		}
+		]);
 		registerActionCommands(this.plugin, family, this.pickTarget);
 		this.commands.push(...commands);
 		return { family };
+	}
+
+	/**
+	 * Keeps command-line commands that are no action of a family, the
+	 * recorder's own, under the same check as the families' commands, so a
+	 * clash anywhere is caught in one place and the same way.
+	 * @param commands - The commands
+	 * @throws When one reuses a command id already taken
+	 */
+	addCliCommands(commands: readonly CliCommand[]): void {
+		this.claim(commands.map((command) => command.id));
+		this.commands.push(...commands);
+	}
+
+	/**
+	 * Takes command ids, refusing one already taken: two commands of one id
+	 * would leave one of them unreachable, and the host would refuse the
+	 * second partway through registering the command line.
+	 * @param ids - The ids to take
+	 * @throws When an id is taken already
+	 */
+	private claim(ids: readonly string[]): void {
+		for (const id of ids) {
+			if (this.ids.has(id)) {
+				throw new Error(`Two plugin commands share the id "${id}".`);
+			}
+			this.ids.add(id);
+		}
 	}
 
 	/** Every command-line command of the families added so far. */

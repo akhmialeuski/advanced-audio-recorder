@@ -9,10 +9,13 @@
 
 import { MarkdownView, Notice } from 'obsidian';
 import type { CliData } from 'obsidian';
-import { COMMAND_IDS, PLAYER_ICONS, PLUGIN_LOG_PREFIX } from '../constants';
+import { COMMAND_IDS, PLAYER_ICONS } from '../constants';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { addRecordingMarker } from '../markers/addRecordingMarker';
-import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
+import {
+	copyTimecodeLink,
+	timecodeLinkBuilder,
+} from '../obsidian/timecodeRefs';
 import { formatTimecode } from '../utils/TimeUtils';
 import { isAudioFile } from '../utils/audioFile';
 import { cliText, cliTime, isRefusal, valueParam } from '../obsidian/cliArgs';
@@ -81,18 +84,13 @@ function timestampLink(context: PositionContext): string {
  * Copies the link to the clipboard and says so.
  * @param context - The position
  */
-async function copyTimestampLink(context: PositionContext): Promise<void> {
-	const seconds = Math.floor(Math.max(0, context.seconds));
-	try {
-		await navigator.clipboard.writeText(timestampLink(context));
-		new Notice(`Copied timestamp link at ${formatTimecode(seconds)}`);
-	} catch (error) {
-		console.warn(
-			`${PLUGIN_LOG_PREFIX} Failed to copy timestamp link:`,
-			error,
-		);
-		new Notice('Could not copy timestamp link to the clipboard.');
-	}
+function copyTimestampLink(context: PositionContext): Promise<void> {
+	return copyTimecodeLink(
+		context.services.app,
+		context.file,
+		context.note?.path ?? '',
+		context.seconds,
+	);
 }
 
 /** Whether a marker can be added at the position. */

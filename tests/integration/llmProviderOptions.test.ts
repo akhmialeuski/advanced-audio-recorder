@@ -5,7 +5,6 @@
  * @module tests/integration/llmProviderOptions.test
  */
 
-import type { LlmProviderId } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { LLM_PROVIDER_LABELS, LLM_PROVIDER_OPTIONS } from 'src/settings/labels';
 import { createLlmProvider } from 'src/transcription/factories';
@@ -39,7 +38,7 @@ describe('LLM provider options (single source of truth)', () => {
 		// not support, which would let the dropdown offer a broken choice.
 		for (const option of LLM_PROVIDER_OPTIONS) {
 			const settings = mergeSettings({
-				llmProvider: option.value as LlmProviderId,
+				llmProvider: option.value,
 				// Each provider reads its own vendor key (OpenAI reuses the
 				// Whisper key, Gemini its transcription key, Anthropic,
 				// Mistral and DeepSeek their own).

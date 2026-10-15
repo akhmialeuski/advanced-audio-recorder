@@ -27,7 +27,6 @@ import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { isAudioFile } from '../utils/audioFile';
 import { editorPositionOfNode } from '../obsidian/editorDomPosition';
-import { linkAtColumn } from '../obsidian/sourceLinks';
 import { hasTimecodeSubpath } from '../player/timecodeLinks';
 import type {
 	ActionServices,
@@ -42,7 +41,8 @@ import type {
 	RegisteredFamily,
 } from '../actions/ActionRegistry';
 import { transcriptSelectionIn } from '../actions/transcriptActions';
-import { recordingsInNote } from '../actions/recordingTargets';
+import { recordingsInNote } from '../obsidian/noteRecordings';
+import { recordingLinkAt } from '../actions/recordingTargets';
 
 export type { EnhancementPrimer } from '../actions/PluginAction';
 
@@ -377,23 +377,13 @@ export class ContextMenu {
 		if (!rendered) {
 			return null;
 		}
-		const { editor, position } = rendered;
-		const found = linkAtColumn(editor.getLine(position.line), position.ch);
-		const target = found
-			? this.app.metadataCache.getFirstLinkpathDest(
-					found.path,
-					rendered.file?.path ?? '',
-				)
-			: null;
-		return found && target === file
-			? {
-					editor,
-					subpath: found.subpath,
-					line: position.line,
-					start: found.start,
-					end: found.end,
-				}
-			: null;
+		const found = recordingLinkAt(
+			this.app,
+			rendered.editor,
+			rendered.position,
+			rendered.file?.path ?? '',
+		);
+		return found?.file === file ? found.link : null;
 	}
 
 	/**
@@ -518,20 +508,14 @@ export class ContextMenu {
 		view: MarkdownView | MarkdownFileInfo,
 	): void {
 		this.addTranscriptSelectionItems(menu, editor, view);
-		const cursor = editor.getCursor();
-		const found = linkAtColumn(editor.getLine(cursor.line), cursor.ch);
-		if (!found) {
-			return;
-		}
-
-		// The path without its subpath: a timecode link reaches its
-		// recording as a whole-file link does.
-		const file = this.app.metadataCache.getFirstLinkpathDest(
-			found.path,
-			view.file ? view.file.path : '',
+		// A timecode link reaches its recording as a whole-file link does.
+		const found = recordingLinkAt(
+			this.app,
+			editor,
+			editor.getCursor(),
+			view.file?.path ?? '',
 		);
-
-		if (!(file instanceof TFile) || !isAudioFile(file)) {
+		if (!found) {
 			return;
 		}
 
@@ -541,16 +525,10 @@ export class ContextMenu {
 		this.registry.renderInto(
 			menu,
 			this.families.file,
-			this.fileContextFor(menu, file, {
+			this.fileContextFor(menu, found.file, {
 				note: view.file,
-				link: {
-					editor,
-					subpath: found.subpath,
-					line: cursor.line,
-					start: found.start,
-					end: found.end,
-				},
-				atMoment: hasTimecodeSubpath(found.subpath),
+				link: found.link,
+				atMoment: found.atMoment === true,
 			}),
 			this.renderedSetFor(menu),
 		);
