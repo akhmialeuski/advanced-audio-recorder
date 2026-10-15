@@ -1714,6 +1714,27 @@ describe('telling readers a recording changed', () => {
 		expect(changed).toEqual(['rec.wav']);
 	});
 
+	it('tells a reader once, with the document that stays, when a write lands on a synced file', async () => {
+		// The first attempt changes a document no file stood behind, and is
+		// thrown away when the synced file turns up; a reader told about that
+		// attempt would render the change without the file's markers.
+		const { app, files } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		await store.getMarkers('rec.wav');
+		files.set('rec.wav.markers.json', storedSidecar([marker('phone', 5)]));
+		const reads: Promise<PlayerMarker[]>[] = [];
+		store.onChange((path) => reads.push(store.getMarkers(path)));
+
+		await store.updateMarkers('rec.wav', (markers) => [
+			...markers,
+			marker('desk', 9),
+		]);
+
+		expect(await Promise.all(reads)).toEqual([
+			[marker('phone', 5), marker('desk', 9)],
+		]);
+	});
+
 	it('stays quiet for a write that changed nothing', async () => {
 		const { app } = makeApp();
 		const store = new RecordingSidecarStore(app);

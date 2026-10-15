@@ -907,37 +907,43 @@ export class RecordingSidecarStore {
 	): Promise<void> {
 		let blocked = false;
 		await this.enqueue(async () => {
-			let sidecar = await this.tryLoad(path);
-			for (let attempt = 1; sidecar; attempt++) {
-				if (change(sidecar) === false) {
-					return;
-				}
-				// After the cached document changed rather than after the
-				// write: reads answer from the cache, so a listener re-reading
-				// now sees the change even when the disk write below fails.
-				if (announce) {
-					this.notify(path);
-				}
-				try {
-					if (await this.persist(path, sidecar)) {
+			let changed = false;
+			try {
+				let sidecar = await this.tryLoad(path);
+				for (let attempt = 1; sidecar; attempt++) {
+					if (change(sidecar) === false) {
 						return;
 					}
-				} catch (error) {
-					console.warn(
-						`${PLUGIN_LOG_PREFIX} Failed to write sidecar for ${path}:`,
-						error,
-					);
-					return;
+					changed = true;
+					try {
+						if (await this.persist(path, sidecar)) {
+							return;
+						}
+					} catch (error) {
+						console.warn(
+							`${PLUGIN_LOG_PREFIX} Failed to write sidecar for ${path}:`,
+							error,
+						);
+						return;
+					}
+					if (attempt === MAX_WRITE_ATTEMPTS) {
+						console.warn(
+							`${PLUGIN_LOG_PREFIX} Gave up writing the sidecar for ${path}: a file kept appearing at its path while the store wrote it.`,
+						);
+						return;
+					}
+					sidecar = await this.read(path, true);
 				}
-				if (attempt === MAX_WRITE_ATTEMPTS) {
-					console.warn(
-						`${PLUGIN_LOG_PREFIX} Gave up writing the sidecar for ${path}: a file kept appearing at its path while the store wrote it.`,
-					);
-					return;
+				blocked = true;
+			} finally {
+				// Once, after the mutation settled on the document that stays
+				// cached: an attempt that is retried changed a document the
+				// retry throws away. Also after a failed disk write, because
+				// reads answer from the cache, which did change.
+				if (changed && announce) {
+					this.notify(path);
 				}
-				sidecar = await this.read(path, true);
 			}
-			blocked = true;
 		});
 		// Thrown outside the queued task, so the write chain itself stays
 		// alive while the caller receives the rejection.
