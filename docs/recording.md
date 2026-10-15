@@ -60,7 +60,7 @@ Every command, its parameters and its answers are on the [Command line](command-
 
 ## Switching the input device
 
-You do not have to open the settings tab to change which microphone records. Run the **Select audio input device** command from the command palette (`Ctrl/Cmd + P`) and a quick-pick modal opens, listing every input the plugin detected. Choose one and it is saved to your settings **immediately** - a confirmation notice reports the device that is now selected, and the next recording uses it.
+You do not have to open the settings tab to change which microphone records. Run the **Select audio input device** command from the command palette (`Ctrl/Cmd + P`) and a dialog opens with an **Input device** list of every input the plugin detected. Choose one and press **Select** and it is saved to your settings **immediately** - a confirmation notice reports the device that is now selected, and the next recording uses it.
 
 This is the quickest way to switch mics between recordings - for example, moving from a laptop's built-in microphone to a headset before a meeting. The same choice is also available, alongside the sample rate, under [Audio input settings](settings-reference.md#audio-input).
 
@@ -109,7 +109,7 @@ The active recording duration is checked before the file is read, so long sessio
 
 ## The status bar while recording
 
-Once a session is active, the ribbon microphone turns red and pulses, and the **status bar** (bottom-right of the Obsidian window) shows the live recording controls.
+Once a session is active, the ribbon microphone turns red and pulses, and the **status bar** (bottom-right of the Obsidian window) shows the live recording controls. When your system is set to reduce motion, the icon turns red without pulsing, and the progress bars fill without sliding.
 
 ![Status bar showing Recording with Add marker, Pause, and Stop buttons](images/status-bar-recording.png)
 
@@ -123,7 +123,7 @@ The status bar shows a label and a row of icon buttons:
 | **Pause**          | While recording (becomes **Resume** while paused) | Pauses the recording.                             |
 | **Stop**           | Always, while recording or paused                 | Stops and saves the recording.                    |
 
-The **Add marker** button only renders when the **Markers and chapters** option of the [enhanced player](audio-player.md) is enabled; otherwise the row shows just **Pause** and **Stop**. All three buttons are clickable and keyboard-focusable.
+The **Add marker** button only renders when the **Markers and chapters** option of the [enhanced player](audio-player.md) is enabled; otherwise the row shows just **Pause** and **Stop**. All three are Obsidian's own icon buttons: they take the keyboard focus, Enter or Space presses them, a screen reader announces each by its name, and hovering one shows that name as a tooltip.
 
 ---
 
@@ -131,7 +131,7 @@ The **Add marker** button only renders when the **Markers and chapters** option 
 
 Alongside the control buttons, the status bar shows live indicators that confirm the microphone is working and the recording is growing. Both are configurable under **Settings > Audio processing & feedback**.
 
-- **Input level meter** - a live VU meter that fills in response to the microphone signal, so you can see at a glance that sound is actually being picked up. Controlled by **Input level meter** (default On).
+- **Input level meter** - a live VU meter that fills in response to the microphone signal, so you can see at a glance that sound is actually being picked up. A screen reader reads it as an input level meter with the current level as a percentage. Controlled by **Input level meter** (default On).
 - **Recording stats** - two figures that update continuously:
     - **Elapsed time** in `m:ss` (or `h:mm:ss` for long sessions). This counts _active_ recording time only; paused intervals are excluded.
     - **Total recorded size**, shown as it grows. For multi-track or multi-part sessions this is the sum across all tracks and parts.
@@ -276,7 +276,7 @@ Recording works in the Obsidian mobile app, with platform limits the plugin appl
 
 ## Mobile recording banner
 
-The **Show recording banner** option (under **Settings > Mobile**, default On) governs a floating on-screen banner shown on mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button, so the session stays visible and can be stopped from the banner. By default the banner floats just below the note header, away from the top edge of the screen, and its stop button is a full-size touch target.
+The **Show recording banner** option (under **Settings > Mobile**, default On) governs a floating on-screen banner shown on mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button, so the session stays visible and can be stopped from the banner. By default the banner floats just below the note header, away from the top edge of the screen, and its stop button is a full-size touch target. The elapsed time follows the text size you set for your phone or tablet, the stop button can also be pressed from a connected keyboard, and with reduced motion turned on in the system the red dot stays lit without pulsing.
 
 ![The mobile recording banner with a pulsing dot, the elapsed time 1:23 and a stop button, floating below the note header on a phone](images/mobile-recording-banner.png)
 
