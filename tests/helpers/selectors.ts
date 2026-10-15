@@ -213,6 +213,8 @@ export const MODAL = {
 	/** The bar of a transcript line with the handles of the split selection. */
 	timeSpan: '.aar-time-span',
 	recoverySession: '.aar-recovery-session',
+	/** The running clock of a transcription in flight. */
+	transcribeElapsed: '.aar-transcribe-elapsed',
 	silentChannelConvert: '.aar-silent-channel-convert',
 	/**
 	 * The body the release notes are rendered into. Obsidian's own class for

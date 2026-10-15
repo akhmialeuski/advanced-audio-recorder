@@ -30,6 +30,7 @@ import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { internalsOf } from '../helpers/doubles';
 import { asMockVault } from '../helpers/obsidianMock';
+import { MODAL } from '../helpers/selectors';
 
 // The run itself has its own suites (runTranscription, the providers); what
 // this dialog owes is what it does with the outcome, so the run is recorded
@@ -1340,8 +1341,7 @@ describe('TranscriptionModal running the job', () => {
 			jest.mocked(transcribeFile).mockReturnValue(new Promise(() => {}));
 			const { modal } = openRunnable();
 			const elapsed = (): string | null | undefined =>
-				maybeEl(modal.contentEl, '.aar-transcribe-elapsed')
-					?.textContent;
+				maybeEl(modal.contentEl, MODAL.transcribeElapsed)?.textContent;
 			void internalsOf<TranscriptionModalInternals>(modal).startRun();
 			expect(elapsed()).toBe('Elapsed 0:00');
 
