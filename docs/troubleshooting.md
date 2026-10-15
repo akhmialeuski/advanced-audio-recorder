@@ -16,6 +16,7 @@ This guide helps you diagnose and fix problems with Advanced Audio Recorder. It 
     - [Transcription errors](#transcription-errors)
     - [Audio cleanup errors](#audio-cleanup-errors)
     - [Settings not saving](#settings-not-saving)
+    - [The recording panel is gone](#the-recording-panel-is-gone)
 - [Collecting diagnostics for a bug report](#collecting-diagnostics-for-a-bug-report)
 - [Where to report](#where-to-report)
 
@@ -231,6 +232,19 @@ What to do:
 3. Avoid editing `data.json` by hand and avoid syncing it to a location that may write a partial file.
 
 See also: [Settings reference](settings-reference.md).
+
+### The recording panel is gone
+
+The microphone icon of the [recording panel](recording-panel.md) is no longer among the sidebar tabs.
+
+The plugin puts the panel in the right sidebar only once per device, the first time it runs there. A panel that was closed, by its tab's close button or by **Close** in the tab's right-click menu, stays closed, just as a closed **Outline** or **Backlinks** pane does. Nothing is lost: the panel reads everything it shows from the recordings and their stored data.
+
+To bring it back:
+
+1. Open the command palette with `Ctrl+P` (`Cmd+P` on macOS).
+2. Run **Open the recording panel**.
+
+The panel opens in the right sidebar and is shown. From then on Obsidian keeps it in the layout of that device, wherever you drag it.
 
 ---
 

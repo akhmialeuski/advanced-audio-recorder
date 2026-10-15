@@ -13,7 +13,12 @@ The recording panel is a sidebar tab that shows what the plugin knows about the 
 
 The first time the plugin runs with the panel on a device, it adds the panel to the right sidebar without switching to it, so its microphone icon appears among the sidebar tabs. Click the icon to show the panel. Like any sidebar tab, it can be dragged to the left sidebar, into another tab group, or into the main area, and Obsidian keeps it there. Each device places it once on its own, because Obsidian keeps a separate layout per device.
 
-If you close the panel, it is not added back on the next start of that device. Run **Open the recording panel** from the command palette to bring it back. The command also shows the panel when it is already open in a sidebar that is collapsed or on another tab.
+If you close the panel, it is not added back on the next start of that device, so its icon disappears from the sidebar. To bring it back:
+
+1. Open the command palette with `Ctrl+P` (`Cmd+P` on macOS).
+2. Run **Open the recording panel**.
+
+The command also shows the panel when it is already open in a sidebar that is collapsed or on another tab. See [The recording panel is gone](troubleshooting.md#the-recording-panel-is-gone) in Troubleshooting.
 
 ## What the panel follows
 
