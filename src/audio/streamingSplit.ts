@@ -272,7 +272,8 @@ export class StreamedSplit implements Disposable {
 	): Promise<void> {
 		const partStart = this.consumed;
 		while (endFrame === null || this.consumed < endFrame) {
-			const sample = this.pending ?? (await this.nextSample());
+			const sample =
+				this.pending ?? (await nextPresentedSample(this.samples));
 			this.pending = null;
 			if (!sample) {
 				break;
@@ -306,11 +307,6 @@ export class StreamedSplit implements Disposable {
 				'The recording ended before this part began.',
 			);
 		}
-	}
-
-	/** The next decoded sample, or null at the end of the recording. */
-	private nextSample(): Promise<AudioSample | null> {
-		return nextPresentedSample(this.samples);
 	}
 
 	/** Stops the decoder and releases the recording, however the split ended. */

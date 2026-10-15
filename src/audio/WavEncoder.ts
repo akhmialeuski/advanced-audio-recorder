@@ -347,11 +347,6 @@ const INT16_SAMPLE_BYTES = PCM_SAMPLE_BYTES[PcmSampleFormat.Int16];
  */
 const ENCODE_YIELD_FRAMES = 500_000;
 
-/** Lets the UI thread breathe between conversion slices. */
-function yieldToEventLoop(): Promise<void> {
-	return delay(0);
-}
-
 /**
  * How many bytes {@link encodeFloatsAsInt16Wav} returns for this many frames.
  *
@@ -412,7 +407,8 @@ export async function encodeFloatsAsInt16Wav(
 			}
 		}
 		if (end < frameCount) {
-			await yieldToEventLoop();
+			// Lets the UI thread breathe between conversion slices.
+			await delay(0);
 		}
 	}
 	return out;
