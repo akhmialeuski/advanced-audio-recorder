@@ -1,6 +1,6 @@
 /**
- * The provider fields no declarative control type covers: the API key, which
- * is a password field, and the local whisper.cpp file paths.
+ * The provider fields no declarative control type covers: the local
+ * whisper.cpp file paths.
  * @module settings/sections/transcriptionEngineSection
  */
 
@@ -11,37 +11,6 @@ import {
 } from '../../constants';
 import { addText, type SettingsSectionContext } from '../settingControls';
 import { isProviderAvailableOnPlatform } from '../../transcription/providers/capabilities';
-import { accountOf, type EngineDescriptor } from '../../providers/providers';
-
-/**
- * An engine's API key: a password field with the reveal toggle Obsidian's own
- * keychain dialog uses, which no declarative control type covers. Rendered from
- * the account the engine names, so two engines over one account share the field
- * instead of each keeping a copy.
- * @param ctx - The section context (host element and save hooks)
- * @param engine - The engine whose account is being credentialed
- */
-export function renderProviderKeyField(
-	ctx: SettingsSectionContext,
-	engine: EngineDescriptor,
-): void {
-	const connection = accountOf(engine);
-	if (!connection) {
-		return;
-	}
-	const s = ctx.settings;
-	// No catalogue link here: it belongs with the catalogue, which is a page of
-	// its own on this engine, not under the field that holds a secret.
-	addText(ctx, {
-		name: connection.keyFieldName,
-		desc: connection.keyFieldDesc,
-		get: () => connection.apiKey(s),
-		set: (v) => {
-			connection.setApiKey(s, v);
-		},
-		secret: true,
-	});
-}
 
 /** Local whisper.cpp engine fields (binary path, model path, extra args). */
 export function renderLocalWhisperSettings(ctx: SettingsSectionContext): void {

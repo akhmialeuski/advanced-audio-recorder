@@ -105,14 +105,12 @@ export interface SettingsSectionContext {
 	onValueChanged?: (() => void) | undefined;
 }
 
-/** Configuration for a debounced text control (optionally a password). */
+/** Configuration for a debounced text control. */
 export interface TextControlConfig {
 	name: string;
 	desc?: string;
 	get: () => string;
 	set: (value: string) => void;
-	/** Render as a password field for secrets (API keys). */
-	secret?: boolean;
 	/** Optional "learn more" link appended to the description. */
 	helpLink?: HelpLink;
 	/**
@@ -122,35 +120,6 @@ export interface TextControlConfig {
 	 * editable but inert.
 	 */
 	disabled?: boolean;
-}
-
-/**
- * Adds the eye button that unmasks a secret field, the way Obsidian's own
- * secret dialog does it: the button sits to the left of the input and swaps the
- * icon with the input type. It is added before the input exists, so it is
- * handed the input afterwards through the binder it returns.
- * @param setting - The row the button is added to
- * @returns Binds the button to the password input the caller adds next
- */
-function addSecretReveal(setting: Setting): (input: HTMLInputElement) => void {
-	let inputEl: HTMLInputElement | null = null;
-	setting.addExtraButton((button) => {
-		button
-			.setIcon('lucide-eye-off')
-			.setTooltip('Show value')
-			.onClick(() => {
-				if (!inputEl) {
-					return;
-				}
-				const masked = inputEl.type === 'password';
-				inputEl.type = masked ? 'text' : 'password';
-				button.setIcon(masked ? 'lucide-eye' : 'lucide-eye-off');
-				button.setTooltip(masked ? 'Hide value' : 'Show value');
-			});
-	});
-	return (input: HTMLInputElement): void => {
-		inputEl = input;
-	};
 }
 
 /** Adds a text input bound to a getter/setter with a debounced save. */
@@ -165,17 +134,7 @@ export function addText(
 	if (config.helpLink) {
 		appendHelpLink(setting, config.helpLink);
 	}
-	// Obsidian masks a secret this way in its own keychain dialog: a reveal
-	// toggle to the left of the field, an autocomplete the browser will not fill.
-	// Mirrored here so an API key looks and behaves like every other secret the
-	// app asks for.
-	const bindReveal = config.secret ? addSecretReveal(setting) : undefined;
 	setting.addText((text) => {
-		if (config.secret) {
-			text.inputEl.type = 'password';
-			text.inputEl.setAttribute('autocomplete', 'off');
-			bindReveal?.(text.inputEl);
-		}
 		text.setValue(config.get()).onChange((value) => {
 			config.set(value);
 			ctx.onValueChanged?.();
