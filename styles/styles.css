@@ -1825,16 +1825,9 @@ button.aar-player-marker-row {
     text-align: right;
 }
 
+/* An Obsidian icon button, kept as compact as the row it ends */
 .aar-queue-remove {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    color: var(--text-muted);
-    cursor: pointer;
+    padding: var(--size-2-1);
 }
 
 /* Recording panel. Its sections reuse the classes of Obsidian's Properties block, so only

@@ -831,6 +831,23 @@ describe('live recording indicators', () => {
 		expect(maybeEl(statusBarItem, STATUS.elapsed)).toBeNull();
 	});
 
+	it('exposes the input level as a named meter a screen reader can read', () => {
+		const statusBarItem = recordingWithLive({
+			showStats: false,
+			showMeter: true,
+		});
+
+		updateRecordingLiveStats(statusBarItem, {
+			elapsedMs: 1000,
+			bytes: 1,
+			level: 0.25,
+		});
+
+		const meter = control(statusBarItem, 'Input level');
+		expect(meter.getAttribute('role')).toBe('meter');
+		expect(meter.getAttribute('aria-valuenow')).toBe('25');
+	});
+
 	it('draws nothing live when neither indicator is asked for', () => {
 		const statusBarItem = recordingWithLive({
 			showStats: false,

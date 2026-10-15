@@ -228,7 +228,19 @@ function renderRecordingState(
 			live.createSpan({ cls: 'aar-recording-size', text: '0 B' });
 		}
 		if (liveOptions.showMeter) {
-			const meter = live.createSpan({ cls: 'aar-input-meter' });
+			// A meter rather than a picture of one: a screen reader can read
+			// the level on request, and it is not a live region, so the five
+			// readings a second are not announced on their own.
+			const meter = live.createSpan({
+				cls: 'aar-input-meter',
+				attr: {
+					role: 'meter',
+					'aria-label': 'Input level',
+					'aria-valuemin': '0',
+					'aria-valuemax': '100',
+					'aria-valuenow': '0',
+				},
+			});
 			meter.createSpan({ cls: 'aar-input-meter-fill' });
 		}
 	}
@@ -257,11 +269,12 @@ export function updateRecordingLiveStats(
 	if (size) {
 		size.textContent = formatByteSize(stats.bytes);
 	}
-	const fill = live.querySelector<HTMLElement>('.aar-input-meter-fill');
-	if (fill) {
-		fill.setCssProps({
-			'--aar-meter-fill': `${String(meterPercent(stats.level))}%`,
-		});
+	const meter = live.querySelector<HTMLElement>('.aar-input-meter');
+	const fill = meter?.querySelector<HTMLElement>('.aar-input-meter-fill');
+	if (meter && fill) {
+		const percent = String(meterPercent(stats.level));
+		fill.setCssProps({ '--aar-meter-fill': `${percent}%` });
+		meter.setAttribute('aria-valuenow', percent);
 	}
 }
 
