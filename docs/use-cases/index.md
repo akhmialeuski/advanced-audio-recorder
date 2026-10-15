@@ -1,6 +1,6 @@
 # Use cases and how-to guides
 
-This is the hub for the step-by-step guides. The reference docs describe _what_ each feature does; the guides here show _how_ to get something done end to end - sign up for a transcription provider, paste an API key into the right field, set up a fully offline engine, or run a complete record-and-summarize workflow. Each guide is self-contained, so start with the one that matches your goal and follow it from top to bottom.
+This is the hub for the step-by-step guides. The reference docs describe _what_ each feature does, and the guides here show _how_ to get something done end to end - sign up for a transcription provider, paste an API key into the right field, set up a fully offline engine, or run a complete record-and-summarize workflow. Each guide is self-contained, so start with the one that matches your goal and follow it from top to bottom.
 
 - [Where to start](#where-to-start)
 - [Getting API keys](#getting-api-keys)
@@ -59,6 +59,7 @@ These guides combine several features into one end-to-end procedure.
 | [Transcribe automatically after recording](transcribe-after-recording.md) | Turn on **Transcribe after recording** so every clip produces a transcript. |
 | [Record and summarize a meeting](meeting-notes-workflow.md)               | Record a meeting, transcribe it with diarization, and add an LLM summary.   |
 | [A meeting from a script](../command-line.md#a-meeting-from-a-script)     | Transcribe, name speakers, chapter and split a meeting from a terminal.     |
+| [Script recordings from the terminal](scripting-from-the-terminal.md)     | Timed recordings, overnight queues, marker search, exports from a shell.    |
 | [Record a voice memo or lecture on your phone](record-on-mobile.md)       | Record on the Obsidian mobile app and optionally transcribe in the cloud.   |
 
 The meeting-notes workflow produces a single note with the recording, a diarized transcript, and an LLM summary - see the finished example in that guide.
@@ -67,7 +68,7 @@ The meeting-notes workflow produces a single note with the recording, a diarized
 
 ## Which engine should I choose?
 
-Pick a transcription engine before you sign up anywhere - the choice decides which API-key guide you need. The table below summarizes the trade-offs; the [Transcription](../transcription.md) reference covers each engine in full, including [speakers and diarization](../transcription.md#speakers-and-diarization).
+Pick a transcription engine before you sign up anywhere - the choice decides which API-key guide you need. The table below summarizes the trade-offs, and the [Transcription](../transcription.md) reference covers each engine in full, including [speakers and diarization](../transcription.md#speakers-and-diarization).
 
 | Engine                        | Cost                        | Diarization | Max file | Offline | Best for                                |
 | ----------------------------- | --------------------------- | ----------- | -------- | ------- | --------------------------------------- |

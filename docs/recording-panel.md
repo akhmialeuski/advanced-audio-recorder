@@ -25,7 +25,7 @@ The command also shows the panel when it is already open in a sidebar that is co
 The panel follows the active file:
 
 - **A recording opened on its own** shows that recording.
-- **A note** shows the recordings it embeds or links to, which covers a meeting note with its recording embed and the transcript lines whose timecode links point into the recording. Embeds come first. When a note refers to more than one recording, a **Shown** dropdown picks the one to display.
+- **A note** shows the recordings it embeds or links to, which covers a meeting note with its recording embed and the transcript lines whose timecode links point into the recording. They are listed in the order the note mentions them, its properties first, which is the order the command palette and the [command line](command-line.md) use for the same note. When a note refers to more than one recording, a **Shown** dropdown picks the one to display.
 - **Any other file**, or no file at all, shows a short hint and the panel's buttons.
 
 The panel updates on its own when you open another file, when the links in the note change, and when the recording's stored data changes: a transcription that finishes, a speaker you rename, a recording you rename or delete.

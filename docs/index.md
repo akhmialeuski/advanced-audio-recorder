@@ -1,6 +1,6 @@
 # Advanced Audio Recorder - Documentation
 
-**Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with five engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, Mistral Voxtral, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.14.4 or newer**; a few features are desktop-only (see [Mobile support](mobile-support.md)).
+**Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with five engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, Mistral Voxtral, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.14.4 or newer**, and a few features are desktop-only (see [Mobile support](mobile-support.md)).
 
 ![The enhanced audio player embedded in a note, showing the waveform seek bar, transport controls, and a marker list](images/player-overview.png)
 
@@ -106,18 +106,19 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 
 ### Use cases
 
-| Page                                                                  | What it covers                                                             |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [Use cases index](use-cases/index.md)                                 | The full list of step-by-step guides.                                      |
-| [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md)         | Create an OpenAI API key and configure the Whisper API engine.             |
-| [Groq Whisper setup](use-cases/groq-whisper-setup.md)                 | Use Groq's fast, OpenAI-compatible Whisper endpoint.                       |
-| [Deepgram API key](use-cases/deepgram-api-key.md)                     | Sign up for Deepgram and enable diarization.                               |
-| [Gemini API key](use-cases/gemini-api-key.md)                         | Get a Google AI Studio key for the Gemini engine.                          |
-| [Mistral API key](use-cases/mistral-api-key.md)                       | Get a Mistral key for the Voxtral engine and Mistral post-processing.      |
-| [Anthropic API key](use-cases/anthropic-api-key.md)                   | Get a Claude key for LLM post-processing.                                  |
-| [Local whisper.cpp](use-cases/local-whisper-cpp.md)                   | Run transcription fully offline with a local whisper.cpp binary and model. |
-| [Transcribe after recording](use-cases/transcribe-after-recording.md) | Transcribe every recording automatically as soon as it stops.              |
-| [Meeting notes workflow](use-cases/meeting-notes-workflow.md)         | Record a meeting, diarize speakers, and summarize into action items.       |
+| Page                                                                            | What it covers                                                              |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [Use cases index](use-cases/index.md)                                           | The full list of step-by-step guides.                                       |
+| [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md)                   | Create an OpenAI API key and configure the Whisper API engine.              |
+| [Groq Whisper setup](use-cases/groq-whisper-setup.md)                           | Use Groq's fast, OpenAI-compatible Whisper endpoint.                        |
+| [Deepgram API key](use-cases/deepgram-api-key.md)                               | Sign up for Deepgram and enable diarization.                                |
+| [Gemini API key](use-cases/gemini-api-key.md)                                   | Get a Google AI Studio key for the Gemini engine.                           |
+| [Mistral API key](use-cases/mistral-api-key.md)                                 | Get a Mistral key for the Voxtral engine and Mistral post-processing.       |
+| [Anthropic API key](use-cases/anthropic-api-key.md)                             | Get a Claude key for LLM post-processing.                                   |
+| [Local whisper.cpp](use-cases/local-whisper-cpp.md)                             | Run transcription fully offline with a local whisper.cpp binary and model.  |
+| [Transcribe after recording](use-cases/transcribe-after-recording.md)           | Transcribe every recording automatically as soon as it stops.               |
+| [Script recordings from the terminal](use-cases/scripting-from-the-terminal.md) | Timed recordings, overnight queues, marker search and exports from a shell. |
+| [Meeting notes workflow](use-cases/meeting-notes-workflow.md)                   | Record a meeting, diarize speakers, and summarize into action items.        |
 
 ---
 

@@ -56,7 +56,7 @@ A single audio element is shared per playback position, which is the recording's
 
 The player also keeps working in **pop-out windows**: moving a note that embeds a recording into its own window preserves the right-click menu and timecode-link playback there, because the plugin binds those handlers to each window's own document rather than only the main one.
 
-> **Desktop and mobile.** The enhanced player works in both the Obsidian desktop app and the mobile app (iOS and Android), taking over audio embeds wherever Obsidian renders them; waveform extraction relies on the Web Audio API available in both. See [Mobile support](mobile-support.md).
+> **Desktop and mobile.** The enhanced player works in both the Obsidian desktop app and the mobile app (iOS and Android), taking over audio embeds wherever Obsidian renders them. Waveform extraction relies on the Web Audio API available in both. See [Mobile support](mobile-support.md).
 
 ---
 
@@ -71,7 +71,7 @@ Every control below is **fixed** in what it does. Only the master **Enhanced aud
 The recording is drawn as a waveform that doubles as the seek bar.
 
 - **Click or drag** anywhere on it to seek. A drag that leaves the bar still tracks, because the bar captures the pointer on press.
-- **Keyboard.** Focus the seek bar and use the arrow keys to nudge the position by **5 seconds** per press (`ArrowRight`/`ArrowUp` forward, `ArrowLeft`/`ArrowDown` back). `Home` jumps to the start; `End` jumps to the end. The seek bar is exposed as a slider for screen readers.
+- **Keyboard.** Focus the seek bar and use the arrow keys to nudge the position by **5 seconds** per press (`ArrowRight`/`ArrowUp` forward, `ArrowLeft`/`ArrowDown` back). `Home` jumps to the start and `End` to the end. The seek bar is exposed as a slider for screen readers.
 - **Played portion.** The part you have already played uses the **theme accent color**, so progress is visible at a glance.
 - **Caching.** Waveforms are computed once per file revision (keyed on the file path, modification time, and size) and cached, so scrolling a note with many players does not re-decode audio. Resizing the window or switching view modes redraws from the cache instead of decoding again.
 - **Lazy and progressive decoding.** Decoding is deferred until the player scrolls near the viewport, so a long note with several recordings does not decode every embed up front. Peaks are then computed progressively in the background and the waveform fills in as they become ready, so even an hour-plus recording never blocks the interface.
@@ -123,7 +123,7 @@ The **repeat chapter** button repeats the chapter playback is currently inside. 
 
 Moving to another chapter moves what repeats. A chapter jump, a click on a marker, a drag of the seek bar, and a drag of the system scrubber described below all take the repeat with them, so you are never pulled back to the chapter you were listening to a moment ago.
 
-The button appears only when **Markers and chapters** is enabled for the recording, because a recording without chapters defines no stretch to repeat. Repeat is per recording and starts **off**; it is not remembered between sessions.
+The button appears only when **Markers and chapters** is enabled for the recording, because a recording without chapters defines no stretch to repeat. Repeat is per recording and starts **off**, and it is not remembered between sessions.
 
 ### Time display
 
@@ -149,7 +149,7 @@ A [timecode link](#timecode-links) outranks the remembered position. An embed th
 
 ## Playback controls in the status bar
 
-Whenever an enhanced player is playing, a compact set of **playback controls appears in the status bar** at the bottom-right of the Obsidian window, so you can drive the recording without scrolling back up to the embed. This is the same status-bar slot that shows `Recording...` while you capture; during playback it switches to the transport strip shown below.
+Whenever an enhanced player is playing, a compact set of **playback controls appears in the status bar** at the bottom-right of the Obsidian window, so you can drive the recording without scrolling back up to the embed. This is the same status-bar slot that shows `Recording...` while you capture, and during playback it switches to the transport strip shown below.
 
 ![Status-bar playback controls with skip back, play or pause, stop, skip forward, mute, a volume slider, add marker, add chapter, repeat chapter, and the elapsed over total time](images/status-bar-playback-controls.png)
 
@@ -162,7 +162,7 @@ The strip carries:
 - **Repeat chapter**, which engages the same repeat the embed's button does and shows the same state. It appears whenever **Markers and chapters** is enabled for the playing recording, including in Reading view where the add buttons do not, so a recording that carries no chapters yet still shows it.
 - The **elapsed over total time** readout, formatted the same way as the embed.
 
-Playback speed is deliberately left out here to keep the strip compact; change the speed from the embed's speed button or with the [speed commands](#playback-commands-and-hotkeys) instead. Every button drives the **same playback** as the embedded control row, because both delegate to one shared audio element per recording, so an action in one surface is reflected in the other.
+Playback speed is deliberately left out here to keep the strip compact. Change the speed from the embed's speed button or with the [speed commands](#playback-commands-and-hotkeys) instead. Every button drives the **same playback** as the embedded control row, because both delegate to one shared audio element per recording, so an action in one surface is reflected in the other.
 
 The strip **appears when playback starts** and **disappears when you stop it** - with the stop button here, with the **Stop playback** command, or when the recording reaches its end. The embedded control row has no stop button of its own, so those are the three ways to dismiss it. Pausing keeps the strip visible, showing the play icon, so you can resume from the status bar, and only stopping or reaching the end dismisses it. Recording and saving always take precedence: starting a recording while a player is paused shows the recording controls instead, and the playback strip returns once recording stops if the audio is still active.
 
@@ -184,7 +184,7 @@ The announcement is **taken down** when playback stops and when the plugin unloa
 
 ## Playback commands and hotkeys
 
-Every playback action is also a **command**, so a recording can be driven entirely from the keyboard while your hands stay on the transcript. The plugin assigns **no default hotkeys**; bind the ones you use under **Settings > Hotkeys** and search for `Advanced Audio Recorder`.
+Every playback action is also a **command**, so a recording can be driven entirely from the keyboard while your hands stay on the transcript. The plugin assigns **no default hotkeys**, so bind the ones you use under **Settings > Hotkeys** and search for `Advanced Audio Recorder`.
 
 | Command                                          | What it does                                                                                 |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
@@ -198,12 +198,12 @@ Every playback action is also a **command**, so a recording can be driven entire
 | Go to previous chapter                           | Jumps to the chapter before the current position, or to the start when there is none.        |
 | Go to next chapter                               | Jumps to the chapter after the current position.                                             |
 | Repeat current chapter                           | Turns repeating of the chapter playback is inside on or off.                                 |
-| Search markers and chapters                      | Opens the vault-wide marker search; offered with nothing playing.                            |
+| Search markers and chapters                      | Opens the vault-wide marker search, offered with nothing playing.                            |
 | Add bookmark at current playback position        | Drops a bookmark where playback stands.                                                      |
 | Add chapter at current playback position         | Drops a chapter where playback stands.                                                       |
 | Copy timestamp link at current playback position | Copies a link to where playback stands, as the player menu's entry does for a clicked point. |
 
-The marker search is the exception to everything that follows: it is bound to no recording, so it is always offered. The commands below exist **only while something is playing**. Obsidian hides a command whose availability check fails, so with nothing active none of them appear in the command palette and a bound hotkey stays inert, which leaves the key free for whatever else it is used for. Stopping playback, or letting a recording reach its end, withdraws them again; pausing keeps them, so the same key resumes what it paused.
+The marker search is the exception to everything that follows: it is bound to no recording, so it is always offered. The commands below exist **only while something is playing**. Obsidian hides a command whose availability check fails, so with nothing active none of them appear in the command palette and a bound hotkey stays inert, which leaves the key free for whatever else it is used for. Stopping playback, or letting a recording reach its end, withdraws them again, while pausing keeps them, so the same key resumes what it paused.
 
 The player menu's **Add marker here**, **Add chapter here** and **Copy timestamp link here** are the same three actions at the point you right-clicked, and the [command line](command-line.md#markers-and-links-at-a-time) runs them at a time it names. Three of them carry a further condition. The chapter jumps and the chapter repeat are offered only when **Markers and chapters** is enabled for the recording that is playing, because a recording without them defines no chapters to move between or to repeat. The two add commands need that setting **and** an editable view, exactly like the add buttons in the embed and in the status bar, so a player rendered in Reading view offers neither.
 
@@ -213,7 +213,7 @@ The speed commands move between the same presets the embed's speed button lists,
 
 ## Markers and chapters
 
-With **Markers and chapters** enabled, each recording can carry per-file **bookmarks** (jump points) and **chapters** (named segments). These are extra navigation aids stored alongside the recording; they do not change the audio.
+With **Markers and chapters** enabled, each recording can carry per-file **bookmarks** (jump points) and **chapters** (named segments). These are extra navigation aids stored alongside the recording, and they do not change the audio.
 
 ![The marker list under the seek bar, each row carrying a time, a title, an optional note, the segment length, a jump button, a move-to-position button, a colour and a delete button](images/player-marker-list.png)
 
@@ -257,7 +257,13 @@ The **previous chapter** and **next chapter** buttons move between chapter bound
 
 Right-click the player to add a **marker** or **chapter**, or copy a **timestamp link**, **at the clicked position** - alongside the same audio file actions the [file explorer menu](file-operations.md#where-the-menu-appears) offers for that recording. Position-aware actions use the spot under the cursor. The **add marker** and **add chapter** items appear only when **Markers and chapters** is enabled and the note is open for editing (Live Preview), while **copy timestamp link** is always available.
 
-![The player's right-click menu, with Add marker here, Add chapter here and Copy timestamp link here above the file actions, from Audio file info through to Delete recording](images/player-context-menu.png)
+The player is reached through the note it is embedded in, so its menu ends with **Delete recording & link to file**, which trashes the recording and removes the embed it was drawn from, rather than plain **Delete recording**, which would leave the embed broken. The menu opens in the window the player was clicked in, a pop-out window included.
+
+![The player's right-click menu in a note, with Add marker here, Add chapter here and Copy timestamp link here above the file actions, from Audio file info through to Delete recording & link to file](images/player-context-menu.png)
+
+A player embedded at a timestamp, such as `![[standup.webm#t=90]]`, stands for that moment of the recording as a transcript's timestamp link does. Its menu keeps the marker, link and file actions and offers neither delete: a transcript holds dozens of links to moments of one recording, and trashing the recording from one of them would leave all the others pointing at nothing.
+
+![The right-click menu of a player embedded at a timestamp, with the same entries from Add marker here through to Export chapters and markers and no delete entry at the end](images/player-context-menu-timestamp.png)
 
 **Editing versus read-only**
 
@@ -301,7 +307,7 @@ The index keeps itself current: a recording renamed or deleted is carried over o
 
 The timecodes widen together to the longest one in the export, so a recording over an hour renders every line as `h:mm:ss` and the list reads as a column. A note written on a marker is appended after a dash in the timecoded list and in the Markdown outline. The cue sheet carries no notes, because its format has no field for one.
 
-The action is offered on every recording, because whether it has any markers cannot be known without reading the sidecar; a recording with none simply says so.
+The action is offered on every recording, because whether it has any markers cannot be known without reading the sidecar, and a recording with none simply says so.
 
 ---
 
