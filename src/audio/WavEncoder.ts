@@ -29,6 +29,7 @@ import {
 	PcmSampleFormat,
 	floatToInt16,
 } from './pcm';
+import { delay } from '../utils/TimeUtils';
 
 /**
  * Writes a string to a DataView at the specified offset.
@@ -348,7 +349,7 @@ const ENCODE_YIELD_FRAMES = 500_000;
 
 /** Lets the UI thread breathe between conversion slices. */
 function yieldToEventLoop(): Promise<void> {
-	return new Promise((resolve) => window.setTimeout(resolve, 0));
+	return delay(0);
 }
 
 /**

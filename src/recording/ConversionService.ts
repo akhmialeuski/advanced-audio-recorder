@@ -13,6 +13,7 @@ import { isReadableSize, tooLargeMessage } from '../platform/capabilities';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { ConversionLinkAction } from '../settings/settingsSchema';
+import { errorMessage } from '../errors';
 
 /**
  * Parameters of one conversion operation.
@@ -159,8 +160,7 @@ export class ConversionService {
 			onProgress('Saving...');
 			createdFile = await this.app.vault.createBinary(newPath, data);
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			onProgress(`Error: ${message}`);
 			new Notice(`Conversion failed: ${message}`);
 			return { status: 'aborted' };
@@ -211,8 +211,7 @@ export class ConversionService {
 					request.linkAction,
 				);
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				onProgress(`Error: ${message}`);
 				new Notice(
 					`"${newFileName}" was created, but updating links failed: ${message}. The source file was kept.`,
@@ -236,8 +235,7 @@ export class ConversionService {
 				try {
 					await this.app.fileManager.trashFile(request.sourceFile);
 				} catch (error) {
-					const message =
-						error instanceof Error ? error.message : String(error);
+					const message = errorMessage(error);
 					onProgress(`Error: ${message}`);
 					new Notice(
 						`"${newFileName}" was created, but the source file could not be deleted: ${message}`,

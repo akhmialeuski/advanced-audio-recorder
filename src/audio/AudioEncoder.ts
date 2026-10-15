@@ -16,6 +16,7 @@ import type { AudioCodec, AudioEncodingConfig, OutputFormat } from 'mediabunny';
 import { EncodingError } from '../errors';
 import { FORMAT_MP3, FORMAT_FLAC } from '../constants';
 import { FORMAT_REGISTRY, getFormatDescriptor } from './formatRegistry';
+import { errorMessage } from '../errors';
 
 /**
  * The codec string of AAC-LC, the profile every AAC file this plugin writes is
@@ -219,11 +220,7 @@ async function encodeWithMediabunny(
 		if (error instanceof EncodingError) {
 			throw error;
 		}
-		throw new EncodingError(
-			error instanceof Error ? error.message : String(error),
-			format,
-			error,
-		);
+		throw new EncodingError(errorMessage(error), format, error);
 	}
 }
 

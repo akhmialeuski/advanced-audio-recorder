@@ -16,6 +16,7 @@
 import { runStreamingConversion } from './streamingConversion';
 import { normalizeChannelMode, type ChannelMode } from './downmix';
 import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
+import { errorMessage } from '../errors';
 
 /**
  * Conversion request sent to the worker.
@@ -82,7 +83,7 @@ export async function handleEncodingMessage(
 		post({
 			id: request.id,
 			kind: 'error',
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 		});
 	}
 }

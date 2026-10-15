@@ -39,6 +39,7 @@ import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { delay } from '../utils/TimeUtils';
 import { ConversionLinkAction } from '../settings/settingsSchema';
+import { errorMessage } from '../errors';
 
 /**
  * The way out of a desktop size ceiling for the splitter, which cannot use
@@ -241,8 +242,7 @@ export class SplitService {
 				return { status: 'aborted' };
 			}
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			onProgress(`Error: ${message}`);
 			new Notice(`Split failed: ${message}`);
 			return { status: 'aborted' };
@@ -334,8 +334,7 @@ export class SplitService {
 					request.linkAction,
 				);
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				onProgress(`Error: ${message}`);
 				new Notice(
 					`Parts were created, but updating links failed: ${message}. The source file was kept.`,
@@ -359,8 +358,7 @@ export class SplitService {
 				try {
 					await this.app.fileManager.trashFile(request.sourceFile);
 				} catch (error) {
-					const message =
-						error instanceof Error ? error.message : String(error);
+					const message = errorMessage(error);
 					onProgress(`Error: ${message}`);
 					new Notice(
 						`Parts were created, but the source file could not be deleted: ${message}`,

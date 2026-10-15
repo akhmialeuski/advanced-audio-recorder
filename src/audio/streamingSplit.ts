@@ -39,6 +39,7 @@ import {
 	encodingConfigFor,
 	probeOfflineEncodingSupport,
 } from './AudioEncoder';
+import { errorMessage } from '../errors';
 
 /**
  * How far short of the container's stated end the split plans its parts, in
@@ -215,9 +216,7 @@ export class StreamedSplit implements Disposable {
 				throw error;
 			}
 			throw new StreamedSplitError(
-				`Splitting while decoding failed: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
+				`Splitting while decoding failed: ${errorMessage(error)}`,
 				{ cause: error },
 			);
 		}
