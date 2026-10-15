@@ -3,7 +3,7 @@
  * @module ui/StatusBar
  */
 
-import { setIcon } from 'obsidian';
+import { setIcon, setTooltip } from 'obsidian';
 import {
 	PLAYER_ICONS,
 	PLAYER_SKIP_SECONDS,
@@ -15,6 +15,13 @@ import { RecordingStatus } from '../types';
 import type { SaveProgress, RecordingControls } from '../types';
 import { formatTimecode } from '../utils/TimeUtils';
 import { formatByteSize } from '../utils/formatBytes';
+
+/**
+ * Where a status-bar tooltip opens. The bar sits on the bottom edge of the
+ * window, so Obsidian's default placement below the control would open
+ * off-screen; the app's own status-bar items open theirs above.
+ */
+const STATUS_BAR_TOOLTIP = { placement: 'top' } as const;
 
 /** Latest command snapshot used by the persistent playback controls DOM. */
 const playbackStates = new WeakMap<HTMLElement, PlaybackControlsState>();
@@ -276,33 +283,33 @@ function meterPercent(level: number): number {
 }
 
 /**
- * Creates a clickable control button with an icon in the status bar.
+ * Creates an icon button in the status bar.
+ *
+ * A native button in Obsidian's icon-button class: the platform makes it
+ * focusable and activates it from Enter and Space, and the class gives it the
+ * app's hover, press, engaged state and focus ring. The accessible name is set
+ * through setTooltip, which is also what shows it on hover.
  * @param parent - Parent element to append the button to
  * @param icon - Obsidian icon name
- * @param ariaLabel - Accessible label for the button
- * @param onClick - Click handler
- * @returns The created keyboard-operable control
+ * @param label - Accessible name and tooltip
+ * @param onClick - Click handler, which a key press reaches as well
+ * @returns The created button
  */
 function createControlButton(
 	parent: HTMLElement,
 	icon: string,
-	ariaLabel: string,
+	label: string,
 	onClick: () => void,
-): HTMLElement {
-	const button = parent.createSpan({ cls: 'aar-control-btn' });
-	button.setAttribute('aria-label', ariaLabel);
-	button.setAttribute('role', 'button');
-	button.tabIndex = 0;
-	setIcon(button, icon);
-	button.addEventListener('click', (e: MouseEvent) => {
-		e.stopPropagation();
-		onClick();
+): HTMLButtonElement {
+	const button = parent.createEl('button', {
+		cls: 'clickable-icon aar-control-btn',
+		attr: { type: 'button' },
 	});
-	button.addEventListener('keydown', (event: KeyboardEvent) => {
-		if (event.key !== 'Enter' && event.key !== ' ') {
-			return;
-		}
-		event.preventDefault();
+	setIcon(button, icon);
+	setTooltip(button, label, STATUS_BAR_TOOLTIP);
+	// The status bar item is clickable in Obsidian, and it must not also
+	// react to a press on one of its controls.
+	button.addEventListener('click', (event: MouseEvent) => {
 		event.stopPropagation();
 		onClick();
 	});
@@ -463,24 +470,36 @@ function updatePlaybackControls(
 ): void {
 	// The step is a setting, so the two skip buttons say what they will
 	// actually do rather than the number they were built with.
-	const skipBack = container.querySelector(`.${PLAYBACK_SKIP_BACK_CLASS}`);
-	skipBack?.setAttribute('aria-label', `Back ${String(state.skipSeconds)}s`);
-	const skipForward = container.querySelector(
+	const skipBack = container.querySelector<HTMLElement>(
+		`.${PLAYBACK_SKIP_BACK_CLASS}`,
+	);
+	if (skipBack) {
+		setTooltip(
+			skipBack,
+			`Back ${String(state.skipSeconds)}s`,
+			STATUS_BAR_TOOLTIP,
+		);
+	}
+	const skipForward = container.querySelector<HTMLElement>(
 		`.${PLAYBACK_SKIP_FORWARD_CLASS}`,
 	);
-	skipForward?.setAttribute(
-		'aria-label',
-		`Forward ${String(state.skipSeconds)}s`,
-	);
+	if (skipForward) {
+		setTooltip(
+			skipForward,
+			`Forward ${String(state.skipSeconds)}s`,
+			STATUS_BAR_TOOLTIP,
+		);
+	}
 
 	const toggle = container.querySelector<HTMLElement>(
 		`.${PLAYBACK_TOGGLE_CLASS}`,
 	);
 	if (toggle) {
 		setIcon(toggle, state.paused ? PLAYER_ICONS.play : PLAYER_ICONS.pause);
-		toggle.setAttribute(
-			'aria-label',
+		setTooltip(
+			toggle,
 			state.paused ? 'Play audio' : 'Pause playback',
+			STATUS_BAR_TOOLTIP,
 		);
 	}
 
@@ -548,9 +567,9 @@ function renderSavingState(el: HTMLElement, saveProgress?: SaveProgress): void {
 }
 
 /**
- * Renders a minimized transcription job in the status bar. Clicking the
- * progress surface or focusing it and pressing Enter/Space restores the
- * transcription modal.
+ * Renders a minimized transcription job in the status bar. The progress is a
+ * button that restores the transcription modal, from a click or from Enter
+ * and Space once it has focus.
  * @param statusBarItem - The status bar HTML element
  * @param progress - Current transcription progress
  * @param options - Restore action metadata
@@ -632,30 +651,9 @@ function renderProgressState(
 	el.classList.remove('is-playback');
 	el.classList.add(stateClass);
 
-	const wrapper = el.createDiv({
-		cls: options
-			? 'aar-status-progress-content aar-status-progress-actionable'
-			: 'aar-status-progress-content',
-	});
-	if (options) {
-		wrapper.setAttribute('role', 'button');
-		wrapper.setAttribute('aria-label', options.activationLabel);
-		wrapper.tabIndex = 0;
-		// Single click matches the sibling recording controls and the
-		// role="button" semantics; stop propagation so the surrounding status
-		// bar item does not also react.
-		wrapper.addEventListener('click', (event: MouseEvent) => {
-			event.stopPropagation();
-			options.onActivate();
-		});
-		wrapper.addEventListener('keydown', (event: KeyboardEvent) => {
-			if (event.key !== 'Enter' && event.key !== ' ') {
-				return;
-			}
-			event.preventDefault();
-			options.onActivate();
-		});
-	}
+	const wrapper = options
+		? createRestoreButton(el, options)
+		: el.createDiv({ cls: 'aar-status-progress-content' });
 
 	const text = wrapper.createSpan();
 	text.textContent = progress?.description ?? defaultDescription;
@@ -669,6 +667,34 @@ function renderProgressState(
 	progressBar.setCssProps({
 		'--save-progress': `${String(savePercent(progress?.percent))}%`,
 	});
+}
+
+/**
+ * Builds the progress of a background task as the button that brings its
+ * window back. A native button in Obsidian's icon-button class, for the same
+ * reasons as the control buttons: the platform activates it from the keyboard
+ * and the app draws its hover and focus ring, while the class leaves out the
+ * chrome of a text button that would not fit a status bar line.
+ * @param el - The status bar HTML element
+ * @param options - The restore action and its accessible name
+ * @returns The button, to fill with the progress
+ */
+function createRestoreButton(
+	el: HTMLElement,
+	options: BackgroundProgressOptions,
+): HTMLButtonElement {
+	const button = el.createEl('button', {
+		cls: 'clickable-icon aar-status-progress-content aar-status-progress-actionable',
+		attr: { type: 'button' },
+	});
+	setTooltip(button, options.activationLabel, STATUS_BAR_TOOLTIP);
+	// Single click matches the sibling recording controls; stop propagation
+	// so the surrounding status bar item does not also react.
+	button.addEventListener('click', (event: MouseEvent) => {
+		event.stopPropagation();
+		options.onActivate();
+	});
+	return button;
 }
 
 /**

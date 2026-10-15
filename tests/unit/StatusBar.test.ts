@@ -331,18 +331,25 @@ describe('transcription progress', () => {
 		expect(onActivate).not.toHaveBeenCalled();
 	});
 
-	it.each([
-		{ name: 'Enter', key: 'Enter', restores: true },
-		{ name: 'Space', key: ' ', restores: true },
-		{ name: 'Tab', key: 'Tab', restores: false },
-	])('$name restores the window: $restores', ({ key, restores }) => {
-		const { statusBarItem, onActivate } = transcribing();
+	it('is a native button named for the restore, which the keyboard activates', () => {
+		// Enter and Space come from the platform, not from a handler of the
+		// plugin's own, so the progress behaves like any other button.
+		const { statusBarItem } = transcribing();
 
-		el(statusBarItem, STATUS.actionableProgress).dispatchEvent(
-			new KeyboardEvent('keydown', { key, bubbles: true }),
-		);
+		const restore = control(statusBarItem, 'Restore transcription window');
 
-		expect(onActivate).toHaveBeenCalledTimes(restores ? 1 : 0);
+		expect(restore).toBeInstanceOf(HTMLButtonElement);
+		expect(restore).toBe(el(statusBarItem, STATUS.actionableProgress));
+	});
+
+	it('opens its tooltip above the bar it sits on', () => {
+		const { statusBarItem } = transcribing();
+
+		expect(
+			control(statusBarItem, 'Restore transcription window').getAttribute(
+				'data-tooltip-position',
+			),
+		).toBe('top');
 	});
 });
 
@@ -538,20 +545,35 @@ describe('playback controls', () => {
 		);
 	});
 
-	it.each([
-		{ name: 'Enter', key: 'Enter', activates: true },
-		{ name: 'Space', key: ' ', activates: true },
-		{ name: 'ArrowRight', key: 'ArrowRight', activates: false },
-	])('$name activates the transport: $activates', ({ key, activates }) => {
+	it('makes every transport control a native button', () => {
+		// A native button takes focus and Enter and Space from the platform,
+		// which the hand-written key handler it replaces had to imitate.
 		const statusBarItem = createStatusBar();
-		const state = makePlaybackState();
-		renderPlaybackStatusBar(statusBarItem, state);
 
-		el(statusBarItem, PLAYBACK.toggle).dispatchEvent(
-			new KeyboardEvent('keydown', { key }),
+		renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+
+		const buttons = allEls(statusBarItem, PLAYER.controlButton);
+		expect(buttons.length).toBeGreaterThan(0);
+		for (const button of buttons) {
+			expect(button).toBeInstanceOf(HTMLButtonElement);
+		}
+	});
+
+	it('names the skip buttons after a changed step, tooltip included', () => {
+		const statusBarItem = createStatusBar();
+		renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+
+		renderPlaybackStatusBar(
+			statusBarItem,
+			makePlaybackState({ skipSeconds: 30 }),
 		);
 
-		expect(state.onTogglePlay).toHaveBeenCalledTimes(activates ? 1 : 0);
+		expect(
+			control(statusBarItem, 'Back 30s').getAttribute(
+				'data-tooltip-position',
+			),
+		).toBe('top');
+		expect(statusBarItem).toHaveControl('Forward 30s');
 	});
 
 	it('updates in place rather than rebuilding the controls', () => {
@@ -704,12 +726,11 @@ describe('recording controls', () => {
 		expect(stopPropagation).toHaveBeenCalled();
 	});
 
-	it('makes every button reachable by keyboard', () => {
+	it('makes every button a named native button', () => {
 		const { statusBarItem } = recordingWithControls();
 
 		for (const button of allEls(statusBarItem, PLAYER.controlButton)) {
-			expect(button.getAttribute('role')).toBe('button');
-			expect(button.getAttribute('tabindex')).toBe('0');
+			expect(button).toBeInstanceOf(HTMLButtonElement);
 			expect(button.getAttribute('aria-label')).toBeTruthy();
 		}
 	});

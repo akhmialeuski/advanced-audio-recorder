@@ -16,15 +16,25 @@ function declarations(property: string): string[] {
 
 describe('stylesheet tokens', () => {
 	it('names every font weight through a theme token', () => {
+		// Inheriting is not a weight of its own: it keeps the one the state
+		// around the element already took from a token.
 		expect(
 			declarations('font-weight').filter(
-				(value) => !value.startsWith('var(--font-'),
+				(value) =>
+					!value.startsWith('var(--font-') && value !== 'inherit',
 			),
 		).toEqual([]);
 	});
 
 	it('takes the recording red from the theme rather than a named colour', () => {
 		expect(declarations('color')).not.toContain('red');
+	});
+
+	it('rings keyboard focus with a shadow instead of an outline', () => {
+		// Obsidian draws its focus ring as a box-shadow in the theme's focus
+		// colour; an outline of the plugin's own looked different from every
+		// control around it and ignored a theme that restyles the ring.
+		expect(declarations('outline')).toEqual([]);
 	});
 
 	it('sizes text through Obsidian tokens, never a bare em factor', () => {

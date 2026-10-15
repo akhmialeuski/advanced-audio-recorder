@@ -73,37 +73,28 @@ If your plugin does not need CSS, delete this file.
     gap: 2px;
 }
 
+/*
+ * The status-bar controls are Obsidian icon buttons (.clickable-icon), which
+ * bring the hover, the press, the engaged state and the focus ring. What is
+ * left here is their size: the status bar is a line about 20px tall, so the
+ * button is that square with no padding of its own and the app's
+ * extra-small icon. The icon keeps the colour of the state around it - red
+ * while recording - as it did before, so the idle, hover and pressed colours
+ * point at it; an engaged toggle still takes the app's accent.
+ */
 .aar-control-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    --icon-color: currentColor;
+    --icon-color-hover: currentColor;
+    --icon-color-focused: currentColor;
     width: 20px;
     height: 20px;
-    border-radius: 4px;
-    cursor: pointer;
-    opacity: 0.8;
-    transition: opacity 0.15s ease, background-color 0.15s ease;
+    padding: 0;
 }
 
-.aar-control-btn:hover {
-    opacity: 1;
-    background-color: var(--background-modifier-hover);
-}
-
-.aar-control-btn:focus-visible {
-    opacity: 1;
-    outline: 1px solid var(--color-accent);
-    outline-offset: 1px;
-}
-
-.aar-control-btn.is-active {
-    color: var(--color-accent);
-    background-color: var(--background-modifier-hover);
-}
-
-.aar-control-btn svg {
-    width: 14px;
-    height: 14px;
+/* Stated on the icon itself, where the status bar sets its own size */
+.aar-control-btn .svg-icon {
+    --icon-size: var(--icon-xs);
+    --icon-stroke: var(--icon-xs-stroke-width);
 }
 
 /* Active playback controls in the status bar */
@@ -364,14 +355,21 @@ If your plugin does not need CSS, delete this file.
     width: 100%;
 }
 
+/*
+ * A minimised transcription is restored from its progress, so the progress is
+ * an icon button: the class gives it the app's hover, press and focus ring
+ * without a text button's chrome. It keeps the layout, the colour and the
+ * weight of the status bar line it replaces.
+ */
 .aar-status-progress-actionable {
-    cursor: pointer;
-}
-
-.aar-status-progress-actionable:focus-visible {
-    outline: 1px solid var(--color-accent);
-    outline-offset: 2px;
-    border-radius: 3px;
+    --icon-color: currentColor;
+    --icon-color-hover: currentColor;
+    --icon-color-focused: currentColor;
+    display: block;
+    padding: 0;
+    font-size: inherit;
+    font-weight: inherit;
+    text-align: inherit;
 }
 
 .aar-save-progress {
@@ -1905,7 +1903,6 @@ button.aar-player-marker-row {
         animation: none;
     }
 
-    .aar-control-btn,
     .aar-input-meter-fill,
     .aar-save-progress-bar,
     .aar-transcribe-progress-bar,
