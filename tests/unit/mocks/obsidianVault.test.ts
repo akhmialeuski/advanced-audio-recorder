@@ -233,6 +233,31 @@ describe('Vault writers', () => {
 		await expect(vault.read(file)).resolves.toBe('body');
 	});
 
+	// The real create methods throw when the path already holds a file. A
+	// double that overwrote instead would let code that creates over an
+	// existing recording or note pass here and throw in Obsidian.
+	it('create refuses a path that already holds a file, keeping its text', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'note.md', content: 'before' });
+
+		await expect(vault.create('note.md', 'after')).rejects.toThrow(
+			'File already exists.',
+		);
+		await expect(vault.read(file)).resolves.toBe('before');
+	});
+
+	it('createBinary refuses a path that only the disk holds', async () => {
+		const vault = new Vault();
+		await vault.adapter.writeBinary('rec.wav', bufferOf([1]));
+
+		await expect(
+			vault.createBinary('rec.wav', bufferOf([2])),
+		).rejects.toThrow('File already exists.');
+		await expect(vault.adapter.readBinary('rec.wav')).resolves.toEqual(
+			bufferOf([1]),
+		);
+	});
+
 	it('modify replaces the stored text', async () => {
 		const vault = new Vault();
 		const file = seedOne(vault, { path: 'note.md', content: 'before' });

@@ -482,17 +482,37 @@ export class Vault extends Events {
 		}),
 	};
 
+	// Both refuse a path that is taken, as the real ones do ("@throws Error
+	// if file already exists"), so code that creates over an existing file
+	// fails here as it fails in Obsidian instead of silently overwriting.
 	createBinary = jest.fn(
 		async (path: string, data: ArrayBuffer): Promise<TFile> => {
+			this.refuseTaken(path);
 			this.binary.set(path, data);
 			return this.registerFile(path, data.byteLength);
 		},
 	);
 
 	create = jest.fn(async (path: string, data: string): Promise<TFile> => {
+		this.refuseTaken(path);
 		this.text.set(path, data);
 		return this.registerFile(path, data.length);
 	});
+
+	/**
+	 * Throws the error the real vault's create methods throw for a path that
+	 * already holds a file, indexed or only on disk.
+	 * @param path - Vault-relative path about to be created
+	 */
+	private refuseTaken(path: string): void {
+		if (
+			this.files.has(path) ||
+			this.text.has(path) ||
+			this.binary.has(path)
+		) {
+			throw new Error('File already exists.');
+		}
+	}
 
 	read = jest.fn(
 		async (file: TFile): Promise<string> => this.text.get(file.path) ?? '',
