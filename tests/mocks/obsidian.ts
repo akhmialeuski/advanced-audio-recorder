@@ -310,6 +310,68 @@ export class Plugin {
 }
 
 /**
+ * The message the real keychain refuses a malformed ID with, word for word, so
+ * a test asserting on what the user is told reads the app's own sentence.
+ */
+export const SECRET_ID_INVALID_MESSAGE =
+	'Secret ID is invalid. Use only lowercase letters, numbers and dashes. 64 characters max.';
+
+/**
+ * Mock SecretStorage: Obsidian's keychain, the per-device store a plugin keeps
+ * credentials in instead of its data.json.
+ *
+ * Modelled on the app's own implementation rather than on the typings alone,
+ * because the plugin depends on the parts the typings leave unsaid: an ID is
+ * checked against the same pattern and length, a stored value is returned as
+ * stored, an unknown ID answers null rather than throwing, and every write
+ * announces itself with a `changed` event, which is how the keychain page
+ * learns of a secret a plugin created and how a plugin learns of one the user
+ * edited there. `deleteSecret` is internal API in the real app - the keychain
+ * page calls it - and is modelled because a deletion is one of the changes a
+ * plugin has to survive.
+ */
+export class SecretStorage extends Events {
+	private readonly secrets = new Map<string, string>();
+
+	/**
+	 * Whether an ID is one the keychain accepts.
+	 * @param id - Candidate ID
+	 */
+	validateId(id: string): boolean {
+		return /^[a-z0-9-]+$/.test(id) && id.length <= 64;
+	}
+
+	setSecret(id: string, secret: string): void {
+		if (!this.validateId(id)) {
+			throw new Error(SECRET_ID_INVALID_MESSAGE);
+		}
+		this.secrets.set(id, secret);
+		this.trigger('changed');
+	}
+
+	getSecret(id: string): string | null {
+		return this.secrets.get(id) ?? null;
+	}
+
+	listSecrets(): string[] {
+		return [...this.secrets.keys()];
+	}
+
+	/**
+	 * Removes a secret, as the keychain page does.
+	 * @param id - The secret to remove
+	 * @returns Whether there was one to remove
+	 */
+	deleteSecret(id: string): boolean {
+		if (!this.secrets.delete(id)) {
+			return false;
+		}
+		this.trigger('changed');
+		return true;
+	}
+}
+
+/**
  * Mock App class.
  */
 export class App {
@@ -318,6 +380,7 @@ export class App {
 
 	metadataCache: MetadataCache = new MetadataCache();
 	fileManager: FileManager = new FileManager(this.vault);
+	secretStorage: SecretStorage = new SecretStorage();
 	/**
 	 * The settings dialog, which is internal API in the real app and absent
 	 * unless a test stands one up (see obsidian/settingsNavigation).
