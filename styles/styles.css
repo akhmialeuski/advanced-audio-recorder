@@ -7,9 +7,11 @@ If your plugin does not need CSS, delete this file.
 
 */
 /* styles.css */
+/* The state colours and weights are the theme's own, so a palette or a font
+   that redefines them reaches the status bar as well */
 .is-recording {
-    color: red;
-    font-weight: bold;
+    color: var(--color-red);
+    font-weight: var(--font-bold);
 }
 
 /* A ribbon button whose feature is switched off */
@@ -38,13 +40,13 @@ If your plugin does not need CSS, delete this file.
 /* Saving state */
 .is-saving {
     color: var(--color-accent);
-    font-weight: bold;
+    font-weight: var(--font-bold);
     white-space: nowrap;
 }
 
 .is-transcribing {
     color: var(--color-accent);
-    font-weight: bold;
+    font-weight: var(--font-bold);
     white-space: nowrap;
 }
 
@@ -204,7 +206,8 @@ If your plugin does not need CSS, delete this file.
     display: inline-block;
     width: 42px;
     height: 6px;
-    border-radius: 3px;
+    /* Larger than half the height, so the corners meet and it stays a pill */
+    border-radius: var(--radius-s);
     background-color: var(--background-modifier-border);
     overflow: hidden;
 }
@@ -214,6 +217,9 @@ If your plugin does not need CSS, delete this file.
     height: 100%;
     width: var(--aar-meter-fill, 0%);
     background-color: var(--color-green);
+    /* Not an interface transition but the meter's own smoothing: linear, and
+       half the interval the readings arrive at, so the bar glides between two
+       readings instead of jumping. No animation token is that number. */
     transition: width 0.1s linear;
 }
 
@@ -384,19 +390,19 @@ If your plugin does not need CSS, delete this file.
 .aar-test-status {
     margin-top: 8px;
     padding: 6px 10px;
-    border-radius: 4px;
-    font-size: 0.9em;
+    border-radius: var(--radius-s);
+    font-size: var(--font-ui-small);
 }
 
 .aar-test-recording {
     color: var(--color-red);
-    font-weight: bold;
+    font-weight: var(--font-bold);
     animation: pulse-recording 1.5s ease-in-out infinite;
 }
 
 .aar-test-success {
     color: var(--color-green);
-    font-weight: bold;
+    font-weight: var(--font-bold);
 }
 
 .aar-test-error {
@@ -414,9 +420,10 @@ If your plugin does not need CSS, delete this file.
     max-height: 60vh;
     overflow-y: auto;
     padding: 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-family: var(--font-monospace);
-    font-size: 0.85em;
+    /* Obsidian's size for code, which this block is */
+    font-size: var(--code-size);
     white-space: pre-wrap;
     word-break: break-word;
     background-color: var(--background-secondary);
@@ -426,7 +433,7 @@ If your plugin does not need CSS, delete this file.
 
 .aar-system-info-copied {
     color: var(--color-green);
-    font-weight: bold;
+    font-weight: var(--font-bold);
 }
 
 /* Split modal and settings */
@@ -473,7 +480,9 @@ input.aar-input-invalid {
     width: 100%;
     padding: 10px;
     border: 1px solid var(--background-modifier-border);
-    border-radius: 10px;
+    /* One step rounder than the rows and the waveform inside it, which are
+       --radius-m, so the nested corners stay concentric */
+    border-radius: var(--radius-l);
     background-color: var(--background-secondary);
 }
 
@@ -516,15 +525,21 @@ input.aar-input-invalid {
     height: 28px;
     padding: 0 6px;
     border: 1px solid var(--aar-line);
-    border-radius: 6px;
+    /*
+     * The theme's radius steps rather than --button-radius: that one turns
+     * into a touch-size pill on mobile, which a row of small square controls
+     * is not meant to be. The hover follows the app's own controls, which
+     * fade over --anim-duration-fast with ease-in-out.
+     */
+    border-radius: var(--radius-s);
     background-color: var(--aar-surface-raised);
     color: var(--text-normal);
     cursor: pointer;
     box-shadow: none;
     transition:
-        background-color 0.15s ease,
-        border-color 0.15s ease,
-        color 0.15s ease;
+        background-color var(--anim-duration-fast) ease-in-out,
+        border-color var(--anim-duration-fast) ease-in-out,
+        color var(--anim-duration-fast) ease-in-out;
 }
 
 .aar-player .aar-player-btn:hover {
@@ -573,7 +588,7 @@ input.aar-input-invalid {
 .aar-player-speed {
     gap: 6px;
     font-size: var(--font-ui-small);
-    font-weight: 600;
+    font-weight: var(--font-semibold);
     font-variant-numeric: tabular-nums;
 }
 
@@ -616,10 +631,11 @@ input.aar-input-invalid {
     cursor: pointer;
 }
 
+/* Keyboard focus is ringed the way Obsidian rings its own controls, with the
+   theme's focus colour, and rounded like the waveform it surrounds */
 .aar-player-seek:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-    border-radius: 2px;
+    border-radius: var(--radius-m);
+    box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
 .aar-player-seek-waveform {
@@ -633,7 +649,7 @@ input.aar-input-invalid {
     padding: 12px 0;
     margin: 2px 0;
     border: 1px solid var(--aar-line);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     background-color: var(--aar-surface-sunken);
 }
 
@@ -681,7 +697,7 @@ input.aar-input-invalid {
 .aar-player-seek-bar {
     height: 8px;
     margin: 12px 2px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     /* Remaining (unplayed): low-contrast track */
     background-color: var(--background-modifier-border);
     box-shadow: inset 0 0 0 1px var(--background-modifier-border-hover);
@@ -692,7 +708,7 @@ input.aar-input-invalid {
     width: var(--aar-progress, 0%);
     /* Played: high-contrast accent */
     background-color: var(--color-accent);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
 }
 
 .aar-player-progress-thumb {
@@ -796,7 +812,7 @@ input.aar-input-invalid {
     gap: var(--aar-marker-row-gap);
     padding: 5px 10px;
     border: 1px solid var(--aar-line);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     background-color: var(--aar-surface-raised);
 }
 
@@ -835,9 +851,15 @@ div.aar-player-marker-row {
     height: 16px;
 }
 
+/*
+ * The reading-view row sizes its text against the note it sits in rather than
+ * against the interface, so the list scales with the note's own text. That is
+ * why these sizes are Obsidian's relative steps (--font-smaller, 0.875em, and
+ * --font-smallest, 0.8em) rather than the fixed --font-ui-* ones.
+ */
 .aar-player-marker-time {
     font-variant-numeric: tabular-nums;
-    font-size: 0.85em;
+    font-size: var(--font-smaller);
     color: var(--text-accent);
     background: transparent;
     border: none;
@@ -855,7 +877,7 @@ div.aar-player-marker-row {
     box-sizing: border-box;
     height: var(--aar-control-size);
     border: 1px solid var(--aar-line);
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     background-color: var(--aar-surface-field);
     box-shadow: none;
     color: var(--text-normal);
@@ -867,11 +889,13 @@ div.aar-player-marker-row {
     border-color: color-mix(in srgb, var(--aar-line), var(--text-normal) 20%);
 }
 
+/* Focused the way Obsidian focuses its own text fields: the theme's focus
+   colour on the border and in a ring of the app's focus width */
 .aar-player .aar-player-marker-label:focus,
 .aar-player .aar-player-marker-time-edit:focus {
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 2px
-        color-mix(in srgb, var(--color-accent) 25%, transparent);
+    border-color: var(--background-modifier-border-focus);
+    box-shadow: 0 0 0 var(--input-border-width-focus)
+        var(--background-modifier-border-focus);
 }
 
 .aar-player .aar-player-marker-label {
@@ -963,7 +987,7 @@ div.aar-player-marker-row {
     gap: 2px;
     height: 22px;
     padding: 0 3px;
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     color: var(--text-muted);
 }
 
@@ -1039,7 +1063,7 @@ div.aar-player-marker-row {
     font-size: var(--font-ui-small);
     line-height: 1.4;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     background-color: transparent;
     box-shadow: none;
     color: var(--text-muted);
@@ -1057,7 +1081,7 @@ div.aar-player-marker-row {
 }
 
 .aar-player .aar-player-marker-note:focus {
-    border-color: var(--color-accent);
+    border-color: var(--background-modifier-border-focus);
     background-color: var(--aar-surface-field);
     color: var(--text-normal);
 }
@@ -1116,7 +1140,7 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-no
 .aar-player-marker-note-indent {
     flex: none;
     visibility: hidden;
-    font-size: 0.85em;
+    font-size: var(--font-smaller);
     font-variant-numeric: tabular-nums;
     padding: 0 4px;
     box-sizing: content-box;
@@ -1125,7 +1149,7 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-no
 
 .aar-player-marker-note-static {
     flex: 1;
-    font-size: 0.8em;
+    font-size: var(--font-smallest);
     color: var(--text-muted);
     text-align: left;
     /* A note typed over several lines is shown over the same lines */
@@ -1146,7 +1170,7 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-no
     padding: 0 4px;
     text-align: left;
     justify-content: flex-start;
-    font-size: 0.9em;
+    font-size: var(--font-smaller);
     color: var(--text-normal);
     white-space: nowrap;
     overflow: hidden;
@@ -1161,7 +1185,7 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-no
     box-sizing: content-box;
     min-width: calc(var(--aar-marker-time-chars, 0) * 1ch);
     font-variant-numeric: tabular-nums;
-    font-size: 0.8em;
+    font-size: var(--font-smallest);
     color: var(--text-muted);
     white-space: nowrap;
 }
@@ -1174,7 +1198,7 @@ button.aar-player-marker-row {
     width: 100%;
     padding: 5px 10px;
     border: 1px solid var(--aar-line);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     box-shadow: none;
     background-color: var(--aar-surface-raised);
     color: inherit;
@@ -1201,10 +1225,10 @@ button.aar-player-marker-row {
 }
 
 /* Keyboard focus on a marker row, matching the seek area's ring so every
-   focusable part of the player is outlined the same way. */
+   focusable part of the player is outlined the same way. Two classes'
+   weight, so it outranks the chrome reset a button row carries above. */
 .aar-player-marker-row:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
 /* Currently-playing segment: highlighted with an accent border */
@@ -1226,6 +1250,13 @@ button.aar-player-marker-row {
  */
 .aar-player-marker-row.aar-player-marker-row-colored {
     box-shadow: inset 4px 0 0 var(--aar-marker-color);
+}
+
+/* The focus ring is a shadow too, so a coloured row draws both at once */
+.aar-player-marker-row.aar-player-marker-row-colored:focus-visible {
+    box-shadow:
+        inset 4px 0 0 var(--aar-marker-color),
+        0 0 0 3px var(--background-modifier-border-focus);
 }
 
 /*
@@ -1267,7 +1298,7 @@ button.aar-player-marker-row {
 
 .aar-modal-config {
     color: var(--text-muted);
-    font-size: 0.9em;
+    font-size: var(--font-ui-small);
 }
 
 /* The split dialog's start and end fields hold a timecode, so they stay that
@@ -1297,7 +1328,7 @@ button.aar-player-marker-row {
     top: 50%;
     height: 6px;
     transform: translateY(-50%);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
 }
 
 .aar-time-span-track {
@@ -1357,7 +1388,7 @@ button.aar-player-marker-row {
 
 .aar-modal-status {
     margin: 8px 0 4px;
-    font-size: 0.9em;
+    font-size: var(--font-ui-small);
 }
 
 /* Why a dialog cannot accept what was typed, shown under the field it belongs
@@ -1365,7 +1396,7 @@ button.aar-player-marker-row {
    keeps it out of the layout, so nothing has to toggle it. */
 .aar-modal-error {
     margin: 4px 0 0;
-    font-size: 0.9em;
+    font-size: var(--font-ui-small);
     color: var(--text-error);
 }
 
@@ -1429,7 +1460,7 @@ button.aar-player-marker-row {
 
 .aar-transcribe-elapsed {
     margin-top: 4px;
-    font-size: 0.8em;
+    font-size: var(--font-ui-smaller);
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
 }
@@ -1439,7 +1470,7 @@ button.aar-player-marker-row {
     margin-bottom: 8px;
     padding-top: 8px;
     border-top: 1px solid var(--background-modifier-border);
-    font-size: 0.8em;
+    font-size: var(--font-ui-smaller);
     color: var(--text-muted);
 }
 
@@ -1490,7 +1521,7 @@ button.aar-player-marker-row {
 /* Live cumulative cost while a multi-part run is in flight. */
 .aar-transcribe-cost-running {
     margin-top: 2px;
-    font-size: 0.8em;
+    font-size: var(--font-ui-smaller);
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
 }
@@ -1507,16 +1538,19 @@ button.aar-player-marker-row {
 
 /* Note appended under the recording-format setting when the stored format
    cannot be recorded here, naming the format recordings fall back to. Reads
-   as a warning so the blocked selection is not mistaken for the outcome. */
+   as a warning so the blocked selection is not mistaken for the outcome.
+   Sized against the description it sits in, which is already
+   --font-ui-smaller, so it takes Obsidian's relative step down. */
 .aar-format-fallback-note {
     margin-top: var(--size-4-1);
-    font-size: 0.85em;
+    font-size: var(--font-smaller);
     color: var(--text-warning);
 }
 
-/* "Learn more" link appended to a setting description. */
+/* "Learn more" link appended to a setting description, one relative step
+   below the description's own text for the same reason as the note above. */
 .aar-doc-link {
-    font-size: 0.85em;
+    font-size: var(--font-smaller);
 }
 
 /* Multi-line editors - a glossary, a guidance prompt. Obsidian puts every
@@ -1734,9 +1768,11 @@ button.aar-player-marker-row {
     cursor: pointer;
 }
 
+/* The app's own focus ring, stated here because the link styling above
+   clears the rest of the button's chrome */
 .aar-silent-channel-convert:focus-visible {
-    outline: 2px solid var(--background-modifier-border-focus);
-    outline-offset: 2px;
+    border-radius: var(--radius-s);
+    box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
 /* Numeric setting input (manual entry plus the browser's native up/down
