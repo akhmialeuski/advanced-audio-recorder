@@ -307,12 +307,16 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 
 /**
  * The optional request fields the Anthropic provider sends that a model may
- * refuse, each named as the endpoint names it in that refusal.
+ * refuse. A refusal is recognised by this name or by the body key the field
+ * travels under, because the wording of a refusal is not documented.
  */
 const AnthropicOptionalField = {
 	/** The caller's sampling temperature, refused by Opus 4.7 and later. */
 	Temperature: 'temperature',
-	/** The reasoning effort under `output_config`, refused by Haiku 4.5. */
+	/**
+	 * The reasoning effort under `output_config`, refused by Sonnet 4.5,
+	 * Haiku 4.5 and older models.
+	 */
 	Effort: 'effort',
 } as const;
 
@@ -374,9 +378,13 @@ export class AnthropicLlmProvider implements LlmProvider {
 					extractAnthropicUsage(json),
 				);
 			} catch (error) {
-				const refused = [...fields.keys()].find((field) =>
-					rejectedParam(error, field),
-				);
+				// A refusal may name the field or only the body key it travels
+				// under, such as `output_config` for the effort.
+				const refused = [...fields].find(([field, fragment]) =>
+					[field, ...Object.keys(fragment)].some((name) =>
+						rejectedParam(error, name),
+					),
+				)?.[0];
 				if (!refused) {
 					throw error;
 				}
@@ -391,12 +399,11 @@ export class AnthropicLlmProvider implements LlmProvider {
 	 *
 	 * Which models take each field moves with every release and runs in both
 	 * directions - Claude Opus 4.7 and later refuse a non-default temperature,
-	 * Haiku 4.5 and earlier refuse the effort control - so the endpoint is
-	 * asked rather than a model list consulted, the same way the OpenAI client
-	 * settles its output-token parameter.
+	 * Sonnet 4.5, Haiku 4.5 and older refuse the effort control - so the
+	 * endpoint is asked rather than a model list consulted, the same way the
+	 * OpenAI client settles its output-token parameter.
 	 * @param temperature - What the caller asked for, if anything
-	 * @returns Each field sent, keyed by the name a refusal of it carries,
-	 *   with the fragment it adds to the request body
+	 * @returns Each field sent, with the fragment it adds to the request body
 	 */
 	private optionalFields(
 		temperature?: number,

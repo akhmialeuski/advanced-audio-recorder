@@ -42,6 +42,15 @@ const REFUSES_EFFORT = JSON.stringify({
 	},
 });
 
+/** A refusal that names only the body key the effort travels under. */
+const REFUSES_OUTPUT_CONFIG = JSON.stringify({
+	type: 'error',
+	error: {
+		type: 'invalid_request_error',
+		message: 'output_config: Extra inputs are not permitted',
+	},
+});
+
 /** A refusal that names neither optional field. */
 const BAD_KEY = JSON.stringify({
 	type: 'error',
@@ -96,19 +105,30 @@ describe('the optional fields the Anthropic provider sends', () => {
 		});
 	});
 
-	it('drops the effort a model refuses and keeps the temperature', async () => {
-		const sent = queueResponses([
-			{ status: 400, text: REFUSES_EFFORT },
-			{ status: 200, text: OK_BODY },
-		]);
+	it.each([
+		{ wording: 'naming the effort itself', refusal: REFUSES_EFFORT },
+		{
+			// The real wording is undocumented; the body key is the one name
+			// certain to be on the wire.
+			wording: 'naming only the body key it travels under',
+			refusal: REFUSES_OUTPUT_CONFIG,
+		},
+	])(
+		'drops the effort on a refusal $wording and keeps the temperature',
+		async ({ refusal }) => {
+			const sent = queueResponses([
+				{ status: 400, text: refusal },
+				{ status: 200, text: OK_BODY },
+			]);
 
-		await provider().complete(PROMPT, 512, { temperature: 0 });
+			await provider().complete(PROMPT, 512, { temperature: 0 });
 
-		const bodies = bodiesOf(sent);
-		expect(bodies).toHaveLength(2);
-		expect(bodies[1]).not.toHaveProperty('output_config');
-		expect(bodies[1]?.temperature).toBe(0);
-	});
+			const bodies = bodiesOf(sent);
+			expect(bodies).toHaveLength(2);
+			expect(bodies[1]).not.toHaveProperty('output_config');
+			expect(bodies[1]?.temperature).toBe(0);
+		},
+	);
 
 	it('remembers a refusal, so the next call on the same provider is not refused again', async () => {
 		// The advanced mode drives six sequential agent calls through one
