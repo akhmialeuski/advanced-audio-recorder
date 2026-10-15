@@ -162,8 +162,9 @@ async function rewriteTranscriptFileOutput(
 	try {
 		// Skip untouched files with a cheap read, but perform the rewrite
 		// against the content vault.process supplies so a concurrent edit
-		// between this read and the write is never clobbered.
-		const current = await app.vault.cachedRead(file);
+		// between this read and the write is never clobbered. Vault.read,
+		// not cachedRead: a stale cache would skip a file that needs it.
+		const current = await app.vault.read(file);
 		if (rewriteSidecar(format, current, renames) === current) {
 			return;
 		}
@@ -222,7 +223,7 @@ async function rewriteNoteOutput(
 		// between this read and the write is never clobbered. Either content
 		// is the one to judge an untouched note by, so both are carried into
 		// the count below rather than assumed identical.
-		const current = await app.vault.cachedRead(note);
+		const current = await app.vault.read(note);
 		if (rewriteNote(current) === current) {
 			countUntouchedNote(current, speakerFormat, renames, scope, result);
 			return;

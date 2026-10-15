@@ -43,7 +43,7 @@ function makeApp(
 		vault: {
 			getFileByPath: (path: string): TFile | null =>
 				files.has(path) ? createFile(path) : null,
-			cachedRead: async (file: TFile): Promise<string> =>
+			read: async (file: TFile): Promise<string> =>
 				files.get(file.path) ?? '',
 			process: async (
 				file: TFile,
@@ -726,13 +726,13 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			['audio/rec.wav', ''],
 			['audio/rec.txt', '[0:00] Speaker 1: live edit'],
 		]);
-		// cachedRead returns a stale snapshot while process operates on the current
+		// read returns a stale snapshot while process operates on the current
 		// content, mimicking an edit landing between the two calls.
 		const app = createMockApp({
 			vault: {
 				getFileByPath: (path: string): TFile | null =>
 					live.has(path) ? createFile(path) : null,
-				cachedRead: async (): Promise<string> =>
+				read: async (): Promise<string> =>
 					'[0:00] Speaker 1: stale snapshot',
 				process: async (
 					file: TFile,
@@ -766,6 +766,54 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		expect(result.updatedTranscriptFiles).toBe(1);
 		// The concurrent "live edit" survives; only the speaker label changed.
 		expect(live.get('audio/rec.txt')).toBe('[0:00] Alex: live edit');
+	});
+
+	// cachedRead may answer from a cache the vault has not refreshed yet, and
+	// Obsidian documents it for display only. Deciding from it that a file
+	// needs no rename would skip a file whose label is on disk.
+	it('decides from what the file holds, not from the vault cache', async () => {
+		const live = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['audio/rec.txt', '[0:00] Speaker 1: hi'],
+		]);
+		const app = createMockApp({
+			vault: {
+				getFileByPath: (path: string): TFile | null =>
+					live.has(path) ? createFile(path) : null,
+				read: async (file: TFile): Promise<string> =>
+					live.get(file.path) ?? '',
+				cachedRead: async (): Promise<string> => '[0:00] hi',
+				process: async (
+					file: TFile,
+					fn: (content: string) => string,
+				): Promise<string> => {
+					const next = fn(live.get(file.path) ?? '');
+					live.set(file.path, next);
+					return next;
+				},
+			},
+			metadataCache: {
+				getFileCache: (): null => null,
+				getFirstLinkpathDest: (): null => null,
+			},
+		}).app;
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			fileOutputs: [
+				{ path: 'audio/rec.txt', format: 'txt', writtenAt: 't' },
+			],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			[{ from: 'Speaker 1', to: 'Alex' }],
+			{ allowBroad: false },
+		);
+
+		expect(result.updatedTranscriptFiles).toBe(1);
+		expect(live.get('audio/rec.txt')).toBe('[0:00] Alex: hi');
 	});
 
 	it('is a no-op for an empty rename list', async () => {
