@@ -22,7 +22,10 @@ import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
-import { hasTimecodeSubpath } from '../player/timecodeLinks';
+import {
+	hasTimecodeSubpath,
+	parseAudioLinkTarget,
+} from '../player/timecodeLinks';
 import type {
 	ActionServices,
 	FileAction,
@@ -117,11 +120,14 @@ export class ContextMenu {
 				// the globally active file. This is what keeps a relative link
 				// correct when the embed lives in a pop-out window or a
 				// background split, whose note is not the active one.
+				// Only the path is resolved: an embed that starts at a
+				// timestamp carries it in src (`rec.m4a#t=30`), and no file
+				// goes by a name that still holds the subpath.
 				const sourcePath = this.resolveEmbedSource(
 					embed as HTMLElement,
 				);
 				const file = this.app.metadataCache.getFirstLinkpathDest(
-					src,
+					parseAudioLinkTarget(src).linkPath,
 					sourcePath,
 				);
 

@@ -980,16 +980,21 @@ describe('ContextMenu', () => {
 		 * the first `![[...]]` of a note.
 		 * @param source - The note's source
 		 * @param embedText - The embed in it the widget stands for
+		 * @param src - The widget's src attribute. Obsidian sets it to the
+		 *   link text without its alias, subpath included, so
+		 *   `![[a.mp3#t=30|x]]` renders `a.mp3#t=30`; a test passes another
+		 *   one only to model a widget that maps to a different link.
 		 * @returns The event, and the editor the note is open in
 		 */
 		function rightClickOnRenderedEmbed(
 			source: string,
 			embedText: string,
+			src = embedText.slice(3, -2).split('|')[0] ?? '',
 		): { event: MouseEvent; live: LiveEditor } {
 			const live = mountLiveEditor({
 				doc: source,
 				file: partial<TFile>({ path: 'note.md' }),
-				embeds: [{ ...rangeOf(source, embedText), src: 'audio.mp3' }],
+				embeds: [{ ...rangeOf(source, embedText), src }],
 			});
 			const event = partial<MouseEvent>({
 				target: at(live.embeds(), 0),
@@ -1035,9 +1040,14 @@ describe('ContextMenu', () => {
 				'![[audio.mp3#t=30]]',
 				'![[audio.mp3#t=30]]',
 			);
+			// Resolves the recording by its path alone, as Obsidian does: a
+			// name still carrying the subpath names no file.
+			const file = makeAudioFile();
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(makeAudioFile());
+			).mockImplementation((link: string) =>
+				link === 'audio.mp3' ? file : null,
+			);
 
 			playerMenuCallback(event);
 
@@ -1052,6 +1062,7 @@ describe('ContextMenu', () => {
 			const { event } = rightClickOnRenderedEmbed(
 				'![[other.mp3]]',
 				'![[other.mp3]]',
+				'audio.mp3',
 			);
 			const files: Record<string, TFile> = {
 				'audio.mp3': createFile('Recordings/audio.mp3'),
