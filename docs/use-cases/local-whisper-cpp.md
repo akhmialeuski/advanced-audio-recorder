@@ -34,13 +34,13 @@ Pick the local engine when privacy, cost, or connectivity matter more than raw s
 
 ## What you need
 
-| Item                       | Detail                                                                      |
-| -------------------------- | --------------------------------------------------------------------------- |
-| **Obsidian desktop**       | This engine is desktop-only; requires Obsidian **1.14.4+**.                  |
-| **A `whisper.cpp` binary** | The command-line executable, downloaded or built (Step 1).                  |
-| **A GGML model file**      | One `.bin` model file, e.g. `ggml-base.bin` (Step 2).                       |
-| **Disk space**             | A few hundred MB for a small/medium model; ~3 GB for a `large-v3` model.    |
-| **No API key**             | None required - that is the whole point of the local engine.                |
+| Item                       | Detail                                                                   |
+| -------------------------- | ------------------------------------------------------------------------ |
+| **Obsidian desktop**       | This engine is desktop-only; requires Obsidian **1.14.4+**.              |
+| **A `whisper.cpp` binary** | The command-line executable, downloaded or built (Step 1).               |
+| **A GGML model file**      | One `.bin` model file, e.g. `ggml-base.bin` (Step 2).                    |
+| **Disk space**             | A few hundred MB for a small/medium model; ~3 GB for a `large-v3` model. |
+| **No API key**             | None required - that is the whole point of the local engine.             |
 
 ---
 

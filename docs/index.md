@@ -1,6 +1,6 @@
 # Advanced Audio Recorder - Documentation
 
-**Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with five engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, Mistral Voxtral, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6 or newer**; a few features are desktop-only (see [Mobile support](mobile-support.md)).
+**Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with five engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, Mistral Voxtral, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.14.4 or newer**; a few features are desktop-only (see [Mobile support](mobile-support.md)).
 
 ![The enhanced audio player embedded in a note, showing the waveform seek bar, transport controls, and a marker list](images/player-overview.png)
 
@@ -71,6 +71,7 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 | [Formats](formats.md)                             | The 8 output formats, their codecs, online vs. offline encoding, and how to choose.                  |
 | [Splitting](splitting.md)                         | Automatic split into fixed-duration parts while recording, and manual split of existing files.       |
 | [File operations](file-operations.md)             | Context-menu actions: audio file info, format conversion, delete, and link updates.                  |
+| [Recording panel](recording-panel.md)             | The sidebar tab showing a recording's details, participants, and actions.                            |
 
 ### Playback
 
