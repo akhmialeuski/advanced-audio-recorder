@@ -1331,6 +1331,27 @@ describe('TranscriptionModal running the job', () => {
 
 		expect(internals.minimized).toBe(false);
 	});
+
+	it('counts the elapsed time up while the run is in flight', () => {
+		// Driven by fake timers: on the real clock the counter only ticks in a
+		// test that happens to run longer than a second.
+		jest.useFakeTimers();
+		try {
+			jest.mocked(transcribeFile).mockReturnValue(new Promise(() => {}));
+			const { modal } = openRunnable();
+			const elapsed = (): string | null | undefined =>
+				maybeEl(modal.contentEl, '.aar-transcribe-elapsed')
+					?.textContent;
+			void internalsOf<TranscriptionModalInternals>(modal).startRun();
+			expect(elapsed()).toBe('Elapsed 0:00');
+
+			jest.advanceTimersByTime(2000);
+
+			expect(elapsed()).toBe('Elapsed 0:02');
+		} finally {
+			jest.useRealTimers();
+		}
+	});
 });
 
 describe('TranscriptionModal buttons', () => {
