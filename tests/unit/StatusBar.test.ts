@@ -633,6 +633,8 @@ describe('playback controls', () => {
 		renderPlaybackStatusBar(statusBarItem, makePlaybackState());
 		const controls = el(statusBarItem, PLAYBACK.controls);
 		for (const part of [
+			PLAYBACK.skipBack,
+			PLAYBACK.skipForward,
 			PLAYBACK.toggle,
 			PLAYBACK.mute,
 			PLAYBACK.volume,

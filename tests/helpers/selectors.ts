@@ -114,6 +114,8 @@ export const MARKER = {
 export const PLAYBACK = {
 	controls: '.aar-playback-controls',
 	toggle: '.aar-playback-toggle',
+	skipBack: '.aar-playback-skip-back',
+	skipForward: '.aar-playback-skip-forward',
 	mute: '.aar-playback-mute',
 	volume: '.aar-playback-volume',
 	markerControls: '.aar-playback-marker-controls',
