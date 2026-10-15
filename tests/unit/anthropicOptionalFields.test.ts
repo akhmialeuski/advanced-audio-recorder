@@ -16,11 +16,8 @@ import { AnthropicLlmProvider } from 'src/transcription/llm/LlmProvider';
 import { ANTHROPIC_LOW_EFFORT } from 'src/constants';
 import { jsonBody } from '../helpers/assertions';
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
-import {
-	type MockRequestUrlParam,
-	type MockRequestUrlResponse,
-} from '../mocks/obsidian';
-import { withRequestUrl } from '../helpers/network';
+import type { MockRequestUrlParam } from '../mocks/obsidian';
+import { queueResponses } from '../helpers/network';
 import { outcomeOf } from '../helpers/async';
 
 const PROMPT: LlmPrompt = { system: 'You extract terms.', user: 'hello' };
@@ -61,40 +58,26 @@ function provider(): AnthropicLlmProvider {
 }
 
 /**
- * Answers each request from a scripted list and records what was sent.
- * @param responses - One response per request, in order
+ * The JSON bodies of the captured requests, in the order they were sent.
+ * @param sent - The requests a queue recorded
  */
-function script(responses: ReadonlyArray<{ status: number; text: string }>): {
-	bodies: () => Array<Record<string, unknown>>;
-} {
-	const seen: MockRequestUrlParam[] = [];
-	withRequestUrl((param): MockRequestUrlResponse => {
-		seen.push(param);
-		const answer = responses[seen.length - 1] ?? {
-			status: 500,
-			text: '{}',
-		};
-		return { status: answer.status, headers: {}, text: answer.text };
-	});
-	return {
-		bodies: (): Array<Record<string, unknown>> =>
-			seen.map((param) => jsonBody<Record<string, unknown>>(param)),
-	};
+function bodiesOf(sent: MockRequestUrlParam[]): Array<Record<string, unknown>> {
+	return sent.map((param) => jsonBody<Record<string, unknown>>(param));
 }
 
 describe('the optional fields the Anthropic provider sends', () => {
 	it('asks for the lowest reasoning effort and forwards the temperature', async () => {
-		const sent = script([{ status: 200, text: OK_BODY }]);
+		const sent = queueResponses([{ status: 200, text: OK_BODY }]);
 
 		await provider().complete(PROMPT, 512, { temperature: 0 });
 
-		const [body] = sent.bodies();
+		const [body] = bodiesOf(sent);
 		expect(body?.output_config).toEqual({ effort: ANTHROPIC_LOW_EFFORT });
 		expect(body?.temperature).toBe(0);
 	});
 
 	it('drops the temperature a model refuses and still answers', async () => {
-		const sent = script([
+		const sent = queueResponses([
 			{ status: 400, text: REFUSES_TEMPERATURE },
 			{ status: 200, text: OK_BODY },
 		]);
@@ -104,7 +87,7 @@ describe('the optional fields the Anthropic provider sends', () => {
 		});
 
 		expect(answer.text).toBe('ok');
-		const bodies = sent.bodies();
+		const bodies = bodiesOf(sent);
 		expect(bodies).toHaveLength(2);
 		expect(bodies[1]).not.toHaveProperty('temperature');
 		// Only the refused field goes: the effort was never the problem.
@@ -114,14 +97,14 @@ describe('the optional fields the Anthropic provider sends', () => {
 	});
 
 	it('drops the effort a model refuses and keeps the temperature', async () => {
-		const sent = script([
+		const sent = queueResponses([
 			{ status: 400, text: REFUSES_EFFORT },
 			{ status: 200, text: OK_BODY },
 		]);
 
 		await provider().complete(PROMPT, 512, { temperature: 0 });
 
-		const bodies = sent.bodies();
+		const bodies = bodiesOf(sent);
 		expect(bodies).toHaveLength(2);
 		expect(bodies[1]).not.toHaveProperty('output_config');
 		expect(bodies[1]?.temperature).toBe(0);
@@ -130,7 +113,7 @@ describe('the optional fields the Anthropic provider sends', () => {
 	it('remembers a refusal, so the next call on the same provider is not refused again', async () => {
 		// The advanced mode drives six sequential agent calls through one
 		// provider; renegotiating on each would pay the refused request six times.
-		const sent = script([
+		const sent = queueResponses([
 			{ status: 400, text: REFUSES_TEMPERATURE },
 			{ status: 200, text: OK_BODY },
 			{ status: 200, text: OK_BODY },
@@ -140,13 +123,13 @@ describe('the optional fields the Anthropic provider sends', () => {
 		await claude.complete(PROMPT, 512, { temperature: 0 });
 		await claude.complete(PROMPT, 512, { temperature: 0 });
 
-		const bodies = sent.bodies();
+		const bodies = bodiesOf(sent);
 		expect(bodies).toHaveLength(3);
 		expect(bodies[2]).not.toHaveProperty('temperature');
 	});
 
 	it('raises any other refusal as it came, without a retry', async () => {
-		const sent = script([{ status: 401, text: BAD_KEY }]);
+		const sent = queueResponses([{ status: 401, text: BAD_KEY }]);
 
 		const outcome = await outcomeOf(
 			provider().complete(PROMPT, 512, { temperature: 0 }),
@@ -155,6 +138,6 @@ describe('the optional fields the Anthropic provider sends', () => {
 		expect(outcome).toEqual({
 			error: expect.objectContaining({ status: 401 }),
 		});
-		expect(sent.bodies()).toHaveLength(1);
+		expect(bodiesOf(sent)).toHaveLength(1);
 	});
 });

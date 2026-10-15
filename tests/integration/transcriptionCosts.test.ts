@@ -27,6 +27,17 @@ import {
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { EngineLabel } from 'src/providers/providers';
 
+/**
+ * The rate of the current Gemini Flash, shared by every id it serves: a
+ * deprecated Flash id is redirected to it and billed as it.
+ */
+const CURRENT_FLASH_PRICING = {
+	kind: 'perToken',
+	usdPerMillionAudioInput: 0.75,
+	usdPerMillionTextInput: 0.75,
+	usdPerMillionOutput: 3.75,
+};
+
 describe('resolveEnginePricing', () => {
 	it.each([
 		{
@@ -88,24 +99,14 @@ describe('resolveEnginePricing', () => {
 			name: 'a Gemini 3.x model, one rate for every input modality',
 			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 			model: 'gemini-3.8-flash',
-			expected: {
-				kind: 'perToken',
-				usdPerMillionAudioInput: 0.75,
-				usdPerMillionTextInput: 0.75,
-				usdPerMillionOutput: 3.75,
-			},
+			expected: CURRENT_FLASH_PRICING,
 		},
 		{
 			// Deprecated and served by 3.6 Flash, so a saved id is billed as that.
 			name: 'gemini-3.5-flash at the rate of the model now serving it',
 			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 			model: 'gemini-3.5-flash',
-			expected: {
-				kind: 'perToken',
-				usdPerMillionAudioInput: 0.75,
-				usdPerMillionTextInput: 0.75,
-				usdPerMillionOutput: 3.75,
-			},
+			expected: CURRENT_FLASH_PRICING,
 		},
 		{
 			name: 'gemini-4-argon, the flagship',
