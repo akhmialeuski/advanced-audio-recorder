@@ -167,10 +167,15 @@ export function addObsidianDomExtensions<T extends HTMLElement>(el: T): T {
 	extended['createSpan'] = (opts?: {
 		cls?: string;
 		text?: string;
+		attr?: Record<string, string>;
 	}): HTMLElement => {
 		const createEl = extended['createEl'] as (
 			tag: string,
-			opts?: { cls?: string; text?: string },
+			opts?: {
+				cls?: string;
+				text?: string;
+				attr?: Record<string, string>;
+			},
 		) => HTMLElement;
 		return createEl('span', opts);
 	};

@@ -11,6 +11,7 @@ import { RecordingStatus } from '../types';
 import type { SaveProgress, RecordingControls } from '../types';
 import { formatTimecode } from '../utils/TimeUtils';
 import { formatByteSize } from '../utils/formatBytes';
+import { createProgressBar } from './progressBar';
 import { createVolumeSlider, type VolumeSlider } from './volumeSlider';
 
 /**
@@ -641,18 +642,13 @@ function renderProgressState(
 		? createRestoreButton(el, options)
 		: el.createDiv({ cls: 'aar-status-progress-content' });
 
+	const description = progress?.description ?? defaultDescription;
 	const text = wrapper.createSpan();
-	text.textContent = progress?.description ?? defaultDescription;
+	text.textContent = description;
 
-	const progressContainer = wrapper.createDiv({
-		cls: 'aar-save-progress',
-	});
-	const progressBar = progressContainer.createDiv({
-		cls: 'aar-save-progress-bar',
-	});
-	progressBar.setCssProps({
-		'--save-progress': `${String(savePercent(progress?.percent))}%`,
-	});
+	createProgressBar(wrapper, 'aar-save-progress', description).setValue(
+		savePercent(progress?.percent),
+	);
 }
 
 /**
@@ -688,8 +684,9 @@ function createRestoreButton(
  *
  * The number is bytes written over bytes expected, both read off a save in
  * flight: before the first chunk lands that division is NaN, and a final flush
- * that writes more than it announced overshoots 100. The stylesheet takes the
- * value straight into a width, so neither may reach it.
+ * that writes more than it announced overshoots 100. The bar takes the value
+ * as a width and a screen reader reads it out as the percentage, so neither
+ * may reach it.
  * @param percent - Reported percentage, or undefined before any was reported
  * @returns A whole percentage in 0..100
  */

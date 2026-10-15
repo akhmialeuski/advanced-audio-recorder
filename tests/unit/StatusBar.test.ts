@@ -18,7 +18,7 @@ import {
 } from 'src/ui/StatusBar';
 import { at } from '../helpers/assertions';
 import { allEls, control, el, maybeEl } from '../helpers/dom';
-import { PLAYBACK, PLAYER, STATUS } from '../helpers/selectors';
+import { OBSIDIAN, PLAYBACK, PLAYER, STATUS } from '../helpers/selectors';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
@@ -53,6 +53,11 @@ function recordingWithControls(isPaused = false): {
 		controls,
 	);
 	return { statusBarItem, controls };
+}
+
+/** The percentage the save or transcription progress bar reports. */
+function shownPercent(statusBarItem: HTMLElement): string | null {
+	return el(statusBarItem, STATUS.saveProgress).getAttribute('aria-valuenow');
 }
 
 /** A status bar already showing a minimised transcription. */
@@ -170,11 +175,7 @@ describe('saving progress', () => {
 		expect(el(statusBarItem, 'span').textContent).toBe(
 			'Assembling audio...',
 		);
-		expect(
-			el(statusBarItem, STATUS.saveProgressBar).style.getPropertyValue(
-				'--save-progress',
-			),
-		).toBe('40%');
+		expect(shownPercent(statusBarItem)).toBe('40');
 	});
 
 	// A save the user did not ask for reads as an ordinary one unless the bar
@@ -212,14 +213,10 @@ describe('saving progress', () => {
 		updateStatusBar(statusBarItem, RecordingStatus.Saving);
 
 		expect(el(statusBarItem, 'span').textContent).toBe('Saving...');
-		expect(
-			el(statusBarItem, STATUS.saveProgressBar).style.getPropertyValue(
-				'--save-progress',
-			),
-		).toBe('0%');
+		expect(shownPercent(statusBarItem)).toBe('0');
 	});
 
-	it('puts the bar inside the progress container', () => {
+	it('fills the bar it draws to the percentage it reports', () => {
 		const statusBarItem = createStatusBar();
 
 		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
@@ -227,26 +224,36 @@ describe('saving progress', () => {
 			description: 'Writing file...',
 		});
 
-		const container = el(statusBarItem, STATUS.saveProgress);
-		const bar = el(container, STATUS.saveProgressBar);
-
-		// The bar is the only part that moves, and it moves through the
-		// custom property the stylesheet reads: a bar that is there but never
+		// The fill is the only part that moves: a bar that is there but never
 		// fills says nothing is happening.
-		expect(bar.style.getPropertyValue('--save-progress')).toBe('60%');
+		const bar = el(statusBarItem, STATUS.saveProgress);
+		expect(el(bar, OBSIDIAN.progressFill).style.width).toBe('60%');
+	});
+
+	it('announces the save as a progress bar named for what it is doing', () => {
+		const statusBarItem = createStatusBar();
+
+		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
+			percent: 60,
+			description: 'Writing file...',
+		});
+
+		const bar = el(statusBarItem, STATUS.saveProgress);
+		expect(bar.getAttribute('role')).toBe('progressbar');
+		expect(bar.getAttribute('aria-label')).toBe('Writing file...');
 	});
 
 	it.each([
 		// The percentage comes from bytes written over bytes expected, and
 		// both come off a recorder mid-save: a division that has not started
 		// yet is NaN, and a final flush that writes more than it announced
-		// overshoots. Neither may reach the stylesheet.
-		{ name: 'has not started counting', percent: Number.NaN, shown: '0%' },
-		{ name: 'overshot its own estimate', percent: 140, shown: '100%' },
-		{ name: 'went backwards', percent: -20, shown: '0%' },
-		{ name: 'is exactly done', percent: 100, shown: '100%' },
-		{ name: 'is exactly at the start', percent: 0, shown: '0%' },
-	])('fills the bar to $shown when the save $name', ({ percent, shown }) => {
+		// overshoots. Neither may reach the bar.
+		{ name: 'has not started counting', percent: Number.NaN, shown: '0' },
+		{ name: 'overshot its own estimate', percent: 140, shown: '100' },
+		{ name: 'went backwards', percent: -20, shown: '0' },
+		{ name: 'is exactly done', percent: 100, shown: '100' },
+		{ name: 'is exactly at the start', percent: 0, shown: '0' },
+	])('reports $shown percent when the save $name', ({ percent, shown }) => {
 		const statusBarItem = createStatusBar();
 
 		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
@@ -254,12 +261,7 @@ describe('saving progress', () => {
 			description: 'Writing file...',
 		});
 
-		const bar = el(
-			el(statusBarItem, STATUS.saveProgress),
-			STATUS.saveProgressBar,
-		);
-
-		expect(bar.style.getPropertyValue('--save-progress')).toBe(shown);
+		expect(shownPercent(statusBarItem)).toBe(shown);
 	});
 
 	it.each([
@@ -293,11 +295,7 @@ describe('transcription progress', () => {
 		expect(statusBarItem.classList.contains('is-recording')).toBe(false);
 		expect(statusBarItem.classList.contains('is-saving')).toBe(false);
 		expect(statusBarItem.textContent).toContain('Transcribing...');
-		expect(
-			el(statusBarItem, STATUS.saveProgressBar).style.getPropertyValue(
-				'--save-progress',
-			),
-		).toBe('35%');
+		expect(shownPercent(statusBarItem)).toBe('35');
 	});
 
 	it('gives way to a recording that starts under it', () => {
@@ -394,11 +392,7 @@ describe('quick note status', () => {
 
 		expect(statusBarItem.classList.contains('is-transcribing')).toBe(true);
 		expect(statusBarItem.textContent).toBe('Quick note: Transcribing...');
-		expect(
-			el(statusBarItem, STATUS.saveProgressBar).style.getPropertyValue(
-				'--save-progress',
-			),
-		).toBe('40%');
+		expect(shownPercent(statusBarItem)).toBe('40');
 	});
 
 	it('says it is transcribing before the first stage is reported', () => {

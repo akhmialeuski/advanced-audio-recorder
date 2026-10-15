@@ -65,6 +65,28 @@ describe('createEl', () => {
 	});
 });
 
+describe('createDiv and createSpan', () => {
+	// Obsidian hands the whole element info on to createEl. The double once
+	// kept only the class and the text, so a progress bar built with a role
+	// lost it in tests and nowhere else.
+	it.each([
+		{
+			name: 'createDiv',
+			create: (parent: HTMLElement): HTMLElement =>
+				parent.createDiv({ attr: { role: 'progressbar' } }),
+		},
+		{
+			name: 'createSpan',
+			create: (parent: HTMLElement): HTMLElement =>
+				parent.createSpan({ attr: { role: 'progressbar' } }),
+		},
+	])('$name keeps the attributes it is given', ({ create }) => {
+		const child = create(extendedEl());
+
+		expect(child.getAttribute('role')).toBe('progressbar');
+	});
+});
+
 describe('win and doc', () => {
 	afterEach(() => {
 		document.body.innerHTML = '';

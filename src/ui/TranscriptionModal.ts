@@ -72,6 +72,7 @@ import {
 } from '../settings/profiles';
 import type { SaveProgress } from '../types';
 import { errorMessage } from '../errors';
+import { createProgressBar, type ProgressBar } from './progressBar';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
 const DEFAULT_TRANSCRIBE_LABEL = 'Transcribing...';
@@ -186,7 +187,7 @@ export class TranscriptionModal extends PluginModal {
 	private elapsedTimer: number | null = null;
 	/** Wall-clock start of the current run, in ms, for the elapsed counter. */
 	private runStartedAt = 0;
-	private progressFillEl: HTMLElement | null = null;
+	private progressBar: ProgressBar | null = null;
 	private configEl: HTMLElement | null = null;
 	/** Whether the More options block is expanded; kept across config re-renders. */
 	private advancedOpen = false;
@@ -277,12 +278,11 @@ export class TranscriptionModal extends PluginModal {
 
 		this.statusEl = contentEl.createDiv({ cls: 'aar-modal-status' });
 		this.statusEl.setText('Ready.');
-		const progress = contentEl.createDiv({
-			cls: 'aar-transcribe-progress',
-		});
-		this.progressFillEl = progress.createDiv({
-			cls: 'aar-transcribe-progress-bar',
-		});
+		this.progressBar = createProgressBar(
+			contentEl,
+			'aar-transcribe-progress',
+			'Transcription progress',
+		);
 		// Live elapsed-time counter; hidden until a run starts so an idle dialog
 		// shows no stray "0:00".
 		this.elapsedEl = contentEl.createDiv({ cls: 'aar-transcribe-elapsed' });
@@ -1161,14 +1161,12 @@ export class TranscriptionModal extends PluginModal {
 	 */
 	private updateProgress(fraction: number, label: string): void {
 		this.statusEl?.setText(label);
-		if (this.progressFillEl) {
+		if (this.progressBar) {
 			const percent = Math.round(
 				Math.max(0, Math.min(1, fraction)) * 100,
 			);
 			this.lastProgress = { percent, description: label };
-			this.progressFillEl.setCssProps({
-				'--aar-transcribe-progress': `${String(percent)}%`,
-			});
+			this.progressBar.setValue(percent);
 			this.reportBackgroundProgress();
 		}
 	}

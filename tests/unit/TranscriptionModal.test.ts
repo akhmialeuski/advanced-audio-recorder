@@ -18,7 +18,8 @@ import {
 } from 'src/transcription/api';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createFile } from '../helpers/createApp';
-import { allEls, maybeEl } from '../helpers/dom';
+import { allEls, control, el, maybeEl } from '../helpers/dom';
+import { OBSIDIAN } from '../helpers/selectors';
 import {
 	hasSettingRow,
 	settingNames,
@@ -1463,5 +1464,47 @@ describe('TranscriptionModal buttons', () => {
 		button(modal, 'Cancel').click();
 
 		expect(internals.cancellation.token.isCancelled()).toBe(true);
+	});
+});
+
+describe('TranscriptionModal progress', () => {
+	/** An opened dialog and the internals that report progress into it. */
+	function openWithProgress(fraction: number): TranscriptionModal {
+		const modal = createModal({ show: jest.fn(), clear: jest.fn() });
+		modal.onOpen();
+		internalsOf<TranscriptionModalInternals>(modal).updateProgress(
+			fraction,
+			'Uploading audio...',
+		);
+		return modal;
+	}
+
+	it('announces the run as a progress bar at the percentage reached', () => {
+		const modal = openWithProgress(0.42);
+
+		const bar = control(modal.contentEl, 'Transcription progress');
+
+		expect(bar.getAttribute('role')).toBe('progressbar');
+		expect(bar.getAttribute('aria-valuenow')).toBe('42');
+	});
+
+	it("fills Obsidian's progress bar to the same percentage", () => {
+		const modal = openWithProgress(0.42);
+
+		const bar = control(modal.contentEl, 'Transcription progress');
+
+		expect(el(bar, OBSIDIAN.progressFill).style.width).toBe('42%');
+	});
+
+	it('starts the bar at zero before the run reports anything', () => {
+		const modal = createModal({ show: jest.fn(), clear: jest.fn() });
+
+		modal.onOpen();
+
+		expect(
+			control(modal.contentEl, 'Transcription progress').getAttribute(
+				'aria-valuenow',
+			),
+		).toBe('0');
 	});
 });

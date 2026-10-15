@@ -350,7 +350,7 @@ If your plugin does not need CSS, delete this file.
     min-height: var(--touch-size-m);
 }
 
-/* Save progress */
+/* Save and background progress in the status bar */
 .aar-status-progress-content {
     width: 100%;
 }
@@ -372,21 +372,25 @@ If your plugin does not need CSS, delete this file.
     text-align: inherit;
 }
 
+/*
+ * Obsidian's progress bar, thinned to the 3px a status bar line has room for.
+ * At that height the component's inset border would leave only two hairlines
+ * of track, so the track is the solid border colour the bar always had.
+ */
 .aar-save-progress {
-    height: 3px;
-    width: 100%;
-    background-color: var(--background-modifier-border);
-    border-radius: 2px;
-    margin-top: 2px;
-    overflow: hidden;
+    margin-top: var(--size-2-1);
 }
 
-.aar-save-progress-bar {
-    height: 100%;
-    width: var(--save-progress, 0%);
-    background-color: var(--color-accent);
-    border-radius: 2px;
-    transition: width 0.3s ease;
+.aar-save-progress .setting-progress-bar {
+    height: 3px;
+    background-color: var(--background-modifier-border);
+    box-shadow: none;
+}
+
+/* The component sets the width outright; the bar grows into it instead */
+.aar-save-progress .setting-progress-bar-inner,
+.aar-transcribe-progress .setting-progress-bar-inner {
+    transition: width var(--anim-duration-moderate) ease;
 }
 
 @keyframes pulse-saving {
@@ -1457,22 +1461,6 @@ button.aar-player-marker-row {
     pointer-events: none;
 }
 
-.aar-transcribe-progress {
-    height: 4px;
-    width: 100%;
-    background-color: var(--background-modifier-border);
-    border-radius: 2px;
-    overflow: hidden;
-}
-
-.aar-transcribe-progress-bar {
-    height: 100%;
-    width: var(--aar-transcribe-progress, 0%);
-    background-color: var(--color-accent);
-    border-radius: 2px;
-    transition: width 0.3s ease;
-}
-
 .aar-transcribe-elapsed {
     margin-top: 4px;
     font-size: var(--font-ui-smaller);
@@ -1904,8 +1892,8 @@ button.aar-player-marker-row {
     }
 
     .aar-input-meter-fill,
-    .aar-save-progress-bar,
-    .aar-transcribe-progress-bar,
+    .aar-save-progress .setting-progress-bar-inner,
+    .aar-transcribe-progress .setting-progress-bar-inner,
     .aar-player .aar-player-btn {
         transition: none;
     }

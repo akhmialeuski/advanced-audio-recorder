@@ -2486,6 +2486,46 @@ export class SliderComponent {
 }
 
 /**
+ * Mock ProgressBarComponent, built as Obsidian builds it: a
+ * `div.setting-progress-bar` appended to its container, holding a
+ * `div.setting-progress-bar-inner` whose inline width is the value. The value
+ * is clamped into 0..100 the way the app clamps it, and a NaN passes through
+ * unclamped there as well, which is why callers sanitise it first.
+ */
+export class ProgressBarComponent {
+	readonly progressBar: HTMLElement;
+	readonly lineEl: HTMLElement;
+	private value = 0;
+
+	constructor(containerEl: HTMLElement) {
+		this.progressBar = addObsidianDomExtensions(
+			document.createElement('div'),
+		);
+		this.progressBar.classList.add('setting-progress-bar');
+		this.lineEl = addObsidianDomExtensions(document.createElement('div'));
+		this.lineEl.classList.add('setting-progress-bar-inner');
+		this.progressBar.appendChild(this.lineEl);
+		containerEl.appendChild(this.progressBar);
+	}
+
+	getValue(): number {
+		return this.value;
+	}
+
+	setValue(value: number): this {
+		const clamped = Math.min(100, Math.max(0, value));
+		this.value = clamped;
+		this.lineEl.style.width = `${String(clamped)}%`;
+		return this;
+	}
+
+	setVisibility(visible: boolean): this {
+		this.progressBar.hidden = !visible;
+		return this;
+	}
+}
+
+/**
  * Mock normalizePath, doing what Obsidian's does to a path: backslashes become
  * slashes, runs of slashes collapse, and the slashes at either end go, the
  * vault root being "/". A path joined onto the root's "" directory comes out
