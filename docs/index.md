@@ -1,6 +1,6 @@
 # Advanced Audio Recorder - Documentation
 
-**Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with five engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, Mistral Voxtral, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6 or newer**; a few features are desktop-only (see [Mobile support](mobile-support.md)).
+**Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with five engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, Mistral Voxtral, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.13.1 or newer**; a few features are desktop-only (see [Mobile support](mobile-support.md)).
 
 ![The enhanced audio player embedded in a note, showing the waveform seek bar, transport controls, and a marker list](images/player-overview.png)
 
@@ -28,7 +28,7 @@ What it does:
 - **Post-processes transcripts with an LLM** to clean up punctuation, summarize into key points and action items, or apply a custom instruction.
 - **Ships diagnostics** - a test recording, a system-info report, and a debug mode - for troubleshooting devices, codecs, and the runtime environment.
 
-It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6+**, with a few features desktop-only (multi-track recording, input device selection, the command line, and local whisper.cpp transcription) - see [Mobile support](mobile-support.md). Search terms people use for this plugin include: voice recorder, dictation, meeting recorder, audio notes, speech-to-text, transcription, Whisper, Deepgram, and Gemini.
+It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.13.1+**, with a few features desktop-only (multi-track recording, input device selection, the command line, and local whisper.cpp transcription) - see [Mobile support](mobile-support.md). Search terms people use for this plugin include: voice recorder, dictation, meeting recorder, audio notes, speech-to-text, transcription, Whisper, Deepgram, and Gemini.
 
 ---
 

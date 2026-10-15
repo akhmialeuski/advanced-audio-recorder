@@ -22,17 +22,18 @@ import {
 	asMockApp,
 	asMockMenu,
 	fileAt,
-	headerAction,
 	leafOver,
 } from '../helpers/obsidianMock';
-import { allEls, el } from '../helpers/dom';
+import { allEls, el, maybeEl } from '../helpers/dom';
 import { at } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
 import { SETTING } from '../helpers/selectors';
-import { noticeMessages } from '../mocks/obsidian';
+import { menuInstances, noticeMessages } from '../mocks/obsidian';
 import {
 	hasSettingRow,
+	groupHeadingButton,
 	rowDescription,
+	rowValue,
 	rowOptionValues,
 	rowOptions,
 	rowSelect,
@@ -204,17 +205,13 @@ describe('the recording panel on an open recording', () => {
 			active: recording('calls/sync.webm'),
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
-			'sync.webm',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'File'))).toBe('sync.webm');
 	});
 
 	it('shows the length once it has been read', async () => {
 		const { view } = await createSut({ active: recording('sync.webm') });
 
-		expect(rowDescription(settingRow(view.contentEl, 'Duration'))).toBe(
-			'1:35',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'Duration'))).toBe('1:35');
 	});
 
 	it('says a recording was not transcribed when nothing is stored', async () => {
@@ -232,9 +229,7 @@ describe('the recording panel on an open recording', () => {
 			transcript,
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'Speaker 1'))).toBe(
-			'Anna',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'Speaker 1'))).toBe('Anna');
 	});
 
 	it('shows the model the transcript came from', async () => {
@@ -250,9 +245,7 @@ describe('the recording panel on an open recording', () => {
 			transcript,
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'Model'))).toBe(
-			'nova-3',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'Model'))).toBe('nova-3');
 	});
 });
 
@@ -266,7 +259,7 @@ describe('the recording panel on a meeting note', () => {
 			vaultFiles: [audio],
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
+		expect(rowValue(settingRow(view.contentEl, 'File'))).toBe(
 			'meeting.m4a',
 		);
 	});
@@ -297,9 +290,7 @@ describe('the recording panel on a meeting note', () => {
 		select.dispatchEvent(new Event('change'));
 		await flushMicrotasks();
 
-		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
-			'b.m4a',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'File'))).toBe('b.m4a');
 	});
 });
 
@@ -358,7 +349,7 @@ describe('the panel header', () => {
 	it('starts a recording from its record button', async () => {
 		const { view, toggleRecording } = await createSut();
 
-		headerAction(view, 'Start recording').click();
+		groupHeadingButton(view.contentEl, 'Start recording').click();
 
 		expect(toggleRecording).toHaveBeenCalledTimes(1);
 	});
@@ -366,17 +357,67 @@ describe('the panel header', () => {
 	it('offers to stop while a session is running', async () => {
 		const { view } = await createSut({ status: 'recording' });
 
-		expect(headerAction(view, 'Stop recording').dataset.icon).toBe(
-			'square',
-		);
+		expect(
+			groupHeadingButton(view.contentEl, 'Stop recording').dataset.icon,
+		).toBe('square');
 	});
 
 	it('opens the plugin settings', async () => {
 		const { view, host } = await createSut();
 
-		headerAction(view, 'Open settings').click();
+		groupHeadingButton(view.contentEl, 'Open settings').click();
 
 		expect(host.openSettings).toHaveBeenCalledTimes(1);
+	});
+
+	/**
+	 * Obsidian hides a view's own header in a sidebar, where the panel lives,
+	 * so a button added to it with addAction is never seen there. The
+	 * buttons belong to the panel's content.
+	 */
+	it('adds nothing to the view header a sidebar hides', async () => {
+		const { view } = await createSut();
+
+		expect(internalsOf<{ actions: unknown[] }>(view).actions).toEqual([]);
+	});
+
+	it('keeps its buttons in the heading of its first group', async () => {
+		const { view } = await createSut();
+
+		expect(
+			allEls(el(view.contentEl, SETTING.group), SETTING.extraButton).map(
+				(button) => button.getAttribute('aria-label'),
+			),
+		).toEqual([
+			'Start recording',
+			'Show the transcription queue',
+			'Open settings',
+		]);
+	});
+
+	it('lists every action of the recording, delete included, from its own options button', async () => {
+		const { view } = await createSut({
+			active: recording('sync.webm'),
+			actions: [
+				fileAction(COMMAND_IDS.audioFileInfo, 'Audio file info'),
+				fileAction(COMMAND_IDS.deleteRecording, 'Delete recording'),
+			],
+		});
+
+		groupHeadingButton(view.contentEl, 'More options').click();
+
+		expect(at(menuInstances, 0).items.map((item) => item.title)).toEqual([
+			'Audio file info',
+			'Delete recording',
+		]);
+	});
+
+	it('offers no options button with no recording to act on', async () => {
+		const { view } = await createSut();
+
+		expect(
+			maybeEl(view.contentEl, SETTING.groupHeadingButton('More options')),
+		).toBeNull();
 	});
 });
 
@@ -430,9 +471,7 @@ describe('redrawing the panel', () => {
 		app.workspace.trigger('file-open');
 		await flushMicrotasks();
 
-		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
-			'b.webm',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'File'))).toBe('b.webm');
 	});
 });
 
@@ -453,9 +492,7 @@ describe('what the panel reads from the sidecar', () => {
 			],
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'Chapters'))).toBe(
-			'1',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'Chapters'))).toBe('1');
 	});
 
 	it('names the participants profile the names came from', async () => {
@@ -471,9 +508,7 @@ describe('what the panel reads from the sidecar', () => {
 			],
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'Profile'))).toBe(
-			'Team',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'Profile'))).toBe('Team');
 	});
 
 	it('lists the participant names on one row', async () => {
@@ -485,7 +520,7 @@ describe('what the panel reads from the sidecar', () => {
 			transcript,
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'Names'))).toBe(
+		expect(rowValue(settingRow(view.contentEl, 'Names'))).toBe(
 			'Anna, Boris',
 		);
 	});
@@ -499,7 +534,7 @@ describe('what the panel reads from the sidecar', () => {
 			transcript,
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'Speaker 2'))).toBe(
+		expect(rowValue(settingRow(view.contentEl, 'Speaker 2'))).toBe(
 			'not named',
 		);
 	});
@@ -507,7 +542,7 @@ describe('what the panel reads from the sidecar', () => {
 	it('shows the template the transcript of the note in view was written with', async () => {
 		const { view } = await createSut(transcribedInto('Meeting.md'));
 
-		expect(rowDescription(settingRow(view.contentEl, 'Template'))).toBe(
+		expect(rowValue(settingRow(view.contentEl, 'Template'))).toBe(
 			'{speaker}: {text}',
 		);
 	});
@@ -515,17 +550,15 @@ describe('what the panel reads from the sidecar', () => {
 	it('shows the language of the transcript', async () => {
 		const { view } = await createSut(transcribedInto('Meeting.md'));
 
-		expect(rowDescription(settingRow(view.contentEl, 'Language'))).toBe(
-			'en',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'Language'))).toBe('en');
 	});
 
 	it('shows when the recording was transcribed', async () => {
 		const { view } = await createSut(transcribedInto('Meeting.md'));
 
-		expect(
-			rowDescription(settingRow(view.contentEl, 'Transcribed')),
-		).not.toBe('');
+		expect(rowValue(settingRow(view.contentEl, 'Transcribed'))).not.toBe(
+			'',
+		);
 	});
 
 	it('opens a note the transcript was written into, whatever its name', async () => {
@@ -553,9 +586,7 @@ describe('what the panel reads from the sidecar', () => {
 			},
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'Failed parts'))).toBe(
-			'1',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'Failed parts'))).toBe('1');
 	});
 
 	it('still shows the file when its sidecar cannot be read', async () => {
@@ -566,9 +597,7 @@ describe('what the panel reads from the sidecar', () => {
 			sidecarFails: true,
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
-			'sync.webm',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'File'))).toBe('sync.webm');
 	});
 
 	it('shows a length nobody could read as unknown', async () => {
@@ -579,7 +608,7 @@ describe('what the panel reads from the sidecar', () => {
 			readDuration: jest.fn().mockRejectedValue(new Error('no codec')),
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'Duration'))).toBe(
+		expect(rowValue(settingRow(view.contentEl, 'Duration'))).toBe(
 			'unknown',
 		);
 	});
@@ -651,7 +680,10 @@ describe('the view menu and the header', () => {
 	it('shows the transcription queue', async () => {
 		const { view, host } = await createSut();
 
-		headerAction(view, 'Show the transcription queue').click();
+		groupHeadingButton(
+			view.contentEl,
+			'Show the transcription queue',
+		).click();
 
 		expect(host.openTranscriptionQueue).toHaveBeenCalledTimes(1);
 	});
@@ -768,15 +800,27 @@ describe('the panel while saving, with unreadable data, and under changed settin
 	it('labels the record button as saving while a recording is saved', async () => {
 		const { view } = await createSut({ status: 'saving' });
 
-		expect(headerAction(view, 'Saving the recording').dataset.icon).toBe(
-			'save',
-		);
+		expect(
+			groupHeadingButton(view.contentEl, 'Saving the recording').dataset
+				.icon,
+		).toBe('save');
+	});
+
+	it('disables the record button while a recording is saved', async () => {
+		const { view } = await createSut({ status: 'saving' });
+
+		expect(
+			groupHeadingButton(
+				view.contentEl,
+				'Saving the recording',
+			).classList.contains('is-disabled'),
+		).toBe(true);
 	});
 
 	it('does not start or stop anything while a recording is saved', async () => {
 		const { view, toggleRecording } = await createSut({ status: 'saving' });
 
-		headerAction(view, 'Saving the recording').click();
+		groupHeadingButton(view.contentEl, 'Saving the recording').click();
 
 		expect(toggleRecording).not.toHaveBeenCalled();
 	});
@@ -870,7 +914,7 @@ describe('the panel when refreshes overlap or a run wrote nothing', () => {
 		const { view, toggleRecording } = await createSut();
 		toggleRecording.mockRejectedValue(new Error('no microphone'));
 
-		headerAction(view, 'Start recording').click();
+		groupHeadingButton(view.contentEl, 'Start recording').click();
 		await flushMicrotasks();
 
 		expect(error).toHaveBeenCalledWith(
@@ -891,9 +935,7 @@ describe('the panel when refreshes overlap or a run wrote nothing', () => {
 			},
 		});
 
-		expect(rowDescription(settingRow(view.contentEl, 'Failed parts'))).toBe(
-			'2',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'Failed parts'))).toBe('2');
 	});
 });
 
@@ -988,9 +1030,7 @@ describe('the panel following renames, rewrites and its own switches', () => {
 		app.metadataCache.trigger('changed', note('Meeting.md'));
 		await flushMicrotasks();
 
-		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
-			'b2.m4a',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'File'))).toBe('b2.m4a');
 	});
 
 	it('reads the recording again when the file itself is rewritten', async () => {
@@ -1134,9 +1174,7 @@ describe('the panel staying in step without writing back', () => {
 		app.metadataCache.trigger('resolved');
 		await flushMicrotasks();
 
-		expect(rowDescription(settingRow(view.contentEl, 'File'))).toBe(
-			'later.webm',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'File'))).toBe('later.webm');
 	});
 
 	it('asks for a length again after a read that failed', async () => {
@@ -1155,9 +1193,7 @@ describe('the panel staying in step without writing back', () => {
 		await view.refresh();
 		await flushMicrotasks();
 
-		expect(rowDescription(settingRow(view.contentEl, 'Duration'))).toBe(
-			'1:35',
-		);
+		expect(rowValue(settingRow(view.contentEl, 'Duration'))).toBe('1:35');
 	});
 
 	it('offers deleting the recording in the view menu, which closes', async () => {
@@ -1173,6 +1209,36 @@ describe('the panel staying in step without writing back', () => {
 
 		expect(asMockMenu(menu).items.map((item) => item.title)).toEqual([
 			'Delete recording',
+		]);
+	});
+});
+
+describe('the panel layout', () => {
+	/**
+	 * The actions are what the panel is opened for, so they come right under
+	 * the recording rather than below every fact about its transcript.
+	 */
+	it('lists what can be done with the recording before what is known about it', async () => {
+		const { view } = await createSut({
+			...transcribedInto('Meetings/Standup.md'),
+			actions: [fileAction(COMMAND_IDS.audioFileInfo, 'Audio file info')],
+		});
+
+		expect(
+			allEls(view.contentEl, SETTING.heading).map(
+				(heading) => heading.textContent,
+			),
+		).toEqual(['Recording', 'Actions', 'Transcript', 'Settings']);
+	});
+
+	it('shows a fact as a read-only value beside its label', async () => {
+		const { view } = await createSut({ active: recording('sync.webm') });
+
+		const format = settingRow(view.contentEl, 'Format');
+
+		expect([rowValue(format), rowDescription(format)]).toEqual([
+			'WEBM',
+			'',
 		]);
 	});
 });

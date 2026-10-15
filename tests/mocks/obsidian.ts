@@ -708,19 +708,6 @@ export class Workspace extends Events {
 		// No leaves unless a test seeds them
 	});
 
-	/** Leaves opened in the right sidebar, in order. */
-	readonly rightLeaves: WorkspaceLeaf[] = [];
-
-	/** The two sidebars, collapsed or not as a test sets them. */
-	readonly leftSplit = new WorkspaceSidedock();
-	readonly rightSplit = new WorkspaceSidedock();
-
-	getRightLeaf = jest.fn((_split: boolean): WorkspaceLeaf | null => {
-		const leaf = new WorkspaceLeaf(this.app, this.rightSplit);
-		this.rightLeaves.push(leaf);
-		return leaf;
-	});
-
 	ensureSideLeaf = jest.fn(
 		async (
 			type: string,
@@ -728,7 +715,6 @@ export class Workspace extends Events {
 			options: { active?: boolean; reveal?: boolean } = {},
 		): Promise<WorkspaceLeaf> => {
 			const leaf = new WorkspaceLeaf(this.app);
-			this.rightLeaves.push(leaf);
 			await leaf.setViewState({
 				type,
 				...(options.active === undefined
@@ -736,12 +722,6 @@ export class Workspace extends Events {
 					: { active: options.active }),
 			});
 			return leaf;
-		},
-	);
-
-	setActiveLeaf = jest.fn(
-		(_leaf: WorkspaceLeaf, _params?: { focus?: boolean }): void => {
-			// Nothing to focus in a test
 		},
 	);
 
@@ -1073,14 +1053,6 @@ export class Component {
 }
 
 /** Mock WorkspaceSidedock: a sidebar that can be collapsed and expanded. */
-export class WorkspaceSidedock {
-	collapsed = false;
-
-	expand = jest.fn((): void => {
-		this.collapsed = false;
-	});
-}
-
 /**
  * Mock WorkspaceLeaf: holds the view state it was given, the way a sidebar
  * tab the plugin opened would.
@@ -1091,15 +1063,7 @@ export class WorkspaceLeaf {
 	/** The last state set on the leaf. */
 	viewState: { type: string; active?: boolean } | null = null;
 
-	constructor(
-		readonly app: App | null = null,
-		private readonly root: unknown = null,
-	) {}
-
-	/** The sidebar or split the leaf sits in. */
-	getRoot(): unknown {
-		return this.root;
-	}
+	constructor(readonly app: App | null = null) {}
 
 	setViewState = jest.fn(
 		(state: { type: string; active?: boolean }): Promise<void> => {
@@ -1519,6 +1483,16 @@ export class Setting {
 		return this.addComponent(new ExtraButtonComponent(), callback);
 	}
 
+	/**
+	 * Obsidian's own addDisplayValue: a read-only value in the control
+	 * column, which is where a row shows a value it does not let you edit.
+	 * @param callback - Fills the value in
+	 */
+	addDisplayValue(callback: (value: DisplayValueComponent) => void): this {
+		callback(new DisplayValueComponent(this.controlEl));
+		return this;
+	}
+
 	addToggle(callback: (toggle: ToggleComponent) => void): this {
 		return this.addComponent(new ToggleComponent(), callback);
 	}
@@ -1811,11 +1785,99 @@ export class SearchComponent extends TextComponent {
  * renderer distinguishing "a click on a control" from "a click on the row"
  * pass its tests while failing in Obsidian.
  */
+/**
+ * Mock DisplayValueComponent, built the way Obsidian builds it: a
+ * `.setting-item-value` element in the row's control column.
+ */
+export class DisplayValueComponent {
+	valueEl: HTMLElement;
+
+	constructor(containerEl: HTMLElement) {
+		this.valueEl = addObsidianDomExtensions(document.createElement('div'));
+		this.valueEl.classList.add('setting-item-value');
+		containerEl.appendChild(this.valueEl);
+	}
+
+	setValue(value: string | null): this {
+		this.valueEl.textContent = value ?? '';
+		return this;
+	}
+
+	setStatus(_status: 'warning' | null): this {
+		return this;
+	}
+}
+
+/**
+ * Mock SettingGroup, with the DOM Obsidian gives one: a `.setting-group`
+ * holding a heading row, whose control column carries the group's extra
+ * buttons, and the `.setting-items` list its rows go into.
+ */
+export class SettingGroup {
+	readonly groupEl: HTMLElement;
+	readonly headerEl: HTMLElement;
+	readonly listEl: HTMLElement;
+	private readonly headerNameEl: HTMLElement;
+	private readonly headerControlEl: HTMLElement;
+
+	constructor(containerEl: HTMLElement) {
+		this.groupEl = addObsidianDomExtensions(document.createElement('div'));
+		this.groupEl.classList.add('setting-group');
+		this.headerEl = addObsidianDomExtensions(document.createElement('div'));
+		this.headerEl.classList.add('setting-item', 'setting-item-heading');
+		this.headerNameEl = addObsidianDomExtensions(
+			document.createElement('div'),
+		);
+		this.headerNameEl.classList.add('setting-item-name');
+		this.headerControlEl = addObsidianDomExtensions(
+			document.createElement('div'),
+		);
+		this.headerControlEl.classList.add('setting-item-control');
+		this.headerEl.append(this.headerNameEl, this.headerControlEl);
+		this.listEl = addObsidianDomExtensions(document.createElement('div'));
+		this.listEl.classList.add('setting-items');
+		this.groupEl.appendChild(this.listEl);
+		containerEl.appendChild(this.groupEl);
+	}
+
+	setHeading(text: string): this {
+		this.headerNameEl.textContent = text;
+		this.showHeader();
+		return this;
+	}
+
+	addClass(...classes: string[]): this {
+		this.groupEl.classList.add(...classes);
+		return this;
+	}
+
+	addSetting(callback: (setting: Setting) => void): this {
+		callback(new Setting(this.listEl));
+		return this;
+	}
+
+	addExtraButton(callback: (button: ExtraButtonComponent) => void): this {
+		this.showHeader();
+		const button = new ExtraButtonComponent();
+		this.headerControlEl.appendChild(button.extraSettingsEl);
+		callback(button);
+		return this;
+	}
+
+	/** Obsidian puts the heading row in only once it has something to show. */
+	private showHeader(): void {
+		if (this.headerEl.parentElement !== this.groupEl) {
+			this.groupEl.prepend(this.headerEl);
+		}
+	}
+}
+
 export class ExtraButtonComponent {
 	extraSettingsEl: HTMLElement = addObsidianDomExtensions(
 		document.createElement('div'),
 	);
 	disabled = false;
+	private clickCallback: (() => void) | null = null;
 
 	constructor() {
 		this.extraSettingsEl.classList.add(
@@ -1823,6 +1885,11 @@ export class ExtraButtonComponent {
 			'extra-setting-button',
 		);
 		this.extraSettingsEl.setAttribute('tabindex', '0');
+		this.extraSettingsEl.addEventListener('click', () => {
+			if (!this.disabled) {
+				this.clickCallback?.();
+			}
+		});
 	}
 
 	setIcon(icon: string): this {
@@ -1850,8 +1917,13 @@ export class ExtraButtonComponent {
 		return this;
 	}
 
+	/**
+	 * Obsidian's own onClick: one handler, replaced by the next call, and not
+	 * called while the button is disabled.
+	 * @param callback - What a click runs
+	 */
 	onClick(callback: () => void): this {
-		this.extraSettingsEl.addEventListener('click', callback);
+		this.clickCallback = callback;
 		return this;
 	}
 }
@@ -2110,7 +2182,7 @@ export const Platform = {
  * answers from: a test that models an older Obsidian moves it (through
  * __setApiVersion) rather than keeping a second version beside this one.
  */
-export const DEFAULT_MOCK_API_VERSION = '1.13.0';
+export const DEFAULT_MOCK_API_VERSION = '1.13.1';
 
 export let apiVersion: string = DEFAULT_MOCK_API_VERSION;
 

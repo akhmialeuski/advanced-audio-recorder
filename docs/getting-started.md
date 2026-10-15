@@ -21,7 +21,7 @@ Advanced Audio Recorder runs on both **desktop and mobile** (iOS and Android); t
 | Requirement               | Detail                                                                                                                                   |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Platform**              | The Obsidian **desktop** app (Windows, macOS, or Linux) or the **mobile** app (iOS or Android); a few features are desktop-only.         |
-| **Obsidian version**      | App version **1.6.6 or newer**. Update Obsidian from **Settings > About > Check for updates** if you are on an older build.              |
+| **Obsidian version**      | App version **1.13.1 or newer**. Update Obsidian from **Settings > About > Check for updates** if you are on an older build.             |
 | **A microphone**          | Any built-in or external input device that your operating system recognizes.                                                             |
 | **Microphone permission** | Your operating system must allow the Obsidian app to use the microphone (see [Granting microphone access](#granting-microphone-access)). |
 
@@ -62,7 +62,7 @@ Use this method to install a specific release or a build you compiled yourself.
 
 The `.obsidian` folder is hidden by default; enable hidden files in your file manager if you cannot see it.
 
-Enabling the plugin opens its settings tab straight away (Obsidian 1.7.2 and later), which is where the documentation link and the three settings a first recording needs - input device, output format, and save folder - live.
+Enabling the plugin opens its settings tab straight away, which is where the documentation link and the three settings a first recording needs - input device, output format, and save folder - live.
 
 ---
 

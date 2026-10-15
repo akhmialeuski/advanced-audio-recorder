@@ -12,6 +12,12 @@ import { sectionItems } from './rowHelpers';
 import type { SettingGroupItem } from 'obsidian';
 
 /**
+ * Name of the switch that turns the enhanced player on, shared with the
+ * recording panel, which offers the same switch under the same name.
+ */
+export const ENHANCED_PLAYER_SETTING_NAME = 'Enhanced audio player';
+
+/**
  * The enhanced player and the two windows it can open, behind an entry of its
  * own. The sub-options are revealed by a predicate rather than by redrawing the
  * section.
@@ -28,7 +34,7 @@ export function audioPlayerPage(
 		displayValue: (): string => (enhanced() ? 'On' : 'Off'),
 		items: sectionItems([
 			{
-				name: 'Enhanced audio player',
+				name: ENHANCED_PLAYER_SETTING_NAME,
 				aliases: ['waveform player', 'embed'],
 				desc: 'Replace the built-in audio embed with a richer player (waveform, speed, skip, volume, loop, timecode links, markers and chapters). Video files keep the built-in player.',
 				control: { type: 'toggle', key: 'enhancedPlayerEnabled' },

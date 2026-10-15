@@ -157,6 +157,13 @@ export const SETTING = {
 	heading: '.setting-item-heading',
 	/** The icon-only button a row adds with addExtraButton. */
 	extraButton: '.extra-setting-button',
+	/** A group of rows built with SettingGroup. */
+	group: '.setting-group',
+	/** The read-only value a row shows with addDisplayValue. */
+	value: '.setting-item-value',
+	/** An icon button in a setting group's heading, by its label. */
+	groupHeadingButton: (label: string): string =>
+		`.setting-group > .setting-item-heading .extra-setting-button[aria-label="${label}"]`,
 	root: '.aar-settings-root',
 	searchInput: '.aar-search-row input',
 	addItemButton: '.aar-add-item-row button',

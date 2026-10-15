@@ -2,7 +2,7 @@
 	"id": "advanced-audio-recorder",
 	"name": "Advanced Audio Recorder",
 	"version": "2.3.5",
-	"minAppVersion": "1.6.6",
+	"minAppVersion": "1.13.1",
 	"description": "Record, play, and transcribe audio in your vault: multi-track recording, a waveform player with bookmarks, format conversion, cleanup, and speech-to-text (Whisper, Deepgram, Gemini, offline).",
 	"author": "Anatol Khmialeuski",
 	"authorUrl": "https://coff.ee/akhmelevskiy",

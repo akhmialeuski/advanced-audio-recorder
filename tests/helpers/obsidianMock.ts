@@ -20,7 +20,7 @@ import type {
 	Vault,
 	Workspace,
 } from 'obsidian';
-import { internalsOf, partial } from './doubles';
+import { partial } from './doubles';
 import { Plugin as MockPluginClass } from '../mocks/obsidian';
 import type {
 	App as MockApp,
@@ -132,32 +132,4 @@ export function leafOver(app: App): WorkspaceLeaf {
 	return new (WorkspaceLeaf as unknown as new (app: App) => WorkspaceLeaf)(
 		app,
 	);
-}
-
-/**
- * The header action a view added under a label, as the shared mock's
- * ItemView records them. The real view keeps them in its header element.
- * @param view - The view
- * @param label - The action's accessible label
- * @returns The action's element
- */
-export function headerAction(view: object, label: string): HTMLElement {
-	const actions = internalsOf<{ actions: { el: HTMLElement }[] }>(
-		view,
-	).actions;
-	const action = actions.find(
-		(entry) => entry.el.getAttribute('aria-label') === label,
-	);
-	if (!action) {
-		throw new Error(
-			`No header action "${label}". Actions: ` +
-				actions
-					.map(
-						(entry) =>
-							`"${entry.el.getAttribute('aria-label') ?? ''}"`,
-					)
-					.join(', '),
-		);
-	}
-	return action.el;
 }

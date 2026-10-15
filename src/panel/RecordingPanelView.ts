@@ -9,18 +9,23 @@
  * transcription finishing, a speaker being renamed or a chapter being added
  * shows up without the panel being reopened.
  *
- * It is built only from what Obsidian already offers a view: the header
- * buttons are view actions, the "More options" menu lists the file actions,
- * and the body is setting rows and headings, so the panel looks and behaves
- * like the Properties or Outline panes next to it and carries no styles of its
- * own. Every action it offers is a file action from the shared registry, so
+ * It is built only from what Obsidian already offers: setting groups whose
+ * rows show read-only values, and the recorder, queue, settings and "More
+ * options" buttons in the heading of the first group. Obsidian hides a view's
+ * own header in a sidebar, so buttons added with addAction would never be
+ * seen where the panel lives. The panel carries no styles of its own. Every action it offers is a file action from the shared registry, so
  * the panel can never offer something the palette and the context menus do
  * not, nor drift from what they do.
  * @module panel/RecordingPanelView
  */
 
-import { ItemView, Notice, Setting, setIcon } from 'obsidian';
-import type { Menu, TFile, ToggleComponent, WorkspaceLeaf } from 'obsidian';
+import { ItemView, Menu, Notice, SettingGroup } from 'obsidian';
+import type {
+	ExtraButtonComponent,
+	TFile,
+	ToggleComponent,
+	WorkspaceLeaf,
+} from 'obsidian';
 import {
 	COMMAND_IDS,
 	PLUGIN_LOG_PREFIX,
@@ -42,6 +47,8 @@ import { isAudioFile } from '../utils/audioFile';
 import { fileNameOf } from '../utils/paths';
 import { formatByteSize } from '../utils/formatBytes';
 import { formatTimecode } from '../utils/TimeUtils';
+import { ENHANCED_PLAYER_SETTING_NAME } from '../settings/sections/audioPlayerSection';
+import { TRANSCRIBE_ON_SAVE_SETTING_NAME } from '../settings/sections/transcriptionSection';
 import {
 	formatPanelDate,
 	recordingsReferencedBy,
@@ -87,12 +94,12 @@ interface QuickSetting {
 const QUICK_SETTINGS: readonly QuickSetting[] = [
 	{
 		key: 'transcribeOnSave',
-		name: 'Transcribe after recording',
+		name: TRANSCRIBE_ON_SAVE_SETTING_NAME,
 		needsTranscription: true,
 	},
 	{
 		key: 'enhancedPlayerEnabled',
-		name: 'Enhanced audio player',
+		name: ENHANCED_PLAYER_SETTING_NAME,
 		needsTranscription: false,
 	},
 ];
@@ -174,8 +181,8 @@ export class RecordingPanelView extends ItemView {
 	 * the top-up only when there is something to top up.
 	 */
 	private failedParts: number | null = null;
-	/** The start/stop header action, redrawn when the recorder changes. */
-	private recordAction: HTMLElement | null = null;
+	/** The start/stop button, redrawn when the recorder changes. */
+	private recordButton: ExtraButtonComponent | null = null;
 
 	/**
 	 * @param leaf - The leaf Obsidian opened the view in
@@ -201,30 +208,6 @@ export class RecordingPanelView extends ItemView {
 	}
 
 	override async onOpen(): Promise<void> {
-		this.addAction('settings', 'Open settings', () => {
-			this.host.openSettings();
-		});
-		this.addAction('list-ordered', 'Show the transcription queue', () => {
-			this.host.openTranscriptionQueue();
-		});
-		this.recordAction = this.addAction(ICON_MIC, 'Start recording', () => {
-			if (this.recorderState() === 'saving') {
-				return;
-			}
-			void this.host.recording
-				.toggleRecording()
-				.catch((error: unknown) => {
-					console.error(
-						`${PLUGIN_LOG_PREFIX} Starting or stopping a recording from the panel failed:`,
-						error,
-					);
-				})
-				.finally(() => {
-					this.refreshRecordingState();
-				});
-		});
-		this.refreshRecordingState();
-
 		const { workspace, metadataCache, vault } = this.app;
 		this.registerEvent(
 			workspace.on('file-open', () => {
@@ -290,7 +273,7 @@ export class RecordingPanelView extends ItemView {
 
 	override onClose(): Promise<void> {
 		this.generation++;
-		this.recordAction = null;
+		this.recordButton = null;
 		this.contentEl.empty();
 		return Promise.resolve();
 	}
@@ -305,16 +288,27 @@ export class RecordingPanelView extends ItemView {
 		super.onPaneMenu(menu, source);
 		// The "More options" menu only: the tab header's right-click menu is
 		// about the tab, not the recording in it.
-		if (source === 'more-options' && this.shownFile) {
-			renderActionsIntoMenu(
-				menu,
-				// Every file action, delete included: this menu closes like
-				// the file menu, so it is no more a mis-click away here.
-				this.offeredActions(this.host.actions),
-				{ file: this.shownFile, services: this.host.services },
-				new Set(),
-			);
+		if (source === 'more-options') {
+			this.addFileActionsTo(menu);
 		}
+	}
+
+	/**
+	 * Lists the file actions of the recording shown in a menu: every one,
+	 * delete included, because a menu closes like the file menu does, so
+	 * nothing in it is a mis-click away.
+	 * @param menu - The menu being built
+	 */
+	private addFileActionsTo(menu: Menu): void {
+		if (!this.shownFile) {
+			return;
+		}
+		renderActionsIntoMenu(
+			menu,
+			this.offeredActions(this.host.actions),
+			{ file: this.shownFile, services: this.host.services },
+			new Set(),
+		);
 	}
 
 	/**
@@ -323,18 +317,21 @@ export class RecordingPanelView extends ItemView {
 	 * redrawing the whole panel.
 	 */
 	refreshRecordingState(): void {
-		if (!this.recordAction) {
+		if (!this.recordButton) {
 			return;
 		}
-		const { icon, label } = RECORD_BUTTON[this.recorderState()];
-		setIcon(this.recordAction, icon);
-		this.recordAction.setAttribute('aria-label', label);
+		const state = this.recorderState();
+		const { icon, label } = RECORD_BUTTON[state];
+		this.recordButton
+			.setIcon(icon)
+			.setTooltip(label)
+			.setDisabled(state === 'saving');
 	}
 
 	/**
 	 * What the record button can do now. A session that is saving can be
-	 * neither started nor stopped, so the button says so instead of offering
-	 * a start the recorder would answer with a refusal.
+	 * neither started nor stopped, so the button says so and is disabled
+	 * instead of offering a start the recorder would answer with a refusal.
 	 */
 	private recorderState(): keyof typeof RECORD_BUTTON {
 		switch (this.host.recording.getStatus()) {
@@ -478,7 +475,8 @@ export class RecordingPanelView extends ItemView {
 	}
 
 	/**
-	 * Draws the whole panel.
+	 * Draws the whole panel: the recording first, with the buttons that act on
+	 * it, then what can be done with it, then what is known about it.
 	 * @param target - What the active file refers to
 	 * @param selected - The recording shown, or null for none
 	 * @param summary - What its sidecar holds, null with nothing selected
@@ -490,67 +488,132 @@ export class RecordingPanelView extends ItemView {
 	): void {
 		const root = this.contentEl;
 		root.empty();
+		const recording = new SettingGroup(root).setHeading('Recording');
+		this.addHeadingButtons(recording, selected !== null);
 		if (!selected) {
-			new Setting(root).setDesc(
-				'Open a recording, or a note that embeds one, to see its details here.',
-			);
-		} else {
-			this.renderFileSection(root, target.recordings, selected);
-			if (summary === UNREADABLE) {
-				new Setting(root).setDesc(
-					`The stored data of this recording could not be read. Restore or remove ${selected.name}${SIDECAR_SUFFIX} to see it here.`,
+			recording.addSetting((setting) => {
+				setting.setDesc(
+					'Open a recording, or a note that embeds one, to see its details here.',
 				);
-			} else if (summary) {
+			});
+		} else {
+			this.renderFileSection(recording, target.recordings, selected);
+			if (summary === UNREADABLE) {
+				recording.addSetting((setting) => {
+					setting.setDesc(
+						`The stored data of this recording could not be read. Restore or remove ${selected.name}${SIDECAR_SUFFIX} to see it here.`,
+					);
+				});
+			}
+			this.renderActions(root, selected);
+			if (summary && summary !== UNREADABLE) {
 				this.renderTranscriptSection(root, summary);
 				this.renderPeopleSection(root, summary);
 				this.renderMarkerSection(root, summary);
 			}
-			this.renderActions(root, selected);
 		}
 		this.renderQuickSettings(root);
 	}
 
+	/**
+	 * The panel's own buttons, in the heading of its first group: the place a
+	 * sidebar pane keeps them, since Obsidian shows no view header there.
+	 * @param group - The first group of the panel
+	 * @param withMenu - Whether a recording is shown for the menu to act on
+	 */
+	private addHeadingButtons(group: SettingGroup, withMenu: boolean): void {
+		group.addExtraButton((button) => {
+			this.recordButton = button;
+			button.onClick(() => {
+				void this.host.recording
+					.toggleRecording()
+					.catch((error: unknown) => {
+						console.error(
+							`${PLUGIN_LOG_PREFIX} Starting or stopping a recording from the panel failed:`,
+							error,
+						);
+					})
+					.finally(() => {
+						this.refreshRecordingState();
+					});
+			});
+		});
+		this.refreshRecordingState();
+		group.addExtraButton((button) =>
+			button
+				.setIcon('list-ordered')
+				.setTooltip('Show the transcription queue')
+				.onClick(() => {
+					this.host.openTranscriptionQueue();
+				}),
+		);
+		group.addExtraButton((button) =>
+			button
+				.setIcon('settings')
+				.setTooltip('Open settings')
+				.onClick(() => {
+					this.host.openSettings();
+				}),
+		);
+		if (withMenu) {
+			group.addExtraButton((button) =>
+				button
+					.setIcon('more-horizontal')
+					.setTooltip('More options')
+					.onClick(() => {
+						const menu = new Menu();
+						this.addFileActionsTo(menu);
+						const box =
+							button.extraSettingsEl.getBoundingClientRect();
+						menu.showAtPosition({ x: box.left, y: box.bottom });
+					}),
+			);
+		}
+	}
+
 	/** The file itself: name, length, size, format, when it was made. */
 	private renderFileSection(
-		root: HTMLElement,
+		group: SettingGroup,
 		recordings: readonly TFile[],
 		file: TFile,
 	): void {
-		new Setting(root).setName('Recording').setHeading();
 		if (recordings.length > 1) {
-			new Setting(root).setName('Shown').addDropdown((dropdown) => {
-				const names = recordings.map((recording) => recording.name);
-				for (const recording of recordings) {
-					// The path where two recordings share a name, so the two
-					// entries can be told apart.
-					const shared =
-						names.indexOf(recording.name) !==
-						names.lastIndexOf(recording.name);
-					dropdown.addOption(
-						recording.path,
-						shared ? recording.path : recording.name,
-					);
-				}
-				dropdown.setValue(file.path).onChange((path) => {
-					this.selectedPath = path;
-					void this.refresh();
+			group.addSetting((setting) => {
+				setting.setName('Shown').addDropdown((dropdown) => {
+					const names = recordings.map((recording) => recording.name);
+					for (const recording of recordings) {
+						// The path where two recordings share a name, so the
+						// two entries can be told apart.
+						const shared =
+							names.indexOf(recording.name) !==
+							names.lastIndexOf(recording.name);
+						dropdown.addOption(
+							recording.path,
+							shared ? recording.path : recording.name,
+						);
+					}
+					dropdown.setValue(file.path).onChange((path) => {
+						this.selectedPath = path;
+						void this.refresh();
+					});
 				});
 			});
 		}
-		this.linkRow(root, 'File', file.path, file.name);
-		const duration = this.row(root, 'Duration', READING_VALUE);
-		void this.durationOf(file).then((seconds) => {
-			duration.setDesc(
-				seconds === null ? UNKNOWN_VALUE : formatTimecode(seconds),
-			);
-		});
+		this.linkRow(group, 'File', file.path, file.name);
 		this.row(
-			root,
+			group,
+			'Duration',
+			this.durationOf(file).then((seconds) =>
+				seconds === null ? UNKNOWN_VALUE : formatTimecode(seconds),
+			),
+		);
+		this.row(
+			group,
 			'Size',
 			formatByteSize(file.stat.size, { decimals: 1, trimZeros: true }),
 		);
-		this.row(root, 'Format', file.extension.toUpperCase());
-		this.row(root, 'Created', new Date(file.stat.ctime).toLocaleString());
+		this.row(group, 'Format', file.extension.toUpperCase());
+		this.row(group, 'Created', new Date(file.stat.ctime).toLocaleString());
 	}
 
 	/** How the recording was transcribed, and where the transcript went. */
@@ -558,39 +621,41 @@ export class RecordingPanelView extends ItemView {
 		root: HTMLElement,
 		summary: RecordingPanelSummary,
 	): void {
-		new Setting(root).setName('Transcript').setHeading();
+		const group = new SettingGroup(root).setHeading('Transcript');
 		const written =
 			summary.noteOutputs.length > 0 || summary.fileOutputs.length > 0;
 		if (!written && summary.transcribedAt === null) {
-			new Setting(root).setDesc('Not transcribed yet.');
+			group.addSetting((setting) => {
+				setting.setDesc('Not transcribed yet.');
+			});
 		}
 		if (summary.transcribedAt !== null) {
 			this.row(
-				root,
+				group,
 				'Transcribed',
 				formatPanelDate(summary.transcribedAt),
 			);
 		}
 		if (summary.model !== null) {
-			this.row(root, 'Model', summary.model);
+			this.row(group, 'Model', summary.model);
 		}
 		if (summary.language !== null) {
-			this.row(root, 'Language', summary.language);
+			this.row(group, 'Language', summary.language);
 		}
 		if (summary.lineTemplate !== null) {
-			this.row(root, 'Template', summary.lineTemplate);
+			this.row(group, 'Template', summary.lineTemplate);
 		}
 		for (const path of summary.noteOutputs) {
-			this.linkRow(root, 'Note', path, fileNameOf(path));
+			this.linkRow(group, 'Note', path, fileNameOf(path));
 		}
 		for (const output of summary.fileOutputs) {
 			const label = output.language
 				? `${output.format} (${output.language})`
 				: output.format;
-			this.linkRow(root, label, output.path, fileNameOf(output.path));
+			this.linkRow(group, label, output.path, fileNameOf(output.path));
 		}
 		if (summary.failedParts > 0) {
-			this.row(root, 'Failed parts', String(summary.failedParts));
+			this.row(group, 'Failed parts', String(summary.failedParts));
 		}
 	}
 
@@ -605,15 +670,15 @@ export class RecordingPanelView extends ItemView {
 		) {
 			return;
 		}
-		new Setting(root).setName('Participants').setHeading();
+		const group = new SettingGroup(root).setHeading('Participants');
 		if (summary.participantProfile !== null) {
-			this.row(root, 'Profile', summary.participantProfile);
+			this.row(group, 'Profile', summary.participantProfile);
 		}
 		if (summary.participants.length > 0) {
-			this.row(root, 'Names', summary.participants.join(', '));
+			this.row(group, 'Names', summary.participants.join(', '));
 		}
 		for (const speaker of summary.speakers) {
-			this.row(root, speaker.label, speaker.name ?? 'not named');
+			this.row(group, speaker.label, speaker.name ?? 'not named');
 		}
 	}
 
@@ -625,9 +690,9 @@ export class RecordingPanelView extends ItemView {
 		if (summary.chapters === 0 && summary.bookmarks === 0) {
 			return;
 		}
-		new Setting(root).setName('Markers').setHeading();
-		this.row(root, 'Chapters', String(summary.chapters));
-		this.row(root, 'Bookmarks', String(summary.bookmarks));
+		const group = new SettingGroup(root).setHeading('Markers');
+		this.row(group, 'Chapters', String(summary.chapters));
+		this.row(group, 'Bookmarks', String(summary.bookmarks));
 	}
 
 	/** One row per file action that is available for the recording. */
@@ -637,16 +702,22 @@ export class RecordingPanelView extends ItemView {
 		if (actions.length === 0) {
 			return;
 		}
-		new Setting(root).setName('Actions').setHeading();
+		const group = new SettingGroup(root).setHeading('Actions');
 		for (const action of actions) {
-			new Setting(root).setName(action.title).addExtraButton((button) =>
-				button
-					.setIcon(action.icon)
-					.setTooltip(action.title)
-					.onClick(() => {
-						runActionLogged(action, context, 'the recording panel');
-					}),
-			);
+			group.addSetting((setting) => {
+				setting.setName(action.title).addExtraButton((button) =>
+					button
+						.setIcon(action.icon)
+						.setTooltip(action.title)
+						.onClick(() => {
+							runActionLogged(
+								action,
+								context,
+								'the recording panel',
+							);
+						}),
+				);
+			});
 		}
 	}
 
@@ -662,36 +733,42 @@ export class RecordingPanelView extends ItemView {
 
 	/** Switches for the settings a recording session reaches for most. */
 	private renderQuickSettings(root: HTMLElement): void {
-		new Setting(root).setName('Settings').setHeading();
+		const group = new SettingGroup(root).setHeading('Settings');
 		this.toggles.clear();
 		const settings = this.host.services.getSettings();
 		for (const entry of QUICK_SETTINGS) {
 			if (entry.needsTranscription && !settings.transcriptionEnabled) {
 				continue;
 			}
-			new Setting(root).setName(entry.name).addToggle((toggle) => {
-				this.toggles.set(entry.key, toggle);
-				toggle.setValue(settings[entry.key]).onChange(async (value) => {
-					// Read again rather than captured: settings synced in from
-					// another device replace the object, and a change made to
-					// the old one would be saved nowhere.
-					const live = this.host.services.getSettings();
-					// Obsidian also calls this when the switch is set in place
-					// to a value the settings already hold. Saving then would
-					// write a synced data.json straight back to where it came
-					// from, so only the user's own flip is saved.
-					if (live[entry.key] === value) {
-						return;
-					}
-					live[entry.key] = value;
-					await this.host.services
-						.saveSettings()
-						.catch((error: unknown) => {
-							console.error(
-								`${PLUGIN_LOG_PREFIX} Saving ${entry.key} from the recording panel failed:`,
-								error,
-							);
-							new Notice(`Could not save "${entry.name}".`);
+			group.addSetting((setting) => {
+				setting.setName(entry.name).addToggle((toggle) => {
+					this.toggles.set(entry.key, toggle);
+					toggle
+						.setValue(settings[entry.key])
+						.onChange(async (value) => {
+							// Read again rather than captured: settings synced in from
+							// another device replace the object, and a change made to
+							// the old one would be saved nowhere.
+							const live = this.host.services.getSettings();
+							// Obsidian also calls this when the switch is set in place
+							// to a value the settings already hold. Saving then would
+							// write a synced data.json straight back to where it came
+							// from, so only the user's own flip is saved.
+							if (live[entry.key] === value) {
+								return;
+							}
+							live[entry.key] = value;
+							await this.host.services
+								.saveSettings()
+								.catch((error: unknown) => {
+									console.error(
+										`${PLUGIN_LOG_PREFIX} Saving ${entry.key} from the recording panel failed:`,
+										error,
+									);
+									new Notice(
+										`Could not save "${entry.name}".`,
+									);
+								});
 						});
 				});
 			});
@@ -699,35 +776,60 @@ export class RecordingPanelView extends ItemView {
 	}
 
 	/**
-	 * A label and a value on one setting row.
-	 * @returns The row, for a caller that fills the value in later
+	 * A row showing a read-only value beside its label.
+	 * @param group - The group the row goes into
+	 * @param label - What the value is
+	 * @param value - The value, or a promise of it for one read later
 	 */
-	private row(parent: HTMLElement, label: string, value: string): Setting {
-		return new Setting(parent).setName(label).setDesc(value);
+	private row(
+		group: SettingGroup,
+		label: string,
+		value: string | Promise<string>,
+	): void {
+		group.addSetting((setting) => {
+			setting.setName(label).addDisplayValue((display) => {
+				if (typeof value === 'string') {
+					display.setValue(value);
+					return;
+				}
+				display.setValue(READING_VALUE);
+				void value.then((read) => display.setValue(read));
+			});
+		});
 	}
 
-	/** A row whose button opens a vault file the way a link does. */
+	/** A value row whose button opens a vault file the way a link does. */
 	private linkRow(
-		parent: HTMLElement,
+		group: SettingGroup,
 		label: string,
 		path: string,
 		text: string,
 	): void {
-		this.row(parent, label, text).addExtraButton((button) =>
-			button
-				.setIcon('file-symlink')
-				.setTooltip(`Open ${path}`)
-				.onClick(() => {
-					// By the file rather than as link text: a '#' or '^' in a
-					// file name would be read as a heading or block reference.
-					const file = this.app.vault.getFileByPath(path);
-					if (file) {
-						void this.app.workspace.getLeaf(false).openFile(file);
-					} else {
-						new Notice(`${path} is no longer in the vault.`);
-					}
-				}),
-		);
+		group.addSetting((setting) => {
+			setting
+				.setName(label)
+				.addDisplayValue((display) => display.setValue(text))
+				.addExtraButton((button) =>
+					button
+						.setIcon('file-symlink')
+						.setTooltip(`Open ${path}`)
+						.onClick(() => {
+							// By the file rather than as link text: a '#' or
+							// '^' in a file name would be read as a heading or
+							// block reference.
+							const file = this.app.vault.getFileByPath(path);
+							if (file) {
+								void this.app.workspace
+									.getLeaf(false)
+									.openFile(file);
+							} else {
+								new Notice(
+									`${path} is no longer in the vault.`,
+								);
+							}
+						}),
+				);
+		});
 	}
 
 	/** The file actions the panel offers, in menu order. */
