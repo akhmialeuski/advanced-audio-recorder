@@ -10,19 +10,15 @@ import {
 	RECORDING_PANEL_PLACED_KEY,
 	RECORDING_PANEL_VIEW_TYPE,
 } from 'src/constants';
-import { flushMicrotasks } from '../helpers/async';
+import { flushMicrotasks, waitFor } from '../helpers/async';
 import {
 	asMockApp,
 	asMockPlugin,
 	asMockVault,
 	asMockWorkspace,
 } from '../helpers/obsidianMock';
-import {
-	hasSettingRow,
-	groupHeadingButton,
-	rowValue,
-	settingRow,
-} from '../helpers/settingRows';
+import { allEls, el, maybeEl } from '../helpers/dom';
+import { RECORDING_PANEL } from '../helpers/selectors';
 import {
 	WorkspaceLeaf as MockWorkspaceLeaf,
 	modalInstances,
@@ -163,19 +159,33 @@ async function openPanel(): Promise<{
 }
 
 describe('settings changing under an open panel', () => {
-	it('redraws the panel so its switches follow', async () => {
+	it('redraws the panel so the actions it offers follow', async () => {
+		jest.mocked(probeDurationSeconds).mockResolvedValue(95);
 		const { view, app, plugin } = await openPanel();
+		const [file] = asMockVault(app.vault).seed([{ path: 'rec.webm' }]);
+		asMockWorkspace(app.workspace).seedActiveFile(file ?? null);
 		asMockWorkspace(app.workspace).getLeavesOfType.mockReturnValue([
 			view.leaf,
 		]);
+		plugin.settings.transcriptionEnabled = false;
+		await view.refresh();
 		plugin.settings.transcriptionEnabled = true;
 
 		await plugin.saveSettings();
-		await flushMicrotasks();
+
+		// The redraw reads the recording's sidecar through the store first.
+		await waitFor(
+			() =>
+				maybeEl(
+					view.contentEl,
+					RECORDING_PANEL.action('Transcribe audio'),
+				) !== null,
+			{ message: 'the transcribe action to appear' },
+		);
 
 		expect(
-			hasSettingRow(view.contentEl, 'Transcribe after recording'),
-		).toBe(true);
+			maybeEl(view.contentEl, RECORDING_PANEL.action('Transcribe audio')),
+		).not.toBeNull();
 	});
 });
 
@@ -191,7 +201,7 @@ describe('the recording panel wired to the plugin', () => {
 		const recorder = at(jest.mocked(RecordingManager).mock.results, 0)
 			.value as RecorderDouble;
 
-		groupHeadingButton(view.contentEl, 'Start recording').click();
+		panelButton(view, 'Start recording').click();
 
 		expect(recorder.toggleRecording).toHaveBeenCalledTimes(1);
 	});
@@ -208,9 +218,7 @@ describe('the recording panel wired to the plugin', () => {
 
 		onStatus(RecordingStatus.Recording);
 
-		expect(
-			groupHeadingButton(view.contentEl, 'Stop recording').dataset.icon,
-		).toBe('square');
+		expect(panelButton(view, 'Stop recording').dataset.icon).toBe('square');
 	});
 
 	it('opens the plugin settings from its header', async () => {
@@ -218,7 +226,7 @@ describe('the recording panel wired to the plugin', () => {
 		const settingsDialog = { open: jest.fn(), openTabById: jest.fn() };
 		app.setting = settingsDialog;
 
-		groupHeadingButton(view.contentEl, 'Open settings').click();
+		panelButton(view, 'Open settings').click();
 
 		expect(settingsDialog.openTabById).toHaveBeenCalledWith(
 			'advanced-audio-recorder',
@@ -228,10 +236,7 @@ describe('the recording panel wired to the plugin', () => {
 	it('shows the transcription queue from its header', async () => {
 		const { view } = await openPanel();
 
-		groupHeadingButton(
-			view.contentEl,
-			'Show the transcription queue',
-		).click();
+		panelButton(view, 'Show the transcription queue').click();
 
 		expect(modalInstances).toHaveLength(1);
 	});
@@ -281,7 +286,19 @@ async function panelOverRecording(): Promise<RecordingPanelView> {
 	return view;
 }
 
-/** The value a panel row shows. */
-function textOfRow(view: RecordingPanelView, name: string): string {
-	return rowValue(settingRow(view.contentEl, name));
+/** The value of the panel's property row with this key. */
+function textOfRow(view: RecordingPanelView, key: string): string {
+	const row = allEls(view.contentEl, RECORDING_PANEL.property).find(
+		(candidate) =>
+			el<HTMLInputElement>(candidate, RECORDING_PANEL.propertyKey)
+				.value === key,
+	);
+	return row
+		? (el(row, RECORDING_PANEL.propertyValue).textContent ?? '')
+		: '';
+}
+
+/** One of the panel's own buttons, by its label. */
+function panelButton(view: RecordingPanelView, label: string): HTMLElement {
+	return el(view.contentEl, RECORDING_PANEL.button(label));
 }

@@ -1,7 +1,7 @@
 /**
  * Tests for what the recording panel says about a recording: which pieces of
- * the sidecar it gathers, how it names the template and the profile, and which
- * recordings a note is taken to be about.
+ * the sidecar it gathers, who it lists as having taken part, how it names the
+ * profile, and which recordings a note is taken to be about.
  */
 
 import type { CachedMetadata, TFile } from 'obsidian';
@@ -11,39 +11,9 @@ import {
 	summarizeRecording,
 	type RecordingPanelSources,
 } from 'src/panel/recordingPanelModel';
-import {
-	emptyTranscriptSection,
-	type NoteOutput,
-} from 'src/sidecar/recordingSidecarModel';
-import type { PlayerMarker } from 'src/markers/markerModel';
-import { TranscriptFileFormat } from 'src/transcription/TranscriptTypes';
+import { emptyTranscriptSection } from 'src/sidecar/recordingSidecarModel';
 import { partial } from '../helpers/doubles';
 import { fileAt } from '../helpers/obsidianMock';
-
-/** A note output written with the given line template at the given time. */
-function noteOutput(
-	path: string,
-	lineFormat: string,
-	writtenAt: string,
-): NoteOutput {
-	return {
-		path,
-		heading: '',
-		writtenAt,
-		templates: {
-			lineFormat,
-			speakerFormat: '**{speaker}**',
-			includeTimestamps: true,
-			timestampLinks: true,
-			mergeConsecutiveSpeaker: true,
-		},
-	};
-}
-
-/** A marker of the given kind. */
-function marker(kind: PlayerMarker['kind']): PlayerMarker {
-	return partial<PlayerMarker>({ id: kind, time: 1, label: kind, kind });
-}
 
 /** Sources for a recording nothing was ever done with, with overrides. */
 function sources(
@@ -51,28 +21,80 @@ function sources(
 ): RecordingPanelSources {
 	return {
 		transcript: emptyTranscriptSection(),
-		markers: [],
 		failedParts: null,
 		profiles: [],
-		notePath: '',
 		...overrides,
 	};
 }
 
 describe('summarizing a recording', () => {
-	it('lists each speaker with the name the user gave it', () => {
+	it('lists each participant with the speaker label given their name', () => {
 		const transcript = emptyTranscriptSection();
+		transcript.participants = ['Anna', 'Boris'];
 		transcript.speakers = [
-			{ label: 'Speaker 1', name: 'Anna' },
+			{ label: 'Speaker 1', name: 'Boris' },
 			{ label: 'Speaker 2' },
 		];
 
 		const summary = summarizeRecording(sources({ transcript }));
 
-		expect(summary.speakers).toEqual([
-			{ label: 'Speaker 1', name: 'Anna' },
-			{ label: 'Speaker 2', name: null },
+		expect(summary.participants).toEqual([
+			{ name: 'Anna', speaker: null },
+			{ name: 'Boris', speaker: 'Speaker 1' },
 		]);
+	});
+
+	it('adds a name given only to a speaker after the participants', () => {
+		const transcript = emptyTranscriptSection();
+		transcript.participants = ['Anna'];
+		transcript.speakers = [{ label: 'Speaker 3', name: 'Guest' }];
+
+		const summary = summarizeRecording(sources({ transcript }));
+
+		expect(summary.participants).toEqual([
+			{ name: 'Anna', speaker: null },
+			{ name: 'Guest', speaker: 'Speaker 3' },
+		]);
+	});
+
+	it('lists nobody for speakers no one named', () => {
+		const transcript = emptyTranscriptSection();
+		transcript.speakers = [{ label: 'Speaker 1' }, { label: 'Speaker 2' }];
+
+		const summary = summarizeRecording(sources({ transcript }));
+
+		expect(summary.participants).toEqual([]);
+	});
+
+	it('keeps the first label of a name given to two speakers', () => {
+		const transcript = emptyTranscriptSection();
+		transcript.speakers = [
+			{ label: 'Speaker 1', name: 'Anna' },
+			{ label: 'Speaker 4', name: 'Anna' },
+		];
+
+		const summary = summarizeRecording(sources({ transcript }));
+
+		expect(summary.participants).toEqual([
+			{ name: 'Anna', speaker: 'Speaker 1' },
+		]);
+	});
+
+	it('reads how and when the recording was transcribed', () => {
+		const transcript = emptyTranscriptSection();
+		transcript.provenance = {
+			model: 'deepgram',
+			language: 'ru',
+			createdAt: '2026-10-15T08:28:44Z',
+		};
+
+		const summary = summarizeRecording(sources({ transcript }));
+
+		expect([
+			summary.model,
+			summary.language,
+			summary.transcribedAt,
+		]).toEqual(['deepgram', 'ru', '2026-10-15T08:28:44Z']);
 	});
 
 	it('names the participants profile the names came from', () => {
@@ -105,50 +127,6 @@ describe('summarizing a recording', () => {
 		expect(summary.participantProfile).toBeNull();
 	});
 
-	it('shows the template of the note in view over a later write elsewhere', () => {
-		const transcript = emptyTranscriptSection();
-		transcript.noteOutputs = [
-			noteOutput(
-				'Meeting.md',
-				'{speaker}: {text}',
-				'2026-01-01T10:00:00Z',
-			),
-			noteOutput('Other.md', '{text}', '2026-02-01T10:00:00Z'),
-		];
-
-		const summary = summarizeRecording(
-			sources({ transcript, notePath: 'Meeting.md' }),
-		);
-
-		expect(summary.lineTemplate).toBe('{speaker}: {text}');
-	});
-
-	it('shows the latest template when the recording itself is open', () => {
-		const transcript = emptyTranscriptSection();
-		transcript.noteOutputs = [
-			noteOutput('Old.md', '{text}', '2026-01-01T10:00:00Z'),
-			noteOutput('New.md', '{timestamp} {text}', '2026-03-01T10:00:00Z'),
-		];
-
-		const summary = summarizeRecording(sources({ transcript }));
-
-		expect(summary.lineTemplate).toBe('{timestamp} {text}');
-	});
-
-	it('counts chapters and bookmarks apart', () => {
-		const summary = summarizeRecording(
-			sources({
-				markers: [
-					marker('chapter'),
-					marker('chapter'),
-					marker('bookmark'),
-				],
-			}),
-		);
-
-		expect([summary.chapters, summary.bookmarks]).toEqual([2, 1]);
-	});
-
 	it('counts the parts the last run lost', () => {
 		const summary = summarizeRecording(
 			sources({
@@ -166,24 +144,6 @@ describe('summarizing a recording', () => {
 		);
 
 		expect(summary.failedParts).toBe(1);
-	});
-
-	it('labels a translated transcript file with its language', () => {
-		const transcript = emptyTranscriptSection();
-		transcript.fileOutputs = [
-			{
-				path: 'rec.de.srt',
-				format: TranscriptFileFormat.Srt,
-				writtenAt: '',
-				language: 'de',
-			},
-		];
-
-		const summary = summarizeRecording(sources({ transcript }));
-
-		expect(summary.fileOutputs).toEqual([
-			{ path: 'rec.de.srt', format: 'SRT', language: 'de' },
-		]);
 	});
 });
 

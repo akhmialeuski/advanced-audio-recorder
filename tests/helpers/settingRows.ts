@@ -45,24 +45,6 @@ export function rowDescription(row: ParentNode): string {
 	return maybeEl(row, SETTING.description)?.textContent ?? '';
 }
 
-/** The read-only value the row shows, as the user reads it. */
-export function rowValue(row: ParentNode): string {
-	return maybeEl(row, SETTING.value)?.textContent ?? '';
-}
-
-/**
- * The icon button a setting group carries in its heading, by its label.
- * @param container - What the groups were rendered into
- * @param label - The button's accessible label
- * @returns The button element
- */
-export function groupHeadingButton(
-	container: ParentNode,
-	label: string,
-): HTMLElement {
-	return el(container, SETTING.groupHeadingButton(label));
-}
-
 /** The row's text or number input. */
 export function rowInput(row: ParentNode): HTMLInputElement {
 	return el<HTMLInputElement>(row, 'input');

@@ -704,6 +704,11 @@ export class Workspace extends Events {
 
 	getLeaf = jest.fn((_newLeaf?: unknown) => this.leaf);
 
+	/** Obsidian's debounced layout save, recorded rather than run. */
+	requestSaveLayout = jest.fn((): void => {
+		// Nothing is saved in a test
+	});
+
 	iterateAllLeaves = jest.fn((_callback: (leaf: unknown) => void): void => {
 		// No leaves unless a test seeds them
 	});
@@ -1110,6 +1115,14 @@ export abstract class ItemView extends Component {
 		return Promise.resolve();
 	}
 
+	getState(): Record<string, unknown> {
+		return {};
+	}
+
+	setState(_state: unknown, _result: unknown): Promise<void> {
+		return Promise.resolve();
+	}
+
 	addAction(
 		icon: string,
 		title: string,
@@ -1483,16 +1496,6 @@ export class Setting {
 		return this.addComponent(new ExtraButtonComponent(), callback);
 	}
 
-	/**
-	 * Obsidian's own addDisplayValue: a read-only value in the control
-	 * column, which is where a row shows a value it does not let you edit.
-	 * @param callback - Fills the value in
-	 */
-	addDisplayValue(callback: (value: DisplayValueComponent) => void): this {
-		callback(new DisplayValueComponent(this.controlEl));
-		return this;
-	}
-
 	addToggle(callback: (toggle: ToggleComponent) => void): this {
 		return this.addComponent(new ToggleComponent(), callback);
 	}
@@ -1631,6 +1634,14 @@ export class DropdownComponent {
 
 	/** Change handler, stored as Obsidian does for test triggering. */
 	changeCallback: ((value: string) => void) | null = null;
+
+	/**
+	 * @param containerEl - Where Obsidian puts the dropdown when it is built
+	 *   on its own; a Setting row attaches it itself
+	 */
+	constructor(containerEl?: HTMLElement) {
+		containerEl?.appendChild(this.selectEl);
+	}
 
 	addOption(value: string, display: string): this {
 		const option = document.createElement('option');
@@ -1785,93 +1796,6 @@ export class SearchComponent extends TextComponent {
  * renderer distinguishing "a click on a control" from "a click on the row"
  * pass its tests while failing in Obsidian.
  */
-/**
- * Mock DisplayValueComponent, built the way Obsidian builds it: a
- * `.setting-item-value` element in the row's control column.
- */
-export class DisplayValueComponent {
-	valueEl: HTMLElement;
-
-	constructor(containerEl: HTMLElement) {
-		this.valueEl = addObsidianDomExtensions(document.createElement('div'));
-		this.valueEl.classList.add('setting-item-value');
-		containerEl.appendChild(this.valueEl);
-	}
-
-	setValue(value: string | null): this {
-		this.valueEl.textContent = value ?? '';
-		return this;
-	}
-
-	setStatus(_status: 'warning' | null): this {
-		return this;
-	}
-}
-
-/**
- * Mock SettingGroup, with the DOM Obsidian gives one: a `.setting-group`
- * holding a heading row, whose control column carries the group's extra
- * buttons, and the `.setting-items` list its rows go into.
- */
-export class SettingGroup {
-	readonly groupEl: HTMLElement;
-	readonly headerEl: HTMLElement;
-	readonly listEl: HTMLElement;
-	private readonly headerNameEl: HTMLElement;
-	private readonly headerControlEl: HTMLElement;
-
-	constructor(containerEl: HTMLElement) {
-		this.groupEl = addObsidianDomExtensions(document.createElement('div'));
-		this.groupEl.classList.add('setting-group');
-		this.headerEl = addObsidianDomExtensions(document.createElement('div'));
-		this.headerEl.classList.add('setting-item', 'setting-item-heading');
-		this.headerNameEl = addObsidianDomExtensions(
-			document.createElement('div'),
-		);
-		this.headerNameEl.classList.add('setting-item-name');
-		this.headerControlEl = addObsidianDomExtensions(
-			document.createElement('div'),
-		);
-		this.headerControlEl.classList.add('setting-item-control');
-		this.headerEl.append(this.headerNameEl, this.headerControlEl);
-		this.listEl = addObsidianDomExtensions(document.createElement('div'));
-		this.listEl.classList.add('setting-items');
-		this.groupEl.appendChild(this.listEl);
-		containerEl.appendChild(this.groupEl);
-	}
-
-	setHeading(text: string): this {
-		this.headerNameEl.textContent = text;
-		this.showHeader();
-		return this;
-	}
-
-	addClass(...classes: string[]): this {
-		this.groupEl.classList.add(...classes);
-		return this;
-	}
-
-	addSetting(callback: (setting: Setting) => void): this {
-		callback(new Setting(this.listEl));
-		return this;
-	}
-
-	addExtraButton(callback: (button: ExtraButtonComponent) => void): this {
-		this.showHeader();
-		const button = new ExtraButtonComponent();
-		this.headerControlEl.appendChild(button.extraSettingsEl);
-		callback(button);
-		return this;
-	}
-
-	/** Obsidian puts the heading row in only once it has something to show. */
-	private showHeader(): void {
-		if (this.headerEl.parentElement !== this.groupEl) {
-			this.groupEl.prepend(this.headerEl);
-		}
-	}
-}
-
 export class ExtraButtonComponent {
 	extraSettingsEl: HTMLElement = addObsidianDomExtensions(
 		document.createElement('div'),
@@ -1879,7 +1803,12 @@ export class ExtraButtonComponent {
 	disabled = false;
 	private clickCallback: (() => void) | null = null;
 
-	constructor() {
+	/**
+	 * @param containerEl - Where Obsidian puts the button when it is built on
+	 *   its own; a Setting row attaches it itself
+	 */
+	constructor(containerEl?: HTMLElement) {
+		containerEl?.appendChild(this.extraSettingsEl);
 		this.extraSettingsEl.classList.add(
 			'clickable-icon',
 			'extra-setting-button',

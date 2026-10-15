@@ -71,7 +71,7 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 | [Formats](formats.md)                             | The 8 output formats, their codecs, online vs. offline encoding, and how to choose.                  |
 | [Splitting](splitting.md)                         | Automatic split into fixed-duration parts while recording, and manual split of existing files.       |
 | [File operations](file-operations.md)             | Context-menu actions: audio file info, format conversion, delete, and link updates.                  |
-| [Recording panel](recording-panel.md)             | The sidebar tab showing a recording's details, transcript, participants, and actions.                |
+| [Recording panel](recording-panel.md)             | The sidebar tab showing a recording's details, participants, and actions.                            |
 
 ### Playback
 

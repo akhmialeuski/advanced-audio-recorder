@@ -27,12 +27,6 @@ import { transcriptionEngineChoiceRow } from './rowHelpers';
 import { ProfileSection } from '../profileKinds';
 import type { SettingDefinitionItem, SettingGroupItem } from 'obsidian';
 
-/**
- * Name of the switch that transcribes each recording once it is saved, shared
- * with the recording panel, which offers the same switch under the same name.
- */
-export const TRANSCRIBE_ON_SAVE_SETTING_NAME = 'Transcribe after recording';
-
 /** Accepted shape of the transcription language field: an ISO code or empty. */
 const LANGUAGE_CODE_PATTERN = /^([a-z]{2,3}(-[a-z0-9]{2,8})?|auto)?$/i;
 
@@ -80,7 +74,7 @@ export function transcriptionGroup(
 			),
 			enginesEntry,
 			{
-				name: TRANSCRIBE_ON_SAVE_SETTING_NAME,
+				name: 'Transcribe after recording',
 				desc: 'Automatically transcribe each recording once it is saved.',
 				visible: enabled,
 				control: { type: 'toggle', key: 'transcribeOnSave' },

@@ -157,13 +157,6 @@ export const SETTING = {
 	heading: '.setting-item-heading',
 	/** The icon-only button a row adds with addExtraButton. */
 	extraButton: '.extra-setting-button',
-	/** A group of rows built with SettingGroup. */
-	group: '.setting-group',
-	/** The read-only value a row shows with addDisplayValue. */
-	value: '.setting-item-value',
-	/** An icon button in a setting group's heading, by its label. */
-	groupHeadingButton: (label: string): string =>
-		`.setting-group > .setting-item-heading .extra-setting-button[aria-label="${label}"]`,
 	root: '.aar-settings-root',
 	searchInput: '.aar-search-row input',
 	addItemButton: '.aar-add-item-row button',
@@ -175,6 +168,36 @@ export const SETTING = {
 	speakerPreview: 'button.aar-speaker-preview',
 	silentChannelConvert: '.aar-silent-channel-convert',
 	formatFallbackNote: '.aar-format-fallback-note',
+} as const;
+
+/** The recording panel, built from the classes of Obsidian's Properties block. */
+export const RECORDING_PANEL = {
+	/** One of the panel's own buttons in its top row, by its label. */
+	button: (label: string): string =>
+		`.nav-buttons-container [aria-label="${label}"]`,
+	/** The icon button of a file action, by its label. */
+	action: (label: string): string =>
+		`.aar-recording-panel-actions [aria-label="${label}"]`,
+	/** Every file action button, in order. */
+	actions: '.aar-recording-panel-actions .extra-setting-button',
+	/** A foldable section. */
+	section: '.metadata-container',
+	/** The heading that folds a section. */
+	sectionHeading: '.metadata-properties-heading',
+	/** A section's title. */
+	sectionTitle: '.metadata-properties-title',
+	/** A section's fold arrow. */
+	foldArrow: '.collapse-indicator',
+	/** One property row. */
+	property: '.metadata-property',
+	/** A property row's key field. */
+	propertyKey: '.metadata-property-key-input',
+	/** A property row's value. */
+	propertyValue: '.metadata-property-value',
+	/** A link in a property value. */
+	propertyLink: '.metadata-property-value .internal-link',
+	/** The hint shown in place of the sections. */
+	hint: '.pane-empty',
 } as const;
 
 /** Modal bodies this plugin renders. */
