@@ -44,20 +44,19 @@ export interface LineTimecodeRef extends ResolvedTimecodeLink {
 }
 
 /**
- * Resolves one link target to the file it points into and the time its `#t=`
- * subpath carries.
+ * Resolves one link target, already split into path and subpath, to the file
+ * it points into and the time its `#t=` subpath carries.
  * @param app - Obsidian App
  * @param note - Note the link is written in
- * @param link - Link target without its alias, e.g. `rec.m4a#t=12`
+ * @param target - The link's path and subpath, as `parseLinktext` splits them
  * @returns The reference, or null when the link carries no `#t=` subpath or
  *   resolves to no file
  */
 function resolveTimecodeLink(
 	app: App,
 	note: TFile,
-	link: string,
+	{ path, subpath }: { path: string; subpath: string },
 ): ResolvedTimecodeLink | null {
-	const { path, subpath } = parseLinktext(link);
 	if (!hasTimecodeSubpath(subpath)) {
 		return null;
 	}
@@ -84,7 +83,11 @@ export function audioTimecodeRefs(
 		return refs;
 	}
 	for (const ref of [...(cache.links ?? []), ...(cache.embeds ?? [])]) {
-		const resolved = resolveTimecodeLink(app, note, ref.link);
+		const resolved = resolveTimecodeLink(
+			app,
+			note,
+			parseLinktext(ref.link),
+		);
 		if (resolved?.file.path !== audioPath) {
 			continue;
 		}
@@ -114,7 +117,8 @@ export function lineTimecodeRef(
 	note: TFile,
 	lineText: string,
 ): LineTimecodeRef | null {
-	for (const { link } of linksInLine(lineText)) {
+	// Each link comes already split, so it is not parsed a second time.
+	for (const link of linksInLine(lineText)) {
 		const ref = resolveTimecodeLink(app, note, link);
 		if (ref && ref.seconds !== null) {
 			return { file: ref.file, seconds: ref.seconds };
