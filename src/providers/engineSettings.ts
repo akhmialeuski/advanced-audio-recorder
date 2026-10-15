@@ -41,8 +41,13 @@ import {
 export interface EngineSettingsPatch {
 	/** Endpoint of the account this engine is reached through. */
 	readonly baseUrl?: string;
-	/** Key of that account. */
-	readonly apiKey?: string;
+	/**
+	 * ID of the keychain secret holding that account's key. The key itself is
+	 * not written here: it is resolved from the keychain, so the only thing a
+	 * user sets is which secret it is. Null is how Obsidian's secret picker
+	 * reports a cleared link, and it is stored as no link.
+	 */
+	readonly apiKeySecret?: string | null;
 	/** The id put to work, which the catalogue is made to contain. */
 	readonly model?: string;
 	/** The catalogue itself, as the list of ids it offers. */
@@ -67,7 +72,10 @@ export type EngineSettingsFieldName = keyof EngineSettingsPatch;
 export interface EngineSettingsView {
 	readonly engine: EngineDescriptor;
 	readonly baseUrl: string;
+	/** The key a run is sent with, as resolved from the keychain. */
 	readonly apiKey: string;
+	/** The ID of the secret it is resolved from, or '' when none is linked. */
+	readonly apiKeySecret: string;
 	readonly model: string;
 	readonly models: readonly string[];
 	readonly maxTokens: number;
@@ -86,6 +94,7 @@ export function readEngineSettings(
 		engine,
 		baseUrl: account ? account.baseUrl(settings) : '',
 		apiKey: account ? account.apiKey(settings) : '',
+		apiKeySecret: account ? account.apiKeySecret(settings) : '',
 		model: models ? models.model(settings) : '',
 		models: models ? models.models(settings) : [],
 		maxTokens: engine.maxTokens ? engine.maxTokens.get(settings) : 0,
@@ -121,8 +130,13 @@ export function applyEngineSettings(
 		if (patch.baseUrl !== undefined) {
 			account.setBaseUrl(settings, patch.baseUrl);
 		}
-		if (patch.apiKey !== undefined) {
-			account.setApiKey(settings, patch.apiKey);
+		if (patch.apiKeySecret !== undefined) {
+			account.setApiKeySecret(settings, patch.apiKeySecret ?? '');
+			// The key moves with its link, cleared until the next save resolves
+			// it from the keychain. Left as it was, an unlinked account would
+			// keep the previous secret's value in a field the serializer writes
+			// to disk whenever no secret is linked.
+			account.setApiKey(settings, '');
 		}
 	}
 	if (engine.maxTokens && patch.maxTokens !== undefined) {
@@ -206,7 +220,7 @@ function collectEngineFields(): ReadonlyMap<string, EngineSettingsField> {
 		const engine = ENGINES[id];
 		const account = accountOf(engine);
 		claim(account?.baseUrlKey, id, 'baseUrl');
-		claim(account?.apiKeyKey, id, 'apiKey');
+		claim(account?.apiKeySecretKey, id, 'apiKeySecret');
 		claim(engine.models?.modelKey, id, 'model');
 		claim(engine.models?.modelsKey, id, 'models');
 		claim(engine.maxTokens?.key, id, 'maxTokens');

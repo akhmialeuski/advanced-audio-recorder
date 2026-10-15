@@ -168,6 +168,8 @@ export const SETTING = {
 	root: '.aar-settings-root',
 	searchInput: '.mock-setting-search-row input',
 	addItemButton: '.mock-setting-add-item-row button',
+	/** The linked secret's ID, as the stand-in for the keychain picker shows it. */
+	secretValue: '.mock-setting-secret-value',
 	custom: '.aar-custom',
 	docCallout: '.aar-doc-callout',
 	docCalloutLink: '.aar-doc-callout-link',

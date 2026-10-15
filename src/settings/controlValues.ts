@@ -10,7 +10,7 @@
  * @module settings/controlValues
  */
 
-import { ENGINE_ORDER, ENGINES } from '../providers/providers';
+import { ACCOUNTS, ENGINE_ORDER, ENGINES } from '../providers/providers';
 import { PROFILE_KINDS } from './profileKinds';
 
 /**
@@ -107,6 +107,16 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 			const models = ENGINES[id].models;
 			return models ? [[models.modelKey, { reshapesTree: true }]] : [];
 		}),
+	),
+	// Linking a keychain secret is what gives an account its key, and every
+	// engine over the account reports on its entry whether it has one, as the
+	// Engines page does in its count. Those are values the framework only
+	// reads again on update(), so the tree is read again.
+	...Object.fromEntries(
+		Object.values(ACCOUNTS).map((account) => [
+			account.apiKeySecretKey,
+			{ reshapesTree: true },
+		]),
 	),
 };
 

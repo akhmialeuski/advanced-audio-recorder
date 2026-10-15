@@ -36,7 +36,11 @@ import {
 	TRANSCRIPT_FILE_FORMAT_LABELS,
 } from 'src/settings/labels';
 import {
+	ACCOUNTS,
+	ENGINES,
 	ENGINE_IDS,
+	ENGINE_ORDER,
+	accountOf,
 	type EngineId,
 	EngineLabel,
 } from 'src/providers/providers';
@@ -98,7 +102,6 @@ describe('settings definitions', () => {
 	let removeModel: jest.Mock;
 	let selectModel: jest.Mock;
 	let renderSummaryRow: jest.Mock;
-	let renderTranscriptionRest: jest.Mock;
 	let diagnostics: { [K in keyof DiagnosticsActions]: jest.Mock };
 
 	beforeEach(() => {
@@ -136,9 +139,6 @@ describe('settings definitions', () => {
 		removeModel = jest.fn();
 		selectModel = jest.fn();
 		renderSummaryRow = jest.fn();
-		renderTranscriptionRest = jest.fn((host: HTMLElement) => {
-			host.createDiv({ cls: 'aar-transcription-rest' });
-		});
 		diagnostics = {
 			startTestRecording: jest.fn(),
 			releaseTestRecording: jest.fn(),
@@ -176,9 +176,6 @@ describe('settings definitions', () => {
 			catalogue('quickNotes', 'Quick note profiles', 'Instruction'),
 		],
 		transcriptionBlocks: {
-			renderProviderKey: renderTranscriptionRest as (
-				host: HTMLElement,
-			) => void,
 			renderLocalWhisperFields: jest.fn(),
 			addModel: addModel as (engine: EngineId) => void,
 			removeModel: removeModel as (
@@ -347,10 +344,19 @@ describe('settings definitions', () => {
 			expect(aliasesOf('Loudness leveling')).toContain('normalize');
 		});
 
+		it('lets the settings search find a key row by "API key" and by the keychain', () => {
+			// The row is named for its service, so a search for the generic
+			// term or for where the key now lives reaches every one of them.
+			for (const account of Object.values(ACCOUNTS)) {
+				expect(aliasesOf(account.keyFieldName)).toEqual(
+					expect.arrayContaining(['api key', 'token', 'keychain']),
+				);
+			}
+		});
+
 		it('makes the fields inside a hand-rendered block findable', () => {
-			// The search indexes definitions, and a key block is one
-			// definition, so the password field has no row of its own to match.
-			expect(aliasesOf('Deepgram API key')).toContain('token');
+			// The search indexes definitions, and the paths block is one
+			// definition, so its fields have no rows of their own to match.
 			expect(aliasesOf('Binary and model paths')).toContain('offline');
 		});
 
@@ -754,14 +760,43 @@ describe('settings definitions', () => {
 		});
 
 		it('hosts a provider key on that provider\u2019s page', () => {
-			// A password field is the one row no control type covers, and it
-			// belongs to the service rather than to either use of it.
+			// The key belongs to the service rather than to either use of it.
 			expect(pageEntryNames(EngineLabel.Deepgram)).toEqual([
 				'Base URL',
 				'Deepgram API key',
 				'Model',
 				'Model catalogue',
 			]);
+		});
+
+		it.each(
+			ENGINE_ORDER.flatMap((id) => {
+				const account = accountOf(ENGINES[id]);
+				return account ? [{ label: ENGINES[id].label, account }] : [];
+			}),
+		)(
+			'binds the key row of $label to the ID of a keychain secret',
+			({ label, account }) => {
+				// Never to the key: a secret control stores the ID, which is
+				// safe in a synced data.json, and the key stays in the keychain.
+				const row = rowOf(build(), label, account.keyFieldName);
+
+				expect(row.control).toEqual({
+					type: 'secret',
+					key: account.apiKeySecretKey,
+				});
+			},
+		);
+
+		it('says where a key is kept and that a local endpoint needs none', () => {
+			const row = rowOf(
+				build(),
+				EngineLabel.Deepgram,
+				'Deepgram API key',
+			);
+
+			expect(row.desc).toMatch(/keychain on this device and not synced/);
+			expect(row.desc).toMatch(/local endpoint/);
 		});
 
 		it('picks the model in place and keeps the list behind an entry', () => {

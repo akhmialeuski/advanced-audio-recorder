@@ -70,10 +70,7 @@ import { MemoryRecorder } from '../recording/MemoryRecorder';
 import { DOCS_URL, FORMAT_WAV } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
-import {
-	renderLocalWhisperSettings,
-	renderProviderKeyField,
-} from './sections/transcriptionEngineSection';
+import { renderLocalWhisperSettings } from './sections/transcriptionEngineSection';
 import {
 	addProfile,
 	createProfile,
@@ -98,7 +95,7 @@ import {
 	closeSettings,
 	closeSettingsPage,
 } from '../obsidian/settingsNavigation';
-import { ENGINES, type EngineId } from '../providers/providers';
+import type { EngineId } from '../providers/providers';
 import {
 	applyEngineSettingsField,
 	engineFieldOf,
@@ -300,11 +297,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// rules rather than with a block of its own here.
 			profiles: PROFILE_KINDS.map((kind) => this.profileCatalogue(kind)),
 			transcriptionBlocks: {
-				renderProviderKey: (host, engineId): void => {
-					this.renderTranscriptionBlock(host, (ctx) => {
-						renderProviderKeyField(ctx, ENGINES[engineId]);
-					});
-				},
 				renderLocalWhisperFields: (host): void => {
 					this.renderTranscriptionBlock(
 						host,
