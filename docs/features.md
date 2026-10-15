@@ -205,7 +205,7 @@ Learn more: [Quick notes](quick-notes.md)
 
 ## Recording panel
 
-A sidebar tab under the plugin's microphone icon, placed in the right sidebar the first time the plugin runs with it on a device, shows what the plugin knows about the recording in front of you: the recording opened on its own, or the one a meeting note embeds or links to. Laid out like Obsidian's Properties block, in sections you can fold, it lists the file's duration, size and format, the engine, language and time it was transcribed, and the participants of the recording, each with the speaker label given to their name. A row of icons runs the recording's file actions, the same ones the file menu offers. Buttons at the top of the panel start and stop a recording, show the transcription queue, open the settings and list every action for the recording, delete included. **Open the recording panel** brings a closed panel back.
+A sidebar tab under the plugin's microphone icon, placed in the right sidebar the first time the plugin runs with it on a device, shows what the plugin knows about the recording in front of you: the recording opened on its own, or the one a meeting note embeds or links to. Laid out like Obsidian's Properties block, in sections you can fold, it lists the file's duration, size and format, the engine, language and time it was transcribed, and the participants of the recording, each with the speaker label given to their name. One row of icons at its top runs the recording's file actions, the same ones the file menu offers, and ends with buttons that start and stop a recording, show the transcription queue and open the settings. **Open the recording panel** brings a closed panel back.
 
 Learn more: [Recording panel](recording-panel.md)
 

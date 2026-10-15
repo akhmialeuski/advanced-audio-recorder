@@ -29,7 +29,6 @@ import { allEls, el, maybeEl } from '../helpers/dom';
 import { at } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
 import { RECORDING_PANEL } from '../helpers/selectors';
-import { menuInstances } from '../mocks/obsidian';
 
 /** A file action double that records the file it ran on. */
 function fileAction(
@@ -267,8 +266,8 @@ describe('the recording panel with nothing to show', () => {
 		const { view } = await createSut();
 
 		expect(
-			allEls(view.contentEl, '.nav-buttons-container [aria-label]').map(
-				(button) => button.getAttribute('aria-label'),
+			allEls(view.contentEl, RECORDING_PANEL.buttons).map((button) =>
+				button.getAttribute('aria-label'),
 			),
 		).toEqual([
 			'Start recording',
@@ -544,28 +543,38 @@ describe('the actions the panel offers', () => {
 });
 
 describe('the menus of the panel', () => {
-	it('lists every action, delete included, from its own options button', async () => {
+	/**
+	 * The panel's buttons and its file actions are one row: the actions
+	 * first, then the record, queue and settings buttons closing it.
+	 */
+	it('keeps its own buttons in one row with the file actions, after them', async () => {
+		const { view } = await createSut({
+			active: recording('sync.webm'),
+			actions: [fileAction(COMMAND_IDS.audioFileInfo, 'Audio file info')],
+		});
+
+		expect(
+			allEls(view.contentEl, RECORDING_PANEL.toolbarButtons).map(
+				(button) => button.getAttribute('aria-label'),
+			),
+		).toEqual([
+			'Audio file info',
+			'Start recording',
+			'Show the transcription queue',
+			'Open settings',
+		]);
+	});
+
+	it('offers no options button of its own', async () => {
 		const { view } = await createSut({
 			active: recording('sync.webm'),
 			actions: [
-				fileAction(COMMAND_IDS.audioFileInfo, 'Audio file info'),
 				fileAction(COMMAND_IDS.deleteRecording, 'Delete recording'),
 			],
 		});
 
-		panelButton(view, 'More options').click();
-
-		expect(at(menuInstances, 0).items.map((item) => item.title)).toEqual([
-			'Audio file info',
-			'Delete recording',
-		]);
-	});
-
-	it('offers no options button with no recording to act on', async () => {
-		const { view } = await createSut();
-
 		expect(
-			maybeEl(view.contentEl, RECORDING_PANEL.button('More options')),
+			maybeEl(view.contentEl, '[aria-label="More options"]'),
 		).toBeNull();
 	});
 

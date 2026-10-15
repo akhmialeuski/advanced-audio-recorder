@@ -1828,16 +1828,24 @@ button.aar-player-marker-row {
 }
 
 /* Recording panel. Its sections reuse the classes of Obsidian's Properties block, so only
-   the picker width, the row of action buttons and the space between sections are set here */
+   the picker width, the row of buttons and the space between sections are set here */
 .aar-recording-panel .dropdown {
     width: 100%;
 }
 
-.aar-recording-panel-actions {
+.aar-recording-panel-toolbar {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--size-2-1);
     margin-block: var(--size-4-2);
+}
+
+/* The panel's own buttons close the row, apart from the file actions */
+.aar-recording-panel-tools {
+    display: flex;
+    gap: var(--size-2-1);
+    margin-inline-start: auto;
 }
 
 .aar-recording-panel .metadata-container {

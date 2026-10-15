@@ -29,7 +29,7 @@ The panel updates on its own when you open another file, when the links in the n
 
 The panel is laid out like Obsidian's own **Properties** block: each section has a heading, and each row an icon, a key and a value. Click a section's heading, or focus it and press Enter, to fold or unfold it. The panel remembers which sections are folded, across notes and across restarts.
 
-![The recording panel in the right sidebar for a meeting note that embeds two recordings: the panel's buttons, the dropdown that picks a recording, a row of action icons, the Recording section with the file, duration, size, format, creation time and transcription, and the Participants section listing four people from the Platform team profile, two of them with the speaker label given to them](images/recording-panel.png)
+![The recording panel in the right sidebar for a meeting note that embeds two recordings: one row of icons with the file actions on the left and the record, queue and settings buttons on the right, the dropdown that picks a recording, the Recording section with the file, duration, size, format, creation time and transcription, and the Participants section listing four people from the Platform team profile, two of them with the speaker label given to them](images/recording-panel.png)
 
 | Section          | Rows                                                                                                                                                                                        |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -40,11 +40,12 @@ The duration is read from the file and shows `unknown` when the file cannot be r
 
 ## Buttons and actions
 
-The row at the top of the panel holds its own buttons. Obsidian shows no view header in a sidebar, so they sit where a sidebar pane keeps its own:
+All the panel's buttons are icons in one row at its top. Hover an icon to see its name.
+
+The row opens with the same actions the file menu offers for the recording: **Audio file info**, **Convert audio format**, **Split audio into parts**, **Clean up audio**, **Transcribe audio**, **Rename speakers**, **Generate chapters from transcript** and the others, each shown under the same settings that gate it in the menu. **Delete recording** is not in that row, where it would sit one mis-click away from the action you meant. **Transcribe the parts that failed** is shown only when the last run actually lost parts. To delete a recording, use the file menu.
+
+The panel's own buttons close the row. Obsidian shows no view header in a sidebar, so they sit in the panel itself:
 
 - **Start recording** starts a recording and turns into **Stop recording** while one runs. While a stopped recording is being saved, it reads **Saving the recording** and is disabled until the save is done.
 - **Show the transcription queue** opens the [transcription queue](transcription.md).
 - **Open settings** opens the plugin's settings tab.
-- **More options**, shown while a recording is displayed, opens a menu with every action for it, **Delete recording** included.
-
-Below the recording picker, a row of icons runs the same actions the file menu offers for the recording: **Audio file info**, **Convert audio format**, **Split audio into parts**, **Clean up audio**, **Transcribe audio**, **Rename speakers**, **Generate chapters from transcript** and the others, each shown under the same settings that gate it in the menu. Hover an icon to see its name. **Delete recording** is not in that row, where it would sit one mis-click away from the action you meant. **Transcribe the parts that failed** is shown only when the last run actually lost parts.

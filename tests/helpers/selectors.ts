@@ -172,14 +172,18 @@ export const SETTING = {
 
 /** The recording panel, built from the classes of Obsidian's Properties block. */
 export const RECORDING_PANEL = {
-	/** One of the panel's own buttons in its top row, by its label. */
+	/** One of the panel's own buttons at the end of its toolbar, by its label. */
 	button: (label: string): string =>
-		`.nav-buttons-container [aria-label="${label}"]`,
+		`.aar-recording-panel-tools [aria-label="${label}"]`,
+	/** The panel's own buttons, in order. */
+	buttons: '.aar-recording-panel-tools .extra-setting-button',
 	/** The icon button of a file action, by its label. */
 	action: (label: string): string =>
-		`.aar-recording-panel-actions [aria-label="${label}"]`,
+		`.aar-recording-panel-toolbar > [aria-label="${label}"]`,
 	/** Every file action button, in order. */
-	actions: '.aar-recording-panel-actions .extra-setting-button',
+	actions: '.aar-recording-panel-toolbar > .extra-setting-button',
+	/** Every button of the toolbar, file actions first, in order. */
+	toolbarButtons: '.aar-recording-panel-toolbar .extra-setting-button',
 	/** A foldable section. */
 	section: '.metadata-container',
 	/** The heading that folds a section. */

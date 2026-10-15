@@ -24,10 +24,9 @@ import {
 	DropdownComponent,
 	ExtraButtonComponent,
 	ItemView,
-	Menu,
 	setIcon,
 } from 'obsidian';
-import type { TFile, ViewStateResult, WorkspaceLeaf } from 'obsidian';
+import type { Menu, TFile, ViewStateResult, WorkspaceLeaf } from 'obsidian';
 import {
 	COMMAND_IDS,
 	PLUGIN_LOG_PREFIX,
@@ -83,8 +82,11 @@ const EXCLUDED_ACTIONS: ReadonlySet<string> = new Set([
 /** Root class of the panel's content, which its stylesheet rules hang on. */
 const PANEL_CLASS = 'aar-recording-panel';
 
-/** The row of icon buttons that runs the recording's file actions. */
-const ACTIONS_CLASS = 'aar-recording-panel-actions';
+/** The row of icon buttons at the top: the file actions, then the panel's own. */
+const TOOLBAR_CLASS = 'aar-recording-panel-toolbar';
+
+/** The panel's own buttons, kept together at the end of the toolbar. */
+const TOOLS_CLASS = 'aar-recording-panel-tools';
 
 /** The sections of the panel, by the key their collapsed state is kept under. */
 const PanelSection = {
@@ -481,8 +483,8 @@ export class RecordingPanelView extends ItemView {
 	}
 
 	/**
-	 * Draws the whole panel: its buttons, the recording and what can be done
-	 * with it, then who took part.
+	 * Draws the whole panel: one row of buttons, the recording, then who took
+	 * part.
 	 * @param target - What the active file refers to
 	 * @param selected - The recording shown, or null for none
 	 * @param summary - What its sidecar holds, null with nothing selected
@@ -495,7 +497,7 @@ export class RecordingPanelView extends ItemView {
 		const root = this.contentEl;
 		root.empty();
 		root.addClass(PANEL_CLASS);
-		this.renderButtons(root, selected !== null);
+		this.renderToolbar(root, selected);
 		if (!selected) {
 			root.createDiv({
 				cls: 'pane-empty',
@@ -506,7 +508,6 @@ export class RecordingPanelView extends ItemView {
 		if (target.recordings.length > 1) {
 			this.renderPicker(root, target.recordings, selected);
 		}
-		this.renderActions(root, selected);
 		const recording = this.section(
 			root,
 			PanelSection.Recording,
@@ -523,55 +524,6 @@ export class RecordingPanelView extends ItemView {
 		if (summary) {
 			this.renderTranscribedRow(recording, summary);
 			this.renderParticipants(root, summary);
-		}
-	}
-
-	/**
-	 * The panel's own buttons, in a row at its top: the place a sidebar pane
-	 * keeps them, since Obsidian shows no view header there.
-	 * @param root - The panel's content
-	 * @param withMenu - Whether a recording is shown for the menu to act on
-	 */
-	private renderButtons(root: HTMLElement, withMenu: boolean): void {
-		const row = root
-			.createDiv({ cls: 'nav-header' })
-			.createDiv({ cls: 'nav-buttons-container' });
-		this.recordButton = new ExtraButtonComponent(row).onClick(() => {
-			void this.host.recording
-				.toggleRecording()
-				.catch((error: unknown) => {
-					console.error(
-						`${PLUGIN_LOG_PREFIX} Starting or stopping a recording from the panel failed:`,
-						error,
-					);
-				})
-				.finally(() => {
-					this.refreshRecordingState();
-				});
-		});
-		this.refreshRecordingState();
-		new ExtraButtonComponent(row)
-			.setIcon('list-ordered')
-			.setTooltip('Show the transcription queue')
-			.onClick(() => {
-				this.host.openTranscriptionQueue();
-			});
-		new ExtraButtonComponent(row)
-			.setIcon('settings')
-			.setTooltip('Open settings')
-			.onClick(() => {
-				this.host.openSettings();
-			});
-		if (withMenu) {
-			const more = new ExtraButtonComponent(row)
-				.setIcon('more-horizontal')
-				.setTooltip('More options');
-			more.onClick(() => {
-				const menu = new Menu();
-				this.addFileActionsTo(menu);
-				const box = more.extraSettingsEl.getBoundingClientRect();
-				menu.showAtPosition({ x: box.left, y: box.bottom });
-			});
 		}
 	}
 
@@ -600,18 +552,54 @@ export class RecordingPanelView extends ItemView {
 		});
 	}
 
-	/** One icon button per file action available for the recording. */
-	private renderActions(root: HTMLElement, file: TFile): void {
-		const context: FileContext = { file, services: this.host.services };
-		const row = root.createDiv({ cls: ACTIONS_CLASS });
-		for (const action of this.availableActions(context)) {
-			new ExtraButtonComponent(row)
-				.setIcon(action.icon)
-				.setTooltip(action.title)
-				.onClick(() => {
-					runActionLogged(action, context, 'the recording panel');
-				});
+	/**
+	 * The one row of icon buttons at the top of the panel: the recording's
+	 * file actions, then the panel's own buttons at the row's end. Obsidian
+	 * shows no view header in a sidebar, so the panel's buttons live here
+	 * rather than in addAction.
+	 * @param root - The panel's content
+	 * @param file - The recording shown, or null for none
+	 */
+	private renderToolbar(root: HTMLElement, file: TFile | null): void {
+		const row = root.createDiv({ cls: TOOLBAR_CLASS });
+		if (file) {
+			const context: FileContext = { file, services: this.host.services };
+			for (const action of this.availableActions(context)) {
+				new ExtraButtonComponent(row)
+					.setIcon(action.icon)
+					.setTooltip(action.title)
+					.onClick(() => {
+						runActionLogged(action, context, 'the recording panel');
+					});
+			}
 		}
+		const tools = row.createDiv({ cls: TOOLS_CLASS });
+		this.recordButton = new ExtraButtonComponent(tools).onClick(() => {
+			void this.host.recording
+				.toggleRecording()
+				.catch((error: unknown) => {
+					console.error(
+						`${PLUGIN_LOG_PREFIX} Starting or stopping a recording from the panel failed:`,
+						error,
+					);
+				})
+				.finally(() => {
+					this.refreshRecordingState();
+				});
+		});
+		this.refreshRecordingState();
+		new ExtraButtonComponent(tools)
+			.setIcon('list-ordered')
+			.setTooltip('Show the transcription queue')
+			.onClick(() => {
+				this.host.openTranscriptionQueue();
+			});
+		new ExtraButtonComponent(tools)
+			.setIcon('settings')
+			.setTooltip('Open settings')
+			.onClick(() => {
+				this.host.openSettings();
+			});
 	}
 
 	/**
