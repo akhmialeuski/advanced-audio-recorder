@@ -3,7 +3,7 @@
  * @module ui/DeviceSelectionModal
  */
 
-import { Notice } from 'obsidian';
+import { DropdownComponent, Notice, Setting } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import {
@@ -51,21 +51,24 @@ export class DeviceSelectionModal extends PluginModal {
 
 		this.setDialogTitle('Select audio input device');
 
-		const dropdown = contentEl.createEl('select');
-		dropdown.addClass('audio-device-dropdown');
-
+		// Obsidian's dropdown in a setting row, as the plugin's other dialogs
+		// ask for a choice: the row names what is picked, and the component
+		// sizes and styles the picker the way the app's own are. The row's
+		// name is not tied to the picker for a screen reader, so the picker
+		// carries the same name itself.
+		const row = new Setting(contentEl).setName('Input device');
+		const dropdown = new DropdownComponent(row.controlEl);
 		for (const device of this.devices) {
-			const option = dropdown.createEl('option');
-			option.value = device.deviceId;
-			option.text = deviceOptionLabel(device);
+			dropdown.addOption(device.deviceId, deviceOptionLabel(device));
 		}
+		dropdown.selectEl.setAttribute('aria-label', 'Input device');
 
 		this.renderActions({
 			text: 'Select',
 			cta: true,
 			onClick: async () => {
-				const selectedDeviceId = dropdown.value;
-				const selectedOption = dropdown.selectedOptions[0];
+				const selectedDeviceId = dropdown.getValue();
+				const selectedOption = dropdown.selectEl.selectedOptions[0];
 				const selectedLabel = selectedOption?.text ?? 'Unknown device';
 				await this.onDeviceSelected(selectedDeviceId, selectedLabel);
 				new Notice(`Selected audio device: ${selectedLabel}`);

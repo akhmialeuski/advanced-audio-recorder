@@ -2051,7 +2051,10 @@ export class TFile extends TAbstractFile {
 }
 
 /**
- * Mock DropdownComponent class.
+ * Mock DropdownComponent: a `select.dropdown`, appended to the container it
+ * is constructed with, as Obsidian's own is. The app also appends a hidden
+ * second select it measures option widths with; nothing the plugin does
+ * reads it, so it is left out.
  */
 export class DropdownComponent {
 	selectEl: HTMLSelectElement = addObsidianDomExtensions(
@@ -2068,6 +2071,7 @@ export class DropdownComponent {
 	 *   on its own; a Setting row attaches it itself
 	 */
 	constructor(containerEl?: HTMLElement) {
+		this.selectEl.classList.add('dropdown');
 		containerEl?.appendChild(this.selectEl);
 	}
 

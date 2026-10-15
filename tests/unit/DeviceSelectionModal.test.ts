@@ -14,6 +14,8 @@ import {
 	showDeviceSelectionModal,
 } from 'src/ui/DeviceSelectionModal';
 import { tick } from '../helpers/async';
+import { control } from '../helpers/dom';
+import { rowSelect, settingRow } from '../helpers/settingRows';
 
 function makeDevice(
 	deviceId: string,
@@ -64,6 +66,24 @@ describe('DeviceSelectionModal', () => {
 			'USB Microphone',
 			'Headset',
 		]);
+	});
+
+	it('offers the devices in a setting row named for what is picked', () => {
+		const { modal } = openModal([makeDevice('mic-1', 'USB Microphone')]);
+
+		const row = settingRow(modal.contentEl, 'Input device');
+
+		expect(rowSelect(row)).toBe(dropdownOf(modal));
+	});
+
+	it('names the picker itself for a screen reader', () => {
+		// The row's name is text beside the picker, not its label, so a
+		// screen reader reaching the picker would otherwise hear no name.
+		const { modal } = openModal([makeDevice('mic-1', 'USB Microphone')]);
+
+		expect(control(modal.contentEl, 'Input device')).toBe(
+			dropdownOf(modal),
+		);
 	});
 
 	it('falls back to a truncated device id when the label is empty', () => {
