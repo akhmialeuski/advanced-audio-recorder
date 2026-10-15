@@ -24,6 +24,8 @@ import {
 import { assembleWavFromPcmSegments } from 'src/audio/WavEncoder';
 import { parseWavLayout } from 'src/recording/AudioSplitter';
 import { defined } from '../helpers/assertions';
+import { internalsOf } from '../helpers/doubles';
+import { flushMicrotasks } from '../helpers/async';
 import {
 	AAC_LC_STREAM,
 	muxPlaceholderPackets,
@@ -219,6 +221,40 @@ describe('a streamed split', () => {
 		// The encoder behind the part is the platform's; one left open per
 		// failed part is what a fallback run would then pile up beside.
 		expect(cancel).toHaveBeenCalledTimes(1);
+	});
+
+	it.each(['start', 'finalize'] as const)(
+		'cancels the part when the encoder fails to %s',
+		async (step) => {
+			using split = await openSplit();
+			jest.spyOn(Output.prototype, step).mockRejectedValueOnce(
+				new Error('encoder lost'),
+			);
+			const cancel = jest.spyOn(Output.prototype, 'cancel');
+
+			await split.nextPart(SAMPLE_RATE).catch(() => undefined);
+
+			expect(cancel).toHaveBeenCalledTimes(1);
+		},
+	);
+
+	it('logs a decoder that fails to stop instead of leaving the rejection unhandled', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+			// Asserted below.
+		});
+		const split = await openSplit();
+		internalsOf<{ samples: AsyncGenerator<unknown> }>(
+			split,
+		).samples.return = (): Promise<never> =>
+			Promise.reject(new Error('decoder gone'));
+
+		split[Symbol.dispose]();
+		await flushMicrotasks();
+
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('could not stop the decoder'),
+			expect.any(Error),
+		);
 	});
 
 	it('refuses a part the encoder finished without writing', async () => {

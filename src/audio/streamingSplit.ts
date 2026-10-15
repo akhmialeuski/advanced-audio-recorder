@@ -240,17 +240,19 @@ export class StreamedSplit implements Disposable {
 			}),
 		);
 		output.addAudioTrack(source);
-		await output.start();
 		try {
+			await output.start();
 			await this.fill(source, endFrame);
+			source.close();
+			await output.finalize();
 		} catch (error) {
 			// The encoder behind the output is a platform resource, released
-			// by cancelling rather than by being forgotten.
+			// by cancelling rather than by being forgotten, whichever step
+			// failed. A cancel after a finalize that failed part-way is a
+			// no-op in mediabunny, so it is safe on every path.
 			await output.cancel();
 			throw error;
 		}
-		source.close();
-		await output.finalize();
 		if (!target.buffer) {
 			throw new StreamedSplitError(
 				'The part encoder produced no output.',
@@ -313,7 +315,14 @@ export class StreamedSplit implements Disposable {
 	[Symbol.dispose](): void {
 		this.pending?.close();
 		this.pending = null;
-		void this.samples.return?.();
+		// Not awaited, since disposal is synchronous; a decoder that fails to
+		// stop is logged rather than left as an unhandled rejection.
+		this.samples.return?.(undefined).catch((error: unknown) => {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} The streamed split could not stop the decoder:`,
+				error,
+			);
+		});
 		this.input.dispose();
 	}
 }
