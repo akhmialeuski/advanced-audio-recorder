@@ -26,8 +26,12 @@ import {
 	isKnownLongerThan,
 	probeAudioMetadata,
 } from '../utils/AudioFileAnalyzer';
-import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
-import { floatToInt16 } from '../audio/pcm';
+import {
+	createWavFileBuffer,
+	int16WavByteLength,
+	WAV_HEADER_SIZE,
+	writeInt16Frames,
+} from '../audio/WavEncoder';
 import { downmixChannelData, isMonoChannelMode } from '../audio/downmix';
 import { directoryOf } from '../utils/paths';
 import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
@@ -37,37 +41,6 @@ import {
 	dbToGain,
 	type AudioDspConfig,
 } from './audioDsp';
-
-/**
- * Writes `frameCount` interleaved 16-bit PCM frames from `channels`, starting
- * at source frame `srcFrom`, into the WAV PCM region at destination frame
- * `destFrame`. Used to fill the output one processed segment at a time.
- * @param pcm - DataView over the WAV PCM region (after the header)
- * @param channels - Per-channel segment samples
- * @param srcFrom - First source frame to copy (skips the discarded warm-up)
- * @param frameCount - Number of frames to write
- * @param destFrame - Destination frame offset within the output
- */
-function writeWavSegment(
-	pcm: DataView,
-	channels: Float32Array[],
-	srcFrom: number,
-	frameCount: number,
-	destFrame: number,
-): void {
-	const numChannels = channels.length;
-	let offset = destFrame * numChannels * 2;
-	for (let frame = 0; frame < frameCount; frame++) {
-		for (let channel = 0; channel < numChannels; channel++) {
-			pcm.setInt16(
-				offset,
-				floatToInt16(channels[channel]?.[srcFrom + frame] ?? 0),
-				true,
-			);
-			offset += 2;
-		}
-	}
-}
 
 /**
  * Runs the offline audio-cleanup pipeline.
@@ -126,7 +99,8 @@ export class AudioProcessingService {
 		// segment at a time. Only the decoded input and this output live at full
 		// length; each segment's gate/offline working set is released before the
 		// next iteration.
-		const pcmByteLength = numFrames * numChannels * 2;
+		const pcmByteLength =
+			int16WavByteLength(numFrames, numChannels) - WAV_HEADER_SIZE;
 		const out = createWavFileBuffer(numChannels, sampleRate, pcmByteLength);
 		const pcm = new DataView(out, WAV_HEADER_SIZE);
 
@@ -201,7 +175,8 @@ export class AudioProcessingService {
 		if (config.highPass.enabled || config.leveling.enabled) {
 			segment = await this.renderOffline(segment, sampleRate, config);
 		}
-		writeWavSegment(pcm, segment, keepFrom, segEnd - segStart, segStart);
+		// From keepFrom: the frames before it are the discarded warm-up.
+		writeInt16Frames(pcm, segment, keepFrom, segEnd - segStart, segStart);
 	}
 
 	/**
