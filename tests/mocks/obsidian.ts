@@ -1593,8 +1593,10 @@ export class ButtonComponent {
 	}
 
 	setDestructive(): this {
-		// The same class the deprecated setWarning() applies, which is what
-		// themes style a destructive button by.
+		// obsidian.d.ts does not say which class this applies. The mock reuses
+		// the one setWarning() applies, so a test can still find a destructive
+		// button in the DOM; a test telling the two methods apart watches the
+		// calls instead.
 		this.buttonEl.classList.add('mod-warning');
 		return this;
 	}

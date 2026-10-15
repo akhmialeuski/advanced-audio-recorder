@@ -11,7 +11,7 @@
 import { confirmAction, ConfirmModal } from 'src/ui/ConfirmModal';
 import type { App } from 'obsidian';
 import { at } from '../helpers/assertions';
-import { modalInstances } from '../mocks/obsidian';
+import { ButtonComponent, modalInstances } from '../mocks/obsidian';
 import { tick } from '../helpers/async';
 
 /** Opens a confirm dialog and exposes its rendered buttons. */
@@ -50,11 +50,21 @@ describe('ConfirmModal', () => {
 	});
 
 	it('marks the confirm button as destructive', () => {
-		const { buttons } = open(() => undefined);
+		// Watched through the calls rather than a class: which class
+		// Obsidian's setDestructive applies is not documented, so a class
+		// check cannot tell it from the deprecated setWarning.
+		const destructive = jest.spyOn(
+			ButtonComponent.prototype,
+			'setDestructive',
+		);
+		const warning = jest.spyOn(ButtonComponent.prototype, 'setWarning');
+
+		open(() => undefined);
 
 		// The dialog exists to slow the user down; a confirm styled like an
 		// ordinary action defeats the point.
-		expect(at(buttons, 0).classList.contains('mod-warning')).toBe(true);
+		expect(destructive).toHaveBeenCalledTimes(1);
+		expect(warning).not.toHaveBeenCalled();
 	});
 
 	it('runs the action exactly once on confirm, then closes', async () => {
