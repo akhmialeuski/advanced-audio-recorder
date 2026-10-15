@@ -145,7 +145,9 @@ export interface FileAction extends PluginCommand<FileContext> {
 	/**
 	 * Whether the action is offered in the editor menu. The file
 	 * explorer menu and the palette always offer available actions;
-	 * the editor menu can substitute a link-aware variant instead.
+	 * the editor menu can substitute a link-aware variant instead. A
+	 * player embedded at a timestamp offers this same set, since it
+	 * stands for a moment in the recording as a timestamp link does.
 	 */
 	readonly showInEditorMenu: boolean;
 }

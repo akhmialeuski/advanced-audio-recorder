@@ -13,13 +13,12 @@
  * over a port of four questions, so the shape of a CLI answer is testable
  * without a plugin, an app, or a recorder behind it.
  *
- * Nothing here is reachable below 1.12.2 or on mobile, where the registration
- * method does not exist; {@link registerCliCommands} reports that rather than
- * failing the load, since the plugin still supports 1.6.6.
+ * Nothing here is reachable on mobile, where the registration method does not
+ * exist; {@link registerCliCommands} reports that rather than failing the
+ * load.
  * @module obsidian/cliCommands
  */
 
-import { requireApiVersion } from 'obsidian';
 import type { CliData, CliFlags, CliHandler, Plugin, TFile } from 'obsidian';
 import { RecordingStatus } from '../types';
 import { PLUGIN_LOG_PREFIX } from '../constants';
@@ -199,13 +198,9 @@ export function cliCommands(host: CliHost, pluginId: string): CliCommand[] {
  * @returns Whether the commands were registered
  */
 export function registerCliCommands(plugin: Plugin, host: CliHost): boolean {
-	// Two questions, because the typings answer neither: the running app has
-	// to be 1.12.2 or newer, where a plugin may register a CLI command at all,
-	// and the platform has to be one that has a command line. The version is
-	// spelled out rather than named, since it is also what the lint rule for
-	// APIs above minAppVersion reads the guard from.
+	// The typings declare the method on every platform, but only the desktop
+	// app has a command line, so the method is asked for rather than assumed.
 	if (
-		requireApiVersion('1.12.2') &&
 		typeof (plugin as { registerCliHandler?: unknown })
 			.registerCliHandler === 'function'
 	) {

@@ -3,7 +3,7 @@
  * @module main
  */
 
-import { Notice, Plugin } from 'obsidian';
+import { Notice, Plugin, normalizePath } from 'obsidian';
 import type { TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
@@ -51,7 +51,6 @@ import {
 	QUICK_NOTE_GLYPHS,
 	RIBBON_HIDDEN_CLASS,
 	updateRibbonIcon,
-	initializeRibbonIcon,
 } from './ui/RibbonIcon';
 import { ContextMenu } from './ui/ContextMenu';
 import type { ActionServices, SessionServices } from './actions/PluginAction';
@@ -352,8 +351,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
 		this.registerCommands();
 		// The desktop command line, where the app has one. Reports whether it
-		// registered, which is what the CLI-less platforms and the Obsidians
-		// below 1.12.2 answer.
+		// registered, which is what the CLI-less platforms answer.
 		registerCliCommands(this, this.createCliHost());
 		// Named after the plugin, because Obsidian's own Audio recorder puts a
 		// button with the same job in the same ribbon under the tooltip
@@ -645,8 +643,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.playerRegistrar.dispose();
 		this.encodingWorker?.terminate();
 		this.encodingWorker = null;
-		initializeStatusBar(this.statusBarItem);
-		initializeRibbonIcon(this.ribbonIconEl);
+		// The status bar item and the ribbon icon are not reset here: Obsidian
+		// removes both when the plugin unloads.
 	}
 
 	/**
@@ -883,9 +881,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	> {
 		try {
 			return (await this.loadData()) as
-				| Partial<AudioRecorderSettings>
-				| null
-				| undefined;
+				Partial<AudioRecorderSettings> | null | undefined;
 		} catch {
 			return undefined;
 		}
@@ -974,7 +970,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		if (!pluginDir) {
 			return null;
 		}
-		return `${pluginDir}/${fileName}`;
+		return normalizePath(`${pluginDir}/${fileName}`);
 	}
 
 	/**
@@ -1462,8 +1458,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * @returns The active background transcription, if any
 	 */
 	private activeBackgroundTranscription():
-		| BackgroundTranscriptionProgress
-		| undefined {
+		BackgroundTranscriptionProgress | undefined {
 		let active: BackgroundTranscriptionProgress | undefined;
 		for (const entry of this.backgroundTranscriptions.values()) {
 			active = entry;

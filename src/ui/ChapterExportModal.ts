@@ -22,6 +22,7 @@ import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
 import { directoryOf } from '../utils/paths';
 import { insertTranscriptIntoNote } from '../transcription/transcriptOutput';
 import type { PlayerMarker } from '../markers/markerModel';
+import { errorMessage } from '../errors';
 
 /**
  * The representations the markers can be written in. Not stored: the dialog
@@ -157,11 +158,7 @@ export class ChapterExportModal extends PluginModal {
 				`${PLUGIN_LOG_PREFIX} Failed to export the markers of ${this.options.file.path}:`,
 				error,
 			);
-			new Notice(
-				`Could not export the markers: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
+			new Notice(`Could not export the markers: ${errorMessage(error)}`);
 		}
 	}
 

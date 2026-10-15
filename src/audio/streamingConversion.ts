@@ -16,12 +16,23 @@ import {
 	ALL_FORMATS,
 	AudioSample,
 	Conversion,
+	Quality,
 } from 'mediabunny';
 import type { AudioCodec, ConversionAudioOptions } from 'mediabunny';
 import { ensureEncoderRegistered, createOutputFormat } from './AudioEncoder';
 import { getFormatDescriptor } from './formatRegistry';
 import { ChannelMode, monoPickIndex } from './downmix';
 import { disposableOf } from '../utils/disposables';
+
+/**
+ * How far a copied stream may be shifted to start at zero, in seconds.
+ *
+ * Wide enough for any codec's priming - AAC's 2112 samples are under a tenth
+ * of a second even at 22.05 kHz, Opus pre-skip at most 80 ms - and narrow
+ * enough that a stream starting later than that, which is a recording with a
+ * real gap at its head, is transcoded rather than shifted over the gap.
+ */
+const REMUX_SHIFT_TOLERANCE_SECONDS = 0.25;
 
 /**
  * Builds a mono AudioSample holding one picked channel of the input
@@ -56,9 +67,18 @@ export function extractChannelSample(
  * Builds a mono AudioSample holding the plain average of every channel
  * of the input sample. Used as the mediabunny `process` hook for the
  * mono mix mode so the conversion downmix is sample-identical to the
- * PCM capture worklet and downmixChannelData - mediabunny's own
- * numberOfChannels remixing follows the Web Audio speaker rules
- * instead, which weight 5.1 layouts and drop the LFE. Exported for
+ * PCM capture worklet and downmixChannelData.
+ *
+ * Mediabunny's own `numberOfChannels: 1` is not a substitute, not even for
+ * stereo, where its mixer computes the same 0.5 * (L + R). The remix runs
+ * inside its resampler, which interpolates every output frame between two
+ * source frames at a position computed in floating point, so at an unchanged
+ * rate the fraction is a rounding residue rather than zero: measured against
+ * this hook, about one sample in ten comes out one float32 step away. The
+ * resampler also cuts the stream into buffers of its own and sums decoded
+ * samples whose timestamps overlap, where this hook passes each one through
+ * as it was decoded. Beyond two channels it follows the Web Audio speaker
+ * rules instead, which weight 5.1 layouts and drop the LFE. Exported for
  * unit tests.
  * @param sample - Decoded input sample (any channel count)
  * @returns Mono sample at the input's rate and timestamp
@@ -200,8 +220,13 @@ async function convertWithInput(
 	// quality instead of the configured one
 	const remuxEligible =
 		allowRemux && inputCodec === codec && monoProcess === null;
+	// The bitrate is asked through Quality, as the offline encoder asks it:
+	// mediabunny deprecated the bare field, and any quality still forces the
+	// re-encode the remux rule above relies on.
 	let audio: ConversionAudioOptions =
-		remuxEligible || isPcmTarget ? { codec } : { codec, bitrate };
+		remuxEligible || isPcmTarget
+			? { codec }
+			: { codec, quality: new Quality({ bitrate }) };
 	if (monoProcess) {
 		audio = {
 			...audio,
@@ -213,6 +238,14 @@ async function convertWithInput(
 		input,
 		output,
 		audio,
+		// A copy into a container that stamps no time on its frames - ADTS,
+		// MP3, FLAC, WAV - has to start at zero, and a codec's priming puts the
+		// first packet a little before it: AAC behind an edit list, which is
+		// how iOS records. Refused, the copy silently became a transcode at
+		// mediabunny's default quality rather than the session's bitrate.
+		// Shifting the whole stream onto zero moves nothing relative to
+		// anything else in a one-track file.
+		copy: { shiftTolerance: REMUX_SHIFT_TOLERANCE_SECONDS },
 		showWarnings: false,
 	});
 

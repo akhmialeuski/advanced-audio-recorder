@@ -49,7 +49,7 @@ function createSut(stored: { path: string; state: string }[] = []): Sut {
 	const transcribed: string[] = [];
 	const app = createMockApp({
 		vault: {
-			getAbstractFileByPath: (path: string) =>
+			getFileByPath: (path: string) =>
 				Object.assign(Object.create(TFile.prototype), {
 					path,
 					name: path,
@@ -165,7 +165,7 @@ describe('a queue a previous session left', () => {
 			at(
 				modalInstances,
 				modalInstances.length - 1,
-			).contentEl.querySelectorAll('button'),
+			).modalEl.querySelectorAll('button'),
 		);
 		buttons.find((b) => b.textContent === 'Continue')?.click();
 		await Promise.resolve();

@@ -22,6 +22,7 @@ import {
 	resolveCaptureDeviceId,
 } from './AudioStreamHandler';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { delay } from '../utils/TimeUtils';
 
 /** Outcome of one capture. */
 export type MemoryRecordingResult =
@@ -297,9 +298,7 @@ export class MemoryRecorder {
 			return { kind: started };
 		}
 		onStarted?.();
-		await new Promise<void>((resolve) =>
-			window.setTimeout(resolve, durationMs),
-		);
+		await delay(durationMs);
 		// A cancel() during the wait already discarded the capture, and stop
 		// then reports it as cancelled: the result has nowhere to go.
 		return this.stop();

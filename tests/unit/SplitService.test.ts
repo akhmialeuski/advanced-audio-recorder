@@ -12,7 +12,9 @@ import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
 import { defined } from '../helpers/assertions';
 import { useDesktopPlatform } from '../helpers/platform';
+import { partial } from '../helpers/doubles';
 import { createWavHeader } from 'src/audio/WavEncoder';
+import { StreamedSplit, StreamedSplitError } from 'src/audio/streamingSplit';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -61,6 +63,37 @@ jest.mock('src/utils/LinkUpdater', () => ({
 	}),
 }));
 
+// By default this device cannot stream the source, which is the decode-
+// everything path most of this suite describes.
+jest.mock('src/audio/streamingSplit', () =>
+	require('../mocks/modules/streamingSplit'),
+);
+
+/**
+ * Lets the next split stream its source: a recording of the given length,
+ * decoded at the given rate, whose every part encodes to a few bytes.
+ * @param seconds - Length the split plans its parts over
+ * @param sampleRate - Rate the frames are counted in
+ * @returns The part and release spies of the scripted split
+ */
+function streamingSource(
+	seconds: number,
+	sampleRate = 48000,
+): { nextPart: jest.Mock; release: jest.Mock } {
+	const nextPart = jest.fn().mockResolvedValue(new ArrayBuffer(8));
+	const release = jest.fn();
+	jest.mocked(StreamedSplit.open).mockResolvedValueOnce(
+		partial<StreamedSplit>({
+			sampleRate,
+			numberOfChannels: 1,
+			plannedFrames: seconds * sampleRate,
+			nextPart,
+			[Symbol.dispose]: release,
+		}),
+	);
+	return { nextPart, release };
+}
+
 const createSourceFile = (extension: string): TFile => {
 	const file = new TFile();
 	Object.assign(file, {
@@ -95,13 +128,12 @@ describe('SplitService', () => {
 		createdFiles = [];
 		mockApp = createMockApp({
 			vault: {
+				readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(64)),
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
-					readBinary: jest
-						.fn()
-						.mockResolvedValue(new ArrayBuffer(64)),
 					remove: jest.fn().mockResolvedValue(undefined),
 				},
+				delete: jest.fn().mockResolvedValue(undefined),
 				createBinary: jest.fn((path: string) => {
 					createdFiles.push(path);
 					const file = new TFile();
@@ -155,7 +187,7 @@ describe('SplitService', () => {
 		it('aborts BEFORE reading a source over the platform read ceiling', async () => {
 			// On mobile even materializing the source bytes can get the
 			// WebView killed, so the size gate must run on stat.size,
-			// before adapter.readBinary
+			// before vault.readBinary
 			const { isReadableSize } = jest.requireMock<{
 				isReadableSize: jest.Mock;
 			}>('src/platform/capabilities');
@@ -164,7 +196,7 @@ describe('SplitService', () => {
 			const outcome = await service.split(createRequest(), jest.fn());
 
 			expect(outcome).toEqual({ status: 'aborted' });
-			expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
+			expect(mockApp.vault.readBinary).not.toHaveBeenCalled();
 			expect(
 				noticeMessages().some((message) =>
 					// The advice that follows depends on the platform and is
@@ -254,7 +286,7 @@ describe('SplitService', () => {
 		});
 
 		it('aborts with a notice when reading the source fails', async () => {
-			jest.mocked(mockApp.vault.adapter.readBinary).mockRejectedValue(
+			jest.mocked(mockApp.vault.readBinary).mockRejectedValue(
 				new Error('missing'),
 			);
 			const onProgress = jest.fn();
@@ -352,9 +384,7 @@ describe('SplitService', () => {
 			const header = createWavHeader(1, 500, 4000);
 			const wav = new Uint8Array(44 + 4000);
 			wav.set(new Uint8Array(header), 0);
-			jest.mocked(mockApp.vault.adapter.readBinary).mockResolvedValue(
-				wav.buffer,
-			);
+			jest.mocked(mockApp.vault.readBinary).mockResolvedValue(wav.buffer);
 			const decode = jest.mocked(
 				jest.requireMock<{ decodeAudioBlob: jest.Mock }>(
 					'src/audio/AudioFormatConverter',
@@ -391,6 +421,258 @@ describe('SplitService', () => {
 			);
 
 			expect(outcome.status).toBe('completed');
+		});
+
+		it('cuts chapters at their frames while decoding', async () => {
+			const { nextPart } = streamingSource(20);
+
+			await service.split(createRequest({ cuts: CUTS }), jest.fn());
+
+			expect(createdFiles).toEqual([
+				'Audio/Intro.mp3',
+				'Audio/The middle.mp3',
+			]);
+			// The last part runs to whatever the decoder produces.
+			expect(nextPart.mock.calls).toEqual([[5 * 48000], [null]]);
+		});
+	});
+
+	// Where this device can decode the source and encode the target, the
+	// parts are cut out of one continuous decode instead of out of a buffer
+	// holding the whole recording as floats.
+	describe('splitting as it decodes', () => {
+		/** The whole-file decode the streamed split stands in for. */
+		const decode = (): jest.Mock =>
+			jest.requireMock<{ decodeAudioBlob: jest.Mock }>(
+				'src/audio/AudioFormatConverter',
+			).decodeAudioBlob;
+
+		it('cuts the parts on the frames the decoded split cuts at', async () => {
+			const { nextPart } = streamingSource(25);
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			expect(outcome).toEqual({
+				status: 'completed',
+				partCount: 3,
+				firstPartName: 'recording-part1.mp3',
+			});
+			expect(nextPart.mock.calls).toEqual([
+				[10 * 48000],
+				[20 * 48000],
+				[null],
+			]);
+			expect(decode()).not.toHaveBeenCalled();
+		});
+
+		it('encodes the parts in the source format at the chosen bitrate', async () => {
+			streamingSource(25);
+
+			await service.split(createRequest({ bitrate: 64000 }), jest.fn());
+
+			expect(StreamedSplit.open).toHaveBeenCalledWith(
+				expect.any(ArrayBuffer),
+				'mp3',
+				64000,
+			);
+		});
+
+		it('never holds a streamed source to the decode ceiling', async () => {
+			// The ceiling bounds a whole-file decode, which a streamed split
+			// never makes: a long recording past it splits all the same.
+			streamingSource(25);
+			const { isDecodableSize } = jest.requireMock<{
+				isDecodableSize: jest.Mock;
+			}>('src/platform/capabilities');
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			expect(outcome.status).toBe('completed');
+			expect(isDecodableSize).not.toHaveBeenCalled();
+		});
+
+		it('releases the decoder once the parts are written', async () => {
+			const { release } = streamingSource(25);
+
+			await service.split(createRequest(), jest.fn());
+
+			expect(release).toHaveBeenCalledTimes(1);
+		});
+
+		it('refuses a source shorter than one part and releases it', async () => {
+			const { nextPart, release } = streamingSource(5);
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			expect(outcome).toEqual({ status: 'aborted' });
+			expect(nextPart).not.toHaveBeenCalled();
+			expect(release).toHaveBeenCalledTimes(1);
+			expect(noticeMessages()).toContain(
+				'File is shorter than one part.',
+			);
+		});
+
+		it('falls back to decoding the whole file when a part fails, after removing the parts it wrote', async () => {
+			jest.spyOn(console, 'warn').mockImplementation();
+			const { nextPart } = streamingSource(25);
+			nextPart
+				.mockResolvedValueOnce(new ArrayBuffer(8))
+				.mockRejectedValueOnce(new StreamedSplitError('decoder lost'));
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			// The decoded split starts from where the streamed one did: its
+			// first part is gone, and the decode writes every part again.
+			// Removed outright rather than trashed, since the split goes on
+			// and the user's trash would otherwise keep a part of a split
+			// that succeeded.
+			expect(mockApp.vault.delete).toHaveBeenCalledWith(
+				expect.objectContaining({ path: 'Audio/recording-part1.mp3' }),
+			);
+			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+			expect(decode()).toHaveBeenCalledTimes(1);
+			expect(outcome).toEqual({
+				status: 'completed',
+				partCount: 2,
+				firstPartName: 'recording-part1.mp3',
+			});
+		});
+
+		it('does not retry a failure in writing the parts', async () => {
+			streamingSource(25);
+			jest.mocked(mockApp.vault.createBinary).mockRejectedValueOnce(
+				new Error('disk full'),
+			);
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			// A full disk is as full for the decoded split, so the user is
+			// told rather than made to wait for the same failure twice.
+			expect(outcome).toEqual({ status: 'aborted' });
+			expect(decode()).not.toHaveBeenCalled();
+			expect(noticeMessages()).toContain('Split failed: disk full');
+		});
+
+		it('sends the parts of a split that ends in failure to the trash', async () => {
+			streamingSource(25);
+			jest.mocked(mockApp.vault.createBinary)
+				.mockImplementationOnce((path: string) =>
+					Promise.resolve(Object.assign(new TFile(), { path })),
+				)
+				.mockRejectedValueOnce(new Error('disk full'));
+
+			await service.split(createRequest(), jest.fn());
+
+			// Nothing writes them again, so they stay recoverable where the
+			// user's deletion preference puts them.
+			expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
+				expect.objectContaining({ path: 'Audio/recording-part1.mp3' }),
+			);
+			expect(mockApp.vault.delete).not.toHaveBeenCalled();
+		});
+
+		it('says once that the parts are written as WAV, even when it falls back', async () => {
+			jest.spyOn(console, 'warn').mockImplementation();
+			const { nextPart } = streamingSource(25);
+			nextPart.mockRejectedValueOnce(new StreamedSplitError('lost'));
+
+			await service.split(
+				createRequest({ sourceFile: createSourceFile('aiff') }),
+				jest.fn(),
+			);
+
+			expect(
+				noticeMessages().filter((message) =>
+					message.startsWith('Encoding to "aiff" is unavailable'),
+				),
+			).toHaveLength(1);
+		});
+	});
+
+	// A device that cannot stream the source decodes it whole, and it has to
+	// cut the recording into the parts a streaming device cuts, or the same
+	// file splits differently on a phone and on a desktop.
+	describe('planning the parts of a whole-file decode', () => {
+		const RATE = 44100;
+
+		/** Makes the next whole-file decode return a recording this long. */
+		const decodedLength = (seconds: number): void => {
+			const length = Math.round(seconds * RATE);
+			jest.requireMock<{ decodeAudioBlob: jest.Mock }>(
+				'src/audio/AudioFormatConverter',
+			).decodeAudioBlob.mockResolvedValueOnce({
+				length,
+				sampleRate: RATE,
+				numberOfChannels: 1,
+				getChannelData: jest
+					.fn()
+					.mockReturnValue(new Float32Array(length)),
+			});
+		};
+
+		/** The sample ranges the decoded parts were sliced out of. */
+		const slicedRanges = (): [number, number][] =>
+			jest
+				.requireMock<{ sliceAudioBuffer: jest.Mock }>(
+					'src/recording/AudioSplitter',
+				)
+				.sliceAudioBuffer.mock.calls.map(
+					([, start, end]: [unknown, number, number]) => [start, end],
+				);
+
+		beforeEach(() => {
+			jest.requireMock<{ sliceAudioBuffer: jest.Mock }>(
+				'src/recording/AudioSplitter',
+			).sliceAudioBuffer.mockClear();
+		});
+
+		it('refuses a recording whose only extra is shorter than the tail, as a streamed split does', async () => {
+			// 10.1 s into 10 s parts: the streamed split plans 9.85 s and
+			// refuses, so the decode must not write a 0.1 s second part.
+			decodedLength(10.1);
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			expect(outcome).toEqual({ status: 'aborted' });
+			expect(createdFiles).toEqual([]);
+			expect(noticeMessages()).toContain(
+				'File is shorter than one part.',
+			);
+		});
+
+		it('lets a remainder shorter than the tail ride on the last part', async () => {
+			decodedLength(20.1);
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			expect(outcome).toEqual({
+				status: 'completed',
+				partCount: 2,
+				firstPartName: 'recording-part1.mp3',
+			});
+			// The last part runs to the end of the decoded audio, the way the
+			// streamed split's last part runs to the end of the decode.
+			expect(slicedRanges()).toEqual([
+				[0, 10 * RATE],
+				[10 * RATE, Math.round(20.1 * RATE)],
+			]);
+		});
+
+		it('opens no part for a chapter that starts inside the tail', async () => {
+			decodedLength(20);
+
+			await service.split(
+				createRequest({
+					cuts: [
+						{ startSeconds: 0, title: 'Intro' },
+						{ startSeconds: 19.9, title: 'Too late' },
+					],
+				}),
+				jest.fn(),
+			);
+
+			expect(createdFiles).toEqual(['Audio/Intro.mp3']);
+			expect(slicedRanges()).toEqual([[0, 20 * RATE]]);
 		});
 	});
 });

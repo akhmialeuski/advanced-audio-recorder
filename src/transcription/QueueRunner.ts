@@ -9,7 +9,8 @@
  * @module transcription/QueueRunner
  */
 
-import { Notice, TFile } from 'obsidian';
+import { Notice } from 'obsidian';
+import type { TFile } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { CancellationSource } from '../utils/cancellation';
@@ -18,6 +19,7 @@ import type { RunCostSink } from './SessionCostTracker';
 import { QueueEntryState, type TranscriptionQueue } from './TranscriptionQueue';
 import type { TranscribeFileOptions } from './runTranscription';
 import type { TranscribeRunCost } from './TranscriptionService';
+import { errorMessage } from '../errors';
 
 /** Transcribes one recording; the run entry point, narrowed to what is used. */
 export type QueueTranscriber = (
@@ -116,8 +118,8 @@ export class QueueRunner {
 	 * @param path - Vault-relative recording path
 	 */
 	private async runOne(path: string): Promise<void> {
-		const file = this.deps.app.vault.getAbstractFileByPath(path);
-		if (!(file instanceof TFile)) {
+		const file = this.deps.app.vault.getFileByPath(path);
+		if (!file) {
 			this.deps.queue.setState(
 				path,
 				QueueEntryState.Failed,
@@ -154,8 +156,7 @@ export class QueueRunner {
 				this.deps.queue.setState(path, QueueEntryState.Waiting);
 				return;
 			}
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Queued transcription of ${path} failed:`,
 				error,

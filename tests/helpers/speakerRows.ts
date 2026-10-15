@@ -51,7 +51,7 @@ export async function applyAnsweringMerge(
 		throw new Error('no confirmation was opened');
 	}
 	const asked = confirm.contentEl.textContent ?? '';
-	const pressed = [...confirm.contentEl.querySelectorAll('button')].find(
+	const pressed = [...confirm.modalEl.querySelectorAll('button')].find(
 		(candidate) => candidate.textContent === button,
 	);
 	if (!pressed) {

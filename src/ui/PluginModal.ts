@@ -17,6 +17,7 @@
 
 import { Modal, Notice, Setting } from 'obsidian';
 import type { App, ButtonComponent, TFile } from 'obsidian';
+import { errorMessage } from '../errors';
 
 /**
  * Obsidian's own layout for a dialog whose body can run to any length: the
@@ -143,11 +144,7 @@ export abstract class PluginModal extends Modal {
 					button.setCta();
 				}
 				if (action.destructive) {
-					// The class both setWarning (deprecated) and setDestructive
-					// (Obsidian 1.13+) apply. Setting it directly is the one form
-					// that works on every version down to the plugin's declared
-					// minAppVersion without calling a deprecated API.
-					button.buttonEl.addClass('mod-warning');
+					button.setDestructive();
 				}
 				if (action.disabled) {
 					button.setDisabled(true);
@@ -190,8 +187,7 @@ export abstract class PluginModal extends Modal {
 		try {
 			await result;
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			new Notice(message);
 		}
 	}

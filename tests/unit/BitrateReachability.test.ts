@@ -15,7 +15,10 @@
 jest.mock('mediabunny', () => require('../mocks/modules/mediabunny'));
 
 import { canEncodeAudio } from 'mediabunny';
-import { installWindowsAacEncoder } from '../helpers/encoderProfiles';
+import {
+	installAacLcOnlyEncoder,
+	installWindowsAacEncoder,
+} from '../helpers/encoderProfiles';
 import { FORMAT_FLAC, FORMAT_M4A, FORMAT_WEBM } from 'src/constants';
 import {
 	closestBitrate,
@@ -110,8 +113,8 @@ describe('which bitrates a recording can really use', () => {
 		// another rate are the same answer here, and that is the point: an
 		// offer holds for the rate it was asked about and for no other. The
 		// report from the field, third round, is the second row - 22.05 kHz in
-		// the settings, where Chromium is asked about HE-AAC and refuses the
-		// lot. Answering it with what a 48 kHz encode would take made one
+		// the settings, where the Windows encoder, which takes 44.1 and 48 kHz
+		// only, refuses the lot. Answering it with what a 48 kHz encode would take made one
 		// offer mean two things: the row narrowed its list to rates measured
 		// elsewhere while the recording path refused to move a session onto
 		// them. What keeps 22.05 kHz away from the encoder now is that no
@@ -143,6 +146,18 @@ describe('which bitrates a recording can really use', () => {
 				expect(offer.encoder).toBe('refused');
 			},
 		);
+
+		it('offers AAC at a low rate on an encoder that takes AAC-LC there', async () => {
+			// At 24 kHz and below mediabunny names HE-AAC unless it is told
+			// otherwise, and an encoder with only AAC-LC refused the format
+			// outright although it encodes that rate. The probe asks for
+			// AAC-LC, which is what the file is then encoded as.
+			installAacLcOnlyEncoder();
+
+			const offer = await resolveBitrateOffer(FORMAT_M4A, 22050, MONO);
+
+			expect(offer.encoder).toBe('confirmed');
+		});
 
 		it('keeps the codec range where there is no encoder to ask', async () => {
 			delete (global as Record<string, unknown>).AudioEncoder;
@@ -299,8 +314,8 @@ describe('which bitrates a recording can really use', () => {
 		});
 
 		it('does not blame the bitrate for a format the encoder refuses outright', async () => {
-			// Chromium refuses every AAC rate at 22.05 kHz, where mediabunny
-			// asks it about HE-AAC, and the offer then answers at the
+			// The Windows encoder refuses every AAC bitrate at 22.05 kHz, a
+			// sample rate it does not take, and the offer then answers at the
 			// reference rate instead. Reading that as a narrowed list made the
 			// notice name a bitrate, while what has to change is the format.
 			installWindowsAacEncoder();
@@ -317,21 +332,6 @@ describe('which bitrates a recording can really use', () => {
 	});
 
 	describe('the format a recording starts in', () => {
-		/**
-		 * Scripts a Chromium that encodes AAC-LC and nothing else: the
-		 * question mediabunny asks at 24 kHz and below is about HE-AAC, and
-		 * the answer is no whatever the bitrate.
-		 */
-		function aacLcOnlyEncoder(): void {
-			jest.mocked(canEncodeAudio).mockImplementation(
-				(codec: unknown, options?: { sampleRate?: number }) =>
-					Promise.resolve(
-						codec !== 'aac' ||
-							(options?.sampleRate ?? 48000) > 24000,
-					),
-			);
-		}
-
 		/**
 		 * A MediaRecorder that records MP4 and WebM directly, which is what
 		 * the format check used to take as the whole answer.
@@ -351,9 +351,9 @@ describe('which bitrates a recording can really use', () => {
 			// The report from the field: two tracks mixed into one MP4 at
 			// 22.05 kHz. MediaRecorder records MP4 directly, so the codec
 			// check passed, but a merged file is rendered and then encoded by
-			// mediabunny, which asked Chromium for HE-AAC and was refused
-			// once the recording was already over.
-			aacLcOnlyEncoder();
+			// mediabunny, whose encoder refused that rate once the recording
+			// was already over.
+			installWindowsAacEncoder();
 			recorderTaking('audio/mp4', 'audio/webm');
 
 			const result = await validateRecordingCapability(FORMAT_M4A, {
@@ -369,7 +369,7 @@ describe('which bitrates a recording can really use', () => {
 		it('still takes the direct recorder at its word for a single track', async () => {
 			// One track recorded straight into MP4 never meets mediabunny, so
 			// the encoder has nothing to say about it.
-			aacLcOnlyEncoder();
+			installWindowsAacEncoder();
 			recorderTaking('audio/mp4', 'audio/webm');
 
 			const result = await validateRecordingCapability(FORMAT_M4A, {
@@ -382,7 +382,7 @@ describe('which bitrates a recording can really use', () => {
 		});
 
 		it('falls back to a format the encoder writes at this rate', async () => {
-			aacLcOnlyEncoder();
+			installWindowsAacEncoder();
 			recorderTaking('audio/mp4', 'audio/webm');
 
 			const resolved = await resolveEffectiveOutputFormat(FORMAT_M4A, {

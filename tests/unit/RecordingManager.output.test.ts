@@ -28,6 +28,7 @@ import {
 import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
+import { fileInFolder } from '../helpers/obsidianMock';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 import {
 	encodeAudioBuffer,
@@ -554,9 +555,9 @@ describe('RecordingManager', () => {
 				mockSettings,
 				statusChangeCallback,
 			);
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Meetings/2026/Meeting Note.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Meetings/2026/Meeting Note.md'),
+			);
 
 			const mockMediaRecorder = makeMediaRecorderDouble();
 
@@ -583,9 +584,9 @@ describe('RecordingManager', () => {
 				mockSettings,
 				statusChangeCallback,
 			);
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Meetings/2026/Meeting Note.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Meetings/2026/Meeting Note.md'),
+			);
 
 			const mockMediaRecorder = makeMediaRecorderDouble();
 
@@ -616,9 +617,9 @@ describe('RecordingManager', () => {
 				mockSettings,
 				statusChangeCallback,
 			);
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Meetings/2026/Meeting Note.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Meetings/2026/Meeting Note.md'),
+			);
 
 			const mockMediaRecorder = makeMediaRecorderDouble();
 
@@ -635,8 +636,8 @@ describe('RecordingManager', () => {
 		});
 	});
 
-	describe('insertFileLinks uses basename only', () => {
-		it('inserts only filename without directory path in wikilinks', async () => {
+	describe('linking the saved recording into the note', () => {
+		it('embeds the link the vault generates for the saved file', async () => {
 			const mockReplaceSelection = jest.fn();
 			(
 				mockApp.workspace.getActiveViewOfType as jest.Mock
@@ -661,7 +662,7 @@ describe('RecordingManager', () => {
 			expect(insertedText).toMatch(/^!\[\[recording-.*\]\]$/);
 		});
 
-		it('uses basename when file is saved in a nested directory', async () => {
+		it('embeds the generated link for a file saved in a nested folder', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				saveNearActiveFile: true,
@@ -672,9 +673,9 @@ describe('RecordingManager', () => {
 				mockSettings,
 				statusChangeCallback,
 			);
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'Projects/Notes/Daily.md',
-			});
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Projects/Notes/Daily.md'),
+			);
 
 			const mockReplaceSelection = jest.fn();
 			(

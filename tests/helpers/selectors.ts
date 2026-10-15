@@ -158,8 +158,8 @@ export const SETTING = {
 	/** The icon-only button a row adds with addExtraButton. */
 	extraButton: '.extra-setting-button',
 	root: '.aar-settings-root',
-	searchInput: '.aar-search-row input',
-	addItemButton: '.aar-add-item-row button',
+	searchInput: '.mock-setting-search-row input',
+	addItemButton: '.mock-setting-add-item-row button',
 	custom: '.aar-custom',
 	docCallout: '.aar-doc-callout',
 	docCalloutLink: '.aar-doc-callout-link',
@@ -213,6 +213,8 @@ export const MODAL = {
 	/** The bar of a transcript line with the handles of the split selection. */
 	timeSpan: '.aar-time-span',
 	recoverySession: '.aar-recovery-session',
+	/** The running clock of a transcription in flight. */
+	transcribeElapsed: '.aar-transcribe-elapsed',
 	silentChannelConvert: '.aar-silent-channel-convert',
 	/**
 	 * The body the release notes are rendered into. Obsidian's own class for

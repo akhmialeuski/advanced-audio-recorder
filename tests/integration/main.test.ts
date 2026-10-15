@@ -129,7 +129,6 @@ jest.mock('src/ui/StatusBar', () => ({
 
 jest.mock('src/ui/RibbonIcon', () => ({
 	updateRibbonIcon: jest.fn(),
-	initializeRibbonIcon: jest.fn(),
 }));
 
 jest.mock('src/ui/DeviceSelectionModal', () => ({

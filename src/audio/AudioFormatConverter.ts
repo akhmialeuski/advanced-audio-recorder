@@ -243,9 +243,9 @@ const deviceSampleRates = new WeakMap<typeof AudioContext, number>();
  * encoded at, 48 kHz for Opus whatever was requested, or is decoded through an
  * AudioContext on the last rung of the conversion ladder, which resamples to
  * the same default. An encoder question asked at the requested rate therefore
- * describes a file that is never written: at 22.05 kHz it asked Chromium for
- * HE-AAC and got a refusal, while the 48 kHz mix it really encodes is AAC-LC
- * and fine. Answers with the requested rate only where there is no
+ * describes a file that is never written: at 22.05 kHz it asked an AAC
+ * encoder about a rate the Windows one does not take and got a refusal, while
+ * the 48 kHz mix it really encodes is fine. Answers with the requested rate only where there is no
  * AudioContext to ask, which is also where no offline encode can run, and
  * where the cap this reading is memoised against has already been reached:
  * the constructor refuses once a document holds its maximum of live hardware

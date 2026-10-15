@@ -94,7 +94,7 @@ function createSut(
 	const tokens: RunToken[] = [];
 	const app = createMockApp({
 		vault: {
-			getAbstractFileByPath: (path: string) =>
+			getFileByPath: (path: string) =>
 				missing.has(path)
 					? null
 					: Object.assign(Object.create(TFile.prototype), {

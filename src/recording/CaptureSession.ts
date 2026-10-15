@@ -129,12 +129,10 @@ export function createCaptureSession(
 	const merging = outputMode === OutputMode.Single && trackOrder.length > 1;
 	const trackMix: readonly TrackMix[] = merging
 		? Object.freeze(
-				trackOrder.map(
-					(source): TrackMix => ({
-						gainDb: source.gainDb ?? 0,
-						pan: source.pan ?? 0,
-					}),
-				),
+				trackOrder.map((source): TrackMix => ({
+					gainDb: source.gainDb ?? 0,
+					pan: source.pan ?? 0,
+				})),
 			)
 		: Object.freeze([]);
 	const requestedSplit = settings.autoSplitEnabled;

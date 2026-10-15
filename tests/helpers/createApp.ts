@@ -29,6 +29,7 @@ export interface MockApp {
 		create: jest.Mock;
 		readBinary: jest.Mock;
 		read: jest.Mock;
+		cachedRead: jest.Mock;
 		modify: jest.Mock;
 		process: jest.Mock;
 		rename: jest.Mock;
@@ -102,6 +103,7 @@ export function createMockApp(overrides: MockAppOverrides = {}): {
 			create: jest.fn().mockResolvedValue(undefined),
 			readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
 			read: jest.fn().mockResolvedValue(''),
+			cachedRead: jest.fn().mockResolvedValue(''),
 			modify: jest.fn().mockResolvedValue(undefined),
 			process: jest.fn().mockResolvedValue(''),
 			rename: jest.fn().mockResolvedValue(undefined),
@@ -189,16 +191,25 @@ export function createFile(
 	path: string,
 	stat: Partial<TFile['stat']> = {},
 ): TFile {
+	return Object.assign(Object.create(TFile.prototype) as TFile, {
+		...pathFields(path),
+		stat: { size: 0, mtime: 0, ctime: 0, ...stat },
+	});
+}
+
+/**
+ * The fields Obsidian derives from a file's path, which a rename rewrites on
+ * the same TFile object.
+ * @param path - Vault path
+ * @returns The path with its name, basename and extension
+ */
+function pathFields(
+	path: string,
+): Pick<TFile, 'path' | 'name' | 'basename' | 'extension'> {
 	const name = path.split('/').at(-1) ?? path;
 	const parts = name.split('.');
 	const extension = parts.length > 1 ? (parts.pop() ?? '') : '';
-	return Object.assign(Object.create(TFile.prototype) as TFile, {
-		path,
-		name,
-		basename: parts.join('.'),
-		extension,
-		stat: { size: 0, mtime: 0, ctime: 0, ...stat },
-	});
+	return { path, name, basename: parts.join('.'), extension };
 }
 
 /** The editor surface a note-writing test drives, all of it spied. */
@@ -250,60 +261,168 @@ export function createMarkdownView(
 	);
 }
 
-/** A vault adapter backed by a Map, with every call a spy. */
-export interface FakeVaultFiles {
-	/** The files themselves, for seeding and for reading back what was written. */
-	files: Map<string, string>;
-	/** The adapter surface, shaped for `createMockApp({ vault: { adapter } })`. */
-	adapter: {
-		exists: jest.Mock;
-		read: jest.Mock;
-		write: jest.Mock;
-		remove: jest.Mock;
-		rename: jest.Mock;
-	};
+/** The adapter surface of {@link FakeVaultFiles}. */
+export interface FakeAdapter {
+	exists: jest.Mock;
+	read: jest.Mock;
+	write: jest.Mock;
+	remove: jest.Mock;
+	rename: jest.Mock;
 }
 
 /**
- * Builds an in-memory stand-in for the vault's file adapter.
+ * A vault backed by a Map: the adapter, the Vault methods over the same files,
+ * and the file manager's trash, with every call a spy.
+ */
+export interface FakeVaultFiles {
+	/** The files themselves, for seeding and for reading back what was written. */
+	files: Map<string, string>;
+	/**
+	 * What went to the trash, keyed by the path it had, so a test can tell a
+	 * file sent to the trash from one removed for good.
+	 */
+	trash: Map<string, string>;
+	/**
+	 * Paths that exist on disk but that the vault index does not list yet, as
+	 * early in startup: the adapter sees them, `getFileByPath` and `getFiles`
+	 * do not. Delete a path from the set to let the index catch up.
+	 */
+	unindexed: Set<string>;
+	/** The adapter surface, shaped for `createMockApp({ vault: { adapter } })`. */
+	adapter: FakeAdapter;
+	/**
+	 * The Vault surface over the same files, adapter included, shaped for
+	 * `createMockApp({ vault })`.
+	 */
+	vault: {
+		adapter: FakeAdapter;
+		getFileByPath: jest.Mock;
+		getFiles: jest.Mock;
+		cachedRead: jest.Mock;
+		read: jest.Mock;
+		modify: jest.Mock;
+		create: jest.Mock;
+		rename: jest.Mock;
+		delete: jest.Mock;
+	};
+	/** The file manager surface, shaped for `createMockApp({ fileManager })`. */
+	fileManager: { trashFile: jest.Mock };
+}
+
+/**
+ * Builds an in-memory stand-in for the vault's files, reachable both through
+ * the adapter and through the Vault API.
  *
- * Four suites hand-rolled the same Map behind the same five calls. Sharing it
- * is not only about the lines: `read` rejects for a path that is not there,
- * which is what Obsidian's adapter does, so a store that reads without asking
- * `exists` first fails here rather than in a vault.
+ * Four suites hand-rolled the same Map behind the same five adapter calls.
+ * Sharing it is not only about the lines: the doubles refuse what Obsidian
+ * refuses, so code that gets a call wrong fails here rather than in a vault.
+ * `adapter.read`, `read` and `cachedRead` reject a path that is not there;
+ * `create` rejects a path that is taken (on disk, whether or not the index
+ * lists it, the stricter of the two answers a vault can give); `rename`
+ * rejects a destination that is taken. `getFileByPath` hands out one TFile
+ * per path, kept across writes and moved by a rename, so identity holds the
+ * way it does in a vault.
  * @param seed - Files present before the test starts
- * @returns The file map and the adapter reading from it
+ * @returns The file map, the trash and the doubles reading from them
  */
 export function fakeVaultFiles(
 	seed: Iterable<readonly [string, string]> = [],
 ): FakeVaultFiles {
 	const files = new Map<string, string>(seed);
-	const adapter = {
+	const trash = new Map<string, string>();
+	const unindexed = new Set<string>();
+	const handles = new Map<string, TFile>();
+	const readText = (path: string): Promise<string> => {
+		const content = files.get(path);
+		return content === undefined
+			? Promise.reject(new Error(`ENOENT: ${path}`))
+			: Promise.resolve(content);
+	};
+	const fileAt = (path: string): TFile | null => {
+		if (!files.has(path) || unindexed.has(path)) {
+			handles.delete(path);
+			return null;
+		}
+		const known = handles.get(path) ?? createFile(path);
+		handles.set(path, known);
+		return known;
+	};
+	const drop = (path: string): void => {
+		files.delete(path);
+		handles.delete(path);
+	};
+	const adapter: FakeAdapter = {
 		exists: jest.fn((path: string) => Promise.resolve(files.has(path))),
-		read: jest.fn((path: string) => {
-			const content = files.get(path);
-			return content === undefined
-				? Promise.reject(new Error(`ENOENT: ${path}`))
-				: Promise.resolve(content);
-		}),
+		read: jest.fn(readText),
 		write: jest.fn((path: string, data: string) => {
 			files.set(path, data);
 			return Promise.resolve();
 		}),
 		remove: jest.fn((path: string) => {
-			files.delete(path);
+			drop(path);
 			return Promise.resolve();
 		}),
 		rename: jest.fn((from: string, to: string) => {
 			const value = files.get(from);
 			if (value !== undefined) {
 				files.set(to, value);
-				files.delete(from);
+				drop(from);
 			}
 			return Promise.resolve();
 		}),
 	};
-	return { files, adapter };
+	const vault: FakeVaultFiles['vault'] = {
+		adapter,
+		getFileByPath: jest.fn(fileAt),
+		getFiles: jest.fn(() =>
+			[...files.keys()]
+				.map(fileAt)
+				.filter((file): file is TFile => file !== null),
+		),
+		cachedRead: jest.fn((file: TFile) => readText(file.path)),
+		read: jest.fn((file: TFile) => readText(file.path)),
+		modify: jest.fn((file: TFile, data: string) => {
+			files.set(file.path, data);
+			return Promise.resolve();
+		}),
+		create: jest.fn((path: string, data: string) => {
+			if (files.has(path)) {
+				return Promise.reject(new Error('File already exists.'));
+			}
+			files.set(path, data);
+			return Promise.resolve(fileAt(path));
+		}),
+		rename: jest.fn((file: TFile, newPath: string) => {
+			const content = files.get(file.path);
+			if (content === undefined) {
+				return Promise.reject(new Error(`ENOENT: ${file.path}`));
+			}
+			if (files.has(newPath)) {
+				return Promise.reject(
+					new Error('Destination file already exists!'),
+				);
+			}
+			drop(file.path);
+			files.set(newPath, content);
+			handles.set(newPath, Object.assign(file, pathFields(newPath)));
+			return Promise.resolve();
+		}),
+		delete: jest.fn((file: TFile) => {
+			drop(file.path);
+			return Promise.resolve();
+		}),
+	};
+	const fileManager = {
+		trashFile: jest.fn((file: TFile) => {
+			const content = files.get(file.path);
+			if (content !== undefined) {
+				trash.set(file.path, content);
+			}
+			drop(file.path);
+			return Promise.resolve();
+		}),
+	};
+	return { files, trash, unindexed, adapter, vault, fileManager };
 }
 
 /**

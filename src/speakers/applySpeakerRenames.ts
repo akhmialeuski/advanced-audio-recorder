@@ -162,7 +162,8 @@ async function rewriteTranscriptFileOutput(
 	try {
 		// Skip untouched files with a cheap read, but perform the rewrite
 		// against the content vault.process supplies so a concurrent edit
-		// between this read and the write is never clobbered.
+		// between this read and the write is never clobbered. Vault.read,
+		// not cachedRead: a stale cache would skip a file that needs it.
 		const current = await app.vault.read(file);
 		if (rewriteSidecar(format, current, renames) === current) {
 			return;

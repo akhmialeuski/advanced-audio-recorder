@@ -30,6 +30,7 @@ import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { internalsOf } from '../helpers/doubles';
 import { asMockVault } from '../helpers/obsidianMock';
+import { MODAL } from '../helpers/selectors';
 
 // The run itself has its own suites (runTranscription, the providers); what
 // this dialog owes is what it does with the outcome, so the run is recorded
@@ -1330,6 +1331,26 @@ describe('TranscriptionModal running the job', () => {
 		await internals.startRun();
 
 		expect(internals.minimized).toBe(false);
+	});
+
+	it('counts the elapsed time up while the run is in flight', () => {
+		// Driven by fake timers: on the real clock the counter only ticks in a
+		// test that happens to run longer than a second.
+		jest.useFakeTimers();
+		try {
+			jest.mocked(transcribeFile).mockReturnValue(new Promise(() => {}));
+			const { modal } = openRunnable();
+			const elapsed = (): string | null | undefined =>
+				maybeEl(modal.contentEl, MODAL.transcribeElapsed)?.textContent;
+			void internalsOf<TranscriptionModalInternals>(modal).startRun();
+			expect(elapsed()).toBe('Elapsed 0:00');
+
+			jest.advanceTimersByTime(2000);
+
+			expect(elapsed()).toBe('Elapsed 0:02');
+		} finally {
+			jest.useRealTimers();
+		}
 	});
 });
 

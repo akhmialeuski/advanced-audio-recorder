@@ -6,6 +6,17 @@
 import { PLUGIN_LOG_PREFIX } from './constants';
 
 /**
+ * The message of a caught value, for a notice or a log line. A `catch` binds
+ * `unknown`, and what a library throws is not always an Error, so anything
+ * else is written out as a string rather than lost.
+ * @param error - What was caught
+ * @returns The error's message, or the value as text
+ */
+export function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/**
  * Base class for plugin errors. Not exported: nothing outside this module
  * catches the base type, and the concrete errors below carry the meaning
  * callers actually match on.

@@ -44,6 +44,7 @@ import {
 	type MediaSessionDouble,
 } from '../helpers/mediaSession';
 import { asMockPlugin, mockPluginHost } from '../helpers/obsidianMock';
+import { makePopoutWindow } from '../helpers/popoutHarness';
 
 const app = makePlayerApp();
 
@@ -1029,5 +1030,44 @@ describe('driving playback from the system media controls', () => {
 			title: 'rec',
 			album: 'Intro',
 		});
+	});
+});
+
+// Dragging a note's tab into a pop-out moves its rendered embed there while the
+// recording keeps playing, and the player renders itself again in the new
+// window. The rebuilt pass has to come back on the same shared element, or the
+// pop-out shows 0:00 while the status bar reports the real position.
+describe('a playing embed moved into a pop-out', () => {
+	it('shows the playing position in the pop-out, as the status bar does', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, snapshot } = await playingEmbed(shared);
+
+			makePopoutWindow().document.body.appendChild(container);
+			await tick();
+
+			expect(timeText(container)).toBe('0:30 / 10:00');
+			expect(shared.audio.paused).toBe(false);
+			expect(snapshot()?.currentTime).toBe(30);
+			expect(snapshot()?.paused).toBe(false);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('follows a command run after the move in the pop-out display', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, plugin, snapshot } = await playingEmbed(shared);
+			makePopoutWindow().document.body.appendChild(container);
+			await tick();
+
+			expect(plugin.invokeCommand('skip-playback-forward')).toBe(true);
+
+			expect(timeText(container)).toBe('0:40 / 10:00');
+			expect(snapshot()?.currentTime).toBe(40);
+		} finally {
+			shared.restore();
+		}
 	});
 });

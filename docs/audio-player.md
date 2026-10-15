@@ -141,7 +141,7 @@ A recording you leave part-heard **remembers where you stopped**, and the next t
 
 Two boundaries keep the memory useful. A position in the **first 15 seconds** is not remembered, because resuming there saves nothing. A position in the **last 15 seconds** counts as heard out, and so does playing a recording to its end: either clears the stored position, so a recording you have finished starts from the beginning next time.
 
-The position lives in the recording's [sidecar file](transcription.md), next to its markers and chapters, so it travels with the recording through a rename and is removed with it. A recording that carries nothing else gets a sidecar of its own once it is left part-heard, and that file is deleted again as soon as the position is cleared.
+The position lives in the recording's [sidecar file](transcription.md), next to its markers and chapters, so it travels with the recording through a rename and goes to the trash with it. A recording that carries nothing else gets a sidecar of its own once it is left part-heard, and that file is deleted again, without a trip to the trash, as soon as the position is cleared.
 
 A [timecode link](#timecode-links) outranks the remembered position. An embed that names a position, such as `![[recording#t=1:30]]`, starts at the position the link asks for, because that is an explicit request and the memory is not.
 
@@ -268,7 +268,10 @@ Markers are stored in a **sidecar file** next to each recording, named `<recordi
 
 - Markers **survive a plugin reinstall**.
 - They **travel with the vault**.
-- Renaming, moving, or deleting the recording **moves or removes its sidecar automatically**, so markers stay attached and never orphan. Deleting all of a recording's markers removes the sidecar once it holds no transcript data either, so the vault is not left with empty files.
+- Renaming or moving the recording **moves its sidecar with it**, so markers stay attached and never orphan. If a leftover sidecar from an earlier recording already sits at the new name, it goes to the trash and the moved recording keeps its own.
+- Deleting the recording **sends its sidecar to the same trash**: the system trash, Obsidian's `.trash` folder, or permanent deletion, whichever **Settings > Files and links > Deleted files** names. To bring a deleted recording back with its markers, chapters, and speaker names, restore **both** files, `recording.webm` and `recording.webm.markers.json`.
+- Deleting all of a recording's markers removes the sidecar once it holds no transcript data or playback position either, so the vault is not left with empty files. That file is removed outright rather than trashed: it had nothing left in it, and a trash entry for every cleared marker list or finished listen would only be clutter.
+- A sidecar that **sync delivers late** - the recording arrives from another device a moment before its sidecar does - is not overwritten by a position or marker saved in between: the plugin reads the arriving file and applies the change to it, so markers made on the other device are kept.
 - A sidecar file that exists but **cannot be read** (damaged JSON, a sync conflict) is treated as unreachable rather than empty: the plugin pauses writes to it so the possibly intact data is never overwritten, and re-reads the file on every access, so fixing or removing it recovers without a restart. A marker edit refused this way is **said out loud**: the player shows why the save failed and rolls the view back instead of pretending the marker was added.
 
 Markers can also be added **while recording**, before the file even exists as a player - see [Marking moments while recording](recording.md#marking-moments-while-recording). Those markers attach to the recording's sidecar at save and show up in the player once the recording stops.
@@ -344,6 +347,8 @@ The enhanced player takes over **audio-only** files. Other media is left to Obsi
 - **Files the app cannot decode** fall back to the built-in embed as well.
 
 Crucially, the media kind is classified from the file's **container metadata, not its extension**. Each file is probed once and cached. This means an **audio-only `.mp4` or `.webm`** recording still gets the enhanced player, even though those containers can also hold video. A file that has not been probed yet renders natively for a moment and is then upgraded to the enhanced player in place once the probe confirms it is audio-only.
+
+The probe reads the container's list of tracks from its headers, fetching only the part of the file that holds them, so the answer arrives without loading a decoder and does not depend on how quickly the file starts to play. A file whose headers the plugin cannot read within a second, or whose audio type the app does not say it plays, is instead loaded into a hidden media element, which tries the file for real: a load error means the app cannot play it. Only if neither gives an answer within four seconds of the probe starting is the file treated as audio for the current session, without remembering that guess for the next one.
 
 The waveform is drawn for supported audio files up to the decode ceiling of **1 GB** on the desktop and **256 MB** in the mobile app. A larger or undecodable file falls back to the plain (still seekable) bar, as described under [Waveform seek bar](#waveform-seek-bar).
 

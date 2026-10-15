@@ -163,7 +163,7 @@ describe('every format on a Windows desktop', () => {
 		// Recorded straight into the container by MediaRecorder for a single
 		// track, which never asks the WebCodecs encoder, so the rate does not
 		// matter there; mixed and then encoded by mediabunny for a merged
-		// session, which asks for HE-AAC at 22.05 kHz.
+		// session, whose encoder - Windows' here - refuses 22.05 kHz.
 		...[FORMAT_M4A, FORMAT_MP4].map((format) => ({
 			...AAC_ROW,
 			format,

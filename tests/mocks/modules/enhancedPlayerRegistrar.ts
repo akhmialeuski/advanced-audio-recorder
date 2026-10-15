@@ -18,14 +18,12 @@ export interface RegistrarDouble {
 	primeSavedRecordingsForEnhancement: jest.Mock;
 }
 
-export const EnhancedPlayerRegistrar = jest.fn(
-	(): RegistrarDouble => ({
-		register: jest.fn(),
-		dispose: jest.fn(),
-		refresh: jest.fn(),
-		subscribePlayback: jest.fn(),
-		currentPlaybackState: jest.fn(() => null),
-		reloadMarkersFor: jest.fn(),
-		primeSavedRecordingsForEnhancement: jest.fn(),
-	}),
-);
+export const EnhancedPlayerRegistrar = jest.fn((): RegistrarDouble => ({
+	register: jest.fn(),
+	dispose: jest.fn(),
+	refresh: jest.fn(),
+	subscribePlayback: jest.fn(),
+	currentPlaybackState: jest.fn(() => null),
+	reloadMarkersFor: jest.fn(),
+	primeSavedRecordingsForEnhancement: jest.fn(),
+}));

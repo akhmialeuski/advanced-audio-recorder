@@ -213,7 +213,7 @@ describe('writeTranscriptFile', () => {
 		const app = createMockApp({
 			vault: {
 				create,
-				getAbstractFileByPath: jest.fn().mockReturnValue(null),
+				getFileByPath: jest.fn().mockReturnValue(null),
 				adapter: { exists: jest.fn().mockResolvedValue(false) },
 			},
 		}).app;
@@ -240,7 +240,7 @@ describe('writeTranscriptFile', () => {
 		const app = createMockApp({
 			vault: {
 				create,
-				getAbstractFileByPath: jest.fn((path: string) =>
+				getFileByPath: jest.fn((path: string) =>
 					existing.has(path) ? { path } : null,
 				),
 				adapter: {

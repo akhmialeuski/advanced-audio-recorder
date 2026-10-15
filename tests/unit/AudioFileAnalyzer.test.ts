@@ -6,6 +6,7 @@
 import {
 	getAudioFileInfo,
 	isKnownLongerThan,
+	probeAudioMetadata,
 	probeDurationSeconds,
 	readAudioMetadata,
 } from 'src/utils/AudioFileAnalyzer';
@@ -14,6 +15,8 @@ import type { TFile } from 'obsidian';
 import { createFile } from '../helpers/createApp';
 import {
 	computeDuration as mockComputeDuration,
+	firstUrlSourceOptions,
+	getMimeType as mockGetMimeType,
 	getPrimaryAudioTrack as mockGetPrimaryAudioTrack,
 	inputDispose as mockDispose,
 } from '../mocks/modules/mediabunny';
@@ -65,6 +68,48 @@ jest.mock('src/platform/capabilities', () => {
 	return { ...actual, isDecodableSize: jest.fn(() => true) };
 });
 
+/** What a parsed track reports, for the fields a test cares about. */
+interface ParsedTrack {
+	sampleRate?: number;
+	channels?: number;
+	codec?: string | null;
+	declaredBitrate?: number | null;
+	packetBitrate?: number;
+}
+
+/**
+ * A primary audio track as mediabunny hands it back once a container parsed:
+ * the numbers the dialog shows and the two bitrate sources it reads. By
+ * default the track declares no bitrate, as every container but MP4 does, and
+ * its packets carry 128 kbps of Opus.
+ * @param track - The fields that differ from that default
+ */
+function parsedTrack(track: ParsedTrack = {}): {
+	getSampleRate: () => number;
+	getNumberOfChannels: () => number;
+	getCodec: jest.Mock;
+	getAverageBitrate: jest.Mock;
+	computePacketStats: jest.Mock;
+} {
+	return {
+		getSampleRate: () => track.sampleRate ?? 48000,
+		getNumberOfChannels: () => track.channels ?? 2,
+		getCodec: jest
+			.fn()
+			.mockResolvedValue(
+				track.codec === undefined ? 'opus' : track.codec,
+			),
+		getAverageBitrate: jest
+			.fn()
+			.mockResolvedValue(track.declaredBitrate ?? null),
+		computePacketStats: jest.fn().mockResolvedValue({
+			packetCount: 4500,
+			averagePacketRate: 50,
+			averageBitrate: track.packetBitrate ?? 128000,
+		}),
+	};
+}
+
 // Setup mock AudioContext
 const mockDecodeAudioData = jest.fn();
 const mockClose = jest.fn();
@@ -102,6 +147,7 @@ describe('getAudioFileInfo', () => {
 			new Error('unparseable container'),
 		);
 		mockComputeDuration.mockResolvedValue(0);
+		mockGetMimeType.mockResolvedValue('audio/webm; codecs="opus"');
 
 		Object.defineProperty(window, 'AudioContext', {
 			writable: true,
@@ -110,21 +156,22 @@ describe('getAudioFileInfo', () => {
 	});
 
 	it('reads metadata from the container probe without decoding', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 48000,
-			getNumberOfChannels: () => 2,
-		});
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 48000, channels: 2 }),
+		);
 		mockComputeDuration.mockResolvedValue(90);
 
 		const result = await getAudioFileInfo(app, file);
 
+		// The bitrate is the audio's own, from its packets: the file size
+		// over the length would have said 140 kbps, counting the container.
 		expect(result).toEqual({
 			fileName: 'test.webm',
 			fileSize: '1.5 MB',
 			duration: '1:30',
 			containerFormat: 'audio/webm',
 			audioCodec: 'opus',
-			bitrate: '140 kbps',
+			bitrate: '128 kbps',
 			sampleRate: '48000 Hz',
 			channels: '2 (Stereo)',
 		});
@@ -134,10 +181,9 @@ describe('getAudioFileInfo', () => {
 	});
 
 	it('reads only ranges, never the whole file, when the probe parses', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 48000,
-			getNumberOfChannels: () => 2,
-		});
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 48000, channels: 2 }),
+		);
 		mockComputeDuration.mockResolvedValue(90);
 
 		await getAudioFileInfo(app, file);
@@ -148,18 +194,31 @@ describe('getAudioFileInfo', () => {
 		const { UrlSource } = jest.requireMock<{ UrlSource: jest.Mock }>(
 			'mediabunny',
 		);
-		expect(UrlSource).toHaveBeenCalledWith('app://vault/test.webm');
+		expect(UrlSource).toHaveBeenCalledWith(
+			'app://vault/test.webm',
+			expect.anything(),
+		);
 		expect(app.vault.readBinary).not.toHaveBeenCalled();
+	});
+
+	it('gives up on a failed request instead of retrying it', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue(parsedTrack());
+		mockComputeDuration.mockResolvedValue(90);
+
+		await getAudioFileInfo(app, file);
+
+		// Mediabunny's default retries a rejected fetch forever unless it
+		// suspects a cross-origin refusal, and the mobile WebView serves the
+		// vault from its own origin: the dialog waited on a file that would
+		// never answer. No retry hands the failure to the buffered read.
+		expect(firstUrlSourceOptions().getRetryDelay?.(1)).toBeNull();
 	});
 
 	it('falls back to the whole-file read when the ranged probe cannot parse', async () => {
 		jest.spyOn(console, 'warn').mockImplementation();
 		mockGetPrimaryAudioTrack
 			.mockRejectedValueOnce(new Error('range request refused'))
-			.mockResolvedValue({
-				getSampleRate: () => 48000,
-				getNumberOfChannels: () => 2,
-			});
+			.mockResolvedValue(parsedTrack({ sampleRate: 48000, channels: 2 }));
 		mockComputeDuration.mockResolvedValue(90);
 
 		const result = await getAudioFileInfo(app, file);
@@ -192,10 +251,7 @@ describe('getAudioFileInfo', () => {
 					if (input.disposed) {
 						throw new Error('Input has been disposed.');
 					}
-					return {
-						getSampleRate: () => 48000,
-						getNumberOfChannels: () => 2,
-					};
+					return parsedTrack({ sampleRate: 48000, channels: 2 });
 				},
 			);
 			mockComputeDuration.mockResolvedValue(90);
@@ -207,6 +263,118 @@ describe('getAudioFileInfo', () => {
 			expect(mockDecodeAudioData).not.toHaveBeenCalled();
 		},
 	);
+
+	it('names the container and codec the parse read, not the ones the extension suggests', async () => {
+		// A .webm can hold Vorbis, and a file renamed by hand anything at all.
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ codec: 'vorbis' }),
+		);
+		mockGetMimeType.mockResolvedValue('audio/ogg; codecs="vorbis"');
+		mockComputeDuration.mockResolvedValue(90);
+
+		const result = await getAudioFileInfo(app, file);
+
+		expect(result).toMatchObject({
+			containerFormat: 'audio/ogg',
+			audioCodec: 'vorbis',
+		});
+	});
+
+	it('reports the bitrate the track declares without walking its packets', async () => {
+		const track = parsedTrack({ declaredBitrate: 96000 });
+		mockGetPrimaryAudioTrack.mockResolvedValue(track);
+		mockComputeDuration.mockResolvedValue(90);
+
+		const result = await getAudioFileInfo(app, file);
+
+		expect(result?.bitrate).toBe('96 kbps');
+		expect(track.computePacketStats).not.toHaveBeenCalled();
+	});
+
+	it('measures an undeclared bitrate over a bounded run of packets', async () => {
+		// The walk reads packet headers only, but over a container without an
+		// index that is the whole file through the resource URL, so it stops
+		// after enough packets to settle a variable-bitrate average.
+		const track = parsedTrack({ packetBitrate: 32400 });
+		mockGetPrimaryAudioTrack.mockResolvedValue(track);
+		mockComputeDuration.mockResolvedValue(90);
+
+		const result = await getAudioFileInfo(app, file);
+
+		expect(result?.bitrate).toBe('32 kbps');
+		expect(track.computePacketStats).toHaveBeenCalledWith(30000);
+	});
+
+	it.each([
+		{ name: 'declare none and carry no packets', packetBitrate: 0 },
+		{
+			name: 'last no time at all',
+			packetBitrate: Number.POSITIVE_INFINITY,
+		},
+	])(
+		'falls back to the size over the length when the packets $name',
+		async ({ packetBitrate }) => {
+			mockGetPrimaryAudioTrack.mockResolvedValue(
+				parsedTrack({ declaredBitrate: 0, packetBitrate }),
+			);
+			mockComputeDuration.mockResolvedValue(90);
+
+			const result = await getAudioFileInfo(app, file);
+
+			expect(result?.bitrate).toBe('140 kbps');
+		},
+	);
+
+	it('says the codec is unknown where the parse could not name it', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ codec: null }),
+		);
+		mockComputeDuration.mockResolvedValue(90);
+
+		const result = await getAudioFileInfo(app, file);
+
+		// The extension would have said opus, which the bytes did not.
+		expect(result?.audioCodec).toBe('unknown');
+	});
+
+	it('keeps the numbers and describes by extension when the contents cannot be read', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 44100, channels: 1 }),
+		);
+		mockGetMimeType.mockRejectedValue(new Error('no codec string'));
+		mockComputeDuration.mockResolvedValue(90);
+
+		const result = await getAudioFileInfo(app, file);
+
+		expect(result).toMatchObject({
+			containerFormat: 'audio/webm',
+			audioCodec: 'opus',
+			bitrate: '140 kbps',
+			sampleRate: '44100 Hz',
+			channels: '1 (Mono)',
+		});
+		expect(warn).toHaveBeenCalledWith(
+			'[AudioRecorder] Could not read what test.webm holds; describing it by its extension:',
+			expect.any(Error),
+		);
+	});
+
+	it('describes the contents from the bytes when only the buffered parse reads them', async () => {
+		jest.spyOn(console, 'warn').mockImplementation();
+		mockGetPrimaryAudioTrack
+			.mockRejectedValueOnce(new Error('range request refused'))
+			.mockResolvedValue(parsedTrack({ codec: 'flac' }));
+		mockGetMimeType.mockResolvedValue('audio/flac');
+		mockComputeDuration.mockResolvedValue(90);
+
+		const result = await getAudioFileInfo(app, file);
+
+		expect(result).toMatchObject({
+			containerFormat: 'audio/flac',
+			audioCodec: 'flac',
+		});
+	});
 
 	it('disposes the probe input even when parsing fails', async () => {
 		jest.spyOn(console, 'warn').mockImplementation();
@@ -308,10 +476,9 @@ describe('getAudioFileInfo', () => {
 		// parse streamed from answers it: reading the file in to ask would hold
 		// the whole recording in memory, and a second copy of it for the blob,
 		// for one number - on exactly the files the plugin records itself.
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 48000,
-			getNumberOfChannels: () => 2,
-		});
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 48000, channels: 2 }),
+		);
 		mockComputeDuration.mockResolvedValue(0);
 		mediaDuration = 90;
 
@@ -327,10 +494,9 @@ describe('getAudioFileInfo', () => {
 	});
 
 	it('keeps the ranged parse when the media read answers nothing either', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 48000,
-			getNumberOfChannels: () => 2,
-		});
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 48000, channels: 2 }),
+		);
 		mockComputeDuration.mockResolvedValue(0);
 		// mediaDuration stays null, which makes the element report an error.
 
@@ -405,6 +571,56 @@ describe('getAudioFileInfo', () => {
 			'Could not read this audio file to show its details.',
 		);
 	});
+
+	it('tells the user when reading the file fails outright', async () => {
+		jest.spyOn(console, 'warn').mockImplementation();
+		const error = jest.spyOn(console, 'error').mockImplementation();
+		jest.mocked(app.vault.readBinary).mockRejectedValue(
+			new Error('file vanished'),
+		);
+
+		const result = await getAudioFileInfo(app, file);
+
+		expect(result).toBeNull();
+		expect(Notice).toHaveBeenCalledWith(
+			'An error occurred while analyzing the audio file.',
+		);
+		expect(error).toHaveBeenCalledWith(
+			'[AudioRecorder] Error analyzing audio file:',
+			expect.any(Error),
+		);
+	});
+});
+
+describe('probeAudioMetadata', () => {
+	it('answers from the container headers alone', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 16000, channels: 1 }),
+		);
+		mockComputeDuration.mockResolvedValue(42);
+
+		const result = await probeAudioMetadata(new ArrayBuffer(8), 'a.wav');
+
+		// The cheap question a caller asks before deciding to decode, so it
+		// asks nothing more of the file than the headers: no description, no
+		// browser read of the length, no decode.
+		expect(result).toEqual({
+			durationSeconds: 42,
+			sampleRate: 16000,
+			channels: 1,
+		});
+		expect(mockGetMimeType).not.toHaveBeenCalled();
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('answers null for a container without an audio track', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue(null);
+
+		const result = await probeAudioMetadata(new ArrayBuffer(8), 'a.mp4');
+
+		expect(result).toBeNull();
+		expect(mockDispose).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe('readAudioMetadata', () => {
@@ -422,10 +638,9 @@ describe('readAudioMetadata', () => {
 	});
 
 	it('answers from the container headers without decoding', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 44100,
-			getNumberOfChannels: () => 1,
-		});
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 44100, channels: 1 }),
+		);
 		mockComputeDuration.mockResolvedValue(120);
 
 		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
@@ -453,10 +668,9 @@ describe('readAudioMetadata', () => {
 		// finished, which is what this plugin's own recordings look like. Those
 		// are also the long ones, so answering with a full PCM decode would put
 		// the most expensive read in the plugin on its most ordinary path.
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 48000,
-			getNumberOfChannels: () => 2,
-		});
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 48000, channels: 2 }),
+		);
 		mockComputeDuration.mockResolvedValue(0);
 		mediaDuration = 3600;
 
@@ -471,10 +685,9 @@ describe('readAudioMetadata', () => {
 	});
 
 	it('names the container so the browser picks a demuxer instead of sniffing', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 48000,
-			getNumberOfChannels: () => 2,
-		});
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 48000, channels: 2 }),
+		);
 		mockComputeDuration.mockResolvedValue(0);
 		mediaDuration = 10;
 
@@ -491,10 +704,9 @@ describe('readAudioMetadata', () => {
 		// expanded to PCM to ask a question that was already answered "no". A
 		// two-hour recording is gigabytes of samples, on the path the transcribe
 		// dialog takes every time it opens.
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 48000,
-			getNumberOfChannels: () => 2,
-		});
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 48000, channels: 2 }),
+		);
 		mockComputeDuration.mockResolvedValue(0);
 		mediaDuration = null;
 
@@ -562,10 +774,9 @@ describe('readAudioMetadata', () => {
 		// The cheap header answer settles most files, and it settles them
 		// outright: opening a media element on top of it would cost a second
 		// read of the same bytes for a number already in hand.
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 44100,
-			getNumberOfChannels: () => 1,
-		});
+		mockGetPrimaryAudioTrack.mockResolvedValue(
+			parsedTrack({ sampleRate: 44100, channels: 1 }),
+		);
 		mockComputeDuration.mockResolvedValue(120);
 
 		await readAudioMetadata(new ArrayBuffer(8), 'a.webm');

@@ -165,29 +165,6 @@ export function nameFilter(placeholder: string): {
 }
 
 /**
- * A labelled row repeating a list's add affordance, declared where the renderer
- * draws only a plus icon in the list header. It sits beside the list rather
- * than in it, since a row inside would be filtered away by the list's own
- * search exactly when an empty result makes adding one the obvious next move.
- * @param name - The label, which is also the icon's tooltip
- * @param desc - What the row creates
- * @param action - The list's own add action
- */
-export function addItemRow(
-	name: string,
-	desc: string,
-	action: () => void,
-): SettingDefinition {
-	return {
-		name,
-		desc,
-		action: (): void => {
-			action();
-		},
-	};
-}
-
-/**
  * The row that picks which engine does a job. Every job that calls an engine
  * declares one, right under the switch that turns the job on, so the engine is
  * settled before anything about how the job runs.

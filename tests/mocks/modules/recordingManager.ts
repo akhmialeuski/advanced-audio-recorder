@@ -27,20 +27,18 @@ export interface RecorderDouble {
 	getInputLevel: jest.Mock;
 }
 
-export const RecordingManager = jest.fn(
-	(): RecorderDouble => ({
-		toggleRecording: jest.fn().mockResolvedValue(undefined),
-		startRecording: jest.fn().mockResolvedValue(undefined),
-		togglePauseResume: jest.fn(),
-		isSessionActive: jest.fn(() => false),
-		stopRecording: jest.fn().mockResolvedValue(undefined),
-		cleanup: jest.fn(),
-		updateSettings: jest.fn(),
-		getStatus: jest.fn(() => RecordingStatus.Idle),
-		canDropMarker: jest.fn(() => false),
-		captureMarkerDraft: jest.fn(() => null),
-		getElapsedMs: jest.fn(() => 0),
-		getRecordedBytes: jest.fn(() => 0),
-		getInputLevel: jest.fn(() => 0),
-	}),
-);
+export const RecordingManager = jest.fn((): RecorderDouble => ({
+	toggleRecording: jest.fn().mockResolvedValue(undefined),
+	startRecording: jest.fn().mockResolvedValue(undefined),
+	togglePauseResume: jest.fn(),
+	isSessionActive: jest.fn(() => false),
+	stopRecording: jest.fn().mockResolvedValue(undefined),
+	cleanup: jest.fn(),
+	updateSettings: jest.fn(),
+	getStatus: jest.fn(() => RecordingStatus.Idle),
+	canDropMarker: jest.fn(() => false),
+	captureMarkerDraft: jest.fn(() => null),
+	getElapsedMs: jest.fn(() => 0),
+	getRecordedBytes: jest.fn(() => 0),
+	getInputLevel: jest.fn(() => 0),
+}));

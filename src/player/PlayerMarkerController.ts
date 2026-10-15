@@ -26,6 +26,7 @@ import {
 	type ChapterSpan,
 } from '../markers/markerModel';
 import { defaultMarkerLabel, generateMarkerId } from '../markers/markerFactory';
+import { errorMessage } from '../errors';
 
 /** Lifecycle and display hooks the controller needs from the player. */
 export interface PlayerMarkerHost {
@@ -257,8 +258,7 @@ export class PlayerMarkerController {
 				error,
 			);
 			if (!this.host.isUnloaded()) {
-				const message =
-					error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				new Notice(`Markers could not be saved: ${message}`);
 				await this.load();
 			}

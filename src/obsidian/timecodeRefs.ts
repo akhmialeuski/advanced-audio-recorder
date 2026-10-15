@@ -12,8 +12,12 @@
 
 import { parseLinktext } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import { parseTimecodeSubpath } from '../player/timecodeLinks';
+import {
+	hasTimecodeSubpath,
+	parseTimecodeSubpath,
+} from '../player/timecodeLinks';
 import type { TimecodeLinkBuilder } from '../transcription/transcriptFormat';
+import { linksInLine } from './sourceLinks';
 
 /** One link/embed of a note whose `#t=` subpath resolves to the audio. */
 export interface AudioTimecodeRef {
@@ -40,21 +44,20 @@ export interface LineTimecodeRef extends ResolvedTimecodeLink {
 }
 
 /**
- * Resolves one link target to the file it points into and the time its `#t=`
- * subpath carries.
+ * Resolves one link target, already split into path and subpath, to the file
+ * it points into and the time its `#t=` subpath carries.
  * @param app - Obsidian App
  * @param note - Note the link is written in
- * @param link - Link target without its alias, e.g. `rec.m4a#t=12`
+ * @param target - The link's path and subpath, as `parseLinktext` splits them
  * @returns The reference, or null when the link carries no `#t=` subpath or
  *   resolves to no file
  */
 function resolveTimecodeLink(
 	app: App,
 	note: TFile,
-	link: string,
+	{ path, subpath }: { path: string; subpath: string },
 ): ResolvedTimecodeLink | null {
-	const { path, subpath } = parseLinktext(link);
-	if (!subpath.replace(/^#/, '').startsWith('t=')) {
+	if (!hasTimecodeSubpath(subpath)) {
 		return null;
 	}
 	const file = app.metadataCache.getFirstLinkpathDest(path, note.path);
@@ -80,7 +83,11 @@ export function audioTimecodeRefs(
 		return refs;
 	}
 	for (const ref of [...(cache.links ?? []), ...(cache.embeds ?? [])]) {
-		const resolved = resolveTimecodeLink(app, note, ref.link);
+		const resolved = resolveTimecodeLink(
+			app,
+			note,
+			parseLinktext(ref.link),
+		);
 		if (resolved?.file.path !== audioPath) {
 			continue;
 		}
@@ -91,28 +98,6 @@ export function audioTimecodeRefs(
 		});
 	}
 	return refs;
-}
-
-/**
- * A wikilink or a Markdown link in note source, either of them possibly an
- * embed, with its target captured: `[[target|alias]]` in group 1,
- * `[label](<target>)` in group 2, and `[label](target)` in group 3, where
- * Obsidian URL-encodes the target.
- */
-const SOURCE_LINK_PATTERN =
-	/!?\[\[([^\]|\n]+)(?:\|[^\]\n]*)?\]\]|!?\[[^\]\n]*\]\((?:<([^>\n]+)>|([^)\s]+))\)/g;
-
-/**
- * Decodes the target of a Markdown link the way the metadata cache reads it.
- * A malformed escape is left as written, since that is what the link says.
- * @param target - The target between the parentheses
- */
-function decodeLinkTarget(target: string): string {
-	try {
-		return decodeURI(target);
-	} catch {
-		return target;
-	}
 }
 
 /**
@@ -132,12 +117,8 @@ export function lineTimecodeRef(
 	note: TFile,
 	lineText: string,
 ): LineTimecodeRef | null {
-	for (const match of lineText.matchAll(SOURCE_LINK_PATTERN)) {
-		const [, wikiTarget, bracketedTarget, encodedTarget] = match;
-		const link =
-			wikiTarget ??
-			bracketedTarget ??
-			decodeLinkTarget(String(encodedTarget));
+	// Each link comes already split, so it is not parsed a second time.
+	for (const link of linksInLine(lineText)) {
 		const ref = resolveTimecodeLink(app, note, link);
 		if (ref && ref.seconds !== null) {
 			return { file: ref.file, seconds: ref.seconds };

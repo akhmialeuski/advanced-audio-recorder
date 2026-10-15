@@ -233,6 +233,31 @@ describe('Vault writers', () => {
 		await expect(vault.read(file)).resolves.toBe('body');
 	});
 
+	// The real create methods throw when the path already holds a file. A
+	// double that overwrote instead would let code that creates over an
+	// existing recording or note pass here and throw in Obsidian.
+	it('create refuses a path that already holds a file, keeping its text', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'note.md', content: 'before' });
+
+		await expect(vault.create('note.md', 'after')).rejects.toThrow(
+			'File already exists.',
+		);
+		await expect(vault.read(file)).resolves.toBe('before');
+	});
+
+	it('createBinary refuses a path that only the disk holds', async () => {
+		const vault = new Vault();
+		await vault.adapter.writeBinary('rec.wav', bufferOf([1]));
+
+		await expect(
+			vault.createBinary('rec.wav', bufferOf([2])),
+		).rejects.toThrow('File already exists.');
+		await expect(vault.adapter.readBinary('rec.wav')).resolves.toEqual(
+			bufferOf([1]),
+		);
+	});
+
 	it('modify replaces the stored text', async () => {
 		const vault = new Vault();
 		const file = seedOne(vault, { path: 'note.md', content: 'before' });
@@ -477,5 +502,90 @@ describe('Vault.forget', () => {
 		vault.forget('Audio/never.wav');
 
 		expect(deleted).not.toHaveBeenCalled();
+	});
+});
+
+describe('Vault.rename', () => {
+	it('serves the contents under the new path', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'Audio/rec.wav', content: 'x' });
+
+		await vault.rename(file, 'Archive/rec.wav');
+
+		expect(vault.getFileByPath('Audio/rec.wav')).toBeNull();
+		await expect(vault.adapter.read('Archive/rec.wav')).resolves.toBe('x');
+	});
+
+	// Obsidian moves the TFile it handed out rather than minting a new one,
+	// so a reference held across the rename keeps naming the file.
+	it('keeps the TFile and rewrites its path and names', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'Audio/rec.wav', content: 'x' });
+
+		await vault.rename(file, 'Audio/take.webm');
+
+		expect(vault.getFileByPath('Audio/take.webm')).toBe(file);
+		expect(file).toMatchObject({
+			path: 'Audio/take.webm',
+			name: 'take.webm',
+			basename: 'take',
+			extension: 'webm',
+		});
+	});
+
+	it('files the moved file under its new folder only', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'Audio/rec.wav', content: 'x' });
+		const oldFolder = at(vault.getRoot().children, 0) as TFolder;
+
+		await vault.rename(file, 'Archive/rec.wav');
+
+		expect(oldFolder.children).not.toContain(file);
+		expect(file.parent?.path).toBe('Archive');
+		expect(file.parent?.children).toContain(file);
+	});
+
+	it('tells the listeners the old path', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'Audio/rec.wav', content: 'x' });
+		const renamed = jest.fn();
+		vault.on('rename', renamed);
+
+		await vault.rename(file, 'Archive/rec.wav');
+
+		expect(renamed).toHaveBeenCalledWith(file, 'Audio/rec.wav');
+	});
+
+	it('refuses a destination that is taken, as the real vault does', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'a.wav', content: 'a' });
+		seedOne(vault, { path: 'b.wav', content: 'b' });
+
+		await expect(vault.rename(file, 'b.wav')).rejects.toThrow(
+			'Destination file already exists!',
+		);
+		await expect(vault.adapter.read('b.wav')).resolves.toBe('b');
+	});
+
+	it('refuses a file it does not hold', async () => {
+		const vault = new Vault();
+
+		await expect(
+			vault.rename(new TFile('gone.wav'), 'elsewhere.wav'),
+		).rejects.toThrow('no file at gone.wav');
+	});
+});
+
+describe('Vault.delete', () => {
+	it('drops the file and tells the listeners', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'rec.wav', content: 'x' });
+		const deleted = jest.fn();
+		vault.on('delete', deleted);
+
+		await vault.delete(file);
+
+		expect(vault.getFileByPath('rec.wav')).toBeNull();
+		expect(deleted).toHaveBeenCalledWith(file);
 	});
 });

@@ -37,7 +37,6 @@ import {
 	type TranscriptionBlocks,
 } from './context';
 import {
-	addItemRow,
 	imperativeBlockRow,
 	nameFilter,
 	sectionItems,
@@ -170,14 +169,12 @@ function modelPickerRow(
  * @param engine - The engine whose catalogue this is
  * @param models - The catalogue's own settings fields and copy
  * @param blocks - The list edits, which the tab owns
- * @param declareAddRow - Whether the tree owes the list a labelled add row
  */
 function modelCataloguePage(
 	settings: AudioRecorderSettings,
 	engine: EngineId,
 	models: ProviderModels,
 	blocks: TranscriptionBlocks,
-	declareAddRow: boolean,
 ): SettingGroupItem {
 	const saved = models.models(settings);
 	const add = (): void => {
@@ -209,32 +206,21 @@ function modelCataloguePage(
 						blocks.removeModel(engine, id);
 					}
 				},
-				items: saved.map(
-					(id): SettingGroupItem => ({
-						name: id,
-						// The row is the choice: tapping an id puts it to work,
-						// and the one in use says so. A row's description is a
-						// string the framework renders, not a predicate it
-						// re-evaluates, so this is the selection as the tree was
-						// built - which is what a rebuild is for.
-						...(id === models.model(settings)
-							? { desc: 'In use' }
-							: {}),
-						action: (): void => {
-							blocks.selectModel(engine, id);
-						},
-					}),
-				),
+				items: saved.map((id): SettingGroupItem => ({
+					name: id,
+					// The row is the choice: tapping an id puts it to work,
+					// and the one in use says so. A row's description is a
+					// string the framework renders, not a predicate it
+					// re-evaluates, so this is the selection as the tree was
+					// built - which is what a rebuild is for.
+					...(id === models.model(settings)
+						? { desc: 'In use' }
+						: {}),
+					action: (): void => {
+						blocks.selectModel(engine, id);
+					},
+				})),
 			},
-			...(declareAddRow
-				? [
-						addItemRow(
-							'Add model',
-							'Saves another model id for this provider.',
-							add,
-						),
-					]
-				: []),
 		],
 	};
 }
@@ -251,13 +237,11 @@ function modelCataloguePage(
  * @param settings - Live settings, read for the entry's value
  * @param engine - The engine being declared
  * @param blocks - The password field and the list edits, which the tab owns
- * @param declareAddRow - Whether the tree owes a list a labelled add row
  */
 function enginePage(
 	settings: AudioRecorderSettings,
 	engine: EngineDescriptor,
 	blocks: TranscriptionBlocks,
-	declareAddRow: boolean,
 ): SettingGroupItem {
 	const connection = accountOf(engine);
 	const rows: SettingGroupItem[] = [];
@@ -286,13 +270,7 @@ function enginePage(
 		// question a dropdown answers in place.
 		rows.push(
 			modelPickerRow(settings, models),
-			modelCataloguePage(
-				settings,
-				engine.id,
-				models,
-				blocks,
-				declareAddRow,
-			),
+			modelCataloguePage(settings, engine.id, models, blocks),
 		);
 	}
 	if (engine.maxTokens) {
@@ -363,12 +341,7 @@ export function enginesPage(ctx: SettingsDefinitionContext): SettingGroupItem {
 		visible: (): boolean => transcriptionPageActive(ctx.settings),
 		items: sectionItems(
 			ENGINE_ORDER.map((id) =>
-				enginePage(
-					ctx.settings,
-					ENGINES[id],
-					ctx.transcriptionBlocks,
-					ctx.declareListAddRow,
-				),
+				enginePage(ctx.settings, ENGINES[id], ctx.transcriptionBlocks),
 			),
 		),
 	};

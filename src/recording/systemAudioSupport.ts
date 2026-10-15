@@ -15,6 +15,7 @@
  */
 
 import { hostProcess } from '../platform/hostProcess';
+import { errorMessage } from '../errors';
 
 /** One grant handed back to a display-media request. */
 interface DisplayMediaGrant {
@@ -304,7 +305,7 @@ async function screenForGrant(
 		// propagate, a failure of the remote module reached the notice as
 		// whatever internal sentence it carries, alone and with nothing in
 		// it a user could act on.
-		const reason = error instanceof Error ? error.message : String(error);
+		const reason = errorMessage(error);
 		throw new Error(
 			`The screens this machine offers could not be listed: ${reason}. ` +
 				'Record a loopback input device instead, such as Stereo Mix or ' +
@@ -375,7 +376,7 @@ async function grantedDisplayMedia(): Promise<MediaStream> {
 					'device, which a session started any way at all can use.',
 			);
 		}
-		const reason = error instanceof Error ? error.message : String(error);
+		const reason = errorMessage(error);
 		throw new Error(
 			`This computer's output could not be captured: ${reason}. ` +
 				'Record a loopback input device instead, such as Stereo Mix or ' +

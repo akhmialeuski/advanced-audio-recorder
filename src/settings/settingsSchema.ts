@@ -716,9 +716,7 @@ export interface AudioRecorderSettings {
  */
 export type PrimitiveSettingKey = {
 	[K in keyof AudioRecorderSettings]: AudioRecorderSettings[K] extends
-		| string
-		| number
-		| boolean
+		string | number | boolean
 		? K
 		: never;
 }[keyof AudioRecorderSettings];

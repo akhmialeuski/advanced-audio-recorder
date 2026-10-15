@@ -71,6 +71,7 @@ import {
 } from '../speakers/applySpeakerRenames';
 import { formatTimecode } from '../utils/TimeUtils';
 import { TextInputSuggest } from './TextInputSuggest';
+import { errorMessage } from '../errors';
 
 /** Value the profile dropdown uses for "the recording's own roster". */
 const RECORDING_ROSTER_OPTION = '';
@@ -596,8 +597,7 @@ export class SpeakerRenameModal extends PluginModal {
 				);
 				this.close();
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				new Notice(`Failed to rename speakers: ${message}`);
 			}
 		});
@@ -669,8 +669,7 @@ export class SpeakerRenameModal extends PluginModal {
 				await this.options.sidecar.popHistory(this.file.path);
 				this.close();
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				new Notice(`Failed to undo the rename: ${message}`);
 			}
 		});
@@ -761,8 +760,7 @@ export class SpeakerRenameModal extends PluginModal {
 				await this.options.saveSettings();
 			}
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to add names to profile ${target.name}:`,
 				error,

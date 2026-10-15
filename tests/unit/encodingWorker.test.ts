@@ -241,8 +241,7 @@ describe('the worker entry point', () => {
 			});
 			await body({
 				onmessage: scope.onmessage as
-					| ((event: MessageEvent) => void)
-					| null,
+					((event: MessageEvent) => void) | null,
 				posted,
 			});
 		} finally {

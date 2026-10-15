@@ -45,6 +45,7 @@ import {
 	timedLinesFromTranscript,
 	type TranscriptLinesSource,
 } from './transcriptSources';
+import { errorMessage } from '../errors';
 
 /** Dependencies injectable for tests; defaults build the real LLM provider. */
 export interface AutoChapterServiceDeps {
@@ -268,8 +269,7 @@ export class AutoChapterService {
 				new Notice('Chapter generation cancelled.');
 				return false;
 			}
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Chapter generation failed for ${file.path}:`,
 				error,

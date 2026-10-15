@@ -41,6 +41,8 @@ export class WaveformController {
 	private observer: IntersectionObserver | null = null;
 	/** The seek area hosting the canvas for the current render. */
 	private seekEl: HTMLElement | null = null;
+	/** The decode in flight, shared by every pass that asks while it runs. */
+	private decoding: Promise<void> | null = null;
 
 	constructor(
 		private readonly app: App,
@@ -169,6 +171,22 @@ export class WaveformController {
 			this.applyPeaks(cached);
 			return;
 		}
+		// A pass rendered while a decode is still running (after an external
+		// marker edit, or after the note moved into a pop-out) waits on that
+		// decode rather than starting a second one over the same file. The
+		// running one draws through `canvas`, which is the new pass's by now.
+		this.decoding ??= this.decode(cacheKey).finally(() => {
+			this.decoding = null;
+		});
+		await this.decoding;
+	}
+
+	/**
+	 * Reads and decodes the file, drawing partial peaks as they arrive and
+	 * caching the final ones.
+	 * @param cacheKey - Where the finished peaks are cached
+	 */
+	private async decode(cacheKey: string): Promise<void> {
 		try {
 			const data = await this.app.vault.readBinary(this.file);
 			if (this.host.isUnloaded()) {
@@ -241,13 +259,18 @@ export class WaveformController {
 		if (attempts <= 0) {
 			return;
 		}
-		const rafId = window.requestAnimationFrame(() => {
+		// Frames of the window the waveform is shown in. The main window's
+		// stop while it is hidden, so a waveform in a pop-out would never be
+		// drawn while the main window was minimised. The window is held so the
+		// frame is cancelled where it was requested even if the player moves.
+		const win = this.canvas.ownerWindow();
+		const rafId = win.requestAnimationFrame(() => {
 			this.redrawWhenSized(attempts - 1);
 		});
 		// Cancel outright on re-render/unload instead of relying on the
 		// unloaded flag alone to fizzle the retry chain.
 		this.host.registerRenderCleanup(() => {
-			window.cancelAnimationFrame(rafId);
+			win.cancelAnimationFrame(rafId);
 		});
 	}
 }

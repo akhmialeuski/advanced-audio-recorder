@@ -18,21 +18,11 @@ import {
 	MOBILE_MAX_DECODE_BYTES,
 	WAVEFORM_MAX_DECODE_BYTES,
 } from 'src/constants';
-import {
-	convertBlobToFormatBuffer,
-	decodeAudioBlob,
-} from 'src/audio/AudioFormatConverter';
-import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
-import { downmixAudioBuffer } from 'src/audio/downmix';
-
-jest.mock('src/audio/AudioEncoder', () => ({
-	encodeAudioBuffer: jest
-		.fn()
-		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/wav' })),
-}));
+import { convertBlobToFormatBuffer } from 'src/audio/AudioFormatConverter';
+import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/audio/AudioFormatConverter', () => ({
-	decodeAudioBlob: jest.fn().mockResolvedValue({}),
 	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
 }));
 
@@ -43,14 +33,6 @@ jest.mock('src/utils/LinkUpdater', () => ({
 		frontmatterReferences: 0,
 	}),
 }));
-
-jest.mock('src/audio/downmix', () => {
-	const actual: object = jest.requireActual('src/audio/downmix');
-	return {
-		...actual,
-		downmixAudioBuffer: jest.fn((buffer: AudioBuffer) => buffer),
-	};
-});
 
 const createSourceFile = (extension = 'wav'): TFile => {
 	const file = new TFile();
@@ -90,6 +72,7 @@ describe('ConversionService', () => {
 						.fn()
 						.mockResolvedValue(new ArrayBuffer(64)),
 				},
+				readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(64)),
 				createBinary: jest.fn((path: string) => {
 					const file = new TFile();
 					Object.assign(file, { path });
@@ -117,8 +100,16 @@ describe('ConversionService', () => {
 		);
 	});
 
-	it('uses the decode-and-encode path for WAV targets', async () => {
-		await service.convert(
+	it('converts a WAV target through the same ladder as a compressed one', async () => {
+		// The streaming Conversion writes WAV too. Decoding the whole file
+		// into an AudioBuffer first held the recording as 32-bit floats
+		// beside the WAV being written, and skipped the worker entirely.
+		const workerClient = partial<EncodingWorkerClient>({
+			isAvailable: (): boolean => true,
+		});
+		const withWorker = new ConversionService(mockApp, () => workerClient);
+
+		await withWorker.convert(
 			createRequest({
 				sourceFile: createSourceFile('webm'),
 				targetFormat: 'wav',
@@ -126,28 +117,24 @@ describe('ConversionService', () => {
 			jest.fn(),
 		);
 
-		expect(jest.mocked(decodeAudioBlob)).toHaveBeenCalled();
-		expect(jest.mocked(encodeAudioBuffer)).toHaveBeenCalledWith(
-			expect.anything(),
-			{ format: 'wav', bitrate: 128000 },
+		expect(jest.mocked(convertBlobToFormatBuffer)).toHaveBeenCalledWith(
+			expect.any(Blob),
+			'wav',
+			128000,
 			expect.any(Function),
+			{ workerClient, channelMode: 'source' },
 		);
 	});
 
-	it('downmixes on the WAV decode path when a mono mode is requested', async () => {
-		await service.convert(
-			createRequest({
-				sourceFile: createSourceFile('webm'),
-				targetFormat: 'wav',
-				channelMode: 'mono-left',
-			}),
-			jest.fn(),
-		);
+	it('reads the source through the vault, not its adapter', async () => {
+		const request = createRequest();
 
-		expect(jest.mocked(downmixAudioBuffer)).toHaveBeenCalledWith(
-			expect.anything(),
-			'mono-left',
+		await service.convert(request, jest.fn());
+
+		expect(mockApp.vault.readBinary).toHaveBeenCalledWith(
+			request.sourceFile,
 		);
+		expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
 	});
 
 	it('passes the channel mode to the streaming conversion', async () => {
@@ -259,7 +246,7 @@ describe('ConversionService', () => {
 		useMobilePlatform();
 
 		expect(await convertOversized()).toEqual({ status: 'aborted' });
-		expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
+		expect(mockApp.vault.readBinary).not.toHaveBeenCalled();
 		expect(getNotices()).toContain(
 			'File is too large to convert on this device. Convert or split ' +
 				'it on desktop instead.',
@@ -310,7 +297,7 @@ describe('ConversionService', () => {
 	});
 
 	it('aborts with a notice when the pipeline fails', async () => {
-		jest.mocked(mockApp.vault.adapter.readBinary).mockRejectedValue(
+		jest.mocked(mockApp.vault.readBinary).mockRejectedValue(
 			new Error('missing'),
 		);
 		const onProgress = jest.fn();
@@ -324,6 +311,27 @@ describe('ConversionService', () => {
 				message.includes('Conversion failed'),
 			),
 		).toBe(true);
+	});
+
+	it('keeps the source and reports partial success when the links cannot be updated', async () => {
+		// The converted file already exists by then, so this is not a failed
+		// conversion; deleting the source on top of it would leave every link
+		// that was not rewritten pointing at nothing.
+		const { updateLinksInVault } = jest.requireMock<{
+			updateLinksInVault: jest.Mock;
+		}>('src/utils/LinkUpdater');
+		updateLinksInVault.mockRejectedValueOnce(new Error('index busy'));
+
+		const outcome = await service.convert(
+			createRequest({ linkAction: 'replace', deleteSource: true }),
+			jest.fn(),
+		);
+
+		expect(outcome).toEqual({ status: 'partial' });
+		expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+		expect(getNotices()).toContain(
+			'"recording.webm" was created, but updating links failed: index busy. The source file was kept.',
+		);
 	});
 
 	it('reports partial success when the source cannot be deleted', async () => {
@@ -341,46 +349,29 @@ describe('ConversionService', () => {
 
 	it.each([
 		{
-			name: 'encoding a WAV target',
+			name: 'a WAV target',
 			request: {
 				sourceFile: createSourceFile('webm'),
 				targetFormat: 'wav' as const,
 			},
-			collaborator: (): jest.Mock => jest.mocked(encodeAudioBuffer),
-			reportArg: 2,
-			expected: 'Encoding... 40%',
 		},
-		{
-			name: 'streaming a compressed target',
-			request: {},
-			collaborator: (): jest.Mock =>
-				jest.mocked(convertBlobToFormatBuffer),
-			reportArg: 3,
-			expected: 'Converting... 40%',
-		},
-	])(
-		'relays the percentage while $name',
-		async ({ request, collaborator, reportArg, expected }) => {
-			// The dialog shows this text and nothing else while a long
-			// conversion runs. It is a one-line closure the encoder calls
-			// back into, so no test had ever executed it - a wrong format
-			// string here is a progress line that reads "Encoding...
-			// [object Object]" for the whole run.
-			collaborator().mockImplementationOnce(
-				(...args: unknown[]): Promise<unknown> => {
-					(args[reportArg] as (percent: number) => void)(40);
-					return Promise.resolve(
-						reportArg === 2
-							? new Blob(['encoded'])
-							: new ArrayBuffer(8),
-					);
-				},
-			);
-			const onProgress = jest.fn();
+		{ name: 'a compressed target', request: {} },
+	])('relays the percentage while converting $name', async ({ request }) => {
+		// The dialog shows this text and nothing else while a long
+		// conversion runs. It is a one-line closure the converter calls
+		// back into, so no test had ever executed it - a wrong format
+		// string here is a progress line that reads "Converting...
+		// [object Object]" for the whole run.
+		jest.mocked(convertBlobToFormatBuffer).mockImplementationOnce(
+			(_blob, _format, _bitrate, report): Promise<ArrayBuffer> => {
+				report?.(40);
+				return Promise.resolve(new ArrayBuffer(8));
+			},
+		);
+		const onProgress = jest.fn();
 
-			await service.convert(createRequest(request), onProgress);
+		await service.convert(createRequest(request), onProgress);
 
-			expect(onProgress).toHaveBeenCalledWith(expected);
-		},
-	);
+		expect(onProgress).toHaveBeenCalledWith('Converting... 40%');
+	});
 });

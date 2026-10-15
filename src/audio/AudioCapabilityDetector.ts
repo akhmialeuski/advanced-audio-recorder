@@ -101,11 +101,11 @@ export interface EncodingDimensions {
  * One session is described by one encoding, which is exact for the single
  * file a merged session writes and an upper bound for a session writing its
  * tracks separately: there `numberOfChannels` is the widest track's layout,
- * while each file is encoded with its own. The two answers can only differ
- * for AAC at 24 kHz and below, where mediabunny asks about HE-AAC v2 for a
- * stereo layout and v1 for a mono one, and no encode this plugin runs reaches
- * that rate - `offlineEncodeSampleRate` reports the device's own, which is
- * 44.1 or 48 kHz on real hardware. Describing each file separately would mean
+ * while each file is encoded with its own. The two answers differ only where
+ * an encoder takes one layout and refuses the other, which the platform AAC
+ * encoders do at rates no encode this plugin runs reaches -
+ * `offlineEncodeSampleRate` reports the device's own, which is 44.1 or 48 kHz
+ * on real hardware. Describing each file separately would mean
  * one validation and one bitrate resolution per track for a distinction
  * nothing can currently observe.
  */
@@ -466,9 +466,7 @@ export interface BitrateAvailabilityEntry {
  *
  * The channel layout is stated rather than left to mediabunny's own default of
  * two, because the encoder answers a different question for each: a platform
- * AAC encoder accepts its own set of rates per layout, and mediabunny builds
- * the codec string itself from the count, so at 24 kHz and below two channels
- * ask about HE-AAC v2 while one asks about HE-AAC v1.
+ * AAC encoder accepts its own set of rates per layout.
  * @param format - Target audio format
  * @param sampleRate - Rate the encoder will write at
  * @param numberOfChannels - Layout the output will have, from
@@ -543,12 +541,13 @@ export interface BitrateOffer {
  * another rate has no reader left.
  *
  * An encoder that accepts none of them has not narrowed the list, it has
- * ruled the format out at this sample rate and layout. Chromium refuses every
- * AAC rate at 24 kHz and below, because mediabunny asks it about HE-AAC
- * there and only AAC-LC can be encoded. There is no bitrate to move to, so
- * the declared range is kept for the row to show and the verdict says the
- * format itself is what has to change; the format check at recording start
- * asks the same question and falls back before any audio is captured.
+ * ruled the format out at this sample rate and layout. The Windows AAC
+ * encoder does that at every sample rate below 44.1 kHz, the lowest it takes.
+ * The profile is not the reason, since the probe asks for AAC-LC at every
+ * rate (see AudioEncoder). There is no bitrate to move to, so the declared
+ * range is kept for the row to show and the verdict says the format itself
+ * is what has to change; the format check at recording start asks the same
+ * question and falls back before any audio is captured.
  * @param format - Target audio format
  * @param sampleRate - Rate the encoder will write at
  * @param numberOfChannels - Layout the output will have

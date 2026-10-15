@@ -23,7 +23,13 @@
  */
 
 import type { App } from 'obsidian';
-import { PCM_SAMPLE_BITS, PCM_SAMPLE_BYTES, PcmSampleFormat } from './pcm';
+import {
+	PCM_SAMPLE_BITS,
+	PCM_SAMPLE_BYTES,
+	PcmSampleFormat,
+	floatToInt16,
+} from './pcm';
+import { delay } from '../utils/TimeUtils';
 
 /**
  * Writes a string to a DataView at the specified offset.
@@ -327,6 +333,105 @@ export function createWavFileBuffer(
 		0,
 	);
 	return wavBuffer;
+}
+
+/** Width of one sample of the 16-bit PCM a float encode writes. */
+const INT16_SAMPLE_BYTES = PCM_SAMPLE_BYTES[PcmSampleFormat.Int16];
+
+/**
+ * Frames converted per synchronous slice of {@link encodeFloatsAsInt16Wav}
+ * before yielding to the event loop. A 25 MB transcription upload is about
+ * 12.5 million frames; converted in one block, that runs hundreds of
+ * milliseconds on the UI thread. Half a million frames is a few milliseconds
+ * of work per slice.
+ */
+const ENCODE_YIELD_FRAMES = 500_000;
+
+/**
+ * How many bytes {@link encodeFloatsAsInt16Wav} returns for this many frames.
+ *
+ * Answering it without encoding is what lets a caller refuse a file before it
+ * allocates one, and sharing it with the encoder keeps the answer and the
+ * allocation from drifting apart.
+ * @param frameCount - Frames per channel
+ * @param numChannels - Number of channels
+ * @returns Byte length of the WAV those frames encode to
+ */
+export function int16WavByteLength(
+	frameCount: number,
+	numChannels: number,
+): number {
+	return WAV_HEADER_SIZE + frameCount * numChannels * INT16_SAMPLE_BYTES;
+}
+
+/**
+ * Writes float samples (range -1..1) as interleaved 16-bit PCM frames into
+ * the PCM region of a WAV buffer: `frameCount` frames read from source frame
+ * `srcFrom`, written at destination frame `destFrame`. A channel shorter than
+ * the range reads as silence. This is the one place float samples become WAV
+ * PCM by hand, shared by a whole-file encode and a segment-by-segment fill.
+ * @param pcm - View over the WAV PCM region, after the header
+ * @param channels - One array of samples per channel
+ * @param srcFrom - First source frame to write
+ * @param frameCount - Number of frames to write
+ * @param destFrame - Destination frame within the PCM region
+ */
+export function writeInt16Frames(
+	pcm: DataView,
+	channels: readonly Float32Array[],
+	srcFrom: number,
+	frameCount: number,
+	destFrame: number,
+): void {
+	let offset = destFrame * channels.length * INT16_SAMPLE_BYTES;
+	for (let frame = srcFrom; frame < srcFrom + frameCount; frame++) {
+		for (const channel of channels) {
+			pcm.setInt16(offset, floatToInt16(channel[frame] ?? 0), true);
+			offset += INT16_SAMPLE_BYTES;
+		}
+	}
+}
+
+/**
+ * Encodes float samples (range -1..1) as a 16-bit PCM WAV, interleaving the
+ * channels, in a buffer allocated once at its exact size. Mediabunny's WAV
+ * writer would do the same work into a buffer that grows by doubling as it is
+ * filled, which for a file already held in memory as floats is up to twice
+ * the WAV again at the worst moment; the conversion pipeline uses it because
+ * it streams, and these callers do not. The samples are converted in slices
+ * with an event-loop yield between them, so a large file does not freeze the
+ * UI.
+ * @param channels - One array of samples per channel
+ * @param sampleRate - Sample rate in Hz
+ * @returns The WAV file
+ * @throws WavSizeLimitError when the samples are too many for the container
+ */
+export async function encodeFloatsAsInt16Wav(
+	channels: readonly Float32Array[],
+	sampleRate: number,
+): Promise<ArrayBuffer> {
+	const numChannels = channels.length;
+	// The longest channel sets the length, and a shorter one is padded with
+	// silence rather than leaving the frames after it unwritten.
+	const frameCount = Math.max(
+		0,
+		...channels.map((channel) => channel.length),
+	);
+	const out = createWavFileBuffer(
+		numChannels,
+		sampleRate,
+		int16WavByteLength(frameCount, numChannels) - WAV_HEADER_SIZE,
+	);
+	const pcm = new DataView(out, WAV_HEADER_SIZE);
+	for (let start = 0; start < frameCount; start += ENCODE_YIELD_FRAMES) {
+		const end = Math.min(frameCount, start + ENCODE_YIELD_FRAMES);
+		writeInt16Frames(pcm, channels, start, end - start, start);
+		if (end < frameCount) {
+			// Lets the UI thread breathe between conversion slices.
+			await delay(0);
+		}
+	}
+	return out;
 }
 
 /**

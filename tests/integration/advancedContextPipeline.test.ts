@@ -87,12 +87,7 @@ function scriptedLlm(replies: Partial<Record<AgentKey, string | Error>>): {
 }
 
 type AgentKey =
-	| 'topic'
-	| 'names'
-	| 'jargon'
-	| 'acronyms'
-	| 'decider'
-	| 'sentence';
+	'topic' | 'names' | 'jargon' | 'acronyms' | 'decider' | 'sentence';
 
 /** Maps a system prompt back to the agent that sent it. */
 function agentKeyOf(system: string): AgentKey {

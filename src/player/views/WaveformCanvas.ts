@@ -77,6 +77,14 @@ export class WaveformCanvas {
 	}
 
 	/**
+	 * The window the waveform is shown in, which is a pop-out's once the note
+	 * has been moved into one. Read live, since the seek area can move.
+	 */
+	ownerWindow(): Window {
+		return this.seekEl.win;
+	}
+
+	/**
 	 * Reflects the played fraction by updating the clip variable only. No
 	 * canvas work happens here, so this is safe to call on every timeupdate.
 	 * @param fraction - Played fraction in 0..1
@@ -161,7 +169,10 @@ export class WaveformCanvas {
 		cssHeight: number,
 		color: string,
 	): void {
-		const dpr = activeWindow.devicePixelRatio || 1;
+		// The canvas's own window, not the focused one: a note in a pop-out on
+		// another monitor has that monitor's pixel ratio, and drawing at the
+		// focused window's ratio leaves the waveform blurred or oversized.
+		const dpr = canvas.win.devicePixelRatio || 1;
 		canvas.width = Math.floor(cssWidth * dpr);
 		canvas.height = Math.floor(cssHeight * dpr);
 		const ctx = canvas.getContext('2d');
@@ -196,7 +207,8 @@ export class WaveformCanvas {
 		if (this.colors) {
 			return this.colors;
 		}
-		const styles = activeWindow.getComputedStyle(this.baseCanvas);
+		// Asked of the window the canvas is shown in, for the same reason
+		const styles = this.baseCanvas.win.getComputedStyle(this.baseCanvas);
 		this.colors = {
 			played:
 				styles.getPropertyValue('--aar-waveform-played').trim() ||

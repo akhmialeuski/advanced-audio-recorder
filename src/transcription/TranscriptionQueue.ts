@@ -14,6 +14,7 @@
  * @module transcription/TranscriptionQueue
  */
 
+import { debounce } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
@@ -152,11 +153,28 @@ export class TranscriptionQueue {
 	private chain: Promise<void> = Promise.resolve();
 
 	/**
-	 * Handle of the pending coalesced write, or 0 when none is waiting. A
-	 * handle rather than a flag, because {@link TranscriptionQueue.flush} has
-	 * to be able to call it off and write immediately.
+	 * The coalesced write. Several changes in a row cost one write, which is
+	 * what keeps a queue that moves per recording from rewriting the file on
+	 * every state change.
+	 *
+	 * resetTimer is off, so the wait is anchored on the first change of a
+	 * burst rather than the last: a queue that keeps moving is still written
+	 * every half second instead of postponing its write for as long as
+	 * anything is happening. With it on, a drain that changes an entry more
+	 * often than twice a second would never be written until it went quiet.
+	 *
+	 * The wait is a timer of its own rather than a sleep inside the write
+	 * chain, so {@link TranscriptionQueue.flush} can call it off. Held in the
+	 * chain it blocked everything behind it, including the flush that unload
+	 * depends on.
 	 */
-	private saveTimer = 0;
+	private readonly writeSoon = debounce(
+		() => {
+			void this.enqueue(() => this.write());
+		},
+		SAVE_DEBOUNCE_MS,
+		false,
+	);
 
 	/** Told whenever the queue changes, so a view can redraw. */
 	private readonly listeners = new Set<() => void>();
@@ -287,12 +305,10 @@ export class TranscriptionQueue {
 		const before = this.state.entries.length;
 		this.state.entries = uniqueByPath([
 			...this.state.entries,
-			...paths.map(
-				(path): QueueEntry => ({
-					path,
-					state: QueueEntryState.Waiting,
-				}),
-			),
+			...paths.map((path): QueueEntry => ({
+				path,
+				state: QueueEntryState.Waiting,
+			})),
 		]);
 		this.changed();
 		return this.state.entries.length - before;
@@ -396,8 +412,9 @@ export class TranscriptionQueue {
 	 * back next session as if it had never happened.
 	 */
 	async flush(): Promise<void> {
-		window.clearTimeout(this.saveTimer);
-		this.saveTimer = 0;
+		// Cancelled rather than run(): run() would write only when a change
+		// is pending, and a flush writes whatever the queue holds either way.
+		this.writeSoon.cancel();
 		await this.enqueue(() => this.write());
 	}
 
@@ -410,25 +427,14 @@ export class TranscriptionQueue {
 	}
 
 	/**
-	 * Queues one coalesced write. Several changes in a row cost one write,
-	 * which is what keeps a queue that moves per recording from rewriting the
-	 * file on every state change.
-	 *
-	 * The wait is a timer of its own rather than a sleep inside the write
-	 * chain, so it can be cancelled. Held in the chain it blocked everything
-	 * behind it, including the flush that unload depends on.
+	 * Queues one coalesced write (see {@link TranscriptionQueue.writeSoon}),
+	 * unless the queue is memory-only and there is nowhere to write it.
 	 */
 	private scheduleWrite(): void {
-		// Anchored on the first change of a burst rather than the last, so a
-		// queue that keeps moving is still written every half second instead
-		// of postponing its write for as long as anything is happening.
-		if (this.saveTimer !== 0 || !this.queuePath) {
+		if (!this.queuePath) {
 			return;
 		}
-		this.saveTimer = window.setTimeout(() => {
-			this.saveTimer = 0;
-			void this.enqueue(() => this.write());
-		}, SAVE_DEBOUNCE_MS);
+		this.writeSoon();
 	}
 
 	/** Writes the queue, warning rather than throwing on failure. */

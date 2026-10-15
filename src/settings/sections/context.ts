@@ -18,9 +18,9 @@ import type { Setting } from 'obsidian';
 
 /**
  * Marks a row whose whole body is drawn by hand: the documentation callout and
- * the credential blocks. From 1.13 on, the row of a render definition is the
- * only DOM that definition owns, so the stylesheet strips that row's own flex
- * layout, padding, background, and divider to let the body inside it read as an
+ * the credential blocks. The row of a render definition is the only DOM that
+ * definition owns, so the stylesheet strips that row's own flex layout,
+ * padding, background, and divider to let the body inside it read as an
  * ordinary settings column rather than as one setting's control.
  */
 export const SETTINGS_ROOT_CLASS = 'aar-settings-root';
@@ -61,14 +61,6 @@ export const STACKED_TEXT_CLASS = 'aar-stacked-text';
  * declares its blocks itself, {@link sectionItems} being the shorthand for it.
  */
 export const SETTINGS_SECTION_CLASS = 'aar-settings-section';
-
-/**
- * Marks the tab's own container. On 1.13 the blocks carry their own class and
- * the stylesheet finds them there, but the Obsidian below it renders the same
- * tree as a flat list of rows with no group element at all, and its only block
- * boundaries are the heading rows. This is what scopes that half to this tab.
- */
-export const SETTINGS_TAB_CLASS = 'aar-settings-tab';
 
 /**
  * Marks the block whose rows repeat the same pair of pickers. Sized to its own
@@ -241,11 +233,6 @@ export interface SettingsDefinitionContext {
 	 * needs no branch here.
 	 */
 	readonly profiles: readonly ProfileCatalogue[];
-	/**
-	 * Whether a list in this tree needs a labelled add row of its own. False
-	 * wherever the renderer already draws one, which the render mode answers.
-	 */
-	readonly declareListAddRow: boolean;
 	/** Capture sample rates this device offers. */
 	readonly sampleRates: readonly number[];
 	/** The two output-format rows the declarative controls cannot express. */

@@ -16,6 +16,7 @@ import {
 import { randomToken } from '../utils/ids';
 import { scaledTimeoutMs } from '../utils/TimeUtils';
 import { isRecord } from '../utils/objects';
+import { errorMessage } from '../errors';
 
 /** One field of a multipart/form-data body. */
 export type MultipartField =
@@ -868,7 +869,7 @@ export async function requestRaw(
 		if (error instanceof HttpError) {
 			throw error;
 		}
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		throw new HttpError(
 			NO_HTTP_STATUS,
 			`Request to ${safeUrl} failed: ${message}`,

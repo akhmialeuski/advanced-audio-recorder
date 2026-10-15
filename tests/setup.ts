@@ -72,8 +72,7 @@ if (
 // Obsidian augments Node with instanceOf; jsdom does not. The player's
 // default-embed guard calls node.instanceOf on mutation-added nodes.
 const nodeProto = globalThis.Node?.prototype as
-	| (Node & { instanceOf?: unknown })
-	| undefined;
+	(Node & { instanceOf?: unknown }) | undefined;
 if (nodeProto && typeof nodeProto.instanceOf === 'undefined') {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- prototype augmentation requires any
 	(nodeProto as any).instanceOf = function (

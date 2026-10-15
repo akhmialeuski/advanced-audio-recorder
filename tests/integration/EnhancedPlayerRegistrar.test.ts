@@ -51,6 +51,7 @@ import { partial } from '../helpers/doubles';
 import { pastDebounce } from '../helpers/async';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import { createMockApp } from '../helpers/createApp';
+import { mountLiveEditor, rangeOf } from '../helpers/liveEditor';
 import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
 
 jest.mock('src/player/AudioPlayer', () => ({
@@ -907,28 +908,24 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		expect(detachedStartMock).not.toHaveBeenCalled();
 	});
 
-	/** A Live Preview link element inside a CodeMirror editor (no data-href). */
-	function livePreviewClick(): MouseEvent {
-		const editor = document.createElement('div');
-		editor.className = 'cm-editor';
-		const linkEl = document.createElement('span');
-		linkEl.className = 'cm-hmd-internal-link';
-		editor.appendChild(linkEl);
+	/**
+	 * A click on Live Preview's internal-link token in a real editor, which
+	 * carries no data-href, so the target has to be read from the source.
+	 * @param line - The note's source
+	 * @param token - The text the token covers
+	 * @returns The click, targeted at the token
+	 */
+	function livePreviewClick(line: string, token: string): MouseEvent {
+		const live = mountLiveEditor({
+			doc: line,
+			file: fileFromPath('note.md'),
+			linkTokens: [rangeOf(line, token)],
+		});
 		const event = new MouseEvent('click', { bubbles: true });
-		Object.defineProperty(event, 'target', { value: linkEl });
+		Object.defineProperty(event, 'target', {
+			value: at(live.linkTokens(), 0),
+		});
 		return event;
-	}
-
-	/** Stubs the active editor so a click resolves to a source line. */
-	function stubActiveEditor(app: App, line: string): void {
-		const view = {
-			editor: {
-				cm: { posAtDOM: jest.fn(() => 5) },
-				offsetToPos: jest.fn(() => ({ line: 0, ch: 5 })),
-				getLine: jest.fn(() => line),
-			},
-		};
-		(app.workspace.getActiveViewOfType as jest.Mock).mockReturnValue(view);
 	}
 
 	it('plays a Live Preview timecode link read from the editor source', () => {
@@ -936,9 +933,11 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			false,
 		);
 		detachedStartMock.mockReturnValue(detachedStubOf('rec.mp4'));
-		const { plugin, app } = setup(true);
-		stubActiveEditor(app, '[[rec.mp4#t=30|0:30]] - Speaker 1');
-		const event = livePreviewClick();
+		const { plugin } = setup(true);
+		const event = livePreviewClick(
+			'[[rec.mp4#t=30|0:30]] - Speaker 1',
+			'rec.mp4#t=30|0:30',
+		);
 		const prevent = jest.spyOn(event, 'preventDefault');
 
 		clickHandler(plugin)(event);
@@ -958,9 +957,11 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 
 	it('leaves a Live Preview click that is not on a wikilink to Obsidian', () => {
 		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
-		const { plugin, app } = setup(true);
-		stubActiveEditor(app, 'just plain text, no link at all');
-		const event = livePreviewClick();
+		const { plugin } = setup(true);
+		const event = livePreviewClick(
+			'just plain text, no link at all',
+			'plain',
+		);
 		const prevent = jest.spyOn(event, 'preventDefault');
 
 		clickHandler(plugin)(event);
@@ -970,28 +971,22 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		expect(prevent).not.toHaveBeenCalled();
 	});
 
-	/** A Live Preview click inside the editor but NOT on a wikilink token. */
-	function livePreviewNonLinkClick(): MouseEvent {
-		const editor = document.createElement('div');
-		editor.className = 'cm-editor';
-		// A rendered embed widget or plain line text: inside .cm-editor, but
-		// carrying no .cm-hmd-internal-link token
-		const widget = document.createElement('span');
-		widget.className = 'cm-widget';
-		editor.appendChild(widget);
-		const event = new MouseEvent('click', { bubbles: true });
-		Object.defineProperty(event, 'target', { value: widget });
-		return event;
-	}
-
 	it('ignores a Live Preview click that is not on an internal-link token', () => {
 		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
-		const { plugin, app } = setup(true);
-		// The source line DOES hold a timecode link, and posAtDOM snaps to
-		// it, but the click was on a widget, not the link: it must be left
-		// alone so player buttons and plain text keep their own behaviour
-		stubActiveEditor(app, '[[rec.mp4#t=30|0:30]] - Speaker 1');
-		const event = livePreviewNonLinkClick();
+		const { plugin } = setup(true);
+		// The line DOES hold a timecode link, but the click was on the embed
+		// widget beside it, not the link: it must be left alone so player
+		// buttons and plain text keep their own behaviour
+		const line = '[[rec.mp4#t=30|0:30]] ![[rec.mp4]]';
+		const live = mountLiveEditor({
+			doc: line,
+			file: fileFromPath('note.md'),
+			embeds: [{ ...rangeOf(line, '![[rec.mp4]]'), src: 'rec.mp4' }],
+		});
+		const event = new MouseEvent('click', { bubbles: true });
+		Object.defineProperty(event, 'target', {
+			value: at(live.embeds(), 0),
+		});
 		const prevent = jest.spyOn(event, 'preventDefault');
 
 		clickHandler(plugin)(event);
@@ -999,6 +994,18 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		expect(seek).not.toHaveBeenCalled();
 		expect(detachedStartMock).not.toHaveBeenCalled();
 		expect(prevent).not.toHaveBeenCalled();
+	});
+
+	it('resolves a timecode link from the vault root when no note is active', () => {
+		// No open view holds the clicked link and no note is active, so there
+		// is no note to resolve a relative link against.
+		const { plugin, app } = setup(true);
+		jest.spyOn(app.workspace, 'getActiveFile').mockReturnValue(null);
+		const resolve = jest.spyOn(app.metadataCache, 'getFirstLinkpathDest');
+
+		clickHandler(plugin)(timecodeClick('rec.mp4#t=30'));
+
+		expect(resolve).toHaveBeenCalledWith('rec.mp4', '');
 	});
 
 	it('leaves a timecode link to a probed video file to Obsidian', () => {
@@ -1582,57 +1589,53 @@ describe('EnhancedPlayerRegistrar resolving a Live Preview link', () => {
 		return event;
 	}
 
-	it('gives up when no editor owns the click', () => {
-		// A click in a pane the workspace no longer tracks: there is no
-		// source line to read the link out of.
+	it('gives up when the token is in no CodeMirror editor', () => {
+		// A token-like element in a detached render: there is no editor to
+		// read a source line from.
 		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
-		const { app } = setup(true);
-		(app.workspace.getActiveViewOfType as jest.Mock).mockReturnValue(null);
+		setup(true);
 
 		clicks()(tokenClick());
 
 		expect(seek).not.toHaveBeenCalled();
 	});
 
-	it('gives up when the editor exposes no CodeMirror position lookup', () => {
-		// posAtDOM is an internal CodeMirror API; without it a DOM node
-		// cannot be turned into a source offset.
+	it('gives up in an editor Obsidian does not own', () => {
+		// Another plugin's CodeMirror editor carries no Obsidian editor info,
+		// so there is no note to resolve the link against.
 		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
-		const { app } = setup(true);
-		(app.workspace.getActiveViewOfType as jest.Mock).mockReturnValue({
-			editor: { cm: {} },
+		setup(true);
+		const line = '[[rec.mp4#t=30|0:30]]';
+		const live = mountLiveEditor({
+			doc: line,
+			owned: false,
+			linkTokens: [rangeOf(line, 'rec.mp4#t=30|0:30')],
+		});
+		const event = new MouseEvent('click', { bubbles: true });
+		Object.defineProperty(event, 'target', {
+			value: at(live.linkTokens(), 0),
 		});
 
-		clicks()(tokenClick());
+		clicks()(event);
 
 		expect(seek).not.toHaveBeenCalled();
 	});
 
-	it('reports a position lookup that throws instead of failing the click', () => {
-		const error = jest
-			.spyOn(console, 'error')
-			.mockImplementation(() => undefined);
+	it('gives up on a token outside the editor content', () => {
+		// A panel or gutter belongs to the editor but maps to no source
+		// position; CodeMirror would answer the start or end of the note.
 		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
-		const { app } = setup(true);
-		(app.workspace.getActiveViewOfType as jest.Mock).mockReturnValue({
-			editor: {
-				cm: {
-					posAtDOM: jest.fn(() => {
-						throw new Error('node is not in this document');
-					}),
-				},
-				offsetToPos: jest.fn(),
-				getLine: jest.fn(),
-			},
-		});
+		setup(true);
+		const live = mountLiveEditor({ doc: '[[rec.mp4#t=30|0:30]]' });
+		const panelToken = document.createElement('span');
+		panelToken.className = 'cm-hmd-internal-link';
+		live.view.dom.appendChild(panelToken);
+		const event = new MouseEvent('click', { bubbles: true });
+		Object.defineProperty(event, 'target', { value: panelToken });
 
-		clicks()(tokenClick());
+		clicks()(event);
 
 		expect(seek).not.toHaveBeenCalled();
-		expect(error).toHaveBeenCalledWith(
-			expect.stringContaining('Failed to resolve a timecode link'),
-			expect.any(Error),
-		);
 	});
 });
 

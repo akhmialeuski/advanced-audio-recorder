@@ -10,6 +10,7 @@ import {
 	WAVEFORM_DECODE_SAMPLE_RATE,
 	WAVEFORM_PROGRESSIVE_CHUNK_BUCKETS,
 } from '../constants';
+import { delay } from '../utils/TimeUtils';
 
 /**
  * Options controlling progressive peak extraction.
@@ -162,9 +163,7 @@ function normalizePeaks(peaks: number[], max: number): number[] {
  * handle input between chunks.
  */
 function defaultYield(): Promise<void> {
-	return new Promise<void>((resolve) => {
-		window.setTimeout(resolve, 0);
-	});
+	return delay(0);
 }
 
 /**

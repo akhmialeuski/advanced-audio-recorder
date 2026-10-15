@@ -21,7 +21,11 @@ import type {
 	Workspace,
 } from 'obsidian';
 import { partial } from './doubles';
-import { Plugin as MockPluginClass } from '../mocks/obsidian';
+import {
+	Plugin as MockPluginClass,
+	TFile as MockFileClass,
+	TFolder as MockFolderClass,
+} from '../mocks/obsidian';
 import type {
 	App as MockApp,
 	Menu as MockMenu,
@@ -132,4 +136,21 @@ export function leafOver(app: App): WorkspaceLeaf {
 	return new (WorkspaceLeaf as unknown as new (app: App) => WorkspaceLeaf)(
 		app,
 	);
+}
+
+/**
+ * A vault file with the folder Obsidian would give it as its parent: the root
+ * folder ('/') for a file at the top of the vault. The published TFile type
+ * has no public constructor, so a test that needs a file with a real parent
+ * builds it here.
+ * @param path - Vault-relative path of the file
+ * @returns The file, its parent set
+ */
+export function fileInFolder(path: string): TFile {
+	const file = new MockFileClass(path);
+	const slash = path.lastIndexOf('/');
+	file.parent = new MockFolderClass(
+		slash === -1 ? '/' : path.slice(0, slash),
+	);
+	return file as unknown as TFile;
 }

@@ -106,7 +106,10 @@ describe('runStreamingConversion', () => {
 
 		expect(conversionInit).toHaveBeenCalledWith(
 			expect.objectContaining({
-				audio: { codec: 'mp3', bitrate: 96000 },
+				audio: {
+					codec: 'mp3',
+					quality: { options: { bitrate: 96000 } },
+				},
 			}),
 		);
 	});
@@ -136,7 +139,10 @@ describe('runStreamingConversion', () => {
 
 		expect(conversionInit).toHaveBeenCalledWith(
 			expect.objectContaining({
-				audio: { codec: 'mp3', bitrate: 96000 },
+				audio: {
+					codec: 'mp3',
+					quality: { options: { bitrate: 96000 } },
+				},
 			}),
 		);
 	});
@@ -233,7 +239,7 @@ describe('runStreamingConversion', () => {
 				conversionInit.mock.calls[0][0] as {
 					audio: {
 						codec: string;
-						bitrate?: number;
+						quality?: { options: { bitrate: number } };
 						process?: (sample: unknown) => unknown;
 						processedNumberOfChannels?: number;
 						numberOfChannels?: number;
@@ -241,7 +247,7 @@ describe('runStreamingConversion', () => {
 				}
 			).audio;
 			expect(audio.codec).toBe('mp3');
-			expect(audio.bitrate).toBe(96000);
+			expect(audio.quality?.options.bitrate).toBe(96000);
 			expect(audio.processedNumberOfChannels).toBe(1);
 			expect(typeof audio.process).toBe('function');
 			// mediabunny's own remixing (Web Audio speaker rules) is not
@@ -270,10 +276,13 @@ describe('runStreamingConversion', () => {
 			// mediabunny's default quality
 			const audio = (
 				conversionInit.mock.calls[0][0] as {
-					audio: { bitrate?: number; process?: unknown };
+					audio: {
+						quality?: { options: { bitrate: number } };
+						process?: unknown;
+					};
 				}
 			).audio;
-			expect(audio.bitrate).toBe(96000);
+			expect(audio.quality?.options.bitrate).toBe(96000);
 			expect(typeof audio.process).toBe('function');
 		});
 

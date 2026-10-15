@@ -37,7 +37,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 
 ## Recording
 
-Start and stop a recording from the **microphone icon** in the left ribbon or with the `Start/stop recording` command. While recording, the ribbon icon turns red and pulses, and the **status bar** shows `Recording...` with **Pause** and **Stop** buttons. When you stop, the plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[filename.ext]]`) into the active note. For longer recordings a save-progress bar walks through stages (`Saving...` > `Flushing buffers...` > `Assembling audio...` > `Writing file...` > `Cleaning up...` > `Saved`) while the ribbon shows a save icon.
+Start and stop a recording from the **microphone icon** in the left ribbon or with the `Start/stop recording` command. While recording, the ribbon icon turns red and pulses, and the **status bar** shows `Recording...` with **Pause** and **Stop** buttons. When you stop, the plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link into the active note, written in your vault's link format (`![[filename.ext]]` with the default wikilinks). For longer recordings a save-progress bar walks through stages (`Saving...` > `Flushing buffers...` > `Assembling audio...` > `Writing file...` > `Cleaning up...` > `Saved`) while the ribbon shows a save icon.
 
 To choose which microphone is used, run the `Select audio input device` command. It opens a quick-pick modal listing the detected input devices; choosing one saves it to settings immediately and shows a confirmation notice.
 
@@ -45,7 +45,7 @@ Learn more: [Recording](recording.md)
 
 ## Command line (desktop)
 
-On Obsidian 1.12.2 and later the desktop app takes commands from a terminal, and the plugin answers four: `advanced-audio-recorder` reports what the recorder is doing, `:record` starts a session, `:stop` stops and saves it, and `:transcribe --file <path>` transcribes an audio file in the vault. Each answers with one line - the state it left behind, or the reason it did nothing, including the reason a start failed or a transcription cannot run. Nothing here exists on mobile, or on an older desktop build.
+The desktop app takes commands from a terminal, and the plugin answers four: `advanced-audio-recorder` reports what the recorder is doing, `:record` starts a session, `:stop` stops and saves it, and `:transcribe --file <path>` transcribes an audio file in the vault. Each answers with one line - the state it left behind, or the reason it did nothing, including the reason a start failed or a transcription cannot run. Nothing here exists on mobile, or on an older desktop build.
 
 Learn more: [From the command line](recording.md#from-the-command-line)
 
@@ -87,19 +87,19 @@ Learn more: [Multi-track recording](multi-track-recording.md)
 
 ## Output formats and encoding
 
-The plugin supports 8 output formats - **WebM** (default), **OGG**, **WAV**, **MP3**, **FLAC**, **MP4**, **M4A**, and **AAC** - with availability detected at runtime from your platform's MediaRecorder support. **Online** formats are written in real time by the browser's MediaRecorder; **offline** formats (MP3, FLAC, and sometimes MP4/M4A/AAC) are captured in an intermediate container and re-encoded after you stop, with packets copied without re-encoding when the codec already matches. The settings tab marks offline formats with an `(offline)` label.
+The plugin supports 8 output formats - **WebM** (default), **OGG**, **WAV**, **MP3**, **FLAC**, **MP4**, **M4A**, and **AAC** - with availability detected at runtime from your platform's MediaRecorder support. **Online** formats are written in real time by the browser's MediaRecorder; **offline** formats (MP3, FLAC, AAC, and sometimes MP4/M4A) are captured in an intermediate container and re-encoded after you stop, with packets copied without re-encoding when the codec already matches. The settings tab marks offline formats with an `(offline)` label.
 
 Learn more: [Formats](formats.md)
 
 ## Format conversion
 
-Right-click any audio file (in the File Explorer, on an embed link, or on an embedded player) and choose **Convert audio format** to transcode it to a different format. The dialog offers a **Target format** (with encoder description), a **Bitrate** selection (24-320 kbps, cut to what the target format can write), a **Delete source file** toggle, and an **Update links in notes** choice (`Do nothing`, `Replace source link`, `Insert after source link`). Conversion runs through the streaming Mediabunny pipeline in chunks and re-encodes at the chosen bitrate; converting to WAV always performs a full decode.
+Right-click any audio file (in the File Explorer, on an embed link, or on an embedded player) and choose **Convert audio format** to transcode it to a different format. The dialog offers a **Target format** (with encoder description), a **Bitrate** selection (24-320 kbps, cut to what the target format can write), a **Delete source file** toggle, and an **Update links in notes** choice (`Do nothing`, `Replace source link`, `Insert after source link`). Conversion runs through the streaming Mediabunny pipeline in chunks and re-encodes at the chosen bitrate, WAV targets included; a full decode is only the fallback for a source the pipeline cannot read.
 
 Learn more: [File operations](file-operations.md#convert-audio-format)
 
 ## Manual splitting
 
-Right-click an audio file and choose **Split audio into parts** to break an existing recording into fixed-duration parts. The dialog offers a **Part duration** (1-180 minutes), a **Part name suffix**, a re-encode **Bitrate** (24-320 kbps, hidden for WAV and FLAC sources), a **Delete source file** toggle, and **Update links in notes**. WAV files are split losslessly at the byte level (so even multi-gigabyte files are handled); compressed formats are decoded once and re-encoded per part. Link updates apply across the whole vault and cover both wikilinks and Markdown links.
+Right-click an audio file and choose **Split audio into parts** to break an existing recording into fixed-duration parts. The dialog offers a **Part duration** (1-180 minutes), a **Part name suffix**, a re-encode **Bitrate** (24-320 kbps, hidden for WAV and FLAC sources), a **Delete source file** toggle, and **Update links in notes**. WAV files are split losslessly at the byte level (so even multi-gigabyte files are handled); compressed formats are decoded in one pass and each part is re-encoded as it is cut, without holding the decoded recording in memory. Link updates apply across the whole vault and cover both wikilinks and Markdown links.
 
 Learn more: [Splitting](splitting.md#manual-splitting-existing-file)
 
@@ -227,7 +227,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | ----------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
 | Recording                     | Start/stop capture; ribbon, status bar, save-progress feedback             | Ribbon icon / command palette                   | [Recording](recording.md)                                      |
 | Switch input device           | Quick-pick modal to change the microphone                                  | Command palette                                 | [Recording](recording.md#switching-the-input-device)           |
-| Command line (desktop)        | Start, stop, report state, transcribe a file from a terminal               | Obsidian CLI (1.12.2+)                          | [Recording](recording.md#from-the-command-line)                |
+| Command line (desktop)        | Start, stop, report state, transcribe a file from a terminal               | Obsidian CLI                                    | [Recording](recording.md#from-the-command-line)                |
 | Pause and resume              | Pause and continue a session without losing progress                       | Command palette / status bar                    | [Recording](recording.md#pausing-and-resuming)                 |
 | Markers while recording       | Drop a bookmark or chapter at the live position                            | Status bar / command palette (markers enabled)  | [Recording](recording.md#marking-moments-while-recording)      |
 | Crash recovery                | Recover audio after a crash, power loss, or mid-recording disable          | Automatic modal on next launch                  | [Recording](recording.md#crash-recovery)                       |

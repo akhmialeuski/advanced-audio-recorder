@@ -81,6 +81,40 @@ function makePlayer(connected = true): SeekablePlayer & {
 	};
 }
 
+/** A registry playing one shared element, as {@link playingPlayback} builds. */
+interface PlaybackSut {
+	registry: AudioPlayerRegistry;
+	listener: jest.Mock<void, [PlaybackControlsState | null]>;
+	harness: ReturnType<typeof installControlledAudio>;
+	key: string;
+}
+
+/**
+ * A registry with a status-bar subscriber and one shared element, playing.
+ * @returns The registry, its subscriber, the element's controls and its key
+ */
+function playingPlayback(): PlaybackSut {
+	const harness = installControlledAudio();
+	const registry = new AudioPlayerRegistry();
+	const listener = jest.fn<void, [PlaybackControlsState | null]>();
+	const key = playbackKey('rec.wav', null);
+	registry.subscribePlayback(listener);
+	registry.acquireAudio(key, 'app://rec');
+	void harness.audio.play();
+	return { registry, listener, harness, key };
+}
+
+/**
+ * The same, after its last player let the element go, so it sits in its
+ * grace period with a release pending.
+ * @returns The registry, its subscriber, the element's controls and its key
+ */
+function releasedPlayback(): PlaybackSut {
+	const sut = playingPlayback();
+	sut.registry.releaseAudio(sut.key);
+	return sut;
+}
+
 describe('playbackKey', () => {
 	it('separates embeds of one file by their #t= start', () => {
 		expect(playbackKey('rec.wav', null)).toBe(playbackKey('rec.wav', null));
@@ -429,19 +463,32 @@ describe('AudioPlayerRegistry', () => {
 
 	it('keeps paused playback visible until the shared audio is released', () => {
 		jest.useFakeTimers();
-		const harness = installControlledAudio();
 		try {
-			const registry = new AudioPlayerRegistry();
-			const listener = jest.fn<void, [PlaybackControlsState | null]>();
-			const key = playbackKey('rec.wav', null);
-			registry.subscribePlayback(listener);
-			registry.acquireAudio(key, 'app://rec');
-			void harness.audio.play();
+			const { listener } = releasedPlayback();
 
-			registry.releaseAudio(key);
 			expect(listener.mock.lastCall?.[0]?.paused).toBe(true);
 			jest.advanceTimersByTime(1000);
 			expect(listener.mock.lastCall?.[0]).toBeNull();
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	// The element outlives the registry's interest in it: a freed element is
+	// still the same object a late media event can arrive on. Every other
+	// listener answers only while its playback is the active one, so a play,
+	// which makes it active, is the event a leaked listener would show on.
+	// All eight leave on the same signal.
+	it('stops hearing an element the grace period has freed', () => {
+		jest.useFakeTimers();
+		try {
+			const { harness, listener } = releasedPlayback();
+			jest.advanceTimersByTime(1000);
+			const callsAfterRelease = listener.mock.calls.length;
+
+			harness.audio.dispatchEvent(new Event('play'));
+
+			expect(listener).toHaveBeenCalledTimes(callsAfterRelease);
 		} finally {
 			jest.useRealTimers();
 		}
@@ -542,15 +589,8 @@ describe('AudioPlayerRegistry', () => {
 
 	it('clears active playback, pending release, and media listeners', () => {
 		jest.useFakeTimers();
-		const harness = installControlledAudio();
 		try {
-			const registry = new AudioPlayerRegistry();
-			const listener = jest.fn<void, [PlaybackControlsState | null]>();
-			const key = playbackKey('rec.wav', null);
-			registry.subscribePlayback(listener);
-			registry.acquireAudio(key, 'app://rec');
-			void harness.audio.play();
-			registry.releaseAudio(key);
+			const { harness, registry, listener } = releasedPlayback();
 
 			registry.clear();
 			const callsAfterClear = listener.mock.calls.length;
@@ -613,13 +653,7 @@ describe('AudioPlayerRegistry', () => {
 	});
 
 	it('refreshes the status snapshot on volume, duration, and metadata changes', () => {
-		const harness = installControlledAudio();
-		const registry = new AudioPlayerRegistry();
-		const listener = jest.fn<void, [PlaybackControlsState | null]>();
-		const key = playbackKey('rec.wav', null);
-		registry.subscribePlayback(listener);
-		registry.acquireAudio(key, 'app://rec');
-		void harness.audio.play();
+		const { harness, listener } = playingPlayback();
 		const before = listener.mock.calls.length;
 
 		// Each media event on the active key republishes a fresh snapshot,

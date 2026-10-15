@@ -1,12 +1,14 @@
 /**
- * A minimal confirmation dialog: a message and a confirm/cancel pair. Used to
- * gate a destructive-ish action (for example regenerating chapters that would
- * replace existing ones) behind an explicit click.
+ * The confirmation that gates a destructive-ish action (for example
+ * regenerating chapters that would replace existing ones) behind an explicit
+ * click. Obsidian's own `ConfirmationModal` draws the dialog and its button
+ * row; what is added here is the answer, reported exactly once whichever way
+ * the dialog closes.
  * @module ui/ConfirmModal
  */
 
+import { ConfirmationModal } from 'obsidian';
 import type { App } from 'obsidian';
-import { PluginModal } from './PluginModal';
 
 /** Text and callback for the confirmation dialog. */
 export interface ConfirmModalOptions {
@@ -28,9 +30,10 @@ export interface ConfirmModalOptions {
 }
 
 /**
- * Yes/no confirmation dialog.
+ * Yes/no confirmation dialog: Obsidian's confirmation modal with a destructive
+ * confirm button and its own Cancel button.
  */
-export class ConfirmModal extends PluginModal {
+export class ConfirmModal extends ConfirmationModal {
 	/**
 	 * Whether the confirm button was pressed, so closing the dialog any other
 	 * way - Cancel, Escape, the window chrome - reports the no exactly once.
@@ -42,28 +45,18 @@ export class ConfirmModal extends PluginModal {
 		private readonly options: ConfirmModalOptions,
 	) {
 		super(app);
-	}
-
-	override onOpen(): void {
-		this.setDialogTitle(this.options.title);
-		this.contentEl.createEl('p', { text: this.options.message });
-		this.renderActions(
-			{
-				text: this.options.confirmText,
-				destructive: true,
-				onClick: () => {
+		this.setTitle(options.title);
+		this.setContent(options.message);
+		this.addButton((button) =>
+			button
+				.setButtonText(options.confirmText)
+				.setDestructive()
+				.onClick(() => {
 					this.confirmed = true;
-					this.close();
-					this.options.onConfirm();
-				},
-			},
-			{
-				text: 'Cancel',
-				onClick: () => {
-					this.close();
-				},
-			},
+					options.onConfirm();
+				}),
 		);
+		this.addCancelButton();
 	}
 
 	override onClose(): void {

@@ -1,14 +1,9 @@
 /**
- * The settings tab described as data: one tree of Obsidian setting definitions
- * that both render paths read.
+ * The settings tab described as data: one tree of Obsidian setting definitions.
  *
- * From Obsidian 1.13 this tree is the tab - the framework renders it, indexes
- * every setting for the settings search, reads and writes the values, runs the
- * validators, and re-evaluates the `visible`/`disabled` predicates. Below 1.13
- * none of that exists, so {@link module:settings/legacySettingsRenderer} walks
- * the same tree with the old `Setting` API. The official migration guide's
- * dual-support path keeps two hand-written implementations instead; for a tab
- * with sixty-odd settings that is a drift generator, and the guide says as much.
+ * This tree is the tab. Obsidian renders it, indexes every setting for the
+ * settings search, reads and writes the values, runs the validators, and
+ * re-evaluates the `visible`/`disabled` predicates.
  *
  * A handful of rows cannot be declared: the documentation callout, the format
  * list blocked per option by an asynchronous encoder probe, the output summary
@@ -68,7 +63,6 @@ export {
 	SETTINGS_BLOCK_ROW_CLASS,
 	SETTINGS_ROOT_CLASS,
 	SETTINGS_SECTION_CLASS,
-	SETTINGS_TAB_CLASS,
 	STACKED_TEXT_CLASS,
 } from './sections/context';
 
@@ -78,11 +72,7 @@ export type {
 	SettingsDefinitionContext,
 } from './sections/context';
 
-export {
-	CONTROL_WRITE_EFFECTS,
-	controlValue,
-	numberControlRejection,
-} from './controlValues';
+export { CONTROL_WRITE_EFFECTS, controlValue } from './controlValues';
 
 /**
  * Builds the tab's definition tree.

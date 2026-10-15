@@ -31,6 +31,12 @@ jest.mock('src/audio/AudioCapabilityDetector', () =>
 	require('../mocks/modules/audioCapabilityDetector'),
 );
 
+// The dialog's compressed sources take the decode-everything path: this
+// device cannot stream them, which is what the double answers by default.
+jest.mock('src/audio/streamingSplit', () =>
+	require('../mocks/modules/streamingSplit'),
+);
+
 // Mock the decoder: the compressed path decodes once via this function
 jest.mock('src/audio/AudioFormatConverter', () => ({
 	...require('../mocks/modules/audioFormatConverter'),
@@ -187,8 +193,8 @@ describe('SplitModal', () => {
 
 		mockApp = createMockApp({
 			vault: {
+				readBinary: jest.fn(),
 				adapter: {
-					readBinary: jest.fn(),
 					exists: jest.fn().mockResolvedValue(false),
 					remove: jest.fn().mockResolvedValue(undefined),
 				},
@@ -267,7 +273,7 @@ describe('SplitModal', () => {
 	});
 
 	it('clears the progress text when aborting on a collision', async () => {
-		(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+		(mockApp.vault.readBinary as jest.Mock).mockResolvedValue(
 			buildTestWav(1, 1000, 250000),
 		);
 		(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(true);
@@ -283,7 +289,7 @@ describe('SplitModal', () => {
 
 	it('keeps reporting progress in a notice when the modal closes mid-split', async () => {
 		let resolveRead!: (bytes: ArrayBuffer) => void;
-		(mockApp.vault.adapter.readBinary as jest.Mock).mockReturnValue(
+		(mockApp.vault.readBinary as jest.Mock).mockReturnValue(
 			new Promise<ArrayBuffer>((resolve) => {
 				resolveRead = resolve;
 			}),
@@ -401,7 +407,7 @@ describe('SplitModal', () => {
 	});
 
 	it('runs the split when the split button is clicked', async () => {
-		(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+		(mockApp.vault.readBinary as jest.Mock).mockResolvedValue(
 			buildTestWav(1, 1000, 250000),
 		);
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
@@ -428,7 +434,7 @@ describe('SplitModal', () => {
 	describe('WAV fast path', () => {
 		beforeEach(() => {
 			// 1000 Hz mono 16-bit: byteRate 2000 B/s; 1-minute part = 120000 B
-			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+			(mockApp.vault.readBinary as jest.Mock).mockResolvedValue(
 				buildTestWav(1, 1000, 250000),
 			);
 		});
@@ -552,7 +558,7 @@ describe('SplitModal', () => {
 			expect(Notice).toHaveBeenCalledWith(
 				'Part suffix may contain only letters, digits, hyphens, and underscores.',
 			);
-			expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
+			expect(mockApp.vault.readBinary).not.toHaveBeenCalled();
 			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
 		});
 
@@ -585,7 +591,7 @@ describe('SplitModal', () => {
 
 		it('clamps an oversized part duration down to 180 minutes', async () => {
 			// 10 Hz mono 16-bit: byteRate 20 B/s; a 180-minute part = 216000 B
-			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+			(mockApp.vault.readBinary as jest.Mock).mockResolvedValue(
 				buildTestWav(1, 10, 250000),
 			);
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
@@ -617,7 +623,7 @@ describe('SplitModal', () => {
 		});
 
 		it('aborts when the file is shorter than one part', async () => {
-			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+			(mockApp.vault.readBinary as jest.Mock).mockResolvedValue(
 				buildTestWav(1, 1000, 60000),
 			);
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
@@ -664,7 +670,7 @@ describe('SplitModal', () => {
 		});
 
 		it('stringifies non-Error failures', async () => {
-			(mockApp.vault.adapter.readBinary as jest.Mock).mockRejectedValue(
+			(mockApp.vault.readBinary as jest.Mock).mockRejectedValue(
 				'raw failure',
 			);
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
@@ -815,7 +821,7 @@ describe('SplitModal', () => {
 	describe('compressed path', () => {
 		beforeEach(() => {
 			configureFile('recording.webm', 'webm');
-			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+			(mockApp.vault.readBinary as jest.Mock).mockResolvedValue(
 				new ArrayBuffer(100),
 			);
 			// 150 s at 44100 Hz with 1-minute parts -> 3 parts

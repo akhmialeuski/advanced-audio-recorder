@@ -266,7 +266,7 @@ describe('registerCliCommands', () => {
 	});
 
 	it('reports a build with no command line to register with', () => {
-		// Below 1.12.2, and on the platforms that have no CLI at all.
+		// The platforms that have no CLI at all.
 		expect(registerCliCommands(pluginWith(), makeHost())).toBe(false);
 	});
 

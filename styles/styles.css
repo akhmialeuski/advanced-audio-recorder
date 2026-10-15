@@ -434,15 +434,6 @@ input.aar-input-invalid {
     border-color: var(--text-error);
 }
 
-/* Why a setting refused the value that was entered, under the row's own
-   description. Obsidian renders this itself from 1.13; below it the row is the
-   plugin's to append to, and a control whose value is accepted never grows one. */
-.aar-setting-error {
-    margin-top: 4px;
-    font-size: 0.9em;
-    color: var(--text-error);
-}
-
 /* Enhanced audio player */
 .aar-player {
     /* Waveform colors derive from the theme so it matches any palette. The
@@ -1528,26 +1519,22 @@ button.aar-player-marker-row {
     font-size: 0.85em;
 }
 
-/* Multi-line editors - a glossary, a guidance prompt - on both Obsidians, which
-   put every control in the same narrow right-hand column a toggle lives in. A
-   text area is written in paragraphs, so the control moves under the label and
-   fills the row instead. The two selectors are the two ways such a row is
-   found: the legacy renderer marks the row itself, while from 1.13 the row
-   belongs to the framework and only a group takes a class, so the tree keeps
-   its text areas in a block of their own and this rule dresses that block. */
-.aar-setting-stacked,
+/* Multi-line editors - a glossary, a guidance prompt. Obsidian puts every
+   control in the same narrow right-hand column a toggle lives in, and a text
+   area is written in paragraphs, so the control moves under the label and fills
+   the row instead. The row belongs to the framework and only a group takes a
+   class, so the tree keeps its text areas in a block of their own and this rule
+   dresses that block. */
 .aar-stacked-text .setting-item {
     display: block;
 }
 
-.aar-setting-stacked .setting-item-control,
 .aar-stacked-text .setting-item-control {
     width: 100%;
     padding-top: var(--size-4-2);
     justify-content: flex-start;
 }
 
-.aar-setting-stacked .setting-item-control textarea,
 .aar-stacked-text .setting-item-control > textarea {
     width: 100%;
     min-height: 6em;
@@ -1572,6 +1559,41 @@ button.aar-player-marker-row {
 .aar-settings-section + .aar-settings-section {
     border-top: var(--divider-width) solid var(--background-modifier-border);
     padding-top: var(--size-4-4);
+}
+
+/* A list declared without a heading still gets a header row on the desktop,
+   because Obsidian puts the list's add button there, as a plus icon whose
+   tooltip names the entry. The row then holds nothing but that icon and stands
+   empty above the filter. The icon moves onto the filter's line instead, so the
+   list opens with one row of controls. The mobile app draws its add row inside
+   the list and builds no header, and a list with nothing in it shows no
+   filter, so neither matches and both keep Obsidian's layout. */
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-group-search {
+    grid-row: 1;
+    grid-column: 1;
+}
+
+/* The header copies the filter's own block padding, so the icon sits level
+   with the input rather than with the top of the row. */
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-item-heading {
+    grid-row: 1;
+    grid-column: 2;
+    margin-bottom: 0;
+    padding-block: var(--size-4-4) var(--setting-items-padding-y);
+    padding-inline: 0 var(--setting-items-padding-x);
+}
+
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-item-heading > .setting-item-name {
+    display: none;
+}
+
+.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-items {
+    grid-column: 1 / -1;
 }
 
 /* A row that opens a page is a link, and Obsidian marks it with a chevron and
@@ -1609,21 +1631,7 @@ button.aar-player-marker-row {
     width: 100%;
 }
 
-/* The Obsidian before 1.13 renders the same tree as a flat list of rows with no
-   group element at all, so the same rule is expressed the other way round: a
-   row keeps no divider of its own, and a heading carries the line above the
-   block it opens. A 1.13 group heading is the first element of its group, which
-   is what keeps this from drawing a second line under the one above. */
-.aar-settings-tab .setting-item {
-    border-top: none;
-}
-
-.aar-settings-tab .setting-item-heading:not(:first-child) {
-    border-top: var(--divider-width) solid var(--background-modifier-border);
-    padding-top: var(--size-4-4);
-}
-
-/* Obsidian 1.13+ renders the settings tab from getSettingDefinitions(), and the
+/* Obsidian renders the settings tab from getSettingDefinitions(), and the
    framework owns the rows of a declarative group: it resets the group's list to
    exactly the rows it tracks after every render. The tab body therefore lives
    inside the single row element the framework tracks, and that row has to stop
@@ -1670,54 +1678,17 @@ button.aar-player-marker-row {
     margin-inline: 0;
 }
 
-/* An action row runs its action when clicked anywhere. Obsidian styles its own
-   from 1.13 on; this is the same affordance on the versions below it. */
-.setting-item.aar-action-row {
-    cursor: var(--cursor, pointer);
-}
-
-/* Obsidian before 1.13 has no group header to hang a list's filter and add
-   button on, so both become rows of their own. The filter has no label to sit
-   beside, so it takes the whole row instead of the narrow control column. */
-.setting-item.aar-search-row {
-    padding-block: var(--size-4-2);
-    border-top: none;
-}
-
-.setting-item.aar-search-row .setting-item-info {
-    display: none;
-}
-
-.setting-item.aar-search-row .setting-item-control,
-.setting-item.aar-search-row .search-input-container {
-    width: 100%;
-}
-
-/* An empty list says so in a row of its own. It reads as a note rather than as
-   a setting whose control failed to render. */
-.setting-item.aar-empty-state-row .setting-item-name {
-    color: var(--text-muted);
-    font-weight: normal;
-}
-
-/* The add affordance closes the list, so it carries no divider of its own. */
-.setting-item.aar-add-item-row {
-    border-top: none;
-    padding-top: 0;
-}
-
 /* The body's few blocks that are not setting rows have to line up with the rows
    around them: a row carries Obsidian's own horizontal inset, a plain element
-   does not. The 0 fallback leaves pre-1.13 rendering, where the body is not
-   inside a row at all, exactly as it was. */
+   does not. */
 .aar-settings-root .aar-doc-callout,
 .aar-settings-root .aar-test-status {
-    margin-inline: var(--setting-items-padding-x, 0);
+    margin-inline: var(--setting-items-padding-x);
 }
 
 .aar-settings-root .aar-test-audio {
-    margin-inline: var(--setting-items-padding-x, 0);
-    width: calc(100% - 2 * var(--setting-items-padding-x, 0px));
+    margin-inline: var(--setting-items-padding-x);
+    width: calc(100% - 2 * var(--setting-items-padding-x));
 }
 
 /* Documentation callout at the top of the settings tab. A subtle, accent-bordered

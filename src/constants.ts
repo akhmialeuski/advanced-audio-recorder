@@ -287,15 +287,8 @@ export const PLAYER_ICONS = {
 	previousChapter: 'chevron-first',
 	nextChapter: 'chevron-last',
 	chapterLoop: 'repeat-1',
-	/**
-	 * Live cleanup of the playing audio. The older `mic-2` name rather than
-	 * the `mic-vocal` it was renamed to in Lucide 0.395, because Obsidian
-	 * pins its icon set and only reached 0.446 in 1.7, while the manifest
-	 * supports 1.6.6. Both names draw the same glyph, and the old one still
-	 * resolves in current Lucide, so this is the name that resolves on every
-	 * version the plugin runs on.
-	 */
-	voiceBoost: 'mic-2',
+	/** Live cleanup of the playing audio. */
+	voiceBoost: 'mic-vocal',
 	searchMarkers: 'search',
 	speed: 'gauge',
 	copyLink: 'link',
@@ -344,13 +337,6 @@ export const PLAYER_LOOP = false;
 
 /** Seconds the seek area moves per arrow-key press. */
 export const PLAYER_SEEK_KEYBOARD_STEP_SECONDS = 5;
-
-/**
- * Animation frames to wait for the embed to attach to the document before
- * giving up the editor-mode probe (the embed-registry path renders while
- * still detached). At ~60fps this is roughly 1.5 seconds.
- */
-export const PLAYER_ATTACH_WAIT_FRAMES = 90;
 
 /**
  * Animation frames to retry drawing the waveform while the seek area still

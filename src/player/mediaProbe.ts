@@ -1,11 +1,16 @@
 /**
  * Probes whether a media file is audio-only, carries video, or cannot be
- * played, by loading its metadata into a detached <video> element. The
- * enhanced player only takes over audio-only files; video and unplayable
- * files are left to Obsidian's built-in embed so video can be watched and
- * unsupported formats degrade gracefully.
+ * played. The enhanced player only takes over audio-only files; video and
+ * unplayable files are left to Obsidian's built-in embed so video can be
+ * watched and unsupported formats degrade gracefully.
+ *
+ * The container's own track list answers first, read by range from its
+ * headers; a detached <video> element loading the file's metadata answers
+ * where the headers could not.
  * @module player/mediaProbe
  */
+
+import { resourceSource, withMediaInput } from '../audio/mediaInput';
 
 /**
  * The media classifications the probe can return, as named constants so
@@ -20,8 +25,20 @@ export const MEDIA_KIND = {
 /** Classification of a media file for takeover decisions. */
 export type MediaKind = (typeof MEDIA_KIND)[keyof typeof MEDIA_KIND];
 
-/** How long to wait for metadata before assuming a plain audio file. */
+/**
+ * How long the whole probe may take before a plain audio file is assumed:
+ * the header read and the element together, so a stalled header read does
+ * not add the element's wait on top of its own.
+ */
 const PROBE_TIMEOUT_MS = 4000;
+
+/**
+ * How much of {@link PROBE_TIMEOUT_MS} the header read may use before the
+ * element is tried. The resource is a local file read by range, which
+ * answers in milliseconds, so a read still pending after this has stalled,
+ * and the element keeps the rest of the budget to answer in.
+ */
+const HEADER_READ_TIMEOUT_MS = 1000;
 
 /**
  * A probe's classification plus whether it came from real metadata.
@@ -37,14 +54,94 @@ export interface MediaProbeResult {
 }
 
 /**
- * Loads a media resource's metadata to classify it. A video track (non
- * zero dimensions) marks it as video; metadata without video is audio; a
- * load error is unsupported. Resolves to audio if metadata never arrives,
- * so a slow probe still yields the enhanced player - but flagged as not
- * confident, so the fallback is never persisted as the file's true kind.
+ * Classifies a media resource, from its container's track list where that
+ * parses and from a media element's metadata where it does not. Resolves to
+ * audio if neither answers in time, so a slow probe still yields the enhanced
+ * player - but flagged as not confident, so the fallback is never persisted as
+ * the file's true kind.
  * @param resourceUrl - Resource URL from app.vault.getResourcePath
  */
-export function probeMediaKind(resourceUrl: string): Promise<MediaProbeResult> {
+export async function probeMediaKind(
+	resourceUrl: string,
+): Promise<MediaProbeResult> {
+	const deadline = Date.now() + PROBE_TIMEOUT_MS;
+	return (
+		(await classifyFromHeaders(resourceUrl)) ??
+		(await probeWithElement(resourceUrl, deadline - Date.now()))
+	);
+}
+
+/**
+ * The answer the container's headers give, or null where they give none this
+ * probe can stand on.
+ *
+ * The headers settle the question the element could only infer: whether a
+ * video track exists, not whether a frame happened to have dimensions by the
+ * time metadata arrived, and they settle it without a decoder and without the
+ * timeout. An audio-only container is taken as audio only where the browser
+ * also says it can play that type, because the enhanced player is an audio
+ * element and a confident answer is kept for good; a type it does not
+ * recognise, and every container the headers could not be read from, is left
+ * to the element, which tries the file for real.
+ * @param resourceUrl - Resource URL of the file
+ * @returns The classification, or null to ask the element instead
+ */
+async function classifyFromHeaders(
+	resourceUrl: string,
+): Promise<MediaProbeResult | null> {
+	let timer = 0;
+	try {
+		return await withMediaInput(resourceSource(resourceUrl), (input) =>
+			Promise.race([
+				(async (): Promise<MediaProbeResult | null> => {
+					if ((await input.getVideoTracks()).length > 0) {
+						return { kind: MEDIA_KIND.video, confident: true };
+					}
+					if (!(await input.getPrimaryAudioTrack())) {
+						return null;
+					}
+					return canPlayType(await input.getMimeType())
+						? { kind: MEDIA_KIND.audio, confident: true }
+						: null;
+				})(),
+				new Promise<null>((resolve) => {
+					// The read is abandoned rather than waited on: leaving
+					// the scope disposes the input, which cancels it.
+					timer = window.setTimeout(() => {
+						resolve(null);
+					}, HEADER_READ_TIMEOUT_MS);
+				}),
+			]),
+		);
+	} catch {
+		// Not a container mediabunny reads, or a read that failed: the
+		// element is the reader for those.
+		return null;
+	} finally {
+		window.clearTimeout(timer);
+	}
+}
+
+/**
+ * Whether the browser says it can play a media type at all.
+ * @param mimeType - The container's full type, codec parameters included
+ */
+function canPlayType(mimeType: string): boolean {
+	return createEl('audio').canPlayType(mimeType) !== '';
+}
+
+/**
+ * Loads a media resource's metadata into a detached <video> element to
+ * classify it. A video track (non-zero dimensions) marks it as video;
+ * metadata without video is audio; a load error is unsupported. Resolves
+ * to audio, not confident, if metadata never arrives.
+ * @param resourceUrl - Resource URL of the file
+ * @param timeoutMs - What is left of the probe's deadline
+ */
+function probeWithElement(
+	resourceUrl: string,
+	timeoutMs: number,
+): Promise<MediaProbeResult> {
 	return new Promise((resolve) => {
 		const el = createEl('video');
 		el.preload = 'metadata';
@@ -83,7 +180,7 @@ export function probeMediaKind(resourceUrl: string): Promise<MediaProbeResult> {
 		);
 		timer = window.setTimeout(() => {
 			settle(MEDIA_KIND.audio, false);
-		}, PROBE_TIMEOUT_MS);
+		}, timeoutMs);
 		el.src = resourceUrl;
 	});
 }

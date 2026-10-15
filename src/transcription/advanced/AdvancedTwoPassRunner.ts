@@ -100,8 +100,7 @@ export interface AdvancedTwoPassInput {
 	readonly progressSpan: number;
 	/** Reports progress, in the caller's own scale. */
 	readonly onProgress?:
-		| ((fraction: number, label: string) => void)
-		| undefined;
+		((fraction: number, label: string) => void) | undefined;
 	/** Runs one pass over every part. */
 	readonly transcribePass: TranscribePass;
 	/** Builds the language model the context agents run on. */

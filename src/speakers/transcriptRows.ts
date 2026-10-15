@@ -284,22 +284,18 @@ export function lineSpeakerOptions(
 	const existing = existingNames(sources);
 	const shown = new Set(existing);
 	return [
-		...existing.map(
-			(name): LineSpeakerOption => ({
-				value: `existing:${name}`,
-				title: name,
-				choice: { kind: 'existing', name },
-			}),
-		),
+		...existing.map((name): LineSpeakerOption => ({
+			value: `existing:${name}`,
+			title: name,
+			choice: { kind: 'existing', name },
+		})),
 		...sources.participants
 			.filter((name) => !shown.has(name))
-			.map(
-				(name): LineSpeakerOption => ({
-					value: `participant:${name}`,
-					title: name,
-					choice: { kind: 'participant', name },
-				}),
-			),
+			.map((name): LineSpeakerOption => ({
+				value: `participant:${name}`,
+				title: name,
+				choice: { kind: 'participant', name },
+			})),
 		{
 			value: 'new',
 			title: `New speaker (${nextSpeakerLabel(takenNames(sources))})`,

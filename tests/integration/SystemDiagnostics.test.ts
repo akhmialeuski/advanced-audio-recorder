@@ -706,9 +706,9 @@ describe('SystemDiagnostics.collect', () => {
 	it('measures the bitrates at the rate an encode runs at, not the one asked for', async () => {
 		// Taking the layout from the encoding and the rate from the settings
 		// had the report describe a file nobody writes: at 22.05 kHz on a
-		// 48 kHz device the AAC probe answers for HE-AAC and reports nothing
-		// reachable, while the recording encodes the 48 kHz mix and the
-		// bitrate row lists what that accepts.
+		// 48 kHz device the AAC probe answered for a rate no encode runs at
+		// and reported nothing reachable, while the recording encodes the
+		// 48 kHz mix and the bitrate row lists what that accepts.
 		const device = installAudioContextRate(DEVICE_RATE);
 		const { probeOfflineEncodingSupport } = jest.requireMock(
 			'src/audio/AudioEncoder',

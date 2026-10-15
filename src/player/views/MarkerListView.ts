@@ -17,7 +17,8 @@
  * @module player/views/MarkerListView
  */
 
-import { setIcon } from 'obsidian';
+import { debounce, setIcon } from 'obsidian';
+import type { Component, Debouncer } from 'obsidian';
 import { formatTimecode, parseTimecode } from '../../utils/TimeUtils';
 import {
 	activeMarkerIndex,
@@ -78,21 +79,13 @@ function jumpAction(kind: MarkerKind): string {
 	return kind === MARKER_KIND.chapter ? 'Jump to chapter' : 'Jump to marker';
 }
 
-/** Lifecycle hooks the view borrows from the owning render child. */
-export interface MarkerListHost {
-	/** Registers a cleanup callback that runs on the player's unload. */
-	register(cleanup: () => void): void;
-	/**
-	 * Registers an auto-cleaned DOM listener on an element or a document,
-	 * with the options addEventListener takes, capture included.
-	 */
-	registerDomEvent<K extends keyof HTMLElementEventMap>(
-		el: HTMLElement | Document,
-		type: K,
-		callback: (event: HTMLElementEventMap[K]) => void,
-		options?: boolean | AddEventListenerOptions,
-	): void;
-}
+/**
+ * Lifecycle hooks the view borrows from the owning render pass: a Component
+ * whose unload removes every listener the view added, on an element or a
+ * document, with the options it was added with, and runs every cleanup it
+ * registered.
+ */
+export type MarkerListHost = Pick<Component, 'register' | 'registerDomEvent'>;
 
 /** Actions the view invokes in response to user interaction. */
 export interface MarkerListCallbacks {
@@ -138,7 +131,10 @@ export class MarkerListView {
 	 * renaming a marker and then clicking into a note within the debounce
 	 * window dropped the rename, and nothing fired a change event to save it.
 	 */
-	private readonly pendingEdits = new Map<string, number>();
+	private readonly pendingEdits = new Map<
+		string,
+		Debouncer<[write: () => void], void>
+	>();
 
 	/**
 	 * @param host - Lifecycle hooks from the owning render child
@@ -226,9 +222,7 @@ export class MarkerListView {
 		// saved and synced even when no change/blur event fires
 		this.host.registerDomEvent(this.listEl, 'input', (event) => {
 			const input = event.target as
-				| HTMLInputElement
-				| HTMLTextAreaElement
-				| null;
+				HTMLInputElement | HTMLTextAreaElement | null;
 			const id = input?.dataset.markerId;
 			if (!input || !id) {
 				return;
@@ -332,29 +326,38 @@ export class MarkerListView {
 		for (const type of ['click', 'keyup'] as const) {
 			this.host.registerDomEvent(doc, type, closeRowsFocusLeft, true);
 		}
+		// Dropped rather than run: what is pending would otherwise be written
+		// against a player that is gone, to a recording the user has closed.
 		this.host.register(() => {
 			for (const pending of this.pendingEdits.values()) {
-				window.clearTimeout(pending);
+				pending.cancel();
 			}
 			this.pendingEdits.clear();
 		});
 	}
 
 	/**
-	 * Debounces one field's write, replacing only that field's own pending
-	 * one so a keystroke elsewhere cannot drop it.
+	 * Debounces one field's write through that field's own debouncer, so a
+	 * keystroke elsewhere cannot drop it.
 	 * @param key - Identifies the field being typed in
 	 * @param write - Persists what was typed
 	 */
 	private debounceEdit(key: string, write: () => void): void {
-		this.cancelEdit(key);
-		this.pendingEdits.set(
-			key,
-			window.setTimeout(() => {
-				this.pendingEdits.delete(key);
-				write();
-			}, RENAME_DEBOUNCE_MS),
-		);
+		let pending = this.pendingEdits.get(key);
+		if (!pending) {
+			// resetTimer on: every keystroke starts the wait over, so the field
+			// is written once the typing in it stops, and with the write of
+			// the last keystroke, which carries what the field now holds.
+			pending = debounce(
+				(latest: () => void) => {
+					latest();
+				},
+				RENAME_DEBOUNCE_MS,
+				true,
+			);
+			this.pendingEdits.set(key, pending);
+		}
+		pending(write);
 	}
 
 	/**
@@ -363,11 +366,7 @@ export class MarkerListView {
 	 * @param key - Identifies the field
 	 */
 	private cancelEdit(key: string): void {
-		const pending = this.pendingEdits.get(key);
-		if (pending !== undefined) {
-			window.clearTimeout(pending);
-			this.pendingEdits.delete(key);
-		}
+		this.pendingEdits.get(key)?.cancel();
 	}
 
 	/**

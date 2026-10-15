@@ -17,14 +17,13 @@
  * @module player/AudioPlayer
  */
 
-import { MarkdownRenderChild, Menu, Notice } from 'obsidian';
+import { Component, MarkdownRenderChild, Menu, Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import {
 	PLUGIN_LOG_PREFIX,
 	PLAYER_PLAYBACK_RATE_PRESETS,
 	PLAYER_LOOP,
 	PLAYER_PLAYBACK_RATE,
-	PLAYER_ATTACH_WAIT_FRAMES,
 } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
 import { playbackProgress } from './playbackProgress';
@@ -150,12 +149,15 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private editable = false;
 	/**
-	 * Cleanups scoped to the CURRENT render pass (not the component lifetime).
-	 * Run at the start of every renderUi and on unload, so observers and
-	 * listeners created while building the UI are torn down per render instead
-	 * of accumulating across in-place settings re-renders.
+	 * Owns everything the CURRENT render pass set up (not the component
+	 * lifetime): its DOM listeners, observers and pending frames. It is a child
+	 * of this player, replaced at the start of every renderUi, so an in-place
+	 * settings re-render tears the previous pass down instead of accumulating
+	 * its listeners, and unloading the player unloads the last pass with it.
+	 * The placeholder is never loaded and nothing registers on it: the first
+	 * render replaces it before any collaborator asks for it.
 	 */
-	private renderCleanups: Array<() => void> = [];
+	private renderScope = new Component();
 
 	/**
 	 * Whether playback repeats the chapter it is inside. Per player rather
@@ -202,7 +204,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.seekCtl = new SeekController(
 			{
 				registerDomEvent: (el, type, handler) => {
-					this.registerRenderDomEvent(el, type, handler);
+					this.renderScope.registerDomEvent(el, type, handler);
 				},
 			},
 			{
@@ -232,7 +234,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			peakCache,
 			{
 				registerRenderCleanup: (cleanup) => {
-					this.registerRenderCleanup(cleanup);
+					this.renderScope.register(cleanup);
 				},
 				isUnloaded: () => this.unloaded,
 			},
@@ -401,11 +403,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.register(() => {
 			this.unloaded = true;
 		});
-		// Run the current render pass's cleanups on unload too, so the last
-		// render's observers and listeners are torn down with the component
-		this.register(() => {
-			this.runRenderCleanups();
-		});
+		// The last render pass needs no registration of its own here: it is a
+		// child of this player, and unloading the player unloads it first.
 
 		// Bind to this embed's shared audio element (keyed by file path plus
 		// #t= start) so the same embed across view modes controls one playback
@@ -522,8 +521,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private renderUi(): void {
 		// Tear down the previous render pass before rebuilding, so an in-place
 		// settings re-render never accumulates observers or listeners on the
-		// component lifetime (each is registered per render, see below).
-		this.runRenderCleanups();
+		// component lifetime (each is registered on the render scope).
+		this.beginRenderScope();
 
 		this.containerEl.empty();
 		this.containerEl.addClass('aar-player');
@@ -563,6 +562,18 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.whenAttached(() => {
 			this.applyMode();
 		});
+
+		// Moving the note into a pop-out (or back) leaves this pass bound to
+		// the window it was built in: the waveform drawn at that window's
+		// pixel ratio and theme, and the marker list listening on that
+		// window's document. Rendering again in place rebinds all of it, the
+		// same way an external marker edit does: playback is untouched, and the
+		// cached peaks redraw without a second decode.
+		this.renderScope.register(
+			this.seekEl.onWindowMigrated(() => {
+				this.renderUi();
+			}),
+		);
 
 		if (this.shouldShowWaveform()) {
 			this.waveformCtl.scheduleLoad(this.containerEl);
@@ -682,14 +693,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * callbacks that route marker edits through the marker controller.
 	 */
 	private createMarkerView(): MarkerListView {
-		const host: MarkerListHost = {
-			register: (cleanup) => {
-				this.registerRenderCleanup(cleanup);
-			},
-			registerDomEvent: (el, type, callback, options) => {
-				this.registerRenderDomEvent(el, type, callback, options);
-			},
-		};
+		// The view is rebuilt every render, so it borrows the current render
+		// scope outright: its listeners and its pending edits go with the pass
+		// that created them.
+		const host: MarkerListHost = this.renderScope;
 		const callbacks: MarkerListCallbacks = {
 			// Jumps preserve the play/pause state (do not force playback)
 			onJump: (time) => {
@@ -753,7 +760,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			}
 		});
 		observer.observe(this.containerEl, { childList: true });
-		this.registerRenderCleanup(() => observer.disconnect());
+		this.renderScope.register(() => {
+			observer.disconnect();
+		});
 	}
 
 	/**
@@ -765,7 +774,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.controls = new PlayerControlsView(
 			{
 				registerDomEvent: (el, type, handler) => {
-					this.registerRenderDomEvent(el, type, handler);
+					this.renderScope.registerDomEvent(el, type, handler);
 				},
 			},
 			{
@@ -863,8 +872,15 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	/**
 	 * Runs the callback once the embed is attached to the document (the
 	 * embed-registry path renders while still detached), so DOM-context
-	 * checks like the editor-mode probe are reliable. Gives up after a
-	 * short budget, leaving the editable default untouched.
+	 * checks like the editor-mode probe are reliable. Until then the
+	 * editable default stays untouched.
+	 *
+	 * Obsidian's own insertion signal does the waiting. It used to be a poll
+	 * over animation frames of the main window, which gave up after a budget
+	 * and stalled altogether for an embed in a pop-out while the main window
+	 * was hidden, since a hidden window runs no frames. The signal costs
+	 * nothing while it waits, so it needs no budget, and it is removed with
+	 * the render pass on a re-render or unload.
 	 * @param run - Callback to run once attached
 	 */
 	private whenAttached(run: () => void): void {
@@ -872,27 +888,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			run();
 			return;
 		}
-		let attempts = PLAYER_ATTACH_WAIT_FRAMES;
-		let rafId = 0;
-		const tick = (): void => {
-			if (this.unloaded) {
-				return;
-			}
-			if (this.containerEl.isConnected) {
-				run();
-				return;
-			}
-			if (attempts-- <= 0) {
-				return;
-			}
-			rafId = window.requestAnimationFrame(tick);
-		};
-		rafId = window.requestAnimationFrame(tick);
-		// Cancel outright on re-render/unload instead of relying on the
-		// unloaded flag alone to fizzle the loop.
-		this.registerRenderCleanup(() => {
-			window.cancelAnimationFrame(rafId);
-		});
+		this.renderScope.register(this.containerEl.onNodeInserted(run, true));
 	}
 
 	/**
@@ -933,7 +929,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			},
 		};
 		setPlayerEmbedActions(this.containerEl, actions);
-		this.registerRenderCleanup(() => {
+		this.renderScope.register(() => {
 			clearPlayerEmbedActions(this.containerEl);
 		});
 	}
@@ -1336,51 +1332,21 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Registers a cleanup tied to the CURRENT render pass rather than the
-	 * component lifetime, so re-rendering in place tears down the previous
-	 * render's observers and listeners instead of stacking them.
-	 * @param cleanup - Cleanup callback
+	 * Unloads the previous render pass and starts a fresh one. The elements a
+	 * pass listens on are recreated by every renderUi (containerEl.empty()),
+	 * and a document outlives every render, so whatever a pass registered is
+	 * removed with it rather than retained on the player until unload.
 	 */
-	private registerRenderCleanup(cleanup: () => void): void {
-		this.renderCleanups.push(cleanup);
-	}
-
-	/**
-	 * Runs and clears the current render pass's cleanups. Called at the start
-	 * of every re-render and once on unload.
-	 */
-	private runRenderCleanups(): void {
-		const cleanups = this.renderCleanups;
-		this.renderCleanups = [];
-		for (const cleanup of cleanups) {
-			cleanup();
-		}
-	}
-
-	/**
-	 * Adds a DOM listener scoped to the current render pass. The target element
-	 * is recreated on every renderUi (containerEl.empty()), so its listener is
-	 * removed per render rather than retained on the component until unload.
-	 * A document outlives every render, so a listener on one is removed the
-	 * same way, with the options it was added with: a capture listener is
-	 * only removed by a call that names capture as well.
-	 * @param el - Target element (recreated each render), or a document
-	 * @param type - DOM event type
-	 * @param handler - Event handler
-	 * @param options - The addEventListener options, such as capture
-	 */
-	private registerRenderDomEvent<K extends keyof HTMLElementEventMap>(
-		el: HTMLElement | Document,
-		type: K,
-		handler: (event: HTMLElementEventMap[K]) => void,
-		options?: boolean | AddEventListenerOptions,
-	): void {
-		// The one listener signature an element and a document share
-		const target: EventTarget = el;
-		target.addEventListener(type, handler as EventListener, options);
-		this.registerRenderCleanup(() => {
-			target.removeEventListener(type, handler as EventListener, options);
-		});
+	private beginRenderScope(): void {
+		this.removeChild(this.renderScope);
+		this.renderScope = this.addChild(new Component());
+		// Loaded explicitly: addChild loads a child only while this player is
+		// loaded, and nothing guarantees that when a render runs - Live
+		// Preview's embed widget calls loadFile on its own schedule. A child
+		// that was never loaded runs nothing on unload, so the next render's
+		// removeChild would leave this pass's listeners behind. Once the player
+		// does load, loading the child again is a no-op.
+		this.renderScope.load();
 	}
 
 	/**

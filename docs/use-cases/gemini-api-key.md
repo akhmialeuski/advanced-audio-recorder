@@ -57,12 +57,12 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 3. Open **Engines** and then the **Google Gemini** page, where the service itself is configured.
 4. In **Base URL**, leave the default `https://generativelanguage.googleapis.com` unless you have a specific reason to change it.
 5. Paste your key into **Google Gemini API key**.
-6. Under **Model**, pick `gemini-3.8-flash` (default) or `gemini-4-argon` for harder audio. Open the **Model catalogue** entry below it to add any other model id, to drop one with the button on its row, or follow the **Gemini model list** link at the end of the **Model** row's description to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
+6. Under **Model**, pick `gemini-3.8-flash` (default) or `gemini-4-argon` for harder audio. Open the **Model catalogue** entry below it to add any other model id with the **+** button beside the filter, to drop one with the **×** button on its row, or follow the **Gemini model list** link at the end of the **Model** row's description to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
 7. (Optional) Back under **Transcription**, set **Language** to `auto` (default) or an ISO code such as `en`, `ru`, or `es`. Gemini transcribes each segment in the language actually spoken regardless, but a hint can help.
 8. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is only enabled for Gemini, Deepgram, and Mistral Voxtral.
 9. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
 
-![The Gemini Model row on gemini-3.8-flash, above the Model catalogue list of all four seeded ids with a filter box and In use under the selected one](../images/settings-gemini-model-picker.png)
+![The Model catalogue page of the Google Gemini engine: the Filter models box with the add button beside it, above the four seeded model ids, each with a delete button, and In use under gemini-3.8-flash](../images/settings-gemini-model-picker.png)
 
 The table below summarizes the fields you set:
 

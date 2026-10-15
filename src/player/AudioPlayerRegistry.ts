@@ -703,27 +703,26 @@ export class AudioPlayerRegistry {
 			}
 		};
 
-		audio.addEventListener('play', activate);
-		audio.addEventListener('pause', refresh);
-		audio.addEventListener('timeupdate', refresh);
-		audio.addEventListener('loadedmetadata', refresh);
-		audio.addEventListener('durationchange', refresh);
-		audio.addEventListener('volumechange', refresh);
+		// One signal detaches them all, the way the routing listeners below
+		// are detached. The registry is no Component, so registerDomEvent is
+		// not on offer, and a signal cannot drift out of step with its
+		// additions the way a hand-kept list of removals can.
+		const listening = new AbortController();
+		const options = { signal: listening.signal };
+		audio.addEventListener('play', activate, options);
+		audio.addEventListener('pause', refresh, options);
+		audio.addEventListener('timeupdate', refresh, options);
+		audio.addEventListener('loadedmetadata', refresh, options);
+		audio.addEventListener('durationchange', refresh, options);
+		audio.addEventListener('volumechange', refresh, options);
 		// The rate also changes from the embed's speed menu, which writes the
 		// element directly; without this the snapshot would keep reporting the
 		// speed the playback started at.
-		audio.addEventListener('ratechange', refresh);
-		audio.addEventListener('ended', finish);
+		audio.addEventListener('ratechange', refresh, options);
+		audio.addEventListener('ended', finish, options);
 
 		return () => {
-			audio.removeEventListener('play', activate);
-			audio.removeEventListener('pause', refresh);
-			audio.removeEventListener('timeupdate', refresh);
-			audio.removeEventListener('loadedmetadata', refresh);
-			audio.removeEventListener('durationchange', refresh);
-			audio.removeEventListener('volumechange', refresh);
-			audio.removeEventListener('ratechange', refresh);
-			audio.removeEventListener('ended', finish);
+			listening.abort();
 		};
 	}
 

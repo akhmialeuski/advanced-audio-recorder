@@ -40,10 +40,9 @@ export function diagnosticsPage(
 							diagnostics.startTestRecording(setting.settingEl);
 						}),
 					);
-					// Handed to whoever renders the row - the framework on 1.13,
-					// the legacy renderer below it - and run before the row is
-					// rendered again or dropped, so a finished capture never
-					// keeps its playback element and blob URL alive detached.
+					// Run by the framework before the row is rendered again or
+					// dropped, so a finished capture never keeps its playback
+					// element and blob URL alive detached.
 					return (): void => {
 						diagnostics.releaseTestRecording();
 					};

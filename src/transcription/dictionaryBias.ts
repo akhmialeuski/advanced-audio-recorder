@@ -77,8 +77,7 @@ export const DeepgramBiasMechanism = {
  * {@link DeepgramBiasMechanism}).
  */
 export type DeepgramBiasMechanism =
-	| (typeof DeepgramBiasMechanism)[keyof typeof DeepgramBiasMechanism]
-	| null;
+	(typeof DeepgramBiasMechanism)[keyof typeof DeepgramBiasMechanism] | null;
 
 /**
  * Why some dictionary terms were left out of a run, when any were. The two

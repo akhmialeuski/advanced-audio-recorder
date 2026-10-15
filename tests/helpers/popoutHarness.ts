@@ -13,6 +13,9 @@ import { Component, MarkdownView, TFile } from 'obsidian';
 // to the same module, so both imports share one instance.
 import { addObsidianDomExtensions } from '../mocks/obsidian';
 import type { App, MarkdownPostProcessor, WorkspaceLeaf } from 'obsidian';
+import { at } from './assertions';
+import { partial } from './doubles';
+import { mountLiveEditor } from './liveEditor';
 
 /** A pop-out-like window handle, as workspace window events carry it. */
 export interface WindowLike {
@@ -62,6 +65,24 @@ export function makeFile(): TFile {
 /** A fresh, independent document standing in for a pop-out window. */
 export function makePopoutDoc(): Document {
 	return document.implementation.createHTMLDocument('popout');
+}
+
+/**
+ * A second window standing in for a pop-out, for code that asks an element
+ * for its own window: an iframe's, which jsdom gives a document, animation
+ * frames, getComputedStyle and a writable devicePixelRatio of its own. A
+ * document from {@link makePopoutDoc} has no window, so `el.win` falls back to
+ * the main one there. The iframe is appended to the main body; a suite that
+ * uses this clears the body after each test.
+ * @returns The pop-out window
+ */
+export function makePopoutWindow(): Window {
+	const frame = document.body.appendChild(document.createElement('iframe'));
+	const win = frame.contentWindow;
+	if (!win) {
+		throw new Error('jsdom gave the iframe no window');
+	}
+	return win;
 }
 
 /**
@@ -117,16 +138,15 @@ export interface PopoutLivePreview {
 /**
  * Builds a popped-out note in Live Preview: a real MarkdownView (so the
  * owning-view lookup matches it via `instanceof`) whose container lives in the
- * pop-out document and holds both a CodeMirror internal-link token and an audio
- * embed, and whose editor resolves the wikilink from source. The view is
- * registered as an open leaf so `markdownViewContaining` finds it. jsdom has no
- * real CodeMirror, so the editor's `posAtDOM`/`offsetToPos`/`getLine` are
- * stubbed to map the click onto the wikilink in the source line, exactly as the
- * main-window Live Preview unit test does.
+ * pop-out document and holds both a real CodeMirror editor, with the line's
+ * wikilink rendered as Live Preview's internal-link token, and an audio embed.
+ * The view is registered as an open leaf so `markdownViewContaining` finds it.
+ * The click is mapped onto the source line by CodeMirror itself, from the
+ * editor in the pop-out's own document.
  * @param plugin - The plugin whose leaves the app double iterates
  * @param doc - The pop-out document the note is rendered in
  * @param notePath - The popped-out note's path (its link source path)
- * @param sourceLine - The editor line the timecode wikilink is read from
+ * @param sourceLine - The editor line, starting with the timecode wikilink
  * @returns The link token to click and the embed the player mounts into
  */
 export function makePopoutLivePreview(
@@ -138,10 +158,15 @@ export function makePopoutLivePreview(
 	const container = doc.createElement('div');
 	doc.body.appendChild(container);
 
-	const linkToken = doc.createElement('span');
-	linkToken.className = 'cm-hmd-internal-link';
-	linkToken.textContent = '1:30';
-	container.appendChild(linkToken);
+	const note = partial<TFile>({ path: notePath });
+	const live = mountLiveEditor({
+		doc: sourceLine,
+		file: note,
+		parent: container,
+		// Live Preview marks the text between the brackets as the token.
+		linkTokens: [{ from: 2, to: sourceLine.indexOf(']]') }],
+	});
+	const linkToken = at(live.linkTokens(), 0);
 
 	const embedHost = addObsidianDomExtensions(doc.createElement('div'));
 	const embed = addObsidianDomExtensions(doc.createElement('div'));
@@ -150,15 +175,10 @@ export function makePopoutLivePreview(
 	embedHost.appendChild(embed);
 	container.appendChild(embedHost);
 
-	const editor = {
-		cm: { posAtDOM: () => 5 },
-		offsetToPos: () => ({ line: 0, ch: 5 }),
-		getLine: () => sourceLine,
-	};
 	const view = Object.assign(Object.create(MarkdownView.prototype), {
 		containerEl: container,
-		file: { path: notePath },
-		editor,
+		file: note,
+		editor: live.editor,
 	}) as MarkdownView;
 	plugin.leaves.push({
 		view,
