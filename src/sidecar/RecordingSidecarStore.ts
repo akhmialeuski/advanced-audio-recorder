@@ -718,6 +718,14 @@ export class RecordingSidecarStore {
 	 * orphan, left by a recording deleted outside Obsidian. It goes to the
 	 * trash rather than blocking the move, so the recording keeps its own
 	 * data and the orphan can still be recovered.
+	 *
+	 * That judgement needs a sidecar of the recording's own to move. Without
+	 * one, a file at the destination is left alone even though it may be an
+	 * orphan: it is just as likely the recording's own sidecar, already
+	 * carried there by a folder move, or one sync delivered for the new name,
+	 * and trashing it would lose the recording's markers on every folder
+	 * move. A later write then treats it as a file that appeared under the
+	 * store, the way it treats any sidecar sync delivers.
 	 * @param from - Current sidecar path
 	 * @param to - Sidecar path of the renamed recording
 	 */
