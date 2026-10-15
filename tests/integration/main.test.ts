@@ -15,7 +15,7 @@ import type { PluginManifest, TFile } from 'obsidian';
 import { createFile } from '../helpers/createApp';
 import { allEls, el, textOf } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
-import { partial } from '../helpers/doubles';
+import { internalsOf, partial } from '../helpers/doubles';
 import { asMockPlugin, asMockVault } from '../helpers/obsidianMock';
 import { modalInstances } from '../mocks/obsidian';
 import { ReleaseNotesModal } from 'src/ui/ReleaseNotesModal';
@@ -1650,8 +1650,8 @@ describe('AudioRecorderPlugin transcription queue', () => {
 
 	it('answers the command line as an empty queue before it has been built', async () => {
 		const { plugin } = createPlugin([null]);
-		const queue = (
-			plugin as unknown as { createActionServices(): ActionServices }
+		const queue = internalsOf<{ createActionServices(): ActionServices }>(
+			plugin,
 		).createActionServices().transcriptionQueue;
 
 		await expect(
@@ -1676,9 +1676,9 @@ describe('AudioRecorderPlugin transcription queue', () => {
 		// wired. A load that stopped in between left them dereferencing a
 		// field that was never assigned.
 		const { plugin } = createPlugin([null]);
-		const services = (
-			plugin as unknown as { createActionServices(): ActionServices }
-		).createActionServices();
+		const services = internalsOf<{
+			createActionServices(): ActionServices;
+		}>(plugin).createActionServices();
 
 		expect(() => {
 			services.transcriptionQueue.open();

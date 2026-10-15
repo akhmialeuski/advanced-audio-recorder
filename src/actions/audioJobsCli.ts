@@ -441,17 +441,19 @@ function readStage(
 	stage: Stage,
 	range: { min: number; max: number },
 ): CliRead<Stage> {
-	const text = cliText(args, name)?.toLowerCase() ?? null;
-	if (text === null) {
-		return { value: stage };
-	}
+	const text = cliText(args, name)?.toLowerCase();
 	if (text === 'on' || text === 'off') {
 		return { value: { ...stage, enabled: text === 'on' } };
 	}
 	const read = cliNumber(args, name, range);
-	return isRefusal(read)
-		? { refusal: `${read.refusal} Or on, or off.` }
-		: { value: { enabled: true, value: read.value ?? stage.value } };
+	if (isRefusal(read)) {
+		return { refusal: `${read.refusal} Or on, or off.` };
+	}
+	// Not typed at all: the stage stays as the settings have it.
+	return {
+		value:
+			read.value === null ? stage : { enabled: true, value: read.value },
+	};
 }
 
 /**

@@ -17,6 +17,7 @@ import {
 	splitFromCli,
 } from 'src/actions/audioJobsCli';
 import type { FileContext } from 'src/actions/PluginAction';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { ConversionService } from 'src/recording/ConversionService';
 import { SplitService } from 'src/recording/SplitService';
 import { AudioProcessingService } from 'src/cleanup/AudioProcessingService';
@@ -264,9 +265,12 @@ describe('splitting a recording', () => {
 			outcome?: Awaited<ReturnType<SplitService['split']>>;
 			said?: string[];
 			chapters?: boolean;
+			settings?: Partial<AudioRecorderSettings>;
 		} = {},
 	): Promise<{ answer: string; split: jest.SpyInstance }> {
-		const sut = createSut({ settings: { splitChunkMinutes: 20 } });
+		const sut = createSut({
+			settings: { splitChunkMinutes: 20, ...options.settings },
+		});
 		if (options.chapters) {
 			jest.mocked(
 				sut.services.recordingSidecar.getMarkers,
@@ -326,6 +330,25 @@ describe('splitting a recording', () => {
 				suffix: 'seg',
 				bitrate: 96000,
 			}),
+		);
+	});
+
+	it.each([
+		{ name: 'the one the settings name', setting: 'clip', suffix: 'clip' },
+		// An empty setting is the default, as the dialog's empty field is.
+		{
+			name: 'the default for a blank setting',
+			setting: '  ',
+			suffix: 'part',
+		},
+	])('names the parts with $name', async ({ setting, suffix }) => {
+		const { split: spy } = await split(
+			{},
+			{ settings: { splitPartSuffix: setting } },
+		);
+
+		expect(at(spy.mock.calls, 0)[0]).toEqual(
+			expect.objectContaining({ suffix }),
 		);
 	});
 
