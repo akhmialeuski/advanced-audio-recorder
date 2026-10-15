@@ -71,7 +71,7 @@ The **Whisper API** engine (OpenAI / Groq) and **local whisper.cpp** do **not** 
 For a multi-hour meeting, Deepgram sends the whole file in one request, so speaker numbering stays consistent end to end. Gemini also accepts up to 2 GB, but a recording longer than **15 minutes** is split into parts and stitched back together, and a diarized split **resets speaker numbering** at each part boundary, which the plugin surfaces as a warning. Mistral Voxtral also sends the recording whole, up to three hours or 1 GB, so its speaker numbering holds end to end as Deepgram's does. If consistent labels across a very long meeting matter most, prefer Deepgram or Voxtral. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for the full behavior.
 
 1. Set **Transcription engine** to **Deepgram**, **Google Gemini**, or **Mistral Voxtral**.
-2. Open **Engines**, then that engine's page, and paste the **API key** for it (follow the linked guide above).
+2. Open **Engines**, then that engine's page, and link the **API key** for it with **Link...**, which stores it in Obsidian's keychain (follow the linked guide above).
 3. Leave **Model** on its default (`nova-3` for Deepgram, `gemini-3.8-flash` for Gemini, `voxtral-mini-latest` for Voxtral) unless you have a reason to change it.
 
 ### 2. Enable speaker diarization

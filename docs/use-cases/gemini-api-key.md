@@ -56,7 +56,7 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 2. Set **Transcription engine** to **Google Gemini**.
 3. Open **Engines** and then the **Google Gemini** page, where the service itself is configured.
 4. In **Base URL**, leave the default `https://generativelanguage.googleapis.com` unless you have a specific reason to change it.
-5. Paste your key into **Google Gemini API key**.
+5. On the **Google Gemini API key** row, click **Link...**. In Obsidian's secret picker choose **Add secret...** (it opens straight away while the keychain is empty), enter an ID such as `gemini-api-key`, paste your key as the secret, and save. The key is kept in Obsidian's keychain on this device; the plugin stores only the ID.
 6. Under **Model**, pick `gemini-3.8-flash` (default) or `gemini-4-argon` for harder audio. Open the **Model catalogue** entry below it to add any other model id with the **+** button beside the filter, to drop one with the **×** button on its row, or follow the **Gemini model list** link at the end of the **Model** row's description to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
 7. (Optional) Back under **Transcription**, set **Language** to `auto` (default) or an ISO code such as `en`, `ru`, or `es`. Gemini transcribes each segment in the language actually spoken regardless, but a hint can help.
 8. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is only enabled for Gemini, Deepgram, and Mistral Voxtral.
@@ -112,7 +112,7 @@ See the [LLM post-processing guide](../llm-post-processing.md) for the full set 
 ## Verify it works
 
 1. Open a note and record a short clip, or open an existing audio file in your vault.
-2. Make sure Gemini is the selected engine and your key is pasted in.
+2. Make sure Gemini is the selected engine and its key is linked.
 3. With an audio file active, run **Transcribe audio** from the command palette (this command appears only when transcription is enabled and the active file is audio).
 4. Watch the progress dialog. When it finishes, the transcript is inserted into the note and/or written to a sidecar file, depending on your **Transcript output** settings.
 
@@ -124,7 +124,7 @@ If a transcript appears with speaker labels (when diarization is on) and clickab
 
 | Symptom                                                     | Likely cause and fix                                                                                                                                                                                                                                                                                          |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API key not valid` / `permission denied` / `401` / `403`   | The key is wrong, truncated, or restricted. Recopy it from [AI Studio](https://aistudio.google.com/apikey) into **Google Gemini API key**, with no spaces.                                                                                                                                                    |
+| `API key not valid` / `permission denied` / `401` / `403`   | The key is wrong, truncated, or restricted. Recopy it from [AI Studio](https://aistudio.google.com/apikey) into the secret linked on **Google Gemini API key** (edit it on **Settings > Keychain**), with no spaces.                                                                                          |
 | `429` / quota or rate-limit error                           | You hit the free-tier or project quota. Wait, or enable billing in Google AI Studio / Google Cloud. Try `gemini-3.5-flash-lite` (cheaper) if you were using `gemini-4-argon`.                                                                                                                                 |
 | `404` / model not found                                     | The model id is unknown to your account. Pick `gemini-3.8-flash` or another id from the [model catalogue](https://ai.google.dev/gemini-api/docs/models).                                                                                                                                                      |
 | Speaker numbers seem to restart partway through a long file | Expected: a recording over 15 minutes is split and diarization resets per part (a warning is shown). Use [Deepgram](deepgram-api-key.md) for whole-file diarization.                                                                                                                                          |
@@ -132,7 +132,7 @@ If a transcript appears with speaker labels (when diarization is on) and clickab
 | Transcript is empty or truncated                            | The response hit the model's output-token limit. The plugin retries an overrunning part automatically in smaller halves (down to one-minute segments; each retry is a normal billed request), so a persisting error means even that failed. Choose a model with a larger output limit or split the recording. |
 | Connection or network errors                                | Gemini is a cloud engine and needs internet. For fully offline transcription, use [local whisper.cpp](local-whisper-cpp.md).                                                                                                                                                                                  |
 
-> **Key privacy.** Your Gemini API key is stored in the plugin's `data.json` on this device and is never written to diagnostics. Avoid syncing `data.json` to untrusted locations. If you need everything to stay offline, use the [local whisper.cpp engine](local-whisper-cpp.md) instead.
+> **Key privacy.** Your Gemini API key is kept in Obsidian's keychain (**Settings > Keychain**) on this device, not in the plugin's `data.json`, and is never written to diagnostics. The keychain does not sync, so on another device link the key once more under the same ID. If you need everything to stay offline, use the [local whisper.cpp engine](local-whisper-cpp.md) instead.
 
 ---
 

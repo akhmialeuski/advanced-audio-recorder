@@ -89,7 +89,7 @@ Settings to fill:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
 | **Upload chunk size** | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                                           | 24                          |
 | **Base URL**          | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL. Shared with the OpenAI engine.                 | `https://api.openai.com/v1` |
-| **OpenAI API key**    | Your API key, read by this engine and by the OpenAI one. Stored in plugin data on this device.                                  | -                           |
+| **OpenAI API key**    | Your API key, read by this engine and by the OpenAI one. Kept in Obsidian's keychain on this device.                            | -                           |
 | **Model**             | Model id in use, picked from the ids the **Model catalogue** entry below it holds. Must support `verbose_json` with timestamps. | `whisper-1`                 |
 
 Behavior and limits:
@@ -113,7 +113,7 @@ Settings to fill:
 | Setting              | Description                                                                                                          | Default                       |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
 | **Base URL**         | Deepgram API base.                                                                                                   | `https://api.deepgram.com/v1` |
-| **Deepgram API key** | Your Deepgram key. Stored in plugin data on this device.                                                             | -                             |
+| **Deepgram API key** | Your Deepgram key. Kept in Obsidian's keychain on this device.                                                       | -                             |
 | **Model**            | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `nova-3`, `nova-2-meeting`). | `nova-3`                      |
 
 Behavior and limits:
@@ -137,7 +137,7 @@ Settings to fill:
 | Setting                   | Description                                                                                                                    | Default                                     |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
 | **Base URL**              | Gemini API base (no version segment).                                                                                          | `https://generativelanguage.googleapis.com` |
-| **Google Gemini API key** | Your Gemini key. Stored in plugin data on this device.                                                                         | -                                           |
+| **Google Gemini API key** | Your Gemini key. Kept in Obsidian's keychain on this device.                                                                   | -                                           |
 | **Model**                 | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `gemini-3.8-flash`, `gemini-4-argon`). | `gemini-3.8-flash`                          |
 
 Behavior and limits:
@@ -160,7 +160,7 @@ Settings to fill:
 | Setting             | Description                                                                                                     | Default                     |
 | ------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------- |
 | **Base URL**        | Mistral API base, shared with the Mistral chat engine.                                                          | `https://api.mistral.ai/v1` |
-| **Mistral API key** | Your Mistral key. Stored in plugin data on this device.                                                         | -                           |
+| **Mistral API key** | Your Mistral key. Kept in Obsidian's keychain on this device.                                                   | -                           |
 | **Model**           | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `voxtral-mini-latest`). | `voxtral-mini-latest`       |
 
 Behavior and limits:
@@ -561,8 +561,8 @@ The **Auto chapters** block and the **Engines** entry stay in settings when **En
 
 ## Security and storage
 
-- **API keys** are stored in the plugin's `data.json` **on this device** and are **never written to diagnostics** output.
-- **Avoid syncing `data.json`** to untrusted locations, since it holds your keys in plain text.
+- **API keys** are kept in Obsidian's keychain (**Settings > Keychain**) **on this device**, not in the plugin's `data.json`, and are **never written to diagnostics** output.
+- **`data.json` holds only the ID** of each linked secret, so syncing it does not copy your keys. The keychain does not sync either, so a second device needs each key linked once under the same ID.
 - **Local whisper.cpp keeps everything offline** - no key, no upload, no network request - for the most privacy-sensitive recordings.
 
 ---

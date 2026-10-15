@@ -65,7 +65,7 @@ The API requires prepaid credit or a billing method before it will answer reques
 3. **Copy the key now.** Anthropic shows the full key only once. Keys typically start with `sk-ant-`.
 4. Store it somewhere safe. If you lose it, delete it and create a new one.
 
-> Treat the key like a password. Anyone who has it can spend your credit. Never paste it into a note, commit it to a repository, or share it. The plugin stores it locally in `data.json` (see [Settings summary](#settings-summary)).
+> Treat the key like a password. Anyone who has it can spend your credit. Never paste it into a note, commit it to a repository, or share it. The plugin keeps it in Obsidian's keychain on this device (see [Settings summary](#settings-summary)).
 
 ## Step 4: Configure the plugin
 
@@ -75,7 +75,7 @@ The API requires prepaid credit or a billing method before it will answer reques
 4. Set its **Post-processing engine** to **Anthropic (Claude)**.
 5. Open **Engines** and then the **Anthropic (Claude)** page, where everything about the service itself lives.
 6. Confirm the **Base URL** reads `https://api.anthropic.com/v1`; only change it if you front Anthropic with a proxy, and the value you type stays put whichever job later calls the engine.
-7. Paste your key into the **Anthropic API key** field. This is Anthropic's **own** field - it is not shared with any transcription key.
+7. On the **Anthropic API key** row, click **Link...**. In Obsidian's secret picker choose **Add secret...** (it opens straight away while the keychain is empty), enter an ID such as `anthropic-api-key`, paste your key as the secret, and save. The key is kept in Obsidian's keychain on this device; the plugin stores only the ID. This is Anthropic's **own** row - it is not shared with any transcription key.
 8. Pick a **Model** (see [Choosing a model](#choosing-a-model)).
 9. Optionally adjust **Max output tokens** (default `4096`, range `512`-`200000`), which bounds every job that calls this engine. The field guards against a typo rather than stating any limit of Anthropic's: how long a reply may be is the model's own maximum, it differs between models, and a budget above it is refused by the service, which names the maximum it accepts.
 10. Back in **LLM post-processing**, pick a **Task** and review its prompt (see [Choosing a task](#choosing-a-task)).
@@ -135,7 +135,7 @@ For a deeper explanation of the tasks and prompts, see [LLM post-processing](../
 | **Task**                       | `Clean up` (default) / `Summarize` / `Translate` / `Custom`                                 |
 | **Max output tokens**          | `4096` default; range `512`-`200000`                                                        |
 
-> **Where the key is stored.** The key lives in the plugin's `data.json` on this device. It is never written into the **System info** diagnostics report. Avoid syncing `data.json` to untrusted locations. Only the transcript **text** is sent to Anthropic - your audio never leaves your machine for the LLM step.
+> **Where the key is stored.** The key lives in Obsidian's keychain (**Settings > Keychain**) on this device, not in the plugin's `data.json`, and it is never written into the **System info** diagnostics report. The keychain does not sync, so on another device link the key once more under the same ID. Only the transcript **text** is sent to Anthropic - your audio never leaves your machine for the LLM step.
 
 ## Troubleshooting
 

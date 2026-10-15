@@ -170,7 +170,7 @@ DeepSeek serves the OpenAI chat format, and its catalogue holds two current mode
 
 ## Shared API keys
 
-You only enter a vendor's API token **once**, because a key belongs to the account rather than to the job: two engines reached through the same account read the one field their shared page holds.
+You only link a vendor's API token **once**, because a key belongs to the account rather than to the job: two engines reached through the same account read the one key row their shared page holds.
 
 | Account                | Key field shown           | Read by                                                                      |
 | ---------------------- | ------------------------- | ---------------------------------------------------------------------------- |
@@ -188,9 +188,9 @@ Need a key? Follow the matching use-case guide:
 - [OpenAI / Whisper API key](use-cases/openai-whisper-api-key.md)
 - [Google Gemini API key](use-cases/gemini-api-key.md)
 - [Mistral API key](use-cases/mistral-api-key.md)
-- DeepSeek has no guide page: create a key at [platform.deepseek.com](https://platform.deepseek.com/api_keys) and paste it into **DeepSeek API key** on the DeepSeek page.
+- DeepSeek has no guide page: create a key at [platform.deepseek.com](https://platform.deepseek.com/api_keys) and link it on **DeepSeek API key** on the DeepSeek page, which stores it in Obsidian's keychain.
 
-> **API keys** are stored in the plugin's `data.json` on this device and are never written to diagnostics output. Avoid syncing `data.json` to untrusted locations.
+> **API keys** are kept in Obsidian's keychain (**Settings > Keychain**) on this device, not in the plugin's `data.json`, and are never written to diagnostics output. The keychain does not sync, so each device needs a key linked once.
 
 ---
 
