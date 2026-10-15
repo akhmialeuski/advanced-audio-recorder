@@ -133,6 +133,7 @@ describe('SplitService', () => {
 					exists: jest.fn().mockResolvedValue(false),
 					remove: jest.fn().mockResolvedValue(undefined),
 				},
+				delete: jest.fn().mockResolvedValue(undefined),
 				createBinary: jest.fn((path: string) => {
 					createdFiles.push(path);
 					const file = new TFile();
@@ -522,9 +523,13 @@ describe('SplitService', () => {
 
 			// The decoded split starts from where the streamed one did: its
 			// first part is gone, and the decode writes every part again.
-			expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
+			// Removed outright rather than trashed, since the split goes on
+			// and the user's trash would otherwise keep a part of a split
+			// that succeeded.
+			expect(mockApp.vault.delete).toHaveBeenCalledWith(
 				expect.objectContaining({ path: 'Audio/recording-part1.mp3' }),
 			);
+			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
 			expect(decode()).toHaveBeenCalledTimes(1);
 			expect(outcome).toEqual({
 				status: 'completed',
@@ -546,6 +551,24 @@ describe('SplitService', () => {
 			expect(outcome).toEqual({ status: 'aborted' });
 			expect(decode()).not.toHaveBeenCalled();
 			expect(noticeMessages()).toContain('Split failed: disk full');
+		});
+
+		it('sends the parts of a split that ends in failure to the trash', async () => {
+			streamingSource(25);
+			jest.mocked(mockApp.vault.createBinary)
+				.mockImplementationOnce((path: string) =>
+					Promise.resolve(Object.assign(new TFile(), { path })),
+				)
+				.mockRejectedValueOnce(new Error('disk full'));
+
+			await service.split(createRequest(), jest.fn());
+
+			// Nothing writes them again, so they stay recoverable where the
+			// user's deletion preference puts them.
+			expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
+				expect.objectContaining({ path: 'Audio/recording-part1.mp3' }),
+			);
+			expect(mockApp.vault.delete).not.toHaveBeenCalled();
 		});
 
 		it('says once that the parts are written as WAV, even when it falls back', async () => {

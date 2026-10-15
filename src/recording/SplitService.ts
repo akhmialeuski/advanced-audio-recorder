@@ -576,7 +576,8 @@ export class SplitService {
 	/**
 	 * Writes all part files, yielding to the UI between parts.
 	 * On failure removes already-written parts and rethrows, keeping
-	 * the source file intact.
+	 * the source file intact: deleted when a streamed part failed and the
+	 * split is about to run again, trashed when the split ends here.
 	 * @param parts - Prepared parts in order
 	 * @param partPaths - Resolved part paths
 	 * @param onProgress - Receives pipeline progress text
@@ -611,12 +612,24 @@ export class SplitService {
 				await delay(0);
 			}
 		} catch (error) {
+			// A failed streamed part is answered by splitting again from a
+			// whole-file decode, which writes every part anew, so what was
+			// written so far is the split's own scratch and is removed
+			// outright, the way the sidecar store removes a file it emptied.
+			// Trashing it would leave parts of a split that went on to
+			// succeed in the user's trash. The obsidianmd
+			// prefer-file-manager-trash-file warning on that call is expected
+			// for the same reason as the sidecar store's, and its config
+			// forbids silencing it inline. Any other failure ends the split,
+			// and its parts go where the user's deletion preference puts them,
+			// recoverable.
+			const retried = error instanceof StreamedSplitError;
 			for (const part of written) {
 				try {
 					if (part.file) {
-						// trashFile respects the user's file deletion
-						// preference and keeps the rollback recoverable
-						await this.app.fileManager.trashFile(part.file);
+						await (retried
+							? this.app.vault.delete(part.file)
+							: this.app.fileManager.trashFile(part.file));
 					} else {
 						await this.app.vault.adapter.remove(part.path);
 					}
