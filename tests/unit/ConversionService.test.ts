@@ -100,6 +100,43 @@ describe('ConversionService', () => {
 		);
 	});
 
+	describe('a file written at another rate than its source', () => {
+		beforeEach(() => {
+			jest.mocked(convertBlobToFormatBuffer).mockImplementationOnce(
+				(_blob, _format, _bitrate, _onProgress, options) => {
+					options?.onSampleRateChange?.({ from: 16000, to: 44100 });
+					return Promise.resolve(new ArrayBuffer(8));
+				},
+			);
+		});
+
+		it('says which rate the file was resampled to, and why', async () => {
+			await service.convert(
+				createRequest({ targetFormat: 'm4a' }),
+				jest.fn(),
+			);
+
+			expect(getNotices()).toContain(
+				'"recording.m4a" was resampled from 16 kHz to 44.1 kHz, because the M4A encoder on this device does not take 16 kHz.',
+			);
+		});
+
+		it('says nothing about a file that was never written', async () => {
+			jest.mocked(mockApp.vault.createBinary).mockRejectedValueOnce(
+				new Error('disk full'),
+			);
+
+			await service.convert(
+				createRequest({ targetFormat: 'm4a' }),
+				jest.fn(),
+			);
+
+			expect(
+				getNotices().some((message) => message.includes('resampled')),
+			).toBe(false);
+		});
+	});
+
 	it('converts a WAV target through the same ladder as a compressed one', async () => {
 		// The streaming Conversion writes WAV too. Decoding the whole file
 		// into an AudioBuffer first held the recording as 32-bit floats
@@ -122,7 +159,11 @@ describe('ConversionService', () => {
 			'wav',
 			128000,
 			expect.any(Function),
-			{ workerClient, channelMode: 'source' },
+			{
+				workerClient,
+				channelMode: 'source',
+				onSampleRateChange: expect.any(Function),
+			},
 		);
 	});
 

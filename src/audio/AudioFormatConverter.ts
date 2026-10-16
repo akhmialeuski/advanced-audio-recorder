@@ -6,7 +6,10 @@
 
 import type { RecordingTarget } from '../types';
 import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
-import { runStreamingConversion } from './streamingConversion';
+import {
+	runStreamingConversion,
+	type SampleRateChange,
+} from './streamingConversion';
 import { ChannelMode, downmixAudioBuffer } from './downmix';
 import { autoClosing } from '../utils/disposables';
 import {
@@ -312,6 +315,13 @@ export interface BlobConversionOptions {
 	 * execution path - worker, streaming, and decode fallback.
 	 */
 	channelMode?: ChannelMode;
+	/**
+	 * Told once the conversion is done when the encoder refused the source's
+	 * sample rate and the file was written at another. Only the step that
+	 * produced the file reports, so a worker that chose a rate and then failed
+	 * says nothing about a file the next step wrote.
+	 */
+	onSampleRateChange?: (change: SampleRateChange) => void;
 }
 
 /**
@@ -381,9 +391,20 @@ async function runConversionLadder<T>(
 			? options.workerClient
 			: null;
 
+	// The rate a step chose, held until that step has produced the file.
+	let sampleRateChange: SampleRateChange | null = null;
+	const noteSampleRateChange = (change: SampleRateChange): void => {
+		sampleRateChange = change;
+	};
+	const reportSampleRateChange = (): void => {
+		if (sampleRateChange) {
+			options.onSampleRateChange?.(sampleRateChange);
+		}
+	};
+
 	if (workerClient) {
 		try {
-			return await deliver.fromBlob(
+			const result = await deliver.fromBlob(
 				await workerClient.convertBlob(
 					recordedBlob,
 					targetFormat,
@@ -391,9 +412,13 @@ async function runConversionLadder<T>(
 					allowRemux,
 					channelMode,
 					onProgress,
+					noteSampleRateChange,
 				),
 			);
+			reportSampleRateChange();
+			return result;
 		} catch (error) {
+			sampleRateChange = null;
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Worker conversion failed, falling back to the main thread:`,
 				error,
@@ -402,7 +427,7 @@ async function runConversionLadder<T>(
 	}
 
 	try {
-		return await deliver.fromBuffer(
+		const result = await deliver.fromBuffer(
 			await runStreamingConversion(
 				recordedBlob,
 				targetFormat,
@@ -410,10 +435,14 @@ async function runConversionLadder<T>(
 				allowRemux,
 				onProgress,
 				channelMode,
+				noteSampleRateChange,
 			),
 			targetFormat,
 		);
+		reportSampleRateChange();
+		return result;
 	} catch (error) {
+		sampleRateChange = null;
 		console.warn(
 			`${PLUGIN_LOG_PREFIX} Streaming conversion failed, falling back to decode and re-encode:`,
 			error,

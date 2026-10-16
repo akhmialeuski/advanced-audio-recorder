@@ -13,7 +13,10 @@
  * @module audio/encodingWorker
  */
 
-import { runStreamingConversion } from './streamingConversion';
+import {
+	runStreamingConversion,
+	type SampleRateChange,
+} from './streamingConversion';
 import { normalizeChannelMode, type ChannelMode } from './downmix';
 import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
 import { errorMessage } from '../errors';
@@ -42,6 +45,7 @@ export interface WorkerRequest {
  */
 export type WorkerResponse =
 	| { id: number; kind: 'progress'; percent: number }
+	| ({ id: number; kind: 'sampleRate' } & SampleRateChange)
 	| { id: number; kind: 'result'; buffer: ArrayBuffer; mimeType: string }
 	| { id: number; kind: 'error'; message: string };
 
@@ -69,6 +73,9 @@ export async function handleEncodingMessage(
 			// Structured-clone delivers plain data; normalize so an
 			// unexpected value degrades to the source layout
 			normalizeChannelMode(request.channelMode),
+			(change) => {
+				post({ id: request.id, kind: 'sampleRate', ...change });
+			},
 		);
 		post(
 			{

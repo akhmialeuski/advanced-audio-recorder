@@ -17,12 +17,32 @@ import {
 	AudioSample,
 	Conversion,
 	Quality,
+	canEncodeAudio,
 } from 'mediabunny';
 import type { AudioCodec, ConversionAudioOptions } from 'mediabunny';
 import { ensureEncoderRegistered, createOutputFormat } from './AudioEncoder';
 import { getFormatDescriptor } from './formatRegistry';
 import { ChannelMode, monoPickIndex } from './downmix';
 import { disposableOf } from '../utils/disposables';
+import { PLUGIN_LOG_PREFIX } from '../constants';
+
+/**
+ * The standard sample rates a transcode may move a recording to, in Hz,
+ * ascending: the sampling frequencies of MPEG-4 audio, which hold every rate
+ * MP3 and Opus define as well.
+ */
+const STANDARD_SAMPLE_RATES = [
+	8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000, 64000, 88200,
+	96000,
+] as const satisfies readonly number[];
+
+/** A conversion written at another sample rate than its source has. */
+export interface SampleRateChange {
+	/** Rate of the source, in Hz. */
+	readonly from: number;
+	/** Rate the converted file is written at, in Hz. */
+	readonly to: number;
+}
 
 /**
  * How far a copied stream may be shifted to start at zero, in seconds.
@@ -106,6 +126,53 @@ export function averageChannelsSample(sample: AudioSample): AudioSample {
 }
 
 /**
+ * The sample rate a transcode is written at: the source's own when the
+ * encoder takes it, otherwise the nearest standard rate it takes at the same
+ * channel count, upward first, since resampling up loses nothing the source
+ * had.
+ *
+ * Left to itself, Conversion answers a refused rate with a fixed layout of
+ * its own, stereo at 48 kHz, so a 16 kHz mono recording came out with twice
+ * the channels and three times the rate. Chromium's AAC encoder takes 44.1
+ * and 48 kHz only, on every platform, so below that some resampling cannot be
+ * avoided; choosing it here keeps the channels and the smallest rate that
+ * works. The question is the one Conversion asks itself, codec string left to
+ * mediabunny, so the rate chosen is one it then agrees to encode at.
+ * @param codec - Codec being encoded
+ * @param numberOfChannels - Channels the encoder is handed
+ * @param sampleRate - Rate of the source
+ * @param quality - Quality of the encode
+ * @returns The rate, or null when none works at this channel count, which
+ *   leaves the choice to Conversion
+ */
+async function encodableSampleRate(
+	codec: AudioCodec,
+	numberOfChannels: number,
+	sampleRate: number,
+	quality: Quality,
+): Promise<number | null> {
+	const candidates = [
+		sampleRate,
+		...STANDARD_SAMPLE_RATES.filter((rate) => rate > sampleRate),
+		...STANDARD_SAMPLE_RATES.filter((rate) => rate < sampleRate).reverse(),
+	];
+	for (const candidate of candidates) {
+		// Asked one at a time on purpose: the source's own rate is the usual
+		// answer, and stopping there costs one question instead of twelve.
+		if (
+			await canEncodeAudio(codec, {
+				numberOfChannels,
+				sampleRate: candidate,
+				quality,
+			})
+		) {
+			return candidate;
+		}
+	}
+	return null;
+}
+
+/**
  * Converts a compressed audio blob to the target format using the
  * streaming mediabunny Conversion pipeline. With allowRemux, packets
  * of an input whose codec already matches the target codec are copied
@@ -121,6 +188,8 @@ export function averageChannelsSample(sample: AudioSample): AudioSample {
  * @param allowRemux - Allow packet copy when the codecs match
  * @param onProgress - Optional progress callback (0-100, deduplicated)
  * @param channelMode - Channel layout for the output audio
+ * @param onSampleRateChange - Told when the encoder refuses the source's rate
+ *   and the file is written at another, before the conversion runs
  * @returns Bytes of the converted file
  * @throws Error when the target format has no codec mapping, the
  * input has no audio track, the conversion cannot process the audio
@@ -134,6 +203,7 @@ export async function runStreamingConversion(
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
 	channelMode: ChannelMode = ChannelMode.Source,
+	onSampleRateChange?: (change: SampleRateChange) => void,
 ): Promise<ArrayBuffer> {
 	const codec: AudioCodec | undefined =
 		getFormatDescriptor(targetFormat)?.codec;
@@ -159,6 +229,7 @@ export async function runStreamingConversion(
 		allowRemux,
 		onProgress,
 		channelMode,
+		onSampleRateChange,
 	);
 }
 
@@ -174,6 +245,7 @@ async function convertWithInput(
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
 	channelMode: ChannelMode = ChannelMode.Source,
+	onSampleRateChange?: (change: SampleRateChange) => void,
 ): Promise<ArrayBuffer> {
 	const audioTrack = await input.getPrimaryAudioTrack();
 	if (!audioTrack) {
@@ -223,10 +295,27 @@ async function convertWithInput(
 	// The bitrate is asked through Quality, as the offline encoder asks it:
 	// mediabunny deprecated the bare field, and any quality still forces the
 	// re-encode the remux rule above relies on.
-	let audio: ConversionAudioOptions =
-		remuxEligible || isPcmTarget
-			? { codec }
-			: { codec, quality: new Quality({ bitrate }) };
+	let audio: ConversionAudioOptions = { codec };
+	if (!remuxEligible && !isPcmTarget) {
+		const quality = new Quality({ bitrate });
+		audio = { codec, quality };
+		const sourceRate = await audioTrack.getSampleRate();
+		// The encoder is handed what the mono hook returns, so that is the
+		// channel count it is asked about.
+		const rate = await encodableSampleRate(
+			codec,
+			monoProcess ? 1 : await audioTrack.getNumberOfChannels(),
+			sourceRate,
+			quality,
+		);
+		if (rate !== null && rate !== sourceRate) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} The ${targetFormat} encoder does not take ${String(sourceRate)} Hz; converting at ${String(rate)} Hz instead.`,
+			);
+			audio = { ...audio, sampleRate: rate };
+			onSampleRateChange?.({ from: sourceRate, to: rate });
+		}
+	}
 	if (monoProcess) {
 		audio = {
 			...audio,

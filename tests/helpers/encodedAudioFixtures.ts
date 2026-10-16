@@ -13,11 +13,15 @@
  */
 
 import {
+	ALL_FORMATS,
+	BufferSource,
 	BufferTarget,
 	EncodedAudioPacketSource,
 	EncodedPacket,
+	Input,
 	Output,
 	type AudioCodec,
+	type InputAudioTrack,
 	type OutputFormat,
 } from 'mediabunny';
 
@@ -95,4 +99,28 @@ export async function muxPlaceholderPackets(
 		throw new Error('The muxer produced no file');
 	}
 	return target.buffer;
+}
+
+/**
+ * Reads a file back through the real demuxer: opens it, hands its primary
+ * audio track and the input to `read`, and releases the input however `read`
+ * ends.
+ * @param bytes - The file to read
+ * @param read - What to learn from the track
+ * @returns What `read` returned
+ * @throws Error when the file has no audio track
+ */
+export async function withPrimaryAudioTrack<T>(
+	bytes: ArrayBuffer,
+	read: (track: InputAudioTrack, input: Input) => Promise<T>,
+): Promise<T> {
+	using input = new Input({
+		source: new BufferSource(bytes),
+		formats: ALL_FORMATS,
+	});
+	const track = await input.getPrimaryAudioTrack();
+	if (!track) {
+		throw new Error('The file has no audio track');
+	}
+	return await read(track, input);
 }

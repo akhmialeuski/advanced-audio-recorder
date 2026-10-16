@@ -16,6 +16,8 @@ import { ConversionLinkAction } from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
 import { showNotice, type Notify } from '../utils/notify';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
+import { kilohertz } from '../audio/AudioCapabilityDetector';
+import type { SampleRateChange } from '../audio/streamingConversion';
 import { AUDIO_EXTENSIONS } from '../constants';
 
 /**
@@ -134,6 +136,8 @@ export class ConversionService {
 		}
 
 		let createdFile: TFile;
+		// What the conversion reported about its rate, at most one change.
+		const sampleRateChanges: SampleRateChange[] = [];
 		try {
 			// Check if target file already exists
 			if (await this.app.vault.adapter.exists(newPath)) {
@@ -182,11 +186,20 @@ export class ConversionService {
 				{
 					workerClient: this.getWorkerClient(),
 					channelMode: request.channelMode ?? ChannelMode.Source,
+					onSampleRateChange: (change) => {
+						sampleRateChanges.push(change);
+					},
 				},
 			);
 
 			onProgress('Saving...');
 			createdFile = await this.app.vault.createBinary(newPath, data);
+			// Said once the file exists, since the sentence is about it.
+			for (const { from, to } of sampleRateChanges) {
+				this.notify(
+					`"${newFileName}" was resampled from ${kilohertz(from)} kHz to ${kilohertz(to)} kHz, because the ${request.targetFormat.toUpperCase()} encoder on this device does not take ${kilohertz(from)} kHz.`,
+				);
+			}
 		} catch (error) {
 			const message = errorMessage(error);
 			onProgress(`Error: ${message}`);

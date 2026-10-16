@@ -16,12 +16,14 @@ import {
 import { scaledTimeoutMs } from '../utils/TimeUtils';
 import { ChannelMode } from './downmix';
 import type { WorkerRequest, WorkerResponse } from './encodingWorker';
+import type { SampleRateChange } from './streamingConversion';
 
 /** Pending request bookkeeping. */
 interface PendingRequest {
 	resolve: (blob: Blob) => void;
 	reject: (error: Error) => void;
 	onProgress?: ((percent: number) => void) | undefined;
+	onSampleRateChange?: ((change: SampleRateChange) => void) | undefined;
 	/** Watchdog for a worker that stops answering; re-armed by progress. */
 	timer: number;
 	/** How long this request may go unanswered, for each re-arming. */
@@ -66,6 +68,8 @@ export class EncodingWorkerClient {
 	 * @param allowRemux - Allow packet copy when the codecs match
 	 * @param channelMode - Channel layout for the output audio
 	 * @param onProgress - Optional progress callback (0-100)
+	 * @param onSampleRateChange - Told when the file is written at another
+	 *   rate than the source's
 	 * @returns Converted blob
 	 * @throws Error when the worker is unavailable or the conversion
 	 * fails (the caller falls back to the main-thread pipeline)
@@ -77,6 +81,7 @@ export class EncodingWorkerClient {
 		allowRemux: boolean,
 		channelMode: ChannelMode = ChannelMode.Source,
 		onProgress?: (percent: number) => void,
+		onSampleRateChange?: (change: SampleRateChange) => void,
 	): Promise<Blob> {
 		const worker = this.ensureWorker();
 		if (!worker) {
@@ -96,6 +101,7 @@ export class EncodingWorkerClient {
 				resolve,
 				reject,
 				onProgress,
+				onSampleRateChange,
 				timeoutMs,
 				timer: this.armWatchdog(id, timeoutMs),
 			});
@@ -253,6 +259,12 @@ export class EncodingWorkerClient {
 					request.timeoutMs,
 				);
 				request.onProgress?.(response.percent);
+				break;
+			case 'sampleRate':
+				request.onSampleRateChange?.({
+					from: response.from,
+					to: response.to,
+				});
 				break;
 			case 'result':
 				window.clearTimeout(request.timer);

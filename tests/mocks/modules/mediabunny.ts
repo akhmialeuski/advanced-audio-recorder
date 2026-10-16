@@ -31,6 +31,35 @@ export const conversionInit = jest.fn();
  */
 export const getPrimaryAudioTrack = jest.fn();
 
+/** What a track double states about itself. */
+interface AudioTrackLayout {
+	codec?: string;
+	sampleRate?: number;
+	numberOfChannels?: number;
+}
+
+/**
+ * An audio track double for `getPrimaryAudioTrack` to resolve with: Opus,
+ * stereo, at 48 kHz unless told otherwise, which is what a recorder's
+ * intermediate file holds. Named once, because every conversion suite needs
+ * one and each copy had to learn the same new question when the pipeline
+ * started asking it.
+ * @param layout - What differs from the default track
+ * @returns The track double
+ */
+export function audioTrack({
+	codec = 'opus',
+	sampleRate = 48000,
+	numberOfChannels = 2,
+}: AudioTrackLayout = {}): object {
+	return {
+		getCodec: jest.fn().mockResolvedValue(codec),
+		isAudioTrack: (): boolean => true,
+		getSampleRate: jest.fn().mockResolvedValue(sampleRate),
+		getNumberOfChannels: jest.fn().mockResolvedValue(numberOfChannels),
+	};
+}
+
 /** `Input.computeDuration`; resolve it with the length the container carries. */
 export const computeDuration = jest.fn();
 

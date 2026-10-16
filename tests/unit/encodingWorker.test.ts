@@ -14,10 +14,12 @@ const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('mediabunny', () => require('../mocks/modules/mediabunny'));
 import {
+	audioTrack,
 	conversionInit,
 	getPrimaryAudioTrack,
 	convertedBuffer,
 } from '../mocks/modules/mediabunny';
+import { canEncodeAudio } from 'mediabunny';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
@@ -63,11 +65,7 @@ describe('handleEncodingMessage', () => {
 				discardedTracks: [],
 			}),
 		);
-		getPrimaryAudioTrack.mockResolvedValue({
-			getCodec: jest.fn().mockResolvedValue('opus'),
-			isAudioTrack: (): boolean => true,
-			getNumberOfChannels: jest.fn().mockResolvedValue(2),
-		});
+		getPrimaryAudioTrack.mockResolvedValue(audioTrack());
 	});
 
 	it('posts the converted buffer as a transferable result', async () => {
@@ -103,6 +101,39 @@ describe('handleEncodingMessage', () => {
 			id: 1,
 			kind: 'progress',
 			percent: 50,
+		});
+	});
+
+	it('posts the rate it chose before the result', async () => {
+		getPrimaryAudioTrack.mockResolvedValue(
+			audioTrack({ sampleRate: 16000, numberOfChannels: 1 }),
+		);
+		jest.mocked(canEncodeAudio).mockImplementation(
+			(_codec: unknown, options?: { sampleRate?: number }) =>
+				Promise.resolve(options?.sampleRate === 44100),
+		);
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+		try {
+			await handleEncodingMessage(
+				createRequest({ targetFormat: 'm4a' }),
+				post,
+			);
+		} finally {
+			warn.mockRestore();
+			jest.mocked(canEncodeAudio).mockReset();
+			jest.mocked(canEncodeAudio).mockResolvedValue(false);
+		}
+
+		expect(responses.map((entry) => entry.response.kind)).toEqual([
+			'sampleRate',
+			'result',
+		]);
+		expect(at(responses, 0).response).toEqual({
+			id: 1,
+			kind: 'sampleRate',
+			from: 16000,
+			to: 44100,
 		});
 	});
 

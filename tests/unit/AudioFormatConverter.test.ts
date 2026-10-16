@@ -52,6 +52,7 @@ const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('mediabunny', () => require('../mocks/modules/mediabunny'));
 import {
+	audioTrack,
 	conversionInit,
 	getPrimaryAudioTrack,
 } from '../mocks/modules/mediabunny';
@@ -154,11 +155,7 @@ describe('AudioFormatConverter', () => {
 
 		// Default input track: opus audio, the typical intermediate
 		// recording codec
-		getPrimaryAudioTrack.mockResolvedValue({
-			getCodec: jest.fn().mockResolvedValue('opus'),
-			isAudioTrack: (): boolean => true,
-			getNumberOfChannels: jest.fn().mockResolvedValue(2),
-		});
+		getPrimaryAudioTrack.mockResolvedValue(audioTrack());
 	});
 
 	// resolveRecorderFormat
@@ -442,6 +439,7 @@ describe('AudioFormatConverter', () => {
 				true,
 				'source',
 				undefined,
+				expect.any(Function),
 			);
 			expect(conversionInit).not.toHaveBeenCalled();
 			expect(result).toBeInstanceOf(ArrayBuffer);
@@ -468,6 +466,7 @@ describe('AudioFormatConverter', () => {
 				false,
 				'mono-left',
 				undefined,
+				expect.any(Function),
 			);
 		});
 
@@ -508,6 +507,67 @@ describe('AudioFormatConverter', () => {
 
 			expect(conversionInit).toHaveBeenCalledTimes(1);
 			expect(result).toBeInstanceOf(ArrayBuffer);
+		});
+
+		it('reports the rate the worker wrote the file at', async () => {
+			const change = { from: 16000, to: 44100 };
+			const worker = {
+				isAvailable: () => true,
+				convertBlob: jest.fn(
+					(
+						...args: Parameters<EncodingWorkerClient['convertBlob']>
+					): Promise<Blob> => {
+						args[6]?.(change);
+						return Promise.resolve(new Blob(['converted']));
+					},
+				),
+			};
+			const onSampleRateChange = jest.fn();
+
+			await convertBlobToFormatBuffer(
+				new Blob(['test'], { type: 'audio/wav' }),
+				'm4a',
+				96000,
+				undefined,
+				{
+					workerClient: partial<EncodingWorkerClient>(worker),
+					onSampleRateChange,
+				},
+			);
+
+			expect(onSampleRateChange).toHaveBeenCalledTimes(1);
+			expect(onSampleRateChange).toHaveBeenCalledWith(change);
+		});
+
+		it('says nothing of a rate a failed worker chose', async () => {
+			jest.spyOn(console, 'warn').mockImplementation();
+			const worker = {
+				isAvailable: () => true,
+				convertBlob: jest.fn(
+					(
+						...args: Parameters<EncodingWorkerClient['convertBlob']>
+					): Promise<Blob> => {
+						args[6]?.({ from: 16000, to: 44100 });
+						return Promise.reject(new Error('worker died'));
+					},
+				),
+			};
+			const onSampleRateChange = jest.fn();
+
+			await convertBlobToFormatBuffer(
+				new Blob(['test'], { type: 'audio/webm' }),
+				'mp4',
+				128000,
+				undefined,
+				{
+					workerClient: partial<EncodingWorkerClient>(worker),
+					onSampleRateChange,
+				},
+			);
+
+			// The main-thread step wrote the file at the source rate.
+			expect(conversionInit).toHaveBeenCalledTimes(1);
+			expect(onSampleRateChange).not.toHaveBeenCalled();
 		});
 
 		// The regression this pair exists for: a worker that hangs used to
@@ -616,6 +676,7 @@ describe('AudioFormatConverter', () => {
 				false,
 				'mono-right',
 				undefined,
+				expect.any(Function),
 			);
 		});
 	});
@@ -685,6 +746,7 @@ describe('AudioFormatConverter', () => {
 				true,
 				'source',
 				undefined,
+				expect.any(Function),
 			);
 			// The main-thread pipeline is never touched
 			expect(conversionInit).not.toHaveBeenCalled();
@@ -714,6 +776,7 @@ describe('AudioFormatConverter', () => {
 				false,
 				'mono-left',
 				undefined,
+				expect.any(Function),
 			);
 		});
 

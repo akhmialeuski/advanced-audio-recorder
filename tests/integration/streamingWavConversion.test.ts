@@ -10,12 +10,13 @@
  * @module tests/integration/streamingWavConversion.test
  */
 
-import { ALL_FORMATS, AudioSampleSink, BufferSource, Input } from 'mediabunny';
+import { AudioSampleSink } from 'mediabunny';
 import { runStreamingConversion } from 'src/audio/streamingConversion';
 import { ChannelMode } from 'src/audio/downmix';
 import { assembleWavFromPcmSegments } from 'src/audio/WavEncoder';
 import { PcmSampleFormat } from 'src/audio/pcm';
 import { encodePcmSamples } from '../helpers/pcmFixtures';
+import { withPrimaryAudioTrack } from '../helpers/encodedAudioFixtures';
 
 /** Sample rate of the fixture, deliberately not the device's own. */
 const SAMPLE_RATE = 22050;
@@ -49,25 +50,19 @@ async function readBack(bytes: ArrayBuffer): Promise<{
 	sampleRate: number;
 	first: Float32Array;
 }> {
-	const input = new Input({
-		source: new BufferSource(bytes),
-		formats: ALL_FORMATS,
+	return withPrimaryAudioTrack(bytes, async (track, input) => {
+		const sink = new AudioSampleSink(track);
+		const first = await sink.getSample(0);
+		const samples = new Float32Array(first?.numberOfFrames ?? 0);
+		first?.copyTo(samples, { planeIndex: 0, format: 'f32-planar' });
+		return {
+			mimeType: await input.getMimeType(),
+			codec: await track.getCodec(),
+			channels: await track.getNumberOfChannels(),
+			sampleRate: await track.getSampleRate(),
+			first: samples,
+		};
 	});
-	const track = await input.getPrimaryAudioTrack();
-	if (!track) {
-		throw new Error('The converted file has no audio track');
-	}
-	const sink = new AudioSampleSink(track);
-	const first = await sink.getSample(0);
-	const samples = new Float32Array(first?.numberOfFrames ?? 0);
-	first?.copyTo(samples, { planeIndex: 0, format: 'f32-planar' });
-	return {
-		mimeType: await input.getMimeType(),
-		codec: await track.getCodec(),
-		channels: await track.getNumberOfChannels(),
-		sampleRate: await track.getSampleRate(),
-		first: samples,
-	};
 }
 
 describe('converting to WAV through the streaming pipeline', () => {

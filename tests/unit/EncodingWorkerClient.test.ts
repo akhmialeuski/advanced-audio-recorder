@@ -149,6 +149,43 @@ describe('EncodingWorkerClient', () => {
 		await conversion;
 	});
 
+	it('forwards the sample rate the worker chose', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const onSampleRateChange = jest.fn();
+		const conversion = client.convertBlob(
+			new Blob(['audio']),
+			'm4a',
+			96000,
+			false,
+			'source',
+			undefined,
+			onSampleRateChange,
+		);
+		const worker = at(createdWorkers, 0);
+		const requestId = (
+			at(worker.postMessage.mock.calls, 0)[0] as { id: number }
+		).id;
+
+		respond(worker, {
+			id: requestId,
+			kind: 'sampleRate',
+			from: 16000,
+			to: 44100,
+		});
+		respond(worker, {
+			id: requestId,
+			kind: 'result',
+			buffer: new ArrayBuffer(1),
+			mimeType: 'audio/m4a',
+		});
+		await conversion;
+
+		expect(onSampleRateChange).toHaveBeenCalledWith({
+			from: 16000,
+			to: 44100,
+		});
+	});
+
 	it('rejects the matching request on a conversion error', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const conversion = client.convertBlob(
