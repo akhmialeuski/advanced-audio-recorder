@@ -243,6 +243,22 @@ async function playingEmbed(
 	return { container, plugin, registry, snapshot };
 }
 
+/**
+ * Renders every playback the registry publishes into a status bar, as the
+ * plugin does, from the moment of the call on.
+ * @param registry - The registry publishing the active playback
+ * @returns The status bar element
+ */
+function mountStatusBar(registry: AudioPlayerRegistry): HTMLElement {
+	const statusBarItem = makePlayerContainer();
+	registry.subscribePlayback((state) => {
+		if (state) {
+			renderPlaybackStatusBar(statusBarItem, state);
+		}
+	});
+	return statusBarItem;
+}
+
 /** Starts the shared playback and parks it at a known position. */
 function startPlaybackAt(
 	registry: AudioPlayerRegistry,
@@ -337,12 +353,7 @@ describe('the volume set in the embed', () => {
 	it('fills the status-bar volume track up to the level set in the embed', async () => {
 		const shared = sharedAudio();
 		const registry = new AudioPlayerRegistry();
-		const statusBarItem = makePlayerContainer();
-		registry.subscribePlayback((state) => {
-			if (state) {
-				renderPlaybackStatusBar(statusBarItem, state);
-			}
-		});
+		const statusBarItem = mountStatusBar(registry);
 		const container = mountPlayer(registry);
 		await tick();
 		startPlaybackAt(registry, shared.audio, 30);
@@ -356,6 +367,39 @@ describe('the volume set in the embed', () => {
 		expect(barVolume.style.getPropertyValue('--slider-fill-ratio')).toBe(
 			'0.3',
 		);
+	});
+
+	it('stays muted when the status bar first shows a lowered volume', async () => {
+		// The strip builds its slider at full volume and then shows the level
+		// of the playback. Obsidian's slider reports a value set from code as
+		// if it had been dragged, and a drag to an audible level unmutes, so
+		// a strip that heard its own update back would unmute the recording
+		// the moment it appeared.
+		const shared = sharedAudio();
+		const registry = new AudioPlayerRegistry();
+		const container = mountPlayer(registry);
+		await tick();
+		const embedVolume = el<HTMLInputElement>(container, PLAYER.volume);
+		embedVolume.value = '0.4';
+		embedVolume.dispatchEvent(new Event('input', { bubbles: true }));
+		clickControl(container, 'Mute / unmute');
+		expect(shared.audio.muted).toBe(true);
+		const statusBarItem = mountStatusBar(registry);
+
+		startPlaybackAt(registry, shared.audio, 30);
+
+		expect(shared.audio.muted).toBe(true);
+		expect(el<HTMLInputElement>(statusBarItem, PLAYBACK.volume).value).toBe(
+			'0.4',
+		);
+		expect(
+			control(statusBarItem, 'Mute / unmute').getAttribute(
+				'aria-pressed',
+			),
+		).toBe('true');
+		expect(
+			control(container, 'Mute / unmute').getAttribute('aria-pressed'),
+		).toBe('true');
 	});
 });
 

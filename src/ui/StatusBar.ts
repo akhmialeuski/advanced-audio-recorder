@@ -3,21 +3,30 @@
  * @module ui/StatusBar
  */
 
-import { setIcon } from 'obsidian';
-import {
-	PLAYER_ICONS,
-	PLAYER_SKIP_SECONDS,
-	PLAYER_VOLUME_SLIDER_STEP,
-} from '../constants';
+import { setIcon, setTooltip } from 'obsidian';
+import { PLAYER_ICONS, PLAYER_SKIP_SECONDS } from '../constants';
 import { MARKER_KIND } from '../markers/markerModel';
 import type { PlaybackControlsState } from '../player/playbackControls';
 import { RecordingStatus } from '../types';
 import type { SaveProgress, RecordingControls } from '../types';
 import { formatTimecode } from '../utils/TimeUtils';
 import { formatByteSize } from '../utils/formatBytes';
+import { createIconButton } from './iconButton';
+import { createProgressBar, type ProgressBar } from './progressBar';
+import { createVolumeSlider, type VolumeSlider } from './volumeSlider';
+
+/**
+ * Where a status-bar tooltip opens. The bar sits on the bottom edge of the
+ * window, so Obsidian's default placement below the control would open
+ * off-screen; the app's own status-bar items open theirs above.
+ */
+const STATUS_BAR_TOOLTIP = { placement: 'top' } as const;
 
 /** Latest command snapshot used by the persistent playback controls DOM. */
 const playbackStates = new WeakMap<HTMLElement, PlaybackControlsState>();
+
+/** The slider behind each mounted volume input, found again on update. */
+const volumeSliders = new WeakMap<Element, VolumeSlider>();
 
 /**
  * Class names of the persistent playback controls. Each is referenced both
@@ -220,7 +229,19 @@ function renderRecordingState(
 			live.createSpan({ cls: 'aar-recording-size', text: '0 B' });
 		}
 		if (liveOptions.showMeter) {
-			const meter = live.createSpan({ cls: 'aar-input-meter' });
+			// A meter rather than a picture of one: a screen reader can read
+			// the level on request, and it is not a live region, so the five
+			// readings a second are not announced on their own.
+			const meter = live.createSpan({
+				cls: 'aar-input-meter',
+				attr: {
+					role: 'meter',
+					'aria-label': 'Input level',
+					'aria-valuemin': '0',
+					'aria-valuemax': '100',
+					'aria-valuenow': '0',
+				},
+			});
 			meter.createSpan({ cls: 'aar-input-meter-fill' });
 		}
 	}
@@ -249,11 +270,12 @@ export function updateRecordingLiveStats(
 	if (size) {
 		size.textContent = formatByteSize(stats.bytes);
 	}
-	const fill = live.querySelector<HTMLElement>('.aar-input-meter-fill');
-	if (fill) {
-		fill.setCssProps({
-			'--aar-meter-fill': `${String(meterPercent(stats.level))}%`,
-		});
+	const meter = live.querySelector<HTMLElement>('.aar-input-meter');
+	const fill = meter?.querySelector<HTMLElement>('.aar-input-meter-fill');
+	if (meter && fill) {
+		const percent = String(meterPercent(stats.level));
+		fill.setCssProps({ '--aar-meter-fill': `${percent}%` });
+		meter.setAttribute('aria-valuenow', percent);
 	}
 }
 
@@ -276,33 +298,28 @@ function meterPercent(level: number): number {
 }
 
 /**
- * Creates a clickable control button with an icon in the status bar.
+ * Creates an icon button in the status bar, its tooltip opening above.
  * @param parent - Parent element to append the button to
  * @param icon - Obsidian icon name
- * @param ariaLabel - Accessible label for the button
- * @param onClick - Click handler
- * @returns The created keyboard-operable control
+ * @param label - Accessible name and tooltip
+ * @param onClick - Click handler, which a key press reaches as well
+ * @returns The created button
  */
 function createControlButton(
 	parent: HTMLElement,
 	icon: string,
-	ariaLabel: string,
+	label: string,
 	onClick: () => void,
-): HTMLElement {
-	const button = parent.createSpan({ cls: 'aar-control-btn' });
-	button.setAttribute('aria-label', ariaLabel);
-	button.setAttribute('role', 'button');
-	button.tabIndex = 0;
-	setIcon(button, icon);
-	button.addEventListener('click', (e: MouseEvent) => {
-		e.stopPropagation();
-		onClick();
+): HTMLButtonElement {
+	const button = createIconButton(parent, {
+		icon,
+		label,
+		cls: 'aar-control-btn',
+		tooltip: STATUS_BAR_TOOLTIP,
 	});
-	button.addEventListener('keydown', (event: KeyboardEvent) => {
-		if (event.key !== 'Enter' && event.key !== ' ') {
-			return;
-		}
-		event.preventDefault();
+	// The status bar item is clickable in Obsidian, and it must not also
+	// react to a press on one of its controls.
+	button.addEventListener('click', (event: MouseEvent) => {
 		event.stopPropagation();
 		onClick();
 	});
@@ -389,24 +406,15 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 			playbackStates.get(statusBarItem)?.onToggleMute();
 		},
 	).addClass(PLAYBACK_MUTE_CLASS);
-	const volume = audioControls.createEl('input', {
-		cls: `${PLAYBACK_VOLUME_CLASS} slider`,
-		attr: {
-			type: 'range',
-			min: '0',
-			max: '1',
-			step: String(PLAYER_VOLUME_SLIDER_STEP),
-			value: '1',
-			'aria-label': 'Volume',
+	const volume = createVolumeSlider(
+		audioControls,
+		PLAYBACK_VOLUME_CLASS,
+		1,
+		(value) => {
+			playbackStates.get(statusBarItem)?.onVolumeInput(value);
 		},
-	});
-	// The app's own slider fill: its class draws the track in the accent up
-	// to this ratio, and the range runs 0 to 1, so the value is the ratio.
-	volume.setCssProps({ '--slider-fill-ratio': volume.value });
-	volume.addEventListener('input', () => {
-		volume.setCssProps({ '--slider-fill-ratio': volume.value });
-		playbackStates.get(statusBarItem)?.onVolumeInput(Number(volume.value));
-	});
+	);
+	volumeSliders.set(volume.el, volume);
 
 	const markerControls = container.createSpan({
 		cls: PLAYBACK_MARKER_CONTROLS_CLASS,
@@ -463,24 +471,36 @@ function updatePlaybackControls(
 ): void {
 	// The step is a setting, so the two skip buttons say what they will
 	// actually do rather than the number they were built with.
-	const skipBack = container.querySelector(`.${PLAYBACK_SKIP_BACK_CLASS}`);
-	skipBack?.setAttribute('aria-label', `Back ${String(state.skipSeconds)}s`);
-	const skipForward = container.querySelector(
+	const skipBack = container.querySelector<HTMLElement>(
+		`.${PLAYBACK_SKIP_BACK_CLASS}`,
+	);
+	if (skipBack) {
+		setTooltip(
+			skipBack,
+			`Back ${String(state.skipSeconds)}s`,
+			STATUS_BAR_TOOLTIP,
+		);
+	}
+	const skipForward = container.querySelector<HTMLElement>(
 		`.${PLAYBACK_SKIP_FORWARD_CLASS}`,
 	);
-	skipForward?.setAttribute(
-		'aria-label',
-		`Forward ${String(state.skipSeconds)}s`,
-	);
+	if (skipForward) {
+		setTooltip(
+			skipForward,
+			`Forward ${String(state.skipSeconds)}s`,
+			STATUS_BAR_TOOLTIP,
+		);
+	}
 
 	const toggle = container.querySelector<HTMLElement>(
 		`.${PLAYBACK_TOGGLE_CLASS}`,
 	);
 	if (toggle) {
 		setIcon(toggle, state.paused ? PLAYER_ICONS.play : PLAYER_ICONS.pause);
-		toggle.setAttribute(
-			'aria-label',
+		setTooltip(
+			toggle,
 			state.paused ? 'Play audio' : 'Pause playback',
+			STATUS_BAR_TOOLTIP,
 		);
 	}
 
@@ -493,16 +513,11 @@ function updatePlaybackControls(
 		mute.setAttribute('aria-pressed', String(state.muted));
 	}
 
-	const volume = container.querySelector<HTMLInputElement>(
-		`.${PLAYBACK_VOLUME_CLASS}`,
-	);
-	if (volume) {
-		if (activeDocument.activeElement !== volume) {
-			volume.value = String(state.volume);
-		}
-		// The fill follows what the slider shows, whether the value came from
-		// the playback or from the drag still in progress
-		volume.setCssProps({ '--slider-fill-ratio': volume.value });
+	const volumeEl = container.querySelector(`.${PLAYBACK_VOLUME_CLASS}`);
+	const volume = volumeEl && volumeSliders.get(volumeEl);
+	// A slider the user is holding keeps the value under their finger
+	if (volume && activeDocument.activeElement !== volume.el) {
+		volume.show(state.volume);
 	}
 
 	const markerControls = container.querySelector<HTMLElement>(
@@ -548,9 +563,9 @@ function renderSavingState(el: HTMLElement, saveProgress?: SaveProgress): void {
 }
 
 /**
- * Renders a minimized transcription job in the status bar. Clicking the
- * progress surface or focusing it and pressing Enter/Space restores the
- * transcription modal.
+ * Renders a minimized transcription job in the status bar. The progress is a
+ * button that restores the transcription modal, from a click or from Enter
+ * and Space once it has focus.
  * @param statusBarItem - The status bar HTML element
  * @param progress - Current transcription progress
  * @param options - Restore action metadata
@@ -609,8 +624,38 @@ export function renderQuickNoteStatusBar(
 	);
 }
 
+/** The state classes a progress surface shows under. */
+type ProgressStateClass = 'is-saving' | 'is-transcribing';
+
+/** The parts of a mounted progress surface that every update rewrites. */
+interface ProgressView {
+	/** The state it was built for; another state builds it again. */
+	readonly stateClass: ProgressStateClass;
+	/** The line saying what the work is doing. */
+	readonly text: HTMLElement;
+	readonly bar: ProgressBar;
+	/** The button that restores a background task's window, if it has one. */
+	readonly restore: HTMLButtonElement | null;
+	/** The latest restore action, read by the button when it is pressed. */
+	onActivate: (() => void) | null;
+}
+
 /**
- * Renders a compact progress indicator in the status bar.
+ * The progress surface behind each mounted content element, found again on
+ * the next update rather than rebuilt.
+ */
+const progressViews = new WeakMap<Element, ProgressView>();
+
+/** Class of the element that holds a progress surface. */
+const PROGRESS_CONTENT_CLASS = 'aar-status-progress-content';
+
+/**
+ * Renders or updates a compact progress indicator in the status bar.
+ *
+ * The surface is built once and its text and bar are rewritten in place on
+ * every report, as the playback controls are: a report arrives with every
+ * stage of the work, and a rebuild would take the keyboard focus off the
+ * restore button and restart the bar's growth from nothing each time.
  * @param el - The status bar HTML element
  * @param progress - Optional progress info
  * @param stateClass - CSS class for the active state
@@ -620,10 +665,50 @@ export function renderQuickNoteStatusBar(
 function renderProgressState(
 	el: HTMLElement,
 	progress: SaveProgress | undefined,
-	stateClass: 'is-saving' | 'is-transcribing',
+	stateClass: ProgressStateClass,
 	defaultDescription: string,
 	options?: BackgroundProgressOptions,
 ): void {
+	const mounted = el.querySelector(`.${PROGRESS_CONTENT_CLASS}`);
+	let view = mounted ? progressViews.get(mounted) : undefined;
+	if (
+		!view ||
+		view.stateClass !== stateClass ||
+		(view.restore !== null) !== (options !== undefined)
+	) {
+		view = buildProgressView(el, stateClass, options !== undefined);
+	}
+
+	const description = progress?.description ?? defaultDescription;
+	view.text.textContent = description;
+	view.bar.setLabel(description);
+	view.bar.setValue(progress?.percent);
+	view.onActivate = options?.onActivate ?? null;
+	if (view.restore && options) {
+		setTooltip(view.restore, options.activationLabel, STATUS_BAR_TOOLTIP);
+	}
+}
+
+/**
+ * Builds a progress surface: the line of text and the bar under it.
+ *
+ * A background task's line is a native button in Obsidian's icon-button
+ * class, which the platform activates from the keyboard and the app draws a
+ * hover and a focus ring for. The bar sits beside the button rather than in
+ * it: a button's content is flattened for a screen reader, which would lose
+ * the bar's role and value, and a button may not hold the divs the bar is
+ * made of. The stylesheet stretches the button over the bar, so a click on
+ * either restores the window.
+ * @param el - The status bar HTML element
+ * @param stateClass - CSS class for the active state
+ * @param restorable - Whether the surface restores a background task
+ * @returns The mounted surface
+ */
+function buildProgressView(
+	el: HTMLElement,
+	stateClass: ProgressStateClass,
+	restorable: boolean,
+): ProgressView {
 	el.empty();
 	playbackStates.delete(el);
 	el.classList.remove('is-recording');
@@ -632,60 +717,28 @@ function renderProgressState(
 	el.classList.remove('is-playback');
 	el.classList.add(stateClass);
 
-	const wrapper = el.createDiv({
-		cls: options
-			? 'aar-status-progress-content aar-status-progress-actionable'
-			: 'aar-status-progress-content',
+	const content = el.createDiv({ cls: PROGRESS_CONTENT_CLASS });
+	const restore = restorable
+		? content.createEl('button', {
+				cls: 'clickable-icon aar-status-progress-actionable',
+				attr: { type: 'button' },
+			})
+		: null;
+	const view: ProgressView = {
+		stateClass,
+		text: (restore ?? content).createSpan(),
+		bar: createProgressBar(content, 'aar-save-progress', ''),
+		restore,
+		onActivate: null,
+	};
+	// Single click matches the sibling recording controls; stop propagation
+	// so the surrounding status bar item does not also react.
+	restore?.addEventListener('click', (event: MouseEvent) => {
+		event.stopPropagation();
+		view.onActivate?.();
 	});
-	if (options) {
-		wrapper.setAttribute('role', 'button');
-		wrapper.setAttribute('aria-label', options.activationLabel);
-		wrapper.tabIndex = 0;
-		// Single click matches the sibling recording controls and the
-		// role="button" semantics; stop propagation so the surrounding status
-		// bar item does not also react.
-		wrapper.addEventListener('click', (event: MouseEvent) => {
-			event.stopPropagation();
-			options.onActivate();
-		});
-		wrapper.addEventListener('keydown', (event: KeyboardEvent) => {
-			if (event.key !== 'Enter' && event.key !== ' ') {
-				return;
-			}
-			event.preventDefault();
-			options.onActivate();
-		});
-	}
-
-	const text = wrapper.createSpan();
-	text.textContent = progress?.description ?? defaultDescription;
-
-	const progressContainer = wrapper.createDiv({
-		cls: 'aar-save-progress',
-	});
-	const progressBar = progressContainer.createDiv({
-		cls: 'aar-save-progress-bar',
-	});
-	progressBar.setCssProps({
-		'--save-progress': `${String(savePercent(progress?.percent))}%`,
-	});
-}
-
-/**
- * Clamps a save percentage into something the bar can paint.
- *
- * The number is bytes written over bytes expected, both read off a save in
- * flight: before the first chunk lands that division is NaN, and a final flush
- * that writes more than it announced overshoots 100. The stylesheet takes the
- * value straight into a width, so neither may reach it.
- * @param percent - Reported percentage, or undefined before any was reported
- * @returns A whole percentage in 0..100
- */
-function savePercent(percent: number | undefined): number {
-	if (percent === undefined || !Number.isFinite(percent)) {
-		return 0;
-	}
-	return Math.round(Math.min(100, Math.max(0, percent)));
+	progressViews.set(content, view);
+	return view;
 }
 
 /**

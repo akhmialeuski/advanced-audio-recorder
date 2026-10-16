@@ -8,7 +8,7 @@ import { App } from 'obsidian';
 import { TranscriptionQueueModal } from 'src/ui/TranscriptionQueueModal';
 import { TranscriptionQueue } from 'src/transcription/TranscriptionQueue';
 import { createMockApp } from '../helpers/createApp';
-import { allEls, el, textsOf } from '../helpers/dom';
+import { allEls, control, el, textsOf } from '../helpers/dom';
 import { QUEUE } from '../helpers/selectors';
 import { at } from '../helpers/assertions';
 
@@ -224,6 +224,14 @@ describe('the controls over a queue', () => {
 		expect(queue.entries().map((e) => e.path)).toEqual([
 			'Recordings/b.webm',
 		]);
+	});
+
+	it('names each drop button for the recording it drops', () => {
+		const { modal } = createSut();
+
+		const drop = control(modal.contentEl, 'Drop Recordings/a.webm');
+
+		expect(drop).toBeInstanceOf(HTMLButtonElement);
 	});
 
 	it('offers no drop for the recording in flight', () => {

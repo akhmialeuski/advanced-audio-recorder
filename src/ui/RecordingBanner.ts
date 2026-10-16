@@ -6,9 +6,9 @@
  * @module ui/RecordingBanner
  */
 
-import { setIcon } from 'obsidian';
 import { RecordingBannerAnchor } from '../settings/settingsSchema';
 import { formatTimecode } from '../utils/TimeUtils';
+import { createIconButton } from './iconButton';
 
 /**
  * Finger travel, in CSS px, before a press on the banner becomes a drag.
@@ -133,13 +133,14 @@ export class RecordingBanner {
 			cls: 'aar-recording-banner-time',
 			text: '0:00',
 		});
-		const stop = el.createSpan({ cls: 'aar-recording-banner-stop' });
-		stop.setAttribute('aria-label', 'Stop recording');
-		stop.setAttribute('role', 'button');
-		stop.setAttribute('tabindex', '0');
-		setIcon(stop, 'square');
-		// The listeners live on elements hide() removes, so they go with them
-		// rather than accumulating on the plugin for every recording.
+		const stop = createIconButton(el, {
+			icon: 'square',
+			label: 'Stop recording',
+			cls: 'aar-recording-banner-stop',
+		});
+		// The listener lives on an element hide() removes, so it goes with it
+		// rather than accumulating on the plugin for every recording. A key
+		// press reaches it as a click as well.
 		stop.addEventListener('click', (event) => {
 			event.stopPropagation();
 			if (this.suppressNextClick) {
@@ -147,14 +148,6 @@ export class RecordingBanner {
 				return;
 			}
 			this.callbacks.onStop();
-		});
-		// A role="button" element must also activate on Enter/Space
-		stop.addEventListener('keydown', (event) => {
-			if (event.key === 'Enter' || event.key === ' ') {
-				event.preventDefault();
-				event.stopPropagation();
-				this.callbacks.onStop();
-			}
 		});
 		this.registerDrag(el);
 		return el;

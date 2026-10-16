@@ -8,8 +8,8 @@
  * @module ui/TranscriptionQueueModal
  */
 
-import { setIcon } from 'obsidian';
 import type { App } from 'obsidian';
+import { createIconButton } from './iconButton';
 import { PluginModal } from './PluginModal';
 import { formatUsd } from '../transcription/costs';
 import {
@@ -167,11 +167,11 @@ export class TranscriptionQueueModal extends PluginModal {
 		if (entry.state === QueueEntryState.Running) {
 			return;
 		}
-		const remove = row.createEl('button', {
+		const remove = createIconButton(row, {
+			icon: 'x',
+			label: `Drop ${entry.path}`,
 			cls: QUEUE_REMOVE_CLASS,
-			attr: { type: 'button', 'aria-label': `Drop ${entry.path}` },
 		});
-		setIcon(remove, 'x');
 		remove.addEventListener('click', () => {
 			this.options.queue.remove(entry.path);
 		});

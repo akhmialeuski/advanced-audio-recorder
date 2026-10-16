@@ -39,7 +39,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 
 Start and stop a recording from the **microphone icon** in the left ribbon or with the `Start/stop recording` command. While recording, the ribbon icon turns red and pulses, and the **status bar** shows `Recording...` with **Pause** and **Stop** buttons. When you stop, the plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link into the active note, written in your vault's link format (`![[filename.ext]]` with the default wikilinks). For longer recordings a save-progress bar walks through stages (`Saving...` > `Flushing buffers...` > `Assembling audio...` > `Writing file...` > `Cleaning up...` > `Saved`) while the ribbon shows a save icon.
 
-To choose which microphone is used, run the `Select audio input device` command. It opens a quick-pick modal listing the detected input devices; choosing one saves it to settings immediately and shows a confirmation notice.
+To choose which microphone is used, run the `Select audio input device` command. It opens a quick-pick list of the detected input devices with the one in use marked, and choosing one saves it to settings immediately and shows a confirmation notice.
 
 Learn more: [Recording](recording.md)
 
@@ -226,7 +226,7 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | Feature                       | What it does                                                               | Where to configure                              | Deep-dive link                                                 |
 | ----------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
 | Recording                     | Start/stop capture; ribbon, status bar, save-progress feedback             | Ribbon icon / command palette                   | [Recording](recording.md)                                      |
-| Switch input device           | Quick-pick modal to change the microphone                                  | Command palette                                 | [Recording](recording.md#switching-the-input-device)           |
+| Switch input device           | Dialog to change the microphone                                            | Command palette                                 | [Recording](recording.md#switching-the-input-device)           |
 | Command line (desktop)        | Every action of the plugin from a terminal, for scripts                    | Obsidian CLI                                    | [Command line](command-line.md)                                |
 | Pause and resume              | Pause and continue a session without losing progress                       | Command palette / status bar                    | [Recording](recording.md#pausing-and-resuming)                 |
 | Markers while recording       | Drop a bookmark or chapter at the live position                            | Status bar / command palette (markers enabled)  | [Recording](recording.md#marking-moments-while-recording)      |

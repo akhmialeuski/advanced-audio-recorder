@@ -115,6 +115,30 @@ describe('mobile recording banner styles', () => {
 
 		expect(stop).toMatch(/min-width:\s*var\(--touch-size-m\)/);
 		expect(stop).toMatch(/min-height:\s*var\(--touch-size-m\)/);
-		expect(stop).toMatch(/justify-content:\s*center/);
+	});
+
+	// Obsidian's icon button colours its hover and its press from its own
+	// variables, so a plain color would turn grey under the finger.
+	it.each([
+		{ state: 'at rest', variable: '--icon-color' },
+		{ state: 'under the pointer', variable: '--icon-color-hover' },
+		{ state: 'while pressed', variable: '--icon-color-focused' },
+	])('keeps the stop control red $state', ({ variable }) => {
+		expect(bannerRule(BANNER.stop)).toMatch(
+			new RegExp(`${variable}:\\s*var\\(--color-red\\)`),
+		);
+	});
+
+	it('sizes its text from the token that follows the system text size', () => {
+		expect(bannerRule(BANNER.root)).toMatch(
+			/font-size:\s*var\(--font-ui-medium\)/,
+		);
+	});
+
+	it("floats with a notice's shadow and corner shape", () => {
+		const root = bannerRule(BANNER.root);
+
+		expect(root).toMatch(/box-shadow:\s*var\(--notice-shadow\)/);
+		expect(root).toMatch(/corner-shape:\s*var\(--notice-corner-shape\)/);
 	});
 });

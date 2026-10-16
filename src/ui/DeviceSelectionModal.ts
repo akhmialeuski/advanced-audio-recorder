@@ -1,16 +1,19 @@
 /**
- * Device selection modal for choosing audio input devices.
+ * The picker the "Select audio input device" command opens: a quick-pick
+ * list of the detected inputs, the way Obsidian asks for one of several
+ * things, with the input in use marked.
  * @module ui/DeviceSelectionModal
  */
 
 import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { errorMessage } from '../errors';
 import {
 	deviceOptionLabel,
 	getAudioInputDevices,
 } from '../recording/AudioStreamHandler';
-import { PluginModal } from './PluginModal';
+import { ActionTargetModal } from './ActionTargetModal';
 
 /**
  * Callback type for when a device is selected.
@@ -20,69 +23,43 @@ export type DeviceSelectedCallback = (
 	deviceLabel: string,
 ) => Promise<void>;
 
+/** What the picker's search field says before anything is typed. */
+const DEVICE_PICKER_PLACEHOLDER = 'Choose the input to record from';
+
 /**
- * Modal for selecting an audio input device.
+ * Hands the chosen input to the caller and says which one is now in use,
+ * or why it could not be stored.
+ * @param device - The input chosen
+ * @param onDeviceSelected - Stores the choice
  */
-export class DeviceSelectionModal extends PluginModal {
-	private devices: MediaDeviceInfo[];
-	private onDeviceSelected: DeviceSelectedCallback;
-
-	/**
-	 * Creates a new DeviceSelectionModal.
-	 * @param app - The Obsidian App instance
-	 * @param devices - Array of available audio input devices
-	 * @param onDeviceSelected - Callback when device is selected
-	 */
-	constructor(
-		app: App,
-		devices: MediaDeviceInfo[],
-		onDeviceSelected: DeviceSelectedCallback,
-	) {
-		super(app);
-		this.devices = devices;
-		this.onDeviceSelected = onDeviceSelected;
+async function selectDevice(
+	device: MediaDeviceInfo,
+	onDeviceSelected: DeviceSelectedCallback,
+): Promise<void> {
+	const label = deviceOptionLabel(device);
+	try {
+		await onDeviceSelected(device.deviceId, label);
+	} catch (error) {
+		console.error(
+			`${PLUGIN_LOG_PREFIX} Could not select audio device:`,
+			error,
+		);
+		new Notice(errorMessage(error));
+		return;
 	}
-
-	/**
-	 * Called when the modal is opened.
-	 */
-	override onOpen(): void {
-		const { contentEl } = this;
-
-		this.setDialogTitle('Select audio input device');
-
-		const dropdown = contentEl.createEl('select');
-		dropdown.addClass('audio-device-dropdown');
-
-		for (const device of this.devices) {
-			const option = dropdown.createEl('option');
-			option.value = device.deviceId;
-			option.text = deviceOptionLabel(device);
-		}
-
-		this.renderActions({
-			text: 'Select',
-			cta: true,
-			onClick: async () => {
-				const selectedDeviceId = dropdown.value;
-				const selectedOption = dropdown.selectedOptions[0];
-				const selectedLabel = selectedOption?.text ?? 'Unknown device';
-				await this.onDeviceSelected(selectedDeviceId, selectedLabel);
-				new Notice(`Selected audio device: ${selectedLabel}`);
-				this.close();
-			},
-		});
-	}
+	new Notice(`Selected audio device: ${label}`);
 }
 
 /**
- * Shows the device selection modal if devices are available.
+ * Shows the device picker if devices are available.
  * @param app - The Obsidian App instance
  * @param onDeviceSelected - Callback when device is selected
+ * @param currentDeviceId - The input recordings use now, marked in the list
  */
 export async function showDeviceSelectionModal(
 	app: App,
 	onDeviceSelected: DeviceSelectedCallback,
+	currentDeviceId: string,
 ): Promise<void> {
 	let audioDevices: MediaDeviceInfo[];
 	try {
@@ -106,5 +83,16 @@ export async function showDeviceSelectionModal(
 		return;
 	}
 
-	new DeviceSelectionModal(app, audioDevices, onDeviceSelected).open();
+	new ActionTargetModal(
+		app,
+		audioDevices,
+		(device) =>
+			device.deviceId === currentDeviceId
+				? `${deviceOptionLabel(device)} (current)`
+				: deviceOptionLabel(device),
+		(device) => {
+			void selectDevice(device, onDeviceSelected);
+		},
+		DEVICE_PICKER_PLACEHOLDER,
+	).open();
 }

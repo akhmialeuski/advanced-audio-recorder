@@ -2051,7 +2051,10 @@ export class TFile extends TAbstractFile {
 }
 
 /**
- * Mock DropdownComponent class.
+ * Mock DropdownComponent: a `select.dropdown`, appended to the container it
+ * is constructed with, as Obsidian's own is. The app also appends a hidden
+ * second select it measures option widths with; nothing the plugin does
+ * reads it, so it is left out.
  */
 export class DropdownComponent {
 	selectEl: HTMLSelectElement = addObsidianDomExtensions(
@@ -2068,6 +2071,7 @@ export class DropdownComponent {
 	 *   on its own; a Setting row attaches it itself
 	 */
 	constructor(containerEl?: HTMLElement) {
+		this.selectEl.classList.add('dropdown');
 		containerEl?.appendChild(this.selectEl);
 	}
 
@@ -2354,38 +2358,169 @@ export class ToggleComponent {
 }
 
 /**
- * Mock SliderComponent class.
+ * Mock SliderComponent, built the way Obsidian 1.14 builds it: a
+ * `span.slider-value` that shows the value inline, followed by an
+ * `input[type=range].slider`, both appended to the container it is given.
+ *
+ * The parts the plugin depends on are modelled after the app's own code:
+ *
+ * - The track fill: every change of value writes `--slider-fill-ratio`,
+ *   which the app's slider class paints the accent up to.
+ * - When the change callback fires. Dragging fires `input`, releasing fires
+ *   `change`; the callback runs on the first only after `setInstant(true)`,
+ *   and on the second only without it.
+ * - `setValue` calls the change callback too, whenever the value differs
+ *   from the one shown. That is easy to miss and matters: code that pushes
+ *   an outside value into the slider hears it back as though the user moved
+ *   it.
  */
 export class SliderComponent {
-	sliderEl: HTMLInputElement = addObsidianDomExtensions(
+	readonly valueEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('span'),
+	);
+	readonly sliderEl: HTMLInputElement = addObsidianDomExtensions(
 		document.createElement('input'),
 	);
-	value = 0;
 	disabled = false;
+	instant = false;
 
 	/** Change handler, stored as Obsidian does for test triggering. */
 	changeCallback: ((value: number) => void) | null = null;
 
-	setLimits(_min: number, _max: number, _step: number): this {
+	private displayFormat: ((value: number) => string) | null = null;
+
+	constructor(containerEl?: HTMLElement) {
+		this.valueEl.classList.add('slider-value');
+		this.sliderEl.type = 'range';
+		this.sliderEl.classList.add('slider');
+		// The app keeps a drag on the slider from opening a sidebar on mobile
+		this.sliderEl.dataset['ignoreSwipe'] = 'true';
+		containerEl?.append(this.valueEl, this.sliderEl);
+		this.sliderEl.addEventListener('input', () => {
+			this.updateDisplay();
+			if (this.instant) {
+				this.changeCallback?.(this.getValue());
+			}
+		});
+		this.sliderEl.addEventListener('change', () => {
+			if (!this.instant) {
+				this.changeCallback?.(this.getValue());
+			}
+		});
+		this.updateDisplay();
+	}
+
+	setLimits(
+		min: number | null,
+		max: number | null,
+		step: number | 'any',
+	): this {
+		this.sliderEl.setAttribute('min', String(min));
+		this.sliderEl.setAttribute('max', String(max));
+		this.sliderEl.setAttribute('step', String(step));
+		this.updateDisplay();
 		return this;
+	}
+
+	getValue(): number {
+		return Number(this.sliderEl.value);
 	}
 
 	setValue(value: number): this {
-		this.value = value;
+		if (this.getValue() !== value) {
+			this.sliderEl.value = String(value);
+			this.updateDisplay();
+			this.changeCallback?.(value);
+		}
 		return this;
 	}
 
+	setInstant(instant: boolean): this {
+		this.instant = instant;
+		return this;
+	}
+
+	setDisplayFormat(format: (value: number) => string): this {
+		this.displayFormat = format;
+		this.updateDisplay();
+		return this;
+	}
+
+	/** The text the inline value shows, formatted as the app formats it. */
+	getValuePretty(): string {
+		const value = this.getValue();
+		if (this.displayFormat) {
+			return this.displayFormat(value);
+		}
+		const step = this.sliderEl.getAttribute('step') ?? '1';
+		return step === 'any' || parseFloat(step) < 1
+			? value.toFixed(2)
+			: value.toString();
+	}
+
+	/** Deprecated in Obsidian, which now always shows the value inline. */
 	setDynamicTooltip(): this {
 		return this;
 	}
 
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
+		this.sliderEl.disabled = disabled;
 		return this;
 	}
 
 	onChange(callback: (value: number) => void): this {
 		this.changeCallback = callback;
+		return this;
+	}
+
+	private updateDisplay(): void {
+		this.valueEl.textContent = this.getValuePretty();
+		const min = parseFloat(this.sliderEl.getAttribute('min') ?? '');
+		const max = parseFloat(this.sliderEl.getAttribute('max') ?? '');
+		const low = Number.isFinite(min) ? min : 0;
+		const high = Number.isFinite(max) ? max : 100;
+		const ratio = high > low ? (this.getValue() - low) / (high - low) : 0;
+		this.sliderEl.style.setProperty('--slider-fill-ratio', String(ratio));
+	}
+}
+
+/**
+ * Mock ProgressBarComponent, built as Obsidian builds it: a
+ * `div.setting-progress-bar` appended to its container, holding a
+ * `div.setting-progress-bar-inner` whose inline width is the value. The value
+ * is clamped into 0..100 the way the app clamps it, and a NaN passes through
+ * unclamped there as well, which is why callers sanitise it first.
+ */
+export class ProgressBarComponent {
+	readonly progressBar: HTMLElement;
+	readonly lineEl: HTMLElement;
+	private value = 0;
+
+	constructor(containerEl: HTMLElement) {
+		this.progressBar = addObsidianDomExtensions(
+			document.createElement('div'),
+		);
+		this.progressBar.classList.add('setting-progress-bar');
+		this.lineEl = addObsidianDomExtensions(document.createElement('div'));
+		this.lineEl.classList.add('setting-progress-bar-inner');
+		this.progressBar.appendChild(this.lineEl);
+		containerEl.appendChild(this.progressBar);
+	}
+
+	getValue(): number {
+		return this.value;
+	}
+
+	setValue(value: number): this {
+		const clamped = Math.min(100, Math.max(0, value));
+		this.value = clamped;
+		this.lineEl.style.width = `${String(clamped)}%`;
+		return this;
+	}
+
+	setVisibility(visible: boolean): this {
+		this.progressBar.hidden = !visible;
 		return this;
 	}
 }
@@ -2414,6 +2549,41 @@ export function normalizePath(path: string): string {
 export const setIcon = jest.fn((el: HTMLElement, iconId: string): void => {
 	el.setAttribute('data-icon', iconId);
 });
+
+/** The options Obsidian's setTooltip takes, as far as the mock records them. */
+export interface TooltipOptions {
+	placement?: 'bottom' | 'right' | 'left' | 'top';
+	classes?: string[];
+	gap?: number;
+	delay?: number;
+}
+
+/**
+ * Mock setTooltip, doing what Obsidian's does to the element: the tooltip
+ * text becomes the element's `aria-label`, which is also what a screen reader
+ * announces, and each option lands in the `data-tooltip-*` attribute the app's
+ * tooltip reads it from. Bottom is the app's default placement and is not
+ * written, as in Obsidian.
+ */
+export function setTooltip(
+	el: HTMLElement,
+	tooltip: string,
+	options: TooltipOptions = {},
+): void {
+	el.setAttribute('aria-label', tooltip);
+	if (options.placement && options.placement !== 'bottom') {
+		el.setAttribute('data-tooltip-position', options.placement);
+	}
+	if (options.classes) {
+		el.setAttribute('data-tooltip-classes', options.classes.join(' '));
+	}
+	if (options.delay) {
+		el.setAttribute('data-tooltip-delay', String(options.delay));
+	}
+	if (options.gap) {
+		el.setAttribute('data-tooltip-gap', String(options.gap));
+	}
+}
 
 /**
  * Mock getFrontMatterInfo: locates the frontmatter block a note opens with the

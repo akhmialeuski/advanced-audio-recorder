@@ -18,15 +18,17 @@ export class ActionTargetModal<TContext> extends FuzzySuggestModal<TContext> {
 	 * @param targets - The targets to choose from, in the order offered
 	 * @param describe - Names a target in its row
 	 * @param onChoose - Runs the action on the target chosen
+	 * @param placeholder - What the search field asks before anything is typed
 	 */
 	constructor(
 		app: App,
 		private readonly targets: readonly TContext[],
 		private readonly describe: (context: TContext) => string,
 		private readonly onChoose: (context: TContext) => void,
+		placeholder = 'Choose what to run the command on',
 	) {
 		super(app);
-		this.setPlaceholder('Choose what to run the command on');
+		this.setPlaceholder(placeholder);
 	}
 
 	/** Every target offered. */

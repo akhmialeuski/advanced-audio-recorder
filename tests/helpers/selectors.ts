@@ -114,6 +114,8 @@ export const MARKER = {
 export const PLAYBACK = {
 	controls: '.aar-playback-controls',
 	toggle: '.aar-playback-toggle',
+	skipBack: '.aar-playback-skip-back',
+	skipForward: '.aar-playback-skip-forward',
 	mute: '.aar-playback-mute',
 	volume: '.aar-playback-volume',
 	markerControls: '.aar-playback-marker-controls',
@@ -127,14 +129,20 @@ export const STATUS = {
 	recordingControls: '.aar-recording-controls',
 	recordingButtons: '.aar-recording-buttons',
 	recordingLabel: '.aar-recording-label',
+	/** The save or background-task progress bar, which carries its value. */
 	saveProgress: '.aar-save-progress',
-	saveProgressBar: '.aar-save-progress-bar',
 	actionableProgress: '.aar-status-progress-actionable',
 	live: '.aar-recording-live',
 	elapsed: '.aar-recording-time',
 	recordedSize: '.aar-recording-size',
 	inputMeter: '.aar-input-meter',
 	inputMeterFill: '.aar-input-meter-fill',
+} as const;
+
+/** Markup Obsidian's own components render, read where a test checks what they draw. */
+export const OBSIDIAN = {
+	/** The fill of a ProgressBarComponent, whose width is its value. */
+	progressFill: '.setting-progress-bar-inner',
 } as const;
 
 /** The banner the mobile build shows while recording. */

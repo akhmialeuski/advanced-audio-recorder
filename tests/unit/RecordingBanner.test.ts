@@ -56,10 +56,19 @@ describe('RecordingBanner', () => {
 
 		expect(maybeEl(bannerEl(), BANNER.dot)).not.toBeNull();
 		expect(bannerEl()).toShowTime('0:00');
+		expect(bannerEl()).toHaveControl('Stop recording');
+	});
+
+	it('makes stop a native button, which Enter and Space activate', () => {
+		// The platform's own activation replaces a hand-written key handler,
+		// so the control behaves like every other button for a keyboard and a
+		// switch user, focus and disabled state included.
+		mount();
+
 		const stop = stopEl();
-		expect(stop.getAttribute('role')).toBe('button');
-		expect(stop.getAttribute('aria-label')).toBe('Stop recording');
-		expect(stop.getAttribute('tabindex')).toBe('0');
+
+		expect(stop).toBeInstanceOf(HTMLButtonElement);
+		expect(stop.getAttribute('type')).toBe('button');
 	});
 
 	it('creates the banner once across repeated show calls', () => {
@@ -94,29 +103,6 @@ describe('RecordingBanner', () => {
 		stopEl().click();
 
 		expect(onStop).toHaveBeenCalledTimes(1);
-	});
-
-	it.each([['Enter'], [' ']])(
-		'fires the stop callback on %s for keyboard users',
-		(key) => {
-			const { onStop } = mount();
-
-			stopEl().dispatchEvent(
-				new KeyboardEvent('keydown', { key, bubbles: true }),
-			);
-
-			expect(onStop).toHaveBeenCalledTimes(1);
-		},
-	);
-
-	it('ignores other keys on the stop control', () => {
-		const { onStop } = mount();
-
-		stopEl().dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-		);
-
-		expect(onStop).not.toHaveBeenCalled();
 	});
 
 	it('hide removes the banner and a later show recreates it', () => {

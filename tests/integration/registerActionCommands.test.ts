@@ -351,6 +351,19 @@ describe('session actions over the recorder', () => {
 		expect(session.saveSettings).toHaveBeenCalledTimes(1);
 	});
 
+	it('opens the device picker on the input recordings use now', () => {
+		const { invoke, session } = registerSession();
+		session.settings.audioDeviceId = 'device-3';
+
+		invoke(COMMAND_IDS.selectAudioInputDevice);
+
+		expect(showDeviceSelectionModal).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.any(Function),
+			'device-3',
+		);
+	});
+
 	it('hides the device picker where the platform cannot select one', () => {
 		// Mobile records from the default microphone, so the command has
 		// nothing to offer and must stay out of the palette.

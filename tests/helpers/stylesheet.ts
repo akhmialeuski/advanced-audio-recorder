@@ -31,3 +31,29 @@ export function ruleBodies(selector: string): string[] {
 export function ruleBody(selector: string): string | null {
 	return ruleBodies(selector)[0] ?? null;
 }
+
+/**
+ * Returns what an at-rule block holds, from its opening brace to the one
+ * that closes it, or null when the sheet has no such block.
+ * @param prelude - The at-rule as written, e.g. "@media (hover: hover)"
+ */
+export function atRuleBody(prelude: string): string | null {
+	const start = stylesheet.indexOf(`${prelude} {`);
+	if (start === -1) {
+		return null;
+	}
+	const open = start + prelude.length + 1;
+	let depth = 0;
+	for (let index = open; index < stylesheet.length; index++) {
+		const char = stylesheet[index];
+		if (char === '{') {
+			depth++;
+		} else if (char === '}') {
+			depth--;
+			if (depth === 0) {
+				return stylesheet.slice(open + 1, index);
+			}
+		}
+	}
+	return null;
+}

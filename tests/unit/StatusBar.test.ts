@@ -17,8 +17,8 @@ import {
 	updateRecordingLiveStats,
 } from 'src/ui/StatusBar';
 import { at } from '../helpers/assertions';
-import { allEls, control, el, maybeEl } from '../helpers/dom';
-import { PLAYBACK, PLAYER, STATUS } from '../helpers/selectors';
+import { allEls, clickControl, control, el, maybeEl } from '../helpers/dom';
+import { OBSIDIAN, PLAYBACK, PLAYER, STATUS } from '../helpers/selectors';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
@@ -53,6 +53,26 @@ function recordingWithControls(isPaused = false): {
 		controls,
 	);
 	return { statusBarItem, controls };
+}
+
+/** The percentage the save or transcription progress bar reports. */
+function shownPercent(statusBarItem: HTMLElement): string | null {
+	return el(statusBarItem, STATUS.saveProgress).getAttribute('aria-valuenow');
+}
+
+/**
+ * A status bar already showing a save in progress.
+ * @param percent - How far the save reports it is
+ * @param description - What the save says it is doing
+ * @returns The status bar element
+ */
+function saving(percent: number, description = 'Writing file...'): HTMLElement {
+	const statusBarItem = createStatusBar();
+	updateStatusBar(statusBarItem, RecordingStatus.Saving, {
+		percent,
+		description,
+	});
+	return statusBarItem;
 }
 
 /** A status bar already showing a minimised transcription. */
@@ -158,23 +178,14 @@ describe('recording status', () => {
 
 describe('saving progress', () => {
 	it('shows what it is doing and how far along it is', () => {
-		const statusBarItem = createStatusBar();
-
-		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
-			percent: 40,
-			description: 'Assembling audio...',
-		});
+		const statusBarItem = saving(40, 'Assembling audio...');
 
 		expect(statusBarItem.classList.contains('is-saving')).toBe(true);
 		expect(statusBarItem.classList.contains('is-recording')).toBe(false);
 		expect(el(statusBarItem, 'span').textContent).toBe(
 			'Assembling audio...',
 		);
-		expect(
-			el(statusBarItem, STATUS.saveProgressBar).style.getPropertyValue(
-				'--save-progress',
-			),
-		).toBe('40%');
+		expect(shownPercent(statusBarItem)).toBe('40');
 	});
 
 	// A save the user did not ask for reads as an ordinary one unless the bar
@@ -212,54 +223,24 @@ describe('saving progress', () => {
 		updateStatusBar(statusBarItem, RecordingStatus.Saving);
 
 		expect(el(statusBarItem, 'span').textContent).toBe('Saving...');
-		expect(
-			el(statusBarItem, STATUS.saveProgressBar).style.getPropertyValue(
-				'--save-progress',
-			),
-		).toBe('0%');
+		expect(shownPercent(statusBarItem)).toBe('0');
 	});
 
-	it('puts the bar inside the progress container', () => {
-		const statusBarItem = createStatusBar();
+	it('fills the bar it draws to the percentage it reports', () => {
+		const statusBarItem = saving(60);
 
-		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
-			percent: 60,
-			description: 'Writing file...',
-		});
-
-		const container = el(statusBarItem, STATUS.saveProgress);
-		const bar = el(container, STATUS.saveProgressBar);
-
-		// The bar is the only part that moves, and it moves through the
-		// custom property the stylesheet reads: a bar that is there but never
+		// The fill is the only part that moves: a bar that is there but never
 		// fills says nothing is happening.
-		expect(bar.style.getPropertyValue('--save-progress')).toBe('60%');
+		const bar = el(statusBarItem, STATUS.saveProgress);
+		expect(el(bar, OBSIDIAN.progressFill).style.width).toBe('60%');
 	});
 
-	it.each([
-		// The percentage comes from bytes written over bytes expected, and
-		// both come off a recorder mid-save: a division that has not started
-		// yet is NaN, and a final flush that writes more than it announced
-		// overshoots. Neither may reach the stylesheet.
-		{ name: 'has not started counting', percent: Number.NaN, shown: '0%' },
-		{ name: 'overshot its own estimate', percent: 140, shown: '100%' },
-		{ name: 'went backwards', percent: -20, shown: '0%' },
-		{ name: 'is exactly done', percent: 100, shown: '100%' },
-		{ name: 'is exactly at the start', percent: 0, shown: '0%' },
-	])('fills the bar to $shown when the save $name', ({ percent, shown }) => {
-		const statusBarItem = createStatusBar();
+	it('announces the save as a progress bar named for what it is doing', () => {
+		const statusBarItem = saving(60, 'Writing file...');
 
-		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
-			percent,
-			description: 'Writing file...',
-		});
-
-		const bar = el(
-			el(statusBarItem, STATUS.saveProgress),
-			STATUS.saveProgressBar,
-		);
-
-		expect(bar.style.getPropertyValue('--save-progress')).toBe(shown);
+		const bar = el(statusBarItem, STATUS.saveProgress);
+		expect(bar.getAttribute('role')).toBe('progressbar');
+		expect(bar.getAttribute('aria-label')).toBe('Writing file...');
 	});
 
 	it.each([
@@ -270,11 +251,7 @@ describe('saving progress', () => {
 			text: 'Recording...',
 		},
 	])('drops the progress when it goes $name', ({ status, text }) => {
-		const statusBarItem = createStatusBar();
-		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
-			percent: 50,
-			description: 'Assembling...',
-		});
+		const statusBarItem = saving(50, 'Assembling...');
 		expect(maybeEl(statusBarItem, STATUS.saveProgress)).not.toBeNull();
 
 		updateStatusBar(statusBarItem, status);
@@ -293,11 +270,7 @@ describe('transcription progress', () => {
 		expect(statusBarItem.classList.contains('is-recording')).toBe(false);
 		expect(statusBarItem.classList.contains('is-saving')).toBe(false);
 		expect(statusBarItem.textContent).toContain('Transcribing...');
-		expect(
-			el(statusBarItem, STATUS.saveProgressBar).style.getPropertyValue(
-				'--save-progress',
-			),
-		).toBe('35%');
+		expect(shownPercent(statusBarItem)).toBe('35');
 	});
 
 	it('gives way to a recording that starts under it', () => {
@@ -331,18 +304,76 @@ describe('transcription progress', () => {
 		expect(onActivate).not.toHaveBeenCalled();
 	});
 
-	it.each([
-		{ name: 'Enter', key: 'Enter', restores: true },
-		{ name: 'Space', key: ' ', restores: true },
-		{ name: 'Tab', key: 'Tab', restores: false },
-	])('$name restores the window: $restores', ({ key, restores }) => {
-		const { statusBarItem, onActivate } = transcribing();
+	it('is a native button named for the restore, which the keyboard activates', () => {
+		// Enter and Space come from the platform, not from a handler of the
+		// plugin's own, so the progress behaves like any other button.
+		const { statusBarItem } = transcribing();
 
-		el(statusBarItem, STATUS.actionableProgress).dispatchEvent(
-			new KeyboardEvent('keydown', { key, bubbles: true }),
+		const restore = control(statusBarItem, 'Restore transcription window');
+
+		expect(restore).toBeInstanceOf(HTMLButtonElement);
+		expect(restore).toBe(el(statusBarItem, STATUS.actionableProgress));
+	});
+
+	it('opens its tooltip above the bar it sits on', () => {
+		const { statusBarItem } = transcribing();
+
+		expect(
+			control(statusBarItem, 'Restore transcription window').getAttribute(
+				'data-tooltip-position',
+			),
+		).toBe('top');
+	});
+
+	it('keeps the keyboard focus on the restore button across progress reports', () => {
+		// A report arrives with every stage of the run; a surface rebuilt for
+		// each one would drop the focus a keyboard user just moved there.
+		const { statusBarItem, onActivate } = transcribing(10);
+		document.body.appendChild(statusBarItem);
+		const restore = control(statusBarItem, 'Restore transcription window');
+		restore.focus();
+
+		renderTranscriptionStatusBar(
+			statusBarItem,
+			{ percent: 60, description: 'Transcribing part 2 of 3...' },
+			{ onActivate, activationLabel: 'Restore transcription window' },
 		);
 
-		expect(onActivate).toHaveBeenCalledTimes(restores ? 1 : 0);
+		expect(activeDocument.activeElement).toBe(restore);
+		expect(shownPercent(statusBarItem)).toBe('60');
+		expect(restore.textContent).toBe('Transcribing part 2 of 3...');
+		statusBarItem.remove();
+	});
+
+	it('restores through the latest action it was given', () => {
+		const { statusBarItem, onActivate } = transcribing();
+		const latest = jest.fn();
+
+		renderTranscriptionStatusBar(
+			statusBarItem,
+			{ percent: 20, description: 'Transcribing...' },
+			{
+				onActivate: latest,
+				activationLabel: 'Restore transcription window',
+			},
+		);
+		clickControl(statusBarItem, 'Restore transcription window');
+
+		expect(latest).toHaveBeenCalledTimes(1);
+		expect(onActivate).not.toHaveBeenCalled();
+	});
+
+	it('keeps the progress bar out of the button, where a screen reader would lose it', () => {
+		// A button's content is presentational to assistive technology, so a
+		// progress bar inside it would be read as nothing at all.
+		const { statusBarItem } = transcribing(35);
+
+		const bar = el(statusBarItem, STATUS.saveProgress);
+
+		expect(bar.closest('button')).toBeNull();
+		expect(bar.getAttribute('role')).toBe('progressbar');
+		expect(bar.getAttribute('aria-label')).toBe('Transcribing...');
+		expect(bar.getAttribute('aria-valuenow')).toBe('35');
 	});
 });
 
@@ -387,11 +418,7 @@ describe('quick note status', () => {
 
 		expect(statusBarItem.classList.contains('is-transcribing')).toBe(true);
 		expect(statusBarItem.textContent).toBe('Quick note: Transcribing...');
-		expect(
-			el(statusBarItem, STATUS.saveProgressBar).style.getPropertyValue(
-				'--save-progress',
-			),
-		).toBe('40%');
+		expect(shownPercent(statusBarItem)).toBe('40');
 	});
 
 	it('says it is transcribing before the first stage is reported', () => {
@@ -538,20 +565,35 @@ describe('playback controls', () => {
 		);
 	});
 
-	it.each([
-		{ name: 'Enter', key: 'Enter', activates: true },
-		{ name: 'Space', key: ' ', activates: true },
-		{ name: 'ArrowRight', key: 'ArrowRight', activates: false },
-	])('$name activates the transport: $activates', ({ key, activates }) => {
+	it('makes every transport control a native button', () => {
+		// A native button takes focus and Enter and Space from the platform,
+		// which the hand-written key handler it replaces had to imitate.
 		const statusBarItem = createStatusBar();
-		const state = makePlaybackState();
-		renderPlaybackStatusBar(statusBarItem, state);
 
-		el(statusBarItem, PLAYBACK.toggle).dispatchEvent(
-			new KeyboardEvent('keydown', { key }),
+		renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+
+		const buttons = allEls(statusBarItem, PLAYER.controlButton);
+		expect(buttons.length).toBeGreaterThan(0);
+		for (const button of buttons) {
+			expect(button).toBeInstanceOf(HTMLButtonElement);
+		}
+	});
+
+	it('names the skip buttons after a changed step, tooltip included', () => {
+		const statusBarItem = createStatusBar();
+		renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+
+		renderPlaybackStatusBar(
+			statusBarItem,
+			makePlaybackState({ skipSeconds: 30 }),
 		);
 
-		expect(state.onTogglePlay).toHaveBeenCalledTimes(activates ? 1 : 0);
+		expect(
+			control(statusBarItem, 'Back 30s').getAttribute(
+				'data-tooltip-position',
+			),
+		).toBe('top');
+		expect(statusBarItem).toHaveControl('Forward 30s');
 	});
 
 	it('updates in place rather than rebuilding the controls', () => {
@@ -617,6 +659,8 @@ describe('playback controls', () => {
 		renderPlaybackStatusBar(statusBarItem, makePlaybackState());
 		const controls = el(statusBarItem, PLAYBACK.controls);
 		for (const part of [
+			PLAYBACK.skipBack,
+			PLAYBACK.skipForward,
 			PLAYBACK.toggle,
 			PLAYBACK.mute,
 			PLAYBACK.volume,
@@ -704,12 +748,11 @@ describe('recording controls', () => {
 		expect(stopPropagation).toHaveBeenCalled();
 	});
 
-	it('makes every button reachable by keyboard', () => {
+	it('makes every button a named native button', () => {
 		const { statusBarItem } = recordingWithControls();
 
 		for (const button of allEls(statusBarItem, PLAYER.controlButton)) {
-			expect(button.getAttribute('role')).toBe('button');
-			expect(button.getAttribute('tabindex')).toBe('0');
+			expect(button).toBeInstanceOf(HTMLButtonElement);
 			expect(button.getAttribute('aria-label')).toBeTruthy();
 		}
 	});
@@ -814,6 +857,23 @@ describe('live recording indicators', () => {
 
 		expect(maybeEl(statusBarItem, STATUS.inputMeterFill)).not.toBeNull();
 		expect(maybeEl(statusBarItem, STATUS.elapsed)).toBeNull();
+	});
+
+	it('exposes the input level as a named meter a screen reader can read', () => {
+		const statusBarItem = recordingWithLive({
+			showStats: false,
+			showMeter: true,
+		});
+
+		updateRecordingLiveStats(statusBarItem, {
+			elapsedMs: 1000,
+			bytes: 1,
+			level: 0.25,
+		});
+
+		const meter = control(statusBarItem, 'Input level');
+		expect(meter.getAttribute('role')).toBe('meter');
+		expect(meter.getAttribute('aria-valuenow')).toBe('25');
 	});
 
 	it('draws nothing live when neither indicator is asked for', () => {

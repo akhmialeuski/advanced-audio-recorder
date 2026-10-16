@@ -203,10 +203,11 @@ describe('a default embed appearing next to the enhanced one', () => {
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
 
-		container.appendChild(document.createElement('span'));
+		const span = container.appendChild(document.createElement('span'));
 		await tick();
 
-		expect(container.querySelectorAll('span')).toHaveLength(1);
+		// Asked of the element itself: the player renders spans of its own
+		expect(span.parentElement).toBe(container);
 	});
 });
 

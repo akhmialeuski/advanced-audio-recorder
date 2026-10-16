@@ -7,9 +7,11 @@ If your plugin does not need CSS, delete this file.
 
 */
 /* styles.css */
+/* The state colours and weights are the theme's own, so a palette or a font
+   that redefines them reaches the status bar as well */
 .is-recording {
-    color: red;
-    font-weight: bold;
+    color: var(--color-red);
+    font-weight: var(--font-bold);
 }
 
 /* A ribbon button whose feature is switched off */
@@ -38,13 +40,13 @@ If your plugin does not need CSS, delete this file.
 /* Saving state */
 .is-saving {
     color: var(--color-accent);
-    font-weight: bold;
+    font-weight: var(--font-bold);
     white-space: nowrap;
 }
 
 .is-transcribing {
     color: var(--color-accent);
-    font-weight: bold;
+    font-weight: var(--font-bold);
     white-space: nowrap;
 }
 
@@ -71,37 +73,36 @@ If your plugin does not need CSS, delete this file.
     gap: 2px;
 }
 
+/*
+ * Status-bar buttons keep the colour of the line around them, red while
+ * recording and the accent while saving, in the idle, hover and pressed
+ * states alike. Obsidian's icon-button class would otherwise paint them its
+ * own icon colour; an engaged toggle still takes the app's accent.
+ */
+.aar-control-btn,
+.aar-status-progress-actionable {
+    --icon-color: currentColor;
+    --icon-color-hover: currentColor;
+    --icon-color-focused: currentColor;
+}
+
+/*
+ * The status-bar controls are Obsidian icon buttons (.clickable-icon), which
+ * bring the hover, the press, the engaged state and the focus ring. What is
+ * left here is their size: the status bar is a line about 20px tall, so the
+ * button is that square with no padding of its own and the app's
+ * extra-small icon.
+ */
 .aar-control-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: 20px;
     height: 20px;
-    border-radius: 4px;
-    cursor: pointer;
-    opacity: 0.8;
-    transition: opacity 0.15s ease, background-color 0.15s ease;
+    padding: 0;
 }
 
-.aar-control-btn:hover {
-    opacity: 1;
-    background-color: var(--background-modifier-hover);
-}
-
-.aar-control-btn:focus-visible {
-    opacity: 1;
-    outline: 1px solid var(--color-accent);
-    outline-offset: 1px;
-}
-
-.aar-control-btn.is-active {
-    color: var(--color-accent);
-    background-color: var(--background-modifier-hover);
-}
-
-.aar-control-btn svg {
-    width: 14px;
-    height: 14px;
+/* Stated on the icon itself, where the status bar sets its own size */
+.aar-control-btn .svg-icon {
+    --icon-size: var(--icon-xs);
+    --icon-stroke: var(--icon-xs-stroke-width);
 }
 
 /* Active playback controls in the status bar */
@@ -173,9 +174,8 @@ If your plugin does not need CSS, delete this file.
     align-items: center;
 }
 
-.aar-marker-type-icon svg {
-    width: 16px;
-    height: 16px;
+.aar-marker-type-icon {
+    --icon-size: var(--icon-s);
 }
 
 .aar-marker-name-input {
@@ -204,7 +204,8 @@ If your plugin does not need CSS, delete this file.
     display: inline-block;
     width: 42px;
     height: 6px;
-    border-radius: 3px;
+    /* Larger than half the height, so the corners meet and it stays a pill */
+    border-radius: var(--radius-s);
     background-color: var(--background-modifier-border);
     overflow: hidden;
 }
@@ -214,6 +215,9 @@ If your plugin does not need CSS, delete this file.
     height: 100%;
     width: var(--aar-meter-fill, 0%);
     background-color: var(--color-green);
+    /* Not an interface transition but the meter's own smoothing: linear, and
+       half the interval the readings arrive at, so the bar glides between two
+       readings instead of jumping. No animation token is that number. */
     transition: width 0.1s linear;
 }
 
@@ -244,12 +248,29 @@ If your plugin does not need CSS, delete this file.
     z-index: var(--layer-notice, 100);
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 0 4px 0 14px;
-    border-radius: 20px;
+    gap: var(--size-4-2);
+    /* The notice's own side padding on the text side; the stop button brings
+       its touch target to the other */
+    padding: 0 var(--size-4-1) 0 var(--size-4-3);
+    /*
+     * It floats over the note the way a notice does, so it takes the notice's
+     * corner shape and shadow. The radius is the one a phone's notice draws
+     * (--touch-radius-xxs) rather than --notice-radius, which is the desktop
+     * notice's, so the banner stays a pill on a tablet too.
+     *
+     * The notice's own colours are not taken: --notice-background is a
+     * near-black overlay in both themes, on which the muted dot of a paused
+     * recording, the hover of the stop button and the theme's focus ring all
+     * lose their contrast. The banner keeps the theme's surface and text.
+     */
+    border-radius: var(--touch-radius-xxs);
+    corner-shape: var(--notice-corner-shape);
     background-color: var(--background-secondary);
-    border: 1px solid var(--background-modifier-border);
-    box-shadow: var(--shadow-s);
+    border: var(--border-width) solid var(--background-modifier-border);
+    box-shadow: var(--notice-shadow);
+    /* Stated rather than inherited from the body, so the timer follows the
+       system text size, which --font-ui-medium is derived from on mobile */
+    font-size: var(--font-ui-medium);
     font-variant-numeric: tabular-nums;
 }
 
@@ -320,52 +341,86 @@ If your plugin does not need CSS, delete this file.
     background-color: var(--text-muted);
 }
 
-/* The icon stays 16px, while the control around it is a full touch target */
+/*
+ * The icon stays small while the control around it is a full touch target.
+ * Obsidian's icon-button class draws the hover, the press and the focus ring;
+ * the red goes in through its icon colours, so every one of those states keeps
+ * it. The icon size is the app's small mobile icon, which also scales with the
+ * system text size.
+ */
 .aar-recording-banner-stop {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    --icon-color: var(--color-red);
+    --icon-color-hover: var(--color-red);
+    --icon-color-focused: var(--color-red);
+    --icon-size: var(--icon-s);
     min-width: var(--touch-size-m);
     min-height: var(--touch-size-m);
-    cursor: pointer;
-    color: var(--color-red);
 }
 
-.aar-recording-banner-stop svg {
-    width: 16px;
-    height: 16px;
-}
-
-/* Save progress */
+/* Save and background progress in the status bar */
 .aar-status-progress-content {
+    position: relative;
     width: 100%;
+    border-radius: var(--radius-s);
 }
 
+/*
+ * A minimised transcription is restored from its progress. The line of text
+ * is an icon button, which brings the press without a text button's chrome
+ * and keeps the colour and the weight of the status bar line. The bar is its
+ * sibling, so a screen reader still reads it, and the button's ::after
+ * stretches over the whole surface, bar included, so a click anywhere on it
+ * restores the window. The hover and the focus ring are drawn on the surface
+ * the click covers rather than on the text line alone.
+ */
 .aar-status-progress-actionable {
-    cursor: pointer;
-}
-
-.aar-status-progress-actionable:focus-visible {
-    outline: 1px solid var(--color-accent);
-    outline-offset: 2px;
-    border-radius: 3px;
-}
-
-.aar-save-progress {
-    height: 3px;
+    display: block;
     width: 100%;
-    background-color: var(--background-modifier-border);
-    border-radius: 2px;
-    margin-top: 2px;
-    overflow: hidden;
+    padding: 0;
+    font-size: inherit;
+    font-weight: inherit;
+    text-align: inherit;
 }
 
-.aar-save-progress-bar {
-    height: 100%;
-    width: var(--save-progress, 0%);
-    background-color: var(--color-accent);
-    border-radius: 2px;
-    transition: width 0.3s ease;
+.aar-status-progress-actionable::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+}
+
+.aar-status-progress-actionable:hover,
+.aar-status-progress-actionable:focus-visible {
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.aar-status-progress-content:has(> .aar-status-progress-actionable:hover) {
+    background-color: var(--background-modifier-hover);
+}
+
+.aar-status-progress-content:has(> .aar-status-progress-actionable:focus-visible) {
+    box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
+}
+
+/*
+ * Obsidian's progress bar, thinned to the 3px a status bar line has room for.
+ * At that height the component's inset border would leave only two hairlines
+ * of track, so the track is the solid border colour the bar always had.
+ */
+.aar-save-progress {
+    margin-top: var(--size-2-1);
+}
+
+.aar-save-progress .setting-progress-bar {
+    height: 3px;
+    background-color: var(--background-modifier-border);
+    box-shadow: none;
+}
+
+/* The component sets the width outright; the bar grows into it instead */
+.aar-save-progress .setting-progress-bar-inner,
+.aar-transcribe-progress .setting-progress-bar-inner {
+    transition: width var(--anim-duration-moderate) ease;
 }
 
 @keyframes pulse-saving {
@@ -384,19 +439,19 @@ If your plugin does not need CSS, delete this file.
 .aar-test-status {
     margin-top: 8px;
     padding: 6px 10px;
-    border-radius: 4px;
-    font-size: 0.9em;
+    border-radius: var(--radius-s);
+    font-size: var(--font-ui-small);
 }
 
 .aar-test-recording {
     color: var(--color-red);
-    font-weight: bold;
+    font-weight: var(--font-bold);
     animation: pulse-recording 1.5s ease-in-out infinite;
 }
 
 .aar-test-success {
     color: var(--color-green);
-    font-weight: bold;
+    font-weight: var(--font-bold);
 }
 
 .aar-test-error {
@@ -414,9 +469,10 @@ If your plugin does not need CSS, delete this file.
     max-height: 60vh;
     overflow-y: auto;
     padding: 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-family: var(--font-monospace);
-    font-size: 0.85em;
+    /* Obsidian's size for code, which this block is */
+    font-size: var(--code-size);
     white-space: pre-wrap;
     word-break: break-word;
     background-color: var(--background-secondary);
@@ -426,7 +482,7 @@ If your plugin does not need CSS, delete this file.
 
 .aar-system-info-copied {
     color: var(--color-green);
-    font-weight: bold;
+    font-weight: var(--font-bold);
 }
 
 /* Split modal and settings */
@@ -473,7 +529,9 @@ input.aar-input-invalid {
     width: 100%;
     padding: 10px;
     border: 1px solid var(--background-modifier-border);
-    border-radius: 10px;
+    /* One step rounder than the rows and the waveform inside it, which are
+       --radius-m, so the nested corners stay concentric */
+    border-radius: var(--radius-l);
     background-color: var(--background-secondary);
 }
 
@@ -516,15 +574,21 @@ input.aar-input-invalid {
     height: 28px;
     padding: 0 6px;
     border: 1px solid var(--aar-line);
-    border-radius: 6px;
+    /*
+     * The theme's radius steps rather than --button-radius: that one turns
+     * into a touch-size pill on mobile, which a row of small square controls
+     * is not meant to be. The hover follows the app's own controls, which
+     * fade over --anim-duration-fast with ease-in-out.
+     */
+    border-radius: var(--radius-s);
     background-color: var(--aar-surface-raised);
     color: var(--text-normal);
     cursor: pointer;
     box-shadow: none;
     transition:
-        background-color 0.15s ease,
-        border-color 0.15s ease,
-        color 0.15s ease;
+        background-color var(--anim-duration-fast) ease-in-out,
+        border-color var(--anim-duration-fast) ease-in-out,
+        color var(--anim-duration-fast) ease-in-out;
 }
 
 .aar-player .aar-player-btn:hover {
@@ -540,9 +604,13 @@ input.aar-input-invalid {
     color: var(--color-accent);
 }
 
-.aar-player-btn svg {
-    width: 16px;
-    height: 16px;
+/*
+ * Icons take Obsidian's sizes rather than pixels, so on a phone or a tablet
+ * they grow with the system text size the way the app's own icons do. The
+ * values match the pixels they replace on the desktop.
+ */
+.aar-player-btn {
+    --icon-size: var(--icon-s);
 }
 
 /* The primary action: a round accent button, a little larger than the rest */
@@ -565,15 +633,13 @@ input.aar-input-invalid {
 }
 
 .aar-player-play svg {
-    width: 16px;
-    height: 16px;
     fill: currentColor;
 }
 
 .aar-player-speed {
     gap: 6px;
     font-size: var(--font-ui-small);
-    font-weight: 600;
+    font-weight: var(--font-semibold);
     font-variant-numeric: tabular-nums;
 }
 
@@ -616,10 +682,11 @@ input.aar-input-invalid {
     cursor: pointer;
 }
 
+/* Keyboard focus is ringed the way Obsidian rings its own controls, with the
+   theme's focus colour, and rounded like the waveform it surrounds */
 .aar-player-seek:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-    border-radius: 2px;
+    border-radius: var(--radius-m);
+    box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
 .aar-player-seek-waveform {
@@ -633,7 +700,7 @@ input.aar-input-invalid {
     padding: 12px 0;
     margin: 2px 0;
     border: 1px solid var(--aar-line);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     background-color: var(--aar-surface-sunken);
 }
 
@@ -681,7 +748,7 @@ input.aar-input-invalid {
 .aar-player-seek-bar {
     height: 8px;
     margin: 12px 2px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     /* Remaining (unplayed): low-contrast track */
     background-color: var(--background-modifier-border);
     box-shadow: inset 0 0 0 1px var(--background-modifier-border-hover);
@@ -692,7 +759,7 @@ input.aar-input-invalid {
     width: var(--aar-progress, 0%);
     /* Played: high-contrast accent */
     background-color: var(--color-accent);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
 }
 
 .aar-player-progress-thumb {
@@ -796,7 +863,7 @@ input.aar-input-invalid {
     gap: var(--aar-marker-row-gap);
     padding: 5px 10px;
     border: 1px solid var(--aar-line);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     background-color: var(--aar-surface-raised);
 }
 
@@ -830,14 +897,19 @@ div.aar-player-marker-row {
     color: var(--text-faint);
 }
 
-.aar-player-marker-kind svg {
-    width: 16px;
-    height: 16px;
+.aar-player-marker-kind {
+    --icon-size: var(--icon-s);
 }
 
+/*
+ * The reading-view row sizes its text against the note it sits in rather than
+ * against the interface, so the list scales with the note's own text. That is
+ * why these sizes are Obsidian's relative steps (--font-smaller, 0.875em, and
+ * --font-smallest, 0.8em) rather than the fixed --font-ui-* ones.
+ */
 .aar-player-marker-time {
     font-variant-numeric: tabular-nums;
-    font-size: 0.85em;
+    font-size: var(--font-smaller);
     color: var(--text-accent);
     background: transparent;
     border: none;
@@ -855,7 +927,7 @@ div.aar-player-marker-row {
     box-sizing: border-box;
     height: var(--aar-control-size);
     border: 1px solid var(--aar-line);
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     background-color: var(--aar-surface-field);
     box-shadow: none;
     color: var(--text-normal);
@@ -867,11 +939,13 @@ div.aar-player-marker-row {
     border-color: color-mix(in srgb, var(--aar-line), var(--text-normal) 20%);
 }
 
+/* Focused the way Obsidian focuses its own text fields: the theme's focus
+   colour on the border and in a ring of the app's focus width */
 .aar-player .aar-player-marker-label:focus,
 .aar-player .aar-player-marker-time-edit:focus {
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 2px
-        color-mix(in srgb, var(--color-accent) 25%, transparent);
+    border-color: var(--background-modifier-border-focus);
+    box-shadow: 0 0 0 var(--input-border-width-focus)
+        var(--background-modifier-border-focus);
 }
 
 .aar-player .aar-player-marker-label {
@@ -885,7 +959,7 @@ div.aar-player-marker-row {
 
 /* The pencil says the title is edited in place; clicks pass to the field */
 .aar-player-marker-label-icon {
-    --icon-size: 14px;
+    --icon-size: var(--icon-xs);
     grid-area: label;
     justify-self: end;
     display: inline-flex;
@@ -910,7 +984,7 @@ div.aar-player-marker-row {
 .aar-player .aar-player-marker-jump,
 .aar-player .aar-player-marker-here,
 .aar-player .aar-player-marker-delete {
-    --icon-size: 14px;
+    --icon-size: var(--icon-xs);
     width: 22px;
     height: 22px;
     padding: 0;
@@ -956,14 +1030,16 @@ div.aar-player-marker-row {
 }
 
 .aar-player-marker-swatch {
-    --icon-size: 12px;
+    /* A step below the smallest size Obsidian names, 12px on the desktop,
+       scaled with it so the chevron still grows with the system text size */
+    --icon-size: calc(var(--icon-xs) * 6 / 7);
     grid-area: color;
     display: inline-flex;
     align-items: center;
     gap: 2px;
     height: 22px;
     padding: 0 3px;
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     color: var(--text-muted);
 }
 
@@ -1039,7 +1115,7 @@ div.aar-player-marker-row {
     font-size: var(--font-ui-small);
     line-height: 1.4;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     background-color: transparent;
     box-shadow: none;
     color: var(--text-muted);
@@ -1057,13 +1133,13 @@ div.aar-player-marker-row {
 }
 
 .aar-player .aar-player-marker-note:focus {
-    border-color: var(--color-accent);
+    border-color: var(--background-modifier-border-focus);
     background-color: var(--aar-surface-field);
     color: var(--text-normal);
 }
 
 .aar-player-marker-note-icon {
-    --icon-size: 14px;
+    --icon-size: var(--icon-xs);
     grid-area: note;
     justify-self: start;
     align-self: start;
@@ -1116,7 +1192,7 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-no
 .aar-player-marker-note-indent {
     flex: none;
     visibility: hidden;
-    font-size: 0.85em;
+    font-size: var(--font-smaller);
     font-variant-numeric: tabular-nums;
     padding: 0 4px;
     box-sizing: content-box;
@@ -1125,7 +1201,7 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-no
 
 .aar-player-marker-note-static {
     flex: 1;
-    font-size: 0.8em;
+    font-size: var(--font-smallest);
     color: var(--text-muted);
     text-align: left;
     /* A note typed over several lines is shown over the same lines */
@@ -1146,7 +1222,7 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-no
     padding: 0 4px;
     text-align: left;
     justify-content: flex-start;
-    font-size: 0.9em;
+    font-size: var(--font-smaller);
     color: var(--text-normal);
     white-space: nowrap;
     overflow: hidden;
@@ -1161,7 +1237,7 @@ div.aar-player-marker-row:not(.aar-player-marker-row-open) .aar-player-marker-no
     box-sizing: content-box;
     min-width: calc(var(--aar-marker-time-chars, 0) * 1ch);
     font-variant-numeric: tabular-nums;
-    font-size: 0.8em;
+    font-size: var(--font-smallest);
     color: var(--text-muted);
     white-space: nowrap;
 }
@@ -1174,7 +1250,7 @@ button.aar-player-marker-row {
     width: 100%;
     padding: 5px 10px;
     border: 1px solid var(--aar-line);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     box-shadow: none;
     background-color: var(--aar-surface-raised);
     color: inherit;
@@ -1201,10 +1277,10 @@ button.aar-player-marker-row {
 }
 
 /* Keyboard focus on a marker row, matching the seek area's ring so every
-   focusable part of the player is outlined the same way. */
+   focusable part of the player is outlined the same way. Two classes'
+   weight, so it outranks the chrome reset a button row carries above. */
 .aar-player-marker-row:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
 /* Currently-playing segment: highlighted with an accent border */
@@ -1226,6 +1302,13 @@ button.aar-player-marker-row {
  */
 .aar-player-marker-row.aar-player-marker-row-colored {
     box-shadow: inset 4px 0 0 var(--aar-marker-color);
+}
+
+/* The focus ring is a shadow too, so a coloured row draws both at once */
+.aar-player-marker-row.aar-player-marker-row-colored:focus-visible {
+    box-shadow:
+        inset 4px 0 0 var(--aar-marker-color),
+        0 0 0 3px var(--background-modifier-border-focus);
 }
 
 /*
@@ -1267,7 +1350,7 @@ button.aar-player-marker-row {
 
 .aar-modal-config {
     color: var(--text-muted);
-    font-size: 0.9em;
+    font-size: var(--font-ui-small);
 }
 
 /* The split dialog's start and end fields hold a timecode, so they stay that
@@ -1297,7 +1380,7 @@ button.aar-player-marker-row {
     top: 50%;
     height: 6px;
     transform: translateY(-50%);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
 }
 
 .aar-time-span-track {
@@ -1357,7 +1440,7 @@ button.aar-player-marker-row {
 
 .aar-modal-status {
     margin: 8px 0 4px;
-    font-size: 0.9em;
+    font-size: var(--font-ui-small);
 }
 
 /* Why a dialog cannot accept what was typed, shown under the field it belongs
@@ -1365,7 +1448,7 @@ button.aar-player-marker-row {
    keeps it out of the layout, so nothing has to toggle it. */
 .aar-modal-error {
     margin: 4px 0 0;
-    font-size: 0.9em;
+    font-size: var(--font-ui-small);
     color: var(--text-error);
 }
 
@@ -1411,25 +1494,9 @@ button.aar-player-marker-row {
     pointer-events: none;
 }
 
-.aar-transcribe-progress {
-    height: 4px;
-    width: 100%;
-    background-color: var(--background-modifier-border);
-    border-radius: 2px;
-    overflow: hidden;
-}
-
-.aar-transcribe-progress-bar {
-    height: 100%;
-    width: var(--aar-transcribe-progress, 0%);
-    background-color: var(--color-accent);
-    border-radius: 2px;
-    transition: width 0.3s ease;
-}
-
 .aar-transcribe-elapsed {
     margin-top: 4px;
-    font-size: 0.8em;
+    font-size: var(--font-ui-smaller);
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
 }
@@ -1439,7 +1506,7 @@ button.aar-player-marker-row {
     margin-bottom: 8px;
     padding-top: 8px;
     border-top: 1px solid var(--background-modifier-border);
-    font-size: 0.8em;
+    font-size: var(--font-ui-smaller);
     color: var(--text-muted);
 }
 
@@ -1490,7 +1557,7 @@ button.aar-player-marker-row {
 /* Live cumulative cost while a multi-part run is in flight. */
 .aar-transcribe-cost-running {
     margin-top: 2px;
-    font-size: 0.8em;
+    font-size: var(--font-ui-smaller);
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
 }
@@ -1507,16 +1574,19 @@ button.aar-player-marker-row {
 
 /* Note appended under the recording-format setting when the stored format
    cannot be recorded here, naming the format recordings fall back to. Reads
-   as a warning so the blocked selection is not mistaken for the outcome. */
+   as a warning so the blocked selection is not mistaken for the outcome.
+   Sized against the description it sits in, which is already
+   --font-ui-smaller, so it takes Obsidian's relative step down. */
 .aar-format-fallback-note {
     margin-top: var(--size-4-1);
-    font-size: 0.85em;
+    font-size: var(--font-smaller);
     color: var(--text-warning);
 }
 
-/* "Learn more" link appended to a setting description. */
+/* "Learn more" link appended to a setting description, one relative step
+   below the description's own text for the same reason as the note above. */
 .aar-doc-link {
-    font-size: 0.85em;
+    font-size: var(--font-smaller);
 }
 
 /* Multi-line editors - a glossary, a guidance prompt. Obsidian puts every
@@ -1734,9 +1804,11 @@ button.aar-player-marker-row {
     cursor: pointer;
 }
 
+/* The app's own focus ring, stated here because the link styling above
+   clears the rest of the button's chrome */
 .aar-silent-channel-convert:focus-visible {
-    outline: 2px solid var(--background-modifier-border-focus);
-    outline-offset: 2px;
+    border-radius: var(--radius-s);
+    box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
 /* Numeric setting input (manual entry plus the browser's native up/down
@@ -1786,16 +1858,9 @@ button.aar-player-marker-row {
     text-align: right;
 }
 
+/* An Obsidian icon button, kept as compact as the row it ends */
 .aar-queue-remove {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    color: var(--text-muted);
-    cursor: pointer;
+    padding: var(--size-2-1);
 }
 
 /* Recording panel. Its sections reuse the classes of Obsidian's Properties block, so only
@@ -1836,4 +1901,26 @@ button.aar-player-marker-row {
     position: static;
     padding: 0;
     opacity: 1;
+}
+
+/*
+ * With reduced motion asked for, nothing pulses and nothing slides. Every
+ * state still reads without the movement: the recording dot and the ribbon
+ * icon stay red, a saving icon keeps the accent, and a bar or a meter jumps
+ * straight to its new length instead of growing into it.
+ */
+@media (prefers-reduced-motion: reduce) {
+    .side-dock-ribbon-action.is-recording svg,
+    .side-dock-ribbon-action.is-saving svg,
+    .aar-recording-banner-dot,
+    .aar-test-recording {
+        animation: none;
+    }
+
+    .aar-input-meter-fill,
+    .aar-save-progress .setting-progress-bar-inner,
+    .aar-transcribe-progress .setting-progress-bar-inner,
+    .aar-player .aar-player-btn {
+        transition: none;
+    }
 }

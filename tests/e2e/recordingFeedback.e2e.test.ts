@@ -200,7 +200,7 @@ describe('the status bar during a recording', () => {
 
 		const bar = statusBar(plugin);
 		expect(bar.textContent).toContain('Assembling audio...');
-		expect(maybeEl(bar, STATUS.saveProgressBar)).not.toBeNull();
+		expect(maybeEl(bar, STATUS.saveProgress)).not.toBeNull();
 	});
 
 	it('clears itself when the recording is done', async () => {
