@@ -25,7 +25,6 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import {
 	capturedSettings,
 	changeSetting,
-	clickSettingButton,
 	type CapturedSetting,
 } from '../helpers/captureSettings';
 
@@ -46,6 +45,15 @@ function makeCtx(): SettingsSectionContext {
 	};
 }
 
+/**
+ * Whether a rendered row is dimmed, the mark of an option the current
+ * selection cannot use.
+ * @param setting - The captured row
+ */
+function isDimmed(setting: CapturedSetting): boolean {
+	return setting.el.classList.contains(SETTING_DISABLED_CLASS);
+}
+
 describe('addToggle disabled rendering', () => {
 	beforeEach(() => {
 		capturedSettings.length = 0;
@@ -60,9 +68,7 @@ describe('addToggle disabled rendering', () => {
 		});
 
 		const setting = at(capturedSettings, 0);
-		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
-			true,
-		);
+		expect(isDimmed(setting)).toBe(true);
 		expect(setting.toggle?.disabled).toBe(true);
 	});
 
@@ -74,9 +80,7 @@ describe('addToggle disabled rendering', () => {
 		});
 
 		const setting = at(capturedSettings, 0);
-		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
-			false,
-		);
+		expect(isDimmed(setting)).toBe(false);
 		expect(setting.toggle?.disabled).toBe(false);
 		expect(setting.toggle?.value).toBe(true);
 	});
@@ -96,9 +100,7 @@ describe('addText disabled rendering', () => {
 		});
 
 		const setting = at(capturedSettings, 0);
-		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
-			true,
-		);
+		expect(isDimmed(setting)).toBe(true);
 		expect(setting.text?.disabled).toBe(true);
 	});
 
@@ -110,64 +112,9 @@ describe('addText disabled rendering', () => {
 		});
 
 		const setting = at(capturedSettings, 0);
-		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
-			false,
-		);
+		expect(isDimmed(setting)).toBe(false);
 		expect(setting.text?.disabled).toBe(false);
 		expect(setting.text?.value).toBe('**{speaker}**');
-	});
-});
-
-describe('addText secret rendering', () => {
-	beforeEach(() => {
-		capturedSettings.length = 0;
-	});
-
-	/** Renders one secret row and returns it. */
-	const renderSecret = (): CapturedSetting => {
-		addText(makeCtx(), {
-			name: 'API key',
-			get: () => 'sk-test',
-			set: () => undefined,
-			secret: true,
-		});
-		return at(capturedSettings, 0);
-	};
-
-	it('masks the value and keeps the browser from filling it', () => {
-		const setting = renderSecret();
-
-		expect(setting.text?.inputEl?.type).toBe('password');
-		expect(setting.text?.inputEl?.getAttribute('autocomplete')).toBe('off');
-	});
-
-	it('unmasks and re-masks through the reveal button, as Obsidian does', () => {
-		const setting = renderSecret();
-		const input = setting.text?.inputEl;
-
-		clickSettingButton('API key', 'lucide-eye-off');
-
-		expect(input?.type).toBe('text');
-		// The icon flips with the state, so the button says what it will do next.
-		expect(at(setting.buttons, 0).label).toBe('lucide-eye');
-		expect(at(setting.buttons, 0).tooltip).toBe('Hide value');
-
-		clickSettingButton('API key', 'lucide-eye');
-
-		expect(input?.type).toBe('password');
-		expect(at(setting.buttons, 0).label).toBe('lucide-eye-off');
-	});
-
-	it('leaves an ordinary text row unmasked and without the button', () => {
-		addText(makeCtx(), {
-			name: 'Speaker format',
-			get: () => '**{speaker}**',
-			set: () => undefined,
-		});
-
-		const setting = at(capturedSettings, 0);
-		expect(setting.text?.inputEl?.type).toBe('text');
-		expect(setting.buttons).toHaveLength(0);
 	});
 });
 

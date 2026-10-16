@@ -7,10 +7,11 @@
 
 import type { SettingDefinitionItem } from 'obsidian';
 import { at } from '../../helpers/assertions';
-import { allEls, el, maybeEl } from '../../helpers/dom';
+import { allEls, clickControl, control, el, maybeEl } from '../../helpers/dom';
 import { SETTING } from '../../helpers/selectors';
 import {
 	rowInput,
+	rowSecretId,
 	rowSelect,
 	rowTextarea,
 	rowToggle,
@@ -20,6 +21,7 @@ import {
 import {
 	FRAMEWORK_ACTION_ROW_CLASS,
 	FRAMEWORK_INVALID_INPUT_CLASS,
+	FRAMEWORK_SECRET_UNLINK_LABEL,
 	FRAMEWORK_SETTING_ERROR_CLASS,
 	FRAMEWORK_STACKED_CLASS,
 	SettingsFramework,
@@ -309,6 +311,63 @@ describe('SettingsFramework', () => {
 			expect(
 				input.classList.contains(FRAMEWORK_INVALID_INPUT_CLASS),
 			).toBe(false);
+		});
+	});
+
+	describe('secret controls, standing in for the keychain picker', () => {
+		/** A row linking the OpenAI key's secret. */
+		const secretRow = (disabled = false): SettingDefinitionItem[] => [
+			{
+				name: 'OpenAI API key',
+				control: {
+					type: 'secret',
+					key: 'whisperApiKeySecret',
+					disabled,
+				},
+			},
+		];
+
+		it('shows the ID of the linked secret, never a key', () => {
+			values['whisperApiKeySecret'] = 'openai-api-key';
+
+			renderer.render(containerEl, secretRow());
+
+			expect(rowSecretId(rowFor('OpenAI API key'))).toBe(
+				'openai-api-key',
+			);
+		});
+
+		it('shows nothing while no secret is linked', () => {
+			renderer.render(containerEl, secretRow());
+
+			expect(rowSecretId(rowFor('OpenAI API key'))).toBe('');
+		});
+
+		it('writes null through the host when the secret is unlinked, as the app does', () => {
+			values['whisperApiKeySecret'] = 'openai-api-key';
+			renderer.render(containerEl, secretRow());
+			const row = rowFor('OpenAI API key');
+
+			clickControl(row, FRAMEWORK_SECRET_UNLINK_LABEL);
+
+			expect(setControlValue).toHaveBeenCalledWith(
+				'whisperApiKeySecret',
+				null,
+			);
+			expect(rowSecretId(row)).toBe('');
+		});
+
+		it('writes nothing from a disabled control', () => {
+			values['whisperApiKeySecret'] = 'openai-api-key';
+			renderer.render(containerEl, secretRow(true));
+			const row = rowFor('OpenAI API key');
+
+			clickControl(row, FRAMEWORK_SECRET_UNLINK_LABEL);
+
+			expect(setControlValue).not.toHaveBeenCalled();
+			expect(
+				control(row, FRAMEWORK_SECRET_UNLINK_LABEL),
+			).toBeDisabledControl();
 		});
 	});
 

@@ -55,7 +55,7 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 2. Set **Transcription engine** to **Mistral Voxtral**.
 3. Open **Engines** and then the **Mistral Voxtral** page.
 4. Leave **Base URL** at `https://api.mistral.ai/v1` unless you are routing requests through a gateway.
-5. Paste your key into **Mistral API key**.
+5. On the **Mistral API key** row, click **Link...**. In Obsidian's secret picker choose **Add secret...** (it opens straight away while the keychain is empty), enter an ID such as `mistral-api-key`, paste your key as the secret, and save. The key is kept in Obsidian's keychain on this device; the plugin stores only the ID.
 6. Under **Model**, pick `voxtral-mini-latest` (the default). Use the **Model catalogue** entry below it to add another id or drop one, and follow the **Voxtral model list** link at the end of the **Model** row's description to the [Mistral audio guide](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription).
 7. (Optional) Back in **Transcription**, turn on **Speaker diarization** for meetings and interviews.
 8. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
@@ -99,7 +99,7 @@ To enable it:
 4. Set **Post-processing engine** to **Mistral**.
 5. Open **Engines** and then **Mistral** to pick a **Model** (default `mistral-medium-latest`, with `mistral-small-latest` and `mistral-large-latest` seeded) and adjust **Max output tokens** if needed (default 4096, range 512-200000, with the model's own maximum as the real limit).
 
-The key field on that page is the one you already filled in, because it belongs to the account rather than to either engine.
+The key row on that page is the one you already linked, because it belongs to the account rather than to either engine.
 
 See the [LLM post-processing guide](../llm-post-processing.md) for the full set of tasks, prompts, and provider options.
 
@@ -108,7 +108,7 @@ See the [LLM post-processing guide](../llm-post-processing.md) for the full set 
 ## Verify it works
 
 1. Open a note and record a short clip, or open an existing audio file in your vault.
-2. Make sure **Mistral Voxtral** is the selected engine and your key is pasted in.
+2. Make sure **Mistral Voxtral** is the selected engine and its key is linked.
 3. With an audio file active, run **Transcribe audio** from the command palette (this command appears only when transcription is enabled and the active file is audio).
 4. Watch the progress dialog. When it finishes, the transcript is inserted into the note and written to a sidecar file, depending on your **Transcript output** settings.
 
@@ -118,20 +118,20 @@ If a transcript appears with clickable timecodes, and with speaker labels when d
 
 ## Troubleshooting
 
-| Symptom                                             | Likely cause and fix                                                                                                                                                                         |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `401` / `Unauthorized`                              | The key is wrong, truncated, or expired. Create a fresh one at [console.mistral.ai](https://console.mistral.ai) and paste it into **Mistral API key** with no spaces.                        |
-| `429` / rate-limit error                            | You hit the free-mode rate limits. Wait and retry, or raise your limits in the Mistral console.                                                                                              |
-| `404` / model not found                             | The model id is unknown to your account. Pick `voxtral-mini-latest` or another id from the [Mistral audio guide](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription). |
-| A language code has no effect on the transcript     | Expected on this engine, which detects the spoken language itself. Pick another engine if you need to force a language code.                                                                 |
-| **Word-level timestamps** cannot be turned on       | Expected: the endpoint refuses a request naming both the segment and the word level, and segments are what the transcript needs.                                                             |
-| A WebM recording takes a long time before uploading | It is being decoded to WAV first, because the endpoint does not read that container. Record in MP3 or M4A to skip the decode.                                                                |
-| The file is refused as too large                    | The decode expands the recording in memory, and this device has a ceiling. Convert it to one of the accepted containers, or [split it](../splitting.md) into parts.                          |
-| Recording is refused as too long for one request    | Longer than the three hours one request carries. The length is measured once the recording is decoded, before anything is uploaded. [Split it](../splitting.md) into parts first.            |
-| Request times out on a long recording               | Raise **Request timeout** (up to 60 minutes). A three-hour recording is one request, and its deadline never falls below 20 minutes but is still capped by that setting.                      |
-| Connection or network errors                        | Voxtral is a cloud engine and needs internet. For fully offline transcription, use [local whisper.cpp](local-whisper-cpp.md).                                                                |
+| Symptom                                             | Likely cause and fix                                                                                                                                                                                                           |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `401` / `Unauthorized`                              | The key is wrong, truncated, or expired. Create a fresh one at [console.mistral.ai](https://console.mistral.ai) and store it in the secret linked on **Mistral API key** (edit it on **Settings > Keychain**), with no spaces. |
+| `429` / rate-limit error                            | You hit the free-mode rate limits. Wait and retry, or raise your limits in the Mistral console.                                                                                                                                |
+| `404` / model not found                             | The model id is unknown to your account. Pick `voxtral-mini-latest` or another id from the [Mistral audio guide](https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription).                                   |
+| A language code has no effect on the transcript     | Expected on this engine, which detects the spoken language itself. Pick another engine if you need to force a language code.                                                                                                   |
+| **Word-level timestamps** cannot be turned on       | Expected: the endpoint refuses a request naming both the segment and the word level, and segments are what the transcript needs.                                                                                               |
+| A WebM recording takes a long time before uploading | It is being decoded to WAV first, because the endpoint does not read that container. Record in MP3 or M4A to skip the decode.                                                                                                  |
+| The file is refused as too large                    | The decode expands the recording in memory, and this device has a ceiling. Convert it to one of the accepted containers, or [split it](../splitting.md) into parts.                                                            |
+| Recording is refused as too long for one request    | Longer than the three hours one request carries. The length is measured once the recording is decoded, before anything is uploaded. [Split it](../splitting.md) into parts first.                                              |
+| Request times out on a long recording               | Raise **Request timeout** (up to 60 minutes). A three-hour recording is one request, and its deadline never falls below 20 minutes but is still capped by that setting.                                                        |
+| Connection or network errors                        | Voxtral is a cloud engine and needs internet. For fully offline transcription, use [local whisper.cpp](local-whisper-cpp.md).                                                                                                  |
 
-> **Key privacy.** Your Mistral API key is stored in the plugin's `data.json` on this device and is never written to diagnostics. Avoid syncing `data.json` to untrusted locations. If you need everything to stay offline, use the [local whisper.cpp engine](local-whisper-cpp.md) instead.
+> **Key privacy.** Your Mistral API key is kept in Obsidian's keychain (**Settings > Keychain**) on this device, not in the plugin's `data.json`, and is never written to diagnostics. The keychain does not sync, so on another device link the key once more under the same ID. If you need everything to stay offline, use the [local whisper.cpp engine](local-whisper-cpp.md) instead.
 
 ---
 

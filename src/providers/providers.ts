@@ -96,10 +96,10 @@ export const EngineLabel = {
 /** One engine label (derived from {@link EngineLabel}). */
 export type EngineLabel = (typeof EngineLabel)[keyof typeof EngineLabel];
 
-/** Description shown under every stored key field. */
+/** Description shown under every key field. */
 const STORED_LOCALLY_DESC =
-	'Stored in plugin data on this device. Avoid syncing data.json to untrusted locations. ' +
-	'Leave it empty when the Base URL points at a local endpoint, which needs no key.';
+	"Kept in Obsidian's keychain, not synced: link a saved secret or create one once per device, and on the desktop once per vault. " +
+	'Leave it unlinked when the Base URL points at a local endpoint, which needs no key.';
 
 /**
  * How an account is reached: one endpoint and one key, whatever the engines
@@ -110,6 +110,13 @@ export interface ProviderConnection {
 	readonly baseUrlKey: PrimitiveSettingKey;
 	readonly apiKeyKey: PrimitiveSettingKey;
 	/**
+	 * Where the ID of the keychain secret holding the key is stored. The key
+	 * row is bound to this field rather than to {@link apiKeyKey}: data.json
+	 * keeps the ID, which is safe to sync, and the value stays in Obsidian's
+	 * keychain on each device.
+	 */
+	readonly apiKeySecretKey: PrimitiveSettingKey;
+	/**
 	 * The vendor's own endpoint, which is where the stored value starts and
 	 * where a cleared field returns to. Named here because it is the one thing
 	 * that distinguishes "this account, as the vendor serves it" from "some
@@ -119,8 +126,20 @@ export interface ProviderConnection {
 	readonly defaultBaseUrl: string;
 	readonly baseUrl: (settings: AudioRecorderSettings) => string;
 	readonly setBaseUrl: (settings: AudioRecorderSettings, url: string) => void;
+	/**
+	 * The key a run is sent with. A runtime value: while a secret is linked it
+	 * is what the keychain holds under that ID, resolved on load, on every
+	 * save, and whenever the keychain changes, so every reader keeps reading
+	 * one field and never needs to know where the key is kept.
+	 */
 	readonly apiKey: (settings: AudioRecorderSettings) => string;
 	readonly setApiKey: (settings: AudioRecorderSettings, key: string) => void;
+	/** The linked secret's ID, or '' when none is linked. */
+	readonly apiKeySecret: (settings: AudioRecorderSettings) => string;
+	readonly setApiKeySecret: (
+		settings: AudioRecorderSettings,
+		id: string,
+	) => void;
 	/**
 	 * What the base-URL row says about this endpoint. Only the description: the
 	 * row is called "Base URL" on every account, which makes the label a fact
@@ -215,10 +234,13 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 		baseUrlKey: 'whisperApiBaseUrl',
 		defaultBaseUrl: DEFAULT_OPENAI_BASE_URL,
 		apiKeyKey: 'whisperApiKey',
+		apiKeySecretKey: 'whisperApiKeySecret',
 		baseUrl: (s) => s.whisperApiBaseUrl,
 		setBaseUrl: (s, url) => (s.whisperApiBaseUrl = url),
 		apiKey: (s) => s.whisperApiKey,
 		setApiKey: (s, key) => (s.whisperApiKey = key),
+		apiKeySecret: (s) => s.whisperApiKeySecret,
+		setApiKeySecret: (s, id) => (s.whisperApiKeySecret = id),
 		baseUrlFieldDesc:
 			'OpenAI-compatible endpoint base (e.g. https://api.openai.com/v1 or a Groq URL). Shared by the Whisper API and OpenAI engines.',
 		keyFieldName: 'OpenAI API key',
@@ -229,10 +251,13 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 		baseUrlKey: 'deepgramBaseUrl',
 		defaultBaseUrl: DEFAULT_DEEPGRAM_BASE_URL,
 		apiKeyKey: 'deepgramApiKey',
+		apiKeySecretKey: 'deepgramApiKeySecret',
 		baseUrl: (s) => s.deepgramBaseUrl,
 		setBaseUrl: (s, url) => (s.deepgramBaseUrl = url),
 		apiKey: (s) => s.deepgramApiKey,
 		setApiKey: (s, key) => (s.deepgramApiKey = key),
+		apiKeySecret: (s) => s.deepgramApiKeySecret,
+		setApiKeySecret: (s, id) => (s.deepgramApiKeySecret = id),
 		baseUrlFieldDesc:
 			'Deepgram API base (default https://api.deepgram.com/v1).',
 		keyFieldName: 'Deepgram API key',
@@ -243,10 +268,13 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 		baseUrlKey: 'geminiBaseUrl',
 		defaultBaseUrl: DEFAULT_GEMINI_BASE_URL,
 		apiKeyKey: 'geminiApiKey',
+		apiKeySecretKey: 'geminiApiKeySecret',
 		baseUrl: (s) => s.geminiBaseUrl,
 		setBaseUrl: (s, url) => (s.geminiBaseUrl = url),
 		apiKey: (s) => s.geminiApiKey,
 		setApiKey: (s, key) => (s.geminiApiKey = key),
+		apiKeySecret: (s) => s.geminiApiKeySecret,
+		setApiKeySecret: (s, id) => (s.geminiApiKeySecret = id),
 		baseUrlFieldDesc:
 			'Gemini API base (default https://generativelanguage.googleapis.com).',
 		keyFieldName: 'Google Gemini API key',
@@ -257,10 +285,13 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 		baseUrlKey: 'mistralBaseUrl',
 		defaultBaseUrl: DEFAULT_MISTRAL_BASE_URL,
 		apiKeyKey: 'mistralApiKey',
+		apiKeySecretKey: 'mistralApiKeySecret',
 		baseUrl: (s) => s.mistralBaseUrl,
 		setBaseUrl: (s, url) => (s.mistralBaseUrl = url),
 		apiKey: (s) => s.mistralApiKey,
 		setApiKey: (s, key) => (s.mistralApiKey = key),
+		apiKeySecret: (s) => s.mistralApiKeySecret,
+		setApiKeySecret: (s, id) => (s.mistralApiKeySecret = id),
 		baseUrlFieldDesc:
 			'Mistral API base (default https://api.mistral.ai/v1). Shared by the Voxtral and Mistral engines.',
 		keyFieldName: 'Mistral API key',
@@ -271,10 +302,13 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 		baseUrlKey: 'anthropicBaseUrl',
 		defaultBaseUrl: DEFAULT_ANTHROPIC_BASE_URL,
 		apiKeyKey: 'anthropicApiKey',
+		apiKeySecretKey: 'anthropicApiKeySecret',
 		baseUrl: (s) => s.anthropicBaseUrl,
 		setBaseUrl: (s, url) => (s.anthropicBaseUrl = url),
 		apiKey: (s) => s.anthropicApiKey,
 		setApiKey: (s, key) => (s.anthropicApiKey = key),
+		apiKeySecret: (s) => s.anthropicApiKeySecret,
+		setApiKeySecret: (s, id) => (s.anthropicApiKeySecret = id),
 		baseUrlFieldDesc:
 			'Anthropic API base (default https://api.anthropic.com/v1).',
 		keyFieldName: 'Anthropic API key',
@@ -285,10 +319,13 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 		baseUrlKey: 'deepSeekBaseUrl',
 		defaultBaseUrl: DEFAULT_DEEPSEEK_BASE_URL,
 		apiKeyKey: 'deepSeekApiKey',
+		apiKeySecretKey: 'deepSeekApiKeySecret',
 		baseUrl: (s) => s.deepSeekBaseUrl,
 		setBaseUrl: (s, url) => (s.deepSeekBaseUrl = url),
 		apiKey: (s) => s.deepSeekApiKey,
 		setApiKey: (s, key) => (s.deepSeekApiKey = key),
+		apiKeySecret: (s) => s.deepSeekApiKeySecret,
+		setApiKeySecret: (s, id) => (s.deepSeekApiKeySecret = id),
 		baseUrlFieldDesc:
 			'DeepSeek API base (default https://api.deepseek.com).',
 		keyFieldName: 'DeepSeek API key',

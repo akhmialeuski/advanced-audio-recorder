@@ -34,12 +34,12 @@ describe('engine settings', () => {
 		it('writes an engine through the fields its own descriptor names', () => {
 			applyEngineSettings(settings, ENGINE_IDS.ANTHROPIC, {
 				baseUrl: 'https://proxy.example/v1',
-				apiKey: 'sk-ant-test',
+				apiKeySecret: 'anthropic-api-key',
 				maxTokens: 8000,
 			});
 
 			expect(settings.anthropicBaseUrl).toBe('https://proxy.example/v1');
-			expect(settings.anthropicApiKey).toBe('sk-ant-test');
+			expect(settings.anthropicApiKeySecret).toBe('anthropic-api-key');
 			expect(settings.llmAnthropicMaxTokens).toBe(8000);
 		});
 
@@ -50,14 +50,14 @@ describe('engine settings', () => {
 			// to land somewhere.
 			applyEngineSettings(settings, ENGINE_IDS.LOCAL_WHISPER, {
 				baseUrl: 'https://nowhere.example',
-				apiKey: 'leaked',
+				apiKeySecret: 'leaked',
 				model: 'gpt-5.6-sol',
 				maxTokens: 1234,
 			});
 
 			expect(settings).toEqual(DEFAULT_SETTINGS);
-			expect(settings.whisperApiKey).toBe('');
-			expect(settings.anthropicApiKey).toBe('');
+			expect(settings.whisperApiKeySecret).toBe('');
+			expect(settings.anthropicApiKeySecret).toBe('');
 			expect(settings.llmOpenAiModel).toBe(
 				DEFAULT_SETTINGS.llmOpenAiModel,
 			);
@@ -68,20 +68,67 @@ describe('engine settings', () => {
 				name: 'the Whisper API and the OpenAI chat models',
 				speech: ENGINE_IDS.WHISPER_API,
 				chat: ENGINE_IDS.OPENAI_LLM,
-				key: 'sk-openai',
+				key: 'openai-api-key',
 			},
 			{
 				name: 'the Voxtral and Mistral catalogues',
 				speech: ENGINE_IDS.VOXTRAL,
 				chat: ENGINE_IDS.MISTRAL_LLM,
-				key: 'ml-test',
+				key: 'mistral-api-key',
 			},
 		])('shares one account between $name', ({ speech, chat, key }) => {
-			// Two catalogues over one account: a key entered on either page
-			// is the same key, which is what lets the pair be entered once.
-			applyEngineSettings(settings, speech, { apiKey: key });
+			// Two catalogues over one account: a secret linked on either page
+			// is the same link, which is what lets the pair be set up once.
+			applyEngineSettings(settings, speech, { apiKeySecret: key });
 
-			expect(readEngineSettings(settings, chat).apiKey).toBe(key);
+			expect(readEngineSettings(settings, chat).apiKeySecret).toBe(key);
+		});
+
+		it('stores a link the picker cleared with null as no link', () => {
+			settings.deepgramApiKeySecret = 'deepgram-api-key';
+
+			applyEngineSettings(settings, ENGINE_IDS.DEEPGRAM, {
+				apiKeySecret: null,
+			});
+
+			expect(settings.deepgramApiKeySecret).toBe('');
+		});
+
+		it('drops the resolved key with the link it was resolved from', () => {
+			// Kept, the old secret's value would sit in a field the serializer
+			// writes to disk for an account that links nothing.
+			settings.deepgramApiKeySecret = 'deepgram-api-key';
+			settings.deepgramApiKey = 'dg-from-keychain';
+
+			applyEngineSettings(settings, ENGINE_IDS.DEEPGRAM, {
+				apiKeySecret: null,
+			});
+
+			expect(settings.deepgramApiKey).toBe('');
+		});
+
+		it('answers the local engine with no endpoint, no key, and no link', () => {
+			const view = readEngineSettings(settings, ENGINE_IDS.LOCAL_WHISPER);
+
+			expect(view).toMatchObject({
+				baseUrl: '',
+				apiKey: '',
+				apiKeySecret: '',
+				model: '',
+				models: [],
+				maxTokens: 0,
+				uploadChunkMb: 0,
+			});
+		});
+
+		it('reads the resolved key next to the link it came from', () => {
+			settings.geminiApiKeySecret = 'gemini-api-key';
+			settings.geminiApiKey = 'gm-1';
+
+			const view = readEngineSettings(settings, ENGINE_IDS.GEMINI);
+
+			expect(view.apiKey).toBe('gm-1');
+			expect(view.apiKeySecret).toBe('gemini-api-key');
 		});
 
 		it('bounds the answer of each engine that writes one', () => {
@@ -203,7 +250,7 @@ describe('engine settings', () => {
 				const account = accountOf(engine);
 				const keys = [
 					account?.baseUrlKey,
-					account?.apiKeyKey,
+					account?.apiKeySecretKey,
 					engine.models?.modelKey,
 					engine.models?.modelsKey,
 					engine.maxTokens?.key,
@@ -221,6 +268,16 @@ describe('engine settings', () => {
 		it('claims nothing that belongs to no engine', () => {
 			expect(engineFieldOf('transcriptionLanguage')).toBeUndefined();
 			expect(engineFieldOf('llmProvider')).toBeUndefined();
+		});
+
+		it('leaves the resolved key to the keychain rather than to a control', () => {
+			// The key is a runtime value resolved from the keychain; what a
+			// control writes is the link to the secret holding it.
+			expect(engineFieldOf('deepgramApiKey')).toBeUndefined();
+			expect(engineFieldOf('deepgramApiKeySecret')).toEqual({
+				engine: ENGINE_IDS.DEEPGRAM,
+				field: 'apiKeySecret',
+			});
 		});
 
 		it('names the field a key is, not merely the engine', () => {

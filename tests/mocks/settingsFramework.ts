@@ -51,6 +51,12 @@ export const FRAMEWORK_INVALID_INPUT_CLASS = 'mock-setting-input-invalid';
 /** Class on the line stating why a control refused a value. */
 export const FRAMEWORK_SETTING_ERROR_CLASS = 'mock-setting-error';
 
+/** Class on the element a secret control shows the linked secret's ID in. */
+export const FRAMEWORK_SECRET_VALUE_CLASS = 'mock-setting-secret-value';
+
+/** Accessible name of the button that unlinks a secret control's secret. */
+export const FRAMEWORK_SECRET_UNLINK_LABEL = 'Unlink secret';
+
 /**
  * Largest share of one step a value may miss its grid point by and still count
  * as sitting on it. A grid of tenths cannot be walked in binary floating point
@@ -599,6 +605,11 @@ export class SettingsFramework {
 					report,
 					persist,
 				});
+			case 'secret':
+				return this.bindSecretControl(setting, control, stored, {
+					report,
+					persist,
+				});
 			default:
 				// Control types the plugin does not use render as a plain row.
 				return undefined;
@@ -713,6 +724,59 @@ export class SettingsFramework {
 			};
 		});
 		return hook;
+	}
+
+	/**
+	 * Renders a secret control: the stand-in for Obsidian's keychain picker.
+	 *
+	 * The real control opens a modal that lists the keychain and can add to it,
+	 * and writes the chosen secret's ID; it shows a masked value when that secret
+	 * exists, nothing when it does not, and an unlink button that writes null.
+	 * The stand-in keeps the part a test reads and the part that reaches the tab:
+	 * it shows the stored ID, and its unlink button writes null exactly as the
+	 * real one does. Choosing a secret is driven through the tab's own
+	 * `setControlValue`, which is where the real picker's choice arrives.
+	 * @param setting - The row the control is added to
+	 * @param control - The secret control being rendered
+	 * @param stored - The current stored value, the linked secret's ID
+	 * @param hooks - Where a refusal is reported and an accepted value stored
+	 * @returns A hook applying the row's disabled state
+	 */
+	private bindSecretControl(
+		setting: Setting,
+		control: Extract<SettingControl, { type: 'secret' }>,
+		stored: unknown,
+		hooks: ControlWriteHooks,
+	): (disabled: boolean) => void {
+		const id =
+			typeof stored === 'string' ? stored : (control.defaultValue ?? '');
+		const valueEl = setting.controlEl.createDiv({
+			cls: FRAMEWORK_SECRET_VALUE_CLASS,
+			text: id,
+		});
+		const unlink = setting.controlEl.createEl('button', {
+			attr: { 'aria-label': FRAMEWORK_SECRET_UNLINK_LABEL },
+		});
+		const write = guardedWrite<string | null>({
+			seed: id,
+			rejectionOf: (value) =>
+				value === null
+					? undefined
+					: validatorRejection(control.validate, value),
+			report: hooks.report,
+			write: hooks.persist,
+		});
+		unlink.addEventListener('click', () => {
+			if (unlink.disabled) {
+				return;
+			}
+			valueEl.setText('');
+			write(null);
+		});
+		return (disabled): void => {
+			unlink.disabled = disabled;
+			valueEl.toggleClass('is-disabled', disabled);
+		};
 	}
 }
 

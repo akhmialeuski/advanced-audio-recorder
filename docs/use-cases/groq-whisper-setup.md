@@ -67,7 +67,7 @@ The free tier is active immediately; you do not need to add billing to start tra
 4. Open **Engines** and then the **Whisper API (OpenAI-compatible)** page.
 5. In **Base URL**, replace the default OpenAI URL with Groq's:
     - `https://api.groq.com/openai/v1`
-6. Paste your Groq key (the `gsk_…` value) into **OpenAI API key**.
+6. On the **OpenAI API key** row, click **Link...**. In Obsidian's secret picker choose **Add secret...** (it opens straight away while the keychain is empty), enter an ID such as `groq-api-key`, paste your Groq key (the `gsk_…` value) as the secret, and save. The key is kept in Obsidian's keychain on this device; the plugin stores only the ID.
 7. Set the **model** (next step) and choose your **Language** and **Transcript output** options as usual.
 
 > **One account, two engines.** The Whisper API and OpenAI engines share a single account, so the **Base URL** and **OpenAI API key** you enter here are the ones OpenAI post-processing reads as well. Pointing them at Groq points both, which is why the key row is named after the account rather than after the engine.
@@ -152,8 +152,8 @@ If a problem persists, see the [Troubleshooting](../troubleshooting.md) guide an
 
 ## Security and privacy
 
-- Your Groq key is stored in the plugin's `data.json` on this device and is **never** written into the **System info** diagnostics report.
-- Avoid syncing `data.json` to untrusted locations, since it holds your key.
+- Your Groq key is kept in Obsidian's keychain (**Settings > Keychain**) on this device, not in the plugin's `data.json`, and is **never** written into the **System info** diagnostics report.
+- The keychain does not sync, so on another device link the key once more under the same ID.
 - Groq is a cloud service: audio you transcribe is uploaded to Groq's servers. For fully offline transcription that never touches the network, use the [Local whisper.cpp](local-whisper-cpp.md) engine instead.
 
 ---

@@ -93,17 +93,12 @@ export interface DeviceOptions {
 }
 
 /**
- * What the transcription sections need from the tab: the two credential blocks
+ * What the transcription sections need from the tab: the local engine's paths,
  * rendered by hand into the row their section keeps for them, and the edits
- * behind the add and delete affordances of the two model lists, which the
+ * behind the add and delete affordances of the model lists, which the
  * framework draws but the tab owns.
  */
 export interface TranscriptionBlocks {
-	/**
-	 * A provider's API key, which is a password field rather than a plain one,
-	 * so no control type covers it.
-	 */
-	readonly renderProviderKey: (host: HTMLElement, engineId: EngineId) => void;
 	/** The local engine's binary and model paths, which are file pickers. */
 	readonly renderLocalWhisperFields: (host: HTMLElement) => void;
 	/**

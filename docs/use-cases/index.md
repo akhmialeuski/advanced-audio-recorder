@@ -21,7 +21,7 @@ This is the hub for the step-by-step guides. The reference docs describe _what_ 
 
 ## Getting API keys
 
-Cloud transcription engines (and the LLM post-processing providers) authenticate with an **API key** you generate on the provider's website. Each guide walks you through creating an account, generating the key, and pasting it into the key field on that service's own page under **Settings > Advanced Audio Recorder > Transcription > Engines**. Keys are stored only in the plugin's `data.json` on this device and are never written to diagnostics.
+Cloud transcription engines (and the LLM post-processing providers) authenticate with an **API key** you generate on the provider's website. Each guide walks you through creating an account, generating the key, and linking it on the key row of that service's own page under **Settings > Advanced Audio Recorder > Transcription > Engines**. Keys are kept in Obsidian's keychain on this device, never in the plugin's `data.json`, and are never written to diagnostics.
 
 | Guide                                             | Provider                 | Use it for                                                  |
 | ------------------------------------------------- | ------------------------ | ----------------------------------------------------------- |
@@ -32,7 +32,7 @@ Cloud transcription engines (and the LLM post-processing providers) authenticate
 | [Mistral](mistral-api-key.md)                     | Mistral                  | The **Mistral Voxtral** engine and Mistral post-processing. |
 | [Anthropic / Claude](anthropic-api-key.md)        | Anthropic                | **LLM post-processing** with Claude (clean up/summarize).   |
 
-Every API-key guide follows the same shape: generate the key on the provider's site, then paste it into the matching field on that engine's page under **Transcription > Engines**.
+Every API-key guide follows the same shape: generate the key on the provider's site, then link it on the matching row of that engine's page under **Transcription > Engines**, which stores it in Obsidian's keychain.
 
 > **Heads-up on shared keys.** A key belongs to the account rather than to the job, so the OpenAI page serves both Whisper API transcription and OpenAI post-processing, and the Gemini page serves transcription and prompts alike. Anthropic/Claude only writes, so it keeps a page and a key of its own. See [LLM post-processing](../llm-post-processing.md) for details.
 

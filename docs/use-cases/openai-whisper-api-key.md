@@ -47,7 +47,7 @@ You only need to do this once per OpenAI account.
 5. **Copy the key now.** OpenAI shows the full secret value **only once**. If you close the dialog without copying it, you cannot retrieve it later - you must delete the key and create a new one. The key starts with `sk-`.
 6. Paste it somewhere safe for a moment (you will move it into the plugin in [Step 4](#step-4-configure-the-plugin)).
 
-> **Keep the key secret.** Anyone with this key can spend against your account. Never paste it into a note, a screenshot, or a shared file. The plugin stores it locally on your device - see [Limits and behavior](#limits-and-behavior).
+> **Keep the key secret.** Anyone with this key can spend against your account. Never paste it into a note, a screenshot, or a shared file. The plugin keeps it in Obsidian's keychain on your device - see [Limits and behavior](#limits-and-behavior).
 
 ## Step 3: Set up billing
 
@@ -68,12 +68,12 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 2. In the **Transcription engine** dropdown, choose **Whisper API (OpenAI-compatible)**.
 3. Open **Engines** and then the **Whisper API (OpenAI-compatible)** page, where the service itself is configured.
 4. Leave **Base URL** as `https://api.openai.com/v1` (the default).
-5. Paste your secret key into **OpenAI API key**. The same field is read by the OpenAI post-processing engine, so the key is entered once.
+5. On the **OpenAI API key** row, click **Link...**. In Obsidian's secret picker choose **Add secret...** (it opens straight away while the keychain is empty), enter an ID such as `openai-api-key`, paste your key as the secret, and save. The key is kept in Obsidian's keychain on this device; the plugin stores only the ID. The same row is read by the OpenAI post-processing engine, so the key is linked once.
 6. In the **Model** dropdown, select **`whisper-1`** (the default). The **Model catalogue** entry below it is where a model id is added or deleted.
 7. Back under **Transcription**, set **Language** to `auto` to auto-detect, or to an ISO code (for example `en`, `ru`, `es`).
 8. (Optional) Choose where the transcript goes under **Transcript output > Destination**. The default is **Insert into note**.
 
-![The Whisper API engine page under Engines, with the Base URL, OpenAI API key, Model and Upload chunk size rows](../images/settings-engine-whisper-api.png)
+![The Whisper API engine page under Engines, with the Base URL, OpenAI API key keychain picker, Model and Upload chunk size rows](../images/settings-engine-whisper-api.png)
 
 > **Speaker diarization** stays greyed out and off for the Whisper API engine - OpenAI's Whisper does not return speaker labels. The speaker-related output controls (Include speakers, Merge speaker turns, Speaker format) are disabled to match.
 
@@ -102,7 +102,7 @@ The fields the Whisper API engine adds, some under **Settings > Transcription** 
 | **Word-level timestamps**       | Per-word timing, recorded in JSON file output only. Whisper API is the only engine that reads the request. | Transcription         | Off                         |
 | **Request timeout**             | Minutes before a single request is aborted and reported as failed. Range 1-60.                             | Transcription         | 10 minutes                  |
 | **Base URL**                    | OpenAI-compatible endpoint base, shared with the OpenAI engine.                                            | Engines > Whisper API | `https://api.openai.com/v1` |
-| **OpenAI API key**              | Your secret key. Stored in the plugin's `data.json` on this device.                                        | Engines > Whisper API | empty                       |
+| **OpenAI API key**              | The keychain secret holding your key. Only its ID is stored in `data.json`.                                | Engines > Whisper API | empty                       |
 | **Model**                       | The model id to request. Must support `verbose_json` with timestamps.                                      | Engines > Whisper API | `whisper-1`                 |
 | **Model catalogue**             | The saved model ids the dropdown above offers, where one is added or removed.                              | Engines > Whisper API | 4 saved                     |
 | **Upload chunk size**           | Megabytes per WAV chunk when a file is too large to send whole. Range 1-24 (API limit is 25 MB).           | Engines > Whisper API | 24 MB                       |
@@ -117,7 +117,7 @@ The **Whisper API models** link at the end of the **Model** row's description po
 - **Dictionary terms travel in the prompt.** A [dictionary profile](../transcription.md#biasing-recognition-toward-your-own-terms) applied to a run is sent as the OpenAI `prompt` field, which holds only about 224 tokens, so a long glossary is trimmed to the terms that fit and a notice says so.
 - **Model requirements.** The model you pick must support `verbose_json` output with segment timestamps. `whisper-1` does; OpenAI's newer `gpt-4o-transcribe` models do **not**, so they are not offered and will not work here.
 - **Compatible hosts.** Because this engine is OpenAI-compatible, you can point it at another host (such as Groq) by changing the base URL, key, and model. See [Groq (free Whisper)](groq-whisper-setup.md).
-- **Where your key lives.** The key is stored in the plugin's `data.json` on this device and is never written into diagnostics output. Avoid syncing `data.json` to untrusted locations. If you want a fully offline path with no key at all, use [local whisper.cpp](local-whisper-cpp.md).
+- **Where your key lives.** The key is kept in Obsidian's keychain (**Settings > Keychain**) on this device, not in the plugin's `data.json`, and is never written to diagnostics. The keychain does not sync, so on another device link the key once more under the same ID. If you want a fully offline path with no key at all, use [local whisper.cpp](local-whisper-cpp.md).
 
 ## Troubleshooting
 

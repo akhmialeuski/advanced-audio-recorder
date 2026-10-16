@@ -24,6 +24,12 @@ import {
 	serializeSettings,
 } from './settings/settingsSerialization';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
+import {
+	ApiKeyMigration,
+	keychainDeviceId,
+	resolveApiKeys,
+} from './settings/apiKeySecrets';
+import { ACCOUNTS, type AccountId } from './providers/providers';
 import { RecordingManager } from './recording/RecordingManager';
 import { detectSilentChannel } from './recording/silentChannelDetector';
 import type { ChannelMode } from './audio/downmix';
@@ -260,6 +266,20 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * replacing them with defaults.
 	 */
 	private settingsInitialized = false;
+	/**
+	 * The settings tab, kept so a change made in Obsidian's keychain page can
+	 * refresh what the tab reports about each engine's key.
+	 */
+	private settingTab: AudioRecorderSettingTab | null = null;
+	/**
+	 * Moves plain-text API keys into Obsidian's keychain. Kept for the life of
+	 * the plugin, because it remembers which secrets this instance wrote, and
+	 * a later load in the same session must not take those as confirmed.
+	 */
+	private readonly apiKeyMigration = new ApiKeyMigration(
+		this.app.secretStorage,
+		keychainDeviceId(this.app),
+	);
 
 	/**
 	 * Called when the plugin is loaded.
@@ -267,6 +287,18 @@ export default class AudioRecorderPlugin extends Plugin {
 	override async onload(): Promise<void> {
 		await this.loadSettings();
 		this.profileNotes.register(this);
+		// A key edited, linked, or deleted in Obsidian's keychain page changes
+		// what a run is sent with, without anything of this plugin being
+		// saved. The keys are resolved again, in place, so every reader of the
+		// live settings sees the change at once. 'changed' is fired by
+		// SecretStorage.setSecret and by the Keychain page in Obsidian 1.14.4
+		// but is not part of the public typings. If it stops firing, keys are
+		// still resolved on every load and every save, only not live.
+		this.registerEvent(
+			this.app.secretStorage.on('changed', () => {
+				this.onKeychainChanged();
+			}),
+		);
 
 		// Offload streaming conversions to a Web Worker when the build
 		// injected its source; everything falls back to the main thread
@@ -350,7 +382,8 @@ export default class AudioRecorderPlugin extends Plugin {
 			},
 		});
 
-		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
+		this.settingTab = new AudioRecorderSettingTab(this.app, this);
+		this.addSettingTab(this.settingTab);
 		const registry = new ActionRegistry(this, (targets, describe, run) => {
 			new ActionTargetModal(this.app, targets, describe, run).open();
 		});
@@ -695,6 +728,10 @@ export default class AudioRecorderPlugin extends Plugin {
 			} else if (!this.settingsInitialized) {
 				this.settings = await mergeSettingsAsync({});
 			}
+			// Resolved but not migrated: a key moved into the keychain is only
+			// out of data.json once data.json is written, and nothing may be
+			// written this session.
+			resolveApiKeys(this.settings, this.app.secretStorage);
 			this.settingsInitialized = true;
 			return;
 		}
@@ -702,6 +739,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.settingsLoadFailed = false;
 		this.settings = await mergeSettingsAsync(data ?? {});
 		this.settingsInitialized = true;
+		const migration = this.apiKeyMigration.migrate(this.settings);
+		resolveApiKeys(this.settings, this.app.secretStorage);
 		if (restoredFromBackup) {
 			new Notice('Settings were restored from the backup file.');
 			// Complete the recovery: recreate the missing data.json
@@ -711,13 +750,86 @@ export default class AudioRecorderPlugin extends Plugin {
 			// before the RecordingManager is constructed in onload.
 			await this.saveData(serializeSettings(this.settings));
 		}
+		// After the restore's own write rather than instead of it: a backup
+		// written by an earlier version holds the keys in plain text too, and
+		// the move is announced only by the write that records it.
+		if (migration.changed) {
+			await this.persistApiKeyMigration(migration.linked);
+		}
 		await this.backupSettings();
+	}
+
+	/**
+	 * Writes data.json right after a migration changed what it holds: the
+	 * links of keys just moved into the keychain, or the removal of a
+	 * plain-text copy a later start confirmed is no longer needed. The backup
+	 * written after this follows it the same way.
+	 *
+	 * A failed write is not a failed load. The secrets are in the keychain and
+	 * the settings in memory link them, while data.json still holds what it
+	 * held; the next load finds the same keys, links the secrets that already
+	 * hold them instead of creating new ones, and writes again. Nothing is
+	 * announced until a write has succeeded, so the notice never claims a move
+	 * that the file on disk does not show.
+	 * @param linked - The accounts linked to a secret by this load
+	 */
+	private async persistApiKeyMigration(linked: AccountId[]): Promise<void> {
+		try {
+			await this.saveData(serializeSettings(this.settings));
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} The API keys were copied to Obsidian's keychain, but data.json could not be written; the move is retried on the next load:`,
+				error,
+			);
+			return;
+		}
+		if (linked.length === 0) {
+			return;
+		}
+		const names = linked.map((id) => ACCOUNTS[id].keyFieldName);
+		new Notice(
+			`Advanced Audio Recorder: ${names.join(', ')} ${names.length === 1 ? 'was' : 'were'} copied into Obsidian's keychain (Settings > Keychain). ` +
+				"The plain-text copy in the plugin's data.json is removed the next time Obsidian starts on this device and finds the key there. " +
+				'Secrets are kept on each device, and on the desktop in each vault, and are not synced, so enter the key once on your other devices and vaults.',
+			0,
+		);
+	}
+
+	/**
+	 * Answers a change in Obsidian's keychain: a secret added, edited, or
+	 * deleted, here or through another plugin. Usually only the runtime keys
+	 * move and nothing is written; the settings tab is read again so each
+	 * engine's entry reports the key it now has.
+	 *
+	 * A secret deleted before its move was confirmed is the exception. Its
+	 * plain-text copy is dropped and data.json written at once, because the
+	 * next start would otherwise take the deletion for a lost write and store
+	 * the key again. Not while saving is blocked: nothing on disk can change
+	 * then, and the copy stays until a session that can write.
+	 */
+	private onKeychainChanged(): void {
+		resolveApiKeys(this.settings, this.app.secretStorage);
+		if (
+			!this.settingsLoadFailed &&
+			this.apiKeyMigration.forgetDeletedMoves(this.settings)
+		) {
+			void this.saveSettings().catch((error: unknown) => {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Saving the settings after a deleted keychain secret failed:`,
+					error,
+				);
+			});
+		}
+		this.settingTab?.update();
 	}
 
 	/**
 	 * Saves plugin settings to storage.
 	 */
 	async saveSettings(): Promise<void> {
+		// First, because the change being saved may be a newly linked secret:
+		// the key it names is what every subsystem told below has to see.
+		resolveApiKeys(this.settings, this.app.secretStorage);
 		// A note just picked for a profile is read before anything is written
 		// or redrawn, so the save carries its text and the tab shows it.
 		await this.profileNotes.reconcile();

@@ -2,9 +2,9 @@
  * The Engines page: one sub-page per engine, its account, and its model
  * catalogue.
  *
- * An engine's credentials are a password field and its local paths are file
- * pickers, neither of which the control set has a type for, so those rows come
- * through the context as render callbacks.
+ * An engine's key is a secret control, which Obsidian renders as its own
+ * keychain picker. The local engine's paths are file pickers the control set
+ * has no type for, so that row comes through the context as a render callback.
  * @module settings/sections/enginesSection
  */
 
@@ -236,7 +236,7 @@ function modelCataloguePage(
  * endpoint and its key, which is why the key is entered once.
  * @param settings - Live settings, read for the entry's value
  * @param engine - The engine being declared
- * @param blocks - The password field and the list edits, which the tab owns
+ * @param blocks - The local paths and the list edits, which the tab owns
  */
 function enginePage(
 	settings: AudioRecorderSettings,
@@ -252,15 +252,15 @@ function enginePage(
 			desc: connection.baseUrlFieldDesc,
 			control: { type: 'text', key: connection.baseUrlKey },
 		});
-		rows.push(
-			imperativeBlockRow({
-				name: connection.keyFieldName,
-				aliases: ['api key', 'token', 'credentials'],
-				render: (host) => {
-					blocks.renderProviderKey(host, engine.id);
-				},
-			}),
-		);
+		// Bound to the ID of a keychain secret, not to the key: Obsidian draws
+		// its own picker, which links a stored secret or creates one, and only
+		// the ID reaches data.json. The key is resolved from the keychain.
+		rows.push({
+			name: connection.keyFieldName,
+			aliases: ['api key', 'token', 'credentials', 'secret', 'keychain'],
+			desc: connection.keyFieldDesc,
+			control: { type: 'secret', key: connection.apiKeySecretKey },
+		});
 	}
 	const models = engine.models;
 	if (models) {

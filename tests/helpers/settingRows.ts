@@ -115,6 +115,16 @@ export function rowButton(row: ParentNode, text?: string): HTMLElement {
 	return match;
 }
 
+/**
+ * The ID of the keychain secret a secret row links, as the stand-in for
+ * Obsidian's picker shows it; '' when nothing is linked.
+ * @param row - The setting row
+ * @returns The linked ID
+ */
+export function rowSecretId(row: ParentNode): string {
+	return el(row, SETTING.secretValue).textContent ?? '';
+}
+
 /** Whether the container rendered a row with this name at all. */
 export function hasSettingRow(container: ParentNode, name: string): boolean {
 	return settingNames(container).includes(name);

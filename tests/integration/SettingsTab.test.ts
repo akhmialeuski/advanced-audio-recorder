@@ -48,6 +48,7 @@ import {
 	rowButton,
 	rowDescription,
 	rowOptionValues,
+	rowSecretId,
 	rowSelect,
 	rowToggle,
 	rowToggleOn,
@@ -3375,5 +3376,89 @@ describe('AudioRecorderSettingTab probing the output rows', () => {
 		expect(el(descEl, SETTING.formatFallbackNote).textContent).toBe(
 			'This device cannot record WEBM. Select a different format.',
 		);
+	});
+});
+
+describe('AudioRecorderSettingTab linking a keychain secret', () => {
+	/**
+	 * A tab over default settings, its save a spy, and the tree's re-reads
+	 * counted.
+	 * @param fields - Settings that differ from the defaults
+	 */
+	function createSut(fields: Partial<AudioRecorderSettings> = {}): {
+		tab: AudioRecorderSettingTab;
+		settings: AudioRecorderSettings;
+		saveSettings: jest.Mock;
+		update: jest.SpyInstance;
+	} {
+		const settings = { ...defaultSettings(), ...fields };
+		const saveSettings = jest.fn().mockResolvedValue(undefined);
+		const tab = new AudioRecorderSettingTab(
+			new App(),
+			partial<AudioRecorderPluginInterface>({
+				settings,
+				saveSettings,
+				manifest: {
+					id: 'advanced-audio-recorder',
+					name: PLUGIN_MANIFEST_NAME,
+				},
+			}),
+		);
+		tab.getSettingDefinitions();
+		const update = jest.spyOn(tab, 'update');
+		return { tab, settings, saveSettings, update };
+	}
+
+	it('shows the linked secret on the key row', () => {
+		const { tab } = createSut({
+			transcriptionEnabled: true,
+			deepgramApiKeySecret: 'deepgram-api-key',
+		});
+
+		openSettingTab(tab);
+
+		expect(
+			rowSecretId(settingRow(tab.containerEl, 'Deepgram API key')),
+		).toBe('deepgram-api-key');
+	});
+
+	it('reads the linked ID, never the key, as the control value', () => {
+		const { tab } = createSut({
+			deepgramApiKey: 'dg-resolved',
+			deepgramApiKeySecret: 'deepgram-api-key',
+		});
+
+		expect(tab.getControlValue('deepgramApiKeySecret')).toBe(
+			'deepgram-api-key',
+		);
+	});
+
+	it('stores a picked secret and saves once', async () => {
+		const { tab, settings, saveSettings } = createSut();
+
+		await tab.setControlValue('deepgramApiKeySecret', 'deepgram-api-key');
+
+		expect(settings.deepgramApiKeySecret).toBe('deepgram-api-key');
+		expect(saveSettings).toHaveBeenCalledTimes(1);
+	});
+
+	it('reads the tree again, so the engine entries report the key it brings', async () => {
+		const { tab, update } = createSut();
+
+		await tab.setControlValue('deepgramApiKeySecret', 'deepgram-api-key');
+
+		expect(update).toHaveBeenCalledTimes(1);
+	});
+
+	it('stores an unlinked secret as no link and drops the key it resolved to', async () => {
+		const { tab, settings } = createSut({
+			deepgramApiKey: 'dg-resolved',
+			deepgramApiKeySecret: 'deepgram-api-key',
+		});
+
+		await tab.setControlValue('deepgramApiKeySecret', null);
+
+		expect(settings.deepgramApiKeySecret).toBe('');
+		expect(settings.deepgramApiKey).toBe('');
 	});
 });

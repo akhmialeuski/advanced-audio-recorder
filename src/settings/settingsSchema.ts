@@ -259,6 +259,27 @@ export type TrackAudioSourcesRecord = Record<
 >;
 
 /**
+ * An API key moved into Obsidian's keychain whose secret no later start of
+ * the device that wrote it has found there yet (see settings/apiKeySecrets).
+ */
+export interface UnconfirmedApiKeySecret {
+	/** ID of the secret the key was written under. */
+	readonly id: string;
+	/**
+	 * The key itself, kept in data.json until the move is confirmed, so a
+	 * keychain write lost on the way to disk costs no key. Held here rather
+	 * than in the account's key field, which another device resolves from
+	 * its own keychain and would write back in place of this copy.
+	 */
+	readonly key: string;
+	/**
+	 * The device that wrote the secret. The keychain is per device, so only
+	 * a start of that device proves the write reached its disk.
+	 */
+	readonly device: string;
+}
+
+/**
  * Settings bound to the hardware of one platform. Device ids are
  * randomized per install and never match across devices, and the channel
  * layout describes the selected device's own inputs - syncing them
@@ -536,26 +557,51 @@ export interface AudioRecorderSettings {
 	 * one, so it gets a limit of its own.
 	 */
 	localWhisperTimeoutMinutes: number;
+	/**
+	 * Keys a migration wrote into Obsidian's keychain that no later start of
+	 * the writing device has found there yet, by account id. Each entry
+	 * carries the key, so a keychain write lost on the way to disk loses no
+	 * key (see settings/apiKeySecrets).
+	 */
+	unconfirmedApiKeySecrets: Readonly<Record<string, UnconfirmedApiKeySecret>>;
 	/** Whisper API base URL (OpenAI-compatible) */
 	whisperApiBaseUrl: string;
-	/** Whisper API key. Shared with the OpenAI LLM provider as the OpenAI vendor key. */
+	/**
+	 * Whisper API key. Shared with the OpenAI LLM provider as the OpenAI vendor
+	 * key. A runtime value: it is resolved from Obsidian's keychain through
+	 * {@link AudioRecorderSettings.whisperApiKeySecret} and written to disk only
+	 * while no secret is linked (see settings/apiKeySecrets).
+	 */
 	whisperApiKey: string;
+	/**
+	 * ID of the keychain secret holding the OpenAI key, or '' when none is
+	 * linked. The ID is what data.json stores and syncs; the value stays in
+	 * the keychain of each device.
+	 */
+	whisperApiKeySecret: string;
 	/** Whisper API model id (the selected one) */
 	whisperApiModel: string;
 	/** Known Whisper API model ids offered in the picker (user-editable) */
 	whisperApiModels: string[];
 	/** Deepgram API base URL */
 	deepgramBaseUrl: string;
-	/** Deepgram API key */
+	/** Deepgram API key (runtime value, resolved from the keychain) */
 	deepgramApiKey: string;
+	/** ID of the keychain secret holding the Deepgram key, or '' */
+	deepgramApiKeySecret: string;
 	/** Deepgram model id (the selected one) */
 	deepgramModel: string;
 	/** Known Deepgram model ids offered in the picker (user-editable) */
 	deepgramModels: string[];
 	/** Gemini API base URL */
 	geminiBaseUrl: string;
-	/** Gemini API key. Shared between Gemini transcription and the Gemini LLM provider. */
+	/**
+	 * Gemini API key. Shared between Gemini transcription and the Gemini LLM
+	 * provider. Runtime value, resolved from the keychain.
+	 */
 	geminiApiKey: string;
+	/** ID of the keychain secret holding the Gemini key, or '' */
+	geminiApiKeySecret: string;
 	/** Gemini model id (the selected one) */
 	geminiModel: string;
 	/** Known Gemini model ids offered in the picker (user-editable) */
@@ -567,9 +613,13 @@ export interface AudioRecorderSettings {
 	 */
 	mistralBaseUrl: string;
 	mistralApiKey: string;
+	/** ID of the keychain secret holding the Mistral key, or '' */
+	mistralApiKeySecret: string;
 	/** DeepSeek endpoint and key, read by its one chat catalogue. */
 	deepSeekBaseUrl: string;
 	deepSeekApiKey: string;
+	/** ID of the keychain secret holding the DeepSeek key, or '' */
+	deepSeekApiKeySecret: string;
 	/** Voxtral transcription model id (the selected one) */
 	voxtralModel: string;
 	/** Known Voxtral model ids offered in the picker (user-editable) */
@@ -639,6 +689,8 @@ export interface AudioRecorderSettings {
 	 */
 	anthropicBaseUrl: string;
 	anthropicApiKey: string;
+	/** ID of the keychain secret holding the Anthropic key, or '' */
+	anthropicApiKeySecret: string;
 	/** Selected OpenAI LLM model id */
 	llmOpenAiModel: string;
 	/** Known OpenAI LLM model ids offered in the picker (user-editable) */
@@ -958,22 +1010,28 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	quickNoteTranscriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
+	unconfirmedApiKeySecrets: {},
 	whisperApiBaseUrl: DEFAULT_OPENAI_BASE_URL,
 	whisperApiKey: '',
+	whisperApiKeySecret: '',
 	whisperApiModel: DEFAULT_WHISPER_API_MODEL,
 	whisperApiModels: [...WHISPER_API_MODEL_SUGGESTIONS],
 	deepgramBaseUrl: DEFAULT_DEEPGRAM_BASE_URL,
 	deepgramApiKey: '',
+	deepgramApiKeySecret: '',
 	deepgramModel: DEFAULT_DEEPGRAM_MODEL,
 	deepgramModels: [...DEEPGRAM_MODEL_SUGGESTIONS],
 	geminiBaseUrl: DEFAULT_GEMINI_BASE_URL,
 	geminiApiKey: '',
+	geminiApiKeySecret: '',
 	geminiModel: DEFAULT_GEMINI_MODEL,
 	geminiModels: [...GEMINI_MODEL_SUGGESTIONS],
 	mistralBaseUrl: DEFAULT_MISTRAL_BASE_URL,
 	mistralApiKey: '',
+	mistralApiKeySecret: '',
 	deepSeekBaseUrl: DEFAULT_DEEPSEEK_BASE_URL,
 	deepSeekApiKey: '',
+	deepSeekApiKeySecret: '',
 	voxtralModel: DEFAULT_VOXTRAL_MODEL,
 	voxtralModels: [...VOXTRAL_MODEL_SUGGESTIONS],
 	localWhisperBinaryPath: '',
@@ -1007,6 +1065,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	quickNoteLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	anthropicBaseUrl: DEFAULT_ANTHROPIC_BASE_URL,
 	anthropicApiKey: '',
+	anthropicApiKeySecret: '',
 	llmOpenAiModel: DEFAULT_LLM_OPENAI_MODEL,
 	llmOpenAiModels: [...LLM_OPENAI_MODEL_SUGGESTIONS],
 	llmAnthropicModel: DEFAULT_LLM_ANTHROPIC_MODEL,
