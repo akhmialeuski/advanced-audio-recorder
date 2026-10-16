@@ -14,9 +14,11 @@ import { asMockApp, asMockPlugin } from '../helpers/obsidianMock';
 import { pageOf } from '../helpers/declarativeSettings';
 import { useMobilePlatform } from '../helpers/platform';
 import { at } from '../helpers/assertions';
+import { flushMicrotasks } from '../helpers/async';
 import { internalsOf } from '../helpers/doubles';
 import { noticeMessages, type SecretStorage } from '../mocks/obsidian';
 import { EngineLabel } from 'src/providers/providers';
+import { keychainDeviceId } from 'src/settings/apiKeySecrets';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import AudioRecorderPlugin from 'src/main';
 
@@ -43,20 +45,41 @@ function secretsOf(app: App): Record<string, string> {
 }
 
 /**
- * Obsidian started again: a new app, whose keychain holds what the old one
- * kept on disk, loads the data.json the old session wrote last.
- * @param stored - The data.json the old session wrote last
- * @param kept - The secrets the keychain kept on disk, by ID
+ * Obsidian started with a keychain holding the given secrets on disk, loading
+ * the given data.json: a restart of an earlier session's device, or a start
+ * of another device the vault is synced to.
+ * @param stored - The data.json the start finds
+ * @param kept - The secrets the keychain holds on disk, by ID
+ * @param sameDeviceAs - The app of an earlier session on the same device,
+ *   whose local storage the new one keeps; another device when omitted
  */
-async function restart(
+async function startObsidian(
 	stored: Record<string, unknown>,
 	kept: Record<string, string>,
+	sameDeviceAs?: App,
 ): ReturnType<typeof loadPlugin> {
 	const app = new App();
+	for (const [key, value] of asMockApp(sameDeviceAs ?? app).localStorage) {
+		asMockApp(app).localStorage.set(key, value);
+	}
 	for (const [id, value] of Object.entries(kept)) {
 		keychainOf(app).setSecret(id, value);
 	}
 	return loadPlugin(stored, app);
+}
+
+/**
+ * The key each unconfirmed move in a written data.json keeps, by account.
+ * @param written - A data.json the plugin wrote
+ */
+function keptKeys(written: Record<string, unknown>): Record<string, string> {
+	const moves = written.unconfirmedApiKeySecrets as Record<
+		string,
+		{ key: string }
+	>;
+	return Object.fromEntries(
+		Object.entries(moves).map(([account, move]) => [account, move.key]),
+	);
 }
 
 /** The notices that spoke about the keychain, in order. */
@@ -97,17 +120,18 @@ describe('loading a data.json that holds API keys in plain text', () => {
 		expect(keychainOf(app).getSecret('deepgram-api-key')).toBe('dg-plain');
 	});
 
-	it('writes the IDs at once and keeps each key beside its link until a restart confirms the move', async () => {
-		const { saveData } = await loadPlugin({ ...PLAIN_TEXT_KEYS });
+	it('writes the IDs at once and keeps each key in its move until a restart confirms it', async () => {
+		const { app, saveData } = await loadPlugin({ ...PLAIN_TEXT_KEYS });
 
+		const device = keychainDeviceId(app);
 		expect(lastWrite(saveData)).toMatchObject({
-			whisperApiKey: 'sk-plain',
+			whisperApiKey: '',
 			whisperApiKeySecret: 'openai-api-key',
-			deepgramApiKey: 'dg-plain',
+			deepgramApiKey: '',
 			deepgramApiKeySecret: 'deepgram-api-key',
 			unconfirmedApiKeySecrets: {
-				openai: 'openai-api-key',
-				deepgram: 'deepgram-api-key',
+				openai: { id: 'openai-api-key', key: 'sk-plain', device },
+				deepgram: { id: 'deepgram-api-key', key: 'dg-plain', device },
 			},
 		});
 	});
@@ -115,9 +139,10 @@ describe('loading a data.json that holds API keys in plain text', () => {
 	it('drops the keys from data.json and its backup once a restart finds the secrets', async () => {
 		const first = await loadPlugin({ ...PLAIN_TEXT_KEYS });
 
-		const { app, saveData } = await restart(
+		const { app, saveData } = await startObsidian(
 			lastWrite(first.saveData),
 			secretsOf(first.app),
+			first.app,
 		);
 
 		expect(lastWrite(saveData)).toMatchObject({
@@ -137,16 +162,17 @@ describe('loading a data.json that holds API keys in plain text', () => {
 		// write to disk that failed, so a restart is what finds it missing.
 		const first = await loadPlugin({ ...PLAIN_TEXT_KEYS });
 
-		const { plugin, app, saveData } = await restart(
+		const { plugin, app, saveData } = await startObsidian(
 			lastWrite(first.saveData),
 			{},
+			first.app,
 		);
 
 		expect(plugin.settings.whisperApiKey).toBe('sk-plain');
 		expect(keychainOf(app).getSecret('openai-api-key')).toBe('sk-plain');
 		// data.json keeps what it held, and the backup still carries the keys.
 		expect(saveData).not.toHaveBeenCalledWith(
-			expect.objectContaining({ whisperApiKey: '' }),
+			expect.objectContaining({ unconfirmedApiKeySecrets: {} }),
 		);
 		const backup = await app.vault.adapter.read(BACKUP_PATH);
 		expect(backup).toContain('sk-plain');
@@ -164,9 +190,9 @@ describe('loading a data.json that holds API keys in plain text', () => {
 		await plugin.onExternalSettingsChange();
 		await plugin.saveSettings();
 
-		expect(lastWrite(saveData)).toMatchObject({
-			whisperApiKey: 'sk-plain',
-			deepgramApiKey: 'dg-plain',
+		expect(keptKeys(lastWrite(saveData))).toEqual({
+			openai: 'sk-plain',
+			deepgram: 'dg-plain',
 		});
 	});
 
@@ -291,18 +317,51 @@ describe('loading while data.json cannot be used', () => {
 
 		expect(keychainOf(app).getSecret('openai-api-key')).toBe('sk-plain');
 		expect(lastWrite(saveData)).toMatchObject({
-			whisperApiKey: 'sk-plain',
 			whisperApiKeySecret: 'openai-api-key',
-			unconfirmedApiKeySecrets: {
-				openai: 'openai-api-key',
-				deepgram: 'deepgram-api-key',
-			},
+		});
+		expect(keptKeys(lastWrite(saveData))).toEqual({
+			openai: 'sk-plain',
+			deepgram: 'dg-plain',
 		});
 		expect(keychainNotices()).toHaveLength(1);
 	});
 });
 
 describe('a data.json synced from another device', () => {
+	it('keeps the move of the device that made it when this device holds a secret under the same ID', async () => {
+		const first = await loadPlugin({ ...PLAIN_TEXT_KEYS });
+		// Another plugin on the second device keeps an OpenAI key of its own
+		// under the readable ID.
+		const second = await startObsidian(lastWrite(first.saveData), {
+			'openai-api-key': 'sk-other-plugin',
+		});
+		await second.plugin.saveSettings();
+
+		expect(keptKeys(lastWrite(second.saveData))).toEqual({
+			openai: 'sk-plain',
+			deepgram: 'dg-plain',
+		});
+	});
+
+	it('lets the device that made the move restore a key its keychain lost, after another device wrote data.json', async () => {
+		const first = await loadPlugin({ ...PLAIN_TEXT_KEYS });
+		const second = await startObsidian(lastWrite(first.saveData), {
+			'openai-api-key': 'sk-other-plugin',
+		});
+		await second.plugin.saveSettings();
+
+		const restarted = await startObsidian(
+			lastWrite(second.saveData),
+			{},
+			first.app,
+		);
+
+		expect(keychainOf(restarted.app).getSecret('openai-api-key')).toBe(
+			'sk-plain',
+		);
+		expect(restarted.plugin.settings.whisperApiKey).toBe('sk-plain');
+	});
+
 	it('reports no key for a secret this device does not hold', async () => {
 		const { plugin } = await loadPlugin({
 			transcriptionEnabled: true,
@@ -335,16 +394,52 @@ describe('a secret changed in the keychain page of Obsidian', () => {
 		expect(plugin.settings.whisperApiKey).toBe('sk-rotated');
 	});
 
-	it('reports no key once the secret is deleted, without writing anything', async () => {
-		const { plugin, app, saveData } = await loadPlugin({
-			...PLAIN_TEXT_KEYS,
-		});
+	it('reports no key once a confirmed secret is deleted, without writing anything', async () => {
+		const first = await loadPlugin({ ...PLAIN_TEXT_KEYS });
+		const { plugin, app, saveData } = await startObsidian(
+			lastWrite(first.saveData),
+			secretsOf(first.app),
+			first.app,
+		);
 		saveData.mockClear();
 
 		keychainOf(app).deleteSecret('deepgram-api-key');
+		await flushMicrotasks(20);
 
 		expect(plugin.settings.deepgramApiKey).toBe('');
 		expect(saveData).not.toHaveBeenCalled();
+	});
+
+	it('does not bring back a secret deleted before its move was confirmed', async () => {
+		const first = await loadPlugin({ ...PLAIN_TEXT_KEYS });
+
+		keychainOf(first.app).deleteSecret('deepgram-api-key');
+		await flushMicrotasks(20);
+		const restarted = await startObsidian(
+			lastWrite(first.saveData),
+			secretsOf(first.app),
+			first.app,
+		);
+
+		expect(
+			keychainOf(restarted.app).getSecret('deepgram-api-key'),
+		).toBeNull();
+		expect(restarted.plugin.settings.deepgramApiKey).toBe('');
+		expect(restarted.plugin.settings.whisperApiKey).toBe('sk-plain');
+	});
+
+	it('reports a failed write after a deleted secret instead of leaving the rejection unhandled', async () => {
+		const { app, saveData } = await loadPlugin({ ...PLAIN_TEXT_KEYS });
+		saveData.mockRejectedValue(new Error('EACCES'));
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+		keychainOf(app).deleteSecret('deepgram-api-key');
+		await flushMicrotasks(20);
+
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('after a deleted keychain secret failed'),
+			expect.any(Error),
+		);
 	});
 
 	it('listens through a registration Obsidian releases on unload', async () => {

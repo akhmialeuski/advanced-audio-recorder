@@ -259,6 +259,27 @@ export type TrackAudioSourcesRecord = Record<
 >;
 
 /**
+ * An API key moved into Obsidian's keychain whose secret no later start of
+ * the device that wrote it has found there yet (see settings/apiKeySecrets).
+ */
+export interface UnconfirmedApiKeySecret {
+	/** ID of the secret the key was written under. */
+	readonly id: string;
+	/**
+	 * The key itself, kept in data.json until the move is confirmed, so a
+	 * keychain write lost on the way to disk costs no key. Held here rather
+	 * than in the account's key field, which another device resolves from
+	 * its own keychain and would write back in place of this copy.
+	 */
+	readonly key: string;
+	/**
+	 * The device that wrote the secret. The keychain is per device, so only
+	 * a start of that device proves the write reached its disk.
+	 */
+	readonly device: string;
+}
+
+/**
  * Settings bound to the hardware of one platform. Device ids are
  * randomized per install and never match across devices, and the channel
  * layout describes the selected device's own inputs - syncing them
@@ -537,13 +558,12 @@ export interface AudioRecorderSettings {
 	 */
 	localWhisperTimeoutMinutes: number;
 	/**
-	 * Secrets a migration wrote into Obsidian's keychain that no later start of
-	 * Obsidian has found there yet, as the ID of each by account id. While an
-	 * account's link is listed here its key is written next to the link, so a
-	 * keychain write lost on the way to disk loses no key (see
-	 * settings/apiKeySecrets).
+	 * Keys a migration wrote into Obsidian's keychain that no later start of
+	 * the writing device has found there yet, by account id. Each entry
+	 * carries the key, so a keychain write lost on the way to disk loses no
+	 * key (see settings/apiKeySecrets).
 	 */
-	unconfirmedApiKeySecrets: Readonly<Record<string, string>>;
+	unconfirmedApiKeySecrets: Readonly<Record<string, UnconfirmedApiKeySecret>>;
 	/** Whisper API base URL (OpenAI-compatible) */
 	whisperApiBaseUrl: string;
 	/**

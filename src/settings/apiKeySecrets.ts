@@ -27,7 +27,10 @@ import {
 	type AccountId,
 	type ProviderConnection,
 } from '../providers/providers';
-import type { AudioRecorderSettings } from './settingsSchema';
+import type {
+	AudioRecorderSettings,
+	UnconfirmedApiKeySecret,
+} from './settingsSchema';
 
 /** What this module needs of Obsidian's `SecretStorage`. */
 export interface ApiKeySecretStore {
@@ -38,6 +41,18 @@ export interface ApiKeySecretStore {
 	/** The ID of every stored secret. */
 	listSecrets(): string[];
 }
+
+/** What this module needs of Obsidian's per-vault `localStorage` on the app. */
+export interface DeviceLocalStorage {
+	loadLocalStorage(key: string): unknown;
+	saveLocalStorage(key: string, data: unknown): void;
+}
+
+/**
+ * Local-storage key of the token naming this device to the keychain
+ * migration. Local storage is not synced, so every device keeps its own.
+ */
+const KEYCHAIN_DEVICE_KEY = 'advanced-audio-recorder-keychain-device';
 
 /**
  * Prefix of the IDs a migration falls back to when the readable one is taken
@@ -126,6 +141,24 @@ function secretIdFor(
 	return candidate;
 }
 
+/**
+ * The token that names this device in an unconfirmed move, created on first
+ * use. It lives in the vault's local storage, which Obsidian keeps per device
+ * and per vault, the same scope the desktop keychain has, so a start that
+ * reads the same token reads the same keychain.
+ * @param storage - The app's local storage
+ * @returns The token, stable across starts of this device
+ */
+export function keychainDeviceId(storage: DeviceLocalStorage): string {
+	const stored = storage.loadLocalStorage(KEYCHAIN_DEVICE_KEY);
+	if (typeof stored === 'string' && stored !== '') {
+		return stored;
+	}
+	const created = crypto.randomUUID();
+	storage.saveLocalStorage(KEYCHAIN_DEVICE_KEY, created);
+	return created;
+}
+
 /** What one migration did, for the load that ran it. */
 export interface ApiKeyMigrationResult {
 	/**
@@ -143,7 +176,7 @@ export interface ApiKeyMigrationResult {
 /**
  * Moves every key data.json still holds in plain text into the keychain and
  * links the account to it, and drops the plain-text copy only once a later
- * start of Obsidian has found the secret in the keychain.
+ * start of the device that wrote the secret has found it in the keychain.
  *
  * The keychain does not report a lost write. Obsidian's setSecret() keeps the
  * value in memory and starts the write to disk without waiting for it: the
@@ -151,30 +184,35 @@ export interface ApiKeyMigrationResult {
  * rejects a promise nobody awaits. A read right after the write answers from
  * memory and cannot tell a kept secret from a lost one. A start of Obsidian
  * can, because it loads the keychain from disk before any plugin. So every
- * secret this instance writes is listed in `unconfirmedApiKeySecrets`, the
- * serializer keeps writing the key next to the link of a listed account, and
- * a later load by an instance that did not write the secret, finding it there,
- * removes the entry.
+ * secret this instance writes is listed in `unconfirmedApiKeySecrets` together
+ * with the key and the device that wrote it, and a later load by an instance
+ * on that device that did not write the secret, finding it there, removes the
+ * entry.
  *
- * Which secrets were written is held by the instance, not on disk: a load
- * repeated in the same session, after a synced data.json arrives, still sees
- * the keychain in memory and proves nothing. Disabling and enabling the plugin
- * without restarting Obsidian makes a new instance, which takes the secret as
- * kept; a key is lost that way only when the keychain's own write failed as
- * well. A secret deleted on the Keychain page before its move is confirmed
- * looks like a lost write to the next load, which stores it again, so the
- * doubt always resolves to keeping the key.
+ * Only the writing device confirms. data.json syncs and the keychain does
+ * not, so another device finding a secret under the same ID has found its
+ * own secret, which says nothing about the write on the first device; it
+ * leaves the entry, and the copy in it, alone. Which secrets were written is
+ * held by the instance, not on disk: a load repeated in the same session,
+ * after a synced data.json arrives, still sees the keychain in memory and
+ * proves nothing. Disabling and enabling the plugin without restarting
+ * Obsidian makes a new instance, which takes the secret as kept; a key is
+ * lost that way only when the keychain's own write failed as well.
  */
 export class ApiKeyMigration {
 	private readonly store: ApiKeySecretStore;
+	/** The token of this device, see {@link keychainDeviceId}. */
+	private readonly device: string;
 	/** IDs of the secrets this instance stored. */
 	private readonly written = new Set<string>();
 
 	/**
 	 * @param store - The keychain
+	 * @param device - The token naming this device
 	 */
-	constructor(store: ApiKeySecretStore) {
+	constructor(store: ApiKeySecretStore, device: string) {
 		this.store = store;
+		this.device = device;
 	}
 
 	/**
@@ -187,37 +225,42 @@ export class ApiKeyMigration {
 	 * something else is never overwritten.
 	 *
 	 * An account that links an ID nothing is stored under while data.json still
-	 * holds a key has that key stored under the linked ID. That is a move whose
-	 * write to the keychain a restart found missing, or a file an older version
-	 * of the plugin wrote after the link was made; the ID is free on this
-	 * device either way, so nothing is overwritten.
+	 * holds its key has that key stored under the linked ID. That is a move
+	 * this device wrote and a restart found missing, or a file an older
+	 * version of the plugin wrote after the link was made; the ID is free on
+	 * this device either way, so nothing is overwritten. The move of another
+	 * device is not stored here: its copy is for that device's keychain.
 	 *
 	 * A key the keychain refuses stays where it is. The account then keeps no
-	 * ID, which is what tells the serializer to keep writing the key, so the
-	 * only copy is not lost; the next load tries again.
+	 * ID and its key field holds the key, which is what tells the serializer
+	 * to keep writing it, so the only copy is not lost; the next load tries
+	 * again.
 	 * @param settings - The settings to migrate in place, as just loaded
 	 */
 	migrate(settings: AudioRecorderSettings): ApiKeyMigrationResult {
-		const unconfirmed: Record<string, string> = {
+		const unconfirmed: Record<string, UnconfirmedApiKeySecret> = {
 			...settings.unconfirmedApiKeySecrets,
 		};
 		const linked: AccountId[] = [];
 		let changed = false;
 		for (const [accountId, account] of accounts()) {
-			const key = account.apiKey(settings);
 			const link = account.apiKeySecret(settings);
-			// A copy kept for a link the user has since changed, or for an
-			// account that no longer holds a key, protects nothing.
-			const pending = unconfirmed[accountId];
-			if (pending !== undefined && (pending !== link || key === '')) {
+			let pending = unconfirmed[accountId];
+			// A copy kept for a link the user has since changed protects nothing.
+			if (pending !== undefined && pending.id !== link) {
 				delete unconfirmed[accountId];
+				pending = undefined;
 				changed = true;
 			}
+			if (pending !== undefined && pending.device !== this.device) {
+				continue;
+			}
+			const key = pending?.key ?? account.apiKey(settings);
 			if (key === '') {
 				continue;
 			}
 			if (link !== '' && this.store.getSecret(link) !== null) {
-				if (accountId in unconfirmed && !this.written.has(link)) {
+				if (pending !== undefined && !this.written.has(link)) {
 					delete unconfirmed[accountId];
 					changed = true;
 				}
@@ -227,6 +270,7 @@ export class ApiKeyMigration {
 				link !== '' ? link : secretIdFor(accountId, key, this.store);
 			if (!this.storeKey(account, id, key)) {
 				account.setApiKeySecret(settings, '');
+				account.setApiKey(settings, key);
 				delete unconfirmed[accountId];
 				continue;
 			}
@@ -235,13 +279,39 @@ export class ApiKeyMigration {
 				linked.push(accountId);
 				changed = true;
 			}
-			if (this.written.has(id) && unconfirmed[accountId] !== id) {
-				unconfirmed[accountId] = id;
+			if (this.written.has(id) && pending === undefined) {
+				unconfirmed[accountId] = { id, key, device: this.device };
 				changed = true;
 			}
 		}
 		settings.unconfirmedApiKeySecrets = unconfirmed;
 		return { linked, changed };
+	}
+
+	/**
+	 * Drops the unconfirmed moves of this device whose secret the keychain no
+	 * longer holds, after a change on the Keychain page.
+	 *
+	 * A lost write to disk does not show in the keychain's memory, so a secret
+	 * this device wrote and now cannot read was deleted in this session, by
+	 * the user or another plugin. Keeping its copy would have the next start
+	 * take the deletion for a lost write and store the key again. The moves of
+	 * other devices are left alone: their secrets were never in this keychain.
+	 * @param settings - Live settings, changed in place
+	 * @returns Whether a move was dropped, so data.json has to be written
+	 */
+	forgetDeletedMoves(settings: AudioRecorderSettings): boolean {
+		const entries = Object.entries(settings.unconfirmedApiKeySecrets);
+		const kept = entries.filter(
+			([, move]) =>
+				move.device !== this.device ||
+				this.store.getSecret(move.id) !== null,
+		);
+		if (kept.length === entries.length) {
+			return false;
+		}
+		settings.unconfirmedApiKeySecrets = Object.fromEntries(kept);
+		return true;
 	}
 
 	/**
@@ -284,27 +354,11 @@ export class ApiKeyMigration {
 }
 
 /**
- * Whether data.json carries an account's key: when the account links no
- * secret, the field is the key itself, and while a move into the keychain is
- * unconfirmed it is the only copy a lost keychain write would leave. Otherwise
- * the field is a runtime copy of the secret and stays out of data.json and its
- * backup, which is what keeping it in the keychain is for.
- * @param settings - Live settings
- * @param accountId - The account asked about
- */
-export function writesApiKey(
-	settings: AudioRecorderSettings,
-	accountId: AccountId,
-): boolean {
-	const link = ACCOUNTS[accountId].apiKeySecret(settings);
-	return link === '' || settings.unconfirmedApiKeySecrets[accountId] === link;
-}
-
-/**
  * Reads the stored secret IDs back into strings. data.json is not
  * type-checked, and an ID that is not a string would otherwise reach the
  * keychain as one; anything else reads as no ID at all. The unconfirmed moves
- * are rebuilt the same way, keeping only an account's ID stored as text.
+ * are rebuilt the same way, keeping only an entry whose ID, key and device
+ * are all stored as text.
  * @param settings - The merged settings to normalize in place
  */
 export function normalizeApiKeySecretIds(
@@ -313,15 +367,24 @@ export function normalizeApiKeySecretIds(
 	const raw = settings as unknown as Record<string, unknown>;
 	const storedUnconfirmed = raw.unconfirmedApiKeySecrets;
 	const pending = isRecord(storedUnconfirmed) ? storedUnconfirmed : {};
-	const unconfirmed: Record<string, string> = {};
+	const unconfirmed: Record<string, UnconfirmedApiKeySecret> = {};
 	for (const [accountId, account] of accounts()) {
 		const id = raw[account.apiKeySecretKey];
 		account.setApiKeySecret(settings, typeof id === 'string' ? id : '');
 		const key = raw[account.apiKeyKey];
 		account.setApiKey(settings, typeof key === 'string' ? key : '');
-		const unconfirmedId = pending[accountId];
-		if (typeof unconfirmedId === 'string') {
-			unconfirmed[accountId] = unconfirmedId;
+		const move = pending[accountId];
+		if (
+			isRecord(move) &&
+			typeof move.id === 'string' &&
+			typeof move.key === 'string' &&
+			typeof move.device === 'string'
+		) {
+			unconfirmed[accountId] = {
+				id: move.id,
+				key: move.key,
+				device: move.device,
+			};
 		}
 	}
 	settings.unconfirmedApiKeySecrets = unconfirmed;

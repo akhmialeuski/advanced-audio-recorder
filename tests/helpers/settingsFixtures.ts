@@ -154,7 +154,13 @@ export function fullyPopulatedSettings(): Omit<
 		transcriptionChunkMb: 10,
 		transcriptionTimeoutMinutes: 15,
 		localWhisperTimeoutMinutes: 90,
-		unconfirmedApiKeySecrets: { openai: 'whisper-test-key' },
+		unconfirmedApiKeySecrets: {
+			openai: {
+				id: 'whisper-test-key',
+				key: 'sk-test',
+				device: 'test-device',
+			},
+		},
 		whisperApiBaseUrl: 'https://api.groq.com/openai/v1',
 		whisperApiKey: 'sk-test',
 		whisperApiKeySecret: 'whisper-test-key',

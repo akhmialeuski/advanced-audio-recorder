@@ -23,7 +23,7 @@ import {
 	type EngineDescriptor,
 } from '../providers/providers';
 import { reconcileEngineSettings } from '../providers/engineSettings';
-import { normalizeApiKeySecretIds, writesApiKey } from './apiKeySecrets';
+import { normalizeApiKeySecretIds } from './apiKeySecrets';
 import {
 	MIN_TRACK_GAIN_DB,
 	MAX_TRACK_GAIN_DB,
@@ -244,12 +244,12 @@ export function normalizePerPlatformSettings(
  * flat legacy fields are dropped from the output so platform-scoped
  * values live in exactly one place on disk.
  *
- * An API key is written only for an account that links no keychain secret,
- * or whose move into the keychain no later start has confirmed yet, as
- * settings/apiKeySecrets decides. With a confirmed link the key field is a
+ * An API key field is written only for an account that links no keychain
+ * secret, where the field is the key itself. With a link the field is a
  * runtime copy of the secret, and writing it would put the key back into
  * data.json and into the backup beside it, which is what keeping it in the
- * keychain is for.
+ * keychain is for. A move whose secret is not confirmed yet carries its key
+ * in its own entry of `unconfirmedApiKeySecrets` (see settings/apiKeySecrets).
  * @param settings - Live settings to serialize
  * @param platformKind - Platform whose branch receives the active flat
  *   fields (defaults to the current platform)
@@ -287,8 +287,9 @@ export function serializeSettings(
 	};
 	const fields = serialized as unknown as Record<string, unknown>;
 	for (const accountId of Object.values(ACCOUNT_IDS)) {
-		if (!writesApiKey(settings, accountId)) {
-			fields[ACCOUNTS[accountId].apiKeyKey] = '';
+		const account = ACCOUNTS[accountId];
+		if (account.apiKeySecret(settings) !== '') {
+			fields[account.apiKeyKey] = '';
 		}
 	}
 	return serialized;

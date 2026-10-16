@@ -24,7 +24,11 @@ import {
 	serializeSettings,
 } from './settings/settingsSerialization';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
-import { ApiKeyMigration, resolveApiKeys } from './settings/apiKeySecrets';
+import {
+	ApiKeyMigration,
+	keychainDeviceId,
+	resolveApiKeys,
+} from './settings/apiKeySecrets';
 import { ACCOUNTS, type AccountId } from './providers/providers';
 import { RecordingManager } from './recording/RecordingManager';
 import { detectSilentChannel } from './recording/silentChannelDetector';
@@ -274,6 +278,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 */
 	private readonly apiKeyMigration = new ApiKeyMigration(
 		this.app.secretStorage,
+		keychainDeviceId(this.app),
 	);
 
 	/**
@@ -285,7 +290,10 @@ export default class AudioRecorderPlugin extends Plugin {
 		// A key edited, linked, or deleted in Obsidian's keychain page changes
 		// what a run is sent with, without anything of this plugin being
 		// saved. The keys are resolved again, in place, so every reader of the
-		// live settings sees the change at once.
+		// live settings sees the change at once. 'changed' is fired by
+		// SecretStorage.setSecret and by the Keychain page in Obsidian 1.14.4
+		// but is not part of the public typings. If it stops firing, keys are
+		// still resolved on every load and every save, only not live.
 		this.registerEvent(
 			this.app.secretStorage.on('changed', () => {
 				this.onKeychainChanged();
@@ -789,12 +797,29 @@ export default class AudioRecorderPlugin extends Plugin {
 
 	/**
 	 * Answers a change in Obsidian's keychain: a secret added, edited, or
-	 * deleted, here or through another plugin. Nothing is written, since only
-	 * the runtime keys move; the settings tab is read again so each engine's
-	 * entry reports the key it now has.
+	 * deleted, here or through another plugin. Usually only the runtime keys
+	 * move and nothing is written; the settings tab is read again so each
+	 * engine's entry reports the key it now has.
+	 *
+	 * A secret deleted before its move was confirmed is the exception. Its
+	 * plain-text copy is dropped and data.json written at once, because the
+	 * next start would otherwise take the deletion for a lost write and store
+	 * the key again. Not while saving is blocked: nothing on disk can change
+	 * then, and the copy stays until a session that can write.
 	 */
 	private onKeychainChanged(): void {
 		resolveApiKeys(this.settings, this.app.secretStorage);
+		if (
+			!this.settingsLoadFailed &&
+			this.apiKeyMigration.forgetDeletedMoves(this.settings)
+		) {
+			void this.saveSettings().catch((error: unknown) => {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Saving the settings after a deleted keychain secret failed:`,
+					error,
+				);
+			});
+		}
 		this.settingTab?.update();
 	}
 

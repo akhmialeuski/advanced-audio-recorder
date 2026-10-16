@@ -4,10 +4,11 @@
  * @module tests/unit/apiKeySecrets.test
  */
 
-import { SecretStorage } from '../mocks/obsidian';
+import { App, SecretStorage } from '../mocks/obsidian';
 import { internalsOf } from '../helpers/doubles';
 import {
 	ApiKeyMigration,
+	keychainDeviceId,
 	normalizeApiKeySecretIds,
 	readableSecretId,
 	resolveApiKeys,
@@ -17,6 +18,9 @@ import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
+
+/** The token of the device the tests run the migration on. */
+const DEVICE = 'this-device';
 
 /**
  * Settings holding the given fields over the shipped defaults, and a keychain
@@ -39,7 +43,7 @@ describe('ApiKeyMigration', () => {
 	it('moves a plain-text key under the readable ID and links it', () => {
 		const { settings, store } = createSut({ whisperApiKey: 'sk-1' });
 
-		const { linked } = new ApiKeyMigration(store).migrate(settings);
+		const { linked } = new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(linked).toEqual([ACCOUNT_IDS.OPENAI]);
 		expect(store.getSecret('openai-api-key')).toBe('sk-1');
@@ -64,7 +68,7 @@ describe('ApiKeyMigration', () => {
 			deepSeekApiKey: 'ds',
 		});
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(store.listSecrets().sort()).toEqual([
 			'anthropic-api-key',
@@ -84,7 +88,7 @@ describe('ApiKeyMigration', () => {
 			},
 		);
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(settings.whisperApiKeySecret).toBe(
 			'advanced-audio-recorder-openai-api-key',
@@ -101,7 +105,7 @@ describe('ApiKeyMigration', () => {
 		);
 		const read = jest.spyOn(store, 'getSecret');
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(settings.whisperApiKeySecret).toBe('openai-api-key');
 		expect(read).not.toHaveBeenCalledWith('my-openai');
@@ -113,7 +117,7 @@ describe('ApiKeyMigration', () => {
 			{ 'my-openai': 'sk-1', 'openai-api-key': 'sk-1' },
 		);
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(settings.whisperApiKeySecret).toBe('openai-api-key');
 	});
@@ -124,7 +128,7 @@ describe('ApiKeyMigration', () => {
 			{ 'openai-api-key': 'sk-another-plugin' },
 		);
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(settings.whisperApiKeySecret).toBe(
 			'advanced-audio-recorder-openai-api-key',
@@ -142,7 +146,7 @@ describe('ApiKeyMigration', () => {
 			},
 		);
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(settings.whisperApiKeySecret).toBe(
 			'advanced-audio-recorder-openai-api-key-3',
@@ -159,7 +163,7 @@ describe('ApiKeyMigration', () => {
 			secrets,
 		);
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		for (const [id, value] of Object.entries(secrets)) {
 			expect(store.getSecret(id)).toBe(value);
@@ -169,7 +173,7 @@ describe('ApiKeyMigration', () => {
 	it('creates nothing for an account with no key', () => {
 		const { settings, store } = createSut();
 
-		const { linked } = new ApiKeyMigration(store).migrate(settings);
+		const { linked } = new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(linked).toEqual([]);
 		expect(store.listSecrets()).toEqual([]);
@@ -181,7 +185,7 @@ describe('ApiKeyMigration', () => {
 			{ 'openai-api-key': 'sk-1' },
 		);
 
-		const { linked } = new ApiKeyMigration(store).migrate(settings);
+		const { linked } = new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(linked).toEqual([]);
 		expect(store.getSecret('openai-api-key')).toBe('sk-1');
@@ -194,7 +198,7 @@ describe('ApiKeyMigration', () => {
 			whisperApiKeySecret: 'work-openai',
 		});
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(store.getSecret('work-openai')).toBe('sk-1');
 		expect(settings.whisperApiKeySecret).toBe('work-openai');
@@ -207,7 +211,7 @@ describe('ApiKeyMigration', () => {
 		});
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-		const { linked } = new ApiKeyMigration(store).migrate(settings);
+		const { linked } = new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(linked).toEqual([]);
 		expect(settings.whisperApiKey).toBe('sk-1');
@@ -225,7 +229,7 @@ describe('ApiKeyMigration', () => {
 		});
 		jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(settings.whisperApiKeySecret).toBe('');
 		expect(settings.whisperApiKey).toBe('sk-1');
@@ -236,7 +240,7 @@ describe('ApiKeyMigration', () => {
 		jest.spyOn(store, 'setSecret').mockImplementation(() => {});
 		jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(settings.whisperApiKeySecret).toBe('');
 	});
@@ -245,13 +249,13 @@ describe('ApiKeyMigration', () => {
 		// The save after the first run failed, so the file still holds the
 		// plain-text key and no ID.
 		const { store } = createSut();
-		new ApiKeyMigration(store).migrate({
+		new ApiKeyMigration(store, DEVICE).migrate({
 			...DEFAULT_SETTINGS,
 			whisperApiKey: 'sk-1',
 		});
 		const reloaded = { ...DEFAULT_SETTINGS, whisperApiKey: 'sk-1' };
 
-		new ApiKeyMigration(store).migrate(reloaded);
+		new ApiKeyMigration(store, DEVICE).migrate(reloaded);
 
 		expect(reloaded.whisperApiKeySecret).toBe('openai-api-key');
 		expect(store.listSecrets()).toEqual(['openai-api-key']);
@@ -259,36 +263,40 @@ describe('ApiKeyMigration', () => {
 });
 
 describe('confirming a move on a later start', () => {
+	/** The entry a first load on this device wrote for the OpenAI key. */
+	const MOVE = { id: 'openai-api-key', key: 'sk-1', device: DEVICE };
 	/** What data.json holds after a first load moved the OpenAI key. */
 	const MOVED = {
-		whisperApiKey: 'sk-1',
 		whisperApiKeySecret: 'openai-api-key',
-		unconfirmedApiKeySecrets: { openai: 'openai-api-key' },
+		unconfirmedApiKeySecrets: { openai: MOVE },
+	};
+	/** The same data.json, with the move made by another device. */
+	const MOVED_ELSEWHERE = {
+		...MOVED,
+		unconfirmedApiKeySecrets: {
+			openai: { ...MOVE, device: 'other-device' },
+		},
 	};
 
 	it('lists a secret it wrote as unconfirmed', () => {
 		const { settings, store } = createSut({ whisperApiKey: 'sk-1' });
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
-		expect(settings.unconfirmedApiKeySecrets).toEqual({
-			openai: 'openai-api-key',
-		});
+		expect(settings.unconfirmedApiKeySecrets).toEqual({ openai: MOVE });
 	});
 
 	it('keeps the move unconfirmed on a load the same instance repeats', () => {
 		// A synced data.json reloads the settings mid-session, while the
 		// keychain still answers from memory and proves nothing.
 		const { settings, store } = createSut({ whisperApiKey: 'sk-1' });
-		const migration = new ApiKeyMigration(store);
+		const migration = new ApiKeyMigration(store, DEVICE);
 		migration.migrate(settings);
 
 		const again = migration.migrate(settings);
 
 		expect(again.changed).toBe(false);
-		expect(settings.unconfirmedApiKeySecrets).toEqual({
-			openai: 'openai-api-key',
-		});
+		expect(settings.unconfirmedApiKeySecrets).toEqual({ openai: MOVE });
 	});
 
 	it('confirms the move once a later start finds the secret', () => {
@@ -296,7 +304,7 @@ describe('confirming a move on a later start', () => {
 			'openai-api-key': 'sk-1',
 		});
 
-		const result = new ApiKeyMigration(store).migrate(settings);
+		const result = new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(result).toEqual({ linked: [], changed: true });
 		expect(settings.unconfirmedApiKeySecrets).toEqual({});
@@ -306,13 +314,11 @@ describe('confirming a move on a later start', () => {
 		// The keychain kept the secret in memory and lost its write to disk.
 		const { settings, store } = createSut(MOVED);
 
-		const result = new ApiKeyMigration(store).migrate(settings);
+		const result = new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(store.getSecret('openai-api-key')).toBe('sk-1');
 		expect(result.changed).toBe(false);
-		expect(settings.unconfirmedApiKeySecrets).toEqual({
-			openai: 'openai-api-key',
-		});
+		expect(settings.unconfirmedApiKeySecrets).toEqual({ openai: MOVE });
 	});
 
 	it('confirms nothing for a secret it reused rather than wrote', () => {
@@ -323,7 +329,7 @@ describe('confirming a move on a later start', () => {
 			{ 'openai-api-key': 'sk-1' },
 		);
 
-		const result = new ApiKeyMigration(store).migrate(settings);
+		const result = new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(result).toEqual({ linked: [ACCOUNT_IDS.OPENAI], changed: true });
 		expect(settings.unconfirmedApiKeySecrets).toEqual({});
@@ -339,19 +345,108 @@ describe('confirming a move on a later start', () => {
 			{ 'openai-api-key': 'sk-1', 'work-openai': 'sk-work' },
 		);
 
-		const result = new ApiKeyMigration(store).migrate(settings);
+		const result = new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(result.changed).toBe(true);
 		expect(settings.unconfirmedApiKeySecrets).toEqual({});
 	});
 
-	it('drops the entry of an account that no longer holds a key', () => {
-		const { settings, store } = createSut({ ...MOVED, whisperApiKey: '' });
+	it('drops the entry of an account the user unlinked, storing nothing', () => {
+		const { settings, store } = createSut({
+			...MOVED,
+			whisperApiKeySecret: '',
+		});
 
-		new ApiKeyMigration(store).migrate(settings);
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
 
 		expect(settings.unconfirmedApiKeySecrets).toEqual({});
 		expect(store.listSecrets()).toEqual([]);
+	});
+
+	it('leaves the move of another device unconfirmed when this device holds a secret under its ID', () => {
+		// The keychain is per device: a secret here says nothing about whether
+		// the other device's write reached its disk.
+		const { settings, store } = createSut(MOVED_ELSEWHERE, {
+			'openai-api-key': 'sk-other-plugin',
+		});
+
+		const result = new ApiKeyMigration(store, DEVICE).migrate(settings);
+
+		expect(result.changed).toBe(false);
+		expect(settings.unconfirmedApiKeySecrets).toEqual(
+			MOVED_ELSEWHERE.unconfirmedApiKeySecrets,
+		);
+	});
+
+	it('stores nothing in this keychain for the move of another device', () => {
+		const { settings, store } = createSut(MOVED_ELSEWHERE);
+
+		new ApiKeyMigration(store, DEVICE).migrate(settings);
+
+		expect(store.listSecrets()).toEqual([]);
+		expect(settings.unconfirmedApiKeySecrets).toEqual(
+			MOVED_ELSEWHERE.unconfirmedApiKeySecrets,
+		);
+	});
+});
+
+describe('forgetting a move whose secret was deleted', () => {
+	it('drops the move of this device whose secret the keychain no longer holds', () => {
+		const { settings, store } = createSut({ whisperApiKey: 'sk-1' });
+		const migration = new ApiKeyMigration(store, DEVICE);
+		migration.migrate(settings);
+		store.deleteSecret('openai-api-key');
+
+		const dropped = migration.forgetDeletedMoves(settings);
+
+		expect(dropped).toBe(true);
+		expect(settings.unconfirmedApiKeySecrets).toEqual({});
+	});
+
+	it('keeps the move of another device, whose secret this keychain never held', () => {
+		const { settings, store } = createSut({
+			whisperApiKeySecret: 'openai-api-key',
+			unconfirmedApiKeySecrets: {
+				openai: {
+					id: 'openai-api-key',
+					key: 'sk-1',
+					device: 'other-device',
+				},
+			},
+		});
+
+		const dropped = new ApiKeyMigration(store, DEVICE).forgetDeletedMoves(
+			settings,
+		);
+
+		expect(dropped).toBe(false);
+		expect(Object.keys(settings.unconfirmedApiKeySecrets)).toEqual([
+			'openai',
+		]);
+	});
+
+	it('keeps a move whose secret is still there', () => {
+		const { settings, store } = createSut({ whisperApiKey: 'sk-1' });
+		const migration = new ApiKeyMigration(store, DEVICE);
+		migration.migrate(settings);
+
+		expect(migration.forgetDeletedMoves(settings)).toBe(false);
+	});
+});
+
+describe('keychainDeviceId', () => {
+	it('keeps the token a device was given across starts', () => {
+		const app = new App();
+
+		const first = keychainDeviceId(app);
+
+		expect(keychainDeviceId(app)).toBe(first);
+	});
+
+	it('gives another device a token of its own', () => {
+		expect(keychainDeviceId(new App())).not.toBe(
+			keychainDeviceId(new App()),
+		);
 	});
 });
 
@@ -413,17 +508,20 @@ describe('normalizeApiKeySecretIds', () => {
 		expect(settings.geminiApiKeySecret).toBe('gemini-api-key');
 	});
 
-	it('keeps only the unconfirmed IDs stored as text', () => {
+	it('keeps only the unconfirmed moves whose ID, key and device are text', () => {
+		const move = { id: 'openai-api-key', key: 'sk-1', device: DEVICE };
 		const { settings } = createSut();
 		internalsOf<Record<string, unknown>>(
 			settings,
-		).unconfirmedApiKeySecrets = { openai: 'openai-api-key', deepgram: 7 };
+		).unconfirmedApiKeySecrets = {
+			openai: move,
+			deepgram: { ...move, key: 7 },
+			gemini: 'gemini-api-key',
+		};
 
 		normalizeApiKeySecretIds(settings);
 
-		expect(settings.unconfirmedApiKeySecrets).toEqual({
-			openai: 'openai-api-key',
-		});
+		expect(settings.unconfirmedApiKeySecrets).toEqual({ openai: move });
 	});
 
 	it('reads unconfirmed moves stored as anything but an object as none', () => {

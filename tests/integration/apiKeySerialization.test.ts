@@ -1,7 +1,8 @@
 /**
- * Unit tests for what reaches data.json of a provider key: nothing for an
- * account that links a keychain secret, the key itself for one that does not
- * or whose move into the keychain is unconfirmed, and a key carried over from
+ * Unit tests for what reaches data.json of a provider key: nothing in the key
+ * field of an account that links a keychain secret, the key itself for one
+ * that does not, the key in its own entry while a move into the keychain is
+ * unconfirmed, and a key carried over from
  * the pre-vendor schema landing on the right account before it is moved into
  * the keychain.
  * @module tests/integration/apiKeySerialization.test
@@ -20,10 +21,13 @@ import {
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import { PlatformKind } from 'src/platform/platformKind';
 
+/** The device both migrations run on. */
+const DEVICE = 'this-device';
+
 /**
  * Moves the keys into the keychain and confirms the move the way a later start
- * of Obsidian does: a second migration, by an instance that did not write the
- * secrets, finds them in the keychain.
+ * of Obsidian does: a second migration on the same device, by an instance that
+ * did not write the secrets, finds them in the keychain.
  * @param settings - Settings holding plain-text keys, migrated in place
  * @param store - The keychain
  */
@@ -31,8 +35,8 @@ function moveAndConfirm(
 	settings: AudioRecorderSettings,
 	store: SecretStorage,
 ): void {
-	new ApiKeyMigration(store).migrate(settings);
-	new ApiKeyMigration(store).migrate(settings);
+	new ApiKeyMigration(store, DEVICE).migrate(settings);
+	new ApiKeyMigration(store, DEVICE).migrate(settings);
 }
 
 describe('serializing a provider key', () => {
@@ -57,20 +61,26 @@ describe('serializing a provider key', () => {
 		expect(serialized.deepgramApiKey).toBe('dg-local');
 	});
 
-	it('keeps writing the key next to a link whose move is unconfirmed', () => {
+	it('writes the copy an unconfirmed move keeps, not the key this device resolved', () => {
+		// Another device resolves the link from its own keychain, which may
+		// hold a different secret under the same ID; writing that in place of
+		// the copy would lose the key the writing device has to restore.
+		const move = {
+			id: 'openai-api-key',
+			key: 'sk-1',
+			device: 'other-device',
+		};
 		const settings = {
 			...DEFAULT_SETTINGS,
-			whisperApiKey: 'sk-1',
+			whisperApiKey: 'sk-other-plugin',
 			whisperApiKeySecret: 'openai-api-key',
-			unconfirmedApiKeySecrets: { openai: 'openai-api-key' },
+			unconfirmedApiKeySecrets: { openai: move },
 		};
 
 		const serialized = serializeSettings(settings, PlatformKind.Desktop);
 
-		expect(serialized.whisperApiKey).toBe('sk-1');
-		expect(serialized.unconfirmedApiKeySecrets).toEqual({
-			openai: 'openai-api-key',
-		});
+		expect(serialized.whisperApiKey).toBe('');
+		expect(serialized.unconfirmedApiKeySecrets).toEqual({ openai: move });
 	});
 
 	it('writes no key once the account links a secret other than the unconfirmed one', () => {
@@ -78,7 +88,9 @@ describe('serializing a provider key', () => {
 			...DEFAULT_SETTINGS,
 			whisperApiKey: 'sk-chosen',
 			whisperApiKeySecret: 'work-openai',
-			unconfirmedApiKeySecrets: { openai: 'openai-api-key' },
+			unconfirmedApiKeySecrets: {
+				openai: { id: 'openai-api-key', key: 'sk-1', device: DEVICE },
+			},
 		};
 
 		const serialized = serializeSettings(settings, PlatformKind.Desktop);
