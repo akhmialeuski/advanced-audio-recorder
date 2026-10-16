@@ -1792,12 +1792,18 @@ button.aar-player-marker-row {
 }
 
 /* Native button semantics make the persistent post-recording action keyboard
-   accessible; link styling keeps it compact inside an Obsidian Notice. */
-.aar-silent-channel-convert {
+   accessible; link styling keeps it compact inside an Obsidian Notice. The
+   app paints every button through button:not(.clickable-icon) and sizes it
+   through button, so the selector matches the first and outranks it, and the
+   reset covers the field height and flex box the second one adds. */
+button.aar-silent-channel-convert:not(.clickable-icon) {
     appearance: none;
+    display: inline;
+    height: auto;
     border: 0;
     padding: 0;
     background: none;
+    box-shadow: none;
     color: var(--text-accent);
     font: inherit;
     text-decoration: underline;
@@ -1806,7 +1812,7 @@ button.aar-player-marker-row {
 
 /* The app's own focus ring, stated here because the link styling above
    clears the rest of the button's chrome */
-.aar-silent-channel-convert:focus-visible {
+button.aar-silent-channel-convert:not(.clickable-icon):focus-visible {
     border-radius: var(--radius-s);
     box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
