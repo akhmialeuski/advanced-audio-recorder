@@ -172,63 +172,17 @@ Notes on the lifecycle:
 
 ## Actions
 
-Every action of the plugin is defined once, in a family of `src/actions/`, and the one `ActionRegistry` hands that same definition to the three places a user reaches it from: the command palette with its hotkeys, the context menus, and Obsidian's command line. All three run it over the same services the dialogs use, so a conversion started from a menu, a hotkey or a script is the same conversion. The recorder's own command-line commands (the status, `record` and `stop`) go through the registry too, which is where the one check that no two commands share an id lives. The registry is the shared core, marked blue below, as the code stands at the branch of [#125](https://github.com/akhmialeuski/advanced-audio-recorder/pull/125).
+Every action of the plugin is defined once, in a family of `src/actions/`, and one `ActionRegistry` hands that definition to three of the four places a user reaches it from: the command palette with its hotkeys, the context menus, and Obsidian's command line. The fourth, the recording panel in the right sidebar, draws the file actions as icon buttons from the same `FILE_ACTIONS` list, read directly rather than through the registry. All four run an action over the same services the dialogs use, so a conversion started from a menu, a hotkey, the panel or a script is the same conversion. The recorder's own command-line commands (the status, `record` and `stop`) go through the registry too, which is where the one check that no two commands share an id lives. In the pictures below the shared core is teal, the panel's direct read is a dashed amber line, and every arrow points from the part that hands over or calls to the part that receives. They show the code at the branch of [#125](https://github.com/akhmialeuski/advanced-audio-recorder/pull/125).
 
-```mermaid
-flowchart LR
-    FAM["Action families<br/>session, recording, transcript lines,<br/>playback, position, folder, search, help"]
-    OWN["Recorder's own commands<br/>status, record, stop"]
-    REG["Action registry<br/>ActionRegistry"]
-    PAL["Command palette<br/>and hotkeys"]
-    MENU["Context menus<br/>file, editor, player, folder"]
-    CLI["Obsidian command line"]
-    PICK["Target picker<br/>ActionTargetModal"]
-    SVC["Shared services<br/>conversion, split, transcription,<br/>sidecar, queue"]
+![Each action is defined once in a family, and the action registry gives it to the command palette, the context menus and the command line, the recording panel reads FILE_ACTIONS directly, and all four run over the same services](images/actions-routes.svg)
 
-    FAM -->|"each action once:<br/>palette id + CLI binding"| REG
-    OWN -->|"CLI commands"| REG
-    REG -->|"one checkCallback<br/>per action"| PAL
-    REG -->|"registered<br/>families only"| MENU
-    REG -->|"one handler per action,<br/>ids checked once"| CLI
-    PAL -->|"several targets"| PICK
-    PAL -->|"run on the<br/>one target"| SVC
-    PICK -->|"run on the<br/>chosen target"| SVC
-    MENU -->|"run with note,<br/>link, moment"| SVC
-    CLI -->|"execute, answer<br/>as text"| SVC
+The surfaces differ only in how they find the target. The palette reads what is active, and it does so every time it opens, for every command, so this read stays in memory: the open file, the line under the cursor and the metadata cache, through one `recordingsInNote` and one `recordingLinkAt`. The folder family, whose targets take a pass over the vault, answers that check from its settings through `offeredWithoutTargets` and lists the folders only once its command runs. A menu builds its context from where it was opened, the note, the link under the click and whether that link points at a moment, and the file and editor menus Obsidian raises for one click add to one shared context. The command line names the target with `file=`, `path=`, `note=`, `recording=` or `all`, and the panel acts on the recording it shows. From there one path serves all four: the action's own availability gate decides, and the action runs, or is hidden from the palette, left out of the menu and the panel, or answered with its reason on the command line.
 
-    classDef registry fill:#dbeafe,stroke:#1d4ed8,color:#111;
-    class REG registry;
-```
+![Four surfaces find their target in four ways, from what is active, from where a menu opened, from the typed parameters or from the recording the panel shows, and all four then pass the same isAvailable check and run the same action](images/actions-targets.svg)
 
-The surfaces differ only in how they find the target. The palette reads what is active, and it does so every time it opens, for every command, so this read stays in memory: the open file, the line under the cursor and the metadata cache, through one `recordingsInNote` and one `recordingLinkAt`. The folder family, whose targets take a pass over the vault, answers that check from its settings through `offeredWithoutTargets` and lists the folders only once its command runs. A menu builds its context from where it was opened, the note, the link under the click and whether that link points at a moment, and the file and editor menus Obsidian raises for one click add to one shared context. The command line names the target with `file=`, `path=`, `note=`, `recording=` or `all`. From there one path serves all three: the action's own availability gate decides, the action runs, and an action that is not available is left out of the palette and the menu, or answered with its reason on the command line. The gate and the run, marked blue, are the same code on every surface.
+The classes sit in layers. The contract, `PluginCommand`, its `ActionCli` binding and the `ActionFamily` that groups commands over one kind of context, lives in `src/actions/PluginAction.ts`. Eight families implement it, each exporting its list and its family function, and `main.ts` adds them to the `ActionRegistry`. The registry lays them out through three helpers: `registerActionCommands.ts` registers one `checkCallback` per action and runs it through `runReported`, `actionCliCommands.ts` builds one command-line command per action, and `renderActionsIntoMenu.ts` adds the menu items. The surfaces call the registry, except the panel. The shared helpers, which resolve targets, read a note's recordings and links, parse command-line arguments and collect notices, sit below every surface and import none of them.
 
-```mermaid
-flowchart LR
-    subgraph CLL["Command line"]
-        C1["A typed command"] -->|"parameters"| C2["Target from<br/>file=, path=, note=, all"]
-    end
-    subgraph MEN["Context menu"]
-        M1["Right-click"] -->|"file, editor<br/>or player menu"| M2["Context from where it opened:<br/>note, link, moment"]
-    end
-    subgraph PAL["Command palette"]
-        P1["Palette opens"] -->|"every command<br/>checked"| P2["Targets from what is active:<br/>open file, cursor line,<br/>metadata cache"]
-    end
-
-    GATE{"Action available<br/>for this target?"}
-    RUN["Run the action<br/>run() or cli.execute()"]
-    SVC["Shared services"]
-    NO["Left out: command hidden,<br/>no menu entry,<br/>reason printed"]
-
-    P2 --> GATE
-    M2 --> GATE
-    C2 --> GATE
-    GATE -->|"yes"| RUN
-    GATE -->|"no"| NO
-    RUN ==>|"same calls"| SVC
-
-    classDef shared fill:#dbeafe,stroke:#1d4ed8,color:#111;
-    class GATE,RUN shared;
-```
+![The contract in PluginAction.ts, the eight families that implement it, ActionRegistry with its three helpers, the four surfaces that consume them, and the shared helpers below all of them](images/actions-classes.svg)
 
 On the command line the services report through a collecting notifier rather than straight to notices, so what a dialog would show along the way, such as a converted file that already existed, ends up in the printed answer as well as in a notice in the app. Adding an action is an entry in a family: the compiler refuses one without its command-line binding, and from there the palette command, the menu entry and the command-line command all exist.
 
