@@ -789,8 +789,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		const names = linked.map((id) => ACCOUNTS[id].keyFieldName);
 		new Notice(
 			`Advanced Audio Recorder: ${names.join(', ')} ${names.length === 1 ? 'was' : 'were'} copied into Obsidian's keychain (Settings > Keychain). ` +
-				"The plain-text copy in the plugin's data.json is removed the next time Obsidian starts and finds the key there. " +
-				'Secrets are kept on each device and are not synced, so enter the key once on your other devices.',
+				"The plain-text copy in the plugin's data.json is removed the next time Obsidian starts on this device and finds the key there. " +
+				'Secrets are kept on each device, and on the desktop in each vault, and are not synced, so enter the key once on your other devices and vaults.',
 			0,
 		);
 	}

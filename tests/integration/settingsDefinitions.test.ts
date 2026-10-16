@@ -788,15 +788,16 @@ describe('settings definitions', () => {
 			},
 		);
 
-		it('says where a key is kept and that a local endpoint needs none', () => {
+		it('says where a key is kept, how far it reaches, and that a local endpoint needs none', () => {
 			const row = rowOf(
 				build(),
 				EngineLabel.Deepgram,
 				'Deepgram API key',
 			);
 
-			expect(row.desc).toMatch(/keychain on this device and not synced/);
-			expect(row.desc).toMatch(/local endpoint/);
+			expect(row.desc).toMatch(/keychain, not synced/);
+			expect(row.desc).toMatch(/once per vault/);
+			expect(row.desc).toMatch(/unlinked when .* local endpoint/);
 		});
 
 		it('picks the model in place and keeps the list behind an entry', () => {

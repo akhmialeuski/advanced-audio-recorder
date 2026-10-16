@@ -211,6 +211,7 @@ describe('loading a data.json that holds API keys in plain text', () => {
 		expect(at(told, 0)).toContain('OpenAI API key, Deepgram API key');
 		expect(at(told, 0)).toContain('Settings > Keychain');
 		expect(at(told, 0)).toContain('not synced');
+		expect(at(told, 0)).toContain('on the desktop in each vault');
 	});
 
 	it('does nothing more on the next load', async () => {

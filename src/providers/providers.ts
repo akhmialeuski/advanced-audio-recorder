@@ -98,8 +98,8 @@ export type EngineLabel = (typeof EngineLabel)[keyof typeof EngineLabel];
 
 /** Description shown under every key field. */
 const STORED_LOCALLY_DESC =
-	"Kept in Obsidian's keychain on this device and not synced: link a saved secret or create one, once on each device. " +
-	'Leave it empty when the Base URL points at a local endpoint, which needs no key.';
+	"Kept in Obsidian's keychain, not synced: link a saved secret or create one once per device, and on the desktop once per vault. " +
+	'Leave it unlinked when the Base URL points at a local endpoint, which needs no key.';
 
 /**
  * How an account is reached: one endpoint and one key, whatever the engines
