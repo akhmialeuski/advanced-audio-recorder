@@ -276,10 +276,14 @@ export const SESSION_ACTIONS: readonly SessionAction[] = [
 			getSettings,
 			saveSettings,
 		}: SessionServices): Promise<void> =>
-			showDeviceSelectionModal(app, async (deviceId: string) => {
-				getSettings().audioDeviceId = deviceId;
-				await saveSettings();
-			}),
+			showDeviceSelectionModal(
+				app,
+				async (deviceId: string) => {
+					getSettings().audioDeviceId = deviceId;
+					await saveSettings();
+				},
+				getSettings().audioDeviceId,
+			),
 		cli: {
 			name: 'device',
 			description:

@@ -98,7 +98,7 @@ The recording finishes but the file is silent, or **Test recording** plays back 
 1. Run **Test recording** (see [above](#test-recording)) to isolate the problem to capture rather than playback.
 2. Check the **input device** through either surface - both write your choice to settings:
     - **Settings > Audio input** is the settings UI; pick the correct microphone from the dropdown. A freshly plugged-in device may need the dropdown to refresh - it auto-refreshes on device changes.
-    - **Select audio input device** is a command that opens a _separate_ dialog with a list of the detected microphones; choosing one saves it immediately and shows a confirmation notice.
+    - **Select audio input device** is a command that opens a _separate_ quick-pick list of the detected microphones, and choosing one saves it immediately and shows a confirmation notice.
 
     See [Switching the input device](recording.md#switching-the-input-device) for details.
 

@@ -39,7 +39,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 
 Start and stop a recording from the **microphone icon** in the left ribbon or with the `Start/stop recording` command. While recording, the ribbon icon turns red and pulses, and the **status bar** shows `Recording...` with **Pause** and **Stop** buttons. When you stop, the plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link into the active note, written in your vault's link format (`![[filename.ext]]` with the default wikilinks). For longer recordings a save-progress bar walks through stages (`Saving...` > `Flushing buffers...` > `Assembling audio...` > `Writing file...` > `Cleaning up...` > `Saved`) while the ribbon shows a save icon.
 
-To choose which microphone is used, run the `Select audio input device` command. It opens a dialog with a list of the detected input devices; choosing one saves it to settings immediately and shows a confirmation notice.
+To choose which microphone is used, run the `Select audio input device` command. It opens a quick-pick list of the detected input devices with the one in use marked, and choosing one saves it to settings immediately and shows a confirmation notice.
 
 Learn more: [Recording](recording.md)
 

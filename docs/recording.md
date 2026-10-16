@@ -60,7 +60,7 @@ Every command, its parameters and its answers are on the [Command line](command-
 
 ## Switching the input device
 
-You do not have to open the settings tab to change which microphone records. Run the **Select audio input device** command from the command palette (`Ctrl/Cmd + P`) and a dialog opens with an **Input device** list of every input the plugin detected. Choose one and press **Select** and it is saved to your settings **immediately** - a confirmation notice reports the device that is now selected, and the next recording uses it.
+You do not have to open the settings tab to change which microphone records. Run the **Select audio input device** command from the command palette (`Ctrl/Cmd + P`) and a quick-pick list opens with every input the plugin detected, the one in use marked **(current)**. Type to narrow it, choose one, and it is saved to your settings **immediately** - a confirmation notice reports the device that is now selected, and the next recording uses it.
 
 This is the quickest way to switch mics between recordings - for example, moving from a laptop's built-in microphone to a headset before a meeting. The same choice is also available, alongside the sample rate, under [Audio input settings](settings-reference.md#audio-input).
 
