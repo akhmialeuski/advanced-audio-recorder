@@ -75,16 +75,36 @@ describe('migrateApiKeysToSecrets', () => {
 		]);
 	});
 
-	it('reuses a secret that already holds the same key', () => {
+	it('reuses a secret under its own ID that already holds the same key', () => {
 		const { settings, store } = createSut(
 			{ whisperApiKey: 'sk-1' },
-			{ 'my-openai': 'sk-1' },
+			{
+				'openai-api-key': 'sk-another-plugin',
+				'advanced-audio-recorder-openai-api-key': 'sk-1',
+			},
 		);
 
 		migrateApiKeysToSecrets(settings, store);
 
-		expect(settings.whisperApiKeySecret).toBe('my-openai');
-		expect(store.listSecrets()).toEqual(['my-openai']);
+		expect(settings.whisperApiKeySecret).toBe(
+			'advanced-audio-recorder-openai-api-key',
+		);
+		expect(store.listSecrets()).toHaveLength(2);
+	});
+
+	it('neither reads nor links a secret under an ID it does not create', () => {
+		// Reading a secret marks it as just used on Obsidian's keychain page,
+		// and a secret another plugin owns may change or vanish with it.
+		const { settings, store } = createSut(
+			{ whisperApiKey: 'sk-1' },
+			{ 'my-openai': 'sk-1' },
+		);
+		const read = jest.spyOn(store, 'getSecret');
+
+		migrateApiKeysToSecrets(settings, store);
+
+		expect(settings.whisperApiKeySecret).toBe('openai-api-key');
+		expect(read).not.toHaveBeenCalledWith('my-openai');
 	});
 
 	it('prefers the readable ID among secrets holding the same key', () => {

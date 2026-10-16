@@ -91,46 +91,38 @@ export function readableSecretId(accountId: AccountId): string {
 }
 
 /**
- * An ID that no stored secret uses: the readable one when it is free, then one
- * scoped to this plugin, then that one with a number appended.
- * @param accountId - The account the key belongs to
- * @param taken - IDs already in the keychain
- */
-function freeSecretId(
-	accountId: AccountId,
-	taken: ReadonlySet<string>,
-): string {
-	const readable = readableSecretId(accountId);
-	if (!taken.has(readable)) {
-		return readable;
-	}
-	const scoped = `${PLUGIN_SECRET_PREFIX}-${readable}`;
-	let candidate = scoped;
-	for (let suffix = 2; taken.has(candidate); suffix++) {
-		candidate = `${scoped}-${String(suffix)}`;
-	}
-	return candidate;
-}
-
-/**
- * The ID of a stored secret that already holds this key, preferring the
- * readable one. Reusing it is what makes a migration safe to repeat: a load
- * whose save failed finds the secrets the previous one created and links them
- * again instead of creating a second copy of each.
+ * The ID a key is moved under: the first of this plugin's own candidates - the
+ * readable ID, then one scoped to the plugin, then that one with a number
+ * appended - that either holds this key already or holds nothing.
+ *
+ * Reusing a candidate that holds the key is what makes a migration safe to
+ * repeat: a load whose save failed finds the secrets the previous one created
+ * and links them again instead of creating a second copy of each. Only the
+ * candidates are read. A secret under any other ID belongs to the user or to
+ * another plugin, and reading it would mark it as just used on the Keychain
+ * page, while linking it would tie the key to a secret this plugin does not
+ * own and that another device would not have under the same ID.
  * @param accountId - The account the key belongs to
  * @param key - The key being moved
  * @param store - The keychain
  */
-function secretHolding(
+function secretIdFor(
 	accountId: AccountId,
 	key: string,
 	store: ApiKeySecretStore,
-): string | undefined {
-	const holding = store
-		.listSecrets()
-		.filter((id) => store.getSecret(id) === key);
+): string {
+	const taken = new Set(store.listSecrets());
 	const readable = readableSecretId(accountId);
-	return holding.includes(readable) ? readable : holding[0];
+	const scoped = `${PLUGIN_SECRET_PREFIX}-${readable}`;
+	let candidate = readable;
+	for (
+		let suffix = 1;
+		taken.has(candidate) && store.getSecret(candidate) !== key;
+		suffix++
+	) {
+		candidate = suffix === 1 ? scoped : `${scoped}-${String(suffix)}`;
+	}
+	return candidate;
 }
 
 /**
@@ -138,10 +130,10 @@ function secretHolding(
  * links the account to it.
  *
  * Only an account holding a key is moved, and one whose linked secret exists
- * on this device is not: the keychain answers for it. A secret that already
- * holds the same key is reused; otherwise a new one is created under an ID no
- * stored secret uses, so a secret that holds something else is never
- * overwritten.
+ * on this device is not: the keychain answers for it. A secret this plugin
+ * created that already holds the same key is reused; otherwise a new one is
+ * created under an ID no stored secret uses, so a secret that holds something
+ * else is never overwritten.
  *
  * An account that links an ID nothing is stored under while data.json still
  * holds a key - a file written by an older version of the plugin after the
@@ -167,11 +159,7 @@ export function migrateApiKeysToSecrets(
 		if (key === '' || (linked !== '' && store.getSecret(linked) !== null)) {
 			continue;
 		}
-		const id =
-			linked !== ''
-				? linked
-				: (secretHolding(accountId, key, store) ??
-					freeSecretId(accountId, new Set(store.listSecrets())));
+		const id = linked !== '' ? linked : secretIdFor(accountId, key, store);
 		try {
 			if (store.getSecret(id) !== key) {
 				store.setSecret(id, key);
