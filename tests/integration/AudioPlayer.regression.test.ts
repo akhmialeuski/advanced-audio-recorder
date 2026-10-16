@@ -707,6 +707,15 @@ describe('render-scoped teardown across in-place re-renders (F1)', () => {
 // marker list puts two there, captured, and a capture listener is only
 // removed by a call that names capture as well.
 describe('document listeners of a render pass', () => {
+	// jsdom's selector engine, nwsapi, puts two capture listeners for :hover
+	// on the document the first time anything queries a selector, and never
+	// takes them off. Running a query before the spies go in keeps those two
+	// out of the count, which is about the player's own listeners; without
+	// it the test fails in whichever random order makes it the first query.
+	beforeAll(() => {
+		document.querySelector('*');
+	});
+
 	const MARKERS_ON: ResolvedPlayerSettings = {
 		showWaveform: false,
 		enableMarkers: true,
