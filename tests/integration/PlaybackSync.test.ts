@@ -357,6 +357,44 @@ describe('the volume set in the embed', () => {
 			'0.3',
 		);
 	});
+
+	it('stays muted when the status bar first shows a lowered volume', async () => {
+		// The strip builds its slider at full volume and then shows the level
+		// of the playback. Obsidian's slider reports a value set from code as
+		// if it had been dragged, and a drag to an audible level unmutes, so
+		// a strip that heard its own update back would unmute the recording
+		// the moment it appeared.
+		const shared = sharedAudio();
+		const registry = new AudioPlayerRegistry();
+		const container = mountPlayer(registry);
+		await tick();
+		const embedVolume = el<HTMLInputElement>(container, PLAYER.volume);
+		embedVolume.value = '0.4';
+		embedVolume.dispatchEvent(new Event('input', { bubbles: true }));
+		clickControl(container, 'Mute / unmute');
+		expect(shared.audio.muted).toBe(true);
+		const statusBarItem = makePlayerContainer();
+		registry.subscribePlayback((state) => {
+			if (state) {
+				renderPlaybackStatusBar(statusBarItem, state);
+			}
+		});
+
+		startPlaybackAt(registry, shared.audio, 30);
+
+		expect(shared.audio.muted).toBe(true);
+		expect(el<HTMLInputElement>(statusBarItem, PLAYBACK.volume).value).toBe(
+			'0.4',
+		);
+		expect(
+			control(statusBarItem, 'Mute / unmute').getAttribute(
+				'aria-pressed',
+			),
+		).toBe('true');
+		expect(
+			control(container, 'Mute / unmute').getAttribute('aria-pressed'),
+		).toBe('true');
+	});
 });
 
 describe('status-bar markers follow the player edit mode', () => {
