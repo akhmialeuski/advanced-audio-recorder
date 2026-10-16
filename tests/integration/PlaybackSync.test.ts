@@ -243,6 +243,22 @@ async function playingEmbed(
 	return { container, plugin, registry, snapshot };
 }
 
+/**
+ * Renders every playback the registry publishes into a status bar, as the
+ * plugin does, from the moment of the call on.
+ * @param registry - The registry publishing the active playback
+ * @returns The status bar element
+ */
+function mountStatusBar(registry: AudioPlayerRegistry): HTMLElement {
+	const statusBarItem = makePlayerContainer();
+	registry.subscribePlayback((state) => {
+		if (state) {
+			renderPlaybackStatusBar(statusBarItem, state);
+		}
+	});
+	return statusBarItem;
+}
+
 /** Starts the shared playback and parks it at a known position. */
 function startPlaybackAt(
 	registry: AudioPlayerRegistry,
@@ -337,12 +353,7 @@ describe('the volume set in the embed', () => {
 	it('fills the status-bar volume track up to the level set in the embed', async () => {
 		const shared = sharedAudio();
 		const registry = new AudioPlayerRegistry();
-		const statusBarItem = makePlayerContainer();
-		registry.subscribePlayback((state) => {
-			if (state) {
-				renderPlaybackStatusBar(statusBarItem, state);
-			}
-		});
+		const statusBarItem = mountStatusBar(registry);
 		const container = mountPlayer(registry);
 		await tick();
 		startPlaybackAt(registry, shared.audio, 30);
@@ -373,12 +384,7 @@ describe('the volume set in the embed', () => {
 		embedVolume.dispatchEvent(new Event('input', { bubbles: true }));
 		clickControl(container, 'Mute / unmute');
 		expect(shared.audio.muted).toBe(true);
-		const statusBarItem = makePlayerContainer();
-		registry.subscribePlayback((state) => {
-			if (state) {
-				renderPlaybackStatusBar(statusBarItem, state);
-			}
-		});
+		const statusBarItem = mountStatusBar(registry);
 
 		startPlaybackAt(registry, shared.audio, 30);
 

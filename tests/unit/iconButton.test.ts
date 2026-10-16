@@ -19,7 +19,7 @@ function createSut(
 		icon: 'square',
 		label: 'Stop recording',
 		cls: 'aar-recording-banner-stop',
-		tooltip,
+		...(tooltip ? { tooltip } : {}),
 	});
 	return { container, button };
 }
