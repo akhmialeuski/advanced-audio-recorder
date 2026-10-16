@@ -9,24 +9,19 @@
  * @module player/playerEmbedActions
  */
 
-import type { MarkerKind } from '../markers/markerModel';
-
 /**
- * Position-aware player actions associated with an embed element so the
- * context menu can offer them on right-click without reaching into the
- * player's internals.
+ * What the context menu needs from a player to offer the position actions
+ * at the point that was right-clicked, without reaching into the player's
+ * internals: the actions themselves are the plugin's position actions.
  */
 export interface PlayerEmbedActions {
-	/** Whether marker/chapter actions should be offered. */
+	/**
+	 * Whether a marker may be added from this player: markers switched on,
+	 * and the player not read-only.
+	 */
 	readonly markersEnabled: boolean;
-	/** Whether the copy-timestamp action should be offered. */
-	readonly timestampLinksEnabled: boolean;
 	/** Converts a client X coordinate to a playback offset, or null. */
 	timeAtClientX(clientX: number): number | null;
-	/** Adds a marker or chapter at the given time. */
-	addMarkerAtTime(time: number, kind: MarkerKind): void;
-	/** Copies a timestamp link at the given time. */
-	copyTimestampAtTime(time: number): void;
 	/** Toggles play / pause. */
 	togglePlayback(): void;
 }

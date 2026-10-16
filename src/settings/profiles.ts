@@ -127,6 +127,39 @@ export function profilesOfKind(
 	return profiles.filter((profile) => profile.kind === kind);
 }
 
+/** The name a picker typed on the command line uses for "no profile". */
+export const NO_PROFILE_NAME = 'none';
+
+/**
+ * The profile a typed name selects, matched without regard to case, the way
+ * a picker on the command line names one: by the name the dialogs show.
+ * @param profiles - All stored profiles
+ * @param kind - Kind the profile must be of
+ * @param name - The typed name, or {@link NO_PROFILE_NAME}
+ * @returns The id to select ('' for none), or the sentence listing the names
+ *   that would have been accepted
+ */
+export function profileIdNamed(
+	profiles: readonly Profile[],
+	kind: ProfileKindId,
+	name: string,
+): { id: string } | { refusal: string } {
+	const wanted = name.trim().toLowerCase();
+	if (wanted === NO_PROFILE_NAME) {
+		return { id: '' };
+	}
+	const ofKind = profilesOfKind(profiles, kind);
+	const profile = ofKind.find((p) => p.name.toLowerCase() === wanted);
+	return profile
+		? { id: profile.id }
+		: {
+				refusal: `No profile named "${name}". The ones to choose from: ${[
+					NO_PROFILE_NAME,
+					...ofKind.map((p) => p.name),
+				].join(', ')}.`,
+			};
+}
+
 /**
  * A name no profile in the list holds yet: the base name, or the first
  * numbered variant of it that is free. The settings tree gives every profile a

@@ -47,20 +47,14 @@ If recording does not work, run **Test recording** from settings and check **Sys
 
 ## From the command line
 
-The desktop app takes commands from a terminal, and the plugin answers four of them. Nothing here exists on mobile.
+The desktop app takes commands from a terminal. `advanced-audio-recorder` reports what the recorder is doing, `advanced-audio-recorder:record` starts a recording, `advanced-audio-recorder:stop` stops and saves it, and every other action of the plugin - transcribing, converting, marking, the queue - is a command too. Each answers with what it did, or why it did nothing. A session that records this computer's own output cannot be started from a terminal, because the host grants that capture only in answer to a click in Obsidian. Nothing here exists on mobile.
 
-| Command                                            | What it does                                                                            |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `advanced-audio-recorder`                          | Reports what the recorder is doing, and the format a recording started now would use.   |
-| `advanced-audio-recorder:record`                   | Starts a recording with the configured input and format.                                |
-| `advanced-audio-recorder:stop`                     | Stops the recording in progress and saves it.                                           |
-| `advanced-audio-recorder:transcribe --file <path>` | Transcribes an audio file in the vault, named by its vault path.                        |
+```bash
+obsidian advanced-audio-recorder:record
+obsidian advanced-audio-recorder:stop
+```
 
-Each command answers with one line: the state it left behind, or why it did nothing - a recording that could not start answers with the same reason the app would have shown as a notice (`Microphone access denied...`), and a transcription that could not run answers with what is missing (`Transcription is switched off in settings.`, `Set the OpenAI API key in settings.`, `No audio file at "..." in this vault.`).
-
-Transcription is a paid job, so the command opens the transcribe dialog in Obsidian and starts it there, where it reports progress and can be cancelled - the same thing [transcribe on save](transcription.md) does. The answer says the run was started, not that it finished.
-
-One session the command cannot start is one that records this computer's own output, whether that is **Include system audio** under [Audio input](settings-reference.md#audio-input) or a track whose **Track N source** is **System audio (this computer)**. The host grants that capture only in answer to a user action in a focused Obsidian window, and a command typed in a terminal is neither, so `advanced-audio-recorder:record` answers with the reason and starts nothing. Start such a recording from the ribbon icon, the command palette or a hotkey. A track recording a loopback **input device** has no such restriction and records from the command line like any microphone - see [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
+Every command, its parameters and its answers are on the [Command line](command-line.md) page. Nothing here exists on mobile, or on an older desktop build.
 
 ---
 

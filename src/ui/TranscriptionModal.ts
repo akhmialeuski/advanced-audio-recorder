@@ -117,7 +117,38 @@ export type TranscriptionModalOptions = {
 	 * names are re-applied and the written outputs are registered.
 	 */
 	sidecar?: TranscriptOutputSidecar;
+	/**
+	 * Told how each run ended, for a caller that waits on the dialog it
+	 * opened - the command line, which answers only once the run is over.
+	 */
+	onRunSettled?: (outcome: TranscriptionRunOutcome) => void;
 };
+
+/** How one run of the dialog ended. */
+export type TranscriptionRunOutcome =
+	| {
+			/** The transcript was written. */
+			readonly status: 'done';
+			/**
+			 * The destination the run was given. With no note to write into,
+			 * a run writes every destination as a file beside the recording.
+			 */
+			readonly destination: TranscriptDestination;
+			/** The note it went into or links resolve in, '' for none. */
+			readonly notePath: string;
+			/** How many parts the engine failed on and left out. */
+			readonly missingParts: number;
+	  }
+	| {
+			/** The user cancelled the run. */
+			readonly status: 'cancelled';
+	  }
+	| {
+			/** The run could not start or failed. */
+			readonly status: 'failed';
+			/** What went wrong, as the dialog reported it. */
+			readonly message: string;
+	  };
 
 /**
  * Formats the cost value of one estimate line: the amount for a priced
@@ -441,9 +472,7 @@ export class TranscriptionModal extends PluginModal {
 			// matching the settings tab.
 			options: TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => ({
 				...option,
-				disabled: !isProviderAvailableOnPlatform(
-					option.value as TranscriptionProviderId,
-				),
+				disabled: !isProviderAvailableOnPlatform(option.value),
 			})),
 			get: () => s.transcriptionProvider,
 			set: (v) =>
@@ -935,9 +964,10 @@ export class TranscriptionModal extends PluginModal {
 		// mobile) stays the selected value, so without this a click would
 		// launch a doomed run that only fails with a generic error.
 		if (!this.isSelectedEngineAvailable()) {
-			new Notice(
-				'The selected engine is not available on this device. Pick a cloud engine to transcribe here.',
-			);
+			const message =
+				'The selected engine is not available on this device. Pick a cloud engine to transcribe here.';
+			new Notice(message);
+			this.options.onRunSettled?.({ status: 'failed', message });
 			return;
 		}
 		this.setRunning(true);
@@ -992,6 +1022,12 @@ export class TranscriptionModal extends PluginModal {
 			);
 			const usd = this.accountRunCost(settings, result.cost);
 			accounted = true;
+			this.options.onRunSettled?.({
+				status: 'done',
+				destination: settings.transcriptDestination,
+				notePath: this.notePath,
+				missingParts: result.missingParts.length,
+			});
 			if (autoChaptersAfterTranscribe(settings)) {
 				// Fire-and-forget on the fresh in-memory transcript: the
 				// dialog closes normally while chapters generate in the
@@ -1032,10 +1068,12 @@ export class TranscriptionModal extends PluginModal {
 			if (error instanceof TranscriptionCancelledError) {
 				new Notice('Transcription cancelled.');
 				this.statusEl?.setText('Cancelled.');
+				this.options.onRunSettled?.({ status: 'cancelled' });
 			} else {
 				const message = errorMessage(error);
 				new Notice(`Transcription failed: ${message}`);
 				this.statusEl?.setText(`Failed: ${message}`);
+				this.options.onRunSettled?.({ status: 'failed', message });
 			}
 			if (this.minimized) {
 				this.restore();

@@ -30,7 +30,16 @@ import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import { internalsOf, partial } from '../helpers/doubles';
 import { applyAnsweringMerge, typeSpeakerNames } from '../helpers/speakerRows';
 import { createMockApp } from '../helpers/createApp';
-import { rowDescription, rowSelect, settingRow } from '../helpers/settingRows';
+import { speakerSidecar } from '../helpers/speakerSidecar';
+import {
+	rowButton,
+	rowDescription,
+	rowInput,
+	rowSelect,
+	rowToggle,
+	settingRow,
+} from '../helpers/settingRows';
+import { flushMicrotasks } from '../helpers/async';
 import { installControlledAudio } from '../helpers/mediaMocks';
 import type { ControlledAudio } from '../helpers/mediaMocks';
 
@@ -67,24 +76,7 @@ const app = createMockApp({
 }).app;
 
 /** A sidecar stub whose getTranscript resolves to the given section. */
-function makeSidecar(
-	section: TranscriptSection,
-	corrupt = false,
-): {
-	getTranscript: jest.Mock;
-	isSidecarCorrupt: jest.Mock;
-	commitRename: jest.Mock;
-	setSpeakers: jest.Mock;
-	popHistory: jest.Mock;
-} {
-	return {
-		getTranscript: jest.fn().mockResolvedValue(section),
-		isSidecarCorrupt: jest.fn().mockReturnValue(corrupt),
-		commitRename: jest.fn().mockResolvedValue(undefined),
-		setSpeakers: jest.fn().mockResolvedValue(undefined),
-		popHistory: jest.fn().mockResolvedValue(undefined),
-	};
-}
+const makeSidecar = speakerSidecar;
 
 function makeModal(
 	settings: AudioRecorderSettings,
@@ -739,11 +731,10 @@ describe('SpeakerRenameModal', () => {
 		modal.open();
 		await internals.render();
 
-		if (!internals.newProfileInput) {
-			throw new Error('missing new-profile input');
-		}
-		internals.newProfileInput.value = 'Weekly sync';
-		await internals.createProfile();
+		const newProfile = settingRow(modal.contentEl, 'New profile');
+		rowInput(newProfile).value = 'Weekly sync';
+		rowButton(newProfile, 'Create').click();
+		await flushMicrotasks(10);
 
 		const rosters = settings.profiles.filter(
 			(profile) => profile.kind === 'participants',
@@ -1593,5 +1584,78 @@ describe('SpeakerRenameModal', () => {
 				message.includes('sidecar is read-only'),
 			),
 		).toBe(true);
+	});
+});
+
+describe('the rename dialog pressed as the user presses it', () => {
+	/** The dialog's button with the given label, outside any row. */
+	function button(
+		modal: SpeakerRenameModal,
+		text: string,
+	): HTMLButtonElement {
+		const found = [...modal.contentEl.querySelectorAll('button')].find(
+			(candidate) => candidate.textContent === text,
+		);
+		if (!found) {
+			throw new Error(`The dialog offers no ${text} button`);
+		}
+		return found;
+	}
+
+	it('applies the names typed on Apply, with the opt-in switched on', async () => {
+		unscopableMock.mockReturnValue(true);
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		typeSpeakerNames(internals.inputs, { 'Speaker 2': 'Bob' });
+
+		rowToggle(
+			settingRow(modal.contentEl, 'Rename in notes without timecodes'),
+		).click();
+		button(modal, 'Apply').click();
+		await flushMicrotasks(10);
+
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			expect.arrayContaining([{ from: 'Speaker 2', to: 'Bob' }]),
+			{ allowBroad: true },
+		);
+	});
+
+	it('reverts the last rename on Undo last rename', async () => {
+		const sidecar = makeSidecar(
+			rosterSection({
+				history: [
+					{
+						at: '2026-01-01T00:00:00Z',
+						names: { 'Speaker 1': 'Alex' },
+					},
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		button(modal, 'Undo last rename').click();
+		await flushMicrotasks(10);
+
+		expect(sidecar.popHistory).toHaveBeenCalledWith(audioFile.path);
+	});
+
+	it('closes on Cancel, writing nothing', async () => {
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		const close = jest.spyOn(modal, 'close');
+
+		button(modal, 'Cancel').click();
+
+		expect(close).toHaveBeenCalledTimes(1);
+		expect(sidecar.commitRename).not.toHaveBeenCalled();
 	});
 });

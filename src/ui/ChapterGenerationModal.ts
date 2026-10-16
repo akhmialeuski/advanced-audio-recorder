@@ -44,6 +44,7 @@ import {
 import { formatTimecode } from '../utils/TimeUtils';
 import { vendorEngine } from '../providers/providers';
 import { applyEngineSettings } from '../providers/engineSettings';
+import { commitChapterRunSettings } from '../chapters/chapterRunSettings';
 
 /**
  * The job this dialog configures. Named once so the engine picker, the model
@@ -96,7 +97,7 @@ export class ChapterGenerationModal extends PluginModal {
 	/**
 	 * Per-run settings copy, edited by the pickers below. The dialog never
 	 * touches the live settings until the user actually generates, at which
-	 * point {@link commitRunSettings} writes the choices back and persists them.
+	 * point {@link commitChapterRunSettings} writes the choices back and persists them.
 	 *
 	 * Mutating the live object and restoring it in onClose (the previous
 	 * approach) left the shared LLM configuration silently repointed whenever
@@ -317,30 +318,6 @@ export class ChapterGenerationModal extends PluginModal {
 	}
 
 	/**
-	 * Writes the run's choices into the live settings: the engine chapters are
-	 * generated with, and the model that engine is generating with.
-	 *
-	 * Only that engine's model is committed, so an engine the dialog was merely
-	 * switched through keeps the id it had. The engine that actually ran is a
-	 * different matter: where it serves one catalogue for both jobs, the model
-	 * committed here is the one transcription reads, which is what the engine
-	 * row says before the choice is made rather than after.
-	 */
-	private commitRunSettings(): void {
-		const live = this.options.getSettings();
-		live.chaptersLlmProvider = this.runSettings.chaptersLlmProvider;
-		const vendor = jobLlmVendor(this.runSettings, CHAPTERS_JOB);
-		applyEngineSettings(live, vendorEngine(vendor.id).id, {
-			model: vendor.settings.model(this.runSettings),
-		});
-		setSelectedProfileId(
-			live,
-			ProfileKindId.ChapterPrompt,
-			selectedProfileId(this.runSettings, ProfileKindId.ChapterPrompt),
-		);
-	}
-
-	/**
 	 * Commits the run's choices and generates, staying open until it is done.
 	 *
 	 * The dialog used to close the moment it delegated, which left a paid call
@@ -351,7 +328,7 @@ export class ChapterGenerationModal extends PluginModal {
 		// The shared service reads the LLM and profile from the plugin settings,
 		// so the run's choices become the stored defaults at this point - and
 		// only at this point, because the user committed to a run.
-		this.commitRunSettings();
+		commitChapterRunSettings(this.options.getSettings(), this.runSettings);
 		void this.options.saveSettings();
 		const cancellation = new CancellationSource();
 		this.cancellation = cancellation;

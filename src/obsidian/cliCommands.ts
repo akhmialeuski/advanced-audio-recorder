@@ -3,15 +3,17 @@
  *
  * From 1.12.2 a plugin can answer commands typed at the desktop app's command
  * line, which is a surface with rules of its own: a handler is called with no
- * user in front of it, it answers with one line of text rather than by opening
- * something, and its id is global across every installed plugin - hence the
+ * user in front of it, it answers with text rather than by opening something,
+ * and its id is global across every installed plugin - hence the
  * `<plugin-id>` and `<plugin-id>:<action>` naming Obsidian asks for.
  *
- * The commands here are the two operations a recorder is scripted for - start
- * a recording, stop it - plus the state behind them and the one file job worth
- * starting from outside the vault. What a handler may decide is decided here,
- * over a port of four questions, so the shape of a CLI answer is testable
- * without a plugin, an app, or a recorder behind it.
+ * Most commands are not written here: every plugin action becomes one through
+ * the action registry, the same way it becomes a palette command. What is
+ * written here is what has no action behind it - the recorder's state, and an
+ * explicit start and stop, which a script needs where a toggle would leave it
+ * guessing which way it went. What a handler may decide is decided over a
+ * port of a few questions, so the shape of an answer is testable without a
+ * plugin, an app, or a recorder behind it.
  *
  * Nothing here is reachable on mobile, where the registration method does not
  * exist; {@link registerCliCommands} reports that rather than failing the
@@ -19,9 +21,22 @@
  * @module obsidian/cliCommands
  */
 
-import type { CliData, CliFlags, CliHandler, Plugin, TFile } from 'obsidian';
+import type { CliFlags, CliHandler, Plugin } from 'obsidian';
 import { RecordingStatus } from '../types';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { formatTimecode } from '../utils/TimeUtils';
+
+/** The playback the state command reports, when something plays. */
+export interface CliPlayback {
+	/** Vault path of the recording. */
+	readonly recordingPath: string;
+	/** Position, in seconds. */
+	readonly currentTime: number;
+	/** Length in seconds, or zero while unknown. */
+	readonly duration: number;
+	/** Whether it is paused. */
+	readonly paused: boolean;
+}
 
 /** What the CLI is allowed to ask of the plugin. */
 export interface CliHost {
@@ -37,18 +52,10 @@ export interface CliHost {
 	 * @returns The reason the stop did not complete, or null once it has
 	 */
 	stopRecording(): Promise<string | null>;
-	/**
-	 * Why a transcription started now would be refused, or null when none
-	 * would be: the feature switched off, an engine this device cannot run,
-	 * or one that is not configured.
-	 */
-	transcriptionRefusal(): string | null;
 	/** The format a session started now would be saved in. */
 	recordingFormat(): string;
-	/** The audio file at this path, or null where the vault holds none. */
-	audioFileAt(path: string): TFile | null;
-	/** Starts a transcription of that file, the way every other surface does. */
-	transcribe(file: TFile): void;
+	/** The playback running in the app, or null while nothing plays. */
+	playback(): CliPlayback | null;
 }
 
 /** One CLI command, as `registerCliHandler` takes it. */
@@ -63,15 +70,16 @@ export interface CliCommand {
 	readonly handler: CliHandler;
 }
 
-/** The flag the transcribe command names its file with. */
-const FILE_FLAG = 'file';
-
 /**
  * What the recorder is doing, in one line.
- * @param host - The plugin behind the CLI
+ * @param status - The recording state
+ * @param format - The format a recording started now is saved in
  */
-function statusLine(host: CliHost): string {
-	switch (host.recordingStatus()) {
+export function describeRecordingStatus(
+	status: RecordingStatus,
+	format: string,
+): string {
+	switch (status) {
 		case RecordingStatus.Recording:
 			return 'Recording.';
 		case RecordingStatus.Paused:
@@ -81,35 +89,38 @@ function statusLine(host: CliHost): string {
 		case RecordingStatus.Saving:
 			return 'Saving the recording that just stopped.';
 		default:
-			return `Idle. A recording started now is saved as ${host.recordingFormat().toUpperCase()}.`;
+			return `Idle. A recording started now is saved as ${format.toUpperCase()}.`;
 	}
 }
 
 /**
- * The file a `--file` flag names, or the reason it names none. A flag declared
- * with a value still arrives as `'true'` when it was typed without one, which
- * is a path no vault holds and a message the user can act on.
+ * What the recorder is doing, in one line, for the host.
  * @param host - The plugin behind the CLI
- * @param params - The flags as typed
  */
-function fileFrom(
-	host: CliHost,
-	params: CliData,
-): { file: TFile } | { refusal: string } {
-	const path = params[FILE_FLAG];
-	if (path === undefined || path === 'true' || path.trim() === '') {
-		return {
-			refusal: `Name the file to transcribe: --${FILE_FLAG} <vault path>.`,
-		};
-	}
-	const file = host.audioFileAt(path.trim());
-	return file
-		? { file }
-		: { refusal: `No audio file at "${path.trim()}" in this vault.` };
+function statusLine(host: CliHost): string {
+	return describeRecordingStatus(
+		host.recordingStatus(),
+		host.recordingFormat(),
+	);
 }
 
 /**
- * The commands this plugin answers on the command line.
+ * What is playing, in one line, or nothing while nothing plays.
+ * @param playback - The playback
+ */
+function playbackLine(playback: CliPlayback | null): string[] {
+	if (!playback) {
+		return [];
+	}
+	const length =
+		playback.duration > 0 ? ` of ${formatTimecode(playback.duration)}` : '';
+	return [
+		`${playback.paused ? 'Paused' : 'Playing'} ${playback.recordingPath} at ${formatTimecode(playback.currentTime, playback.duration)}${length}.`,
+	];
+}
+
+/**
+ * The commands of the command line that have no action behind them.
  * @param host - The plugin behind the CLI
  * @param pluginId - The plugin's own id, which every command is named under
  * @returns The commands, in the order they are registered
@@ -118,9 +129,11 @@ export function cliCommands(host: CliHost, pluginId: string): CliCommand[] {
 	return [
 		{
 			id: pluginId,
-			description: 'Report what the audio recorder is doing.',
+			description:
+				'Report what the audio recorder is doing, and what is playing.',
 			flags: null,
-			handler: (): string => statusLine(host),
+			handler: (): string =>
+				[statusLine(host), ...playbackLine(host.playback())].join('\n'),
 		},
 		{
 			id: `${pluginId}:record`,
@@ -150,79 +163,50 @@ export function cliCommands(host: CliHost, pluginId: string): CliCommand[] {
 				return failure ?? statusLine(host);
 			},
 		},
-		{
-			id: `${pluginId}:transcribe`,
-			description: 'Transcribe an audio file in the vault.',
-			flags: {
-				[FILE_FLAG]: {
-					value: '<vault path>',
-					description:
-						'Path of the audio file, as the vault holds it.',
-					required: true,
-				},
-			},
-			handler: (params: CliData): string => {
-				// Asked before the file, and before anything is opened: the
-				// same conditions the run refuses on, so a job that cannot
-				// work is answered with its reason rather than started. The
-				// menu and the palette hide this action for the first of
-				// them; a command line has nothing to hide, so it says so.
-				const refusal = host.transcriptionRefusal();
-				if (refusal) {
-					return refusal;
-				}
-				const found = fileFrom(host, params);
-				if ('refusal' in found) {
-					return found.refusal;
-				}
-				host.transcribe(found.file);
-				// The run itself is not awaited, and the answer says only what
-				// happened here: transcription is a paid job that reports its
-				// own progress and can be cancelled in the app, which is the
-				// same bargain the transcribe-on-save path makes rather than a
-				// silent background request.
-				return `Started transcribing ${found.file.path} in Obsidian.`;
-			},
-		},
 	];
 }
 
 /**
  * Registers the CLI commands, where the running Obsidian has a CLI at all.
  *
- * A registration that throws - which is what a duplicate id does - is reported
- * rather than allowed to fail `onload`: the CLI is a convenience, and a plugin
- * that refuses to load over one is not.
+ * Two commands of one id cannot reach here, since the action registry refuses
+ * the second when it is added. A registration the host still refuses, a clash
+ * with another plugin's command for one, is reported rather than allowed to
+ * fail `onload`: the CLI is a convenience, and a plugin that refuses to load
+ * over one is not. Each command is registered on its own, so one refused
+ * command leaves every other one reachable.
  * @param plugin - The plugin registering them
- * @param host - What the commands are allowed to ask of it
- * @returns Whether the commands were registered
+ * @param commands - Every command, the plugin's own and its actions'
+ * @returns Whether every command was registered
  */
-export function registerCliCommands(plugin: Plugin, host: CliHost): boolean {
+export function registerCliCommands(
+	plugin: Plugin,
+	commands: readonly CliCommand[],
+): boolean {
 	// The typings declare the method on every platform, but only the desktop
 	// app has a command line, so the method is asked for rather than assumed.
 	if (
 		typeof (plugin as { registerCliHandler?: unknown })
-			.registerCliHandler === 'function'
+			.registerCliHandler !== 'function'
 	) {
+		return false;
+	}
+	let registered = true;
+	for (const command of commands) {
 		try {
-			for (const command of cliCommands(host, plugin.manifest.id)) {
-				plugin.registerCliHandler(
-					command.id,
-					command.description,
-					command.flags,
-					command.handler,
-				);
-			}
-			return true;
+			plugin.registerCliHandler(
+				command.id,
+				command.description,
+				command.flags,
+				command.handler,
+			);
 		} catch (error) {
-			// A duplicate id is the throwing case, and it is one this plugin
-			// cannot resolve at load time. The CLI is a convenience; a plugin
-			// that refuses to load over one is not.
+			registered = false;
 			console.warn(
-				`${PLUGIN_LOG_PREFIX} CLI commands were not registered:`,
+				`${PLUGIN_LOG_PREFIX} CLI command ${command.id} was not registered:`,
 				error,
 			);
 		}
 	}
-	return false;
+	return registered;
 }

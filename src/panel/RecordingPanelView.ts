@@ -39,17 +39,15 @@ import type {
 	FileContext,
 } from '../actions/PluginAction';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
-import {
-	renderActionsIntoMenu,
-	runActionLogged,
-} from '../actions/renderActionsIntoMenu';
+import { renderActionsIntoMenu } from '../actions/renderActionsIntoMenu';
+import { recordingsInNote } from '../obsidian/noteRecordings';
+import { runReported } from '../actions/registerActionCommands';
 import { RecordingStatus } from '../types';
 import { isAudioFile } from '../utils/audioFile';
 import { formatByteSize } from '../utils/formatBytes';
 import { formatTimecode } from '../utils/TimeUtils';
 import {
 	formatPanelDate,
-	recordingsReferencedBy,
 	summarizeRecording,
 	type RecordingPanelSummary,
 } from './recordingPanelModel';
@@ -111,8 +109,11 @@ export interface RecordingPanelHost {
 	readonly actions: readonly FileAction[];
 	/** The recorder, for the start/stop button. */
 	readonly recording: {
-		/** Starts capture, or stops and saves a running session. */
-		toggleRecording(): Promise<void>;
+		/**
+		 * Starts capture, or stops and saves a running session. The reason
+		 * one did not complete is also shown by the recorder as a notice.
+		 */
+		toggleRecording(): Promise<string | null>;
 		/** What the recorder is doing. */
 		getStatus(): RecordingStatus;
 	};
@@ -442,11 +443,7 @@ export class RecordingPanelView extends ItemView {
 		if (isAudioFile(active)) {
 			return { notePath: '', recordings: [active] };
 		}
-		const recordings = recordingsReferencedBy(
-			this.app.metadataCache.getFileCache(active),
-			(link) =>
-				this.app.metadataCache.getFirstLinkpathDest(link, active.path),
-		);
+		const recordings = recordingsInNote(this.app, active);
 		return { notePath: active.path, recordings };
 	}
 
@@ -569,7 +566,7 @@ export class RecordingPanelView extends ItemView {
 					.setIcon(action.icon)
 					.setTooltip(action.title)
 					.onClick(() => {
-						runActionLogged(action, context, 'the recording panel');
+						runReported(action, context, 'the recording panel');
 					});
 			}
 		}

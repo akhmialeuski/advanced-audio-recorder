@@ -130,8 +130,8 @@ export const LLM_PROVIDER_PRICING_URLS: Record<LlmProviderId, string> =
 	) as Record<LlmProviderId, string>;
 
 /** A value/label pair for a dropdown control (single source for the UI). */
-export interface LabeledOption {
-	value: string;
+export interface LabeledOption<K extends string = string> {
+	value: K;
 	label: string;
 	/** Render the option visible but unselectable (blocked on this device). */
 	disabled?: boolean;
@@ -146,7 +146,7 @@ export interface LabeledOption {
  */
 function optionsFromLabels<K extends string>(
 	labels: Record<K, string>,
-): LabeledOption[] {
+): LabeledOption<K>[] {
 	return (Object.keys(labels) as K[]).map((value) => ({
 		value,
 		label: labels[value],

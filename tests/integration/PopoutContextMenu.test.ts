@@ -12,8 +12,9 @@
 
 import type { App, TFile } from 'obsidian';
 import { ContextMenu } from 'src/ui/ContextMenu';
-import { FILE_ACTIONS } from 'src/actions/fileActions';
 import type { ActionServices } from 'src/actions/PluginAction';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import { registeredMenus } from '../helpers/menuFamilies';
 import { menuInstances } from '../mocks/obsidian';
 import {
 	FakePlugin,
@@ -41,13 +42,18 @@ function createSut(): { app: App; file: TFile; popoutDoc: Document } {
 	const file = makeFile();
 	const plugin = new FakePlugin();
 	plugin.app = makeApp(plugin, file);
-	// registerPlayerMenu only reads services.app; the rest is unused because
-	// the file-menu is populated by other plugins, not this handler.
-	const services = partial<ActionServices>({ app: plugin.app });
+	// The player menu renders the file actions, which read the settings to
+	// decide what is offered; nothing else of the services is reached.
+	const services = partial<ActionServices>({
+		app: plugin.app,
+		getSettings: () => DEFAULT_SETTINGS,
+	});
+	const { registry, families } = registeredMenus(services);
 	const contextMenu = new ContextMenu(
 		partialPlugin(plugin),
 		services,
-		FILE_ACTIONS,
+		registry,
+		families,
 	);
 	// Load first so the primitive's per-window child components attach their
 	// listeners immediately.

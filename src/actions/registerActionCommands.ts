@@ -1,58 +1,111 @@
 /**
- * Registers plugin actions as palette commands. One registration path
- * serves every kind of action, because they differ only in the context
- * they run against: a file action resolves the active audio file, a
- * session action resolves the recorder, a playback action resolves the
- * snapshot of what is playing. The palette, the context menus, and the
- * Hotkeys settings therefore expose the same feature set from the same
- * definitions. No default hotkeys are assigned; the user binds them in
- * Settings -> Hotkeys.
+ * Registers a family of plugin actions as palette commands. One
+ * registration path serves every kind of action, because they differ only
+ * in the context they run against: a file action resolves the recordings of
+ * what is active, a session action resolves the recorder, a playback action
+ * resolves the snapshot of what is playing. The palette, the context menus,
+ * the command line and the Hotkeys settings therefore expose the same feature
+ * set from the same definitions. No default hotkeys are assigned; the user
+ * binds them in Settings -> Hotkeys.
  * @module actions/registerActionCommands
  */
 
+import { Notice } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import type { PluginCommand } from './PluginAction';
+import type { ActionFamily, PluginCommand } from './PluginAction';
 
 /**
- * Registers each action as a checkCallback command over the context the
- * resolver produces. The resolver runs on every check, so the command
- * disappears from the palette (and its hotkey goes inert) the moment its
- * context stops existing.
+ * Asks the user which of several targets an action is for, then runs it on
+ * the one chosen. Injected rather than built here, so the registration stays
+ * free of any dialog.
+ */
+export type TargetPicker = <TContext>(
+	targets: readonly TContext[],
+	describe: (context: TContext) => string,
+	onChoose: (context: TContext) => void,
+) => void;
+
+/**
+ * Runs an action on a target from a surface that drops what its handler
+ * returns - the palette, a menu item, a button - and reports a failure.
  *
- * An action that rejects is reported here. Obsidian discards whatever a
- * command returns, so without this the only trace of a failed action would
- * be an unhandled rejection with nothing naming the command it came from.
+ * Obsidian discards whatever a command or a menu handler returns, so without
+ * this the only trace of a failed action would be an unhandled rejection with
+ * nothing naming the action it came from. The action owns whatever it tells
+ * the user; this is the diagnostic that survives when it tells them nothing.
+ * @param action - The action to run
+ * @param context - The target it runs on
+ * @param origin - Where it was run from, for the log
+ */
+export function runReported<TContext>(
+	action: PluginCommand<TContext>,
+	context: TContext,
+	origin: string,
+): void {
+	const report = (error: unknown): void => {
+		console.error(
+			`${PLUGIN_LOG_PREFIX} ${action.commandId} failed from ${origin}:`,
+			error,
+		);
+	};
+	// Called synchronously, so a dialog the action opens is open by the time
+	// the command returns, exactly as when the action is called directly.
+	let outcome: void | Promise<void>;
+	try {
+		outcome = action.run(context);
+	} catch (error) {
+		report(error);
+		return;
+	}
+	void Promise.resolve(outcome).catch(report);
+}
+
+/**
+ * Registers each action of a family as a checkCallback command over the
+ * targets the family finds active. The targets are resolved on every check,
+ * so the command disappears from the palette (and its hotkey goes inert) the
+ * moment no target the action is available for exists. One target runs at
+ * once; several are offered in the picker, so a note that embeds three
+ * recordings asks which one rather than guessing.
  * @param plugin - Plugin to register commands on
- * @param actions - Actions to register, in palette order
- * @param resolve - Produces the context, or null when there is none
+ * @param family - The actions and how their targets are found
+ * @param pickTarget - Asks which target when there are several
  */
 export function registerActionCommands<TContext>(
 	plugin: Plugin,
-	actions: readonly PluginCommand<TContext>[],
-	resolve: () => TContext | null,
+	family: ActionFamily<TContext>,
+	pickTarget: TargetPicker,
 ): void {
-	for (const action of actions) {
+	for (const action of family.actions) {
 		plugin.addCommand({
 			id: action.commandId,
 			name: action.title,
 			icon: action.icon,
 			checkCallback: (checking: boolean): boolean => {
-				const context = resolve();
-				if (context === null || !action.isAvailable(context)) {
+				if (checking && family.offeredWithoutTargets) {
+					return family.offeredWithoutTargets(action);
+				}
+				const targets = family
+					.activeTargets()
+					.filter((target) => action.isAvailable(target));
+				const [only] = targets;
+				if (only === undefined) {
+					if (!checking) {
+						// Offered on the settings alone, and nothing turned up
+						// to run it on once the targets were listed.
+						new Notice(`"${action.title}" has nothing to run on.`);
+					}
 					return false;
 				}
 				if (!checking) {
-					// The action owns whatever it tells the user; this is the
-					// diagnostic that survives when it tells them nothing.
-					void Promise.resolve(action.run(context)).catch(
-						(error: unknown) => {
-							console.error(
-								`${PLUGIN_LOG_PREFIX} Command ${action.commandId} failed:`,
-								error,
-							);
-						},
-					);
+					if (targets.length === 1) {
+						runReported(action, only, 'the palette');
+					} else {
+						pickTarget(targets, family.describe, (chosen) => {
+							runReported(action, chosen, 'the palette');
+						});
+					}
 				}
 				return true;
 			},

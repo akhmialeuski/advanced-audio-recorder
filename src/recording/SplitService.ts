@@ -8,7 +8,7 @@
  * @module recording/SplitService
  */
 
-import { Notice, TFile, normalizePath } from 'obsidian';
+import { TFile, normalizePath } from 'obsidian';
 import type { App } from 'obsidian';
 import {
 	encodeAudioBuffer,
@@ -44,6 +44,8 @@ import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { delay } from '../utils/TimeUtils';
 import { ConversionLinkAction } from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
+import { showNotice, type Notify } from '../utils/notify';
+import { chapters, type PlayerMarker } from '../markers/markerModel';
 
 /**
  * The way out of a desktop size ceiling for the splitter, which cannot use
@@ -66,6 +68,20 @@ export interface ChapterCut {
 	startSeconds: number;
 	/** The chapter's title, which names the part's file. */
 	title: string;
+}
+
+/**
+ * The cuts a split at chapters makes: one part per chapter of the
+ * recording, named after it. Shared by the split dialog and the command
+ * line, so both cut a recording the same way.
+ * @param markers - The recording's markers, bookmarks among them
+ * @returns The cuts, empty when the recording has no chapters
+ */
+export function chapterCutsOf(markers: readonly PlayerMarker[]): ChapterCut[] {
+	return chapters(markers).map((chapter) => ({
+		startSeconds: chapter.time,
+		title: chapter.label,
+	}));
 }
 
 /**
@@ -93,8 +109,9 @@ export interface SplitRequest {
 }
 
 /**
- * Outcome of a split operation. Failure details are already surfaced
- * to the user via Notices by the pipeline.
+ * Outcome of a split operation. Failure details are already told to
+ * the user through the service's reporter, a notice unless the caller
+ * passed another.
  */
 export type SplitOutcome =
 	| { status: 'completed'; partCount: number; firstPartName: string }
@@ -157,8 +174,12 @@ export class SplitService {
 	/**
 	 * Creates a new SplitService.
 	 * @param app - The Obsidian App instance
+	 * @param notify - Where failures and warnings are told to the user
 	 */
-	constructor(private readonly app: App) {}
+	constructor(
+		private readonly app: App,
+		private readonly notify: Notify = showNotice,
+	) {}
 
 	/**
 	 * Resolves the extension the part files will get: WAV sources stay
@@ -201,7 +222,7 @@ export class SplitService {
 			// Desktop is unbounded here - the lossless WAV byte path must
 			// keep splitting files beyond the decode ceiling.
 			if (!isReadableSize(request.sourceFile.stat.size)) {
-				new Notice(
+				this.notify(
 					tooLargeMessage('split', {
 						desktopAdvice: SPLIT_DESKTOP_ADVICE,
 					}),
@@ -248,7 +269,7 @@ export class SplitService {
 		} catch (error) {
 			const message = errorMessage(error);
 			onProgress(`Error: ${message}`);
-			new Notice(`Split failed: ${message}`);
+			this.notify(`Split failed: ${message}`);
 			return { status: 'aborted' };
 		}
 
@@ -340,13 +361,13 @@ export class SplitService {
 			} catch (error) {
 				const message = errorMessage(error);
 				onProgress(`Error: ${message}`);
-				new Notice(
+				this.notify(
 					`Parts were created, but updating links failed: ${message}. The source file was kept.`,
 				);
 				return false;
 			}
 			if (linkResult.frontmatterReferences > 0) {
-				new Notice(
+				this.notify(
 					`${String(linkResult.frontmatterReferences)} frontmatter link(s) still point to the source file: properties cannot hold several links.`,
 				);
 			}
@@ -354,7 +375,7 @@ export class SplitService {
 
 		if (request.deleteSource) {
 			if (linkResult !== null && linkResult.skippedReferences > 0) {
-				new Notice(
+				this.notify(
 					`Source file kept: ${String(linkResult.skippedReferences)} link(s) could not be updated.`,
 				);
 			} else {
@@ -364,7 +385,7 @@ export class SplitService {
 				} catch (error) {
 					const message = errorMessage(error);
 					onProgress(`Error: ${message}`);
-					new Notice(
+					this.notify(
 						`Parts were created, but the source file could not be deleted: ${message}`,
 					);
 					return false;
@@ -413,7 +434,7 @@ export class SplitService {
 					request.partSeconds,
 				);
 				if (partBytes <= 0 || layout.dataLength <= partBytes) {
-					new Notice('File is shorter than one part.');
+					this.notify('File is shorter than one part.');
 					return null;
 				}
 				const partCount = computePartCount(
@@ -467,6 +488,7 @@ export class SplitService {
 					targetFormat,
 					streamed,
 					announceWav,
+					this.notify,
 				);
 			}
 		}
@@ -476,7 +498,7 @@ export class SplitService {
 		// WAV byte path above and the streamed split never do, so neither is
 		// capped here.
 		if (!isDecodableSize(sourceBytes.byteLength)) {
-			new Notice(
+			this.notify(
 				tooLargeMessage('split', {
 					desktopAdvice: SPLIT_DESKTOP_ADVICE,
 				}),
@@ -499,12 +521,12 @@ export class SplitService {
 		// A chapter split has no fixed part length to be shorter than: its
 		// parts are as long as the chapters make them.
 		if (!request.cuts && plannedSamples <= partSamples) {
-			new Notice('File is shorter than one part.');
+			this.notify('File is shorter than one part.');
 			return null;
 		}
 
 		if (announceWav) {
-			announceWavParts(sourceExtension);
+			announceWavParts(sourceExtension, this.notify);
 		}
 
 		if (request.cuts) {
@@ -564,7 +586,7 @@ export class SplitService {
 		);
 		for (const path of paths) {
 			if (await this.app.vault.adapter.exists(path)) {
-				new Notice(
+				this.notify(
 					`File "${path}" already exists. Rename it or choose a different suffix.`,
 				);
 				return null;
@@ -732,9 +754,10 @@ function chapterDecodedParts(
  * Tells the user that a compressed source's parts are written as WAV, because
  * this device has no encoder for its own format.
  * @param sourceExtension - The format the parts would otherwise have kept
+ * @param notify - Where the user is told
  */
-function announceWavParts(sourceExtension: string): void {
-	new Notice(
+function announceWavParts(sourceExtension: string, notify: Notify): void {
+	notify(
 		`Encoding to "${sourceExtension}" is unavailable; parts are saved as WAV.`,
 	);
 }
@@ -754,6 +777,7 @@ function announceWavParts(sourceExtension: string): void {
  * @param targetFormat - Extension the parts are encoded to
  * @param streamed - The open streamed split, which the parts take over
  * @param announceWav - Whether to say the parts are written as WAV
+ * @param notify - Where the user is told why there are no parts or WAV ones
  * @returns The parts, or null when the recording is shorter than one part
  */
 function streamedParts(
@@ -762,6 +786,7 @@ function streamedParts(
 	targetFormat: string,
 	streamed: StreamedSplit,
 	announceWav: boolean,
+	notify: Notify,
 ): PreparedParts | null {
 	const { plannedFrames, sampleRate } = streamed;
 	let plan: { fileName: string; end: number }[];
@@ -785,7 +810,7 @@ function streamedParts(
 		const partFrames = request.partSeconds * sampleRate;
 		if (plannedFrames <= partFrames) {
 			streamed[Symbol.dispose]();
-			new Notice('File is shorter than one part.');
+			notify('File is shorter than one part.');
 			return null;
 		}
 		plan = Array.from(
@@ -802,7 +827,7 @@ function streamedParts(
 		);
 	}
 	if (announceWav) {
-		announceWavParts(request.sourceFile.extension.toLowerCase());
+		announceWavParts(request.sourceFile.extension.toLowerCase(), notify);
 	}
 	const lastIndex = plan.length - 1;
 	return {

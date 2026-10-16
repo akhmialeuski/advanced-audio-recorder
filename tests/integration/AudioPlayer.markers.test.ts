@@ -10,7 +10,10 @@
  */
 
 import { AudioPlayer } from 'src/player/AudioPlayer';
-import { getPlayerEmbedActions } from 'src/player/playerEmbedActions';
+import {
+	getPlayerEmbedActions,
+	type PlayerEmbedActions,
+} from 'src/player/playerEmbedActions';
 import { WaveformPeakCache } from 'src/player/WaveformData';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { PlayerMarker } from 'src/markers/markerModel';
@@ -351,35 +354,17 @@ describe('the chapter controls', () => {
 
 describe('the actions the note context menu offers', () => {
 	/** The embed actions the player published on its container. */
-	function actionsOn(container: HTMLElement): {
-		markersEnabled: boolean;
-		timestampLinksEnabled: boolean;
-		timeAtClientX: (clientX: number) => number | null;
-		addMarkerAtTime: (time: number, kind: string) => void;
-		copyTimestampAtTime: (time: number) => void;
-		togglePlayback: () => void;
-	} {
-		return getPlayerEmbedActions(container) as never;
+	function actionsOn(container: HTMLElement): PlayerEmbedActions {
+		return getPlayerEmbedActions(container) as PlayerEmbedActions;
 	}
 
+	// What the menu does at the point it reads off the player is the
+	// position actions' own business, tested with them; the player only says
+	// where the point is and whether a marker may go there.
 	it('offers marker creation in an editable note', async () => {
 		const { container } = await openWithMarkers();
 
 		expect(actionsOn(container).markersEnabled).toBe(true);
-		expect(actionsOn(container).timestampLinksEnabled).toBe(true);
-	});
-
-	it('adds a marker at the position the menu was opened over', async () => {
-		const { container, store } = await openWithMarkers();
-
-		actionsOn(container).addMarkerAtTime(42, 'chapter');
-		await tick();
-
-		expect(
-			(store.data.get('rec.wav') ?? []).some(
-				(marker) => marker.time === 42,
-			),
-		).toBe(true);
 	});
 
 	it('reads a position off the seek bar for the menu', async () => {
@@ -397,23 +382,6 @@ describe('the actions the note context menu offers', () => {
 		actionsOn(container).togglePlayback();
 
 		expect(audio.play).toHaveBeenCalled();
-	});
-
-	it('copies a link to the position the menu was opened over', async () => {
-		const write = jest.fn().mockResolvedValue(undefined);
-		Object.defineProperty(navigator, 'clipboard', {
-			value: { writeText: write },
-			configurable: true,
-		});
-		const { container } = await openWithMarkers();
-
-		actionsOn(container).copyTimestampAtTime(42);
-		await tick();
-
-		// The link text comes from Obsidian; what this asserts is that the
-		// position the menu was opened over is the one reported back.
-		expect(write).toHaveBeenCalledWith(expect.any(String));
-		expect(noticeMessages()).toContain('Copied timestamp link at 0:42');
 	});
 });
 

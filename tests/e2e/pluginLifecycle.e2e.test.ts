@@ -126,10 +126,66 @@ describe('the command line', () => {
 			),
 		).toEqual([
 			MANIFEST.id,
-			`${MANIFEST.id}:record`,
-			`${MANIFEST.id}:stop`,
-			`${MANIFEST.id}:transcribe`,
+			...[
+				'record',
+				'stop',
+				// The recording session
+				'toggle-recording',
+				'quick-note',
+				'pause',
+				'recording-marker',
+				'recording-bookmark',
+				'recording-chapter',
+				'device',
+				// A recording, directly or through its note
+				'info',
+				'convert',
+				'split',
+				'cleanup',
+				'transcribe',
+				'retry-failed',
+				'speakers',
+				'chapters',
+				'export-chapters',
+				'delete',
+				'delete-with-links',
+				// Transcript lines
+				'split-line',
+				'merge-lines',
+				// The playback running in the app
+				'play-pause',
+				'stop-playback',
+				'skip-back',
+				'skip-forward',
+				'mute',
+				'speed-up',
+				'slow-down',
+				'previous-chapter',
+				'next-chapter',
+				'loop-chapter',
+				// A point of a recording
+				'add-bookmark',
+				'add-chapter',
+				'timestamp-link',
+				// A folder, the vault, the plugin
+				'transcribe-folder',
+				'markers',
+				'queue',
+				'panel',
+				'whats-new',
+			].map((name) => `${MANIFEST.id}:${name}`),
 		]);
+	});
+
+	it('answers every palette command on the command line too', async () => {
+		// One registry puts an action on both; a palette command with no
+		// command-line twin would be an action added past it.
+		const { plugin } = await loadPlugin();
+		const mock = asMockPlugin(plugin);
+
+		expect(mock.registeredCliCommands).toHaveLength(
+			mock.registeredCommands.length + 3,
+		);
 	});
 
 	it('starts a recording from the command line', async () => {
@@ -224,7 +280,7 @@ describe('the command line', () => {
 			'notes/agenda.md',
 		);
 
-		expect(answer).toContain('No audio file');
+		expect(answer).toBe('No file named "notes/agenda.md" in this vault.');
 		expect(jest.mocked(TranscriptionModal)).not.toHaveBeenCalled();
 	});
 

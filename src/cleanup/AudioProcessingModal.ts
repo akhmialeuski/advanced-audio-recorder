@@ -19,9 +19,9 @@ import {
 	CLEANUP_HIGHPASS_STEP_HZ,
 	CLEANUP_GATE_STEP_DB,
 	CLEANUP_LEVELING_STEP_DB,
-	PLUGIN_LOG_PREFIX,
 } from '../constants';
-import { AudioProcessingService } from './AudioProcessingService';
+import { cleanUpRecording, describeCleanup } from './cleanupRun';
+import type { ProcessedHandler } from './cleanupRun';
 import {
 	hasActiveChange,
 	resolveAudioDspConfig,
@@ -53,10 +53,7 @@ export class AudioProcessingModal extends PluginModal {
 		app: App,
 		private readonly file: TFile,
 		getSettings: () => AudioRecorderSettings,
-		private readonly onProcessed?: (result: {
-			outputPath: string;
-			replaceSource: boolean;
-		}) => void | Promise<void>,
+		private readonly onProcessed?: ProcessedHandler,
 	) {
 		super(app);
 		this.config = resolveAudioDspConfig(getSettings());
@@ -199,43 +196,16 @@ export class AudioProcessingModal extends PluginModal {
 			// synchronous decode/gate work briefly occupies the main thread.
 			await delay(0);
 			try {
-				const service = new AudioProcessingService(this.app);
-				const outputPath = await service.process(
+				const result = await cleanUpRecording(
+					this.app,
 					this.file,
 					this.config,
+					{
+						deleteSource: this.deleteSource,
+						onProcessed: this.onProcessed,
+					},
 				);
-				// Link the result into the note before the source is trashed, so the
-				// source embed still resolves when it is matched and replaced. A
-				// failure here is non-fatal: the processed file is already written.
-				if (this.onProcessed) {
-					try {
-						await this.onProcessed({
-							outputPath,
-							replaceSource: this.deleteSource,
-						});
-					} catch (linkError) {
-						console.warn(
-							`${PLUGIN_LOG_PREFIX} Failed to link the processed file into the note:`,
-							linkError,
-						);
-					}
-				}
-				if (this.deleteSource) {
-					try {
-						await this.app.fileManager.trashFile(this.file);
-					} catch (deleteError) {
-						console.warn(
-							`${PLUGIN_LOG_PREFIX} Failed to delete source after processing:`,
-							deleteError,
-						);
-						new Notice(
-							`Processed audio saved to ${outputPath}, but the source could not be deleted.`,
-						);
-						this.close();
-						return;
-					}
-				}
-				new Notice(`Processed audio saved to ${outputPath}`);
+				new Notice(describeCleanup(result));
 				this.close();
 			} catch (error) {
 				const message = errorMessage(error);

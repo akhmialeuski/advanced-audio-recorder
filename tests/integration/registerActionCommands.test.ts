@@ -1,37 +1,36 @@
 /**
- * Tests for the one registration path every action kind shares: a file
- * action becomes a palette command over the active audio file, a session
- * action over the recorder, and a playback action over the snapshot of
- * what is playing. What differs between them is the resolver, so the
- * cases below drive the same registrar three times.
+ * Tests for the real action families on the palette: a file action is a
+ * command over the recordings of what is active, a session action over the
+ * recorder, and a playback action over the snapshot of what is playing. What
+ * differs between them is the family's resolver, so the cases below drive the
+ * same registration three times.
  * @module tests/integration/registerActionCommands.test
  */
 
-import { TFile } from 'obsidian';
-import { at } from '../helpers/assertions';
 import type { Plugin } from 'obsidian';
 import { registerActionCommands } from 'src/actions/registerActionCommands';
-import { activeAudioFile, FILE_ACTIONS } from 'src/actions/fileActions';
-import { SESSION_ACTIONS } from 'src/actions/sessionActions';
-import { PLAYBACK_ACTIONS } from 'src/actions/playbackActions';
+import { FILE_ACTIONS, fileActionFamily } from 'src/actions/fileActions';
+import { sessionActionFamily } from 'src/actions/sessionActions';
+import { playbackActionFamily } from 'src/actions/playbackActions';
 import { showDeviceSelectionModal } from 'src/ui/DeviceSelectionModal';
+import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import { useMobilePlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { COMMAND_IDS } from 'src/constants';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import type {
-	ActionServices,
-	FileAction,
-	PluginCommand,
+	ActionFamily,
 	RecordingSessionPort,
 	SessionServices,
 } from 'src/actions/PluginAction';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import { partialPlugin } from '../helpers/obsidianMock';
-import { partial, commonActionServices } from '../helpers/doubles';
+import { asMockPlugin, mockPluginHost } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { recordingVault } from '../helpers/recordingVault';
+import { at } from '../helpers/assertions';
 
 jest.mock('src/ui/AudioFileInfoModal', () => ({
 	AudioFileInfoModal: jest
@@ -62,189 +61,119 @@ jest.mock('src/audio/AudioEncoder', () => ({
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
 }));
 
-/** Command registered through the plugin double. */
-interface RegisteredCommand {
-	id: string;
-	name: string;
-	checkCallback: (checking: boolean) => boolean;
+/**
+ * Registers one family on a plugin double, with a picker spy for the case of
+ * several targets.
+ * @param family - The family to register
+ * @returns The plugin, its runner, and the picker
+ */
+function register<TContext>(family: ActionFamily<TContext>): {
+	plugin: ReturnType<typeof asMockPlugin>;
+	invoke: (id: string) => boolean;
+	pick: jest.Mock;
+} {
+	const host: Plugin = mockPluginHost(createMockApp().app);
+	const pick = jest.fn();
+	registerActionCommands(host, family, pick);
+	const plugin = asMockPlugin(host);
+	return { plugin, invoke: (id) => plugin.invokeCommand(id), pick };
 }
 
-function audioFile(extension = 'mp3'): TFile {
-	return Object.assign(Object.create(TFile.prototype), {
-		path: `recording.${extension}`,
-		extension,
-	}) as TFile;
-}
+const STANDUP = 'Recordings/standup.webm';
+const RETRO = 'Recordings/retro.mp3';
+const MEETING = 'Meetings/Team Meeting.md';
 
-function makeServices(activeFile: TFile | null): ActionServices {
-	return {
-		app: createMockApp({
-			workspace: { getActiveFile: () => activeFile },
-			fileManager: { trashFile: jest.fn() },
-		}).app,
-		getSettings: () =>
-			partial<AudioRecorderSettings>({
-				transcriptionEnabled: true,
-				transcriptionSpeakerRenameEnabled: true,
-				transcriptionAutoChaptersEnabled: true,
-			}),
-		...commonActionServices(),
-	};
-}
-
-function makePlugin(commands: RegisteredCommand[]): Plugin {
-	return partialPlugin({
-		addCommand: jest.fn((command: RegisteredCommand) => {
-			commands.push(command);
-		}),
+/** The file actions over a vault with two recordings and a meeting note. */
+function registerFiles(
+	active: string | undefined,
+	meeting: readonly string[] = [STANDUP],
+): ReturnType<typeof register> & ReturnType<typeof recordingVault> {
+	const vault = recordingVault({
+		recordings: [STANDUP, RETRO, 'Images/slide.png'],
+		notes: { [MEETING]: meeting },
+		...(active ? { active } : {}),
+		settings: {
+			transcriptionSpeakerRenameEnabled: true,
+			transcriptionAutoChaptersEnabled: true,
+		},
 	});
+	return { ...vault, ...register(fileActionFamily(vault.services)) };
 }
 
-describe('file actions over the active audio file', () => {
+describe('file actions over what is active', () => {
 	it('registers a palette command for every file action', () => {
-		const commands: RegisteredCommand[] = [];
-		registerActionCommands(
-			makePlugin(commands),
-			FILE_ACTIONS,
-			activeAudioFile(makeServices(audioFile())),
-		);
+		const { plugin } = registerFiles(undefined);
 
-		expect(commands.map((c) => c.id)).toEqual([
-			COMMAND_IDS.audioFileInfo,
-			COMMAND_IDS.convertAudioFormat,
-			COMMAND_IDS.splitAudio,
-			COMMAND_IDS.cleanupAudio,
-			COMMAND_IDS.transcribeAudio,
-			COMMAND_IDS.retryFailedParts,
-			COMMAND_IDS.renameSpeakers,
-			COMMAND_IDS.generateChapters,
-			COMMAND_IDS.exportChapters,
-			COMMAND_IDS.deleteRecording,
-		]);
+		// In the family's order, which the file actions suite pins.
+		expect(plugin.registeredCommands.map((c) => c.id)).toEqual(
+			FILE_ACTIONS.map((entry) => entry.commandId),
+		);
 	});
 
-	it('reports commands available when the active file is audio', () => {
-		const commands: RegisteredCommand[] = [];
-		registerActionCommands(
-			makePlugin(commands),
-			FILE_ACTIONS,
-			activeAudioFile(makeServices(audioFile())),
-		);
+	it('offers every command but the link-aware delete on an open recording', () => {
+		const { plugin } = registerFiles(STANDUP);
 
-		for (const command of commands) {
-			expect(command.checkCallback(true)).toBe(true);
-		}
+		// The audio file opened on its own has no note, so no link to remove.
+		expect(
+			plugin.registeredCommands
+				.filter((command) => command.checkCallback?.(true) === true)
+				.map((command) => command.id),
+		).not.toContain(COMMAND_IDS.deleteRecordingAndLink);
+		expect(
+			plugin.registeredCommands.filter(
+				(command) => command.checkCallback?.(true) === false,
+			),
+		).toHaveLength(1);
 	});
 
-	it('reports commands unavailable without an active audio file', () => {
-		const commands: RegisteredCommand[] = [];
-		registerActionCommands(
-			makePlugin(commands),
-			FILE_ACTIONS,
-			activeAudioFile(makeServices(null)),
-		);
+	it.each([
+		{ name: 'nothing is open', active: undefined },
+		{ name: 'an image is open', active: 'Images/slide.png' },
+	])('offers none of them when $name', ({ active }) => {
+		const { plugin } = registerFiles(active);
 
-		for (const command of commands) {
-			expect(command.checkCallback(true)).toBe(false);
-		}
+		expect(
+			plugin.registeredCommands.filter(
+				(command) => command.checkCallback?.(true) === true,
+			),
+		).toEqual([]);
 	});
 
-	it('reports commands unavailable for a non-audio active file', () => {
-		const commands: RegisteredCommand[] = [];
-		registerActionCommands(
-			makePlugin(commands),
-			FILE_ACTIONS,
-			activeAudioFile(makeServices(audioFile('md'))),
-		);
+	it('transcribes the recording of the open note into that note', () => {
+		const { invoke } = registerFiles(MEETING);
 
-		for (const command of commands) {
-			expect(command.checkCallback(true)).toBe(false);
-		}
+		expect(invoke(COMMAND_IDS.transcribeAudio)).toBe(true);
+
+		expect(jest.mocked(TranscriptionModal)).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ path: STANDUP }),
+			expect.any(Function),
+			expect.objectContaining({ notePath: MEETING }),
+		);
 	});
 
-	it('honors the per-action availability gate', () => {
-		const commands: RegisteredCommand[] = [];
-		const services = makeServices(audioFile());
-		const gated: FileAction = {
-			commandId: 'gated-action',
-			title: 'Gated action',
-			icon: 'info',
-			showInEditorMenu: true,
-			isAvailable: () => false,
-			run: jest.fn(),
-		};
-		registerActionCommands(
-			makePlugin(commands),
-			[gated],
-			activeAudioFile(services),
-		);
+	it('asks which recording when the open note embeds several', () => {
+		const { invoke, pick } = registerFiles(MEETING, [STANDUP, RETRO]);
 
-		expect(at(commands, 0).checkCallback(true)).toBe(false);
+		expect(invoke(COMMAND_IDS.transcribeAudio)).toBe(true);
+
+		expect(at(pick.mock.calls, 0)[0]).toHaveLength(2);
+		expect(TranscriptionModal).not.toHaveBeenCalled();
 	});
 
-	it('runs the action with the active file when invoked', () => {
-		const commands: RegisteredCommand[] = [];
-		const file = audioFile();
-		const services = makeServices(file);
-		const run = jest.fn();
-		const action: FileAction = {
-			commandId: 'run-me',
-			title: 'Run me',
-			icon: 'info',
-			showInEditorMenu: true,
-			isAvailable: () => true,
-			run,
-		};
-		registerActionCommands(
-			makePlugin(commands),
-			[action],
-			activeAudioFile(services),
-		);
+	it('offers the link-aware delete from the open note', () => {
+		const { plugin } = registerFiles(MEETING);
 
-		expect(at(commands, 0).checkCallback(false)).toBe(true);
-		expect(run).toHaveBeenCalledWith({ file, services });
-	});
-
-	it('does not run the action while only checking', () => {
-		const commands: RegisteredCommand[] = [];
-		const run = jest.fn();
-		const action: FileAction = {
-			commandId: 'check-only',
-			title: 'Check only',
-			icon: 'info',
-			showInEditorMenu: true,
-			isAvailable: () => true,
-			run,
-		};
-		registerActionCommands(
-			makePlugin(commands),
-			[action],
-			activeAudioFile(makeServices(audioFile())),
-		);
-
-		at(commands, 0).checkCallback(true);
-		expect(run).not.toHaveBeenCalled();
+		expect(
+			plugin.registeredCommands
+				.find(
+					(command) =>
+						command.id === COMMAND_IDS.deleteRecordingAndLink,
+				)
+				?.checkCallback?.(true),
+		).toBe(true);
 	});
 });
-
-/**
- * Runs a registered command the way the palette does: ask first, run only
- * when the answer is yes.
- * @param commands - The commands the registrar recorded
- * @param id - Command to invoke
- * @returns Whether the command reported itself available
- */
-function invokeCommand(commands: RegisteredCommand[], id: string): boolean {
-	const command = at(
-		commands.filter((entry) => entry.id === id),
-		0,
-	);
-	if (!command.checkCallback(true)) {
-		return false;
-	}
-	command.checkCallback(false);
-	return true;
-}
 
 /** What the session double reports about itself. */
 interface SessionState {
@@ -270,18 +199,21 @@ function makeSession({
 }: SessionState = {}): {
 	services: SessionServices;
 	recording: jest.Mocked<RecordingSessionPort>;
-	quickNote: { toggle: jest.Mock };
+	quickNote: { toggle: jest.Mock; getStatus: jest.Mock };
 	openMarkerModal: jest.Mock;
 	saveSettings: jest.Mock;
 	settings: AudioRecorderSettings;
 } {
-	const recording = {
+	const recording = partial<jest.Mocked<RecordingSessionPort>>({
 		toggleRecording: jest.fn().mockResolvedValue(undefined),
 		isSessionActive: jest.fn(() => active),
 		togglePauseResume: jest.fn(),
 		canDropMarker: jest.fn(() => active && markersEnabled),
-	} as unknown as jest.Mocked<RecordingSessionPort>;
-	const quickNote = { toggle: jest.fn().mockResolvedValue(undefined) };
+	});
+	const quickNote = {
+		toggle: jest.fn().mockResolvedValue(undefined),
+		getStatus: jest.fn(),
+	};
 	const openMarkerModal = jest.fn();
 	const saveSettings = jest.fn().mockResolvedValue(undefined);
 	const settings = partial<AudioRecorderSettings>({
@@ -312,24 +244,19 @@ describe('session actions over the recorder', () => {
 	 * @param state - The session the double stands for
 	 * @returns The registered commands and the session double behind them
 	 */
-	function registerSession(state: SessionState = {}): {
-		commands: RegisteredCommand[];
+	function registerSession(state: SessionState = {}): ReturnType<
+		typeof register
+	> & {
 		session: ReturnType<typeof makeSession>;
 	} {
-		const commands: RegisteredCommand[] = [];
 		const session = makeSession(state);
-		registerActionCommands(
-			makePlugin(commands),
-			SESSION_ACTIONS,
-			() => session.services,
-		);
-		return { commands, session };
+		return { session, ...register(sessionActionFamily(session.services)) };
 	}
 
 	it('registers every session command in palette order', () => {
-		const { commands } = registerSession();
+		const { plugin } = registerSession();
 
-		expect(commands.map((command) => command.id)).toEqual([
+		expect(plugin.registeredCommands.map((command) => command.id)).toEqual([
 			COMMAND_IDS.startStopRecording,
 			COMMAND_IDS.startStopQuickNote,
 			COMMAND_IDS.pauseResumeRecording,
@@ -344,12 +271,8 @@ describe('session actions over the recorder', () => {
 		const idle = registerSession({ active: false });
 		const live = registerSession({ active: true });
 
-		expect(
-			invokeCommand(idle.commands, COMMAND_IDS.startStopRecording),
-		).toBe(true);
-		expect(
-			invokeCommand(live.commands, COMMAND_IDS.startStopRecording),
-		).toBe(true);
+		expect(idle.invoke(COMMAND_IDS.startStopRecording)).toBe(true);
+		expect(live.invoke(COMMAND_IDS.startStopRecording)).toBe(true);
 
 		// Starting is what this command does when nothing is running, so it
 		// is the one session command with nothing to gate on.
@@ -361,12 +284,8 @@ describe('session actions over the recorder', () => {
 		const off = registerSession({ quickNotesEnabled: false });
 		const on = registerSession({ quickNotesEnabled: true });
 
-		expect(
-			invokeCommand(off.commands, COMMAND_IDS.startStopQuickNote),
-		).toBe(false);
-		expect(invokeCommand(on.commands, COMMAND_IDS.startStopQuickNote)).toBe(
-			true,
-		);
+		expect(off.invoke(COMMAND_IDS.startStopQuickNote)).toBe(false);
+		expect(on.invoke(COMMAND_IDS.startStopQuickNote)).toBe(true);
 
 		// Off, the feature does not exist yet, so a key bound to it stays free
 		// for whatever else claims it.
@@ -379,12 +298,8 @@ describe('session actions over the recorder', () => {
 		// Markers are off, so the gate that answers here is the session one
 		const live = registerSession({ active: true, markersEnabled: false });
 
-		expect(
-			invokeCommand(idle.commands, COMMAND_IDS.pauseResumeRecording),
-		).toBe(false);
-		expect(
-			invokeCommand(live.commands, COMMAND_IDS.pauseResumeRecording),
-		).toBe(true);
+		expect(idle.invoke(COMMAND_IDS.pauseResumeRecording)).toBe(false);
+		expect(live.invoke(COMMAND_IDS.pauseResumeRecording)).toBe(true);
 
 		// An idle recorder has nothing to pause, so a key bound to this falls
 		// through to whatever else claims it.
@@ -395,41 +310,29 @@ describe('session actions over the recorder', () => {
 	});
 
 	it('opens the marker modal with the kind the command fixes', () => {
-		const { commands, session } = registerSession();
+		const { invoke, session } = registerSession();
 
 		// The chooser command fixes no kind, so the modal asks for one
-		expect(invokeCommand(commands, COMMAND_IDS.addRecordingMarker)).toBe(
-			true,
-		);
+		expect(invoke(COMMAND_IDS.addRecordingMarker)).toBe(true);
 		expect(session.openMarkerModal).toHaveBeenLastCalledWith();
-		expect(invokeCommand(commands, COMMAND_IDS.addRecordingBookmark)).toBe(
-			true,
-		);
+		expect(invoke(COMMAND_IDS.addRecordingBookmark)).toBe(true);
 		expect(session.openMarkerModal).toHaveBeenLastCalledWith(
 			MARKER_KIND.bookmark,
 		);
-		expect(invokeCommand(commands, COMMAND_IDS.addRecordingChapter)).toBe(
-			true,
-		);
+		expect(invoke(COMMAND_IDS.addRecordingChapter)).toBe(true);
 		expect(session.openMarkerModal).toHaveBeenLastCalledWith(
 			MARKER_KIND.chapter,
 		);
 	});
 
 	it('withholds all three marker commands when nothing can be dropped', () => {
-		const { commands, session } = registerSession({
+		const { invoke, session } = registerSession({
 			markersEnabled: false,
 		});
 
-		expect(invokeCommand(commands, COMMAND_IDS.addRecordingMarker)).toBe(
-			false,
-		);
-		expect(invokeCommand(commands, COMMAND_IDS.addRecordingBookmark)).toBe(
-			false,
-		);
-		expect(invokeCommand(commands, COMMAND_IDS.addRecordingChapter)).toBe(
-			false,
-		);
+		expect(invoke(COMMAND_IDS.addRecordingMarker)).toBe(false);
+		expect(invoke(COMMAND_IDS.addRecordingBookmark)).toBe(false);
+		expect(invoke(COMMAND_IDS.addRecordingChapter)).toBe(false);
 		expect(session.openMarkerModal).not.toHaveBeenCalled();
 	});
 
@@ -439,11 +342,9 @@ describe('session actions over the recorder', () => {
 				await onDeviceSelected('device-7', 'Device 7');
 			},
 		);
-		const { commands, session } = registerSession();
+		const { invoke, session } = registerSession();
 
-		expect(
-			invokeCommand(commands, COMMAND_IDS.selectAudioInputDevice),
-		).toBe(true);
+		expect(invoke(COMMAND_IDS.selectAudioInputDevice)).toBe(true);
 		await tick();
 
 		expect(session.settings.audioDeviceId).toBe('device-7');
@@ -454,11 +355,9 @@ describe('session actions over the recorder', () => {
 		// Mobile records from the default microphone, so the command has
 		// nothing to offer and must stay out of the palette.
 		useMobilePlatform();
-		const { commands } = registerSession();
+		const { invoke } = registerSession();
 
-		expect(
-			invokeCommand(commands, COMMAND_IDS.selectAudioInputDevice),
-		).toBe(false);
+		expect(invoke(COMMAND_IDS.selectAudioInputDevice)).toBe(false);
 		expect(showDeviceSelectionModal).not.toHaveBeenCalled();
 	});
 });
@@ -470,26 +369,16 @@ describe('playback actions over the active snapshot', () => {
 	 * @param state - Snapshot the commands see, null while nothing plays
 	 * @returns The registered commands and a palette-style runner
 	 */
-	function registerAgainst(state: PlaybackControlsState | null): {
-		commands: RegisteredCommand[];
-		invoke: (id: string) => boolean;
-	} {
-		const commands: RegisteredCommand[] = [];
-		registerActionCommands(
-			makePlugin(commands),
-			PLAYBACK_ACTIONS,
-			() => state,
-		);
-		return {
-			commands,
-			invoke: (id: string): boolean => invokeCommand(commands, id),
-		};
+	function registerAgainst(
+		state: PlaybackControlsState | null,
+	): ReturnType<typeof register> {
+		return register(playbackActionFamily(() => state));
 	}
 
 	it('registers every playback command in palette order', () => {
-		const { commands } = registerAgainst(makePlaybackState());
+		const { plugin } = registerAgainst(makePlaybackState());
 
-		expect(commands.map((command) => command.id)).toEqual([
+		expect(plugin.registeredCommands.map((command) => command.id)).toEqual([
 			COMMAND_IDS.togglePlayback,
 			COMMAND_IDS.stopPlayback,
 			COMMAND_IDS.skipPlaybackBack,
@@ -500,8 +389,6 @@ describe('playback actions over the active snapshot', () => {
 			COMMAND_IDS.previousChapter,
 			COMMAND_IDS.nextChapter,
 			COMMAND_IDS.toggleChapterLoop,
-			COMMAND_IDS.addPlaybackBookmark,
-			COMMAND_IDS.addPlaybackChapter,
 		]);
 	});
 
@@ -522,14 +409,9 @@ describe('playback actions over the active snapshot', () => {
 		},
 		{ id: COMMAND_IDS.nextChapter, command: 'onNextChapter', args: [] },
 		{
-			id: COMMAND_IDS.addPlaybackBookmark,
-			command: 'onAddMarker',
-			args: [MARKER_KIND.bookmark],
-		},
-		{
-			id: COMMAND_IDS.addPlaybackChapter,
-			command: 'onAddMarker',
-			args: [MARKER_KIND.chapter],
+			id: COMMAND_IDS.toggleChapterLoop,
+			command: 'onToggleChapterLoop',
+			args: [],
 		},
 	] satisfies {
 		id: string;
@@ -559,22 +441,11 @@ describe('playback actions over the active snapshot', () => {
 	});
 
 	it('offers nothing while no playback is active', () => {
-		const { commands, invoke } = registerAgainst(null);
+		const { plugin, invoke } = registerAgainst(null);
 
-		for (const command of commands) {
+		for (const command of plugin.registeredCommands) {
 			expect(invoke(command.id)).toBe(false);
 		}
-	});
-
-	it('withholds the marker commands when the player forbids markers', () => {
-		const state = makePlaybackState({ markersEnabled: false });
-		const { invoke } = registerAgainst(state);
-
-		expect(invoke(COMMAND_IDS.addPlaybackBookmark)).toBe(false);
-		expect(invoke(COMMAND_IDS.addPlaybackChapter)).toBe(false);
-		expect(state.onAddMarker).not.toHaveBeenCalled();
-		// Transport is unaffected by the marker setting
-		expect(invoke(COMMAND_IDS.togglePlayback)).toBe(true);
 	});
 
 	it('withholds the chapter commands when the player has no chapters', () => {
@@ -584,33 +455,5 @@ describe('playback actions over the active snapshot', () => {
 		expect(invoke(COMMAND_IDS.previousChapter)).toBe(false);
 		expect(invoke(COMMAND_IDS.nextChapter)).toBe(false);
 		expect(state.onNextChapter).not.toHaveBeenCalled();
-	});
-});
-
-describe('an action that fails', () => {
-	it('names the command in the console instead of vanishing', async () => {
-		const commands: RegisteredCommand[] = [];
-		const failure = new Error('the modal refused to open');
-		const reported = jest
-			.spyOn(console, 'error')
-			.mockImplementation(() => undefined);
-		const failing: PluginCommand<object> = {
-			commandId: 'failing-action',
-			title: 'Failing action',
-			icon: 'bug',
-			isAvailable: () => true,
-			run: () => Promise.reject(failure),
-		};
-		registerActionCommands(makePlugin(commands), [failing], () => ({}));
-
-		expect(at(commands, 0).checkCallback(false)).toBe(true);
-		await tick();
-
-		// Obsidian discards whatever a command returns, so this line is the
-		// only trace a rejected action leaves behind.
-		expect(reported).toHaveBeenCalledWith(
-			expect.stringContaining('failing-action'),
-			failure,
-		);
 	});
 });

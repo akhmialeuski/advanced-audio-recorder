@@ -56,6 +56,39 @@ export const TRANSCRIPT: Transcript = {
 	speakers: ['Bob', 'Speaker 1'],
 };
 
+/**
+ * A meeting where diarization cut Speaker 1's turn in three and gave its
+ * middle to Bob, so the note reads as three turns where there was one.
+ */
+export const FRAGMENTED: Transcript = {
+	segments: [
+		{ start: 0, end: 4, text: 'Shall we start?', speaker: 'Bob' },
+		{
+			start: 5,
+			end: 7,
+			text: 'I think',
+			speaker: 'Speaker 1',
+			words: wordsOf('I think', 5),
+		},
+		{
+			start: 7,
+			end: 10,
+			text: 'we should wait',
+			speaker: 'Bob',
+			words: wordsOf('we should wait', 7),
+		},
+		{
+			start: 10,
+			end: 12,
+			text: 'for Carol.',
+			speaker: 'Speaker 1',
+			words: wordsOf('for Carol.', 10),
+		},
+		{ start: 14, end: 16, text: 'Fine.', speaker: 'Bob' },
+	],
+	speakers: ['Bob', 'Speaker 1'],
+};
+
 /** A timecode link as the note's transcript writes it. */
 export const link = (seconds: number, label: string): string =>
 	`[[rec.m4a#t=${String(Math.floor(seconds))}|${label}]]`;

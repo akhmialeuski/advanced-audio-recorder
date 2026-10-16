@@ -25,55 +25,29 @@ import type {
 	TextComponent,
 } from 'obsidian';
 import type { TranscriptSelectionContext } from '../actions/PluginAction';
-import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
 import type { SpeakerPreviewRange } from '../speakers/speakerPreview';
 import {
-	applyTranscriptEdit,
-	describeTranscriptSplit,
-} from '../speakers/applyTranscriptEdit';
-import {
 	formatLineTime,
-	lineSpeakerOptions,
-	locateRowSegments,
-	resolveLineSpeakers,
-	rowTiming,
 	type LineSpeakerOption,
-	type LineSpeakerRequest,
-	type LineSpeakerSources,
-	type RowSpan,
-	type RowTiming,
 } from '../speakers/transcriptRows';
-import {
-	afterSelection,
-	buildSplitPieces,
-	estimateSplitTimes,
-	readSplitTimes,
-	splitLineText,
-	type SplitTexts,
-} from '../speakers/transcriptSplit';
-import {
-	formatTranscriptMarkdown,
-	restoreWikilinks,
-} from '../transcription/transcriptFormat';
 import { parseTimecode } from '../utils/TimeUtils';
 import { PluginModal } from './PluginModal';
 import { TimeSpanSlider } from './TimeSpanSlider';
 import {
 	fillSpeakerDropdown,
 	keptFilesReason,
-	nextLineSeconds,
 	NO_SPEAKER_OPTION,
 	pickedChoice,
 	quote,
-	readTranscriptLine,
-	readTranscriptSource,
-	recordingDuration,
-	speakerSources,
-	speakerValue,
 	type TranscriptEditModalOptions,
-	type TranscriptSource,
 } from './transcriptLineDialog';
+import {
+	performSplit,
+	prepareSplit,
+	splitDefaults,
+	type PreparedSplit,
+} from './transcriptLineEdits';
 
 /** Preview id of the selection (the player plays one excerpt at a time). */
 const SELECTION_PREVIEW_ID = 'selection';
@@ -83,22 +57,6 @@ const SELECTION_PREVIEW_ID = 'selection';
  * timecode so the row's description is not squeezed beside them.
  */
 const TIME_INPUT_CLASS = 'aar-split-time-input';
-
-/** Everything read and worked out before the dialog can offer a split. */
-interface PreparedSplit {
-	/** What the recording's sidecar and JSON transcript say. */
-	source: TranscriptSource;
-	/** The line's segments in the JSON transcript, when they were found. */
-	span: RowSpan | null;
-	/** The line's text cut at the selection. */
-	texts: SplitTexts;
-	/** Where the line sits on the timeline. */
-	timing: RowTiming;
-	/** Speaker the line shows. */
-	rowSpeaker: string | undefined;
-	/** What is known about the recording's speakers. */
-	sources: LineSpeakerSources;
-}
 
 /**
  * Split dialog for one selection in one transcript line.
@@ -141,7 +99,11 @@ export class TranscriptSplitModal extends PluginModal {
 	 * selection cannot be split.
 	 */
 	private async render(): Promise<void> {
-		const prepared = await this.prepare();
+		const prepared = await prepareSplit(
+			this.app,
+			this.options,
+			this.context,
+		);
 		const { contentEl } = this;
 		contentEl.empty();
 		this.renderSource(this.context.audio);
@@ -153,72 +115,6 @@ export class TranscriptSplitModal extends PluginModal {
 	}
 
 	/**
-	 * Reads the recording's sidecar and JSON transcript, reads the line back
-	 * with the note's templates, cuts it at the selection, finds its segments
-	 * in the JSON transcript and works out where it sits.
-	 * @returns What the split works from, or why the selection cannot be split
-	 */
-	private async prepare(): Promise<PreparedSplit | string> {
-		const { editor, note, audio, line, lineText, from, to, seconds } =
-			this.context;
-		const source = await readTranscriptSource(
-			this.app,
-			this.options,
-			note,
-			audio,
-		);
-		if (typeof source === 'string') {
-			return source;
-		}
-		const read = readTranscriptLine(source, lineText);
-		if (!read) {
-			return 'This line does not have the shape the transcript of this recording was written in, so it cannot be split. Select text inside a transcript line.';
-		}
-		const texts = splitLineText(lineText, read.parsed, from, to);
-		if (!texts) {
-			return 'The selection holds none of the spoken text of the line. Select the words that belong to another speaker.';
-		}
-		const nextSeconds = nextLineSeconds(
-			this.app,
-			editor,
-			note,
-			audio,
-			line,
-		);
-		const { recorded } = source;
-		const span = recorded
-			? locateRowSegments(recorded.transcript, {
-					seconds,
-					speaker: read.speaker,
-					nextSeconds,
-					merge: source.options.mergeConsecutiveSpeaker,
-					text: restoreWikilinks(read.text),
-				})
-			: null;
-		const timing: RowTiming =
-			recorded && span
-				? rowTiming(recorded.transcript, span)
-				: {
-						start: seconds,
-						end:
-							nextSeconds ??
-							(await recordingDuration(
-								this.app,
-								this.options,
-								audio,
-							)),
-					};
-		return {
-			source,
-			span,
-			texts,
-			timing,
-			rowSpeaker: read.speaker,
-			sources: speakerSources(source, [read.speaker]),
-		};
-	}
-
-	/**
 	 * Builds the form: the selection with its speaker and time span, the
 	 * speaker of the rest of the line when the selection leaves some, what
 	 * happens to the transcript files, and the actions.
@@ -227,8 +123,8 @@ export class TranscriptSplitModal extends PluginModal {
 	private renderForm(prepared: PreparedSplit): void {
 		const { contentEl } = this;
 		const { texts, rowSpeaker } = prepared;
-		const options = lineSpeakerOptions(prepared.sources);
-		const times = estimateSplitTimes(prepared.timing, texts);
+		const defaults = splitDefaults(prepared);
+		const { options, times } = defaults;
 
 		new Setting(contentEl)
 			.setName('Selection')
@@ -242,12 +138,7 @@ export class TranscriptSplitModal extends PluginModal {
 			)
 			.addDropdown((dropdown) => {
 				fillSpeakerDropdown(dropdown, options);
-				const other = options.find(
-					(option) =>
-						option.choice.kind === 'existing' &&
-						option.choice.name !== rowSpeaker,
-				);
-				dropdown.setValue(other?.value ?? 'new');
+				dropdown.setValue(defaults.selected);
 				this.selectedSpeaker = dropdown;
 			});
 		// The bar needs both ends of the line; a last line whose recording
@@ -304,8 +195,12 @@ export class TranscriptSplitModal extends PluginModal {
 				},
 			});
 		}
-		if (texts.after) {
-			this.renderAfterSpeaker(options, texts.after, rowSpeaker);
+		if (texts.after && defaults.afterOptions) {
+			this.renderAfterSpeaker(
+				defaults.afterOptions,
+				texts.after,
+				defaults.after,
+			);
 		}
 		const kept = keptFilesReason(
 			prepared.source,
@@ -337,27 +232,23 @@ export class TranscriptSplitModal extends PluginModal {
 	/**
 	 * The speaker of the text after the selection, which stays with the line's
 	 * own speaker unless the user says otherwise.
-	 * @param options - Speaker options of the recording
+	 * @param options - Speaker options for the rest of the line
 	 * @param after - The text after the selection
-	 * @param rowSpeaker - Speaker the line shows
+	 * @param initial - The option it starts on
 	 */
 	private renderAfterSpeaker(
 		options: readonly LineSpeakerOption[],
 		after: string,
-		rowSpeaker: string | undefined,
+		initial: string,
 	): void {
-		const afterOptions: LineSpeakerOption[] =
-			rowSpeaker === undefined
-				? [NO_SPEAKER_OPTION, ...options]
-				: [...options];
 		new Setting(this.contentEl)
 			.setName('Rest of the line spoken by')
 			.setDesc(
 				`${quote(after)} It continues from the end of the selection.`,
 			)
 			.addDropdown((dropdown) => {
-				fillSpeakerDropdown(dropdown, afterOptions);
-				dropdown.setValue(speakerValue(rowSpeaker));
+				fillSpeakerDropdown(dropdown, options);
+				dropdown.setValue(initial);
 				this.afterSpeaker = dropdown;
 			});
 	}
@@ -425,102 +316,29 @@ export class TranscriptSplitModal extends PluginModal {
 	}
 
 	/**
-	 * Splits the line: reads the transcript and the roster again, validates
-	 * the times, resolves the speakers, replaces the line in the editor with
-	 * its pieces, then writes the transcript files and the roster. What the
-	 * form was built from is not written back: a background run may have
-	 * rewritten the transcript or the roster since, and the old copy would
-	 * undo it in every file.
+	 * Splits the line with the choices the form holds, through the editor so
+	 * the split is undone like any other edit.
 	 */
 	private async split(): Promise<void> {
 		await this.runExclusive(async () => {
-			const prepared = await this.prepare();
-			if (typeof prepared === 'string') {
-				throw new Error(prepared);
-			}
-			const { texts, timing } = prepared;
-			const { options } = prepared.source;
-			const times = readSplitTimes(
-				this.startInput.getValue(),
-				this.endInput.getValue(),
-				timing,
-				texts,
-			);
-			if (typeof times === 'string') {
-				throw new Error(times);
-			}
-			const requests: LineSpeakerRequest[] = [
-				{
-					choice: pickedChoice(this.selectedSpeaker.getValue()),
-					times,
-				},
-			];
-			if (this.afterSpeaker) {
-				requests.push({
-					choice: pickedChoice(this.afterSpeaker.getValue()),
-					times: afterSelection(timing, times),
-				});
-			}
-			const { names, added } = resolveLineSpeakers(
-				prepared.sources,
-				requests,
-			);
-			const pieces = buildSplitPieces(timing, texts, times, {
-				row: prepared.rowSpeaker,
-				selected: names[0],
-				after: names[1],
-			});
-			this.replaceLine(
-				formatTranscriptMarkdown(
-					{ segments: pieces, speakers: [] },
-					options,
-					timecodeLinkBuilder(
-						this.app,
-						this.context.audio,
-						this.context.note.path,
-					),
-				),
-			);
-			const outcome = await applyTranscriptEdit(
-				this.app,
-				this.options.sidecar,
-				{
-					audioPath: this.context.audio.path,
-					section: prepared.source.section,
-					recorded: prepared.source.recorded,
-					span: prepared.span,
-					pieces,
-					added,
-				},
-			);
 			new Notice(
-				describeTranscriptSplit(
-					outcome,
-					this.options.getSettings()
-						.transcriptionSpeakerRenameEnabled,
+				await performSplit(
+					this.app,
+					this.options,
+					this.context,
+					{
+						selected: pickedChoice(this.selectedSpeaker.getValue()),
+						after: pickedChoice(
+							this.afterSpeaker?.getValue() ??
+								NO_SPEAKER_OPTION.value,
+						),
+						start: this.startInput.getValue(),
+						end: this.endInput.getValue(),
+					},
+					'The line changed while this dialog was open. Select the text again.',
 				),
 			);
 			this.close();
 		});
-	}
-
-	/**
-	 * Replaces the selected line with the rendered pieces, through the editor
-	 * so the split is undone like any other edit. Refuses when the line no
-	 * longer reads as it did when the selection was made.
-	 * @param rendered - The pieces as note Markdown
-	 */
-	private replaceLine(rendered: string): void {
-		const { editor, line, lineText } = this.context;
-		if (editor.getLine(line) !== lineText) {
-			throw new Error(
-				'The line changed while this dialog was open. Select the text again.',
-			);
-		}
-		editor.replaceRange(
-			rendered,
-			{ line, ch: 0 },
-			{ line, ch: lineText.length },
-		);
 	}
 }

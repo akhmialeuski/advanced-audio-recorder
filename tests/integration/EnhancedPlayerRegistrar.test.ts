@@ -1790,6 +1790,21 @@ describe('EnhancedPlayerRegistrar searching the vault for a marker', () => {
 		expect(markerStore.allRecordings).toHaveBeenCalledTimes(1);
 	});
 
+	it('hands the command line the markers from the same scan', async () => {
+		const { registrar, markerStore } = setup(true);
+		markerStore.allRecordings.mockResolvedValue(
+			vaultOfOneMarker('rec.mp4'),
+		);
+
+		const hits = await registrar.markerHits();
+		await registrar.openMarkerSearch();
+
+		expect(hits).toEqual([
+			expect.objectContaining({ label: 'Middle', time: 90 }),
+		]);
+		expect(markerStore.allRecordings).toHaveBeenCalledTimes(1);
+	});
+
 	it('plays the chosen marker on the recording that carries it', async () => {
 		const seekShared = reuseExistingElement();
 		const { registrar, markerStore } = setup(true);

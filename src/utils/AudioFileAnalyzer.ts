@@ -39,6 +39,26 @@ export interface AudioFileInfo {
 	channels: string;
 }
 
+/**
+ * The info as a Markdown list, the form the dialog copies and the command
+ * line prints: one bullet per field, the value in code so a path or a codec
+ * name survives being pasted anywhere.
+ * @param info - The info to list
+ * @returns The list, one line per field
+ */
+export function formatAudioFileInfo(info: AudioFileInfo): string {
+	return [
+		`- **File Name:** \`${info.fileName}\``,
+		`- **File Size:** \`${info.fileSize}\``,
+		`- **Duration:** \`${info.duration}\``,
+		`- **Container Format:** \`${info.containerFormat}\``,
+		`- **Audio Codec:** \`${info.audioCodec}\``,
+		`- **Bitrate:** \`${info.bitrate}\``,
+		`- **Sample Rate:** \`${info.sampleRate}\``,
+		`- **Channels:** \`${info.channels}\``,
+	].join('\n');
+}
+
 /** What a reader shows in place of a number no probe could read. */
 const UNKNOWN_VALUE = 'unknown';
 

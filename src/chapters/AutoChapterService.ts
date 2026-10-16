@@ -11,9 +11,9 @@
  * @module chapters/AutoChapterService
  */
 
-import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { showNotice, type Notify } from '../utils/notify';
 import { ProfileKindId } from '../settings/profiles';
 import type {
 	AudioRecorderSettings,
@@ -128,7 +128,8 @@ export class AutoChapterService {
 	/**
 	 * Generates chapters for a recording and writes them to its marker
 	 * sidecar. Every outcome (no transcript, unusable LLM output, provider
-	 * error, success) is reported with a Notice; the method never throws.
+	 * error, success) is reported through the reporter; the method never
+	 * throws.
 	 * @param file - The audio file to chapter
 	 * @param transcript - In-memory transcript from a just-finished run;
 	 *   omitted, the recording's existing outputs are searched
@@ -138,6 +139,8 @@ export class AutoChapterService {
 	 * @param signal - Ends the run when the caller cancels. Generation is a
 	 *   paid call on a transcript that can run to thousands of lines, so the
 	 *   dialog that starts one offers a Cancel and this is what it pulls
+	 * @param notify - Where every outcome is told to the user: a notice, or
+	 *   a notice and the answer of the command line that started the run
 	 * @returns True when chapters were written
 	 */
 	async generate(
@@ -145,6 +148,7 @@ export class AutoChapterService {
 		transcript?: Transcript,
 		preloaded?: TranscriptLinesSource,
 		signal?: AbortSignal,
+		notify: Notify = showNotice,
 	): Promise<boolean> {
 		try {
 			// The transcription check: without a transcript (given or found)
@@ -156,14 +160,14 @@ export class AutoChapterService {
 				preloaded,
 			);
 			if (!resolved || resolved.lines.length === 0) {
-				new Notice(
+				notify(
 					`No transcript found for ${file.name}. Transcribe the ` +
 						'audio first, then generate chapters.',
 				);
 				return false;
 			}
 			const { lines } = resolved;
-			new Notice(`Generating chapters for ${file.name}...`);
+			notify(`Generating chapters for ${file.name}...`);
 			// Guidance kept in a note is read now, so the note applies as it
 			// stands when generation starts.
 			const { settings, unread } = await readProfileNotes(
@@ -220,7 +224,7 @@ export class AutoChapterService {
 				unread,
 			).lostNotesNotice(settings, [ProfileKindId.ChapterPrompt]);
 			if (lostSourceNotice) {
-				new Notice(lostSourceNotice);
+				notify(lostSourceNotice);
 			}
 			const prompt = buildChapterPrompt(lines, {
 				...(language ? { language } : {}),
@@ -244,7 +248,7 @@ export class AutoChapterService {
 				snapTimes,
 			);
 			if (chapters.length === 0) {
-				new Notice(
+				notify(
 					'The LLM returned no usable chapters; markers were not changed.',
 				);
 				return false;
@@ -255,7 +259,7 @@ export class AutoChapterService {
 				applyGeneratedChapters(existing, chapters, generateMarkerId),
 			);
 			this.onChaptersWritten?.(file.path);
-			new Notice(
+			notify(
 				`Added ${String(chapters.length)} chapter` +
 					`${chapters.length > 1 ? 's' : ''} to ${file.name}. ` +
 					'They appear in the enhanced player.',
@@ -266,7 +270,7 @@ export class AutoChapterService {
 			// Calling it a failure would be the plugin telling them something
 			// went wrong with the thing they just did on purpose.
 			if (signal?.aborted) {
-				new Notice('Chapter generation cancelled.');
+				notify('Chapter generation cancelled.');
 				return false;
 			}
 			const message = errorMessage(error);
@@ -274,7 +278,7 @@ export class AutoChapterService {
 				`${PLUGIN_LOG_PREFIX} Chapter generation failed for ${file.path}:`,
 				error,
 			);
-			new Notice(`Chapter generation failed: ${message}`);
+			notify(`Chapter generation failed: ${message}`);
 			return false;
 		}
 	}

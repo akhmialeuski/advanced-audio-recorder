@@ -52,32 +52,34 @@ import {
 	RIBBON_HIDDEN_CLASS,
 	updateRibbonIcon,
 } from './ui/RibbonIcon';
-import { ContextMenu } from './ui/ContextMenu';
+import { ContextMenu, type MenuFamilies } from './ui/ContextMenu';
 import type { ActionServices, SessionServices } from './actions/PluginAction';
-import { activeAudioFile, FILE_ACTIONS } from './actions/fileActions';
-import { SESSION_ACTIONS } from './actions/sessionActions';
-import {
-	activeTranscriptSelection,
-	TRANSCRIPT_ACTIONS,
-} from './actions/transcriptActions';
-import { PLAYBACK_ACTIONS } from './actions/playbackActions';
-import { SEARCH_ACTIONS } from './actions/searchActions';
-import { HELP_ACTIONS } from './actions/helpActions';
-import { registerActionCommands } from './actions/registerActionCommands';
+import { ActionRegistry } from './actions/ActionRegistry';
+import { FILE_ACTIONS, fileActionFamily } from './actions/fileActions';
+import { sessionActionFamily } from './actions/sessionActions';
+import { transcriptActionFamily } from './actions/transcriptActions';
+import { playbackActionFamily } from './actions/playbackActions';
+import { positionActionFamily } from './actions/positionActions';
+import { folderActionFamily } from './actions/folderActions';
+import { searchActionFamily } from './actions/searchActions';
+import { helpActionFamily } from './actions/helpActions';
+import { ActionTargetModal } from './ui/ActionTargetModal';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
 import { RecordingSidecarStore } from './sidecar/RecordingSidecarStore';
 import { AutoChapterService } from './chapters/AutoChapterService';
 import { RecordingMarkerModal } from './ui/MarkerModal';
-import { isAudioFile } from './utils/audioFile';
 import { openPluginSettings } from './obsidian/settingsNavigation';
-import { transcriptionRefusal } from './settings/settingsAttention';
 import { quickNotesAvailable } from './settings/settingsSchema';
 import { QuickNoteController } from './quicknotes/QuickNoteController';
 import { MemoryRecorder } from './recording/MemoryRecorder';
 import { TranscriptionService } from './transcription/TranscriptionService';
 import { ProfileNoteStore } from './settings/ProfileNoteStore';
-import { registerCliCommands, type CliHost } from './obsidian/cliCommands';
+import {
+	cliCommands,
+	registerCliCommands,
+	type CliHost,
+} from './obsidian/cliCommands';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
 import {
@@ -349,10 +351,18 @@ export default class AudioRecorderPlugin extends Plugin {
 		});
 
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
-		this.registerCommands();
+		const registry = new ActionRegistry(this, (targets, describe, run) => {
+			new ActionTargetModal(this.app, targets, describe, run).open();
+		});
+		// The recorder's own command-line commands first, then one per action,
+		// all under the registry's one check that no two share an id.
+		registry.addCliCommands(
+			cliCommands(this.createCliHost(), this.manifest.id),
+		);
+		const menuFamilies = this.registerCommands(registry);
 		// The desktop command line, where the app has one. Reports whether it
 		// registered, which is what the CLI-less platforms answer.
-		registerCliCommands(this, this.createCliHost());
+		registerCliCommands(this, registry.cliCommands());
 		// Named after the plugin, because Obsidian's own Audio recorder puts a
 		// button with the same job in the same ribbon under the tooltip
 		// "Start/stop recording", and the ribbon's context menu, where a
@@ -374,8 +384,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.contextMenu = new ContextMenu(
 			this,
 			this.createActionServices(),
-			FILE_ACTIONS,
-			TRANSCRIPT_ACTIONS,
+			registry,
+			menuFamilies,
 		);
 		this.contextMenu.register();
 
@@ -488,10 +498,12 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * What the CLI is allowed to ask of the plugin.
+	 * What the CLI's own commands are allowed to ask of the plugin.
 	 *
 	 * A port rather than the plugin itself: a command line reaches a running
-	 * app from outside it, and what it may do here is these five things.
+	 * app from outside it, and what it may do here is these few things. Every
+	 * other command is an action, and reaches the plugin through the services
+	 * every action is given.
 	 * @returns The host the CLI commands are built over
 	 */
 	private createCliHost(): CliHost {
@@ -503,17 +515,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			stopRecording: (): Promise<string | null> =>
 				this.recordingManager.stopRecording(),
 			recordingFormat: (): string => this.settings.recordingFormat,
-			transcriptionRefusal: (): string | null =>
-				transcriptionRefusal(this.settings),
-			audioFileAt: (path: string): TFile | null => {
-				const file = this.app.vault.getFileByPath(path);
-				return file && isAudioFile(file) ? file : null;
-			},
-			// The same bargain every other surface makes for a paid job: the
-			// dialog runs it, reports its progress, and can be cancelled.
-			transcribe: (file: TFile): void => {
-				this.openTranscription(file);
-			},
+			playback: () => this.playerRegistrar.currentPlaybackState(),
 		};
 	}
 
@@ -991,13 +993,9 @@ export default class AudioRecorderPlugin extends Plugin {
 			// Read through the field rather than captured, because the queue is
 			// built after these services are: a menu entry acts long after
 			// load, and there is nothing to act on before it finished.
-			transcriptionQueue: {
-				queueFolder: async (folder) => {
-					await this.transcriptionQueue?.queueFolder(folder);
-				},
-				open: () => {
-					this.transcriptionQueue?.open();
-				},
+			transcriptionQueue: this.createQueuePort(),
+			onMarkersChanged: (path) => {
+				this.playerRegistrar.reloadMarkersFor(path);
 			},
 			autoChapters: this.autoChapterService,
 			recordingSidecar: this.sidecarStore,
@@ -1006,59 +1004,99 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Registers every plugin command through the shared action registry.
-	 * The three lists differ only in the context they resolve - the active
-	 * audio file, the recording session, the playback that is running -
-	 * so a feature added to a list reaches the palette, the Hotkeys
-	 * settings, and (for file actions) the context menus at once.
+	 * The transcription queue as the actions drive it. Read through the field
+	 * rather than captured, because the queue is built after the services
+	 * are: a menu entry acts long after load, and a load that stopped before
+	 * the queue was built leaves every entry answering as an empty queue
+	 * rather than dereferencing a field that was never assigned.
+	 * @returns The queue port
 	 */
-	private registerCommands(): void {
+	private createQueuePort(): ActionServices['transcriptionQueue'] {
+		const queue = (): QueueCoordinator | null => this.transcriptionQueue;
+		return {
+			queueFolder: async (folder) => {
+				await queue()?.queueFolder(folder);
+			},
+			open: () => {
+				queue()?.open();
+			},
+			enqueueFolder: async (folder) =>
+				(await queue()?.enqueueFolder(folder)) ?? {
+					found: 0,
+					added: 0,
+				},
+			status: async () =>
+				(await queue()?.status()) ?? {
+					entries: [],
+					paused: false,
+					running: false,
+				},
+			start: () => {
+				queue()?.start();
+			},
+			pause: () => {
+				queue()?.pause();
+			},
+			clear: () => {
+				queue()?.clear();
+			},
+			remove: (path) => queue()?.remove(path) ?? false,
+		};
+	}
+
+	/**
+	 * Registers every plugin action through the action registry, which puts
+	 * each on the palette, the Hotkeys settings and the command line at once.
+	 * The families differ only in the target they resolve - the recordings of
+	 * what is active, a point of a recording, the recording session, the
+	 * playback that is running - so a feature added to a family reaches every
+	 * surface without another line here.
+	 * @param registry - The registry to add the families to
+	 * @returns The registered families the context menus render
+	 */
+	private registerCommands(registry: ActionRegistry): MenuFamilies {
 		// Each resolver runs on every palette check, so the services are
 		// built once here; they read live state through their closures.
-		const session = this.createSessionServices();
-		registerActionCommands(this, SESSION_ACTIONS, () => session);
-
-		registerActionCommands(
-			this,
-			FILE_ACTIONS,
-			activeAudioFile(this.createActionServices()),
-		);
-
+		const services = this.createActionServices();
+		registry.add(sessionActionFamily(this.createSessionServices()));
+		const file = registry.add(fileActionFamily(services));
 		// A transcript action acts on a selection inside a transcript line,
 		// which the active editor's selection resolves to (or does not).
-		registerActionCommands(
-			this,
-			TRANSCRIPT_ACTIONS,
-			activeTranscriptSelection(this.createActionServices()),
-		);
-
+		const transcript = registry.add(transcriptActionFamily(services));
 		// The player registrar is created after this method runs, so the
-		// resolver reaches it through the field it later fills. It pulls the
+		// resolvers reach it through the field it later fills. They pull the
 		// live playback rather than reusing the snapshot the status bar was
 		// last pushed: a command has to act on the playback as it stands, and
 		// a pushed snapshot only describes it as of the last media event.
-		registerActionCommands(this, PLAYBACK_ACTIONS, () =>
-			this.playerRegistrar.currentPlaybackState(),
-		);
-
+		const playback = (): PlaybackControlsState | null =>
+			this.playerRegistrar.currentPlaybackState();
+		registry.add(playbackActionFamily(playback));
+		const position = registry.add(positionActionFamily(services, playback));
+		const folder = registry.add(folderActionFamily(services));
 		// A vault-wide search is bound to no file and no playback, so its
 		// context always resolves and the command is always offered.
-		registerActionCommands(this, SEARCH_ACTIONS, () => ({
-			openMarkerSearch: () => this.playerRegistrar.openMarkerSearch(),
-			openTranscriptionQueue: () => {
-				this.transcriptionQueue?.open();
-			},
-			openRecordingPanel: () => this.openRecordingPanel(),
-		}));
-
+		registry.add(
+			searchActionFamily({
+				openMarkerSearch: () => this.playerRegistrar.openMarkerSearch(),
+				markerHits: () => this.playerRegistrar.markerHits(),
+				transcriptionQueue: services.transcriptionQueue,
+				openRecordingPanel: () => this.openRecordingPanel(),
+			}),
+		);
 		// Asked for deliberately rather than met after an update, so it shows
 		// every release the bundle carries notes for instead of only the ones
 		// since the last announcement.
-		registerActionCommands(this, HELP_ACTIONS, () => ({
-			showReleaseNotes: () => {
-				new ReleaseNotesModal(this.app, releaseNotesSince('')).open();
-			},
-		}));
+		registry.add(
+			helpActionFamily({
+				showReleaseNotes: () => {
+					new ReleaseNotesModal(
+						this.app,
+						releaseNotesSince(''),
+					).open();
+				},
+			}),
+		);
+		return { file, transcript, position, folder };
 	}
 
 	/**
@@ -1260,10 +1298,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	/**
 	 * Opens the transcription dialog on a file and starts it there.
 	 *
-	 * Every transcription this plugin starts on its own - after a recording,
-	 * from the command line - goes through here rather than in the background:
-	 * the user gets visible progress and a cancel button for what can be a
-	 * long, paid job. The dialog reports its own errors and writes the
+	 * A transcription this plugin starts on its own after a recording goes
+	 * through here rather than in the background: the user gets visible
+	 * progress and a cancel button for what can be a long, paid job. The
+	 * command line's transcribe opens the same dialog the same way, through
+	 * its action. The dialog reports its own errors and writes the
 	 * configured outputs, with a file fallback when the note is not editable.
 	 * @param file - The audio file to transcribe
 	 * @param notePath - Note the transcript's links should resolve in, where

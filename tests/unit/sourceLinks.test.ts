@@ -138,4 +138,26 @@ describe('linkAtColumn', () => {
 	it('answers the span the link occupies', () => {
 		expect(linkAtColumn(line, 10)).toMatchObject({ start: 5, end: 25 });
 	});
+
+	it.each([
+		{ ch: 13, path: 'rec.webm' },
+		{ ch: 28, path: 'notes.md' },
+	])(
+		'keeps a wikilink and a later Markdown link apart: column $ch',
+		({ ch, path }) => {
+			expect(
+				linkAtColumn('![[rec.webm]] see [notes](notes.md)', ch)?.path,
+			).toBe(path);
+		},
+	);
+
+	it.each([
+		{ name: 'a task box', text: '- [ ] see [call](rec.webm)' },
+		{ name: 'a footnote', text: 'Note[^1] and [call](rec.webm)' },
+	])('starts a Markdown link at its own bracket, after $name', ({ text }) => {
+		const link = linkAtColumn(text, text.length - 3);
+
+		expect(link?.path).toBe('rec.webm');
+		expect(text.slice(link?.start, link?.end)).toBe('[call](rec.webm)');
+	});
 });

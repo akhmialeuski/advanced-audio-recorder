@@ -58,7 +58,9 @@ export async function ensureFolderExists(
 	app: App,
 ): Promise<void> {
 	const normalizedPath = normalizePath(path).trim();
-	if (!normalizedPath) {
+	// The vault root, which normalizePath gives as "/" for an empty path,
+	// always exists and is no folder to create.
+	if (!normalizedPath || normalizedPath === '/') {
 		return;
 	}
 	if (await app.vault.adapter.exists(normalizedPath)) {

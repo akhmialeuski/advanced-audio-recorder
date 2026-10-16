@@ -8,7 +8,7 @@
  * @module utils/LinkUpdater
  */
 
-import { TFile, getLinkpath } from 'obsidian';
+import { TFile, getLinkpath, parseLinktext } from 'obsidian';
 import type { App, ReferenceCache } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { ConversionLinkAction } from '../types';
@@ -246,5 +246,78 @@ export async function updateLinksInVault(
 			result.updatedNotes++;
 		}
 	}
+	return result;
+}
+
+/** The links and embeds of a whole file in one note, found before it goes. */
+export interface WholeFileReferences {
+	/** References in the note body, in descending position order. */
+	readonly references: readonly ReferenceCache[];
+	/** Frontmatter references, which a property holds and are left alone. */
+	readonly frontmatter: number;
+}
+
+/**
+ * Finds the links and embeds of a whole file in one note: what is left
+ * pointing nowhere once the file is deleted. A link into the file at a point
+ * (`#t=` in a transcript, a heading, a block) is not one of them, because it
+ * is part of the text around it - a transcript line without its timecode is a
+ * line that lost its time, not a broken link cleaned up.
+ *
+ * Found before the file is deleted, since a link to a file that is gone
+ * resolves to nothing and could no longer be told from any other.
+ * @param app - Obsidian App instance
+ * @param note - The note to read
+ * @param target - The file the references must point at
+ * @returns The references, last first, and the frontmatter count
+ */
+export function wholeFileReferences(
+	app: App,
+	note: TFile,
+	target: TFile,
+): WholeFileReferences {
+	return {
+		references: collectSourceReferences(app, note, target).filter(
+			(reference) => parseLinktext(reference.link).subpath === '',
+		),
+		frontmatter: countFrontmatterReferences(app, note, target),
+	};
+}
+
+/**
+ * Takes references out of a note's body.
+ * @param app - Obsidian App instance
+ * @param note - The note to edit
+ * @param references - What to remove, in descending position order
+ * @returns How many were removed, and how many were skipped as stale
+ */
+export async function removeReferences(
+	app: App,
+	note: TFile,
+	references: readonly ReferenceCache[],
+): Promise<{ removed: number; skipped: number }> {
+	const result = { removed: 0, skipped: 0 };
+	if (references.length === 0) {
+		return result;
+	}
+	await app.vault.process(note, (content) => {
+		let rewritten = content;
+		// From the end to the start, so earlier offsets stay valid
+		for (const reference of references) {
+			const { start, end } = reference.position;
+			if (
+				rewritten.slice(start.offset, end.offset) !== reference.original
+			) {
+				// The metadata cache lags behind the file content; skip the
+				// reference instead of cutting the wrong text out of the note
+				result.skipped++;
+				continue;
+			}
+			rewritten =
+				rewritten.slice(0, start.offset) + rewritten.slice(end.offset);
+			result.removed++;
+		}
+		return rewritten;
+	});
 	return result;
 }

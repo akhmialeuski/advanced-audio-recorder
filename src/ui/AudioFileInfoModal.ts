@@ -5,7 +5,10 @@
 
 import type { App } from 'obsidian';
 import { PluginModal } from './PluginModal';
-import type { AudioFileInfo } from '../utils/AudioFileAnalyzer';
+import {
+	formatAudioFileInfo,
+	type AudioFileInfo,
+} from '../utils/AudioFileAnalyzer';
 
 /** Duration in milliseconds to show the "Copied!" confirmation. */
 const COPY_CONFIRM_MS = 2000;
@@ -35,18 +38,7 @@ export class AudioFileInfoModal extends PluginModal {
 
 		this.setDialogTitle('Audio file info');
 
-		// Content definition matching the required Markdown output
-		const markdownLines = [
-			`- **File Name:** \`${this.info.fileName}\``,
-			`- **File Size:** \`${this.info.fileSize}\``,
-			`- **Duration:** \`${this.info.duration}\``,
-			`- **Container Format:** \`${this.info.containerFormat}\``,
-			`- **Audio Codec:** \`${this.info.audioCodec}\``,
-			`- **Bitrate:** \`${this.info.bitrate}\``,
-			`- **Sample Rate:** \`${this.info.sampleRate}\``,
-			`- **Channels:** \`${this.info.channels}\``,
-		];
-		const markdownOutput = markdownLines.join('\n');
+		const markdownOutput = formatAudioFileInfo(this.info);
 
 		this.renderActions({
 			text: 'Copy as Markdown',

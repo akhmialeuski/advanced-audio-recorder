@@ -638,6 +638,49 @@ describe('NoteInserter', () => {
 			);
 		});
 
+		it('writes into the note it is given rather than the active one', async () => {
+			const { app, getContent } = buildEmbedApp({
+				noteActive: false,
+				embeds: [
+					{ link: 'recording.mp4', original: '![[recording.mp4]]' },
+				],
+				resolves: { 'recording.mp4': 'Audio/recording.mp4' },
+				content: '![[recording.mp4]]',
+			});
+
+			const notePath = await insertProcessedAudioEmbed(
+				app,
+				source(),
+				'Audio/recording-clean.wav',
+				false,
+				createFile('Meetings/standup.md'),
+			);
+
+			expect(notePath).toBe('Meetings/standup.md');
+			expect(getContent()).toBe(
+				'![[recording.mp4]]\n![[recording-clean.wav]]',
+			);
+		});
+
+		it('leaves the note as it is when the embed left it since it was read', async () => {
+			const { app, getContent } = buildEmbedApp({
+				embeds: [
+					{ link: 'recording.mp4', original: '![[recording.mp4]]' },
+				],
+				resolves: { 'recording.mp4': 'Audio/recording.mp4' },
+				content: 'intro\noutro',
+			});
+
+			await insertProcessedAudioEmbed(
+				app,
+				source(),
+				'Audio/recording-clean.wav',
+				false,
+			);
+
+			expect(getContent()).toBe('intro\noutro');
+		});
+
 		it('returns null when the active note does not embed the source', async () => {
 			const { app, getContent } = buildEmbedApp({
 				embeds: [{ link: 'other.mp4', original: '![[other.mp4]]' }],

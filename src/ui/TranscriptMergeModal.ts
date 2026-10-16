@@ -20,77 +20,32 @@
 import { Notice, Setting } from 'obsidian';
 import type { App, DropdownComponent, ExtraButtonComponent } from 'obsidian';
 import type { TranscriptSelectionContext } from '../actions/PluginAction';
-import { lineTimecodeRef, timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
 import {
-	applyTranscriptEdit,
-	describeTranscriptMerge,
-} from '../speakers/applyTranscriptEdit';
-import {
-	buildMergedSegment,
-	locateMergedSegments,
 	mergedLineText,
-	mergedSpan,
 	mergeConfirmationMessage,
 	mergeNeedsConfirmation,
-	mergeSelectionProblem,
-	type SelectedLineKind,
 } from '../speakers/transcriptMerge';
-import {
-	formatLineTime,
-	lineSpeakerOptions,
-	resolveLineSpeakers,
-	rowTiming,
-	type LineSpeakerOption,
-	type LineSpeakerSources,
-	type RowSpan,
-	type RowTiming,
-} from '../speakers/transcriptRows';
-import {
-	formatTranscriptMarkdown,
-	restoreWikilinks,
-} from '../transcription/transcriptFormat';
+import { formatLineTime, type RowTiming } from '../speakers/transcriptRows';
 import { confirmAction } from './ConfirmModal';
 import { PluginModal } from './PluginModal';
 import {
 	fillSpeakerDropdown,
 	keptFilesReason,
-	nextLineSeconds,
-	NO_SPEAKER_OPTION,
 	pickedChoice,
 	quote,
-	readTranscriptLine,
-	readTranscriptSource,
-	recordingDuration,
-	speakerSources,
 	speakerValue,
-	type ReadLine,
 	type TranscriptEditModalOptions,
-	type TranscriptSource,
 } from './transcriptLineDialog';
+import {
+	mergeSpeakerOptions,
+	performMerge,
+	prepareMerge,
+	type PreparedMerge,
+} from './transcriptLineEdits';
 
 /** Preview id of the merged passage (the player plays one excerpt at a time). */
 const MERGED_PREVIEW_ID = 'merged';
-
-/** One selected transcript line, read back. */
-interface MergedRow extends ReadLine {
-	/** Whole seconds the line's timecode link points at. */
-	seconds: number;
-}
-
-/** Everything read and worked out before the dialog can offer a merge. */
-interface PreparedMerge {
-	/** What the recording's sidecar and JSON transcript say. */
-	source: TranscriptSource;
-	/** The selected transcript lines, in note order. */
-	rows: MergedRow[];
-	/** The lines' segments in the JSON transcript, when they were found. */
-	span: RowSpan | null;
-	/** Where the merged lines sit on the timeline. */
-	timing: RowTiming;
-	/** What is known about the recording's speakers. */
-	sources: LineSpeakerSources;
-}
 
 /**
  * Merge dialog for one selection over consecutive transcript lines.
@@ -129,7 +84,11 @@ export class TranscriptMergeModal extends PluginModal {
 	 * selection cannot be merged.
 	 */
 	private async render(): Promise<void> {
-		const prepared = await this.prepare();
+		const prepared = await prepareMerge(
+			this.app,
+			this.options,
+			this.context,
+		);
 		const { contentEl } = this;
 		contentEl.empty();
 		this.renderSource(this.context.audio);
@@ -138,94 +97,6 @@ export class TranscriptMergeModal extends PluginModal {
 			return;
 		}
 		this.renderForm(prepared);
-	}
-
-	/**
-	 * Reads the recording's sidecar and JSON transcript, reads every selected
-	 * line back with the note's templates, checks that they are consecutive
-	 * lines of this recording, finds their segments in the JSON transcript
-	 * and works out where they sit.
-	 * @returns What the merge works from, or why the lines cannot be merged
-	 */
-	private async prepare(): Promise<PreparedMerge | string> {
-		const { editor, note, audio, lastLine, lineTexts } = this.context;
-		const source = await readTranscriptSource(
-			this.app,
-			this.options,
-			note,
-			audio,
-		);
-		if (typeof source === 'string') {
-			return source;
-		}
-		const kinds: SelectedLineKind[] = [];
-		const rows: MergedRow[] = [];
-		for (const text of lineTexts) {
-			if (text.trim().length === 0) {
-				kinds.push('blank');
-				continue;
-			}
-			const ref = lineTimecodeRef(this.app, note, text);
-			const read =
-				ref?.file.path === audio.path
-					? readTranscriptLine(source, text)
-					: null;
-			if (!ref || !read) {
-				kinds.push('other');
-				continue;
-			}
-			kinds.push('row');
-			rows.push({ ...read, seconds: ref.seconds });
-		}
-		const problem = mergeSelectionProblem(kinds);
-		if (problem) {
-			return problem;
-		}
-		const lastNext = nextLineSeconds(
-			this.app,
-			editor,
-			note,
-			audio,
-			lastLine,
-		);
-		const { recorded } = source;
-		const span = recorded
-			? locateMergedSegments(
-					recorded.transcript,
-					rows.map((row, index) => ({
-						seconds: row.seconds,
-						speaker: row.speaker,
-						nextSeconds: rows[index + 1]?.seconds ?? lastNext,
-						merge: source.options.mergeConsecutiveSpeaker,
-						text: restoreWikilinks(row.text),
-					})),
-				)
-			: null;
-		const timing: RowTiming =
-			recorded && span
-				? rowTiming(recorded.transcript, span)
-				: {
-						// The first selected line is the one the selection
-						// was resolved through, so its link is this one.
-						start: this.context.seconds,
-						end:
-							lastNext ??
-							(await recordingDuration(
-								this.app,
-								this.options,
-								audio,
-							)),
-					};
-		return {
-			source,
-			rows,
-			span,
-			timing,
-			sources: speakerSources(
-				source,
-				rows.map((row) => row.speaker),
-			),
-		};
 	}
 
 	/**
@@ -250,12 +121,7 @@ export class TranscriptMergeModal extends PluginModal {
 		new Setting(contentEl)
 			.setName('Merged text')
 			.setDesc(quote(mergedLineText(rows.map((row) => row.text))));
-		const options = lineSpeakerOptions(prepared.sources);
-		const speakerOptions: LineSpeakerOption[] = rows.some(
-			(row) => row.speaker === undefined,
-		)
-			? [NO_SPEAKER_OPTION, ...options]
-			: options;
+		const speakerOptions = mergeSpeakerOptions(prepared);
 		new Setting(contentEl)
 			.setName('Spoken by')
 			.setDesc(
@@ -363,89 +229,24 @@ export class TranscriptMergeModal extends PluginModal {
 	}
 
 	/**
-	 * Merges the lines: confirms a merge of more than two, reads the
-	 * transcript and the roster again, resolves the speaker, replaces the
-	 * lines in the editor with the merged one, then writes the transcript
-	 * files and the roster. What the form was built from is not written
-	 * back: a background run may have rewritten the transcript or the roster
-	 * since, and the old copy would undo it in every file.
+	 * Merges the lines, after confirming a merge of more than two, through the
+	 * editor so the merge is undone like any other edit.
 	 */
 	private async merge(): Promise<void> {
 		await this.runExclusive(async () => {
 			if (!(await this.confirmMerge())) {
 				return;
 			}
-			const prepared = await this.prepare();
-			if (typeof prepared === 'string') {
-				throw new Error(prepared);
-			}
-			const { rows, timing, source } = prepared;
-			const { names, added } = resolveLineSpeakers(prepared.sources, [
-				{
-					choice: pickedChoice(this.speaker.getValue()),
-					times: mergedSpan(timing),
-				},
-			]);
-			const merged = buildMergedSegment(
-				timing,
-				rows.map((row) => row.text),
-				names[0],
-			);
-			this.replaceLines(
-				formatTranscriptMarkdown(
-					{ segments: [merged], speakers: [] },
-					source.options,
-					timecodeLinkBuilder(
-						this.app,
-						this.context.audio,
-						this.context.note.path,
-					),
-				),
-			);
-			const outcome = await applyTranscriptEdit(
-				this.app,
-				this.options.sidecar,
-				{
-					audioPath: this.context.audio.path,
-					section: source.section,
-					recorded: source.recorded,
-					span: prepared.span,
-					pieces: [merged],
-					added,
-				},
-			);
 			new Notice(
-				describeTranscriptMerge(
-					rows.length,
-					outcome,
-					this.options.getSettings()
-						.transcriptionSpeakerRenameEnabled,
+				await performMerge(
+					this.app,
+					this.options,
+					this.context,
+					pickedChoice(this.speaker.getValue()),
+					'The lines changed while this dialog was open. Select them again.',
 				),
 			);
 			this.close();
 		});
-	}
-
-	/**
-	 * Replaces the selected lines with the merged one, through the editor so
-	 * the merge is undone like any other edit. Refuses when any of them no
-	 * longer reads as it did when the selection was made.
-	 * @param rendered - The merged line as note Markdown
-	 */
-	private replaceLines(rendered: string): void {
-		const { editor, line, lastLine, lineTexts } = this.context;
-		const changed = lineTexts.some(
-			(text, index) => editor.getLine(line + index) !== text,
-		);
-		if (changed) {
-			throw new Error(
-				'The lines changed while this dialog was open. Select them again.',
-			);
-		}
-		editor.replaceRange(
-			rendered,
-			{ line, ch: 0 },
-			{ line: lastLine, ch: editor.getLine(lastLine).length },
-		);
 	}
 }

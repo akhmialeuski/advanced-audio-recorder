@@ -92,6 +92,18 @@ describe('a recording that should be transcribed', () => {
 		expect(options).toMatchObject({ autoStart: true });
 	});
 
+	it('hands the dialog the plugin settings as they stand when read', async () => {
+		const plugin = await loadWithRecording(transcribingSettings());
+
+		reportSaved();
+
+		const readSettings = at(
+			jest.mocked(TranscriptionModal).mock.calls,
+			0,
+		)[2];
+		expect(readSettings()).toBe(plugin.settings);
+	});
+
 	it('tells the dialog which note the recording went into', async () => {
 		await loadWithRecording(transcribingSettings());
 

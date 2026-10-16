@@ -1,16 +1,20 @@
 /**
- * Tests the commands the plugin answers on the desktop command line: what each
- * one decides before it touches the recorder, and the line it answers with.
+ * Tests the commands the plugin answers on the desktop command line that have
+ * no action behind them - the state, record and stop - and the registration
+ * every command goes through: what each decides before it touches the
+ * recorder, and the line it answers with.
  * @module tests/unit/cliCommands.test
  */
 
 import {
 	cliCommands,
+	describeRecordingStatus,
 	registerCliCommands,
 	type CliHost,
+	type CliPlayback,
 } from 'src/obsidian/cliCommands';
 import { RecordingStatus } from 'src/types';
-import type { CliData, Plugin, TFile } from 'obsidian';
+import type { CliData, Plugin } from 'obsidian';
 import { partial } from '../helpers/doubles';
 
 const PLUGIN_ID = 'advanced-audio-recorder';
@@ -22,9 +26,7 @@ function makeHost(overrides: Partial<CliHost> = {}): CliHost {
 		startRecording: jest.fn().mockResolvedValue(null),
 		stopRecording: jest.fn().mockResolvedValue(null),
 		recordingFormat: jest.fn(() => 'webm'),
-		transcriptionRefusal: jest.fn(() => null),
-		audioFileAt: jest.fn(() => null),
-		transcribe: jest.fn(),
+		playback: jest.fn(() => null),
 		...overrides,
 	};
 }
@@ -50,9 +52,6 @@ async function run(
 	return command.handler(params);
 }
 
-/** An audio file at a path, as the vault would hand it over. */
-const fileAt = (path: string): TFile => partial<TFile>({ path });
-
 describe('the command set', () => {
 	it('names every command under the plugin id, as Obsidian asks', () => {
 		// The ids are global across every installed plugin.
@@ -60,7 +59,6 @@ describe('the command set', () => {
 			PLUGIN_ID,
 			`${PLUGIN_ID}:record`,
 			`${PLUGIN_ID}:stop`,
-			`${PLUGIN_ID}:transcribe`,
 		]);
 	});
 
@@ -70,12 +68,12 @@ describe('the command set', () => {
 		}
 	});
 
-	it('declares the file flag transcribe cannot run without', () => {
-		const transcribe = cliCommands(makeHost(), PLUGIN_ID)[3];
-
-		expect(transcribe?.flags).toEqual({
-			file: expect.objectContaining({ required: true }),
-		});
+	it('takes no flags on any of them', () => {
+		expect(cliCommands(makeHost(), PLUGIN_ID).map((c) => c.flags)).toEqual([
+			null,
+			null,
+			null,
+		]);
 	});
 });
 
@@ -99,6 +97,47 @@ describe('the status command', () => {
 
 		await expect(run(host, '')).resolves.toBe(
 			'Idle. A recording started now is saved as MP3.',
+		);
+	});
+
+	/** A playback the host reports. */
+	const playing = (overrides: Partial<CliPlayback> = {}): CliPlayback => ({
+		recordingPath: 'Recordings/standup.webm',
+		currentTime: 83,
+		duration: 600,
+		paused: false,
+		...overrides,
+	});
+
+	it.each([
+		{
+			name: 'a playback with its length',
+			playback: playing(),
+			line: 'Playing Recordings/standup.webm at 1:23 of 10:00.',
+		},
+		{
+			name: 'a paused one',
+			playback: playing({ paused: true }),
+			line: 'Paused Recordings/standup.webm at 1:23 of 10:00.',
+		},
+		{
+			name: 'one whose length is not known yet',
+			playback: playing({ duration: 0 }),
+			line: 'Playing Recordings/standup.webm at 1:23.',
+		},
+	])('adds $name to the state', async ({ playback, line }) => {
+		const host = makeHost({ playback: jest.fn(() => playback) });
+
+		await expect(run(host, '')).resolves.toBe(
+			`Idle. A recording started now is saved as WEBM.\n${line}`,
+		);
+	});
+});
+
+describe('the recorder state in words', () => {
+	it('reads the same for the status command and the actions', () => {
+		expect(describeRecordingStatus(RecordingStatus.Paused, 'wav')).toBe(
+			'Recording, paused.',
 		);
 	});
 });
@@ -176,69 +215,6 @@ describe('the stop command', () => {
 	});
 });
 
-describe('the transcribe command', () => {
-	it('transcribes the file the flag names', async () => {
-		const file = fileAt('recordings/standup.webm');
-		const host = makeHost({ audioFileAt: jest.fn(() => file) });
-
-		await expect(
-			run(host, 'transcribe', { file: 'recordings/standup.webm' }),
-		).resolves.toBe(
-			'Started transcribing recordings/standup.webm in Obsidian.',
-		);
-		expect(host.transcribe).toHaveBeenCalledWith(file);
-	});
-
-	it('looks the path up as typed, minus the spaces around it', async () => {
-		const host = makeHost({ audioFileAt: jest.fn(() => fileAt('a.webm')) });
-
-		await run(host, 'transcribe', { file: '  a.webm  ' });
-
-		expect(host.audioFileAt).toHaveBeenCalledWith('a.webm');
-	});
-
-	it.each([
-		['no flag at all', {}],
-		// A flag declared with a value still arrives as 'true' when it was
-		// typed without one.
-		['a flag typed without its value', { file: 'true' }],
-		['a blank path', { file: '   ' }],
-	])('asks for the path given %s', async (_case, params) => {
-		const host = makeHost();
-
-		await expect(run(host, 'transcribe', params)).resolves.toBe(
-			'Name the file to transcribe: --file <vault path>.',
-		);
-		expect(host.transcribe).not.toHaveBeenCalled();
-	});
-
-	it('refuses before opening anything when a run would be refused', async () => {
-		// The menu and the palette hide this action while transcription is
-		// off; a command line has nothing to hide, so it says why.
-		const host = makeHost({
-			transcriptionRefusal: jest.fn(
-				() => 'Transcription is switched off in settings.',
-			),
-			audioFileAt: jest.fn(() => fileAt('a.webm')),
-		});
-
-		await expect(run(host, 'transcribe', { file: 'a.webm' })).resolves.toBe(
-			'Transcription is switched off in settings.',
-		);
-		expect(host.transcribe).not.toHaveBeenCalled();
-		expect(host.audioFileAt).not.toHaveBeenCalled();
-	});
-
-	it('says so when the vault holds no audio file there', async () => {
-		const host = makeHost();
-
-		await expect(
-			run(host, 'transcribe', { file: 'notes/agenda.md' }),
-		).resolves.toBe('No audio file at "notes/agenda.md" in this vault.');
-		expect(host.transcribe).not.toHaveBeenCalled();
-	});
-});
-
 describe('registerCliCommands', () => {
 	/**
 	 * A plugin whose CLI registration is whatever a test hands it.
@@ -252,25 +228,32 @@ describe('registerCliCommands', () => {
 
 	it('registers every command with the app', () => {
 		const registerCliHandler = jest.fn();
+		const commands = cliCommands(makeHost(), PLUGIN_ID);
 
 		expect(
-			registerCliCommands(pluginWith(registerCliHandler), makeHost()),
+			registerCliCommands(pluginWith(registerCliHandler), commands),
 		).toBe(true);
-		expect(registerCliHandler).toHaveBeenCalledTimes(4);
-		expect(registerCliHandler.mock.calls.map((call) => call[0])).toEqual([
-			PLUGIN_ID,
-			`${PLUGIN_ID}:record`,
-			`${PLUGIN_ID}:stop`,
-			`${PLUGIN_ID}:transcribe`,
-		]);
+		expect(registerCliHandler.mock.calls).toEqual(
+			commands.map((command) => [
+				command.id,
+				command.description,
+				command.flags,
+				command.handler,
+			]),
+		);
 	});
 
 	it('reports a build with no command line to register with', () => {
 		// The platforms that have no CLI at all.
-		expect(registerCliCommands(pluginWith(), makeHost())).toBe(false);
+		expect(
+			registerCliCommands(
+				pluginWith(),
+				cliCommands(makeHost(), PLUGIN_ID),
+			),
+		).toBe(false);
 	});
 
-	it('survives a registration that throws, which a duplicate id does', () => {
+	it('survives a registration the app refuses', () => {
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
 			/* the message is the point, not the output */
 		});
@@ -279,8 +262,40 @@ describe('registerCliCommands', () => {
 		});
 
 		expect(
-			registerCliCommands(pluginWith(registerCliHandler), makeHost()),
+			registerCliCommands(
+				pluginWith(registerCliHandler),
+				cliCommands(makeHost(), PLUGIN_ID),
+			),
 		).toBe(false);
-		expect(warn).toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledWith(
+			`[AudioRecorder] CLI command ${PLUGIN_ID} was not registered:`,
+			expect.any(Error),
+		);
+	});
+
+	it('keeps registering the commands after one the app refuses', () => {
+		// Another plugin owning one id must not take every command after it
+		// off the command line.
+		jest.spyOn(console, 'warn').mockImplementation(() => {
+			/* the registrations are the point, not the output */
+		});
+		const commands = cliCommands(makeHost(), PLUGIN_ID);
+		const refused = commands[1]?.id;
+		const registered: string[] = [];
+		const registerCliHandler = jest.fn((id: string) => {
+			if (id === refused) {
+				throw new Error('Command already registered');
+			}
+			registered.push(id);
+		});
+
+		expect(
+			registerCliCommands(pluginWith(registerCliHandler), commands),
+		).toBe(false);
+		expect(registered).toEqual(
+			commands
+				.map((command) => command.id)
+				.filter((id) => id !== refused),
+		);
 	});
 });

@@ -7,8 +7,11 @@
  * @module actions/helpActions
  */
 
+import type { CliData } from 'obsidian';
 import { COMMAND_IDS } from '../constants';
-import type { HelpAction } from './PluginAction';
+import { releaseNotesSince } from '../release/releaseNotes';
+import { cliText, valueParam } from '../obsidian/cliArgs';
+import type { ActionFamily, HelpAction, HelpServices } from './PluginAction';
 
 /** Needs nothing beyond the plugin being loaded. */
 const always = (): boolean => true;
@@ -26,5 +29,44 @@ export const HELP_ACTIONS: readonly HelpAction[] = [
 		run: (services): void => {
 			services.showReleaseNotes();
 		},
+		cli: {
+			name: 'whats-new',
+			description: 'Print the release notes of the plugin.',
+			params: {
+				since: valueParam(
+					'<version>',
+					'Only the releases after this one.',
+				),
+			},
+			opensDialog: true,
+			execute: (_services: HelpServices, args: CliData): string => {
+				const since = cliText(args, 'since');
+				// Every release the bundle carries notes for, as the palette
+				// command shows them, unless the command asks for fewer.
+				if (since === null) {
+					return releaseNotesSince('');
+				}
+				return (
+					releaseNotesSince(since) ||
+					`No release notes after ${since}.`
+				);
+			},
+		},
 	},
 ];
+
+/**
+ * The help actions as a family: bound to nothing, so always offered.
+ * @param services - Help services
+ * @returns The family
+ */
+export function helpActionFamily(
+	services: HelpServices,
+): ActionFamily<HelpServices> {
+	return {
+		actions: HELP_ACTIONS,
+		activeTargets: () => [services],
+		cliTarget: { params: {}, resolve: () => [services] },
+		describe: () => 'the plugin',
+	};
+}

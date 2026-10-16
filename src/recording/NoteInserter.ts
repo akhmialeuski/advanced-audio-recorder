@@ -158,6 +158,24 @@ export function insertTextAtCursor(
 }
 
 /**
+ * The embeds of a file in a note, as the metadata cache reports them: the
+ * places a processed copy can take the file's place in.
+ * @param app - Obsidian App
+ * @param note - The Markdown note
+ * @param file - The embedded file
+ * @returns The embeds, in the note's order
+ */
+export function embedsOf(app: App, note: TFile, file: TFile): EmbedCache[] {
+	return (app.metadataCache.getFileCache(note)?.embeds ?? []).filter(
+		(embed) =>
+			app.metadataCache.getFirstLinkpathDest(
+				getLinkpath(embed.link),
+				note.path,
+			)?.path === file.path,
+	);
+}
+
+/**
  * Links a processed (cleaned/converted) audio file into the note that embeds
  * the source, mirroring how a freshly recorded file is linked. When the source
  * is being removed every one of its embeds is replaced (so no broken link is
@@ -172,6 +190,8 @@ export function insertTextAtCursor(
  * @param sourceFile - The original audio file that was processed
  * @param processedPath - Vault path of the processed output
  * @param replaceSource - Replace the source embeds instead of inserting after
+ * @param note - The note to link into, when the caller knows which one the
+ *   recording was reached through; the active note otherwise
  * @returns The note path the embed was inserted into, or null when none matched
  */
 export async function insertProcessedAudioEmbed(
@@ -179,19 +199,12 @@ export async function insertProcessedAudioEmbed(
 	sourceFile: TFile,
 	processedPath: string,
 	replaceSource: boolean,
+	note: TFile | null = app.workspace.getActiveFile(),
 ): Promise<string | null> {
-	const note = app.workspace.getActiveFile();
 	if (!note || note.extension !== 'md') {
 		return null;
 	}
-	const embeds = app.metadataCache.getFileCache(note)?.embeds ?? [];
-	const matches = embeds.filter(
-		(embed) =>
-			app.metadataCache.getFirstLinkpathDest(
-				getLinkpath(embed.link),
-				note.path,
-			)?.path === sourceFile.path,
-	);
+	const matches = embedsOf(app, note, sourceFile);
 	const firstMatch = matches[0];
 	if (!firstMatch) {
 		return null;

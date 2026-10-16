@@ -653,8 +653,10 @@ export class Vault extends Events {
 		}
 	}
 
+	// A folder is found by its path as well as a file is, as in Obsidian.
 	getAbstractFileByPath = jest.fn(
-		(path: string): TAbstractFile | null => this.files.get(path) ?? null,
+		(path: string): TAbstractFile | null =>
+			this.files.get(path) ?? this.folders.get(path) ?? null,
 	);
 
 	getResourcePath = jest.fn(
@@ -2015,9 +2017,12 @@ export class TAbstractFile {
 export class TFolder extends TAbstractFile {
 	children: TAbstractFile[] = [];
 
-	/** Whether this is the vault root, whose path Obsidian writes as '/'. */
+	/**
+	 * Whether this is the vault's root. Obsidian's root has the path `/`;
+	 * this mock's has an empty one, and both read as the root here.
+	 */
 	isRoot(): boolean {
-		return this.path === '/' || this.path === '';
+		return this.path === '' || this.path === '/';
 	}
 }
 
@@ -2386,10 +2391,17 @@ export class SliderComponent {
 }
 
 /**
- * Mock normalizePath function.
+ * Mock normalizePath, doing what Obsidian's does to a path: backslashes become
+ * slashes, runs of slashes collapse, and the slashes at either end go, the
+ * vault root being "/". A path joined onto the root's "" directory comes out
+ * relative, as it does in the app.
  */
 export function normalizePath(path: string): string {
-	return path.replace(/\\/g, '/').replace(/\/+/g, '/');
+	const normalized = path
+		.replace(/\\/g, '/')
+		.replace(/\/+/g, '/')
+		.replace(/^\/|\/$/g, '');
+	return normalized === '' ? '/' : normalized;
 }
 
 /**
@@ -2444,6 +2456,35 @@ export function getFrontMatterInfo(content: string): {
 export function getLinkpath(linktext: string): string {
 	const hashIndex = linktext.indexOf('#');
 	return hashIndex >= 0 ? linktext.slice(0, hashIndex) : linktext;
+}
+
+/**
+ * Mock prepareSimpleSearch: every space-separated word of the query must
+ * occur in the text, in any order and without regard to case, as Obsidian's
+ * simple search reads a query. The score is the negated count of characters
+ * between the matches, so a tighter match scores higher.
+ */
+export function prepareSimpleSearch(
+	query: string,
+): (text: string) => { score: number; matches: [number, number][] } | null {
+	const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+	return (text: string) => {
+		const lower = text.toLowerCase();
+		const matches: [number, number][] = [];
+		for (const word of words) {
+			const start = lower.indexOf(word);
+			if (start < 0) {
+				return null;
+			}
+			matches.push([start, start + word.length]);
+		}
+		const span =
+			matches.length === 0
+				? 0
+				: Math.max(...matches.map(([, end]) => end)) -
+					Math.min(...matches.map(([start]) => start));
+		return { score: span === 0 ? 0 : -span, matches };
+	};
 }
 
 /**
