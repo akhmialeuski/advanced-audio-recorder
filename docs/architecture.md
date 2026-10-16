@@ -2,13 +2,15 @@
 
 This document is a technical map of how **Advanced Audio Recorder** is put together: how the plugin loads, how a recording flows from microphone to file, how transcription and the enhanced player work, and how crash recovery and settings backup keep your data safe. It is written for contributors and curious power users. If you only want to _use_ the plugin, start with [Getting started](getting-started.md) and the [Features overview](features.md). Come back here when you want to know _why_ something behaves the way it does, or where in the source a behavior lives.
 
-Everything below is verified against the plugin source under `src/`. The plugin runs on **desktop and mobile** (it requires Obsidian `1.14.4+`). Platform differences are decided in one low-level policy layer, `src/platform/` (`platformKind.ts` detects the platform. `capabilities.ts` answers "is this feature available here?" and "which limit applies here?"). Feature code and the settings UI branch on named capabilities - multi-track capture, device selection, PCM WAV capture, mid-stream segment flushing, local transcription, memory ceilings - never on the platform itself. Device-bound settings (input device ids, channel layouts) are stored per platform under a `perPlatform` branch in `data.json`, so a vault synced between a desktop and a phone never mixes their hardware configuration.
+Everything below is verified against the plugin source under `src/`. The plugin runs on **desktop and mobile** (it requires Obsidian `1.14.4+`). Platform differences are decided in one low-level policy layer, `src/platform/` (`platformKind.ts` detects the platform, and `capabilities.ts` answers "is this feature available here?" and "which limit applies here?"). Feature code and the settings UI branch on named capabilities - multi-track capture, device selection, PCM WAV capture, mid-stream segment flushing, local transcription, memory ceilings - never on the platform itself. Device-bound settings (input device ids, channel layouts) are stored per platform under a `perPlatform` branch in `data.json`, so a vault synced between a desktop and a phone never mixes their hardware configuration.
 
 - [System overview](#system-overview)
 - [Plugin lifecycle](#plugin-lifecycle)
+- [Actions](#actions)
 - [Recording pipeline](#recording-pipeline)
 - [Transcription pipeline](#transcription-pipeline)
 - [Enhanced player takeover](#enhanced-player-takeover)
+- [Reading how long a recording is](#reading-how-long-a-recording-is)
 - [Crash recovery](#crash-recovery)
 - [Settings load and backup](#settings-load-and-backup)
 - [Settings tab rendering](#settings-tab-rendering)
@@ -167,6 +169,68 @@ Notes on the lifecycle:
 - **What an update changed is announced once**, from the same layout-ready callback and ahead of the recovery check, because both can open a dialog and a recording the app lost is the one the user has to answer first. The version is recorded whether or not the dialog opens, and a config that has announced nothing yet records the running version without showing anything, so neither a first install nor the upgrade into the first build with this dialog meets the whole history. See [After an update](getting-started.md#after-an-update).
 - **Recovery runs after layout is ready**, never during load, and a failure there is caught and logged so it can never break the plugin.
 - **Unload restores Obsidian's native embeds first** (so disabling the plugin never leaves overridden media embeds behind), then flushes recording buffers best-effort. The crash-recovery journal is deliberately _not_ ended on unload - an unload mid-recording is exactly the case the next launch should offer to recover.
+
+## Actions
+
+Every action of the plugin is defined once, in a family of `src/actions/`, and the one `ActionRegistry` hands that same definition to the three places a user reaches it from: the command palette with its hotkeys, the context menus, and Obsidian's command line. All three run it over the same services the dialogs use, so a conversion started from a menu, a hotkey or a script is the same conversion. The recorder's own command-line commands (the status, `record` and `stop`) go through the registry too, which is where the one check that no two commands share an id lives. The registry is the shared core, marked blue below, as the code stands at the branch of [#125](https://github.com/akhmialeuski/advanced-audio-recorder/pull/125).
+
+```mermaid
+flowchart LR
+    FAM["Action families<br/>session, recording, transcript lines,<br/>playback, position, folder, search, help"]
+    OWN["Recorder's own commands<br/>status, record, stop"]
+    REG["Action registry<br/>ActionRegistry"]
+    PAL["Command palette<br/>and hotkeys"]
+    MENU["Context menus<br/>file, editor, player, folder"]
+    CLI["Obsidian command line"]
+    PICK["Target picker<br/>ActionTargetModal"]
+    SVC["Shared services<br/>conversion, split, transcription,<br/>sidecar, queue"]
+
+    FAM -->|"each action once:<br/>palette id + CLI binding"| REG
+    OWN -->|"CLI commands"| REG
+    REG -->|"one checkCallback<br/>per action"| PAL
+    REG -->|"registered<br/>families only"| MENU
+    REG -->|"one handler per action,<br/>ids checked once"| CLI
+    PAL -->|"several targets"| PICK
+    PAL -->|"run on the<br/>one target"| SVC
+    PICK -->|"run on the<br/>chosen target"| SVC
+    MENU -->|"run with note,<br/>link, moment"| SVC
+    CLI -->|"execute, answer<br/>as text"| SVC
+
+    classDef registry fill:#dbeafe,stroke:#1d4ed8,color:#111;
+    class REG registry;
+```
+
+The surfaces differ only in how they find the target. The palette reads what is active, and it does so every time it opens, for every command, so this read stays in memory: the open file, the line under the cursor and the metadata cache, through one `recordingsInNote` and one `recordingLinkAt`. The folder family, whose targets take a pass over the vault, answers that check from its settings through `offeredWithoutTargets` and lists the folders only once its command runs. A menu builds its context from where it was opened, the note, the link under the click and whether that link points at a moment, and the file and editor menus Obsidian raises for one click add to one shared context. The command line names the target with `file=`, `path=`, `note=`, `recording=` or `all`. From there one path serves all three: the action's own availability gate decides, the action runs, and an action that is not available is left out of the palette and the menu, or answered with its reason on the command line. The gate and the run, marked blue, are the same code on every surface.
+
+```mermaid
+flowchart LR
+    subgraph CLL["Command line"]
+        C1["A typed command"] -->|"parameters"| C2["Target from<br/>file=, path=, note=, all"]
+    end
+    subgraph MEN["Context menu"]
+        M1["Right-click"] -->|"file, editor<br/>or player menu"| M2["Context from where it opened:<br/>note, link, moment"]
+    end
+    subgraph PAL["Command palette"]
+        P1["Palette opens"] -->|"every command<br/>checked"| P2["Targets from what is active:<br/>open file, cursor line,<br/>metadata cache"]
+    end
+
+    GATE{"Action available<br/>for this target?"}
+    RUN["Run the action<br/>run() or cli.execute()"]
+    SVC["Shared services"]
+    NO["Left out: command hidden,<br/>no menu entry,<br/>reason printed"]
+
+    P2 --> GATE
+    M2 --> GATE
+    C2 --> GATE
+    GATE -->|"yes"| RUN
+    GATE -->|"no"| NO
+    RUN ==>|"same calls"| SVC
+
+    classDef shared fill:#dbeafe,stroke:#1d4ed8,color:#111;
+    class GATE,RUN shared;
+```
+
+On the command line the services report through a collecting notifier rather than straight to notices, so what a dialog would show along the way, such as a converted file that already existed, ends up in the printed answer as well as in a notice in the app. Adding an action is an entry in a family: the compiler refuses one without its command-line binding, and from there the palette command, the menu entry and the command-line command all exist.
 
 ---
 
