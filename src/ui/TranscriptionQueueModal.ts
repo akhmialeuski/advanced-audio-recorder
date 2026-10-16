@@ -8,8 +8,8 @@
  * @module ui/TranscriptionQueueModal
  */
 
-import { setIcon, setTooltip } from 'obsidian';
 import type { App } from 'obsidian';
+import { createIconButton } from './iconButton';
 import { PluginModal } from './PluginModal';
 import { formatUsd } from '../transcription/costs';
 import {
@@ -167,15 +167,11 @@ export class TranscriptionQueueModal extends PluginModal {
 		if (entry.state === QueueEntryState.Running) {
 			return;
 		}
-		// Obsidian's icon-button class draws it as the app draws its own icon
-		// buttons, hover and focus ring included, without a text button's
-		// chrome; the name doubles as its tooltip.
-		const remove = row.createEl('button', {
-			cls: `clickable-icon ${QUEUE_REMOVE_CLASS}`,
-			attr: { type: 'button' },
+		const remove = createIconButton(row, {
+			icon: 'x',
+			label: `Drop ${entry.path}`,
+			cls: QUEUE_REMOVE_CLASS,
 		});
-		setIcon(remove, 'x');
-		setTooltip(remove, `Drop ${entry.path}`);
 		remove.addEventListener('click', () => {
 			this.options.queue.remove(entry.path);
 		});

@@ -74,18 +74,26 @@ If your plugin does not need CSS, delete this file.
 }
 
 /*
+ * Status-bar buttons keep the colour of the line around them, red while
+ * recording and the accent while saving, in the idle, hover and pressed
+ * states alike. Obsidian's icon-button class would otherwise paint them its
+ * own icon colour; an engaged toggle still takes the app's accent.
+ */
+.aar-control-btn,
+.aar-status-progress-actionable {
+    --icon-color: currentColor;
+    --icon-color-hover: currentColor;
+    --icon-color-focused: currentColor;
+}
+
+/*
  * The status-bar controls are Obsidian icon buttons (.clickable-icon), which
  * bring the hover, the press, the engaged state and the focus ring. What is
  * left here is their size: the status bar is a line about 20px tall, so the
  * button is that square with no padding of its own and the app's
- * extra-small icon. The icon keeps the colour of the state around it - red
- * while recording - as it did before, so the idle, hover and pressed colours
- * point at it; an engaged toggle still takes the app's accent.
+ * extra-small icon.
  */
 .aar-control-btn {
-    --icon-color: currentColor;
-    --icon-color-hover: currentColor;
-    --icon-color-focused: currentColor;
     width: 20px;
     height: 20px;
     padding: 0;
@@ -366,9 +374,6 @@ If your plugin does not need CSS, delete this file.
  * the click covers rather than on the text line alone.
  */
 .aar-status-progress-actionable {
-    --icon-color: currentColor;
-    --icon-color-hover: currentColor;
-    --icon-color-focused: currentColor;
     display: block;
     width: 100%;
     padding: 0;

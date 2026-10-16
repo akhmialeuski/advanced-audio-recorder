@@ -6,9 +6,9 @@
  * @module ui/RecordingBanner
  */
 
-import { setIcon, setTooltip } from 'obsidian';
 import { RecordingBannerAnchor } from '../settings/settingsSchema';
 import { formatTimecode } from '../utils/TimeUtils';
+import { createIconButton } from './iconButton';
 
 /**
  * Finger travel, in CSS px, before a press on the banner becomes a drag.
@@ -133,16 +133,11 @@ export class RecordingBanner {
 			cls: 'aar-recording-banner-time',
 			text: '0:00',
 		});
-		// A native button in Obsidian's icon-button class: the platform makes
-		// it focusable and activates it from Enter and Space, and the class
-		// gives it the app's hover, press and focus ring. Its name doubles as
-		// the tooltip, as everywhere in the app.
-		const stop = el.createEl('button', {
-			cls: 'clickable-icon aar-recording-banner-stop',
-			attr: { type: 'button' },
+		const stop = createIconButton(el, {
+			icon: 'square',
+			label: 'Stop recording',
+			cls: 'aar-recording-banner-stop',
 		});
-		setIcon(stop, 'square');
-		setTooltip(stop, 'Stop recording');
 		// The listener lives on an element hide() removes, so it goes with it
 		// rather than accumulating on the plugin for every recording. A key
 		// press reaches it as a click as well.

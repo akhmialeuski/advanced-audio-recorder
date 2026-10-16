@@ -20,6 +20,7 @@
 import { debounce, setIcon } from 'obsidian';
 import type { Component, Debouncer } from 'obsidian';
 import { formatTimecode, parseTimecode } from '../../utils/TimeUtils';
+import { createIconButton } from '../../ui/iconButton';
 import {
 	activeMarkerIndex,
 	MARKER_KIND,
@@ -591,22 +592,22 @@ export class MarkerListView {
 			'file-text',
 		);
 		this.createSegment(rowEl, row, referenceSeconds);
-		const jump = rowEl.createEl('button', {
-			cls: 'aar-player-marker-jump clickable-icon',
+		const jump = createIconButton(rowEl, {
+			icon: 'play',
 			// The action alone here: this button sits inside the row rather than
 			// being it, so the rename field beside it still carries the identity.
-			attr: { 'aria-label': jumpAction(row.kind) },
+			label: jumpAction(row.kind),
+			cls: 'aar-player-marker-jump',
 		});
 		jump.dataset.action = MARKER_ROW_ACTION.jump;
 		jump.dataset.markerId = row.id;
-		setIcon(jump, 'play');
-		const here = rowEl.createEl('button', {
-			cls: 'aar-player-marker-here clickable-icon',
-			attr: { 'aria-label': 'Move marker to the current position' },
+		const here = createIconButton(rowEl, {
+			icon: 'crosshair',
+			label: 'Move marker to the current position',
+			cls: 'aar-player-marker-here',
 		});
 		here.dataset.action = MARKER_ROW_ACTION.useCurrentTime;
 		here.dataset.markerId = row.id;
-		setIcon(here, 'crosshair');
 		const color = rowEl.createEl('select', {
 			cls: 'aar-player-marker-color',
 			attr: { 'aria-label': 'Marker colour' },
@@ -641,13 +642,13 @@ export class MarkerListView {
 			swatch.createSpan({ cls: 'aar-player-marker-swatch-chevron' }),
 			'chevron-down',
 		);
-		const remove = rowEl.createEl('button', {
-			cls: 'aar-player-marker-delete clickable-icon',
-			attr: { 'aria-label': 'Delete' },
+		const remove = createIconButton(rowEl, {
+			icon: 'trash-2',
+			label: 'Delete',
+			cls: 'aar-player-marker-delete',
 		});
 		remove.dataset.action = MARKER_ROW_ACTION.delete;
 		remove.dataset.markerId = row.id;
-		setIcon(remove, 'trash-2');
 	}
 
 	/**

@@ -11,6 +11,7 @@ import { RecordingStatus } from '../types';
 import type { SaveProgress, RecordingControls } from '../types';
 import { formatTimecode } from '../utils/TimeUtils';
 import { formatByteSize } from '../utils/formatBytes';
+import { createIconButton } from './iconButton';
 import { createProgressBar, type ProgressBar } from './progressBar';
 import { createVolumeSlider, type VolumeSlider } from './volumeSlider';
 
@@ -297,12 +298,7 @@ function meterPercent(level: number): number {
 }
 
 /**
- * Creates an icon button in the status bar.
- *
- * A native button in Obsidian's icon-button class: the platform makes it
- * focusable and activates it from Enter and Space, and the class gives it the
- * app's hover, press, engaged state and focus ring. The accessible name is set
- * through setTooltip, which is also what shows it on hover.
+ * Creates an icon button in the status bar, its tooltip opening above.
  * @param parent - Parent element to append the button to
  * @param icon - Obsidian icon name
  * @param label - Accessible name and tooltip
@@ -315,12 +311,12 @@ function createControlButton(
 	label: string,
 	onClick: () => void,
 ): HTMLButtonElement {
-	const button = parent.createEl('button', {
-		cls: 'clickable-icon aar-control-btn',
-		attr: { type: 'button' },
+	const button = createIconButton(parent, {
+		icon,
+		label,
+		cls: 'aar-control-btn',
+		tooltip: STATUS_BAR_TOOLTIP,
 	});
-	setIcon(button, icon);
-	setTooltip(button, label, STATUS_BAR_TOOLTIP);
 	// The status bar item is clickable in Obsidian, and it must not also
 	// react to a press on one of its controls.
 	button.addEventListener('click', (event: MouseEvent) => {
