@@ -60,6 +60,21 @@ function shownPercent(statusBarItem: HTMLElement): string | null {
 	return el(statusBarItem, STATUS.saveProgress).getAttribute('aria-valuenow');
 }
 
+/**
+ * A status bar already showing a save in progress.
+ * @param percent - How far the save reports it is
+ * @param description - What the save says it is doing
+ * @returns The status bar element
+ */
+function saving(percent: number, description = 'Writing file...'): HTMLElement {
+	const statusBarItem = createStatusBar();
+	updateStatusBar(statusBarItem, RecordingStatus.Saving, {
+		percent,
+		description,
+	});
+	return statusBarItem;
+}
+
 /** A status bar already showing a minimised transcription. */
 function transcribing(percent = 10): {
 	statusBarItem: HTMLElement;
@@ -163,12 +178,7 @@ describe('recording status', () => {
 
 describe('saving progress', () => {
 	it('shows what it is doing and how far along it is', () => {
-		const statusBarItem = createStatusBar();
-
-		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
-			percent: 40,
-			description: 'Assembling audio...',
-		});
+		const statusBarItem = saving(40, 'Assembling audio...');
 
 		expect(statusBarItem.classList.contains('is-saving')).toBe(true);
 		expect(statusBarItem.classList.contains('is-recording')).toBe(false);
@@ -217,12 +227,7 @@ describe('saving progress', () => {
 	});
 
 	it('fills the bar it draws to the percentage it reports', () => {
-		const statusBarItem = createStatusBar();
-
-		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
-			percent: 60,
-			description: 'Writing file...',
-		});
+		const statusBarItem = saving(60);
 
 		// The fill is the only part that moves: a bar that is there but never
 		// fills says nothing is happening.
@@ -231,12 +236,7 @@ describe('saving progress', () => {
 	});
 
 	it('announces the save as a progress bar named for what it is doing', () => {
-		const statusBarItem = createStatusBar();
-
-		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
-			percent: 60,
-			description: 'Writing file...',
-		});
+		const statusBarItem = saving(60, 'Writing file...');
 
 		const bar = el(statusBarItem, STATUS.saveProgress);
 		expect(bar.getAttribute('role')).toBe('progressbar');
@@ -254,12 +254,7 @@ describe('saving progress', () => {
 		{ name: 'is exactly done', percent: 100, shown: '100' },
 		{ name: 'is exactly at the start', percent: 0, shown: '0' },
 	])('reports $shown percent when the save $name', ({ percent, shown }) => {
-		const statusBarItem = createStatusBar();
-
-		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
-			percent,
-			description: 'Writing file...',
-		});
+		const statusBarItem = saving(percent);
 
 		expect(shownPercent(statusBarItem)).toBe(shown);
 	});
@@ -272,11 +267,7 @@ describe('saving progress', () => {
 			text: 'Recording...',
 		},
 	])('drops the progress when it goes $name', ({ status, text }) => {
-		const statusBarItem = createStatusBar();
-		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
-			percent: 50,
-			description: 'Assembling...',
-		});
+		const statusBarItem = saving(50, 'Assembling...');
 		expect(maybeEl(statusBarItem, STATUS.saveProgress)).not.toBeNull();
 
 		updateStatusBar(statusBarItem, status);
