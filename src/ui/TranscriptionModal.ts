@@ -1162,9 +1162,8 @@ export class TranscriptionModal extends PluginModal {
 	private updateProgress(fraction: number, label: string): void {
 		this.statusEl?.setText(label);
 		if (this.progressBar) {
-			const percent = Math.round(
-				Math.max(0, Math.min(1, fraction)) * 100,
-			);
+			// Both bars that show it bring the number into 0..100 themselves
+			const percent = fraction * 100;
 			this.lastProgress = { percent, description: label };
 			this.progressBar.setValue(percent);
 			this.reportBackgroundProgress();

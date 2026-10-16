@@ -11,7 +11,7 @@ import { RecordingStatus } from '../types';
 import type { SaveProgress, RecordingControls } from '../types';
 import { formatTimecode } from '../utils/TimeUtils';
 import { formatByteSize } from '../utils/formatBytes';
-import { createProgressBar } from './progressBar';
+import { createProgressBar, type ProgressBar } from './progressBar';
 import { createVolumeSlider, type VolumeSlider } from './volumeSlider';
 
 /**
@@ -628,8 +628,38 @@ export function renderQuickNoteStatusBar(
 	);
 }
 
+/** The state classes a progress surface shows under. */
+type ProgressStateClass = 'is-saving' | 'is-transcribing';
+
+/** The parts of a mounted progress surface that every update rewrites. */
+interface ProgressView {
+	/** The state it was built for; another state builds it again. */
+	readonly stateClass: ProgressStateClass;
+	/** The line saying what the work is doing. */
+	readonly text: HTMLElement;
+	readonly bar: ProgressBar;
+	/** The button that restores a background task's window, if it has one. */
+	readonly restore: HTMLButtonElement | null;
+	/** The latest restore action, read by the button when it is pressed. */
+	onActivate: (() => void) | null;
+}
+
 /**
- * Renders a compact progress indicator in the status bar.
+ * The progress surface behind each mounted content element, found again on
+ * the next update rather than rebuilt.
+ */
+const progressViews = new WeakMap<Element, ProgressView>();
+
+/** Class of the element that holds a progress surface. */
+const PROGRESS_CONTENT_CLASS = 'aar-status-progress-content';
+
+/**
+ * Renders or updates a compact progress indicator in the status bar.
+ *
+ * The surface is built once and its text and bar are rewritten in place on
+ * every report, as the playback controls are: a report arrives with every
+ * stage of the work, and a rebuild would take the keyboard focus off the
+ * restore button and restart the bar's growth from nothing each time.
  * @param el - The status bar HTML element
  * @param progress - Optional progress info
  * @param stateClass - CSS class for the active state
@@ -639,10 +669,50 @@ export function renderQuickNoteStatusBar(
 function renderProgressState(
 	el: HTMLElement,
 	progress: SaveProgress | undefined,
-	stateClass: 'is-saving' | 'is-transcribing',
+	stateClass: ProgressStateClass,
 	defaultDescription: string,
 	options?: BackgroundProgressOptions,
 ): void {
+	const mounted = el.querySelector(`.${PROGRESS_CONTENT_CLASS}`);
+	let view = mounted ? progressViews.get(mounted) : undefined;
+	if (
+		!view ||
+		view.stateClass !== stateClass ||
+		(view.restore !== null) !== (options !== undefined)
+	) {
+		view = buildProgressView(el, stateClass, options !== undefined);
+	}
+
+	const description = progress?.description ?? defaultDescription;
+	view.text.textContent = description;
+	view.bar.setLabel(description);
+	view.bar.setValue(progress?.percent);
+	view.onActivate = options?.onActivate ?? null;
+	if (view.restore && options) {
+		setTooltip(view.restore, options.activationLabel, STATUS_BAR_TOOLTIP);
+	}
+}
+
+/**
+ * Builds a progress surface: the line of text and the bar under it.
+ *
+ * A background task's line is a native button in Obsidian's icon-button
+ * class, which the platform activates from the keyboard and the app draws a
+ * hover and a focus ring for. The bar sits beside the button rather than in
+ * it: a button's content is flattened for a screen reader, which would lose
+ * the bar's role and value, and a button may not hold the divs the bar is
+ * made of. The stylesheet stretches the button over the bar, so a click on
+ * either restores the window.
+ * @param el - The status bar HTML element
+ * @param stateClass - CSS class for the active state
+ * @param restorable - Whether the surface restores a background task
+ * @returns The mounted surface
+ */
+function buildProgressView(
+	el: HTMLElement,
+	stateClass: ProgressStateClass,
+	restorable: boolean,
+): ProgressView {
 	el.empty();
 	playbackStates.delete(el);
 	el.classList.remove('is-recording');
@@ -651,63 +721,28 @@ function renderProgressState(
 	el.classList.remove('is-playback');
 	el.classList.add(stateClass);
 
-	const wrapper = options
-		? createRestoreButton(el, options)
-		: el.createDiv({ cls: 'aar-status-progress-content' });
-
-	const description = progress?.description ?? defaultDescription;
-	const text = wrapper.createSpan();
-	text.textContent = description;
-
-	createProgressBar(wrapper, 'aar-save-progress', description).setValue(
-		savePercent(progress?.percent),
-	);
-}
-
-/**
- * Builds the progress of a background task as the button that brings its
- * window back. A native button in Obsidian's icon-button class, for the same
- * reasons as the control buttons: the platform activates it from the keyboard
- * and the app draws its hover and focus ring, while the class leaves out the
- * chrome of a text button that would not fit a status bar line.
- * @param el - The status bar HTML element
- * @param options - The restore action and its accessible name
- * @returns The button, to fill with the progress
- */
-function createRestoreButton(
-	el: HTMLElement,
-	options: BackgroundProgressOptions,
-): HTMLButtonElement {
-	const button = el.createEl('button', {
-		cls: 'clickable-icon aar-status-progress-content aar-status-progress-actionable',
-		attr: { type: 'button' },
-	});
-	setTooltip(button, options.activationLabel, STATUS_BAR_TOOLTIP);
+	const content = el.createDiv({ cls: PROGRESS_CONTENT_CLASS });
+	const restore = restorable
+		? content.createEl('button', {
+				cls: 'clickable-icon aar-status-progress-actionable',
+				attr: { type: 'button' },
+			})
+		: null;
+	const view: ProgressView = {
+		stateClass,
+		text: (restore ?? content).createSpan(),
+		bar: createProgressBar(content, 'aar-save-progress', ''),
+		restore,
+		onActivate: null,
+	};
 	// Single click matches the sibling recording controls; stop propagation
 	// so the surrounding status bar item does not also react.
-	button.addEventListener('click', (event: MouseEvent) => {
+	restore?.addEventListener('click', (event: MouseEvent) => {
 		event.stopPropagation();
-		options.onActivate();
+		view.onActivate?.();
 	});
-	return button;
-}
-
-/**
- * Clamps a save percentage into something the bar can paint.
- *
- * The number is bytes written over bytes expected, both read off a save in
- * flight: before the first chunk lands that division is NaN, and a final flush
- * that writes more than it announced overshoots 100. The bar takes the value
- * as a width and a screen reader reads it out as the percentage, so neither
- * may reach it.
- * @param percent - Reported percentage, or undefined before any was reported
- * @returns A whole percentage in 0..100
- */
-function savePercent(percent: number | undefined): number {
-	if (percent === undefined || !Number.isFinite(percent)) {
-		return 0;
-	}
-	return Math.round(Math.min(100, Math.max(0, percent)));
+	progressViews.set(content, view);
+	return view;
 }
 
 /**

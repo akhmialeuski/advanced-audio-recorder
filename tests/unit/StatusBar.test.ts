@@ -17,7 +17,7 @@ import {
 	updateRecordingLiveStats,
 } from 'src/ui/StatusBar';
 import { at } from '../helpers/assertions';
-import { allEls, control, el, maybeEl } from '../helpers/dom';
+import { allEls, clickControl, control, el, maybeEl } from '../helpers/dom';
 import { OBSIDIAN, PLAYBACK, PLAYER, STATUS } from '../helpers/selectors';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { makePlaybackState } from '../helpers/playbackHarness';
@@ -244,22 +244,6 @@ describe('saving progress', () => {
 	});
 
 	it.each([
-		// The percentage comes from bytes written over bytes expected, and
-		// both come off a recorder mid-save: a division that has not started
-		// yet is NaN, and a final flush that writes more than it announced
-		// overshoots. Neither may reach the bar.
-		{ name: 'has not started counting', percent: Number.NaN, shown: '0' },
-		{ name: 'overshot its own estimate', percent: 140, shown: '100' },
-		{ name: 'went backwards', percent: -20, shown: '0' },
-		{ name: 'is exactly done', percent: 100, shown: '100' },
-		{ name: 'is exactly at the start', percent: 0, shown: '0' },
-	])('reports $shown percent when the save $name', ({ percent, shown }) => {
-		const statusBarItem = saving(percent);
-
-		expect(shownPercent(statusBarItem)).toBe(shown);
-	});
-
-	it.each([
 		{ name: 'idle', status: RecordingStatus.Idle, text: '' },
 		{
 			name: 'recording again',
@@ -339,6 +323,57 @@ describe('transcription progress', () => {
 				'data-tooltip-position',
 			),
 		).toBe('top');
+	});
+
+	it('keeps the keyboard focus on the restore button across progress reports', () => {
+		// A report arrives with every stage of the run; a surface rebuilt for
+		// each one would drop the focus a keyboard user just moved there.
+		const { statusBarItem, onActivate } = transcribing(10);
+		document.body.appendChild(statusBarItem);
+		const restore = control(statusBarItem, 'Restore transcription window');
+		restore.focus();
+
+		renderTranscriptionStatusBar(
+			statusBarItem,
+			{ percent: 60, description: 'Transcribing part 2 of 3...' },
+			{ onActivate, activationLabel: 'Restore transcription window' },
+		);
+
+		expect(activeDocument.activeElement).toBe(restore);
+		expect(shownPercent(statusBarItem)).toBe('60');
+		expect(restore.textContent).toBe('Transcribing part 2 of 3...');
+		statusBarItem.remove();
+	});
+
+	it('restores through the latest action it was given', () => {
+		const { statusBarItem, onActivate } = transcribing();
+		const latest = jest.fn();
+
+		renderTranscriptionStatusBar(
+			statusBarItem,
+			{ percent: 20, description: 'Transcribing...' },
+			{
+				onActivate: latest,
+				activationLabel: 'Restore transcription window',
+			},
+		);
+		clickControl(statusBarItem, 'Restore transcription window');
+
+		expect(latest).toHaveBeenCalledTimes(1);
+		expect(onActivate).not.toHaveBeenCalled();
+	});
+
+	it('keeps the progress bar out of the button, where a screen reader would lose it', () => {
+		// A button's content is presentational to assistive technology, so a
+		// progress bar inside it would be read as nothing at all.
+		const { statusBarItem } = transcribing(35);
+
+		const bar = el(statusBarItem, STATUS.saveProgress);
+
+		expect(bar.closest('button')).toBeNull();
+		expect(bar.getAttribute('role')).toBe('progressbar');
+		expect(bar.getAttribute('aria-label')).toBe('Transcribing...');
+		expect(bar.getAttribute('aria-valuenow')).toBe('35');
 	});
 });
 

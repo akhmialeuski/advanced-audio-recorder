@@ -10,9 +10,33 @@ import { ProgressBarComponent } from 'obsidian';
 export interface ProgressBar {
 	/**
 	 * Shows how far along the work is.
-	 * @param percent - A whole percentage in 0..100
+	 * @param percent - Reported percentage, or undefined before any was
+	 *   reported; anything outside a whole 0..100 is brought into it
 	 */
-	setValue(percent: number): void;
+	setValue(percent: number | undefined): void;
+	/**
+	 * Renames what the bar is the progress of, for a screen reader.
+	 * @param label - The new name
+	 */
+	setLabel(label: string): void;
+}
+
+/**
+ * Brings a reported percentage into the whole 0..100 the bar can show.
+ *
+ * Progress is read off work in flight: a save divides bytes written by bytes
+ * expected, which is NaN before the first chunk lands and overshoots 100 when
+ * a final flush writes more than it announced. Obsidian's component clamps
+ * the width but lets a NaN through, and the same number is what a screen
+ * reader reads out, so neither may reach either.
+ * @param percent - Reported percentage, or undefined before any was reported
+ * @returns A whole percentage in 0..100
+ */
+function wholePercent(percent: number | undefined): number {
+	if (percent === undefined || !Number.isFinite(percent)) {
+		return 0;
+	}
+	return Math.round(Math.min(100, Math.max(0, percent)));
 }
 
 /**
@@ -42,10 +66,16 @@ export function createProgressBar(
 		},
 	});
 	const bar = new ProgressBarComponent(el);
-	const setValue = (percent: number): void => {
-		bar.setValue(percent);
-		el.setAttribute('aria-valuenow', String(percent));
+	const progress: ProgressBar = {
+		setValue(percent: number | undefined): void {
+			const whole = wholePercent(percent);
+			bar.setValue(whole);
+			el.setAttribute('aria-valuenow', String(whole));
+		},
+		setLabel(text: string): void {
+			el.setAttribute('aria-label', text);
+		},
 	};
-	setValue(0);
-	return { setValue };
+	progress.setValue(0);
+	return progress;
 }

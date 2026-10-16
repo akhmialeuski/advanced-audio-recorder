@@ -352,24 +352,50 @@ If your plugin does not need CSS, delete this file.
 
 /* Save and background progress in the status bar */
 .aar-status-progress-content {
+    position: relative;
     width: 100%;
+    border-radius: var(--radius-s);
 }
 
 /*
- * A minimised transcription is restored from its progress, so the progress is
- * an icon button: the class gives it the app's hover, press and focus ring
- * without a text button's chrome. It keeps the layout, the colour and the
- * weight of the status bar line it replaces.
+ * A minimised transcription is restored from its progress. The line of text
+ * is an icon button, which brings the press without a text button's chrome
+ * and keeps the colour and the weight of the status bar line. The bar is its
+ * sibling, so a screen reader still reads it, and the button's ::after
+ * stretches over the whole surface, bar included, so a click anywhere on it
+ * restores the window. The hover and the focus ring are drawn on the surface
+ * the click covers rather than on the text line alone.
  */
 .aar-status-progress-actionable {
     --icon-color: currentColor;
     --icon-color-hover: currentColor;
     --icon-color-focused: currentColor;
     display: block;
+    width: 100%;
     padding: 0;
     font-size: inherit;
     font-weight: inherit;
     text-align: inherit;
+}
+
+.aar-status-progress-actionable::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+}
+
+.aar-status-progress-actionable:hover,
+.aar-status-progress-actionable:focus-visible {
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.aar-status-progress-content:has(> .aar-status-progress-actionable:hover) {
+    background-color: var(--background-modifier-hover);
+}
+
+.aar-status-progress-content:has(> .aar-status-progress-actionable:focus-visible) {
+    box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
 /*

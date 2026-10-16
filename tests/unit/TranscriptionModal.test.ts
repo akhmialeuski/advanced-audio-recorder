@@ -1496,6 +1496,14 @@ describe('TranscriptionModal progress', () => {
 		expect(el(bar, OBSIDIAN.progressFill).style.width).toBe('42%');
 	});
 
+	it('shows a full bar for an engine that reports past the end', () => {
+		const modal = openWithProgress(1.2);
+
+		const bar = control(modal.contentEl, 'Transcription progress');
+
+		expect(bar.getAttribute('aria-valuenow')).toBe('100');
+	});
+
 	it('starts the bar at zero before the run reports anything', () => {
 		const modal = createModal({ show: jest.fn(), clear: jest.fn() });
 
