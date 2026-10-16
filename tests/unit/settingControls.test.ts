@@ -22,7 +22,11 @@ import {
 	type SettingsSectionContext,
 } from 'src/settings/settingControls';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import { capturedSettings, changeSetting } from '../helpers/captureSettings';
+import {
+	capturedSettings,
+	changeSetting,
+	type CapturedSetting,
+} from '../helpers/captureSettings';
 
 // The full obsidian mock with only Setting swapped for the recording double,
 // so this file sees the same Notice, Platform, and DOM helpers as every other.
@@ -41,6 +45,15 @@ function makeCtx(): SettingsSectionContext {
 	};
 }
 
+/**
+ * Whether a rendered row is dimmed, the mark of an option the current
+ * selection cannot use.
+ * @param setting - The captured row
+ */
+function isDimmed(setting: CapturedSetting): boolean {
+	return setting.el.classList.contains(SETTING_DISABLED_CLASS);
+}
+
 describe('addToggle disabled rendering', () => {
 	beforeEach(() => {
 		capturedSettings.length = 0;
@@ -55,9 +68,7 @@ describe('addToggle disabled rendering', () => {
 		});
 
 		const setting = at(capturedSettings, 0);
-		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
-			true,
-		);
+		expect(isDimmed(setting)).toBe(true);
 		expect(setting.toggle?.disabled).toBe(true);
 	});
 
@@ -69,9 +80,7 @@ describe('addToggle disabled rendering', () => {
 		});
 
 		const setting = at(capturedSettings, 0);
-		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
-			false,
-		);
+		expect(isDimmed(setting)).toBe(false);
 		expect(setting.toggle?.disabled).toBe(false);
 		expect(setting.toggle?.value).toBe(true);
 	});
@@ -91,9 +100,7 @@ describe('addText disabled rendering', () => {
 		});
 
 		const setting = at(capturedSettings, 0);
-		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
-			true,
-		);
+		expect(isDimmed(setting)).toBe(true);
 		expect(setting.text?.disabled).toBe(true);
 	});
 
@@ -105,9 +112,7 @@ describe('addText disabled rendering', () => {
 		});
 
 		const setting = at(capturedSettings, 0);
-		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
-			false,
-		);
+		expect(isDimmed(setting)).toBe(false);
 		expect(setting.text?.disabled).toBe(false);
 		expect(setting.text?.value).toBe('**{speaker}**');
 	});
