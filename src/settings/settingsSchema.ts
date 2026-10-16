@@ -536,6 +536,14 @@ export interface AudioRecorderSettings {
 	 * one, so it gets a limit of its own.
 	 */
 	localWhisperTimeoutMinutes: number;
+	/**
+	 * Secrets a migration wrote into Obsidian's keychain that no later start of
+	 * Obsidian has found there yet, as the ID of each by account id. While an
+	 * account's link is listed here its key is written next to the link, so a
+	 * keychain write lost on the way to disk loses no key (see
+	 * settings/apiKeySecrets).
+	 */
+	unconfirmedApiKeySecrets: Readonly<Record<string, string>>;
 	/** Whisper API base URL (OpenAI-compatible) */
 	whisperApiBaseUrl: string;
 	/**
@@ -982,6 +990,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	quickNoteTranscriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
+	unconfirmedApiKeySecrets: {},
 	whisperApiBaseUrl: DEFAULT_OPENAI_BASE_URL,
 	whisperApiKey: '',
 	whisperApiKeySecret: '',

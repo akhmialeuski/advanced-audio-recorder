@@ -1,8 +1,9 @@
 /**
  * The provider keys from load to run, driven the way Obsidian drives the
  * plugin: a data.json written by an earlier version holds them in plain text,
- * the plugin moves them into Obsidian\'s keychain, and from then on data.json
- * and the backup beside it hold only the IDs of the secrets.
+ * the plugin moves them into Obsidian\'s keychain, and once a restart finds
+ * them there data.json and the backup beside it hold only the IDs of the
+ * secrets.
  * @module tests/e2e/apiKeyKeychain.e2e.test
  */
 
@@ -20,6 +21,7 @@ import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import AudioRecorderPlugin from 'src/main';
 
 const BACKUP_PATH = `${MANIFEST.dir ?? ''}/data.json.bak`;
+const DATA_PATH = `${MANIFEST.dir ?? ''}/data.json`;
 
 /** What a data.json written before the keychain move held. */
 const PLAIN_TEXT_KEYS = {
@@ -30,6 +32,31 @@ const PLAIN_TEXT_KEYS = {
 /** The keychain double the app carries, with its internal API typed. */
 function keychainOf(app: App): SecretStorage {
 	return asMockApp(app).secretStorage;
+}
+
+/** Every secret an app's keychain holds, by ID. */
+function secretsOf(app: App): Record<string, string> {
+	const keychain = keychainOf(app);
+	return Object.fromEntries(
+		keychain.listSecrets().map((id) => [id, keychain.getSecret(id) ?? '']),
+	);
+}
+
+/**
+ * Obsidian started again: a new app, whose keychain holds what the old one
+ * kept on disk, loads the data.json the old session wrote last.
+ * @param stored - The data.json the old session wrote last
+ * @param kept - The secrets the keychain kept on disk, by ID
+ */
+async function restart(
+	stored: Record<string, unknown>,
+	kept: Record<string, string>,
+): ReturnType<typeof loadPlugin> {
+	const app = new App();
+	for (const [id, value] of Object.entries(kept)) {
+		keychainOf(app).setSecret(id, value);
+	}
+	return loadPlugin(stored, app);
 }
 
 /** The notices that spoke about the keychain, in order. */
@@ -70,26 +97,77 @@ describe('loading a data.json that holds API keys in plain text', () => {
 		expect(keychainOf(app).getSecret('deepgram-api-key')).toBe('dg-plain');
 	});
 
-	it('writes data.json at once, holding the IDs and none of the keys', async () => {
+	it('writes the IDs at once and keeps each key beside its link until a restart confirms the move', async () => {
 		const { saveData } = await loadPlugin({ ...PLAIN_TEXT_KEYS });
 
-		const written = lastWrite(saveData);
-		expect(written).toMatchObject({
-			whisperApiKey: '',
+		expect(lastWrite(saveData)).toMatchObject({
+			whisperApiKey: 'sk-plain',
 			whisperApiKeySecret: 'openai-api-key',
-			deepgramApiKey: '',
+			deepgramApiKey: 'dg-plain',
 			deepgramApiKeySecret: 'deepgram-api-key',
+			unconfirmedApiKeySecrets: {
+				openai: 'openai-api-key',
+				deepgram: 'deepgram-api-key',
+			},
 		});
 	});
 
-	it('keeps the keys out of the settings backup too', async () => {
-		const { app } = await loadPlugin({ ...PLAIN_TEXT_KEYS });
+	it('drops the keys from data.json and its backup once a restart finds the secrets', async () => {
+		const first = await loadPlugin({ ...PLAIN_TEXT_KEYS });
 
+		const { app, saveData } = await restart(
+			lastWrite(first.saveData),
+			secretsOf(first.app),
+		);
+
+		expect(lastWrite(saveData)).toMatchObject({
+			whisperApiKey: '',
+			whisperApiKeySecret: 'openai-api-key',
+			deepgramApiKey: '',
+			unconfirmedApiKeySecrets: {},
+		});
 		const backup = await app.vault.adapter.read(BACKUP_PATH);
-
 		expect(backup).toContain('openai-api-key');
 		expect(backup).not.toContain('sk-plain');
 		expect(backup).not.toContain('dg-plain');
+	});
+
+	it('keeps every key when the keychain loses its writes before the restart', async () => {
+		// Obsidian's keychain answers from memory and does not report a
+		// write to disk that failed, so a restart is what finds it missing.
+		const first = await loadPlugin({ ...PLAIN_TEXT_KEYS });
+
+		const { plugin, app, saveData } = await restart(
+			lastWrite(first.saveData),
+			{},
+		);
+
+		expect(plugin.settings.whisperApiKey).toBe('sk-plain');
+		expect(keychainOf(app).getSecret('openai-api-key')).toBe('sk-plain');
+		// data.json keeps what it held, and the backup still carries the keys.
+		expect(saveData).not.toHaveBeenCalledWith(
+			expect.objectContaining({ whisperApiKey: '' }),
+		);
+		const backup = await app.vault.adapter.read(BACKUP_PATH);
+		expect(backup).toContain('sk-plain');
+		expect(backup).toContain('dg-plain');
+	});
+
+	it('keeps the keys on disk through a reload by the same plugin instance', async () => {
+		// A synced data.json reloads the settings mid-session, when the
+		// keychain still answers from memory and proves nothing.
+		const { plugin, loadData, saveData } = await loadPlugin({
+			...PLAIN_TEXT_KEYS,
+		});
+		loadData.mockResolvedValue(lastWrite(saveData));
+
+		await plugin.onExternalSettingsChange();
+		await plugin.saveSettings();
+
+		expect(lastWrite(saveData)).toMatchObject({
+			whisperApiKey: 'sk-plain',
+			deepgramApiKey: 'dg-plain',
+		});
 	});
 
 	it('keeps running on the keys it moved', async () => {
@@ -140,22 +218,32 @@ describe('loading a data.json that holds API keys in plain text', () => {
 		);
 	});
 
-	it('announces nothing and retries on the next load when data.json cannot be written', async () => {
+	it('announces nothing while data.json cannot be written, and links the same secrets on the next load', async () => {
 		const app = new App();
 		const plugin = new AudioRecorderPlugin(app, MANIFEST);
 		const persistence = internalsOf<Record<string, unknown>>(plugin);
 		persistence.loadData = jest.fn().mockResolvedValue({
 			...PLAIN_TEXT_KEYS,
 		});
-		persistence.saveData = jest.fn().mockRejectedValue(new Error('EACCES'));
+		const saveData = jest.fn().mockRejectedValue(new Error('EACCES'));
+		persistence.saveData = saveData;
 		jest.spyOn(console, 'warn').mockImplementation(() => {});
-
 		await plugin.onload();
-
 		expect(keychainNotices()).toEqual([]);
-		// The secrets exist, so the next load links them instead of creating
-		// copies.
-		expect(keychainOf(app).getSecret('openai-api-key')).toBe('sk-plain');
+
+		saveData.mockResolvedValue(undefined);
+		await plugin.loadSettings();
+
+		// The secrets the failed load created are linked, not copied.
+		expect(keychainOf(app).listSecrets().sort()).toEqual([
+			'deepgram-api-key',
+			'openai-api-key',
+		]);
+		expect(lastWrite(saveData)).toMatchObject({
+			whisperApiKeySecret: 'openai-api-key',
+			deepgramApiKeySecret: 'deepgram-api-key',
+		});
+		expect(keychainNotices()).toHaveLength(1);
 	});
 
 	it('moves the keys on a phone as well', async () => {
@@ -164,6 +252,53 @@ describe('loading a data.json that holds API keys in plain text', () => {
 		const { app } = await loadPlugin({ ...PLAIN_TEXT_KEYS });
 
 		expect(keychainOf(app).getSecret('openai-api-key')).toBe('sk-plain');
+	});
+});
+
+describe('loading while data.json cannot be used', () => {
+	it('moves nothing while data.json is unreadable and the backup holds the keys', async () => {
+		// Saving is blocked, so a key moved now could never leave data.json,
+		// and the session runs on the plain-text keys instead.
+		const app = new App();
+		await app.vault.adapter.write(DATA_PATH, '{"truncated');
+		await app.vault.adapter.write(
+			BACKUP_PATH,
+			JSON.stringify(PLAIN_TEXT_KEYS),
+		);
+
+		const plugin = new AudioRecorderPlugin(app, MANIFEST);
+		const persistence = internalsOf<Record<string, unknown>>(plugin);
+		// A read that fails twice, as a truncated file does.
+		persistence.loadData = jest.fn().mockResolvedValue(undefined);
+		const saveData = jest.fn().mockResolvedValue(undefined);
+		persistence.saveData = saveData;
+
+		await plugin.onload();
+
+		expect(keychainOf(app).listSecrets()).toEqual([]);
+		expect(saveData).not.toHaveBeenCalled();
+		expect(plugin.settings.whisperApiKey).toBe('sk-plain');
+	});
+
+	it('moves the keys of a backup an earlier version wrote when data.json is missing', async () => {
+		const app = new App();
+		await app.vault.adapter.write(
+			BACKUP_PATH,
+			JSON.stringify(PLAIN_TEXT_KEYS),
+		);
+
+		const { saveData } = await loadPlugin(null, app);
+
+		expect(keychainOf(app).getSecret('openai-api-key')).toBe('sk-plain');
+		expect(lastWrite(saveData)).toMatchObject({
+			whisperApiKey: 'sk-plain',
+			whisperApiKeySecret: 'openai-api-key',
+			unconfirmedApiKeySecrets: {
+				openai: 'openai-api-key',
+				deepgram: 'deepgram-api-key',
+			},
+		});
+		expect(keychainNotices()).toHaveLength(1);
 	});
 });
 

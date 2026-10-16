@@ -24,10 +24,7 @@ import {
 	serializeSettings,
 } from './settings/settingsSerialization';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
-import {
-	migrateApiKeysToSecrets,
-	resolveApiKeys,
-} from './settings/apiKeySecrets';
+import { ApiKeyMigration, resolveApiKeys } from './settings/apiKeySecrets';
 import { ACCOUNTS, type AccountId } from './providers/providers';
 import { RecordingManager } from './recording/RecordingManager';
 import { detectSilentChannel } from './recording/silentChannelDetector';
@@ -270,6 +267,14 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * refresh what the tab reports about each engine's key.
 	 */
 	private settingTab: AudioRecorderSettingTab | null = null;
+	/**
+	 * Moves plain-text API keys into Obsidian's keychain. Kept for the life of
+	 * the plugin, because it remembers which secrets this instance wrote, and
+	 * a later load in the same session must not take those as confirmed.
+	 */
+	private readonly apiKeyMigration = new ApiKeyMigration(
+		this.app.secretStorage,
+	);
 
 	/**
 	 * Called when the plugin is loaded.
@@ -726,10 +731,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.settingsLoadFailed = false;
 		this.settings = await mergeSettingsAsync(data ?? {});
 		this.settingsInitialized = true;
-		const migrated = migrateApiKeysToSecrets(
-			this.settings,
-			this.app.secretStorage,
-		);
+		const migration = this.apiKeyMigration.migrate(this.settings);
 		resolveApiKeys(this.settings, this.app.secretStorage);
 		if (restoredFromBackup) {
 			new Notice('Settings were restored from the backup file.');
@@ -742,27 +744,28 @@ export default class AudioRecorderPlugin extends Plugin {
 		}
 		// After the restore's own write rather than instead of it: a backup
 		// written by an earlier version holds the keys in plain text too, and
-		// the move is announced only by the write that completes it.
-		if (migrated.length > 0) {
-			await this.persistMigratedKeys(migrated);
+		// the move is announced only by the write that records it.
+		if (migration.changed) {
+			await this.persistApiKeyMigration(migration.linked);
 		}
 		await this.backupSettings();
 	}
 
 	/**
-	 * Writes data.json right after keys were moved into the keychain, so the
-	 * plain-text copies leave it now rather than at the next change the user
-	 * happens to make. The backup written after this drops them the same way.
+	 * Writes data.json right after a migration changed what it holds: the
+	 * links of keys just moved into the keychain, or the removal of a
+	 * plain-text copy a later start confirmed is no longer needed. The backup
+	 * written after this follows it the same way.
 	 *
 	 * A failed write is not a failed load. The secrets are in the keychain and
-	 * the settings in memory link them, while data.json still holds the keys
-	 * in plain text and no IDs; the next load finds the same keys, links the
-	 * secrets that already hold them instead of creating new ones, and writes
-	 * again. Nothing is announced until a write has succeeded, so the notice
-	 * never claims a move that the file on disk does not show.
-	 * @param migrated - The accounts whose key was moved
+	 * the settings in memory link them, while data.json still holds what it
+	 * held; the next load finds the same keys, links the secrets that already
+	 * hold them instead of creating new ones, and writes again. Nothing is
+	 * announced until a write has succeeded, so the notice never claims a move
+	 * that the file on disk does not show.
+	 * @param linked - The accounts linked to a secret by this load
 	 */
-	private async persistMigratedKeys(migrated: AccountId[]): Promise<void> {
+	private async persistApiKeyMigration(linked: AccountId[]): Promise<void> {
 		try {
 			await this.saveData(serializeSettings(this.settings));
 		} catch (error) {
@@ -772,9 +775,13 @@ export default class AudioRecorderPlugin extends Plugin {
 			);
 			return;
 		}
-		const names = migrated.map((id) => ACCOUNTS[id].keyFieldName);
+		if (linked.length === 0) {
+			return;
+		}
+		const names = linked.map((id) => ACCOUNTS[id].keyFieldName);
 		new Notice(
-			`Advanced Audio Recorder: ${names.join(', ')} ${names.length === 1 ? 'was' : 'were'} moved out of the plugin's data.json into Obsidian's keychain (Settings > Keychain). ` +
+			`Advanced Audio Recorder: ${names.join(', ')} ${names.length === 1 ? 'was' : 'were'} copied into Obsidian's keychain (Settings > Keychain). ` +
+				"The plain-text copy in the plugin's data.json is removed the next time Obsidian starts and finds the key there. " +
 				'Secrets are kept on each device and are not synced, so enter the key once on your other devices.',
 			0,
 		);
