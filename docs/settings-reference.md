@@ -215,7 +215,7 @@ Each **API key** row links a secret in Obsidian's keychain rather than holding t
 
 One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Works with OpenAI and any compatible host (for example Groq) by setting the base URL, key, and model. The 25 MB per-request limit is enforced by the API; files at or under it are uploaded in their original container, while larger files are resampled to 16 kHz mono, split into upload-sized WAV chunks, and stitched onto one timeline. No diarization. See [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) and [Groq Whisper setup](use-cases/groq-whisper-setup.md).
 
-![Whisper API engine settings with the base URL, API key, model and upload chunk size rows](images/settings-engine-whisper-api.png)
+![Whisper API engine settings with the base URL, API key keychain picker, model and upload chunk size rows](images/settings-engine-whisper-api.png)
 
 | Setting               | What it does                                                                                                                                                                                                                        | Options / range                                                                   | Default                     |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------- |
@@ -229,7 +229,7 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 
 One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Deepgram's official pre-recorded API. Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free account includes a starter credit, then pay-as-you-go. See [Deepgram API key](use-cases/deepgram-api-key.md).
 
-![Deepgram engine settings with the base URL, API key and model rows](images/settings-engine-deepgram.png)
+![Deepgram engine settings with the base URL, API key keychain picker and model rows](images/settings-engine-deepgram.png)
 
 | Setting              | What it does                                                                                                                                                                                                                        | Options / range                                                 | Default                       |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------- |
@@ -242,7 +242,7 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 
 One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on, and also the page the post-processing prompts are configured on when they run through Gemini. Google's multimodal `generateContent` plus the File API. Files up to 2 GB are uploaded whole. Containers Gemini does not accept (for example `webm`, `m4a`) are decoded to 16 kHz mono WAV first. Recordings longer than 15 minutes are split into parts and stitched; a diarized split resets speaker numbering and surfaces a warning. See [Gemini API key](use-cases/gemini-api-key.md).
 
-![Google Gemini engine settings with the base URL, API key, model and max output tokens rows](images/settings-llm-gemini-provider.png)
+![Google Gemini engine settings with the base URL, API key keychain picker, model and max output tokens rows](images/settings-llm-gemini-provider.png)
 
 | Setting                   | What it does                                                                                                                                                                                                                        | Options / range                                                                                           | Default                                     |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
@@ -256,7 +256,7 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 
 One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Mistral's batch transcription endpoint. A recording of up to three hours goes in one request, so diarization keeps consistent speaker numbering across the whole file, and files are sent whole up to 1 GB. MP3, WAV, M4A, FLAC, and OGG are uploaded untouched, while any other container, including the `webm` this plugin records by default, is decoded to 16 kHz mono WAV first and uploaded under a matching name. A recording past three hours is refused before it is uploaded whenever the plugin decodes it, which is how it learns the length. The language hint is never sent, because Mistral refuses it alongside the timestamp granularity that makes the response carry timed segments, and only the segment level is asked for, because the response carries no timed segments without it and the endpoint refuses a request naming two levels at once.
 
-![Mistral Voxtral engine settings with the base URL, API key and model rows](images/settings-engine-voxtral.png)
+![Mistral Voxtral engine settings with the base URL, API key keychain picker and model rows](images/settings-engine-voxtral.png)
 
 | Setting             | What it does                                                                                                                                                                                                                        | Options / range                               | Default                     |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------- |
@@ -269,7 +269,7 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 
 The page the post-processing prompts are configured on when they run through Mistral. It holds no transcription fields of its own: the speech models live on the **Mistral Voxtral** page above, and the two pages share one endpoint and one key because they are two catalogues over one account.
 
-![Mistral engine settings with the base URL, API key, model and max output tokens rows](images/settings-engine-mistral.png)
+![Mistral engine settings with the base URL, API key keychain picker, model and max output tokens rows](images/settings-engine-mistral.png)
 
 | Setting               | What it does                                                                                                                                                                                                                        | Options / range                                                                                 | Default                     |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------- |
@@ -283,7 +283,7 @@ The page the post-processing prompts are configured on when they run through Mis
 
 The page the post-processing prompts, the chapter titles, and the two-pass context agents are configured on when they run through DeepSeek. DeepSeek does not transcribe audio, so the page backs a chat catalogue only and keeps a key of its own, apart from every transcription account. The text of the transcript is sent to DeepSeek's servers.
 
-![DeepSeek engine settings with the base URL, API key, model and max output tokens rows](images/settings-engine-deepseek.png)
+![DeepSeek engine settings with the base URL, API key keychain picker, model and max output tokens rows](images/settings-engine-deepseek.png)
 
 | Setting               | What it does                                                                                                                                                                                                                        | Options / range                                             | Default                    |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------- |

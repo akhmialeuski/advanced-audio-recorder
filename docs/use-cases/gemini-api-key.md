@@ -32,7 +32,7 @@ Gemini reads the audio itself rather than running a dedicated speech model, whic
 | Cost                    | Free tier in AI Studio, then paid                                  |
 | Reused for              | Gemini [LLM post-processing](../llm-post-processing.md) (same key) |
 
-![The Google Gemini engine page under Engines, with the Base URL, Google Gemini API key, Model and Max output tokens rows](../images/settings-llm-gemini-provider.png)
+![The Google Gemini engine page under Engines, with the Base URL, Google Gemini API key keychain picker, Model and Max output tokens rows](../images/settings-llm-gemini-provider.png)
 
 ---
 
@@ -103,7 +103,7 @@ To enable it:
 4. Set its **Post-processing engine** to **Google Gemini**, which settles only which service does the work.
 5. Open **Engines** and then **Google Gemini** to confirm the **Base URL** reads `https://generativelanguage.googleapis.com`, pick a **Model** (default `gemini-3.8-flash`), and adjust **Max output tokens** if needed (default 4096, range 512-200000, with the model's own maximum as the real limit). One catalogue serves transcription and prompts alike, because Gemini answers both with the same family of ids.
 
-![Google Gemini engine settings with the base URL, API key, model and max output tokens rows](../images/settings-llm-gemini-provider.png)
+![Google Gemini engine settings with the base URL, API key keychain picker, model and max output tokens rows](../images/settings-llm-gemini-provider.png)
 
 See the [LLM post-processing guide](../llm-post-processing.md) for the full set of tasks, prompts, and provider options.
 

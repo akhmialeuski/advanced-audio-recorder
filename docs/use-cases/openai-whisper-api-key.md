@@ -73,7 +73,7 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 7. Back under **Transcription**, set **Language** to `auto` to auto-detect, or to an ISO code (for example `en`, `ru`, `es`).
 8. (Optional) Choose where the transcript goes under **Transcript output > Destination**. The default is **Insert into note**.
 
-![The Whisper API engine page under Engines, with the Base URL, OpenAI API key, Model and Upload chunk size rows](../images/settings-engine-whisper-api.png)
+![The Whisper API engine page under Engines, with the Base URL, OpenAI API key keychain picker, Model and Upload chunk size rows](../images/settings-engine-whisper-api.png)
 
 > **Speaker diarization** stays greyed out and off for the Whisper API engine - OpenAI's Whisper does not return speaker labels. The speaker-related output controls (Include speakers, Merge speaker turns, Speaker format) are disabled to match.
 

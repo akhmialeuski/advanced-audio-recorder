@@ -102,7 +102,7 @@ Behavior and limits:
 
 Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The **Whisper API models** link in the **Model** row's description points at the [OpenAI speech-to-text guide](https://developers.openai.com/api/docs/guides/speech-to-text).
 
-![The Whisper API engine page under Engines, with the Base URL, OpenAI API key, Model and Upload chunk size rows](images/settings-engine-whisper-api.png)
+![The Whisper API engine page under Engines, with the Base URL, OpenAI API key keychain picker, Model and Upload chunk size rows](images/settings-engine-whisper-api.png)
 
 ### Deepgram
 
@@ -126,7 +126,7 @@ Behavior and limits:
 
 Getting a key: [Deepgram API key](use-cases/deepgram-api-key.md). The **Deepgram model list** link in the **Model** row's description points at the [Deepgram model list](https://developers.deepgram.com/docs/model).
 
-![The Deepgram engine page under Engines, with the Base URL, Deepgram API key and Model rows](images/settings-engine-deepgram.png)
+![The Deepgram engine page under Engines, with the Base URL, Deepgram API key keychain picker and Model rows](images/settings-engine-deepgram.png)
 
 ### Google Gemini
 
@@ -149,7 +149,7 @@ Behavior and limits:
 
 Getting a key: [Gemini API key](use-cases/gemini-api-key.md). The **Gemini model list** link in the **Model** row's description points at the [Gemini model list](https://ai.google.dev/gemini-api/docs/models).
 
-![The Google Gemini engine page under Engines, with the Base URL, Google Gemini API key, Model and Max output tokens rows](images/settings-llm-gemini-provider.png)
+![The Google Gemini engine page under Engines, with the Base URL, Google Gemini API key keychain picker, Model and Max output tokens rows](images/settings-llm-gemini-provider.png)
 
 ### Mistral Voxtral
 

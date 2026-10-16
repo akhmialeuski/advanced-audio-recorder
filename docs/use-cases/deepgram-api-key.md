@@ -61,7 +61,7 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 | **Deepgram API key**     | The key copied from the Deepgram Console   | Engines > Deepgram | (empty)                       |
 | **Model**                | `nova-3` (or a named variant)              | Engines > Deepgram | `nova-3`                      |
 
-![The Deepgram engine page under Engines, with the Base URL, Deepgram API key and Model rows](../images/settings-engine-deepgram.png)
+![The Deepgram engine page under Engines, with the Base URL, Deepgram API key keychain picker and Model rows](../images/settings-engine-deepgram.png)
 
 The **Model** row is a dropdown over the seeded ids, and the **Model catalogue** entry below it is where you add an id Deepgram supports or drop one you do not use. A link to Deepgram's authoritative model catalogue - [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model) - closes the **Model** row's description.
 

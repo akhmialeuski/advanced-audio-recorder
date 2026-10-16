@@ -162,9 +162,9 @@ The model list belongs to the provider rather than to the job, so each provider'
 
 DeepSeek serves the OpenAI chat format, and its catalogue holds two current models: `deepseek-flash` for everyday cleanup and summaries, and `deepseek-v4-pro` for harder prompts at about four times the price. The older ids `deepseek-chat`, `deepseek-reasoner`, and `deepseek-v4-flash` are retired by the vendor and are not seeded, because a request naming one fails. DeepSeek bills by time of day: the cost estimate uses the weekday peak rate (01:00-04:00 and 06:00-10:00 UTC), so a run outside those hours costs about half of what the estimate shows, and less again when the vendor's prompt cache is hit.
 
-![OpenAI engine settings with the base URL, API key, model picker and max output tokens rows](images/settings-llm-provider-model.png)
+![OpenAI engine settings with the base URL, API key keychain picker, model picker and max output tokens rows](images/settings-llm-provider-model.png)
 
-![Anthropic engine settings with the base URL, API key, model picker and max output tokens rows](images/settings-engine-anthropic.png)
+![Anthropic engine settings with the base URL, API key keychain picker, model picker and max output tokens rows](images/settings-engine-anthropic.png)
 
 ---
 
