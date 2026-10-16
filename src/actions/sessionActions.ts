@@ -33,6 +33,7 @@ import type {
 	SessionAction,
 	SessionServices,
 } from './PluginAction';
+import { LABEL_PARAM, MARKER_LABEL_PARAMS } from './positionActions';
 
 /** Availability gate for the action that starts a session as well as ends it. */
 const always = (): boolean => true;
@@ -54,17 +55,6 @@ const recorderState = ({ recording, getSettings }: SessionServices): string =>
 		recording.getStatus(),
 		getSettings().recordingFormat,
 	);
-
-/** The marker label, on the command line. */
-const LABEL_PARAM = 'label';
-
-/** The label parameter of the marker commands. */
-const LABEL_PARAMS = {
-	[LABEL_PARAM]: valueParam(
-		'<text>',
-		'Label of the marker. Numbered by default.',
-	),
-};
 
 /** Why no marker can be dropped, said where the palette hides the command. */
 const noMarker = (): string =>
@@ -141,15 +131,19 @@ export const SESSION_ACTIONS: readonly SessionAction[] = [
 		title: 'Start/stop recording',
 		icon: 'microphone',
 		isAvailable: always,
-		run: ({ recording }: SessionServices): Promise<void> =>
-			recording.toggleRecording(),
+		run: async ({ recording }: SessionServices): Promise<void> => {
+			// The recorder shows its own notice for a start it refused.
+			await recording.toggleRecording();
+		},
 		cli: {
 			name: 'toggle-recording',
 			description:
 				'Start recording, or stop the recording in progress and save it.',
 			execute: async (services: SessionServices): Promise<string> => {
-				await services.recording.toggleRecording();
-				return recorderState(services);
+				// A refused start leaves the recorder idle, and the idle line
+				// alone would read as nothing having gone wrong.
+				const failure = await services.recording.toggleRecording();
+				return failure ?? recorderState(services);
 			},
 		},
 	},
@@ -216,7 +210,7 @@ export const SESSION_ACTIONS: readonly SessionAction[] = [
 					Object.values(MARKER_KIND),
 					'Bookmark or chapter. Defaults to the kind used last.',
 				),
-				...LABEL_PARAMS,
+				...MARKER_LABEL_PARAMS,
 			},
 			opensDialog: true,
 			unavailable: noMarker,
@@ -244,7 +238,7 @@ export const SESSION_ACTIONS: readonly SessionAction[] = [
 			name: 'recording-bookmark',
 			description:
 				'Add a bookmark at the current moment of the recording in progress.',
-			params: LABEL_PARAMS,
+			params: MARKER_LABEL_PARAMS,
 			opensDialog: true,
 			unavailable: noMarker,
 			execute: (services: SessionServices, args: CliData): string =>
@@ -263,7 +257,7 @@ export const SESSION_ACTIONS: readonly SessionAction[] = [
 			name: 'recording-chapter',
 			description:
 				'Start a chapter at the current moment of the recording in progress.',
-			params: LABEL_PARAMS,
+			params: MARKER_LABEL_PARAMS,
 			opensDialog: true,
 			unavailable: noMarker,
 			execute: (services: SessionServices, args: CliData): string =>

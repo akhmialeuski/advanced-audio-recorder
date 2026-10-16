@@ -348,6 +348,22 @@ describe('the point a command line names', () => {
 		await expect(createSut().resolve(args)).resolves.toBe(refusal);
 	});
 
+	it('names the recordings to pick from without offering all', async () => {
+		// The position commands take no all: told to add it, a script would
+		// only be refused again.
+		const sut = recordingVault({
+			recordings: [LECTURE, 'Recordings/qa.webm'],
+			notes: { [NOTES]: [LECTURE, 'Recordings/qa.webm'] },
+		});
+		const family = positionActionFamily(sut.services, () => null);
+
+		await expect(
+			Promise.resolve(family.cliTarget.resolve({ path: NOTES, at: '1' })),
+		).resolves.toBe(
+			`${NOTES} links 2 recordings: ${LECTURE}, Recordings/qa.webm. Name one with recording=<name>.`,
+		);
+	});
+
 	it('refuses a note of several recordings asked for all of them', async () => {
 		const sut = recordingVault({
 			recordings: [LECTURE, 'Recordings/qa.webm'],

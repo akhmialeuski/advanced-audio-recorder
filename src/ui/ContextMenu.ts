@@ -42,7 +42,10 @@ import type {
 } from '../actions/ActionRegistry';
 import { transcriptSelectionIn } from '../actions/transcriptActions';
 import { recordingsInNote } from '../obsidian/noteRecordings';
-import { recordingLinkAt } from '../actions/recordingTargets';
+import {
+	recordingLinkAt,
+	type RecordingLink,
+} from '../actions/recordingTargets';
 
 export type { EnhancementPrimer } from '../actions/PluginAction';
 
@@ -98,6 +101,14 @@ export class ContextMenu {
 	>();
 
 	private readonly app: App;
+
+	/**
+	 * The element the last right-click landed on, in any window. Obsidian
+	 * raises the file-menu of a link while that click is dispatched and hands
+	 * the handler only the file, so this is where the handler learns which
+	 * link it was, and whether that link points at a moment.
+	 */
+	private rightClicked: HTMLElement | null = null;
 
 	/**
 	 * Creates a new ContextMenu instance.
@@ -247,6 +258,9 @@ export class ContextMenu {
 			'contextmenu',
 			(event: MouseEvent) => {
 				const target = event.target as HTMLElement;
+				// Kept for the link menu Obsidian raises for this same click,
+				// which runs after this capture-phase listener.
+				this.rightClicked = target;
 
 				// Standard Obsidian embeds are wrapped in a container with class 'internal-embed'
 				const embed = target.closest('.internal-embed');
@@ -324,7 +338,8 @@ export class ContextMenu {
 				// transcluded player's link is in another note's text.
 				const link = host
 					? null
-					: this.linkOfEmbed(embed as HTMLElement, file);
+					: (this.linkOfNode(embed as HTMLElement, file)?.link ??
+						null);
 				this.registry.renderInto(
 					menu,
 					this.families.file,
@@ -359,21 +374,21 @@ export class ContextMenu {
 	}
 
 	/**
-	 * The link an embed was rendered from, read from the source line of the
-	 * editor that rendered it. Reading view renders no editor, so a player
-	 * there has no link to offer.
+	 * The link a node was rendered from - an embed, or the tokens of a link -
+	 * read from the source line of the editor that rendered it. Reading view
+	 * renders no editor, so a node there has no link to offer.
 	 *
 	 * The link found there must resolve to the right-clicked recording. A
 	 * widget that covers more than one line, such as a table, maps to where
 	 * the whole widget starts, and that column may hold a different link;
 	 * deleting it would remove a link the user never pointed at.
-	 * @param embed - The right-clicked embed
-	 * @param file - The recording the embed plays
-	 * @returns The link, or null when the embed maps to no link of the
+	 * @param node - The right-clicked node
+	 * @param file - The recording the menu is for
+	 * @returns The link, or null when the node maps to no link of the
 	 *   recording
 	 */
-	private linkOfEmbed(embed: HTMLElement, file: TFile): LinkLocation | null {
-		const rendered = editorPositionOfNode(embed);
+	private linkOfNode(node: HTMLElement, file: TFile): RecordingLink | null {
+		const rendered = editorPositionOfNode(node);
 		if (!rendered) {
 			return null;
 		}
@@ -383,7 +398,41 @@ export class ContextMenu {
 			rendered.position,
 			rendered.file?.path ?? '',
 		);
-		return found?.file === file ? found.link : null;
+		return found?.file === file ? found : null;
+	}
+
+	/**
+	 * The link to a recording the last right-click landed on. Reading view
+	 * draws a link as an anchor carrying its text in `data-href`; an editor
+	 * draws it as tokens the editor maps back to the source line, which also
+	 * gives the place a link-aware delete removes.
+	 * @param file - The recording the link menu was raised for
+	 * @returns The link, or null when the click was on no link to the
+	 *   recording
+	 */
+	private rightClickedLinkTo(
+		file: TFile,
+	): { link?: LinkLocation; atMoment: boolean } | null {
+		const target = this.rightClicked;
+		if (!target) {
+			return null;
+		}
+		const anchor = target.closest<HTMLElement>('a.internal-link');
+		const href = anchor?.getAttribute('data-href');
+		if (anchor && href) {
+			const { path, subpath } = parseLinktext(href);
+			const sourcePath = this.resolveEmbedSource(anchor).sourcePath;
+			const from =
+				this.transclusionOf(anchor, sourcePath)?.path ?? sourcePath;
+			return this.app.metadataCache.getFirstLinkpathDest(path, from) ===
+				file
+				? { atMoment: hasTimecodeSubpath(subpath) }
+				: null;
+		}
+		const found = this.linkOfNode(target, file);
+		return found
+			? { link: found.link, atMoment: found.atMoment === true }
+			: null;
 	}
 
 	/**
@@ -447,6 +496,13 @@ export class ContextMenu {
 								: this.app.workspace.getActiveViewOfType(
 										MarkdownView,
 									);
+						// The link itself, so a link to a moment offers what
+						// the editor menu offers for it whichever of the two
+						// menus Obsidian raises first, or when it raises only
+						// this one, as Reading view does.
+						const clicked = throughLink
+							? this.rightClickedLinkTo(file)
+							: null;
 						this.registry.renderInto(
 							menu,
 							this.families.file,
@@ -456,6 +512,10 @@ export class ContextMenu {
 									file,
 								),
 								throughLink,
+								...(clicked?.link
+									? { link: clicked.link }
+									: {}),
+								atMoment: clicked?.atMoment === true,
 							}),
 							this.renderedSetFor(menu),
 						);

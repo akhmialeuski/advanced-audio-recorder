@@ -8,7 +8,7 @@
  */
 
 import { MarkdownView, Notice } from 'obsidian';
-import type { CliData } from 'obsidian';
+import type { CliData, CliFlags } from 'obsidian';
 import { COMMAND_IDS, PLAYER_ICONS } from '../constants';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { addRecordingMarker } from '../markers/addRecordingMarker';
@@ -40,6 +40,17 @@ export const AT_PARAM = 'at';
 
 /** The marker label, on the command line. */
 export const LABEL_PARAM = 'label';
+
+/**
+ * The label parameter of every command that adds a marker, at a point of a
+ * recording here or at the live position of a session.
+ */
+export const MARKER_LABEL_PARAMS: CliFlags = {
+	[LABEL_PARAM]: valueParam(
+		'<text>',
+		'Label of the marker. Numbered by default.',
+	),
+};
 
 /**
  * Adds a marker at the position and refreshes every open player of the
@@ -131,12 +142,7 @@ function markerAction(
 		cli: {
 			name: texts.name,
 			description: texts.description,
-			params: {
-				[LABEL_PARAM]: valueParam(
-					'<text>',
-					'Label of the marker. Numbered by default.',
-				),
-			},
+			params: MARKER_LABEL_PARAMS,
 			unavailable: markersOff,
 			execute: (context: PositionContext, args: CliData) =>
 				addMarkerHere(context, kind, cliText(args, LABEL_PARAM)),
@@ -240,7 +246,9 @@ function namedPosition(
 	if (at.value === null) {
 		return `Name the time with ${AT_PARAM}=<seconds|m:ss|h:mm:ss>, or play the recording in Obsidian.`;
 	}
-	const recordings = namedRecordings(services, args);
+	// A time belongs to one recording, so a note of several is answered
+	// with the names to pick from, never with the advice to run on each.
+	const recordings = namedRecordings(services, args, { several: false });
 	if (typeof recordings === 'string') {
 		return recordings;
 	}

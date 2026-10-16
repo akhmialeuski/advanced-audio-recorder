@@ -311,7 +311,10 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				new Notice('Recording deleted');
 			} catch (error) {
 				new Notice('Failed to delete recording');
-				console.error('Failed to delete recording:', error);
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to delete ${file.path}:`,
+					error,
+				);
 			}
 		},
 		cli: {
@@ -351,7 +354,10 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				new Notice(await deleteRecordingWithLink(context));
 			} catch (error) {
 				new Notice('Failed to delete recording');
-				console.error('Failed to delete recording:', error);
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to delete ${context.file.path}:`,
+					error,
+				);
 			}
 		},
 		cli: {

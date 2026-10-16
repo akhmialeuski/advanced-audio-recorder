@@ -309,7 +309,7 @@ A note open in Obsidian is edited in its editor, by the line numbers the editor 
 | `add-chapter`    | Adds a chapter to a recording at a time.                               | `at=<time>`, `label=<text>` |
 | `timestamp-link` | Prints a link to a time in a recording, the kind a transcript carries. | `at=<time>`                 |
 
-With a recording named - by `file`, `path`, `recording` or `note` - `at` is required. With none named, they act on the recording playing in Obsidian, at the playback's position or at `at`. The link `timestamp-link` prints resolves from the note the recording was reached through, so it is ready to paste there, and Obsidian's `--copy` puts it on the clipboard.
+With a recording named - by `file`, `path`, `recording` or `note` - `at` is required. A time belongs to one recording, so these commands take no `all`: a note that links several is answered with their names, to pick one with `recording=`. With none named, they act on the recording playing in Obsidian, at the playback's position or at `at`. The link `timestamp-link` prints resolves from the note the recording was reached through, so it is ready to paste there, and Obsidian's `--copy` puts it on the clipboard.
 
 ## Folders and the transcription queue
 

@@ -173,9 +173,8 @@ export function cliCommands(host: CliHost, pluginId: string): CliCommand[] {
  * the second when it is added. A registration the host still refuses, a clash
  * with another plugin's command for one, is reported rather than allowed to
  * fail `onload`: the CLI is a convenience, and a plugin that refuses to load
- * over one is not. The commands registered before the refused one stay
- * registered, since the API offers no way to take one back short of
- * unloading.
+ * over one is not. Each command is registered on its own, so one refused
+ * command leaves every other one reachable.
  * @param plugin - The plugin registering them
  * @param commands - Every command, the plugin's own and its actions'
  * @returns Whether every command was registered
@@ -188,24 +187,26 @@ export function registerCliCommands(
 	// app has a command line, so the method is asked for rather than assumed.
 	if (
 		typeof (plugin as { registerCliHandler?: unknown })
-			.registerCliHandler === 'function'
+			.registerCliHandler !== 'function'
 	) {
+		return false;
+	}
+	let registered = true;
+	for (const command of commands) {
 		try {
-			for (const command of commands) {
-				plugin.registerCliHandler(
-					command.id,
-					command.description,
-					command.flags,
-					command.handler,
-				);
-			}
-			return true;
+			plugin.registerCliHandler(
+				command.id,
+				command.description,
+				command.flags,
+				command.handler,
+			);
 		} catch (error) {
+			registered = false;
 			console.warn(
-				`${PLUGIN_LOG_PREFIX} CLI commands were not registered:`,
+				`${PLUGIN_LOG_PREFIX} CLI command ${command.id} was not registered:`,
 				error,
 			);
 		}
 	}
-	return false;
+	return registered;
 }

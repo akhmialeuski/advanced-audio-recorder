@@ -287,8 +287,11 @@ export interface FolderContext {
  * stay independent of the recording subsystem.
  */
 export interface RecordingSessionPort {
-	/** Starts capture, or stops and saves a running session. */
-	toggleRecording(): Promise<void>;
+	/**
+	 * Starts capture, or stops and saves a running session.
+	 * @returns The reason it did not complete, or null once it has
+	 */
+	toggleRecording(): Promise<string | null>;
 	/** Whether a session is live: capturing or paused mid-capture. */
 	isSessionActive(): boolean;
 	/** Pauses a running session or resumes a paused one. */

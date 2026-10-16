@@ -109,8 +109,11 @@ export interface RecordingPanelHost {
 	readonly actions: readonly FileAction[];
 	/** The recorder, for the start/stop button. */
 	readonly recording: {
-		/** Starts capture, or stops and saves a running session. */
-		toggleRecording(): Promise<void>;
+		/**
+		 * Starts capture, or stops and saves a running session. The reason
+		 * one did not complete is also shown by the recorder as a notice.
+		 */
+		toggleRecording(): Promise<string | null>;
 		/** What the recorder is doing. */
 		getStatus(): RecordingStatus;
 	};

@@ -53,7 +53,7 @@ function createSut(
 		getSettings: () => settings,
 		saveSettings: jest.fn().mockResolvedValue(undefined),
 		recording: partial<jest.Mocked<RecordingSessionPort>>({
-			toggleRecording: jest.fn().mockResolvedValue(undefined),
+			toggleRecording: jest.fn().mockResolvedValue(null),
 			togglePauseResume: jest.fn(),
 			getStatus: jest.fn(
 				() => options.status ?? RecordingStatus.Recording,
@@ -98,6 +98,19 @@ describe('driving the recorder from the command line', () => {
 			execute(services, COMMAND_IDS.startStopRecording),
 		).resolves.toBe('Idle. A recording started now is saved as MP3.');
 		expect(services.recording.toggleRecording).toHaveBeenCalledTimes(1);
+	});
+
+	it('answers with the reason a start was refused, not the idle state', async () => {
+		// The recorder stays idle after a refused start, and its status line
+		// alone would tell a script that nothing went wrong.
+		const services = createSut({ status: RecordingStatus.Idle });
+		services.recording.toggleRecording.mockResolvedValue(
+			'The quick note is using the microphone.',
+		);
+
+		await expect(
+			execute(services, COMMAND_IDS.startStopRecording),
+		).resolves.toBe('The quick note is using the microphone.');
 	});
 
 	it('pauses and answers with the state it left', async () => {

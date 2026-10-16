@@ -268,8 +268,34 @@ describe('registerCliCommands', () => {
 			),
 		).toBe(false);
 		expect(warn).toHaveBeenCalledWith(
-			'[AudioRecorder] CLI commands were not registered:',
+			`[AudioRecorder] CLI command ${PLUGIN_ID} was not registered:`,
 			expect.any(Error),
+		);
+	});
+
+	it('keeps registering the commands after one the app refuses', () => {
+		// Another plugin owning one id must not take every command after it
+		// off the command line.
+		jest.spyOn(console, 'warn').mockImplementation(() => {
+			/* the registrations are the point, not the output */
+		});
+		const commands = cliCommands(makeHost(), PLUGIN_ID);
+		const refused = commands[1]?.id;
+		const registered: string[] = [];
+		const registerCliHandler = jest.fn((id: string) => {
+			if (id === refused) {
+				throw new Error('Command already registered');
+			}
+			registered.push(id);
+		});
+
+		expect(
+			registerCliCommands(pluginWith(registerCliHandler), commands),
+		).toBe(false);
+		expect(registered).toEqual(
+			commands
+				.map((command) => command.id)
+				.filter((id) => id !== refused),
 		);
 	});
 });

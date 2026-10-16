@@ -138,6 +138,7 @@ function obsidianEditorOver(
 		offsetToPos,
 		posToOffset,
 		getCursor: () => offsetToPos(view.state.selection.main.head),
+		somethingSelected: () => !view.state.selection.main.empty,
 		setCursor: (pos: EditorPosition | number) => {
 			const offset = typeof pos === 'number' ? pos : posToOffset(pos);
 			view.dispatch({ selection: { anchor: offset } });

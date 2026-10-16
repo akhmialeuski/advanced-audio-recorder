@@ -17,6 +17,7 @@ import {
 	createRecordingSut,
 	installMediaRecorder,
 	installRecordingMediaStubs,
+	makeFakeMarkerStore,
 	failNextPcmRecorderStop,
 	makeMediaRecorderDouble,
 	pcmRecorderDoubles,
@@ -166,6 +167,31 @@ describe('RecordingManager', () => {
 			// Then stop
 			await manager.toggleRecording();
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+		});
+
+		it('answers with the reason a start was refused', async () => {
+			// The command line prints this answer; a toggle that swallowed it
+			// would leave a script reading an idle status as success.
+			const refused = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+				makeFakeMarkerStore().store,
+				undefined,
+				undefined,
+				undefined,
+				() => 'A quick note is using the microphone.',
+			);
+
+			await expect(refused.toggleRecording()).resolves.toBe(
+				'A quick note is using the microphone.',
+			);
+			expect(refused.getStatus()).toBe(RecordingStatus.Idle);
+		});
+
+		it('answers null once a start or a stop completed', async () => {
+			await expect(manager.toggleRecording()).resolves.toBeNull();
+			await expect(manager.toggleRecording()).resolves.toBeNull();
 		});
 	});
 

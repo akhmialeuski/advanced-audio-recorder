@@ -251,16 +251,28 @@ function listed(recordings: readonly TFile[]): string {
 	return recordings.map((file) => file.path).join(', ');
 }
 
+/** What a command that names recordings can run on. */
+export interface RecordingReach {
+	/**
+	 * Whether it runs on every recording of a note, which is what `all` asks
+	 * for. A command that acts at one place of one recording does not, takes
+	 * no `all`, and so is never told to add it.
+	 */
+	readonly several: boolean;
+}
+
 /**
  * The recordings of a note the command line asked for.
  * @param services - Injected services
  * @param note - The note
  * @param args - The arguments as typed
+ * @param reach - Whether the command runs on several recordings
  */
 function recordingsOfNote(
 	services: ActionServices,
 	note: TFile,
 	args: CliData,
+	reach: RecordingReach,
 ): FileContext[] | string {
 	const recordings = recordingsInNote(services.app, note);
 	if (recordings.length === 0) {
@@ -278,7 +290,10 @@ function recordingsOfNote(
 	if (recordings.length === 1 || cliFlag(args, ALL_FLAG)) {
 		return toContexts(recordings);
 	}
-	return `${note.path} links ${String(recordings.length)} recordings: ${listed(recordings)}. Name one with ${RECORDING_PARAM}=<name>, or add ${ALL_FLAG} to run on each.`;
+	const choose = reach.several
+		? `Name one with ${RECORDING_PARAM}=<name>, or add ${ALL_FLAG} to run on each.`
+		: `Name one with ${RECORDING_PARAM}=<name>.`;
+	return `${note.path} links ${String(recordings.length)} recordings: ${listed(recordings)}. ${choose}`;
 }
 
 /**
@@ -287,11 +302,14 @@ function recordingsOfNote(
  * named, as every Obsidian command does.
  * @param services - Injected services
  * @param args - The arguments as typed
+ * @param reach - Whether the command runs on several recordings, as every
+ *   file action does
  * @returns The targets, or the sentence saying why there are none
  */
 export function namedRecordings(
 	services: ActionServices,
 	args: CliData,
+	reach: RecordingReach = { several: true },
 ): FileContext[] | string {
 	const named = namedVaultFile(services.app, args);
 	if (isRefusal(named)) {
@@ -329,7 +347,7 @@ export function namedRecordings(
 	if (cliText(args, NOTE_PARAM) !== null) {
 		return `${NOTE_PARAM}= names the note of a recording, and ${target.path} is a note itself.`;
 	}
-	return recordingsOfNote(services, target, args);
+	return recordingsOfNote(services, target, args, reach);
 }
 
 /**

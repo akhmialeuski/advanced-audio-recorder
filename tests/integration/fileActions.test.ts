@@ -477,7 +477,11 @@ describe('the delete action', () => {
 
 		expect(noticeMessages()).toContain('Failed to delete recording');
 		expect(noticeMessages()).not.toContain('Recording deleted');
-		expect(consoleError).toHaveBeenCalled();
+		// The console line alone has to say which plugin and which file.
+		expect(consoleError).toHaveBeenCalledWith(
+			`[AudioRecorder] Failed to delete ${file.path}:`,
+			expect.any(Error),
+		);
 	});
 
 	it('raises exactly one notice per attempt', async () => {
@@ -608,6 +612,10 @@ describe('deleting a recording with its link', () => {
 		});
 
 		expect(noticeMessages()).toContain('Failed to delete recording');
+		expect(error).toHaveBeenCalledWith(
+			`[AudioRecorder] Failed to delete ${file.path}:`,
+			expect.any(Error),
+		);
 		error.mockRestore();
 	});
 });

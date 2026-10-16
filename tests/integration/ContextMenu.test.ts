@@ -1220,6 +1220,156 @@ describe('ContextMenu', () => {
 		});
 	});
 
+	describe('a link Obsidian raises its own menu for', () => {
+		let rightClick: (event: MouseEvent) => void;
+		let linkMenu: (menu: Menu, file: TFile, source: string) => void;
+		let editorMenu: (menu: Menu, editor: Editor, view: unknown) => void;
+		let recording: TFile;
+		const note = partial<TFile>({ path: 'note.md', extension: 'md' });
+
+		beforeEach(() => {
+			contextMenu.register();
+			const on = (mockWorkspace.on as jest.Mock).mock.calls;
+			linkMenu = on.find((c) => c[0] === 'file-menu')?.[1];
+			editorMenu = on.find((c) => c[0] === 'editor-menu')?.[1];
+			rightClick = (
+				registerDomEventOnAllWindows as jest.Mock
+			).mock.calls.find((c) => c[2] === 'contextmenu')?.[3];
+			recording = makeAudioFile();
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(recording);
+			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue(
+				null,
+			);
+		});
+
+		/**
+		 * A right-click on a link as Reading view draws it, followed by the
+		 * link menu Obsidian raises for it, the only menu raised there.
+		 * @param href - The link text the anchor carries
+		 * @returns The menu
+		 */
+		function readingViewMenuOn(href: string): Menu {
+			const anchor = document.createElement('a');
+			anchor.className = 'internal-link';
+			anchor.setAttribute('data-href', href);
+			const label = anchor.appendChild(document.createElement('span'));
+			rightClick(partial<MouseEvent>({ target: label }));
+			const menu = new Menu();
+			linkMenu(menu, recording, 'link-context-menu');
+			return menu;
+		}
+
+		/**
+		 * A right-click on a link Live Preview draws as tokens, with the two
+		 * menus Obsidian raises for it in the order given.
+		 * @param source - The note's source, the link alone on its line
+		 * @param order - Which menu Obsidian raises first
+		 * @returns The menu and the editor
+		 */
+		function livePreviewMenuOn(
+			source: string,
+			order: 'link first' | 'editor first' | 'link only',
+		): { menu: Menu; live: LiveEditor } {
+			const live = mountLiveEditor({
+				doc: source,
+				file: note,
+				linkTokens: [rangeOf(source, source)],
+			});
+			// Obsidian puts the cursor where the right-click landed.
+			live.editor.setCursor({ line: 0, ch: 2 });
+			rightClick(
+				partial<MouseEvent>({ target: at(live.linkTokens(), 0) }),
+			);
+			const menu = new Menu();
+			const raiseEditorMenu = (): void => {
+				editorMenu(menu, live.editor, { file: note });
+			};
+			if (order === 'editor first') {
+				raiseEditorMenu();
+			}
+			linkMenu(menu, recording, 'link-context-menu');
+			if (order === 'link first') {
+				raiseEditorMenu();
+			}
+			return { menu, live };
+		}
+
+		it('offers no delete on a timestamp in Reading view', () => {
+			// A transcript links its recording at dozens of moments; this menu
+			// is the only one Reading view raises, and it must not trash the
+			// recording the rest of them point at.
+			const titles = titlesOf(readingViewMenuOn('audio.mp3#t=30'));
+
+			expect(titles).not.toContain('Delete recording & link to file');
+			expect(titles).not.toContain('Delete recording');
+			expect(titles).toContain('Audio file info');
+		});
+
+		it('offers the link-aware delete on a whole-file link in Reading view', () => {
+			expect(titlesOf(readingViewMenuOn('audio.mp3'))).toContain(
+				'Delete recording & link to file',
+			);
+		});
+
+		it('keeps the link-aware delete when the click maps to no link', () => {
+			// A link drawn where neither Reading view nor an editor drew it, as
+			// in a canvas card, says nothing about a moment; the link menu still
+			// reached the recording through a link.
+			rightClick(
+				partial<MouseEvent>({ target: document.createElement('span') }),
+			);
+			const menu = new Menu();
+			linkMenu(menu, recording, 'link-context-menu');
+
+			expect(titlesOf(menu)).toContain('Delete recording & link to file');
+		});
+
+		it('ignores a right-click that landed on a link to another file', () => {
+			// What the last right-click hit is only evidence about this menu when
+			// it links this recording; a stale element must not hide the delete
+			// of a whole-file link to it.
+			const other = makeAudioFile('wav');
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockImplementation((path: string) =>
+				path === 'other.wav' ? other : recording,
+			);
+
+			expect(titlesOf(readingViewMenuOn('other.wav#t=30'))).toContain(
+				'Delete recording & link to file',
+			);
+		});
+
+		it.each(['link first', 'editor first', 'link only'] as const)(
+			'offers no delete on a timestamp in Live Preview, %s',
+			(order) => {
+				const { menu } = livePreviewMenuOn(
+					'[[audio.mp3#t=30|0:30]]',
+					order,
+				);
+
+				expect(titlesOf(menu)).not.toContain(
+					'Delete recording & link to file',
+				);
+				expect(titlesOf(menu)).not.toContain('Delete recording');
+			},
+		);
+
+		it('removes the right-clicked link when only the link menu is raised', async () => {
+			const { menu, live } = livePreviewMenuOn(
+				'[[audio.mp3]]',
+				'link only',
+			);
+
+			await clickItem(menu, 'Delete recording & link to file');
+
+			expect(mockFileManager.trashFile).toHaveBeenCalledWith(recording);
+			expect(live.text()).toBe('');
+		});
+	});
+
 	describe('ContextMenu over an enhanced player', () => {
 		/** The contextmenu handler the menu installed on every window. */
 		function playerMenu(): (event: MouseEvent) => void {

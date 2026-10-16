@@ -304,13 +304,13 @@ export class RecordingManager {
 
 	/**
 	 * Toggles recording on/off.
+	 * @returns The reason the start or the stop did not complete, or null
+	 *   once it has, as {@link startRecording} and {@link stopRecording} say
 	 */
-	async toggleRecording(): Promise<void> {
-		if (this.status === RecordingStatus.Idle) {
-			await this.startRecording();
-		} else {
-			await this.stopRecording();
-		}
+	toggleRecording(): Promise<string | null> {
+		return this.status === RecordingStatus.Idle
+			? this.startRecording()
+			: this.stopRecording();
 	}
 
 	/**

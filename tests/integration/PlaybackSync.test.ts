@@ -44,7 +44,15 @@ import {
 	installMediaSession,
 	type MediaSessionDouble,
 } from '../helpers/mediaSession';
-import { asMockPlugin, mockPluginHost } from '../helpers/obsidianMock';
+import {
+	asMockPlugin,
+	fileAt,
+	mockPluginHost,
+	partialPlugin,
+} from '../helpers/obsidianMock';
+import type { Component } from 'obsidian';
+import { ContextMenu } from 'src/ui/ContextMenu';
+import { registeredMenus } from '../helpers/menuFamilies';
 import { makePopoutWindow } from '../helpers/popoutHarness';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
@@ -1102,5 +1110,123 @@ describe('a playing embed moved into a pop-out', () => {
 		} finally {
 			shared.restore();
 		}
+	});
+});
+
+describe('the player menu acts at the point it was opened on', () => {
+	/**
+	 * Mounts a real player as the embed Obsidian renders, and the real
+	 * context menu over the same registry and store, wired the way the
+	 * plugin wires them: a marker written from the menu tells the players of
+	 * the recording to read their markers again.
+	 * @param registry - The registry the player binds through
+	 * @param store - The sidecar the player reads and the menu writes
+	 * @param editable - Whether the embed sits in an editor, as in Live Preview
+	 * @returns The embed the player rendered into
+	 */
+	function playerWithMenu(
+		registry: AudioPlayerRegistry,
+		store: RecordingSidecarStore,
+		editable: boolean,
+	): HTMLElement {
+		const host = makePlayerContainer();
+		if (editable) {
+			host.addClass('cm-editor');
+		}
+		const embed = host.createDiv({
+			cls: 'internal-embed',
+			attr: { src: 'rec.mp4' },
+		});
+		mountMarkerPlayer(registry, store, embed);
+		const recording = fileAt('rec.mp4');
+		const menuApp = createMockApp({
+			metadataCache: { getFirstLinkpathDest: () => recording },
+		}).app;
+		const services = partial<ActionServices>({
+			app: menuApp,
+			getSettings: () =>
+				partial<AudioRecorderSettings>({ playerEnableMarkers: true }),
+			recordingSidecar: store,
+			onMarkersChanged: (path: string) => {
+				registry.reloadMarkers(path, null);
+			},
+		});
+		// The menu listens on every window through child components, which
+		// load as soon as they are added, as under a loaded plugin.
+		const plugin = partialPlugin({
+			app: menuApp,
+			registerEvent: jest.fn(),
+			addChild: <T extends Component>(child: T): T => {
+				child.load();
+				return child;
+			},
+		});
+		const { registry: actions, families } = registeredMenus(services);
+		new ContextMenu(plugin, services, actions, families).register();
+		return embed;
+	}
+
+	/**
+	 * Right-clicks the seek bar at a fraction of its width, the way a user
+	 * points at a moment of the recording.
+	 * @param embed - The embed the player rendered into
+	 * @param fraction - Where along the bar, from 0 to 1
+	 * @returns The menu the click opened
+	 */
+	function rightClickSeekBar(
+		embed: HTMLElement,
+		fraction: number,
+	): (typeof menuInstances)[number] {
+		const seek = el(embed, PLAYER.seek);
+		seek.getBoundingClientRect = (): DOMRect =>
+			({ left: 0, width: 100, top: 0, height: 10 }) as DOMRect;
+		const before = menuInstances.length;
+		seek.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: fraction * 100,
+			}),
+		);
+		expect(menuInstances.length).toBeGreaterThan(before);
+		return at(menuInstances, menuInstances.length - 1);
+	}
+
+	it('adds a marker the embed shows at the point right-clicked in Live Preview', async () => {
+		const shared = sharedAudio();
+		const registry = new AudioPlayerRegistry();
+		const store = makeMarkerStore();
+		const embed = playerWithMenu(registry, store, true);
+		await tick();
+		startPlaybackAt(registry, shared.audio, 42);
+
+		// Half way along a 600 s recording, nowhere near where it plays.
+		rightClickSeekBar(embed, 0.5)
+			.items.find((item) => item.title === 'Add marker here')
+			?.click();
+		await tick();
+
+		expect(store.updateMarkers).toHaveBeenCalledWith(
+			'rec.mp4',
+			expect.any(Function),
+		);
+		expect(embed).toHaveMarkerAt(300);
+	});
+
+	it('offers no marker over a read-only player in Reading view', async () => {
+		const shared = sharedAudio();
+		const registry = new AudioPlayerRegistry();
+		const store = makeMarkerStore();
+		const embed = playerWithMenu(registry, store, false);
+		await tick();
+		startPlaybackAt(registry, shared.audio, 42);
+
+		const titles = rightClickSeekBar(embed, 0.5).items.map(
+			(item) => item.title,
+		);
+
+		expect(titles).not.toContain('Add marker here');
+		expect(titles).toContain('Copy timestamp link here');
+		expect(store.updateMarkers).not.toHaveBeenCalled();
 	});
 });
