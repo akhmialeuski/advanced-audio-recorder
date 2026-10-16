@@ -562,7 +562,7 @@ The **Auto chapters** block and the **Engines** entry stay in settings when **En
 ## Security and storage
 
 - **API keys** are kept in Obsidian's keychain (**Settings > Keychain**) **on this device**, not in the plugin's `data.json`, and are **never written to diagnostics** output.
-- **`data.json` holds only the ID** of each linked secret, so syncing it does not copy your keys. The keychain does not sync either, so a second device needs each key linked once under the same ID.
+- **`data.json` holds only the ID** of each linked secret, so syncing it does not copy your keys. The keychain does not sync either, so a second device needs each key linked once under the same ID. A key moved from an earlier version stays in `data.json` until Obsidian next starts and finds it in the keychain.
 - **Local whisper.cpp keeps everything offline** - no key, no upload, no network request - for the most privacy-sensitive recordings.
 
 ---
