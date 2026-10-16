@@ -166,9 +166,8 @@ If your plugin does not need CSS, delete this file.
     align-items: center;
 }
 
-.aar-marker-type-icon svg {
-    width: 16px;
-    height: 16px;
+.aar-marker-type-icon {
+    --icon-size: var(--icon-s);
 }
 
 .aar-marker-name-input {
@@ -600,9 +599,13 @@ input.aar-input-invalid {
     color: var(--color-accent);
 }
 
-.aar-player-btn svg {
-    width: 16px;
-    height: 16px;
+/*
+ * Icons take Obsidian's sizes rather than pixels, so on a phone or a tablet
+ * they grow with the system text size the way the app's own icons do. The
+ * values match the pixels they replace on the desktop.
+ */
+.aar-player-btn {
+    --icon-size: var(--icon-s);
 }
 
 /* The primary action: a round accent button, a little larger than the rest */
@@ -625,8 +628,6 @@ input.aar-input-invalid {
 }
 
 .aar-player-play svg {
-    width: 16px;
-    height: 16px;
     fill: currentColor;
 }
 
@@ -891,9 +892,8 @@ div.aar-player-marker-row {
     color: var(--text-faint);
 }
 
-.aar-player-marker-kind svg {
-    width: 16px;
-    height: 16px;
+.aar-player-marker-kind {
+    --icon-size: var(--icon-s);
 }
 
 /*
@@ -954,7 +954,7 @@ div.aar-player-marker-row {
 
 /* The pencil says the title is edited in place; clicks pass to the field */
 .aar-player-marker-label-icon {
-    --icon-size: 14px;
+    --icon-size: var(--icon-xs);
     grid-area: label;
     justify-self: end;
     display: inline-flex;
@@ -979,7 +979,7 @@ div.aar-player-marker-row {
 .aar-player .aar-player-marker-jump,
 .aar-player .aar-player-marker-here,
 .aar-player .aar-player-marker-delete {
-    --icon-size: 14px;
+    --icon-size: var(--icon-xs);
     width: 22px;
     height: 22px;
     padding: 0;
@@ -1025,7 +1025,9 @@ div.aar-player-marker-row {
 }
 
 .aar-player-marker-swatch {
-    --icon-size: 12px;
+    /* A step below the smallest size Obsidian names, 12px on the desktop,
+       scaled with it so the chevron still grows with the system text size */
+    --icon-size: calc(var(--icon-xs) * 6 / 7);
     grid-area: color;
     display: inline-flex;
     align-items: center;
@@ -1132,7 +1134,7 @@ div.aar-player-marker-row {
 }
 
 .aar-player-marker-note-icon {
-    --icon-size: 14px;
+    --icon-size: var(--icon-xs);
     grid-area: note;
     justify-self: start;
     align-self: start;

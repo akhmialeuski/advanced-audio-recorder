@@ -37,6 +37,27 @@ describe('stylesheet tokens', () => {
 		expect(declarations('outline')).toEqual([]);
 	});
 
+	it('sizes icons through Obsidian icon tokens, never pixels', () => {
+		// On a phone or a tablet Obsidian derives its icon sizes from the
+		// system text size, and an icon fixed in pixels stays small beside
+		// the app's own icons that grew.
+		expect(
+			declarations('--icon-size').filter(
+				(value) => !/^(calc\()?var\(--icon-/.test(value),
+			),
+		).toEqual([]);
+		const pinnedIcons = [
+			...stylesheet
+				.replace(/\/\*[\s\S]*?\*\//g, '')
+				.matchAll(/([^{}]+)\{([^{}]*)\}/g),
+		].filter(
+			([, selector = '', body = '']) =>
+				/(svg|\.svg-icon)\s*$/.test(selector.trim()) &&
+				/(^|[\s;])(width|height):\s*\d+px/.test(body),
+		);
+		expect(pinnedIcons.map(([, selector]) => selector?.trim())).toEqual([]);
+	});
+
 	it('sizes text through Obsidian tokens, never a bare em factor', () => {
 		expect(
 			declarations('font-size').filter((value) =>

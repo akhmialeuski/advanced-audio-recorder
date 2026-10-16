@@ -1,6 +1,6 @@
 # Mobile support
 
-Advanced Audio Recorder runs in the **Obsidian mobile app** (iOS and Android) as well as on the desktop. You record straight into a note, play recordings back in the enhanced waveform player with markers and chapters, convert and split files, clean up noisy audio, and transcribe with a cloud engine - all from your phone or tablet. A handful of features stay desktop-only because they rely on hardware or capabilities the mobile app does not expose; where a setting is unavailable, the plugin **greys it out** rather than hiding it, and it never fails silently. This page collects everything that is specific to mobile in one place.
+Advanced Audio Recorder runs in the **Obsidian mobile app** (iOS and Android) as well as on the desktop. You record straight into a note, play recordings back in the enhanced waveform player with markers and chapters, convert and split files, clean up noisy audio, and transcribe with a cloud engine - all from your phone or tablet. A handful of features stay desktop-only because they rely on hardware or capabilities the mobile app does not expose. Where a setting is unavailable, the plugin **greys it out** rather than hiding it, and it never fails silently. This page collects everything that is specific to mobile in one place.
 
 - [What works on mobile](#what-works-on-mobile)
 - [Platform-specific limitations](#platform-specific-limitations)
@@ -11,7 +11,7 @@ Advanced Audio Recorder runs in the **Obsidian mobile app** (iOS and Android) as
 - [Getting started on mobile](#getting-started-on-mobile)
 - [Related pages](#related-pages)
 
-![Two enhanced audio players in a note on a phone, each with its control row wrapped onto three lines above the waveform, the second with a list of two chapters](images/mobile-audio-player.png)
+![Two enhanced audio players in a note on a phone with icons at the phone's own size, the first with its playback controls above the waveform, the second with the marker controls as well and a list of two chapters](images/mobile-audio-player.png)
 
 ## What works on mobile
 
@@ -87,7 +87,7 @@ The banner is governed by the **Show recording banner** setting on the **Setting
 
 1. **Install the plugin.** Open **Settings > Community plugins** in the Obsidian mobile app, turn off **Restricted mode** if it is on, tap **Browse**, search for **Advanced Audio Recorder**, then **Install** and **Enable**. This is the same catalogue used on the desktop - see [Getting started](getting-started.md#from-community-plugins).
 2. **Grant microphone permission.** The first time you record, the operating system asks to let Obsidian use the microphone - choose **Allow**. If you miss the prompt or capture stays silent, enable microphone access for Obsidian in the phone's system settings.
-3. **Record.** Run the **Start/stop recording** command from the command palette (you can also add it to the mobile toolbar for one-tap access, since there is no ribbon icon on mobile). The [mobile recording banner](#the-mobile-recording-banner) appears while the session is live; tap its stop button, or run the command again, to finish and save.
+3. **Record.** Run the **Start/stop recording** command from the command palette (you can also add it to the mobile toolbar for one-tap access, since there is no ribbon icon on mobile). The [mobile recording banner](#the-mobile-recording-banner) appears while the session is live. Tap its stop button, or run the command again, to finish and save.
 4. **(Optional) Transcribe.** Enable transcription, pick a **cloud** engine, and add its API key under **Settings > Advanced Audio Recorder > Transcription**. See [Transcription on mobile](#transcription-on-mobile) and the [Record a voice memo or lecture on your phone](use-cases/record-on-mobile.md) walkthrough.
 
 Device-bound settings (the input device and channel layouts) are stored **per platform**, so a vault synced between a desktop and a phone keeps each device's own configuration intact.
