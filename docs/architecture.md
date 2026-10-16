@@ -443,7 +443,7 @@ Almost nothing re-renders any more. A setting that reveals another is a `visible
 
 ### API keys and Obsidian's keychain
 
-The provider keys live in Obsidian's keychain (`app.secretStorage`, the **Settings > Keychain** page), not in `data.json`. Each account stores only the ID of the secret that holds its key, in a field such as `whisperApiKeySecret`, and that ID is what `data.json` and `data.json.bak` contain. The keychain keeps a secret on the device it was entered on, encrypted with the operating system's own store through Electron's `safeStorage` where one is available, and it exists on mobile as well as on the desktop.
+The provider keys live in Obsidian's keychain (`app.secretStorage`, the **Settings > Keychain** page), not in `data.json`. Each account stores only the ID of the secret that holds its key, in a field such as `whisperApiKeySecret`, and that ID is what `data.json` and `data.json.bak` contain. The keychain keeps a secret on the device it was entered on, encrypted with the operating system's own store through Electron's `safeStorage` where one is available, and it exists on mobile as well as on the desktop. On the desktop it is also scoped to the vault: Obsidian stores the secrets under the vault's own `localStorage` key (`<app id>-secrets-encrypted`), so a key added in one vault is not offered in another vault on the same computer.
 
 Every reader of a key still reads the account's key field, such as `whisperApiKey`. That field is a runtime value that `src/settings/apiKeySecrets.ts` resolves from the keychain when the settings load, before every save, and whenever the keychain announces a change, which is how an edit or a deletion on the **Keychain** page reaches the next run without anything being saved. A linked ID with no secret behind it resolves to no key, so the engine's entry reads **No key** and a run stops with the usual message. The serializer writes a key only for an account that links no secret, where the field still holds the key itself, or for one whose move into the keychain is not confirmed yet, as described below.
 
@@ -457,7 +457,7 @@ The plain-text copy leaves `data.json` only once a later start of Obsidian shows
 
 A key the keychain refuses stays in `data.json`, unlinked, and the next load tries again. A write of `data.json` that fails is retried the same way, and because the secrets already exist, the next load links them instead of creating copies. Nothing is moved while saving is blocked, since no write could record the link.
 
-The consequence for sync is deliberate. The IDs sync with `data.json` and the keys do not, so a second device receives the links and reports **No key** until the key is entered there once, under the same ID. Two devices that migrate the same key arrive at the same readable ID, so the synced links agree.
+The consequence for sync is deliberate. The IDs sync with `data.json` and the keys do not, so a second device receives the links and reports **No key** until the key is entered there once, under the same ID. Two devices that migrate the same key arrive at the same readable ID whenever that ID is free on both, so the synced links agree.
 
 ---
 

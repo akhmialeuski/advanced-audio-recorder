@@ -190,7 +190,7 @@ Need a key? Follow the matching use-case guide:
 - [Mistral API key](use-cases/mistral-api-key.md)
 - DeepSeek has no guide page: create a key at [platform.deepseek.com](https://platform.deepseek.com/api_keys) and link it on **DeepSeek API key** on the DeepSeek page, which stores it in Obsidian's keychain.
 
-> **API keys** are kept in Obsidian's keychain (**Settings > Keychain**) on this device, not in the plugin's `data.json`, and are never written to diagnostics output. The keychain does not sync, so each device needs a key linked once.
+> **API keys** are kept in Obsidian's keychain (**Settings > Keychain**) on this device, not in the plugin's `data.json`, and are never written to diagnostics output. The keychain does not sync, so each device needs a key linked once, and on the desktop each vault does.
 
 ---
 
