@@ -50,10 +50,12 @@ export class ConversionModal extends PluginModal {
 	/** Bitrate row, re-offered when the target format changes. */
 	private bitrateRow: BitrateRow | null = null;
 	/**
-	 * The running conversion's cancellation, null while none runs, which makes
-	 * it the one answer to whether a conversion is running.
+	 * The cancellation of the latest conversion, replaced at every run. Whether
+	 * one is running is the frame's busy flag; this is only what Cancel pulls.
 	 */
-	private cancellation: CancellationSource | null = null;
+	private cancellation = new CancellationSource();
+	/** The Convert button, disabled while a conversion runs. */
+	private runButton: ButtonComponent | null = null;
 	/** The Cancel button, shown only while a conversion runs. */
 	private cancelButton: ButtonComponent | null = null;
 	/** Progress notice shown when the modal is closed mid-conversion. */
@@ -177,27 +179,28 @@ export class ConversionModal extends PluginModal {
 			cls: 'aar-conversion-progress',
 		});
 
-		new Setting(contentEl)
-			.addButton((button) => {
-				button
-					.setButtonText('Convert')
-					.setCta()
-					.onClick(() => {
-						button.setDisabled(true);
-						void this.runConversion(progressEl).finally(() => {
-							button.setDisabled(false);
-						});
-					});
-			})
-			.addButton((button) => {
-				this.cancelButton = button;
-				button.setButtonText('Cancel').onClick(() => {
-					button.setDisabled(true);
+		this.renderActions(
+			{
+				text: 'Convert',
+				cta: true,
+				ref: (button) => {
+					this.runButton = button;
+				},
+				onClick: () => this.runConversion(progressEl),
+			},
+			{
+				text: 'Cancel',
+				ref: (button) => {
+					this.cancelButton = button;
+					button.buttonEl.toggle(false);
+				},
+				onClick: () => {
+					this.cancelButton?.setDisabled(true);
 					this.setProgress(progressEl, 'Cancelling...');
-					this.cancellation?.cancel();
-				});
-				button.buttonEl.toggle(false);
-			});
+					this.cancellation.cancel();
+				},
+			},
+		);
 	}
 
 	/**
@@ -244,7 +247,7 @@ export class ConversionModal extends PluginModal {
 	}
 
 	override onClose(): void {
-		if (this.cancellation && !this.progressNotice) {
+		if (this.busy && !this.progressNotice) {
 			// The notice is where the conversion can still be cancelled
 			// from; setProgress mirrors further pipeline progress into it
 			this.progressNotice = new JobProgressNotice(
@@ -253,7 +256,7 @@ export class ConversionModal extends PluginModal {
 				`Converting "${this.sourceFile.name}" continues in the background...`,
 			);
 		}
-		this.contentEl.empty();
+		super.onClose();
 	}
 
 	/**
@@ -268,53 +271,64 @@ export class ConversionModal extends PluginModal {
 	}
 
 	/**
-	 * Runs the conversion with a Cancel offered for as long as it runs: in
-	 * the dialog, and in the notice once the dialog is closed.
+	 * Runs the conversion, at most one at a time, with a Cancel offered for as
+	 * long as it runs: in the dialog, and in the notice once the dialog is
+	 * closed.
 	 * @param progressEl - Progress element inside the modal
 	 */
 	private async runConversion(progressEl: HTMLElement): Promise<void> {
-		const cancellation = new CancellationSource();
-		this.cancellation = cancellation;
-		this.cancelButton?.setDisabled(false);
-		this.cancelButton?.buttonEl.toggle(true);
-		try {
-			const outcome = await this.conversionService.convert(
-				{
-					sourceFile: this.sourceFile,
-					targetFormat: this.targetFormat,
-					bitrate: this.bitrate,
-					channelMode: this.channelMode,
-					deleteSource: this.deleteSource,
-					linkAction: this.linkAction,
-				},
-				(text) => {
-					this.setProgress(progressEl, text);
-				},
-				cancellation.token,
-			);
-			if (outcome.status === 'cancelled') {
-				new Notice(`Cancelled converting "${this.sourceFile.name}".`);
-				return;
-			}
-			if (outcome.status !== 'completed') {
-				return;
-			}
+		let converted = false;
+		await this.runExclusive(async () => {
+			this.cancellation = new CancellationSource();
+			this.runButton?.setDisabled(true);
+			this.cancelButton?.setDisabled(false);
+			this.cancelButton?.buttonEl.toggle(true);
+			try {
+				const outcome = await this.conversionService.convert(
+					{
+						sourceFile: this.sourceFile,
+						targetFormat: this.targetFormat,
+						bitrate: this.bitrate,
+						channelMode: this.channelMode,
+						deleteSource: this.deleteSource,
+						linkAction: this.linkAction,
+					},
+					(text) => {
+						this.setProgress(progressEl, text);
+					},
+					this.cancellation.token,
+				);
+				if (outcome.status === 'cancelled') {
+					new Notice(
+						`Cancelled converting "${this.sourceFile.name}".`,
+					);
+					return;
+				}
+				if (outcome.status !== 'completed') {
+					return;
+				}
 
-			this.setProgress(progressEl, '');
-			// Conversion already rewrote the note's link (linkAction); prime the
-			// new file so the enhanced player applies without reopening the note.
-			this.onConverted?.(outcome.newPath);
-			const action = this.deleteSource ? 'Replaced with' : 'Converted to';
-			new Notice(`${action} ${outcome.newFileName}`);
-			// Cleared before close() so onClose does not start a
-			// background notice for an already finished conversion
-			this.cancellation = null;
+				this.setProgress(progressEl, '');
+				// Conversion already rewrote the note's link (linkAction); prime
+				// the new file so the enhanced player applies without reopening
+				// the note.
+				this.onConverted?.(outcome.newPath);
+				const action = this.deleteSource
+					? 'Replaced with'
+					: 'Converted to';
+				new Notice(`${action} ${outcome.newFileName}`);
+				converted = true;
+			} finally {
+				this.runButton?.setDisabled(false);
+				this.cancelButton?.buttonEl.toggle(false);
+				this.progressNotice?.hide();
+				this.progressNotice = null;
+			}
+		});
+		// Closed once the run is over, so onClose finds nothing running and
+		// leaves no background notice for a conversion that has finished.
+		if (converted) {
 			this.close();
-		} finally {
-			this.cancellation = null;
-			this.cancelButton?.buttonEl.toggle(false);
-			this.progressNotice?.hide();
-			this.progressNotice = null;
 		}
 	}
 }

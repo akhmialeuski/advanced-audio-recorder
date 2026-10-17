@@ -630,9 +630,11 @@ describe('ConversionModal', () => {
 			expect(settingRow('Bitrate').el.style.display).toBe('none');
 		});
 
-		it('locks the button for the length of the conversion', async () => {
-			// A second press mid-run would start a second conversion over the
-			// same file; the disabled button is the only thing stopping it.
+		// A second press mid-run would start a second conversion over the same
+		// file. The disabled button is what a mouse meets, but a press can
+		// still arrive, from the keyboard or a click queued before the
+		// repaint, so the dialog frame's exclusive run is what guarantees one.
+		it('locks the button for the length of the conversion and starts no second one', async () => {
 			let settle = (): void => undefined;
 			jest.mocked(convertBlobToFormatBuffer).mockImplementationOnce(
 				() =>
@@ -651,11 +653,16 @@ describe('ConversionModal', () => {
 			convert.click();
 			await tick();
 			expect(convert.disabled).toBe(true);
+			convert.click();
+			await tick();
 
 			settle();
 			await tick();
 			await tick();
 			expect(convert.disabled).toBe(false);
+			expect(
+				jest.mocked(convertBlobToFormatBuffer),
+			).toHaveBeenCalledTimes(1);
 		});
 
 		/**

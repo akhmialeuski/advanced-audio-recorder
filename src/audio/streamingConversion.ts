@@ -347,14 +347,7 @@ async function convertWithInput(
 	// while it runs: mediabunny stops its own demux and transcode loop on
 	// cancel(), which no step boundary out here could reach.
 	throwIfCancelled(token);
-	const detach = onCancelled(token, () => {
-		conversion.cancel().catch((error: unknown) => {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} The cancelled conversion could not be stopped:`,
-				error,
-			);
-		});
-	});
+	const detach = onCancelled(token, () => conversion.cancel());
 	try {
 		await conversion.execute();
 	} finally {

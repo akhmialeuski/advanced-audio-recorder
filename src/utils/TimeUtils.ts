@@ -4,6 +4,7 @@
  */
 
 import { SECONDS_PER_MINUTE, SECONDS_PER_HOUR } from '../constants';
+import { cancellationReason } from './cancellation';
 
 /**
  * Delays execution for the specified number of milliseconds.
@@ -28,24 +29,16 @@ import { SECONDS_PER_MINUTE, SECONDS_PER_HOUR } from '../constants';
  */
 export function delay(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
-		// The reason is whatever aborted the signal: a DOMException when the
-		// platform filled it in, or whatever the canceller named. It travels
-		// through untouched, which is what lets a cancelled wait and a
-		// cancelled request reject with the same thing. A reason that is not
-		// an Error is wrapped rather than asserted to be one: a rejection is
-		// an Error by rule here, and the cast only hid the reasons that were
-		// not.
-		const abortReason = (): Error =>
-			signal?.reason instanceof Error
-				? signal.reason
-				: new Error(String(signal?.reason));
+		// The reason follows the one rule every cancelled step rejects with,
+		// which is what lets a cancelled wait and a cancelled request or
+		// conversion reject with the same thing.
 		if (signal?.aborted) {
-			reject(abortReason());
+			reject(cancellationReason(signal));
 			return;
 		}
 		const onAbort = (): void => {
 			window.clearTimeout(timer);
-			reject(abortReason());
+			reject(cancellationReason(signal));
 		};
 		const timer = window.setTimeout(() => {
 			signal?.removeEventListener('abort', onAbort);
@@ -143,11 +136,7 @@ export function parseTimecode(value: string): number | null {
 		return null;
 	}
 	let seconds = 0;
-	for (let index = 0; index < parts.length; index++) {
-		const part = parts[index];
-		if (part === undefined) {
-			return null;
-		}
+	for (const [index, part] of parts.entries()) {
 		// Only the last segment may carry a fractional component; the
 		// hour and minute segments are whole numbers
 		const isLast = index === parts.length - 1;

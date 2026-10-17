@@ -102,12 +102,26 @@ describe('stopping a job at a step boundary', () => {
 	it('throws an AbortError for a token that carries no signal', () => {
 		const token: CancellationToken = { isCancelled: () => true };
 
-		expect(cancellationReason(token)).toMatchObject({
+		expect(cancellationReason(token.signal)).toMatchObject({
 			name: 'AbortError',
 		});
 		expect(() => {
 			throwIfCancelled(token);
 		}).toThrow('The job was cancelled.');
+	});
+
+	// A canceller may name its reason with words rather than an Error. The
+	// rejection is an Error by rule, and an AbortError like the platform's
+	// own, so every step a cancel stops rejects with one shape: a wait in
+	// delay() and a conversion step share this rule.
+	it('keeps the words of a reason that is not an Error, as an AbortError', () => {
+		const controller = new AbortController();
+		controller.abort('pulled the plug');
+
+		expect(cancellationReason(controller.signal)).toMatchObject({
+			name: 'AbortError',
+			message: 'pulled the plug',
+		});
 	});
 });
 
@@ -132,6 +146,24 @@ describe('reaching work a step boundary cannot', () => {
 		onCancelled(source.token, stop);
 
 		expect(stop).toHaveBeenCalledTimes(1);
+	});
+
+	// mediabunny's cancel() is asynchronous and can fail. Nothing is left
+	// for the user to do about it, but an unhandled rejection would surface
+	// far from the cancel, so the one place every caller goes through logs it.
+	it('logs a cancel that rejects instead of leaving it unhandled', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		const source = new CancellationSource();
+		onCancelled(source.token, () => Promise.reject(new Error('busy')));
+
+		source.cancel();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('could not be stopped'),
+			expect.objectContaining({ message: 'busy' }),
+		);
 	});
 
 	it('runs nothing once the work it guarded is over', () => {

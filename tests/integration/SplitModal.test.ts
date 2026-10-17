@@ -444,7 +444,11 @@ describe('SplitModal', () => {
 		expect((modal as unknown as { bitrate: number }).bitrate).toBe(192000);
 	});
 
-	it('runs the split when the split button is clicked', async () => {
+	// A second press mid-run would start a second split over the parts the
+	// first is writing. The disabled button is what a mouse meets, but a
+	// press can still arrive, from the keyboard or a click queued before the
+	// repaint, so the dialog frame's exclusive run is what guarantees one.
+	it('runs the split when the split button is clicked, once however often it is pressed', async () => {
 		(mockApp.vault.readBinary as jest.Mock).mockResolvedValue(
 			buildTestWav(1, 1000, 250000),
 		);
@@ -452,7 +456,8 @@ describe('SplitModal', () => {
 		modal.onOpen();
 
 		const button = at(allButtons(), 0);
-		button.click();
+		void button.click();
+		void button.click();
 		// The click handler runs the async pipeline in the background and
 		// re-enables the button in its finally block, so wait for that rather
 		// than a fixed delay (slow under coverage instrumentation).
@@ -464,6 +469,7 @@ describe('SplitModal', () => {
 			{ timeout: 2000, message: 'the Split button was never re-enabled' },
 		);
 
+		expect(mockApp.vault.readBinary).toHaveBeenCalledTimes(1);
 		expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(3);
 		expect(button.setDisabled).toHaveBeenCalledWith(true);
 		expect(button.setDisabled).toHaveBeenLastCalledWith(false);

@@ -57,10 +57,12 @@ export class SplitModal extends PluginModal {
 	/** The recording's chapters, loaded when the dialog opens. */
 	private chapterCuts: ChapterCut[] = [];
 	/**
-	 * The running split's cancellation, null while none runs, which makes
-	 * it the one answer to whether a split is running.
+	 * The cancellation of the latest split, replaced at every run. Whether one
+	 * is running is the frame's busy flag; this is only what Cancel pulls.
 	 */
-	private cancellation: CancellationSource | null = null;
+	private cancellation = new CancellationSource();
+	/** The Split button, disabled while a split runs. */
+	private runButton: ButtonComponent | null = null;
 	/** The Cancel button, shown only while a split runs. */
 	private cancelButton: ButtonComponent | null = null;
 	/** Progress notice shown when the modal is closed mid-split. */
@@ -194,27 +196,28 @@ export class SplitModal extends PluginModal {
 			cls: 'aar-split-progress',
 		});
 
-		new Setting(contentEl)
-			.addButton((button) => {
-				button
-					.setButtonText('Split')
-					.setCta()
-					.onClick(() => {
-						button.setDisabled(true);
-						void this.runSplit(progressEl).finally(() => {
-							button.setDisabled(false);
-						});
-					});
-			})
-			.addButton((button) => {
-				this.cancelButton = button;
-				button.setButtonText('Cancel').onClick(() => {
-					button.setDisabled(true);
+		this.renderActions(
+			{
+				text: 'Split',
+				cta: true,
+				ref: (button) => {
+					this.runButton = button;
+				},
+				onClick: () => this.runSplit(progressEl),
+			},
+			{
+				text: 'Cancel',
+				ref: (button) => {
+					this.cancelButton = button;
+					button.buttonEl.toggle(false);
+				},
+				onClick: () => {
+					this.cancelButton?.setDisabled(true);
 					this.setProgress(progressEl, 'Cancelling...');
-					this.cancellation?.cancel();
-				});
-				button.buttonEl.toggle(false);
-			});
+					this.cancellation.cancel();
+				},
+			},
+		);
 	}
 
 	/**
@@ -271,7 +274,7 @@ export class SplitModal extends PluginModal {
 	}
 
 	override onClose(): void {
-		if (this.cancellation && !this.progressNotice) {
+		if (this.busy && !this.progressNotice) {
 			// The notice is where the split can still be cancelled from;
 			// setProgress mirrors further pipeline progress into it
 			this.progressNotice = new JobProgressNotice(
@@ -280,7 +283,7 @@ export class SplitModal extends PluginModal {
 				`Splitting "${this.sourceFile.name}" continues in the background...`,
 			);
 		}
-		this.contentEl.empty();
+		super.onClose();
 	}
 
 	/**
@@ -329,55 +332,62 @@ export class SplitModal extends PluginModal {
 	 * @param progressEl - Progress element inside the modal
 	 */
 	private async runSplit(progressEl: HTMLElement): Promise<void> {
-		const cancellation = new CancellationSource();
-		this.cancellation = cancellation;
-		this.cancelButton?.setDisabled(false);
-		this.cancelButton?.buttonEl.toggle(true);
-		try {
-			const suffix = this.resolvePartSuffix();
-			if (suffix === null) {
+		let split = false;
+		await this.runExclusive(async () => {
+			this.cancellation = new CancellationSource();
+			this.runButton?.setDisabled(true);
+			this.cancelButton?.setDisabled(false);
+			this.cancelButton?.buttonEl.toggle(true);
+			try {
+				const suffix = this.resolvePartSuffix();
+				if (suffix === null) {
+					this.setProgress(progressEl, '');
+					return;
+				}
+				const partSeconds =
+					clampSplitMinutes(this.partMinutes) * SECONDS_PER_MINUTE;
+
+				const outcome = await this.splitService.split(
+					{
+						sourceFile: this.sourceFile,
+						partSeconds,
+						suffix,
+						bitrate: this.bitrate,
+						deleteSource: this.deleteSource,
+						linkAction: this.linkAction,
+						...(this.byChapters ? { cuts: this.chapterCuts } : {}),
+					},
+					(text) => {
+						this.setProgress(progressEl, text);
+					},
+					this.cancellation.token,
+				);
+				if (outcome.status === 'cancelled') {
+					new Notice(
+						`Cancelled splitting "${this.sourceFile.name}".`,
+					);
+					return;
+				}
+				if (outcome.status !== 'completed') {
+					return;
+				}
+
 				this.setProgress(progressEl, '');
-				return;
+				new Notice(
+					`Split into ${String(outcome.partCount)} parts: ${outcome.firstPartName} ...`,
+				);
+				split = true;
+			} finally {
+				this.runButton?.setDisabled(false);
+				this.cancelButton?.buttonEl.toggle(false);
+				this.progressNotice?.hide();
+				this.progressNotice = null;
 			}
-			const partSeconds =
-				clampSplitMinutes(this.partMinutes) * SECONDS_PER_MINUTE;
-
-			const outcome = await this.splitService.split(
-				{
-					sourceFile: this.sourceFile,
-					partSeconds,
-					suffix,
-					bitrate: this.bitrate,
-					deleteSource: this.deleteSource,
-					linkAction: this.linkAction,
-					...(this.byChapters ? { cuts: this.chapterCuts } : {}),
-				},
-				(text) => {
-					this.setProgress(progressEl, text);
-				},
-				cancellation.token,
-			);
-			if (outcome.status === 'cancelled') {
-				new Notice(`Cancelled splitting "${this.sourceFile.name}".`);
-				return;
-			}
-			if (outcome.status !== 'completed') {
-				return;
-			}
-
-			this.setProgress(progressEl, '');
-			new Notice(
-				`Split into ${String(outcome.partCount)} parts: ${outcome.firstPartName} ...`,
-			);
-			// Cleared before close() so onClose does not start a
-			// background notice for an already finished split
-			this.cancellation = null;
+		});
+		// Closed once the run is over, so onClose finds nothing running and
+		// leaves no background notice for a split that has finished.
+		if (split) {
 			this.close();
-		} finally {
-			this.cancellation = null;
-			this.cancelButton?.buttonEl.toggle(false);
-			this.progressNotice?.hide();
-			this.progressNotice = null;
 		}
 	}
 }

@@ -12,6 +12,8 @@
  * @module utils/cancellation
  */
 
+import { PLUGIN_LOG_PREFIX } from '../constants';
+
 /** Cooperative cancellation signal a long job carries through its steps. */
 export interface CancellationToken {
 	/** Whether the job has been cancelled, checked between steps. */
@@ -32,23 +34,31 @@ export const NEVER_CANCELLED: CancellationToken = {
 };
 
 /**
- * What a cancelled job's in-flight work rejects with: the reason its source
- * was cancelled with, or the platform's `AbortError` for a token that
- * carries no signal.
+ * What work an aborted signal stopped rejects with: the reason the signal
+ * was aborted with when that is an Error, which it is whenever the platform
+ * filled it in, and otherwise an `AbortError` carrying the reason's words
+ * when it was given as text, or a generic one, which is also what a
+ * cooperative token with no signal at all gets.
  *
- * What it is matters less than it seems. A cancel reaches a catch in
- * whatever shape the step it interrupted fails with - mediabunny's
- * `ConversionCanceledError`, a worker's error message, this reason - so a
- * caller that has to tell a cancel from a failure asks the token, which is
- * the one answer all of them agree on.
- * @param token - A cancelled job's cancellation
+ * One rule for every wait, request and step, so a cancelled pause and a
+ * cancelled conversion reject with the same thing. What it is matters less
+ * than it seems, though. A cancel reaches a catch in whatever shape the step
+ * it interrupted fails with - mediabunny's `ConversionCanceledError`, a
+ * worker's error message, this reason - so a caller that has to tell a
+ * cancel from a failure asks the token, which is the one answer all of them
+ * agree on.
+ * @param signal - The aborted signal, or none for a cooperative token
  * @returns The error to reject with
  */
-export function cancellationReason(token: CancellationToken): Error {
-	const reason: unknown = token.signal?.reason;
-	return reason instanceof Error
-		? reason
-		: new DOMException('The job was cancelled.', 'AbortError');
+export function cancellationReason(signal: AbortSignal | undefined): Error {
+	const reason: unknown = signal?.reason;
+	if (reason instanceof Error) {
+		return reason;
+	}
+	return new DOMException(
+		typeof reason === 'string' ? reason : 'The job was cancelled.',
+		'AbortError',
+	);
 }
 
 /**
@@ -58,7 +68,7 @@ export function cancellationReason(token: CancellationToken): Error {
  */
 export function throwIfCancelled(token: CancellationToken): void {
 	if (token.isCancelled()) {
-		throw cancellationReason(token);
+		throw cancellationReason(token.signal);
 	}
 }
 
@@ -66,25 +76,39 @@ export function throwIfCancelled(token: CancellationToken): void {
  * Runs a callback when a job is cancelled, for work a step boundary cannot
  * reach: a mediabunny conversion mid-execute, a request in a worker. Runs
  * it at once when the job is already cancelled, since the event has fired.
+ *
+ * The callback may be asynchronous, as mediabunny's `cancel()` is. Its
+ * rejection is logged here rather than left to each caller: a cancel that
+ * could not be carried out leaves nothing for the user to act on, and the
+ * job ends on the cancel either way.
  * @param token - The job's cancellation
  * @param onCancel - What stops the work in flight
  * @returns Detaches the callback once the work is over
  */
 export function onCancelled(
 	token: CancellationToken,
-	onCancel: () => void,
+	onCancel: () => void | Promise<void>,
 ): () => void {
+	// Called at once, so the work stops in the same turn the cancel came in.
+	const run = (): void => {
+		Promise.resolve(onCancel()).catch((error: unknown) => {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} The cancelled work could not be stopped:`,
+				error,
+			);
+		});
+	};
 	const { signal } = token;
 	if (token.isCancelled()) {
-		onCancel();
+		run();
 		return () => undefined;
 	}
 	if (!signal) {
 		return () => undefined;
 	}
-	signal.addEventListener('abort', onCancel, { once: true });
+	signal.addEventListener('abort', run, { once: true });
 	return () => {
-		signal.removeEventListener('abort', onCancel);
+		signal.removeEventListener('abort', run);
 	};
 }
 

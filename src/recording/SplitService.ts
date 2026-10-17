@@ -265,8 +265,14 @@ export class SplitService {
 			} catch (error) {
 				// A streamed split that failed partway has already removed
 				// the parts it wrote, so the decode-everything path starts
-				// from the same place the streamed one did.
-				if (!(error instanceof StreamedSplitError)) {
+				// from the same place the streamed one did. A cancelled one
+				// is not retried, whatever its part failed with: the decode
+				// cannot be interrupted and would only redo the work the
+				// user stopped.
+				if (
+					token.isCancelled() ||
+					!(error instanceof StreamedSplitError)
+				) {
 					throw error;
 				}
 				console.warn(
@@ -691,9 +697,11 @@ export class SplitService {
 			// prefer-file-manager-trash-file warning on that call is expected
 			// for the same reason as the sidecar store's, and its config
 			// forbids silencing it inline. Any other failure ends the split,
-			// and its parts go where the user's deletion preference puts them,
+			// and so does a cancel, whatever the part failed with; their
+			// parts go where the user's deletion preference puts them,
 			// recoverable.
-			const retried = error instanceof StreamedSplitError;
+			const retried =
+				error instanceof StreamedSplitError && !token.isCancelled();
 			for (const part of written) {
 				try {
 					if (part.file) {

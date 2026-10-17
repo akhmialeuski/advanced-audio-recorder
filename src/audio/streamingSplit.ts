@@ -217,19 +217,15 @@ export class StreamedSplit implements Disposable {
 	 * recording.
 	 * @param endFrame - Frame the part stops before, or null for the last part
 	 * @returns The encoded part
-	 * @throws StreamedSplitError when decoding or encoding fails, or when the
-	 *   audio ends before the part has any frames, and the cancellation
-	 *   reason as it is once the token is cancelled, so the caller does not
-	 *   answer a cancel by splitting again
+	 * @throws StreamedSplitError when decoding or encoding fails, when the
+	 *   audio ends before the part has any frames, or once the token is
+	 *   cancelled; the caller asks the token to tell a cancel apart
 	 */
 	async nextPart(endFrame: number | null): Promise<ArrayBuffer> {
 		try {
 			return await this.encodeUntil(endFrame);
 		} catch (error) {
-			if (
-				error instanceof StreamedSplitError ||
-				this.token.isCancelled()
-			) {
+			if (error instanceof StreamedSplitError) {
 				throw error;
 			}
 			throw new StreamedSplitError(

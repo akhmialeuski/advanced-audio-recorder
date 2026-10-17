@@ -26,7 +26,8 @@ import { assembleWavFromPcmSegments } from 'src/audio/WavEncoder';
 import { PcmSampleFormat } from 'src/audio/pcm';
 import { CancellationSource } from 'src/utils/cancellation';
 import * as LinkUpdater from 'src/utils/LinkUpdater';
-import { createMockApp } from '../helpers/createApp';
+import { asMockApp } from '../helpers/obsidianMock';
+import { defined } from '../helpers/assertions';
 import { alawWav, encodePcmSamples } from '../helpers/pcmFixtures';
 import { noticeMessages } from '../mocks/obsidian';
 import { waitFor } from '../helpers/async';
@@ -48,66 +49,35 @@ function stereoWav(seconds: number): ArrayBuffer {
 	return assembleWavFromPcmSegments([pcm], 2, PCM_RATE);
 }
 
-/** A vault holding one recording, with every write and removal recorded. */
-interface BinaryVault {
+/** The recording every case acts on. */
+const RECORDING = 'Calls/call.wav';
+
+/** The shared mock vault holding one recording, and the recording. */
+interface SeededVault {
 	app: App;
-	/** What is on disk now, by path. */
-	written: Map<string, ArrayBuffer>;
-	/** Paths the service removed outright. */
-	deleted: string[];
-	/** Paths the service sent to the trash. */
-	trashed: string[];
+	recording: TFile;
 }
 
 /**
- * The vault the service writes into.
- * @param source - Bytes of the recording being converted or split
+ * The vault the service writes into: the mock vault, which reads back what
+ * it holds, refuses to create over a taken path, and removes what is
+ * deleted or trashed.
+ * @param bytes - The recording's bytes
  */
-function binaryVault(source: ArrayBuffer): BinaryVault {
-	const written = new Map<string, ArrayBuffer>();
-	const deleted: string[] = [];
-	const trashed: string[] = [];
-	const remove =
-		(into: string[]) =>
-		(file: TFile): Promise<void> => {
-			into.push(file.path);
-			written.delete(file.path);
-			return Promise.resolve();
-		};
-	const app = createMockApp({
-		vault: {
-			readBinary: jest.fn().mockResolvedValue(source),
-			adapter: {
-				exists: jest.fn((path: string) =>
-					Promise.resolve(written.has(path)),
-				),
-			},
-			createBinary: jest.fn((path: string, data: ArrayBuffer) => {
-				written.set(path, data);
-				return Promise.resolve(Object.assign(new TFile(), { path }));
-			}),
-			delete: jest.fn(remove(deleted)),
-		},
-		fileManager: { trashFile: jest.fn(remove(trashed)) },
-	}).app;
-	return { app, written, deleted, trashed };
+function vaultHolding(bytes: ArrayBuffer): SeededVault {
+	const app = new App();
+	asMockApp(app).vault.seed([{ path: RECORDING, data: bytes }]);
+	return { app, recording: defined(app.vault.getFileByPath(RECORDING)) };
 }
 
 /**
- * The recording a service acts on.
- * @param name - File name, with its extension
- * @param size - Its size on disk
+ * Every path the vault holds now.
+ * @param app - The app over the vault
  */
-function recording(name: string, size: number): TFile {
-	const [basename = name, extension = ''] = name.split('.');
-	return Object.assign(new TFile(), {
-		path: `Calls/${name}`,
-		name,
-		basename,
-		extension,
-		parent: { path: 'Calls' },
-		stat: { size, ctime: 0, mtime: 0 },
-	});
+function pathsIn(app: App): string[] {
+	return asMockApp(app)
+		.vault.getFiles()
+		.map((file) => file.path);
 }
 
 /**
@@ -185,13 +155,12 @@ describe('cancelling a conversion', () => {
 	});
 
 	it('stops the streaming conversion inside mediabunny and writes nothing', async () => {
-		const source = stereoWav(30);
-		const vault = binaryVault(source);
+		const { app, recording } = vaultHolding(stereoWav(30));
 		const cancellation = new CancellationSource();
 		const progress = cancellingOn(cancellation, /^Converting\.\.\. \d+%$/);
 
-		const outcome = await new ConversionService(vault.app).convert(
-			request(recording('call.wav', source.byteLength)),
+		const outcome = await new ConversionService(app).convert(
+			request(recording),
 			progress.onProgress,
 			cancellation.token,
 		);
@@ -203,7 +172,7 @@ describe('cancelling a conversion', () => {
 			1,
 		);
 		expect(progress.seen).not.toContain('Saving...');
-		expect(vault.written.size).toBe(0);
+		expect(pathsIn(app)).toEqual([RECORDING]);
 		expect(updateLinksInVault).not.toHaveBeenCalled();
 		expect(noticeMessages()).toEqual([]);
 	});
@@ -213,16 +182,12 @@ describe('cancelling a conversion', () => {
 		global.URL.createObjectURL = jest.fn().mockReturnValue('blob:worker');
 		global.URL.revokeObjectURL = jest.fn();
 		const worker = new EncodingWorkerClient('worker-source');
-		const source = stereoWav(30);
-		const vault = binaryVault(source);
+		const { app, recording } = vaultHolding(stereoWav(30));
 		const cancellation = new CancellationSource();
 		const progress = cancellingOn(cancellation, /^Converting\.\.\. \d+%$/);
 
-		const outcome = await new ConversionService(
-			vault.app,
-			() => worker,
-		).convert(
-			request(recording('call.wav', source.byteLength)),
+		const outcome = await new ConversionService(app, () => worker).convert(
+			request(recording),
 			progress.onProgress,
 			cancellation.token,
 		);
@@ -248,7 +213,7 @@ describe('cancelling a conversion', () => {
 			expect.stringContaining('falling back'),
 			expect.anything(),
 		);
-		expect(vault.written.size).toBe(0);
+		expect(pathsIn(app)).toEqual([RECORDING]);
 		expect(noticeMessages()).toEqual([]);
 		// A cancel is the user's, not a sign of a broken worker, so the next
 		// conversion still goes to it rather than to the main thread.
@@ -285,16 +250,19 @@ describe('cancelling a conversion', () => {
  * the trash, where a failed split's parts go, nothing left on disk, and the
  * source nowhere near the trash, since it was to go only after a split.
  * @param outcome - What the split answered
- * @param vault - The vault it wrote into
+ * @param app - The app over the vault it wrote into
  */
 function expectFirstPartUndone(
 	outcome: Awaited<ReturnType<SplitService['split']>>,
-	vault: BinaryVault,
+	app: App,
 ): void {
+	const { vault, fileManager } = asMockApp(app);
 	expect(outcome).toEqual({ status: 'cancelled' });
-	expect(vault.trashed).toEqual(['Calls/call-part1.wav']);
-	expect(vault.deleted).toEqual([]);
-	expect(vault.written.size).toBe(0);
+	expect(fileManager.trashFile.mock.calls.map(([file]) => file.path)).toEqual(
+		['Calls/call-part1.wav'],
+	);
+	expect(vault.delete).not.toHaveBeenCalled();
+	expect(pathsIn(app)).toEqual([RECORDING]);
 }
 
 describe('cancelling a split', () => {
@@ -311,26 +279,24 @@ describe('cancelling a split', () => {
 	});
 
 	it('trashes the parts the WAV byte copy already wrote and keeps the source', async () => {
-		const source = stereoWav(3);
-		const vault = binaryVault(source);
+		const { app, recording } = vaultHolding(stereoWav(3));
 		const cancellation = new CancellationSource();
 		const progress = cancellingOn(cancellation, /^Writing part 2 of 3/);
 
-		const outcome = await new SplitService(vault.app).split(
-			request(recording('call.wav', source.byteLength), 1),
+		const outcome = await new SplitService(app).split(
+			request(recording, 1),
 			progress.onProgress,
 			cancellation.token,
 		);
 
-		expectFirstPartUndone(outcome, vault);
+		expectFirstPartUndone(outcome, app);
 		expect(updateLinksInVault).not.toHaveBeenCalled();
 		expect(noticeMessages()).toEqual([]);
 	});
 
 	it('stops the streamed decode inside a part and does not split again from a whole decode', async () => {
 		const sampleRate = 8000;
-		const source = alawWav(sampleRate, 6);
-		const vault = binaryVault(source);
+		const { app, recording } = vaultHolding(alawWav(sampleRate, 6));
 		const cancellation = new CancellationSource();
 		const progressSeen: string[] = [];
 		// Pulled while the second part's encoder is being fed, which no
@@ -352,13 +318,13 @@ describe('cancelling a split', () => {
 			},
 		);
 
-		const outcome = await new SplitService(vault.app).split(
-			request(recording('call.wav', source.byteLength), 2),
+		const outcome = await new SplitService(app).split(
+			request(recording, 2),
 			(text) => progressSeen.push(text),
 			cancellation.token,
 		);
 
-		expectFirstPartUndone(outcome, vault);
+		expectFirstPartUndone(outcome, app);
 		// The sample in hand at the cancel was the last one fed: the decode
 		// stopped there instead of finishing the part.
 		expect(addedAtCancel).not.toBeNull();

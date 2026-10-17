@@ -10,7 +10,7 @@
  * @module ui/JobProgressNotice
  */
 
-import { Notice } from 'obsidian';
+import { ButtonComponent, Notice } from 'obsidian';
 import {
 	CancellationSource,
 	type CancellationToken,
@@ -66,22 +66,21 @@ export class JobProgressNotice {
 		initialText = `${title}...`,
 	) {
 		this.textEl = createSpan({ text: initialText });
-		const button = createEl('button', {
-			cls: 'aar-notice-action',
-			text: 'Cancel',
-			attr: { type: 'button' },
-		});
-		button.addEventListener('click', (event) => {
-			// A click on a notice also dismisses it, which would leave the
-			// job running with nothing on screen to say so.
-			event.stopPropagation();
-			button.disabled = true;
-			this.cancelling = true;
-			this.textEl.setText(`${this.title}: cancelling...`);
-			cancellation.cancel();
-		});
+		const actionEl = createSpan();
+		const button = new ButtonComponent(actionEl)
+			.setButtonText('Cancel')
+			.setClass('aar-notice-action')
+			.onClick((event) => {
+				// A click on a notice also dismisses it, which would leave
+				// the job running with nothing on screen to say so.
+				event.stopPropagation();
+				button.setDisabled(true);
+				this.cancelling = true;
+				this.textEl.setText(`${this.title}: cancelling...`);
+				cancellation.cancel();
+			});
 		const fragment = createFragment();
-		fragment.append(this.textEl, ' ', button);
+		fragment.append(this.textEl, ' ', actionEl);
 		// Timeout 0 keeps the notice until the job's owner hides it.
 		this.notice = new Notice(fragment, 0);
 	}

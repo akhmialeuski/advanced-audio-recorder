@@ -14,7 +14,7 @@ import {
 } from 'mediabunny';
 import type { AudioCodec, AudioEncodingConfig, OutputFormat } from 'mediabunny';
 import { EncodingError, errorMessage } from '../errors';
-import { FORMAT_MP3, FORMAT_FLAC, PLUGIN_LOG_PREFIX } from '../constants';
+import { FORMAT_MP3, FORMAT_FLAC } from '../constants';
 import { FORMAT_REGISTRY, getFormatDescriptor } from './formatRegistry';
 import {
 	NEVER_CANCELLED,
@@ -213,14 +213,7 @@ async function encodeWithMediabunny(
 		// The whole buffer goes to the encoder in one add, so a cancel has to
 		// reach inside it: cancelling the output releases the encoder and
 		// refuses the samples still to come.
-		const detach = onCancelled(token, () => {
-			output.cancel().catch((error: unknown) => {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} The cancelled encode could not be stopped:`,
-					error,
-				);
-			});
-		});
+		const detach = onCancelled(token, () => output.cancel());
 		try {
 			await output.start();
 			onProgress?.(10);

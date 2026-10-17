@@ -222,15 +222,20 @@ describe('delay', () => {
 
 	// A rejection carries an Error here by rule, and the platform's own
 	// AbortError is one. A reason that is not gets wrapped rather than
-	// asserted to be one, which is what the assertion used to do.
-	it('wraps an abort reason that is not an Error', async () => {
+	// asserted to be one, which is what the assertion used to do. It is
+	// wrapped as the AbortError every cancelled step rejects with, so a
+	// cancelled wait and a cancelled conversion step look the same.
+	it('wraps an abort reason that is not an Error as an AbortError', async () => {
 		const controller = new AbortController();
 		const waiting = delay(500, controller.signal);
 
 		await jest.advanceTimersByTimeAsync(100);
 		controller.abort('pulled the plug');
 
-		await expect(waiting).rejects.toThrow('pulled the plug');
+		await expect(waiting).rejects.toMatchObject({
+			name: 'AbortError',
+			message: 'pulled the plug',
+		});
 	});
 
 	// A caller that aborted before it ever waited must not sit out the delay.

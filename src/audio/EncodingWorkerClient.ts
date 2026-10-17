@@ -97,7 +97,7 @@ export class EncodingWorkerClient {
 		token: CancellationToken = NEVER_CANCELLED,
 	): Promise<ConvertedAudio<ArrayBuffer>> {
 		if (token.isCancelled()) {
-			return Promise.reject(cancellationReason(token));
+			return Promise.reject(cancellationReason(token.signal));
 		}
 		const worker = this.ensureWorker();
 		if (!worker) {
@@ -123,7 +123,7 @@ export class EncodingWorkerClient {
 				// only listens; every path that settles the request detaches
 				// it, which is what lets the cancel assume it is in flight.
 				detachCancel: onCancelled(token, () => {
-					this.cancelRequest(id, pending, token);
+					this.cancelRequest(id, token);
 				}),
 			};
 			this.pending.set(id, pending);
@@ -147,20 +147,35 @@ export class EncodingWorkerClient {
 	 * in its loop answers only once mediabunny notices. The worker stays
 	 * available, since a cancel says nothing about its health.
 	 * @param id - The request being cancelled
-	 * @param request - Its bookkeeping, still in flight
 	 * @param token - Its cancellation, whose reason it rejects with
 	 */
-	private cancelRequest(
-		id: number,
-		request: PendingRequest,
-		token: CancellationToken,
-	): void {
-		window.clearTimeout(request.timer);
-		this.pending.delete(id);
+	private cancelRequest(id: number, token: CancellationToken): void {
+		// Told before the request settles, since settling the last request
+		// of a client given up on releases the worker it would be sent to.
 		const cancel: WorkerMessage = { id, kind: 'cancel' };
 		this.worker?.postMessage(cancel);
+		this.settle(id)?.reject(cancellationReason(token.signal));
+	}
+
+	/**
+	 * Takes a request out of the table, on every path it leaves by: answered,
+	 * failed, timed out, cancelled or torn down. Its watchdog stops, it stops
+	 * listening for its caller's cancel, and a worker given up on is released
+	 * once nothing waits on it.
+	 * @param id - The request leaving
+	 * @returns Its bookkeeping, to settle the caller's promise with, or
+	 *   undefined when it already left
+	 */
+	private settle(id: number): PendingRequest | undefined {
+		const request = this.pending.get(id);
+		if (!request) {
+			return undefined;
+		}
+		window.clearTimeout(request.timer);
+		request.detachCancel();
+		this.pending.delete(id);
 		this.releaseIfSpent();
-		request.reject(cancellationReason(token));
+		return request;
 	}
 
 	/**
@@ -179,15 +194,13 @@ export class EncodingWorkerClient {
 	 */
 	private armWatchdog(id: number, timeoutMs: number): number {
 		return window.setTimeout(() => {
-			const request = this.pending.get(id);
-			if (!request) {
+			if (!this.pending.has(id)) {
 				return;
 			}
-			this.pending.delete(id);
-			request.detachCancel();
+			// Given up on before the request settles, so settling the last
+			// one releases the wedged worker.
 			this.unavailable = true;
-			this.releaseIfSpent();
-			request.reject(
+			this.settle(id)?.reject(
 				new Error(
 					`Encoding worker did not answer within ${String(
 						timeoutMs,
@@ -307,21 +320,13 @@ export class EncodingWorkerClient {
 				request.onProgress?.(response.percent);
 				break;
 			case 'result':
-				window.clearTimeout(request.timer);
-				request.detachCancel();
-				this.pending.delete(response.id);
-				this.releaseIfSpent();
-				request.resolve({
+				this.settle(response.id)?.resolve({
 					data: response.data,
 					sampleRateChange: response.sampleRateChange,
 				});
 				break;
 			case 'error':
-				window.clearTimeout(request.timer);
-				request.detachCancel();
-				this.pending.delete(response.id);
-				this.releaseIfSpent();
-				request.reject(new Error(response.message));
+				this.settle(response.id)?.reject(new Error(response.message));
 				break;
 		}
 	}
@@ -331,11 +336,8 @@ export class EncodingWorkerClient {
 	 * @param error - Rejection error
 	 */
 	private rejectAllPending(error: Error): void {
-		for (const request of this.pending.values()) {
-			window.clearTimeout(request.timer);
-			request.detachCancel();
-			request.reject(error);
+		for (const id of [...this.pending.keys()]) {
+			this.settle(id)?.reject(error);
 		}
-		this.pending.clear();
 	}
 }
