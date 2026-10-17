@@ -4,6 +4,7 @@
  */
 
 import { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import type { ConvertedAudio } from 'src/audio/streamingConversion';
 import { ENCODING_WORKER_MIN_TIMEOUT_MS } from 'src/constants';
 import { at } from '../helpers/assertions';
 import { outcomeOf } from '../helpers/async';
@@ -26,7 +27,7 @@ const createdWorkers: WorkerDouble[] = [];
  * @returns The conversion, the worker it went to, and the progress spy
  */
 function convertWatchingProgress(client: EncodingWorkerClient): {
-	conversion: Promise<Blob>;
+	conversion: Promise<ConvertedAudio<ArrayBuffer>>;
 	worker: WorkerDouble;
 	onProgress: jest.Mock;
 } {
@@ -78,7 +79,10 @@ describe('EncodingWorkerClient', () => {
 		).rejects.toThrow('not available');
 	});
 
-	it('posts the request and resolve with the result blob', async () => {
+	// The ladder delivers these bytes as they are, so a Blob wrapped around
+	// them here was a whole-file copy every caller that writes to the vault
+	// read straight back out.
+	it('posts the request and resolves with the bytes the worker transferred', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const conversion = client.convertBlob(
 			new Blob(['audio']),
@@ -103,16 +107,17 @@ describe('EncodingWorkerClient', () => {
 		const requestId = (
 			at(worker.postMessage.mock.calls, 0)[0] as { id: number }
 		).id;
+		const bytes = new Uint8Array([1, 2, 3]).buffer;
 		respond(worker, {
 			id: requestId,
 			kind: 'result',
-			buffer: new Uint8Array([1, 2, 3]).buffer,
-			mimeType: 'audio/mp3',
+			data: bytes,
+			sampleRateChange: null,
 		});
 
-		const blob = await conversion;
-		expect(blob.type).toBe('audio/mp3');
-		expect(blob.size).toBe(3);
+		const { data, sampleRateChange } = await conversion;
+		expect(data).toBe(bytes);
+		expect(sampleRateChange).toBeNull();
 	});
 
 	it('includes the requested channel mode in the worker request', () => {
@@ -143,10 +148,35 @@ describe('EncodingWorkerClient', () => {
 		respond(worker, {
 			id: requestId,
 			kind: 'result',
-			buffer: new ArrayBuffer(1),
-			mimeType: 'audio/mp3',
+			data: new ArrayBuffer(1),
+			sampleRateChange: null,
 		});
 		await conversion;
+	});
+
+	it('resolves with the rate the worker wrote the file at', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const conversion = client.convertBlob(
+			new Blob(['audio']),
+			'm4a',
+			96000,
+			false,
+		);
+		const worker = at(createdWorkers, 0);
+		const requestId = (
+			at(worker.postMessage.mock.calls, 0)[0] as { id: number }
+		).id;
+
+		respond(worker, {
+			id: requestId,
+			kind: 'result',
+			data: new ArrayBuffer(1),
+			sampleRateChange: { from: 16000, to: 44100 },
+		});
+
+		await expect(conversion).resolves.toMatchObject({
+			sampleRateChange: { from: 16000, to: 44100 },
+		});
 	});
 
 	it('rejects the matching request on a conversion error', async () => {
@@ -241,7 +271,7 @@ describe('a worker that stops answering', () => {
 	/** Builds a worker double and the conversion waiting on it. */
 	function convertThrough(client: EncodingWorkerClient): {
 		worker: WorkerDouble;
-		conversion: Promise<Blob>;
+		conversion: Promise<ConvertedAudio<ArrayBuffer>>;
 	} {
 		const conversion = client.convertBlob(
 			new Blob(['audio']),
@@ -268,8 +298,8 @@ describe('a worker that stops answering', () => {
 		return {
 			id,
 			kind: 'result',
-			buffer: new Uint8Array([1]).buffer,
-			mimeType: 'audio/mp3',
+			data: new Uint8Array([1]).buffer,
+			sampleRateChange: null,
 		};
 	}
 
@@ -383,7 +413,9 @@ describe('a worker that stops answering', () => {
 		}
 		answer(worker, resultFor(id));
 
-		await expect(conversion).resolves.toBeInstanceOf(Blob);
+		await expect(conversion).resolves.toMatchObject({
+			data: expect.any(ArrayBuffer),
+		});
 		expect(onProgress).toHaveBeenCalledTimes(3);
 	});
 
@@ -402,7 +434,9 @@ describe('a worker that stops answering', () => {
 
 		await jest.advanceTimersByTimeAsync(ENCODING_WORKER_MIN_TIMEOUT_MS / 2);
 		answer(worker, resultFor(requestId(worker, 1)));
-		await expect(second).resolves.toBeInstanceOf(Blob);
+		await expect(second).resolves.toMatchObject({
+			data: expect.any(ArrayBuffer),
+		});
 		// The wedged request has not run out yet, so the thread the healthy
 		// sibling just used was never at risk.
 		expect(worker.terminate).not.toHaveBeenCalled();

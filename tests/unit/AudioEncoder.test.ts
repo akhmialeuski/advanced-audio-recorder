@@ -4,6 +4,7 @@
  */
 
 import {
+	encodableSampleRate,
 	encodeAudioBuffer,
 	isOfflineEncodingSupported,
 	probeOfflineEncodingSupport,
@@ -542,6 +543,102 @@ describe('AudioEncoder', () => {
 
 			await expect(probeOfflineEncodingSupport('ogg')).resolves.toBe(
 				false,
+			);
+		});
+	});
+
+	describe('encodableSampleRate', () => {
+		const quality = new Quality({ bitrate: 96000 });
+
+		/**
+		 * An encoder that takes these rates, at any channel count.
+		 * @param rates - The rates it takes, in Hz
+		 */
+		function encoderTaking(rates: readonly number[]): void {
+			jest.mocked(canEncodeAudio).mockImplementation((_codec, options) =>
+				Promise.resolve(rates.includes(options?.sampleRate ?? 0)),
+			);
+		}
+
+		it('keeps the source rate when the encoder takes it, asking once', async () => {
+			encoderTaking([16000, 44100, 48000]);
+
+			await expect(
+				encodableSampleRate('aac', {
+					numberOfChannels: 1,
+					sampleRate: 16000,
+					quality,
+				}),
+			).resolves.toBe(16000);
+			expect(jest.mocked(canEncodeAudio)).toHaveBeenCalledTimes(1);
+		});
+
+		it('moves a refused rate up to the nearest one the encoder takes', async () => {
+			encoderTaking([44100, 48000]);
+
+			await expect(
+				encodableSampleRate('aac', {
+					numberOfChannels: 1,
+					sampleRate: 16000,
+					quality,
+				}),
+			).resolves.toBe(44100);
+		});
+
+		// The candidates are the whole MPEG-4 table, so its lowest entry is
+		// the nearest rate above a source below 8 kHz.
+		it('offers every rate of the MPEG-4 table, 7350 Hz included', async () => {
+			encoderTaking([7350, 8000]);
+
+			await expect(
+				encodableSampleRate('aac', {
+					numberOfChannels: 1,
+					sampleRate: 6000,
+					quality,
+				}),
+			).resolves.toBe(7350);
+		});
+
+		it('moves a rate above every one the encoder takes down to the highest', async () => {
+			encoderTaking([44100, 48000]);
+
+			await expect(
+				encodableSampleRate('aac', {
+					numberOfChannels: 2,
+					sampleRate: 96000,
+					quality,
+				}),
+			).resolves.toBe(48000);
+		});
+
+		it('answers null when no rate works, leaving the choice to Conversion', async () => {
+			encoderTaking([]);
+
+			await expect(
+				encodableSampleRate('aac', {
+					numberOfChannels: 4,
+					sampleRate: 16000,
+					quality,
+				}),
+			).resolves.toBeNull();
+		});
+
+		it('asks with the layout and quality it was given and no codec string', async () => {
+			encoderTaking([44100]);
+
+			await encodableSampleRate('aac', {
+				numberOfChannels: 1,
+				sampleRate: 16000,
+				quality,
+			});
+
+			expect(jest.mocked(canEncodeAudio)).toHaveBeenLastCalledWith(
+				'aac',
+				{
+					numberOfChannels: 1,
+					sampleRate: 44100,
+					quality,
+				},
 			);
 		});
 	});

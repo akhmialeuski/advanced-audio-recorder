@@ -16,6 +16,7 @@ import { ConversionLinkAction } from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
 import { showNotice, type Notify } from '../utils/notify';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
+import { kilohertz } from '../audio/AudioCapabilityDetector';
 import { AUDIO_EXTENSIONS } from '../constants';
 
 /**
@@ -172,7 +173,7 @@ export class ConversionService {
 			// platform without the decoder the stream needs. Bytes go
 			// straight to createBinary; the buffer variant avoids wrapping
 			// the result in a Blob only to read it back out.
-			const data = await convertBlobToFormatBuffer(
+			const { data, sampleRateChange } = await convertBlobToFormatBuffer(
 				new Blob([arrayBuffer]),
 				request.targetFormat,
 				request.bitrate,
@@ -187,6 +188,13 @@ export class ConversionService {
 
 			onProgress('Saving...');
 			createdFile = await this.app.vault.createBinary(newPath, data);
+			// Said once the file exists, since the sentence is about it.
+			if (sampleRateChange) {
+				const { from, to } = sampleRateChange;
+				this.notify(
+					`"${newFileName}" was resampled from ${kilohertz(from)} kHz to ${kilohertz(to)} kHz, because the ${request.targetFormat.toUpperCase()} encoder on this device does not take ${kilohertz(from)} kHz.`,
+				);
+			}
 		} catch (error) {
 			const message = errorMessage(error);
 			onProgress(`Error: ${message}`);

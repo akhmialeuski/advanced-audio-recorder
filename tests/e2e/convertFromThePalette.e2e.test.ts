@@ -31,7 +31,10 @@ import { at, defined } from '../helpers/assertions';
 jest.mock('src/audio/AudioFormatConverter', () => ({
 	...require('../mocks/modules/audioFormatConverter'),
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
-	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(64)),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue({
+		data: new ArrayBuffer(64),
+		sampleRateChange: null,
+	}),
 }));
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest

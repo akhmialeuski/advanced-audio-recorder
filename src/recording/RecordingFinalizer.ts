@@ -465,7 +465,9 @@ export class RecordingFinalizer {
 			if (reportProgress) {
 				this.reportProgress(40, 'Encoding audio...');
 			}
-			const outputData = await convertBlobToFormatBuffer(
+			// A rate change is logged where it is made. The intermediate is
+			// recorded at the device's rate, which the encoders here take.
+			const { data: outputData } = await convertBlobToFormatBuffer(
 				blob,
 				outputFormat,
 				session.bitrate,

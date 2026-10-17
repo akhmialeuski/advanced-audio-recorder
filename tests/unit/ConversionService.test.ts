@@ -23,7 +23,10 @@ import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
 import { partial } from '../helpers/doubles';
 
 jest.mock('src/audio/AudioFormatConverter', () => ({
-	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue({
+		data: new ArrayBuffer(8),
+		sampleRateChange: null,
+	}),
 }));
 
 jest.mock('src/utils/LinkUpdater', () => ({
@@ -98,6 +101,41 @@ describe('ConversionService', () => {
 			'Audio/recording.webm',
 			expect.any(ArrayBuffer),
 		);
+	});
+
+	describe('a file written at another rate than its source', () => {
+		beforeEach(() => {
+			jest.mocked(convertBlobToFormatBuffer).mockResolvedValueOnce({
+				data: new ArrayBuffer(8),
+				sampleRateChange: { from: 16000, to: 44100 },
+			});
+		});
+
+		it('says which rate the file was resampled to, and why', async () => {
+			await service.convert(
+				createRequest({ targetFormat: 'm4a' }),
+				jest.fn(),
+			);
+
+			expect(getNotices()).toContain(
+				'"recording.m4a" was resampled from 16 kHz to 44.1 kHz, because the M4A encoder on this device does not take 16 kHz.',
+			);
+		});
+
+		it('says nothing about a file that was never written', async () => {
+			jest.mocked(mockApp.vault.createBinary).mockRejectedValueOnce(
+				new Error('disk full'),
+			);
+
+			await service.convert(
+				createRequest({ targetFormat: 'm4a' }),
+				jest.fn(),
+			);
+
+			expect(
+				getNotices().some((message) => message.includes('resampled')),
+			).toBe(false);
+		});
 	});
 
 	it('converts a WAV target through the same ladder as a compressed one', async () => {
@@ -363,9 +401,12 @@ describe('ConversionService', () => {
 		// string here is a progress line that reads "Converting...
 		// [object Object]" for the whole run.
 		jest.mocked(convertBlobToFormatBuffer).mockImplementationOnce(
-			(_blob, _format, _bitrate, report): Promise<ArrayBuffer> => {
+			(_blob, _format, _bitrate, report) => {
 				report?.(40);
-				return Promise.resolve(new ArrayBuffer(8));
+				return Promise.resolve({
+					data: new ArrayBuffer(8),
+					sampleRateChange: null,
+				});
 			},
 		);
 		const onProgress = jest.fn();

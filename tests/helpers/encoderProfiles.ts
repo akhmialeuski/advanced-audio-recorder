@@ -11,11 +11,12 @@ import { canEncodeAudio } from 'mediabunny';
 export const WINDOWS_AAC_BITRATES = [96000, 128000, 160000, 192000];
 
 /**
- * The sample rates the Windows Media Foundation AAC encoder takes. Its
- * documentation lists these two and no others, so a low-rate AAC encode is
- * refused there whatever profile it is asked for.
+ * The sample rates the platform AAC encoder takes, in Hz. Chromium's WebCodecs
+ * encoder checks this list on every platform, outside any platform build flag,
+ * in third_party/blink/renderer/modules/webcodecs/audio_encoder.cc, so a
+ * low-rate AAC encode is refused whatever profile it is asked for.
  */
-export const WINDOWS_AAC_SAMPLE_RATES = [44100, 48000];
+export const PLATFORM_AAC_SAMPLE_RATES: readonly number[] = [44100, 48000];
 
 /** Codec string of AAC-LC, the only AAC profile a Chromium encoder has. */
 export const AAC_LC = 'mp4a.40.2';
@@ -84,7 +85,7 @@ export function installWindowsAacEncoder(defaultRate = 48000): void {
 			const bitrate = options?.quality?.options?.bitrate;
 			return Promise.resolve(
 				aacCodecStringAsked(options, defaultRate) === AAC_LC &&
-					WINDOWS_AAC_SAMPLE_RATES.includes(
+					PLATFORM_AAC_SAMPLE_RATES.includes(
 						options?.sampleRate ?? defaultRate,
 					) &&
 					(bitrate === undefined ||

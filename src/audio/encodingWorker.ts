@@ -13,9 +13,11 @@
  * @module audio/encodingWorker
  */
 
-import { runStreamingConversion } from './streamingConversion';
+import {
+	runStreamingConversion,
+	type ConvertedAudio,
+} from './streamingConversion';
 import { normalizeChannelMode, type ChannelMode } from './downmix';
-import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
 import { errorMessage } from '../errors';
 
 /**
@@ -42,7 +44,7 @@ export interface WorkerRequest {
  */
 export type WorkerResponse =
 	| { id: number; kind: 'progress'; percent: number }
-	| { id: number; kind: 'result'; buffer: ArrayBuffer; mimeType: string }
+	| ({ id: number; kind: 'result' } & ConvertedAudio<ArrayBuffer>)
 	| { id: number; kind: 'error'; message: string };
 
 /**
@@ -58,7 +60,7 @@ export async function handleEncodingMessage(
 	post: (response: WorkerResponse, transfer?: Transferable[]) => void,
 ): Promise<void> {
 	try {
-		const resultBuffer = await runStreamingConversion(
+		const { data, sampleRateChange } = await runStreamingConversion(
 			request.blob,
 			request.targetFormat,
 			request.bitrate,
@@ -74,10 +76,10 @@ export async function handleEncodingMessage(
 			{
 				id: request.id,
 				kind: 'result',
-				buffer: resultBuffer,
-				mimeType: `${MIME_TYPE_AUDIO_PREFIX}${request.targetFormat}`,
+				data,
+				sampleRateChange,
 			},
-			[resultBuffer],
+			[data],
 		);
 	} catch (error) {
 		post({

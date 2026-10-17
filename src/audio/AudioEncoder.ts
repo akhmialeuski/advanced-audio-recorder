@@ -302,3 +302,60 @@ export async function probeOfflineEncodingSupport(
 		return false;
 	}
 }
+
+/**
+ * The sampling frequency table of MPEG-4 audio, in Hz, in index order, which
+ * is how an AudioSpecificConfig names a rate. It holds every rate MP3 and Opus
+ * define as well.
+ */
+export const MPEG4_SAMPLING_FREQUENCIES: readonly number[] = [
+	96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025,
+	8000, 7350,
+];
+
+/** The standard rates a transcode may move a recording to, ascending. */
+const STANDARD_SAMPLE_RATES = [...MPEG4_SAMPLING_FREQUENCIES].reverse();
+
+/**
+ * The sample rate a transcode is written at: the asked rate when the encoder
+ * takes it, otherwise the nearest standard rate it takes at the same channel
+ * count, upward first, since resampling up loses nothing the source had.
+ *
+ * Left to itself, mediabunny's Conversion answers a refused rate with a fixed
+ * layout of its own, stereo at 48 kHz, so a 16 kHz mono recording came out
+ * with twice the channels and three times the rate. Chromium's AAC encoder
+ * takes 44.1 and 48 kHz only, on every platform, so below that some
+ * resampling cannot be avoided; choosing it here keeps the channels and the
+ * smallest rate that works.
+ *
+ * Unlike probeOfflineEncodingSupport, this asks without an AAC-LC codec
+ * string: Conversion takes no codec string, so it asks with the one
+ * mediabunny builds, and only the same question yields a rate it then agrees
+ * to encode at.
+ * @param codec - Codec being encoded
+ * @param question - Channels the encoder is handed, the source's rate, and
+ *   the quality of the encode
+ * @returns The rate, or null when none works at this channel count, which
+ *   leaves the choice to Conversion
+ */
+export async function encodableSampleRate(
+	codec: AudioCodec,
+	question: Required<EncoderQuestion>,
+): Promise<number | null> {
+	const { sampleRate } = question;
+	const candidates = [
+		sampleRate,
+		...STANDARD_SAMPLE_RATES.filter((rate) => rate > sampleRate),
+		...STANDARD_SAMPLE_RATES.filter((rate) => rate < sampleRate).reverse(),
+	];
+	for (const candidate of candidates) {
+		// Asked one at a time on purpose: the source's own rate is the usual
+		// answer, and stopping there costs one question instead of twelve.
+		if (
+			await canEncodeAudio(codec, { ...question, sampleRate: candidate })
+		) {
+			return candidate;
+		}
+	}
+	return null;
+}

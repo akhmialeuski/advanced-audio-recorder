@@ -47,7 +47,7 @@ async function adtsPacketCount(bytes: ArrayBuffer): Promise<number> {
 
 describe('copying AAC packets into an .aac file', () => {
 	it('copies a recording that starts at zero', async () => {
-		const converted = await runStreamingConversion(
+		const { data: converted } = await runStreamingConversion(
 			await mp4Recording(0),
 			FORMAT_AAC,
 			128000,
@@ -63,7 +63,7 @@ describe('copying AAC packets into an .aac file', () => {
 		// an AAC recording a few tens of milliseconds before it. Refused, the
 		// copy became a transcode at mediabunny's default quality rather than
 		// the session's bitrate - or, with no encoder, a failed save.
-		const converted = await runStreamingConversion(
+		const { data: converted } = await runStreamingConversion(
 			await mp4Recording(-0.046),
 			FORMAT_AAC,
 			128000,
