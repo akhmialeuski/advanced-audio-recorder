@@ -5,6 +5,7 @@
  * @module tests/unit/SplitService.test
  */
 
+import { NEVER_CANCELLED } from 'src/utils/cancellation';
 import { SplitService } from 'src/recording/SplitService';
 import type { SplitRequest } from 'src/recording/SplitService';
 import { App, TFile } from 'obsidian';
@@ -474,6 +475,7 @@ describe('SplitService', () => {
 				expect.any(ArrayBuffer),
 				'mp3',
 				64000,
+				NEVER_CANCELLED,
 			);
 		});
 

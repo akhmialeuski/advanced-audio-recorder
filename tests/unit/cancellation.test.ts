@@ -9,7 +9,14 @@
  * @module tests/unit/cancellation.test
  */
 
-import { CancellationSource, NEVER_CANCELLED } from 'src/utils/cancellation';
+import {
+	CancellationSource,
+	NEVER_CANCELLED,
+	cancellationReason,
+	onCancelled,
+	throwIfCancelled,
+	type CancellationToken,
+} from 'src/utils/cancellation';
 
 describe('NEVER_CANCELLED', () => {
 	it('never reports a cancellation', () => {
@@ -71,5 +78,92 @@ describe('CancellationSource', () => {
 		one.cancel();
 
 		expect(other.token.isCancelled()).toBe(false);
+	});
+});
+
+describe('stopping a job at a step boundary', () => {
+	it('lets an uncancelled job go on', () => {
+		expect(() => {
+			throwIfCancelled(new CancellationSource().token);
+		}).not.toThrow();
+	});
+
+	it('throws the reason the source was cancelled with', () => {
+		const source = new CancellationSource();
+		const reason = new Error('closed the dialog');
+		source.cancel(reason);
+
+		expect(() => {
+			throwIfCancelled(source.token);
+		}).toThrow(reason);
+	});
+
+	// A test may cancel cooperatively, with no controller behind the token.
+	it('throws an AbortError for a token that carries no signal', () => {
+		const token: CancellationToken = { isCancelled: () => true };
+
+		expect(cancellationReason(token)).toMatchObject({
+			name: 'AbortError',
+		});
+		expect(() => {
+			throwIfCancelled(token);
+		}).toThrow('The job was cancelled.');
+	});
+});
+
+describe('reaching work a step boundary cannot', () => {
+	it('runs the callback when the job is cancelled, once', () => {
+		const source = new CancellationSource();
+		const stop = jest.fn();
+		onCancelled(source.token, stop);
+
+		source.cancel();
+		source.cancel();
+
+		expect(stop).toHaveBeenCalledTimes(1);
+	});
+
+	// The event has already fired, so waiting for it would wait forever.
+	it('runs it at once for a job already cancelled', () => {
+		const source = new CancellationSource();
+		source.cancel();
+		const stop = jest.fn();
+
+		onCancelled(source.token, stop);
+
+		expect(stop).toHaveBeenCalledTimes(1);
+	});
+
+	it('runs nothing once the work it guarded is over', () => {
+		const source = new CancellationSource();
+		const stop = jest.fn();
+		const detach = onCancelled(source.token, stop);
+
+		detach();
+		source.cancel();
+
+		expect(stop).not.toHaveBeenCalled();
+	});
+});
+
+describe('a token that cannot be listened to', () => {
+	// A cooperative token has no signal to fire, so only a step boundary
+	// can see its cancel.
+	it('runs nothing and detaches nothing for a token with no signal', () => {
+		const stop = jest.fn();
+		const detach = onCancelled({ isCancelled: () => false }, stop);
+
+		detach();
+
+		expect(stop).not.toHaveBeenCalled();
+	});
+
+	it('runs the callback at once for a cancelled token with no signal', () => {
+		const stop = jest.fn();
+		const detach = onCancelled({ isCancelled: () => true }, stop);
+
+		detach();
+
+		expect(stop).toHaveBeenCalledTimes(1);
 	});
 });

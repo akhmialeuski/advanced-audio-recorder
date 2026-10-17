@@ -1791,12 +1791,13 @@ button.aar-player-marker-row {
     font-weight: var(--font-semibold);
 }
 
-/* Native button semantics make the persistent post-recording action keyboard
-   accessible; link styling keeps it compact inside an Obsidian Notice. The
+/* An action inside a Notice: converting a recording with a silent channel,
+   cancelling a conversion or a split. Native button semantics keep it keyboard
+   accessible; link styling keeps it compact inside the notice. The
    app paints every button through button:not(.clickable-icon) and sizes it
    through button, so the selector matches the first and outranks it, and the
    reset covers the field height and flex box the second one adds. */
-button.aar-silent-channel-convert:not(.clickable-icon) {
+button.aar-notice-action:not(.clickable-icon) {
     appearance: none;
     display: inline;
     height: auto;
@@ -1812,7 +1813,7 @@ button.aar-silent-channel-convert:not(.clickable-icon) {
 
 /* The app's own focus ring, stated here because the link styling above
    clears the rest of the button's chrome */
-button.aar-silent-channel-convert:not(.clickable-icon):focus-visible {
+button.aar-notice-action:not(.clickable-icon):focus-visible {
     border-radius: var(--radius-s);
     box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }

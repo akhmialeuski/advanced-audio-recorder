@@ -19,6 +19,7 @@ import {
 } from './streamingConversion';
 import { normalizeChannelMode, type ChannelMode } from './downmix';
 import { errorMessage } from '../errors';
+import { CancellationSource } from '../utils/cancellation';
 
 /**
  * Conversion request sent to the worker.
@@ -39,6 +40,16 @@ export interface WorkerRequest {
 	channelMode?: ChannelMode | undefined;
 }
 
+/** Stops the conversion a request started, sent when its caller cancels. */
+export interface WorkerCancel {
+	/** The request whose conversion stops. */
+	id: number;
+	kind: 'cancel';
+}
+
+/** Everything the client sends the worker. */
+export type WorkerMessage = WorkerRequest | WorkerCancel;
+
 /**
  * Responses posted back to the client.
  */
@@ -48,17 +59,33 @@ export type WorkerResponse =
 	| { id: number; kind: 'error'; message: string };
 
 /**
- * Handles one conversion request through the shared streaming
- * conversion core (see streamingConversion.ts, also used by the
- * main-thread pipeline); failures are posted as error responses and
- * the client falls back to the main thread.
- * @param request - Conversion request
+ * The cancellation of each conversion the worker is running, by request id,
+ * so a cancel message can reach the conversion it names. An entry lives
+ * exactly as long as its conversion does.
+ */
+const running = new Map<number, CancellationSource>();
+
+/**
+ * Handles one message from the client. A conversion request runs through
+ * the shared streaming conversion core (see streamingConversion.ts, also
+ * used by the main-thread pipeline); failures are posted as error responses
+ * and the client falls back to the main thread. A cancel stops the
+ * conversion it names inside mediabunny, which then answers with an error
+ * the client, having already given up on the request, ignores.
+ * @param message - Conversion request, or the cancel of one
  * @param post - Posts a response (with optional transferables)
  */
 export async function handleEncodingMessage(
-	request: WorkerRequest,
+	message: WorkerMessage,
 	post: (response: WorkerResponse, transfer?: Transferable[]) => void,
 ): Promise<void> {
+	if (message.kind === 'cancel') {
+		running.get(message.id)?.cancel();
+		return;
+	}
+	const request = message;
+	const cancellation = new CancellationSource();
+	running.set(request.id, cancellation);
 	try {
 		const { data, sampleRateChange } = await runStreamingConversion(
 			request.blob,
@@ -71,6 +98,7 @@ export async function handleEncodingMessage(
 			// Structured-clone delivers plain data; normalize so an
 			// unexpected value degrades to the source layout
 			normalizeChannelMode(request.channelMode),
+			cancellation.token,
 		);
 		post(
 			{
@@ -87,6 +115,8 @@ export async function handleEncodingMessage(
 			kind: 'error',
 			message: errorMessage(error),
 		});
+	} finally {
+		running.delete(request.id);
 	}
 }
 
@@ -105,7 +135,7 @@ declare const self:
 if (typeof self !== 'undefined' && typeof self.importScripts === 'function') {
 	self.onmessage = (event: MessageEvent): void => {
 		void handleEncodingMessage(
-			event.data as WorkerRequest,
+			event.data as WorkerMessage,
 			(response, transfer) => {
 				self.postMessage(response, transfer);
 			},

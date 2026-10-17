@@ -5,6 +5,7 @@
  * @module tests/unit/ConversionService.test
  */
 
+import { CancellationSource, NEVER_CANCELLED } from 'src/utils/cancellation';
 import { ConversionService } from 'src/recording/ConversionService';
 import type {
 	ConversionOutcome,
@@ -21,6 +22,7 @@ import {
 import { convertBlobToFormatBuffer } from 'src/audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
 import { partial } from '../helpers/doubles';
+import { updateLinksInVault } from 'src/utils/LinkUpdater';
 
 jest.mock('src/audio/AudioFormatConverter', () => ({
 	convertBlobToFormatBuffer: jest.fn().mockResolvedValue({
@@ -160,7 +162,11 @@ describe('ConversionService', () => {
 			'wav',
 			128000,
 			expect.any(Function),
-			{ workerClient, channelMode: 'source' },
+			{
+				workerClient,
+				channelMode: 'source',
+				cancellation: NEVER_CANCELLED,
+			},
 		);
 	});
 
@@ -414,5 +420,63 @@ describe('ConversionService', () => {
 		await service.convert(createRequest(request), onProgress);
 
 		expect(onProgress).toHaveBeenCalledWith('Converting... 40%');
+	});
+
+	describe('a cancel that arrives while the converted file is written', () => {
+		/** Cancels the conversion from inside the write, as a click would. */
+		function cancelDuringWrite(): CancellationSource {
+			const source = new CancellationSource();
+			jest.mocked(mockApp.vault.createBinary).mockImplementationOnce(
+				(path: string) => {
+					source.cancel();
+					return Promise.resolve(
+						Object.assign(new TFile(), { path }),
+					);
+				},
+			);
+			return source;
+		}
+
+		it('trashes the file and touches no link', async () => {
+			const source = cancelDuringWrite();
+
+			const outcome = await service.convert(
+				createRequest({ linkAction: 'replace', deleteSource: true }),
+				jest.fn(),
+				source.token,
+			);
+
+			expect(outcome).toEqual({ status: 'cancelled' });
+			expect(mockApp.fileManager.trashFile).toHaveBeenCalledTimes(1);
+			expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
+				expect.objectContaining({ path: 'Audio/recording.webm' }),
+			);
+			expect(jest.mocked(updateLinksInVault)).not.toHaveBeenCalled();
+			expect(getNotices()).toEqual([]);
+		});
+
+		// The cancel still stands: the user asked to stop, and a file that
+		// would not go is a cleanup failure for the log, not a failed
+		// conversion to report.
+		it('logs a file that cannot be trashed and still answers cancelled', async () => {
+			const source = cancelDuringWrite();
+			const error = jest.spyOn(console, 'error').mockImplementation();
+			jest.mocked(mockApp.fileManager.trashFile).mockRejectedValueOnce(
+				new Error('locked'),
+			);
+
+			const outcome = await service.convert(
+				createRequest(),
+				jest.fn(),
+				source.token,
+			);
+
+			expect(outcome).toEqual({ status: 'cancelled' });
+			expect(error).toHaveBeenCalledWith(
+				expect.stringContaining('after a cancel'),
+				expect.objectContaining({ path: 'Audio/recording.webm' }),
+			);
+			expect(getNotices()).toEqual([]);
+		});
 	});
 });

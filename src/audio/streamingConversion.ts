@@ -27,6 +27,12 @@ import {
 import { getFormatDescriptor } from './formatRegistry';
 import { ChannelMode, monoPickIndex } from './downmix';
 import { disposableOf } from '../utils/disposables';
+import {
+	NEVER_CANCELLED,
+	onCancelled,
+	throwIfCancelled,
+	type CancellationToken,
+} from '../utils/cancellation';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /** A conversion written at another sample rate than its source has. */
@@ -151,12 +157,14 @@ export function averageChannelsSample(sample: AudioSample): AudioSample {
  * @param allowRemux - Allow packet copy when the codecs match
  * @param onProgress - Optional progress callback (0-100, deduplicated)
  * @param channelMode - Channel layout for the output audio
+ * @param token - Cancels the conversion, inside mediabunny's own loop
  * @returns The converted file, with the rate it was written at when that is
  *   not the source's
  * @throws Error when the target format has no codec mapping, the
  * input has no audio track, the conversion cannot process the audio
  * track, or it produces no output (the caller falls back to decode
- * and re-encode)
+ * and re-encode), and whatever the cancelled step failed with once the
+ * token is cancelled
  */
 export async function runStreamingConversion(
 	recordedBlob: Blob,
@@ -165,6 +173,7 @@ export async function runStreamingConversion(
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
 	channelMode: ChannelMode = ChannelMode.Source,
+	token: CancellationToken = NEVER_CANCELLED,
 ): Promise<ConvertedAudio<ArrayBuffer>> {
 	const codec: AudioCodec | undefined =
 		getFormatDescriptor(targetFormat)?.codec;
@@ -190,6 +199,7 @@ export async function runStreamingConversion(
 		allowRemux,
 		onProgress,
 		channelMode,
+		token,
 	);
 }
 
@@ -203,8 +213,9 @@ async function convertWithInput(
 	codec: AudioCodec,
 	bitrate: number,
 	allowRemux: boolean,
-	onProgress?: (percent: number) => void,
-	channelMode: ChannelMode = ChannelMode.Source,
+	onProgress: ((percent: number) => void) | undefined,
+	channelMode: ChannelMode,
+	token: CancellationToken,
 ): Promise<ConvertedAudio<ArrayBuffer>> {
 	const audioTrack = await input.getPrimaryAudioTrack();
 	if (!audioTrack) {
@@ -331,7 +342,24 @@ async function convertWithInput(
 		};
 	}
 
-	await conversion.execute();
+	// Asked once more before the loop starts, since probing the encoder
+	// above takes long enough for a cancel to arrive, and listened for
+	// while it runs: mediabunny stops its own demux and transcode loop on
+	// cancel(), which no step boundary out here could reach.
+	throwIfCancelled(token);
+	const detach = onCancelled(token, () => {
+		conversion.cancel().catch((error: unknown) => {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} The cancelled conversion could not be stopped:`,
+				error,
+			);
+		});
+	});
+	try {
+		await conversion.execute();
+	} finally {
+		detach();
+	}
 
 	const resultBuffer = target.buffer;
 	if (!resultBuffer || resultBuffer.byteLength === 0) {

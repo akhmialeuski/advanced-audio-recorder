@@ -5,7 +5,8 @@
 
 import { App, Notice, Setting, TFile } from 'obsidian';
 import { PluginModal } from './PluginModal';
-import type { DropdownComponent } from 'obsidian';
+import { JobProgressNotice } from './JobProgressNotice';
+import type { ButtonComponent, DropdownComponent } from 'obsidian';
 import {
 	ChannelMode,
 	channelCountFor,
@@ -21,6 +22,7 @@ import {
 import { getEncoderDescription } from './formatDescriptions';
 import { ConversionService, conversionTargets } from '../recording/api';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
+import { CancellationSource } from '../utils/cancellation';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -47,10 +49,15 @@ export class ConversionModal extends PluginModal {
 	private formatDropdown: DropdownComponent | null = null;
 	/** Bitrate row, re-offered when the target format changes. */
 	private bitrateRow: BitrateRow | null = null;
-	/** Whether the conversion pipeline is currently running. */
-	private isConverting = false;
+	/**
+	 * The running conversion's cancellation, null while none runs, which makes
+	 * it the one answer to whether a conversion is running.
+	 */
+	private cancellation: CancellationSource | null = null;
+	/** The Cancel button, shown only while a conversion runs. */
+	private cancelButton: ButtonComponent | null = null;
 	/** Progress notice shown when the modal is closed mid-conversion. */
-	private progressNotice: Notice | null = null;
+	private progressNotice: JobProgressNotice | null = null;
 	/** Conversion pipeline behind the form. */
 	private readonly conversionService: ConversionService;
 	private readonly onConverted?:
@@ -170,17 +177,27 @@ export class ConversionModal extends PluginModal {
 			cls: 'aar-conversion-progress',
 		});
 
-		new Setting(contentEl).addButton((button) => {
-			button
-				.setButtonText('Convert')
-				.setCta()
-				.onClick(() => {
-					button.setDisabled(true);
-					void this.runConversion(progressEl).finally(() => {
-						button.setDisabled(false);
+		new Setting(contentEl)
+			.addButton((button) => {
+				button
+					.setButtonText('Convert')
+					.setCta()
+					.onClick(() => {
+						button.setDisabled(true);
+						void this.runConversion(progressEl).finally(() => {
+							button.setDisabled(false);
+						});
 					});
+			})
+			.addButton((button) => {
+				this.cancelButton = button;
+				button.setButtonText('Cancel').onClick(() => {
+					button.setDisabled(true);
+					this.setProgress(progressEl, 'Cancelling...');
+					this.cancellation?.cancel();
 				});
-		});
+				button.buttonEl.toggle(false);
+			});
 	}
 
 	/**
@@ -227,12 +244,13 @@ export class ConversionModal extends PluginModal {
 	}
 
 	override onClose(): void {
-		if (this.isConverting && !this.progressNotice) {
-			// Timeout 0 keeps the notice visible until hidden explicitly;
-			// setProgress mirrors further pipeline progress into it
-			this.progressNotice = new Notice(
+		if (this.cancellation && !this.progressNotice) {
+			// The notice is where the conversion can still be cancelled
+			// from; setProgress mirrors further pipeline progress into it
+			this.progressNotice = new JobProgressNotice(
+				`Converting "${this.sourceFile.name}"`,
+				this.cancellation,
 				`Converting "${this.sourceFile.name}" continues in the background...`,
-				0,
 			);
 		}
 		this.contentEl.empty();
@@ -246,15 +264,19 @@ export class ConversionModal extends PluginModal {
 	 */
 	private setProgress(progressEl: HTMLElement, text: string): void {
 		progressEl.setText(text);
-		if (this.progressNotice && text !== '') {
-			this.progressNotice.setMessage(
-				`Converting "${this.sourceFile.name}": ${text}`,
-			);
-		}
+		this.progressNotice?.setProgress(text);
 	}
 
+	/**
+	 * Runs the conversion with a Cancel offered for as long as it runs: in
+	 * the dialog, and in the notice once the dialog is closed.
+	 * @param progressEl - Progress element inside the modal
+	 */
 	private async runConversion(progressEl: HTMLElement): Promise<void> {
-		this.isConverting = true;
+		const cancellation = new CancellationSource();
+		this.cancellation = cancellation;
+		this.cancelButton?.setDisabled(false);
+		this.cancelButton?.buttonEl.toggle(true);
 		try {
 			const outcome = await this.conversionService.convert(
 				{
@@ -268,7 +290,12 @@ export class ConversionModal extends PluginModal {
 				(text) => {
 					this.setProgress(progressEl, text);
 				},
+				cancellation.token,
 			);
+			if (outcome.status === 'cancelled') {
+				new Notice(`Cancelled converting "${this.sourceFile.name}".`);
+				return;
+			}
 			if (outcome.status !== 'completed') {
 				return;
 			}
@@ -281,10 +308,11 @@ export class ConversionModal extends PluginModal {
 			new Notice(`${action} ${outcome.newFileName}`);
 			// Cleared before close() so onClose does not start a
 			// background notice for an already finished conversion
-			this.isConverting = false;
+			this.cancellation = null;
 			this.close();
 		} finally {
-			this.isConverting = false;
+			this.cancellation = null;
+			this.cancelButton?.buttonEl.toggle(false);
 			this.progressNotice?.hide();
 			this.progressNotice = null;
 		}

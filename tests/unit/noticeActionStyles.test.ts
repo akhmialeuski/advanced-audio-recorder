@@ -1,11 +1,12 @@
 /**
- * Regression guard for the Convert to mono action of the silent-channel
- * notice. The action is a native button styled as a link, and Obsidian's
+ * Regression guard for the actions inside a notice: Convert to mono on the
+ * silent-channel notice, and Cancel on the notice of a conversion or a split.
+ * An action is a native button styled as a link, and Obsidian's
  * button:not(.clickable-icon) rule (specificity 0,1,1) outranked the bare
  * class (0,1,0), so the notice showed a grey shadowed button with
  * underlined text. jsdom resolves the cascade by source order alone, so
  * these tests pin the selectors and declarations in the stylesheet.
- * @module tests/unit/silentChannelNoticeStyles.test
+ * @module tests/unit/noticeActionStyles.test
  */
 
 import { MODAL } from '../helpers/selectors';
@@ -13,7 +14,7 @@ import { ruleBody } from '../helpers/stylesheet';
 
 // Specificity 0,2,1: one class and one :not() argument above the app's
 // button:not(.clickable-icon) and button:hover, both 0,1,1.
-const LINK = `button${MODAL.silentChannelConvert}:not(.clickable-icon)`;
+const LINK = `button${MODAL.noticeAction}:not(.clickable-icon)`;
 // Specificity 0,3,1, so the ring outranks the reset of the rule above.
 const LINK_FOCUS = `${LINK}:focus-visible`;
 
@@ -24,7 +25,7 @@ function rule(selector: string): string {
 	return body ?? '';
 }
 
-describe('silent-channel notice action styles', () => {
+describe('notice action styles', () => {
 	it('clears the chrome the app gives every button', () => {
 		const body = rule(LINK);
 
@@ -51,10 +52,13 @@ describe('silent-channel notice action styles', () => {
 
 	// A rule left on the bare class would lose the same way and read as if
 	// it still applied.
-	it('leaves no rule on the bare class', () => {
-		expect(ruleBody(MODAL.silentChannelConvert)).toBeNull();
-		expect(
-			ruleBody(`${MODAL.silentChannelConvert}:focus-visible`),
-		).toBeNull();
+	it('leaves no rule on the bare classes', () => {
+		for (const selector of [
+			MODAL.noticeAction,
+			MODAL.silentChannelConvert,
+		]) {
+			expect(ruleBody(selector)).toBeNull();
+			expect(ruleBody(`${selector}:focus-visible`)).toBeNull();
+		}
 	});
 });

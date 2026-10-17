@@ -46,6 +46,11 @@ import { ConversionLinkAction } from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
 import { showNotice, type Notify } from '../utils/notify';
 import { chapters, type PlayerMarker } from '../markers/markerModel';
+import {
+	NEVER_CANCELLED,
+	throwIfCancelled,
+	type CancellationToken,
+} from '../utils/cancellation';
 
 /**
  * The way out of a desktop size ceiling for the splitter, which cannot use
@@ -111,11 +116,12 @@ export interface SplitRequest {
 /**
  * Outcome of a split operation. Failure details are already told to
  * the user through the service's reporter, a notice unless the caller
- * passed another.
+ * passed another. A cancelled split says nothing: the user asked for it.
  */
 export type SplitOutcome =
 	| { status: 'completed'; partCount: number; firstPartName: string }
 	| { status: 'aborted' }
+	| { status: 'cancelled' }
 	| { status: 'partial' };
 
 /** Lazily built part: the data callback keeps at most one part alive. */
@@ -206,13 +212,22 @@ export class SplitService {
 	 * failures after that are reported as partial success, because the
 	 * part files already exist on disk and a repeated run would abort
 	 * on the collision pre-check.
+	 *
+	 * A cancel is honoured until the last part is written, and leaves the
+	 * vault as it found it: the parts written so far go where a failed
+	 * split's parts go, the trash, and no link is touched. From then on the
+	 * links and the source are finished the way the request asked, because
+	 * stopping halfway through rewriting them would leave notes pointing at
+	 * the source and at parts alike.
 	 * @param request - Split parameters
 	 * @param onProgress - Receives pipeline progress text
+	 * @param token - Cancels the split
 	 * @returns Split outcome
 	 */
 	async split(
 		request: SplitRequest,
 		onProgress: (text: string) => void,
+		token: CancellationToken = NEVER_CANCELLED,
 	): Promise<SplitOutcome> {
 		let written: WrittenParts | null;
 		try {
@@ -230,12 +245,14 @@ export class SplitService {
 				onProgress('');
 				return { status: 'aborted' };
 			}
+			throwIfCancelled(token);
 			onProgress('Reading source file...');
 			// Through the vault, which is the API for a file it indexes; the
 			// adapter is for paths it does not.
 			const sourceBytes = await this.app.vault.readBinary(
 				request.sourceFile,
 			);
+			throwIfCancelled(token);
 
 			try {
 				written = await this.prepareAndWrite(
@@ -243,6 +260,7 @@ export class SplitService {
 					sourceBytes,
 					onProgress,
 					SplitAttempt.Streamed,
+					token,
 				);
 			} catch (error) {
 				// A streamed split that failed partway has already removed
@@ -260,6 +278,7 @@ export class SplitService {
 					sourceBytes,
 					onProgress,
 					SplitAttempt.Decoded,
+					token,
 				);
 			}
 			if (!written) {
@@ -267,6 +286,12 @@ export class SplitService {
 				return { status: 'aborted' };
 			}
 		} catch (error) {
+			// Asked of the token rather than of the error, which arrives in
+			// whatever shape the step the cancel interrupted fails with.
+			if (token.isCancelled()) {
+				onProgress('');
+				return { status: 'cancelled' };
+			}
 			const message = errorMessage(error);
 			onProgress(`Error: ${message}`);
 			this.notify(`Split failed: ${message}`);
@@ -292,22 +317,26 @@ export class SplitService {
 	 * @param sourceBytes - Raw bytes of the source file
 	 * @param onProgress - Receives pipeline progress text
 	 * @param attempt - Whether a streamed split may be tried
+	 * @param token - Cancels the split
 	 * @returns The written parts, or null when the split was refused (a
 	 *   Notice explains why)
 	 * @throws StreamedSplitError when a streamed part failed, after the parts
-	 *   written before it were removed
+	 *   written before it were removed, and the cancellation reason once the
+	 *   token is cancelled, after the same removal
 	 */
 	private async prepareAndWrite(
 		request: SplitRequest,
 		sourceBytes: ArrayBuffer,
 		onProgress: (text: string) => void,
 		attempt: SplitAttempt,
+		token: CancellationToken,
 	): Promise<WrittenParts | null> {
 		const prepared = await this.preparePartBlobs(
 			request,
 			sourceBytes,
 			onProgress,
 			attempt,
+			token,
 		);
 		if (!prepared) {
 			return null;
@@ -326,6 +355,7 @@ export class SplitService {
 				parts.parts,
 				partPaths,
 				onProgress,
+				token,
 			),
 			partCount: parts.parts.length,
 			firstPartName: partNames[0] ?? '',
@@ -404,6 +434,7 @@ export class SplitService {
 	 * @param sourceBytes - Raw bytes of the source file
 	 * @param onProgress - Receives pipeline progress text
 	 * @param attempt - Whether a streamed split may be tried
+	 * @param token - Cancels the decode and the encode of every part
 	 * @returns Parts with target file names, or null when splitting
 	 * is not possible (a Notice explains why)
 	 */
@@ -412,6 +443,7 @@ export class SplitService {
 		sourceBytes: ArrayBuffer,
 		onProgress: (text: string) => void,
 		attempt: SplitAttempt,
+		token: CancellationToken,
 	): Promise<PreparedParts | null> {
 		const baseName = request.sourceFile.basename;
 		const sourceExtension = request.sourceFile.extension.toLowerCase();
@@ -480,6 +512,7 @@ export class SplitService {
 				sourceBytes,
 				targetFormat,
 				request.bitrate,
+				token,
 			);
 			if (streamed) {
 				return streamedParts(
@@ -508,6 +541,9 @@ export class SplitService {
 
 		onProgress('Decoding audio...');
 		const audioBuffer = await decodeAudioBlob(sourceBytes, 'split');
+		// The decode cannot be interrupted, so its end is where a cancel that
+		// arrived during it is noticed.
+		throwIfCancelled(token);
 		const partSamples = request.partSeconds * audioBuffer.sampleRate;
 		// Planned short of the end by the tail the streamed split plans short
 		// by, so a remainder too short to be a part of its own rides on the
@@ -538,6 +574,7 @@ export class SplitService {
 					targetFormat,
 					audioBuffer,
 					plannedSamples,
+					token,
 				),
 			);
 		}
@@ -559,10 +596,12 @@ export class SplitService {
 							? audioBuffer.length
 							: (index + 1) * partSamples,
 					);
-					const blob = await encodeAudioBuffer(slice, {
-						format: targetFormat,
-						bitrate: request.bitrate,
-					});
+					const blob = await encodeAudioBuffer(
+						slice,
+						{ format: targetFormat, bitrate: request.bitrate },
+						undefined,
+						token,
+					);
 					return blob.arrayBuffer();
 				},
 			})),
@@ -599,20 +638,24 @@ export class SplitService {
 	 * Writes all part files, yielding to the UI between parts.
 	 * On failure removes already-written parts and rethrows, keeping
 	 * the source file intact: deleted when a streamed part failed and the
-	 * split is about to run again, trashed when the split ends here.
+	 * split is about to run again, trashed when the split ends here, which
+	 * a cancel does too.
 	 * @param parts - Prepared parts in order
 	 * @param partPaths - Resolved part paths
 	 * @param onProgress - Receives pipeline progress text
+	 * @param token - Cancels the split, up to the last part being written
 	 * @returns The created part files in write order
 	 */
 	private async writePartFiles(
 		parts: PreparedPart[],
 		partPaths: string[],
 		onProgress: (text: string) => void,
+		token: CancellationToken,
 	): Promise<TFile[]> {
 		const written: { path: string; file: TFile | null }[] = [];
 		try {
 			for (let i = 0; i < parts.length; i++) {
+				throwIfCancelled(token);
 				onProgress(
 					`Writing part ${String(i + 1)} of ${String(parts.length)}...`,
 				);
@@ -622,6 +665,8 @@ export class SplitService {
 					continue;
 				}
 				const bytes = await part.data();
+				// A part encoded as the cancel arrived is not written.
+				throwIfCancelled(token);
 				const created = await this.app.vault.createBinary(
 					partPath,
 					bytes,
@@ -633,6 +678,9 @@ export class SplitService {
 				// Yield to the UI between parts so the progress text repaints
 				await delay(0);
 			}
+			// The last moment a cancel undoes the split: past it, the links
+			// are rewritten to the parts.
+			throwIfCancelled(token);
 		} catch (error) {
 			// A failed streamed part is answered by splitting again from a
 			// whole-file decode, which writes every part anew, so what was
@@ -711,6 +759,7 @@ function chapterWavParts(
  * @param audioBuffer - The decoded recording
  * @param plannedSamples - Length the cuts are placed within, short of the
  *   end by SPLIT_TAIL_SECONDS; the last part still runs to the end
+ * @param token - Cancels the encode of a part
  * @returns The parts, each encoded lazily
  */
 function chapterDecodedParts(
@@ -720,6 +769,7 @@ function chapterDecodedParts(
 	targetFormat: string,
 	audioBuffer: AudioBuffer,
 	plannedSamples: number,
+	token: CancellationToken,
 ): PreparedPart[] {
 	const taken = new Set<string>();
 	const ranges = computeCutRanges(
@@ -741,10 +791,12 @@ function chapterDecodedParts(
 				range.start,
 				index === ranges.length - 1 ? audioBuffer.length : range.end,
 			);
-			const blob = await encodeAudioBuffer(slice, {
-				format: targetFormat,
-				bitrate: request.bitrate,
-			});
+			const blob = await encodeAudioBuffer(
+				slice,
+				{ format: targetFormat, bitrate: request.bitrate },
+				undefined,
+				token,
+			);
 			return blob.arrayBuffer();
 		},
 	}));

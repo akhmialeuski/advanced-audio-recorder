@@ -1517,7 +1517,7 @@ export default class AudioRecorderPlugin extends Plugin {
 				);
 			}
 			const button = createEl('button', {
-				cls: 'aar-silent-channel-convert',
+				cls: ['aar-notice-action', 'aar-silent-channel-convert'],
 				text:
 					suggestions.length === 1
 						? 'Convert to mono'

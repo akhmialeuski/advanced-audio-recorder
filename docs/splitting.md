@@ -95,7 +95,7 @@ The dialog header shows the **Source** file name and exposes these options. Each
 
 Click **Split** to run. The dialog shows live progress text (`Reading source file…`, `Opening audio…` for a compressed source, `Writing part N of M…`, `Updating links…`, `Removing source file…`). `Decoding audio…` appears instead of `Opening audio…` when the recording has to be decoded whole first - see [Lossless vs lossy splitting](#lossless-vs-lossy-splitting). When it finishes, a notice reports the number of parts and the first part's name.
 
-You do not have to wait on the open dialog. If you close it while a split is still running, the operation continues in the background and a persistent notice mirrors its progress until it completes.
+A **Cancel** button sits beside **Split** while the split runs. You do not have to wait on the open dialog either: if you close it while a split is still running, the split continues in the background, and a persistent notice mirrors its progress with a **Cancel** of its own until it completes. A cancel stops the split between two parts, or in the middle of a part being encoded from a compressed source. The parts already written go to the trash, the source stays where it was, and no link in your notes changes. Once the last part is written, the split goes on to update the links and remove the source as you asked.
 
 ### Part naming
 

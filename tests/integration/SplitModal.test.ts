@@ -303,16 +303,54 @@ describe('SplitModal', () => {
 		resolveRead(buildTestWav(1, 1000, 250000));
 		await split;
 
-		const background = noticeInstances.filter((notice) =>
-			noticeInitialText(notice).includes('continues in the background'),
+		// The one notice that carries the split's Cancel
+		const background = noticeInstances.filter(
+			(notice) =>
+				notice.initialMessage instanceof DocumentFragment &&
+				notice.initialMessage.querySelector(MODAL.noticeAction) !==
+					null,
 		);
 		expect(background).toHaveLength(1);
 		// The notice mirrors pipeline progress and is hidden at the end
 		const notice = at(background, 0);
-		expect(notice.setMessage).toHaveBeenCalledWith(
-			expect.stringContaining('Writing part'),
+		expect(noticeInitialText(notice)).toMatch(
+			/^Splitting "recording\.wav": Updating links\.\.\. Cancel$/,
 		);
 		expect(notice.hide).toHaveBeenCalled();
+	});
+
+	it('trashes the parts written so far when the notice of a closed dialog cancels the split', async () => {
+		(mockApp.vault.readBinary as jest.Mock).mockResolvedValue(
+			buildTestWav(1, 1000, 250000),
+		);
+		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
+		// Pulled once the first part is on disk, from the notice the closed
+		// dialog left behind.
+		(mockApp.vault.createBinary as jest.Mock).mockImplementation(
+			(path: string) => {
+				const notice = at(noticeInstances, 0);
+				el(
+					notice.initialMessage as DocumentFragment,
+					MODAL.noticeAction,
+				).click();
+				return Promise.resolve(makePartFile(path));
+			},
+		);
+
+		const split = internals(modal).runSplit(progressEl);
+		modal.onClose();
+		await split;
+
+		expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(1);
+		expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'Recordings/recording-part1.wav' }),
+		);
+		// The source stays, and so do the notes that link it.
+		expect(mockApp.fileManager.trashFile).toHaveBeenCalledTimes(1);
+		expect(updateLinksInVault).not.toHaveBeenCalled();
+		expect(noticeInstances.slice(1).map(noticeInitialText)).toEqual([
+			'Cancelled splitting "recording.wav".',
+		]);
 	});
 
 	it.each([
@@ -429,6 +467,45 @@ describe('SplitModal', () => {
 		expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(3);
 		expect(button.setDisabled).toHaveBeenCalledWith(true);
 		expect(button.setDisabled).toHaveBeenLastCalledWith(false);
+	});
+
+	it('stops the split from its own Cancel button and offers it only while it runs', async () => {
+		(mockApp.vault.readBinary as jest.Mock).mockResolvedValue(
+			buildTestWav(1, 1000, 250000),
+		);
+		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
+		modal.onOpen();
+		const split = defined(
+			allButtons().find((button) => button.label === 'Split'),
+		);
+		const cancel = defined(
+			allButtons().find((button) => button.label === 'Cancel'),
+		);
+		const cancelEl = defined(cancel.buttonEl);
+		expect(cancelEl.style.display).toBe('none');
+		// Pressed once the first part is on disk
+		(mockApp.vault.createBinary as jest.Mock).mockImplementation(
+			(path: string) => {
+				expect(cancelEl.style.display).not.toBe('none');
+				void cancel.click();
+				return Promise.resolve(makePartFile(path));
+			},
+		);
+
+		split.click();
+		await waitFor(() => cancelEl.style.display === 'none', {
+			timeout: 2000,
+			message: 'the Cancel button was never hidden again',
+		});
+
+		expect(cancel.disabled).toBe(true);
+		expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(1);
+		expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'Recordings/recording-part1.wav' }),
+		);
+		expect(noticeInstances.map(noticeInitialText)).toEqual([
+			'Cancelled splitting "recording.wav".',
+		]);
 	});
 
 	describe('WAV fast path', () => {
@@ -856,6 +933,9 @@ describe('SplitModal', () => {
 			expect(encodeAudioBuffer).toHaveBeenCalledWith(
 				expect.objectContaining({ length: 60 * 44100 }),
 				{ format: 'webm', bitrate: 128000 },
+				undefined,
+				// The dialog's cancellation, which stops a part mid-encode.
+				expect.objectContaining({ signal: expect.any(AbortSignal) }),
 			);
 			const paths = (
 				mockApp.vault.createBinary as jest.Mock
@@ -905,6 +985,8 @@ describe('SplitModal', () => {
 			expect(encodeAudioBuffer).toHaveBeenCalledWith(
 				expect.anything(),
 				expect.objectContaining({ format: 'wav' }),
+				undefined,
+				expect.objectContaining({ signal: expect.any(AbortSignal) }),
 			);
 			const paths = (
 				mockApp.vault.createBinary as jest.Mock
@@ -1044,6 +1126,7 @@ describe('SplitModal', () => {
 					],
 				}),
 				expect.any(Function),
+				expect.objectContaining({ signal: expect.any(AbortSignal) }),
 			);
 			split.mockRestore();
 		});
@@ -1062,6 +1145,7 @@ describe('SplitModal', () => {
 			expect(split).toHaveBeenCalledWith(
 				expect.not.objectContaining({ cuts: expect.anything() }),
 				expect.any(Function),
+				expect.objectContaining({ signal: expect.any(AbortSignal) }),
 			);
 			split.mockRestore();
 		});

@@ -11,6 +11,8 @@ import {
 } from 'src/audio/AudioEncoder';
 import type { EncodingOptions } from 'src/audio/AudioEncoder';
 import { EncodingError } from 'src/errors';
+import { CancellationSource } from 'src/utils/cancellation';
+import { flushMicrotasks, outcomeOf } from '../helpers/async';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 import { canEncodeAudio, Quality } from 'mediabunny';
 import { registerMp3Encoder } from '@mediabunny/mp3-encoder';
@@ -22,6 +24,7 @@ const mockAdd = jest.fn().mockResolvedValue(undefined);
 const mockStart = jest.fn().mockResolvedValue(undefined);
 const mockFinalize = jest.fn().mockResolvedValue(undefined);
 const mockAddAudioTrack = jest.fn();
+const mockCancel = jest.fn().mockResolvedValue(undefined);
 const mockBuffer = new ArrayBuffer(100);
 
 jest.mock('mediabunny', () => ({
@@ -29,6 +32,7 @@ jest.mock('mediabunny', () => ({
 		addAudioTrack: mockAddAudioTrack,
 		start: mockStart,
 		finalize: mockFinalize,
+		cancel: mockCancel,
 		target: { buffer: mockBuffer },
 	})),
 	BufferTarget: jest.fn().mockImplementation(() => ({
@@ -358,6 +362,56 @@ describe('AudioEncoder', () => {
 					format: 'mp3',
 				}),
 			).rejects.toThrow(EncodingError);
+		});
+
+		// The decode fallback hands the whole recording to the encoder in one
+		// add, so a cancel has to stop the output itself rather than wait for
+		// a boundary that only comes once the file is encoded.
+		it('cancels the output when the job is cancelled mid-encode', async () => {
+			const source = new CancellationSource();
+			mockAdd.mockImplementationOnce(() => {
+				source.cancel();
+				return Promise.resolve();
+			});
+
+			const encoding = encodeAudioBuffer(
+				createMockAudioBuffer(1, 1024, 44100),
+				defaultOptions,
+				undefined,
+				source.token,
+			);
+
+			// The user's cancel, not an encoder failure to report
+			await expect(encoding).rejects.toMatchObject({
+				name: 'AbortError',
+			});
+			expect(mockCancel).toHaveBeenCalledTimes(1);
+			expect(mockFinalize).not.toHaveBeenCalled();
+		});
+
+		it('logs an output that could not be cancelled', async () => {
+			const warn = jest.spyOn(console, 'warn').mockImplementation();
+			mockCancel.mockRejectedValueOnce(new Error('busy'));
+			const source = new CancellationSource();
+			mockAdd.mockImplementationOnce(() => {
+				source.cancel();
+				return Promise.resolve();
+			});
+
+			await outcomeOf(
+				encodeAudioBuffer(
+					createMockAudioBuffer(1, 1024, 44100),
+					defaultOptions,
+					undefined,
+					source.token,
+				),
+			);
+			await flushMicrotasks();
+
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining('could not be stopped'),
+				expect.objectContaining({ message: 'busy' }),
+			);
 		});
 	});
 

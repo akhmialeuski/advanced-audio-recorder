@@ -8,6 +8,10 @@
  * the way, a format this device cannot encode, links it could not update) is
  * shown in the app as before and repeated in the answer, so a script learns
  * why a job did not finish without anyone looking at the app.
+ *
+ * A conversion and a split can run for minutes, and the host hands a command
+ * no signal to interrupt it with, so both show their progress in the app in a
+ * notice with a Cancel, the one a dialog closed mid-job leaves behind.
  * @module actions/audioJobsCli
  */
 
@@ -64,6 +68,7 @@ import {
 } from '../obsidian/cliArgs';
 import type { FileContext } from './PluginAction';
 import { isRefusal, type Refusable } from '../utils/refusal';
+import { JobProgressNotice } from '../ui/JobProgressNotice';
 
 /** Every channel layout the conversion and the cleanup offer. */
 const CHANNEL_MODES: readonly ChannelMode[] = Object.values(ChannelMode);
@@ -230,21 +235,32 @@ export async function convertFromCli(
 		return linkAction.refusal;
 	}
 	const said = collectingNotify();
-	const outcome = await new ConversionService(
+	const service = new ConversionService(
 		services.app,
 		services.getWorkerClient,
 		said.notify,
-	).convert(
-		{
-			sourceFile: file,
-			targetFormat: to,
-			bitrate: bitrate.value,
-			channelMode,
-			deleteSource: deleteSource.value,
-			linkAction: linkAction.value,
-		},
-		() => undefined,
 	);
+	const outcome = await JobProgressNotice.around(
+		`Converting "${file.name}"`,
+		(onProgress, token) =>
+			service.convert(
+				{
+					sourceFile: file,
+					targetFormat: to,
+					bitrate: bitrate.value,
+					channelMode,
+					deleteSource: deleteSource.value,
+					linkAction: linkAction.value,
+				},
+				onProgress,
+				token,
+			),
+	);
+	if (outcome.status === 'cancelled') {
+		return said.answer(
+			`Conversion of ${file.path} was cancelled in Obsidian.`,
+		);
+	}
 	if (outcome.status === 'aborted') {
 		return said.answer(`Did not convert ${file.path}.`);
 	}
@@ -348,20 +364,29 @@ export async function splitFromCli(
 		}
 		cuts = found.value;
 	}
-	const outcome = await service.split(
-		{
-			sourceFile: file,
-			partSeconds:
-				clampSplitMinutes(minutes.value ?? settings.splitChunkMinutes) *
-				SECONDS_PER_MINUTE,
-			suffix,
-			bitrate: bitrate.value,
-			deleteSource: deleteSource.value,
-			linkAction: linkAction.value,
-			...(cuts ? { cuts } : {}),
-		},
-		() => undefined,
+	const outcome = await JobProgressNotice.around(
+		`Splitting "${file.name}"`,
+		(onProgress, token) =>
+			service.split(
+				{
+					sourceFile: file,
+					partSeconds:
+						clampSplitMinutes(
+							minutes.value ?? settings.splitChunkMinutes,
+						) * SECONDS_PER_MINUTE,
+					suffix,
+					bitrate: bitrate.value,
+					deleteSource: deleteSource.value,
+					linkAction: linkAction.value,
+					...(cuts ? { cuts } : {}),
+				},
+				onProgress,
+				token,
+			),
 	);
+	if (outcome.status === 'cancelled') {
+		return said.answer(`Split of ${file.path} was cancelled in Obsidian.`);
+	}
 	if (outcome.status === 'aborted') {
 		return said.answer(`Did not split ${file.path}.`);
 	}

@@ -6,7 +6,10 @@
  */
 
 import { App, Notice, Setting, TFile } from 'obsidian';
+import type { ButtonComponent } from 'obsidian';
 import { PluginModal } from './PluginModal';
+import { JobProgressNotice } from './JobProgressNotice';
+import { CancellationSource } from '../utils/cancellation';
 import {
 	FORMAT_WAV,
 	MIN_SPLIT_CHUNK_MINUTES,
@@ -53,10 +56,15 @@ export class SplitModal extends PluginModal {
 	private byChapters = false;
 	/** The recording's chapters, loaded when the dialog opens. */
 	private chapterCuts: ChapterCut[] = [];
-	/** Whether the split pipeline is currently running. */
-	private isSplitting = false;
+	/**
+	 * The running split's cancellation, null while none runs, which makes
+	 * it the one answer to whether a split is running.
+	 */
+	private cancellation: CancellationSource | null = null;
+	/** The Cancel button, shown only while a split runs. */
+	private cancelButton: ButtonComponent | null = null;
 	/** Progress notice shown when the modal is closed mid-split. */
-	private progressNotice: Notice | null = null;
+	private progressNotice: JobProgressNotice | null = null;
 	/** Split pipeline behind the form. */
 	private readonly splitService: SplitService;
 
@@ -186,17 +194,27 @@ export class SplitModal extends PluginModal {
 			cls: 'aar-split-progress',
 		});
 
-		new Setting(contentEl).addButton((button) => {
-			button
-				.setButtonText('Split')
-				.setCta()
-				.onClick(() => {
-					button.setDisabled(true);
-					void this.runSplit(progressEl).finally(() => {
-						button.setDisabled(false);
+		new Setting(contentEl)
+			.addButton((button) => {
+				button
+					.setButtonText('Split')
+					.setCta()
+					.onClick(() => {
+						button.setDisabled(true);
+						void this.runSplit(progressEl).finally(() => {
+							button.setDisabled(false);
+						});
 					});
+			})
+			.addButton((button) => {
+				this.cancelButton = button;
+				button.setButtonText('Cancel').onClick(() => {
+					button.setDisabled(true);
+					this.setProgress(progressEl, 'Cancelling...');
+					this.cancellation?.cancel();
 				});
-		});
+				button.buttonEl.toggle(false);
+			});
 	}
 
 	/**
@@ -253,12 +271,13 @@ export class SplitModal extends PluginModal {
 	}
 
 	override onClose(): void {
-		if (this.isSplitting && !this.progressNotice) {
-			// Timeout 0 keeps the notice visible until hidden explicitly;
+		if (this.cancellation && !this.progressNotice) {
+			// The notice is where the split can still be cancelled from;
 			// setProgress mirrors further pipeline progress into it
-			this.progressNotice = new Notice(
+			this.progressNotice = new JobProgressNotice(
+				`Splitting "${this.sourceFile.name}"`,
+				this.cancellation,
 				`Splitting "${this.sourceFile.name}" continues in the background...`,
-				0,
 			);
 		}
 		this.contentEl.empty();
@@ -272,11 +291,7 @@ export class SplitModal extends PluginModal {
 	 */
 	private setProgress(progressEl: HTMLElement, text: string): void {
 		progressEl.setText(text);
-		if (this.progressNotice && text !== '') {
-			this.progressNotice.setMessage(
-				`Splitting "${this.sourceFile.name}": ${text}`,
-			);
-		}
+		this.progressNotice?.setProgress(text);
 	}
 
 	/**
@@ -309,10 +324,15 @@ export class SplitModal extends PluginModal {
 	/**
 	 * Runs the split pipeline for the configured form values. Failure
 	 * details are surfaced by the pipeline itself; the form only shows
-	 * the completion notice and closes.
+	 * the completion notice and closes. A Cancel is offered for as long as
+	 * the split runs: in the dialog, and in the notice once it is closed.
+	 * @param progressEl - Progress element inside the modal
 	 */
 	private async runSplit(progressEl: HTMLElement): Promise<void> {
-		this.isSplitting = true;
+		const cancellation = new CancellationSource();
+		this.cancellation = cancellation;
+		this.cancelButton?.setDisabled(false);
+		this.cancelButton?.buttonEl.toggle(true);
 		try {
 			const suffix = this.resolvePartSuffix();
 			if (suffix === null) {
@@ -335,7 +355,12 @@ export class SplitModal extends PluginModal {
 				(text) => {
 					this.setProgress(progressEl, text);
 				},
+				cancellation.token,
 			);
+			if (outcome.status === 'cancelled') {
+				new Notice(`Cancelled splitting "${this.sourceFile.name}".`);
+				return;
+			}
 			if (outcome.status !== 'completed') {
 				return;
 			}
@@ -346,10 +371,11 @@ export class SplitModal extends PluginModal {
 			);
 			// Cleared before close() so onClose does not start a
 			// background notice for an already finished split
-			this.isSplitting = false;
+			this.cancellation = null;
 			this.close();
 		} finally {
-			this.isSplitting = false;
+			this.cancellation = null;
+			this.cancelButton?.buttonEl.toggle(false);
 			this.progressNotice?.hide();
 			this.progressNotice = null;
 		}

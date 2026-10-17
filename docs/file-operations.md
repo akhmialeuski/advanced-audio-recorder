@@ -124,6 +124,8 @@ The **Delete source file** and **Update links in notes** defaults come from **Se
 
 Click **Convert** to run. Progress text appears in the dialog (`Reading source file…`, `Converting… 42%`, `Saving…`, `Updating links…`). When it finishes, a notice reports the new file name (`Converted to …`, or `Replaced with …` when the source was deleted).
 
+A **Cancel** button sits beside **Convert** while the conversion runs, and stops it wherever it is, in the middle of the transcoding included. Closing the dialog does not stop the conversion: it goes on in the background, and a notice keeps showing its progress with a **Cancel** of its own. A cancelled conversion writes no file and leaves your notes and the source untouched, and a notice says it was cancelled. Once the converted file is saved, the conversion goes on to update the links and remove the source as you asked, since stopping halfway through the links would leave notes pointing at both files.
+
 ### How conversion works
 
 - The source bytes are read once, then transcoded to the target format through the **streaming Mediabunny pipeline**: the audio is processed in chunks instead of being decoded fully into memory, and it is **always re-encoded at the bitrate you selected** (the conversion never copies packets, so your bitrate choice is always honored).

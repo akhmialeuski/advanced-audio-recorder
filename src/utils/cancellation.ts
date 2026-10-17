@@ -1,6 +1,6 @@
 /**
  * Cancellation for the long jobs the plugin runs: transcription, the LLM
- * steps around it, and chapter generation.
+ * steps around it, chapter generation, and converting and splitting audio.
  *
  * A job needs two things from a cancel, and used to get them from two objects.
  * Between steps it asks a boolean whether to stop, and while a request is in
@@ -30,6 +30,63 @@ export interface CancellationToken {
 export const NEVER_CANCELLED: CancellationToken = {
 	isCancelled: () => false,
 };
+
+/**
+ * What a cancelled job's in-flight work rejects with: the reason its source
+ * was cancelled with, or the platform's `AbortError` for a token that
+ * carries no signal.
+ *
+ * What it is matters less than it seems. A cancel reaches a catch in
+ * whatever shape the step it interrupted fails with - mediabunny's
+ * `ConversionCanceledError`, a worker's error message, this reason - so a
+ * caller that has to tell a cancel from a failure asks the token, which is
+ * the one answer all of them agree on.
+ * @param token - A cancelled job's cancellation
+ * @returns The error to reject with
+ */
+export function cancellationReason(token: CancellationToken): Error {
+	const reason: unknown = token.signal?.reason;
+	return reason instanceof Error
+		? reason
+		: new DOMException('The job was cancelled.', 'AbortError');
+}
+
+/**
+ * Stops a job at a step boundary once its token is cancelled.
+ * @param token - The job's cancellation
+ * @throws The {@link cancellationReason} when the token is cancelled
+ */
+export function throwIfCancelled(token: CancellationToken): void {
+	if (token.isCancelled()) {
+		throw cancellationReason(token);
+	}
+}
+
+/**
+ * Runs a callback when a job is cancelled, for work a step boundary cannot
+ * reach: a mediabunny conversion mid-execute, a request in a worker. Runs
+ * it at once when the job is already cancelled, since the event has fired.
+ * @param token - The job's cancellation
+ * @param onCancel - What stops the work in flight
+ * @returns Detaches the callback once the work is over
+ */
+export function onCancelled(
+	token: CancellationToken,
+	onCancel: () => void,
+): () => void {
+	const { signal } = token;
+	if (token.isCancelled()) {
+		onCancel();
+		return () => undefined;
+	}
+	if (!signal) {
+		return () => undefined;
+	}
+	signal.addEventListener('abort', onCancel, { once: true });
+	return () => {
+		signal.removeEventListener('abort', onCancel);
+	};
+}
 
 /**
  * Owns one job's cancellation and hands out its token.

@@ -17,7 +17,12 @@ import { errorMessage } from '../errors';
 import { showNotice, type Notify } from '../utils/notify';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { kilohertz } from '../audio/AudioCapabilityDetector';
-import { AUDIO_EXTENSIONS } from '../constants';
+import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
+import {
+	NEVER_CANCELLED,
+	throwIfCancelled,
+	type CancellationToken,
+} from '../utils/cancellation';
 
 /**
  * The formats a recording can be converted to on this device. The source's
@@ -65,11 +70,12 @@ export interface ConversionRequest {
 /**
  * Outcome of a conversion. Failure details are already told to the
  * user through the service's reporter, a notice unless the caller passed
- * another.
+ * another. A cancelled conversion says nothing: the user asked for it.
  */
 export type ConversionOutcome =
 	| { status: 'completed'; newFileName: string; newPath: string }
 	| { status: 'aborted' }
+	| { status: 'cancelled' }
 	| { status: 'partial' };
 
 /**
@@ -95,13 +101,22 @@ export class ConversionService {
 	 * the converted file, update links, optionally delete the source.
 	 * Failures before the converted file exists abort the conversion;
 	 * failures after that are reported as partial success.
+	 *
+	 * A cancel is honoured until the converted file is written, and leaves
+	 * the vault as it found it: a file written just as the cancel arrived
+	 * goes to the trash, and no link is touched. From the write on, the
+	 * links and the source are finished the way the request asked, because
+	 * stopping halfway through rewriting them would leave notes pointing
+	 * at both files.
 	 * @param request - Conversion parameters
 	 * @param onProgress - Receives pipeline progress text
+	 * @param token - Cancels the conversion
 	 * @returns Conversion outcome
 	 */
 	async convert(
 		request: ConversionRequest,
 		onProgress: (text: string) => void,
+		token: CancellationToken = NEVER_CANCELLED,
 	): Promise<ConversionOutcome> {
 		const baseName = request.sourceFile.basename;
 		const directory = request.sourceFile.parent?.path ?? '';
@@ -156,6 +171,7 @@ export class ConversionService {
 				return { status: 'aborted' };
 			}
 
+			throwIfCancelled(token);
 			onProgress('Reading source file...');
 			// Read through the vault rather than its adapter: the file is in
 			// hand, and the Vault API is the one Obsidian asks plugins to use
@@ -163,6 +179,7 @@ export class ConversionService {
 			const arrayBuffer = await this.app.vault.readBinary(
 				request.sourceFile,
 			);
+			throwIfCancelled(token);
 
 			onProgress('Converting...');
 			// One ladder for every target, WAV included: the streaming
@@ -183,11 +200,25 @@ export class ConversionService {
 				{
 					workerClient: this.getWorkerClient(),
 					channelMode: request.channelMode ?? ChannelMode.Source,
+					cancellation: token,
 				},
 			);
 
+			throwIfCancelled(token);
 			onProgress('Saving...');
 			createdFile = await this.app.vault.createBinary(newPath, data);
+			if (token.isCancelled()) {
+				try {
+					await this.app.fileManager.trashFile(createdFile);
+				} catch (cleanupError) {
+					console.error(
+						`${PLUGIN_LOG_PREFIX} Failed to remove the converted file after a cancel:`,
+						{ path: newPath, cleanupError },
+					);
+				}
+				onProgress('');
+				return { status: 'cancelled' };
+			}
 			// Said once the file exists, since the sentence is about it.
 			if (sampleRateChange) {
 				const { from, to } = sampleRateChange;
@@ -196,6 +227,12 @@ export class ConversionService {
 				);
 			}
 		} catch (error) {
+			// Asked of the token rather than of the error, which arrives in
+			// whatever shape the step the cancel interrupted fails with.
+			if (token.isCancelled()) {
+				onProgress('');
+				return { status: 'cancelled' };
+			}
 			const message = errorMessage(error);
 			onProgress(`Error: ${message}`);
 			this.notify(`Conversion failed: ${message}`);

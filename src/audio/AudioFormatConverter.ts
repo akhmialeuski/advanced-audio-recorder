@@ -31,6 +31,11 @@ import {
 	directRecordingMimeType,
 } from './AudioCapabilityDetector';
 import type { EncodingWorkerClient } from './EncodingWorkerClient';
+import {
+	NEVER_CANCELLED,
+	throwIfCancelled,
+	type CancellationToken,
+} from '../utils/cancellation';
 
 /**
  * Progress callback receiving percentage (0-100).
@@ -325,6 +330,13 @@ export interface BlobConversionOptions {
 	 * execution path - worker, streaming, and decode fallback.
 	 */
 	channelMode?: ChannelMode;
+	/**
+	 * Cancels the conversion on whichever step is running it: inside the
+	 * worker, inside mediabunny on the main thread, or between the decode
+	 * and the encode of the last step. A cancelled step is never answered
+	 * by the next one down, which would turn the cancel into a fallback.
+	 */
+	cancellation?: CancellationToken;
 }
 
 /**
@@ -375,6 +387,11 @@ const AS_BUFFER: LadderResult<ArrayBuffer> = {
  * The rate change comes back from the step that wrote the file, so a worker
  * that chose a rate and then failed says nothing about a file the next step
  * wrote.
+ *
+ * A cancel is not a step failing. Whatever a cancelled step throws reaches
+ * the caller as it is, because the token, and not the error, says the user
+ * asked to stop, and the next step down would only redo the work the user
+ * stopped.
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
@@ -394,6 +411,7 @@ async function runConversionLadder<T>(
 ): Promise<ConvertedAudio<T>> {
 	const channelMode = options.channelMode ?? ChannelMode.Source;
 	const allowRemux = options.allowRemux ?? false;
+	const token = options.cancellation ?? NEVER_CANCELLED;
 	const workerClient =
 		options.workerClient && options.workerClient.isAvailable()
 			? options.workerClient
@@ -408,12 +426,16 @@ async function runConversionLadder<T>(
 				allowRemux,
 				channelMode,
 				onProgress,
+				token,
 			);
 			return {
 				data: await deliver.fromBuffer(data, targetFormat),
 				sampleRateChange,
 			};
 		} catch (error) {
+			if (token.isCancelled()) {
+				throw error;
+			}
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Worker conversion failed, falling back to the main thread:`,
 				error,
@@ -429,12 +451,16 @@ async function runConversionLadder<T>(
 			allowRemux,
 			onProgress,
 			channelMode,
+			token,
 		);
 		return {
 			data: await deliver.fromBuffer(data, targetFormat),
 			sampleRateChange,
 		};
 	} catch (error) {
+		if (token.isCancelled()) {
+			throw error;
+		}
 		console.warn(
 			`${PLUGIN_LOG_PREFIX} Streaming conversion failed, falling back to decode and re-encode:`,
 			error,
@@ -443,12 +469,16 @@ async function runConversionLadder<T>(
 
 	const arrayBuffer = await recordedBlob.arrayBuffer();
 	const decodedBuffer = await decodeAudioBlob(arrayBuffer, 'convert');
+	// The decode cannot be interrupted, so its end is where a cancel that
+	// arrived during it is noticed, before an encode of the whole file.
+	throwIfCancelled(token);
 	return {
 		data: await deliver.fromBlob(
 			await encodeAudioBuffer(
 				downmixAudioBuffer(decodedBuffer, channelMode),
 				{ format: targetFormat, bitrate },
 				onProgress,
+				token,
 			),
 		),
 		// The decode resamples to the device's rate without learning the

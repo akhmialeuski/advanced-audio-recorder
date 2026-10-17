@@ -14,8 +14,18 @@ import {
 	PLUGIN_LOG_PREFIX,
 } from '../constants';
 import { scaledTimeoutMs } from '../utils/TimeUtils';
+import {
+	NEVER_CANCELLED,
+	cancellationReason,
+	onCancelled,
+	type CancellationToken,
+} from '../utils/cancellation';
 import { ChannelMode } from './downmix';
-import type { WorkerRequest, WorkerResponse } from './encodingWorker';
+import type {
+	WorkerMessage,
+	WorkerRequest,
+	WorkerResponse,
+} from './encodingWorker';
 import type { ConvertedAudio } from './streamingConversion';
 
 /** Pending request bookkeeping. */
@@ -27,6 +37,8 @@ interface PendingRequest {
 	timer: number;
 	/** How long this request may go unanswered, for each re-arming. */
 	readonly timeoutMs: number;
+	/** Stops listening for the caller's cancel, once the request settles. */
+	detachCancel: () => void;
 }
 
 /**
@@ -67,10 +79,13 @@ export class EncodingWorkerClient {
 	 * @param allowRemux - Allow packet copy when the codecs match
 	 * @param channelMode - Channel layout for the output audio
 	 * @param onProgress - Optional progress callback (0-100)
+	 * @param token - Cancels the conversion in the worker and settles the
+	 *   request at once, without waiting for the worker to say it stopped
 	 * @returns Bytes of the converted file, with the rate they were written
 	 *   at when that is not the source's
 	 * @throws Error when the worker is unavailable or the conversion
-	 * fails (the caller falls back to the main-thread pipeline)
+	 * fails (the caller falls back to the main-thread pipeline), and the
+	 * cancellation reason once the token is cancelled
 	 */
 	convertBlob(
 		blob: Blob,
@@ -79,7 +94,11 @@ export class EncodingWorkerClient {
 		allowRemux: boolean,
 		channelMode: ChannelMode = ChannelMode.Source,
 		onProgress?: (percent: number) => void,
+		token: CancellationToken = NEVER_CANCELLED,
 	): Promise<ConvertedAudio<ArrayBuffer>> {
+		if (token.isCancelled()) {
+			return Promise.reject(cancellationReason(token));
+		}
 		const worker = this.ensureWorker();
 		if (!worker) {
 			return Promise.reject(
@@ -94,13 +113,20 @@ export class EncodingWorkerClient {
 			maxMs: ENCODING_WORKER_MAX_TIMEOUT_MS,
 		});
 		return new Promise<ConvertedAudio<ArrayBuffer>>((resolve, reject) => {
-			this.pending.set(id, {
+			const pending: PendingRequest = {
 				resolve,
 				reject,
 				onProgress,
 				timeoutMs,
 				timer: this.armWatchdog(id, timeoutMs),
-			});
+				// The token is not cancelled yet, checked above, so this
+				// only listens; every path that settles the request detaches
+				// it, which is what lets the cancel assume it is in flight.
+				detachCancel: onCancelled(token, () => {
+					this.cancelRequest(id, pending, token);
+				}),
+			};
+			this.pending.set(id, pending);
 			const request: WorkerRequest = {
 				id,
 				kind: 'convertBlob',
@@ -112,6 +138,29 @@ export class EncodingWorkerClient {
 			};
 			worker.postMessage(request);
 		});
+	}
+
+	/**
+	 * Gives up on one request because its caller cancelled it, and tells the
+	 * worker to stop the conversion. The request settles here rather than
+	 * when the worker answers: the caller asked to stop, and a worker busy
+	 * in its loop answers only once mediabunny notices. The worker stays
+	 * available, since a cancel says nothing about its health.
+	 * @param id - The request being cancelled
+	 * @param request - Its bookkeeping, still in flight
+	 * @param token - Its cancellation, whose reason it rejects with
+	 */
+	private cancelRequest(
+		id: number,
+		request: PendingRequest,
+		token: CancellationToken,
+	): void {
+		window.clearTimeout(request.timer);
+		this.pending.delete(id);
+		const cancel: WorkerMessage = { id, kind: 'cancel' };
+		this.worker?.postMessage(cancel);
+		this.releaseIfSpent();
+		request.reject(cancellationReason(token));
 	}
 
 	/**
@@ -135,6 +184,7 @@ export class EncodingWorkerClient {
 				return;
 			}
 			this.pending.delete(id);
+			request.detachCancel();
 			this.unavailable = true;
 			this.releaseIfSpent();
 			request.reject(
@@ -258,6 +308,7 @@ export class EncodingWorkerClient {
 				break;
 			case 'result':
 				window.clearTimeout(request.timer);
+				request.detachCancel();
 				this.pending.delete(response.id);
 				this.releaseIfSpent();
 				request.resolve({
@@ -267,6 +318,7 @@ export class EncodingWorkerClient {
 				break;
 			case 'error':
 				window.clearTimeout(request.timer);
+				request.detachCancel();
 				this.pending.delete(response.id);
 				this.releaseIfSpent();
 				request.reject(new Error(response.message));
@@ -281,6 +333,7 @@ export class EncodingWorkerClient {
 	private rejectAllPending(error: Error): void {
 		for (const request of this.pending.values()) {
 			window.clearTimeout(request.timer);
+			request.detachCancel();
 			request.reject(error);
 		}
 		this.pending.clear();

@@ -16,44 +16,13 @@ import { SplitService } from 'src/recording/SplitService';
 import { parseWavLayout } from 'src/recording/AudioSplitter';
 import { createMockApp } from '../helpers/createApp';
 import { defined } from '../helpers/assertions';
+import { alawWav } from '../helpers/pcmFixtures';
 
 /** Rate of the fixture: A-law telephony audio. */
 const SAMPLE_RATE = 8000;
 
 /** Length of the fixture, in seconds. */
 const SECONDS = 2.5;
-
-/**
- * An A-law WAV, one byte per frame, mono.
- * @returns The file's bytes
- */
-function alawWav(): ArrayBuffer {
-	const frames = SAMPLE_RATE * SECONDS;
-	const bytes = new Uint8Array(44 + frames);
-	const view = new DataView(bytes.buffer);
-	const ascii = (offset: number, text: string): void => {
-		[...text].forEach((char, index) => {
-			view.setUint8(offset + index, char.charCodeAt(0));
-		});
-	};
-	ascii(0, 'RIFF');
-	view.setUint32(4, 36 + frames, true);
-	ascii(8, 'WAVE');
-	ascii(12, 'fmt ');
-	view.setUint32(16, 16, true);
-	view.setUint16(20, 0x0006, true);
-	view.setUint16(22, 1, true);
-	view.setUint32(24, SAMPLE_RATE, true);
-	view.setUint32(28, SAMPLE_RATE, true);
-	view.setUint16(32, 1, true);
-	view.setUint16(34, 8, true);
-	ascii(36, 'data');
-	view.setUint32(40, frames, true);
-	for (let frame = 0; frame < frames; frame++) {
-		bytes[44 + frame] = frame % 251;
-	}
-	return bytes.buffer;
-}
 
 /**
  * The split service over a vault holding the fixture.
@@ -66,7 +35,9 @@ function createSut(): {
 	const written = new Map<string, ArrayBuffer>();
 	const app: App = createMockApp({
 		vault: {
-			readBinary: jest.fn().mockResolvedValue(alawWav()),
+			readBinary: jest
+				.fn()
+				.mockResolvedValue(alawWav(SAMPLE_RATE, SECONDS)),
 			adapter: { exists: jest.fn().mockResolvedValue(false) },
 			createBinary: jest.fn((path: string, data: ArrayBuffer) => {
 				written.set(path, data);
