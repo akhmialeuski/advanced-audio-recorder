@@ -7,7 +7,10 @@
 import { normalizePath } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
-import { convertBlobToFormatBuffer } from '../audio/AudioFormatConverter';
+import {
+	convertBlobToFormatBuffer,
+	type SampleRateChange,
+} from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { isReadableSize, tooLargeMessage } from '../platform/capabilities';
 import { updateLinksInVault } from '../utils/LinkUpdater';
@@ -17,7 +20,6 @@ import { errorMessage } from '../errors';
 import { showNotice, type Notify } from '../utils/notify';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { kilohertz } from '../audio/AudioCapabilityDetector';
-import type { SampleRateChange } from '../audio/streamingConversion';
 import { AUDIO_EXTENSIONS } from '../constants';
 
 /**
@@ -136,8 +138,10 @@ export class ConversionService {
 		}
 
 		let createdFile: TFile;
-		// What the conversion reported about its rate, at most one change.
-		const sampleRateChanges: SampleRateChange[] = [];
+		// Set by the conversion when it wrote the file at another rate. Left
+		// without an initializer, because one would narrow it to that value
+		// for good: the compiler does not see the callback assign it.
+		let sampleRateChange: SampleRateChange | undefined;
 		try {
 			// Check if target file already exists
 			if (await this.app.vault.adapter.exists(newPath)) {
@@ -187,7 +191,7 @@ export class ConversionService {
 					workerClient: this.getWorkerClient(),
 					channelMode: request.channelMode ?? ChannelMode.Source,
 					onSampleRateChange: (change) => {
-						sampleRateChanges.push(change);
+						sampleRateChange = change;
 					},
 				},
 			);
@@ -195,7 +199,8 @@ export class ConversionService {
 			onProgress('Saving...');
 			createdFile = await this.app.vault.createBinary(newPath, data);
 			// Said once the file exists, since the sentence is about it.
-			for (const { from, to } of sampleRateChanges) {
+			if (sampleRateChange) {
+				const { from, to } = sampleRateChange;
 				this.notify(
 					`"${newFileName}" was resampled from ${kilohertz(from)} kHz to ${kilohertz(to)} kHz, because the ${request.targetFormat.toUpperCase()} encoder on this device does not take ${kilohertz(from)} kHz.`,
 				);

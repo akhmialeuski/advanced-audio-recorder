@@ -18,12 +18,19 @@ import { ChannelMode } from './downmix';
 import type { WorkerRequest, WorkerResponse } from './encodingWorker';
 import type { SampleRateChange } from './streamingConversion';
 
+/** What the worker produced for one request. */
+export interface WorkerConversionResult {
+	/** The converted file. */
+	readonly blob: Blob;
+	/** The rate the file was written at, when that is not the source's. */
+	readonly sampleRateChange: SampleRateChange | null;
+}
+
 /** Pending request bookkeeping. */
 interface PendingRequest {
-	resolve: (blob: Blob) => void;
+	resolve: (result: WorkerConversionResult) => void;
 	reject: (error: Error) => void;
 	onProgress?: ((percent: number) => void) | undefined;
-	onSampleRateChange?: ((change: SampleRateChange) => void) | undefined;
 	/** Watchdog for a worker that stops answering; re-armed by progress. */
 	timer: number;
 	/** How long this request may go unanswered, for each re-arming. */
@@ -68,9 +75,8 @@ export class EncodingWorkerClient {
 	 * @param allowRemux - Allow packet copy when the codecs match
 	 * @param channelMode - Channel layout for the output audio
 	 * @param onProgress - Optional progress callback (0-100)
-	 * @param onSampleRateChange - Told when the file is written at another
-	 *   rate than the source's
-	 * @returns Converted blob
+	 * @returns Converted blob, with the rate it was written at when that is
+	 *   not the source's
 	 * @throws Error when the worker is unavailable or the conversion
 	 * fails (the caller falls back to the main-thread pipeline)
 	 */
@@ -81,8 +87,7 @@ export class EncodingWorkerClient {
 		allowRemux: boolean,
 		channelMode: ChannelMode = ChannelMode.Source,
 		onProgress?: (percent: number) => void,
-		onSampleRateChange?: (change: SampleRateChange) => void,
-	): Promise<Blob> {
+	): Promise<WorkerConversionResult> {
 		const worker = this.ensureWorker();
 		if (!worker) {
 			return Promise.reject(
@@ -96,12 +101,11 @@ export class EncodingWorkerClient {
 			bytesPerMs: ENCODING_WORKER_BYTES_PER_MS,
 			maxMs: ENCODING_WORKER_MAX_TIMEOUT_MS,
 		});
-		return new Promise<Blob>((resolve, reject) => {
+		return new Promise<WorkerConversionResult>((resolve, reject) => {
 			this.pending.set(id, {
 				resolve,
 				reject,
 				onProgress,
-				onSampleRateChange,
 				timeoutMs,
 				timer: this.armWatchdog(id, timeoutMs),
 			});
@@ -260,19 +264,16 @@ export class EncodingWorkerClient {
 				);
 				request.onProgress?.(response.percent);
 				break;
-			case 'sampleRate':
-				request.onSampleRateChange?.({
-					from: response.from,
-					to: response.to,
-				});
-				break;
 			case 'result':
 				window.clearTimeout(request.timer);
 				this.pending.delete(response.id);
 				this.releaseIfSpent();
-				request.resolve(
-					new Blob([response.buffer], { type: response.mimeType }),
-				);
+				request.resolve({
+					blob: new Blob([response.buffer], {
+						type: response.mimeType,
+					}),
+					sampleRateChange: response.sampleRateChange,
+				});
 				break;
 			case 'error':
 				window.clearTimeout(request.timer);

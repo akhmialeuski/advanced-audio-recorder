@@ -14,15 +14,12 @@
 
 import { CustomAudioEncoder, EncodedPacket, registerEncoder } from 'mediabunny';
 import type { AudioCodec, AudioSample } from 'mediabunny';
+import { PLATFORM_AAC_SAMPLE_RATES } from './encoderProfiles';
 
 /**
- * The sample rates Chromium's WebCodecs AAC encoder takes, in Hz. Blink checks
- * this list on every platform, outside any platform build flag, in
- * third_party/blink/renderer/modules/webcodecs/audio_encoder.cc.
+ * The channel counts Blink's check takes beside the rates in
+ * PLATFORM_AAC_SAMPLE_RATES.
  */
-export const CHROMIUM_AAC_SAMPLE_RATES: readonly number[] = [44100, 48000];
-
-/** The channel counts the same check takes. */
 const CHROMIUM_AAC_CHANNEL_COUNTS: readonly number[] = [1, 2, 6];
 
 /**
@@ -65,7 +62,7 @@ class ChromiumAacEncoder extends CustomAudioEncoder {
 	): boolean {
 		return (
 			codec === 'aac' &&
-			CHROMIUM_AAC_SAMPLE_RATES.includes(config.sampleRate) &&
+			PLATFORM_AAC_SAMPLE_RATES.includes(config.sampleRate) &&
 			CHROMIUM_AAC_CHANNEL_COUNTS.includes(config.numberOfChannels)
 		);
 	}

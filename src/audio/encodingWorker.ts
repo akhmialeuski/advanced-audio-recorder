@@ -45,8 +45,13 @@ export interface WorkerRequest {
  */
 export type WorkerResponse =
 	| { id: number; kind: 'progress'; percent: number }
-	| ({ id: number; kind: 'sampleRate' } & SampleRateChange)
-	| { id: number; kind: 'result'; buffer: ArrayBuffer; mimeType: string }
+	| {
+			id: number;
+			kind: 'result';
+			buffer: ArrayBuffer;
+			mimeType: string;
+			sampleRateChange: SampleRateChange | null;
+	  }
 	| { id: number; kind: 'error'; message: string };
 
 /**
@@ -62,7 +67,7 @@ export async function handleEncodingMessage(
 	post: (response: WorkerResponse, transfer?: Transferable[]) => void,
 ): Promise<void> {
 	try {
-		const resultBuffer = await runStreamingConversion(
+		const { buffer, sampleRateChange } = await runStreamingConversion(
 			request.blob,
 			request.targetFormat,
 			request.bitrate,
@@ -73,18 +78,16 @@ export async function handleEncodingMessage(
 			// Structured-clone delivers plain data; normalize so an
 			// unexpected value degrades to the source layout
 			normalizeChannelMode(request.channelMode),
-			(change) => {
-				post({ id: request.id, kind: 'sampleRate', ...change });
-			},
 		);
 		post(
 			{
 				id: request.id,
 				kind: 'result',
-				buffer: resultBuffer,
+				buffer,
 				mimeType: `${MIME_TYPE_AUDIO_PREFIX}${request.targetFormat}`,
+				sampleRateChange,
 			},
-			[resultBuffer],
+			[buffer],
 		);
 	} catch (error) {
 		post({

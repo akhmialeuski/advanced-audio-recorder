@@ -67,38 +67,30 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 	});
 
 	it('keeps a 16 kHz mono source mono at the nearest rate the encoder takes', async () => {
-		const onSampleRateChange = jest.fn();
-
-		const converted = await runStreamingConversion(
+		const { buffer, sampleRateChange } = await runStreamingConversion(
 			wav(16000, 1),
 			'm4a',
 			BITRATE,
 			false,
-			undefined,
-			undefined,
-			onSampleRateChange,
 		);
 
-		expect(await layoutOf(converted)).toEqual({
+		expect(await layoutOf(buffer)).toEqual({
 			codec: 'aac',
 			channels: 1,
 			sampleRate: 44100,
 		});
-		expect(onSampleRateChange).toHaveBeenCalledWith({
-			from: 16000,
-			to: 44100,
-		});
+		expect(sampleRateChange).toEqual({ from: 16000, to: 44100 });
 	});
 
 	it('keeps a 22.05 kHz stereo source stereo, resampled to 44.1 kHz', async () => {
-		const converted = await runStreamingConversion(
+		const { buffer } = await runStreamingConversion(
 			wav(22050, 2),
 			'm4a',
 			BITRATE,
 			false,
 		);
 
-		expect(await layoutOf(converted)).toEqual({
+		expect(await layoutOf(buffer)).toEqual({
 			codec: 'aac',
 			channels: 2,
 			sampleRate: 44100,
@@ -106,20 +98,15 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 	});
 
 	it('leaves a source at a rate the encoder takes at that rate', async () => {
-		const onSampleRateChange = jest.fn();
-
-		const converted = await runStreamingConversion(
+		const { buffer, sampleRateChange } = await runStreamingConversion(
 			wav(48000, 1),
 			'm4a',
 			BITRATE,
 			false,
-			undefined,
-			undefined,
-			onSampleRateChange,
 		);
 
-		expect(onSampleRateChange).not.toHaveBeenCalled();
-		expect(await layoutOf(converted)).toEqual({
+		expect(sampleRateChange).toBeNull();
+		expect(await layoutOf(buffer)).toEqual({
 			codec: 'aac',
 			channels: 1,
 			sampleRate: 48000,
@@ -127,7 +114,7 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 	});
 
 	it('downmixes a 16 kHz stereo source to mono at 44.1 kHz', async () => {
-		const converted = await runStreamingConversion(
+		const { buffer } = await runStreamingConversion(
 			wav(16000, 2),
 			'm4a',
 			BITRATE,
@@ -136,7 +123,7 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 			ChannelMode.MonoMix,
 		);
 
-		expect(await layoutOf(converted)).toEqual({
+		expect(await layoutOf(buffer)).toEqual({
 			codec: 'aac',
 			channels: 1,
 			sampleRate: 44100,

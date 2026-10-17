@@ -26,6 +26,9 @@ jest.mock('src/audio/AudioEncoder', () => ({
 	}),
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
 	createOutputFormat: jest.fn().mockReturnValue({}),
+	encodableSampleRate: jest.requireActual<
+		typeof import('../mocks/modules/streamingAudioEncoder')
+	>('../mocks/modules/streamingAudioEncoder').encodableSampleRate,
 	FORMAT_CODEC_MAP: {
 		webm: 'opus',
 		ogg: 'opus',
@@ -129,12 +132,30 @@ import {
 import { partial } from '../helpers/doubles';
 import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
 import {
+	encodableSampleRate,
 	encodeAudioBuffer,
 	ensureEncoderRegistered,
 	isOfflineEncodingSupported,
 } from 'src/audio/AudioEncoder';
 import { BufferTarget } from 'mediabunny';
 import { createTarget } from '../helpers/recordingFixtures';
+
+/**
+ * An encoding worker whose conversion succeeds, at the source rate.
+ * @returns The worker double
+ */
+function workingWorker(): {
+	isAvailable: () => boolean;
+	convertBlob: jest.Mock;
+} {
+	return {
+		isAvailable: () => true,
+		convertBlob: jest.fn().mockResolvedValue({
+			blob: new Blob(['worker'], { type: 'audio/mp3' }),
+			sampleRateChange: null,
+		}),
+	};
+}
 
 describe('AudioFormatConverter', () => {
 	beforeEach(() => {
@@ -400,21 +421,6 @@ describe('AudioFormatConverter', () => {
 
 	// The buffer-returning variants, which the save path uses
 	describe('converting straight to bytes', () => {
-		/** An encoding worker whose conversion succeeds. */
-		function workingWorker(): {
-			isAvailable: () => boolean;
-			convertBlob: jest.Mock;
-		} {
-			return {
-				isAvailable: () => true,
-				convertBlob: jest
-					.fn()
-					.mockResolvedValue(
-						new Blob(['worker'], { type: 'audio/mp3' }),
-					),
-			};
-		}
-
 		it('hands the worker result back as bytes, skipping the main thread', async () => {
 			// The save path writes straight into vault.createBinary, so the
 			// Blob wrap and the full read-back it costs are skipped here.
@@ -439,7 +445,6 @@ describe('AudioFormatConverter', () => {
 				true,
 				'source',
 				undefined,
-				expect.any(Function),
 			);
 			expect(conversionInit).not.toHaveBeenCalled();
 			expect(result).toBeInstanceOf(ArrayBuffer);
@@ -466,7 +471,6 @@ describe('AudioFormatConverter', () => {
 				false,
 				'mono-left',
 				undefined,
-				expect.any(Function),
 			);
 		});
 
@@ -509,18 +513,14 @@ describe('AudioFormatConverter', () => {
 			expect(result).toBeInstanceOf(ArrayBuffer);
 		});
 
-		it('reports the rate the worker wrote the file at', async () => {
+		it('reports the rate the worker wrote the file at, once', async () => {
 			const change = { from: 16000, to: 44100 };
 			const worker = {
 				isAvailable: () => true,
-				convertBlob: jest.fn(
-					(
-						...args: Parameters<EncodingWorkerClient['convertBlob']>
-					): Promise<Blob> => {
-						args[6]?.(change);
-						return Promise.resolve(new Blob(['converted']));
-					},
-				),
+				convertBlob: jest.fn().mockResolvedValue({
+					blob: new Blob(['converted']),
+					sampleRateChange: change,
+				}),
 			};
 			const onSampleRateChange = jest.fn();
 
@@ -539,18 +539,36 @@ describe('AudioFormatConverter', () => {
 			expect(onSampleRateChange).toHaveBeenCalledWith(change);
 		});
 
-		it('says nothing of a rate a failed worker chose', async () => {
+		it('reports the rate the main-thread step wrote the file at', async () => {
+			jest.spyOn(console, 'warn').mockImplementation();
+			getPrimaryAudioTrack.mockResolvedValue(
+				audioTrack({ sampleRate: 16000, numberOfChannels: 1 }),
+			);
+			jest.mocked(encodableSampleRate).mockResolvedValueOnce(44100);
+			const onSampleRateChange = jest.fn();
+
+			await convertBlobToFormatBuffer(
+				new Blob(['test'], { type: 'audio/wav' }),
+				'm4a',
+				96000,
+				undefined,
+				{ onSampleRateChange },
+			);
+
+			expect(onSampleRateChange).toHaveBeenCalledTimes(1);
+			expect(onSampleRateChange).toHaveBeenCalledWith({
+				from: 16000,
+				to: 44100,
+			});
+		});
+
+		it('reports nothing when the step that wrote the file kept the source rate', async () => {
 			jest.spyOn(console, 'warn').mockImplementation();
 			const worker = {
 				isAvailable: () => true,
-				convertBlob: jest.fn(
-					(
-						...args: Parameters<EncodingWorkerClient['convertBlob']>
-					): Promise<Blob> => {
-						args[6]?.({ from: 16000, to: 44100 });
-						return Promise.reject(new Error('worker died'));
-					},
-				),
+				convertBlob: jest
+					.fn()
+					.mockRejectedValue(new Error('worker died')),
 			};
 			const onSampleRateChange = jest.fn();
 
@@ -676,7 +694,6 @@ describe('AudioFormatConverter', () => {
 				false,
 				'mono-right',
 				undefined,
-				expect.any(Function),
 			);
 		});
 	});
@@ -718,14 +735,7 @@ describe('AudioFormatConverter', () => {
 	// convertBlobToFormat
 	describe('convertBlobToFormat', () => {
 		it('uses the encoding worker when one is available', async () => {
-			const workerClient = {
-				isAvailable: () => true,
-				convertBlob: jest
-					.fn()
-					.mockResolvedValue(
-						new Blob(['worker'], { type: 'audio/mp3' }),
-					),
-			};
+			const workerClient = workingWorker();
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
 			const result = await convertBlobToFormat(
@@ -746,7 +756,6 @@ describe('AudioFormatConverter', () => {
 				true,
 				'source',
 				undefined,
-				expect.any(Function),
 			);
 			// The main-thread pipeline is never touched
 			expect(conversionInit).not.toHaveBeenCalled();
@@ -754,14 +763,7 @@ describe('AudioFormatConverter', () => {
 		});
 
 		it('passes the channel mode through to the encoding worker', async () => {
-			const workerClient = {
-				isAvailable: () => true,
-				convertBlob: jest
-					.fn()
-					.mockResolvedValue(
-						new Blob(['worker'], { type: 'audio/mp3' }),
-					),
-			};
+			const workerClient = workingWorker();
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
 			await convertBlobToFormat(blob, 'mp3', 192000, undefined, {
@@ -776,7 +778,6 @@ describe('AudioFormatConverter', () => {
 				false,
 				'mono-left',
 				undefined,
-				expect.any(Function),
 			);
 		});
 

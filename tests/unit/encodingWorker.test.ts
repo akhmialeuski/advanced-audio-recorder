@@ -19,17 +19,11 @@ import {
 	getPrimaryAudioTrack,
 	convertedBuffer,
 } from '../mocks/modules/mediabunny';
-import { canEncodeAudio } from 'mediabunny';
+import { encodableSampleRate } from 'src/audio/AudioEncoder';
 
-jest.mock('src/audio/AudioEncoder', () => ({
-	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
-	createOutputFormat: jest.fn().mockReturnValue({}),
-	FORMAT_CODEC_MAP: {
-		webm: 'opus',
-		mp3: 'mp3',
-		wav: 'pcm-s16',
-	},
-}));
+jest.mock('src/audio/AudioEncoder', () =>
+	require('../mocks/modules/streamingAudioEncoder'),
+);
 
 const createRequest = (
 	overrides: Partial<WorkerRequest> = {},
@@ -80,6 +74,7 @@ describe('handleEncodingMessage', () => {
 			kind: 'result',
 			buffer: convertedBuffer,
 			mimeType: 'audio/mp3',
+			sampleRateChange: null,
 		});
 		expect(result?.transfer).toEqual([convertedBuffer]);
 	});
@@ -104,36 +99,45 @@ describe('handleEncodingMessage', () => {
 		});
 	});
 
-	it('posts the rate it chose before the result', async () => {
-		getPrimaryAudioTrack.mockResolvedValue(
-			audioTrack({ sampleRate: 16000, numberOfChannels: 1 }),
-		);
-		jest.mocked(canEncodeAudio).mockImplementation(
-			(_codec: unknown, options?: { sampleRate?: number }) =>
-				Promise.resolve(options?.sampleRate === 44100),
-		);
-		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+	describe('a file written at another rate than its source', () => {
+		beforeEach(() => {
+			getPrimaryAudioTrack.mockResolvedValue(
+				audioTrack({ sampleRate: 16000, numberOfChannels: 1 }),
+			);
+			jest.mocked(encodableSampleRate).mockResolvedValueOnce(44100);
+			jest.spyOn(console, 'warn').mockImplementation(() => {});
+		});
 
-		try {
+		it('carries the rate in the result message', async () => {
 			await handleEncodingMessage(
 				createRequest({ targetFormat: 'm4a' }),
 				post,
 			);
-		} finally {
-			warn.mockRestore();
-			jest.mocked(canEncodeAudio).mockReset();
-			jest.mocked(canEncodeAudio).mockResolvedValue(false);
-		}
 
-		expect(responses.map((entry) => entry.response.kind)).toEqual([
-			'sampleRate',
-			'result',
-		]);
-		expect(at(responses, 0).response).toEqual({
-			id: 1,
-			kind: 'sampleRate',
-			from: 16000,
-			to: 44100,
+			expect(responses.map((entry) => entry.response)).toEqual([
+				expect.objectContaining({
+					kind: 'result',
+					sampleRateChange: { from: 16000, to: 44100 },
+				}),
+			]);
+		});
+
+		// A rate announced on its own, before the conversion ran, described a
+		// file the worker then failed to write, and the client had to be
+		// told to forget it.
+		it('says nothing about the rate when the conversion then fails', async () => {
+			mockConversionExecute.mockRejectedValueOnce(
+				new Error('encoder closed'),
+			);
+
+			await handleEncodingMessage(
+				createRequest({ targetFormat: 'm4a' }),
+				post,
+			);
+
+			expect(responses.map((entry) => entry.response)).toEqual([
+				{ id: 1, kind: 'error', message: 'encoder closed' },
+			]);
 		});
 	});
 
