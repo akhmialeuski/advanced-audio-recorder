@@ -16,19 +16,11 @@ import {
 import { scaledTimeoutMs } from '../utils/TimeUtils';
 import { ChannelMode } from './downmix';
 import type { WorkerRequest, WorkerResponse } from './encodingWorker';
-import type { SampleRateChange } from './streamingConversion';
-
-/** What the worker produced for one request. */
-export interface WorkerConversionResult {
-	/** The converted file. */
-	readonly blob: Blob;
-	/** The rate the file was written at, when that is not the source's. */
-	readonly sampleRateChange: SampleRateChange | null;
-}
+import type { ConvertedAudio } from './streamingConversion';
 
 /** Pending request bookkeeping. */
 interface PendingRequest {
-	resolve: (result: WorkerConversionResult) => void;
+	resolve: (result: ConvertedAudio<ArrayBuffer>) => void;
 	reject: (error: Error) => void;
 	onProgress?: ((percent: number) => void) | undefined;
 	/** Watchdog for a worker that stops answering; re-armed by progress. */
@@ -75,8 +67,8 @@ export class EncodingWorkerClient {
 	 * @param allowRemux - Allow packet copy when the codecs match
 	 * @param channelMode - Channel layout for the output audio
 	 * @param onProgress - Optional progress callback (0-100)
-	 * @returns Converted blob, with the rate it was written at when that is
-	 *   not the source's
+	 * @returns Bytes of the converted file, with the rate they were written
+	 *   at when that is not the source's
 	 * @throws Error when the worker is unavailable or the conversion
 	 * fails (the caller falls back to the main-thread pipeline)
 	 */
@@ -87,7 +79,7 @@ export class EncodingWorkerClient {
 		allowRemux: boolean,
 		channelMode: ChannelMode = ChannelMode.Source,
 		onProgress?: (percent: number) => void,
-	): Promise<WorkerConversionResult> {
+	): Promise<ConvertedAudio<ArrayBuffer>> {
 		const worker = this.ensureWorker();
 		if (!worker) {
 			return Promise.reject(
@@ -101,7 +93,7 @@ export class EncodingWorkerClient {
 			bytesPerMs: ENCODING_WORKER_BYTES_PER_MS,
 			maxMs: ENCODING_WORKER_MAX_TIMEOUT_MS,
 		});
-		return new Promise<WorkerConversionResult>((resolve, reject) => {
+		return new Promise<ConvertedAudio<ArrayBuffer>>((resolve, reject) => {
 			this.pending.set(id, {
 				resolve,
 				reject,
@@ -269,9 +261,7 @@ export class EncodingWorkerClient {
 				this.pending.delete(response.id);
 				this.releaseIfSpent();
 				request.resolve({
-					blob: new Blob([response.buffer], {
-						type: response.mimeType,
-					}),
+					data: response.data,
 					sampleRateChange: response.sampleRateChange,
 				});
 				break;

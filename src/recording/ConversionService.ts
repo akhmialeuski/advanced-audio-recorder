@@ -7,10 +7,7 @@
 import { normalizePath } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
-import {
-	convertBlobToFormatBuffer,
-	type SampleRateChange,
-} from '../audio/AudioFormatConverter';
+import { convertBlobToFormatBuffer } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { isReadableSize, tooLargeMessage } from '../platform/capabilities';
 import { updateLinksInVault } from '../utils/LinkUpdater';
@@ -138,10 +135,6 @@ export class ConversionService {
 		}
 
 		let createdFile: TFile;
-		// Set by the conversion when it wrote the file at another rate. Left
-		// without an initializer, because one would narrow it to that value
-		// for good: the compiler does not see the callback assign it.
-		let sampleRateChange: SampleRateChange | undefined;
 		try {
 			// Check if target file already exists
 			if (await this.app.vault.adapter.exists(newPath)) {
@@ -180,7 +173,7 @@ export class ConversionService {
 			// platform without the decoder the stream needs. Bytes go
 			// straight to createBinary; the buffer variant avoids wrapping
 			// the result in a Blob only to read it back out.
-			const data = await convertBlobToFormatBuffer(
+			const { data, sampleRateChange } = await convertBlobToFormatBuffer(
 				new Blob([arrayBuffer]),
 				request.targetFormat,
 				request.bitrate,
@@ -190,9 +183,6 @@ export class ConversionService {
 				{
 					workerClient: this.getWorkerClient(),
 					channelMode: request.channelMode ?? ChannelMode.Source,
-					onSampleRateChange: (change) => {
-						sampleRateChange = change;
-					},
 				},
 			);
 

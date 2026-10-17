@@ -37,10 +37,16 @@ export interface SampleRateChange {
 	readonly to: number;
 }
 
-/** What a streaming conversion produced. */
-export interface StreamingConversionResult {
-	/** Bytes of the converted file. */
-	readonly buffer: ArrayBuffer;
+/**
+ * What a conversion produced, in whatever shape its caller holds files in.
+ *
+ * One type from the streaming core up to the conversion ladder, so the rate
+ * change travels with the file through the worker and every step instead of
+ * being restated beside each of them.
+ */
+export interface ConvertedAudio<T> {
+	/** The converted file. */
+	readonly data: T;
 	/**
 	 * Set when the encoder refused the source's rate and the file was written
 	 * at another, null when it keeps the source's rate.
@@ -159,7 +165,7 @@ export async function runStreamingConversion(
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
 	channelMode: ChannelMode = ChannelMode.Source,
-): Promise<StreamingConversionResult> {
+): Promise<ConvertedAudio<ArrayBuffer>> {
 	const codec: AudioCodec | undefined =
 		getFormatDescriptor(targetFormat)?.codec;
 	if (!codec) {
@@ -199,7 +205,7 @@ async function convertWithInput(
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
 	channelMode: ChannelMode = ChannelMode.Source,
-): Promise<StreamingConversionResult> {
+): Promise<ConvertedAudio<ArrayBuffer>> {
 	const audioTrack = await input.getPrimaryAudioTrack();
 	if (!audioTrack) {
 		throw new Error('Input contains no audio track');
@@ -256,14 +262,21 @@ async function convertWithInput(
 		const sourceRate = await audioTrack.getSampleRate();
 		// The encoder is handed what the mono hook returns, so that is the
 		// channel count it is asked about.
+		const numberOfChannels = monoProcess
+			? 1
+			: await audioTrack.getNumberOfChannels();
 		const rate = await encodableSampleRate(codec, {
-			numberOfChannels: monoProcess
-				? 1
-				: await audioTrack.getNumberOfChannels(),
+			numberOfChannels,
 			sampleRate: sourceRate,
 			quality,
 		});
-		if (rate !== null && rate !== sourceRate) {
+		if (rate === null) {
+			// Conversion then falls back to its own fixed layout, stereo at
+			// 48 kHz, which nothing here can name in advance or report.
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} The ${targetFormat} encoder takes no standard rate for a ${String(numberOfChannels)}-channel layout; mediabunny will choose the layout.`,
+			);
+		} else if (rate !== sourceRate) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} The ${targetFormat} encoder does not take ${String(sourceRate)} Hz; converting at ${String(rate)} Hz instead.`,
 			);
@@ -327,5 +340,5 @@ async function convertWithInput(
 	// Reported with the bytes rather than when the rate is chosen, so a
 	// conversion that fails after choosing it says nothing about a file it
 	// never wrote.
-	return { buffer: resultBuffer, sampleRateChange };
+	return { data: resultBuffer, sampleRateChange };
 }

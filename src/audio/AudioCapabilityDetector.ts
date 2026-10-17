@@ -541,8 +541,9 @@ export interface BitrateOffer {
  * another rate has no reader left.
  *
  * An encoder that accepts none of them has not narrowed the list, it has
- * ruled the format out at this sample rate and layout. The Windows AAC
- * encoder does that at every sample rate below 44.1 kHz, the lowest it takes.
+ * ruled the format out at this sample rate and layout. Chromium's AAC encoder
+ * does that on every platform at every sample rate below 44.1 kHz, the lowest
+ * it takes (see encodableSampleRate in AudioEncoder).
  * The profile is not the reason, since the probe asks for AAC-LC at every
  * rate (see AudioEncoder). There is no bitrate to move to, so the declared
  * range is kept for the row to show and the verdict says the format itself

@@ -61,7 +61,7 @@ describe('runStreamingConversion', () => {
 		);
 
 		expect(result).toEqual({
-			buffer: convertedBuffer,
+			data: convertedBuffer,
 			sampleRateChange: null,
 		});
 		expect(mockConversionExecute).toHaveBeenCalledTimes(1);
@@ -409,6 +409,24 @@ describe('runStreamingConversion', () => {
 			expect(sampleRateChange).toBeNull();
 		});
 
+		// Conversion then writes its own fallback layout, stereo at 48 kHz,
+		// which is the silent change this pipeline exists to prevent, so the
+		// log is the only trace of it.
+		it('says in the log when no rate works and mediabunny picks the layout', async () => {
+			getPrimaryAudioTrack.mockResolvedValue(
+				audioTrack({ sampleRate: 16000, numberOfChannels: 4 }),
+			);
+			jest.mocked(encodableSampleRate).mockResolvedValueOnce(null);
+
+			await runStreamingConversion(inputBlob, 'm4a', 96000, false);
+
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'takes no standard rate for a 4-channel layout',
+				),
+			);
+		});
+
 		it('writes at the rate the encoder takes and returns the change with the bytes', async () => {
 			getPrimaryAudioTrack.mockResolvedValue(
 				audioTrack({ sampleRate: 16000, numberOfChannels: 1 }),
@@ -428,7 +446,7 @@ describe('runStreamingConversion', () => {
 				}),
 			);
 			expect(result).toEqual({
-				buffer: convertedBuffer,
+				data: convertedBuffer,
 				sampleRateChange: { from: 16000, to: 44100 },
 			});
 			expect(warn).toHaveBeenCalledWith(

@@ -23,7 +23,10 @@ import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
 import { partial } from '../helpers/doubles';
 
 jest.mock('src/audio/AudioFormatConverter', () => ({
-	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue({
+		data: new ArrayBuffer(8),
+		sampleRateChange: null,
+	}),
 }));
 
 jest.mock('src/utils/LinkUpdater', () => ({
@@ -102,12 +105,10 @@ describe('ConversionService', () => {
 
 	describe('a file written at another rate than its source', () => {
 		beforeEach(() => {
-			jest.mocked(convertBlobToFormatBuffer).mockImplementationOnce(
-				(_blob, _format, _bitrate, _onProgress, options) => {
-					options?.onSampleRateChange?.({ from: 16000, to: 44100 });
-					return Promise.resolve(new ArrayBuffer(8));
-				},
-			);
+			jest.mocked(convertBlobToFormatBuffer).mockResolvedValueOnce({
+				data: new ArrayBuffer(8),
+				sampleRateChange: { from: 16000, to: 44100 },
+			});
 		});
 
 		it('says which rate the file was resampled to, and why', async () => {
@@ -159,11 +160,7 @@ describe('ConversionService', () => {
 			'wav',
 			128000,
 			expect.any(Function),
-			{
-				workerClient,
-				channelMode: 'source',
-				onSampleRateChange: expect.any(Function),
-			},
+			{ workerClient, channelMode: 'source' },
 		);
 	});
 
@@ -404,9 +401,12 @@ describe('ConversionService', () => {
 		// string here is a progress line that reads "Converting...
 		// [object Object]" for the whole run.
 		jest.mocked(convertBlobToFormatBuffer).mockImplementationOnce(
-			(_blob, _format, _bitrate, report): Promise<ArrayBuffer> => {
+			(_blob, _format, _bitrate, report) => {
 				report?.(40);
-				return Promise.resolve(new ArrayBuffer(8));
+				return Promise.resolve({
+					data: new ArrayBuffer(8),
+					sampleRateChange: null,
+				});
 			},
 		);
 		const onProgress = jest.fn();

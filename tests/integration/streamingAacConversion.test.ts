@@ -67,14 +67,14 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 	});
 
 	it('keeps a 16 kHz mono source mono at the nearest rate the encoder takes', async () => {
-		const { buffer, sampleRateChange } = await runStreamingConversion(
+		const { data, sampleRateChange } = await runStreamingConversion(
 			wav(16000, 1),
 			'm4a',
 			BITRATE,
 			false,
 		);
 
-		expect(await layoutOf(buffer)).toEqual({
+		expect(await layoutOf(data)).toEqual({
 			codec: 'aac',
 			channels: 1,
 			sampleRate: 44100,
@@ -83,14 +83,14 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 	});
 
 	it('keeps a 22.05 kHz stereo source stereo, resampled to 44.1 kHz', async () => {
-		const { buffer } = await runStreamingConversion(
+		const { data } = await runStreamingConversion(
 			wav(22050, 2),
 			'm4a',
 			BITRATE,
 			false,
 		);
 
-		expect(await layoutOf(buffer)).toEqual({
+		expect(await layoutOf(data)).toEqual({
 			codec: 'aac',
 			channels: 2,
 			sampleRate: 44100,
@@ -98,7 +98,7 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 	});
 
 	it('leaves a source at a rate the encoder takes at that rate', async () => {
-		const { buffer, sampleRateChange } = await runStreamingConversion(
+		const { data, sampleRateChange } = await runStreamingConversion(
 			wav(48000, 1),
 			'm4a',
 			BITRATE,
@@ -106,7 +106,7 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 		);
 
 		expect(sampleRateChange).toBeNull();
-		expect(await layoutOf(buffer)).toEqual({
+		expect(await layoutOf(data)).toEqual({
 			codec: 'aac',
 			channels: 1,
 			sampleRate: 48000,
@@ -114,7 +114,7 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 	});
 
 	it('downmixes a 16 kHz stereo source to mono at 44.1 kHz', async () => {
-		const { buffer } = await runStreamingConversion(
+		const { data } = await runStreamingConversion(
 			wav(16000, 2),
 			'm4a',
 			BITRATE,
@@ -123,7 +123,7 @@ describe('converting a low-rate recording to AAC through the streaming pipeline'
 			ChannelMode.MonoMix,
 		);
 
-		expect(await layoutOf(buffer)).toEqual({
+		expect(await layoutOf(data)).toEqual({
 			codec: 'aac',
 			channels: 1,
 			sampleRate: 44100,

@@ -585,6 +585,20 @@ describe('AudioEncoder', () => {
 			).resolves.toBe(44100);
 		});
 
+		// The candidates are the whole MPEG-4 table, so its lowest entry is
+		// the nearest rate above a source below 8 kHz.
+		it('offers every rate of the MPEG-4 table, 7350 Hz included', async () => {
+			encoderTaking([7350, 8000]);
+
+			await expect(
+				encodableSampleRate('aac', {
+					numberOfChannels: 1,
+					sampleRate: 6000,
+					quality,
+				}),
+			).resolves.toBe(7350);
+		});
+
 		it('moves a rate above every one the encoder takes down to the highest', async () => {
 			encoderTaking([44100, 48000]);
 

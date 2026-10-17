@@ -72,8 +72,7 @@ describe('handleEncodingMessage', () => {
 		expect(result?.response).toEqual({
 			id: 1,
 			kind: 'result',
-			buffer: convertedBuffer,
-			mimeType: 'audio/mp3',
+			data: convertedBuffer,
 			sampleRateChange: null,
 		});
 		expect(result?.transfer).toEqual([convertedBuffer]);

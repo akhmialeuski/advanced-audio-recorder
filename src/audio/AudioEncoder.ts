@@ -304,14 +304,17 @@ export async function probeOfflineEncodingSupport(
 }
 
 /**
- * The standard sample rates a transcode may move a recording to, in Hz,
- * ascending: the sampling frequencies of MPEG-4 audio, which hold every rate
- * MP3 and Opus define as well.
+ * The sampling frequency table of MPEG-4 audio, in Hz, in index order, which
+ * is how an AudioSpecificConfig names a rate. It holds every rate MP3 and Opus
+ * define as well.
  */
-const STANDARD_SAMPLE_RATES = [
-	8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000, 64000, 88200,
-	96000,
-] as const satisfies readonly number[];
+export const MPEG4_SAMPLING_FREQUENCIES: readonly number[] = [
+	96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025,
+	8000, 7350,
+];
+
+/** The standard rates a transcode may move a recording to, ascending. */
+const STANDARD_SAMPLE_RATES = [...MPEG4_SAMPLING_FREQUENCIES].reverse();
 
 /**
  * The sample rate a transcode is written at: the asked rate when the encoder

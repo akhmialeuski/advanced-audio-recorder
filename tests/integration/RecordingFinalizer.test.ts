@@ -45,7 +45,10 @@ jest.mock('src/audio/AudioFormatConverter', () => ({
 		.fn()
 		.mockResolvedValue(new Blob(['merged'], { type: 'audio/wav' })),
 	convertBlobToWavBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
-	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue({
+		data: new ArrayBuffer(8),
+		sampleRateChange: null,
+	}),
 	getRecorderMediaType: jest.fn((format: string) => `audio/${format}`),
 	isOfflineOnlyFormat: jest.fn(
 		(format: string, recorderFormat: string) =>

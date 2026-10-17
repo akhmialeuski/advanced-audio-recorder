@@ -141,19 +141,21 @@ import { BufferTarget } from 'mediabunny';
 import { createTarget } from '../helpers/recordingFixtures';
 
 /**
- * An encoding worker whose conversion succeeds, at the source rate.
+ * An encoding worker whose conversion succeeds.
+ * @param data - The bytes it transfers back
+ * @param sampleRateChange - The rate change it reports, none by default
  * @returns The worker double
  */
-function workingWorker(): {
+function workingWorker(
+	data: ArrayBuffer = new Uint8Array([1]).buffer,
+	sampleRateChange: { from: number; to: number } | null = null,
+): {
 	isAvailable: () => boolean;
 	convertBlob: jest.Mock;
 } {
 	return {
 		isAvailable: () => true,
-		convertBlob: jest.fn().mockResolvedValue({
-			blob: new Blob(['worker'], { type: 'audio/mp3' }),
-			sampleRateChange: null,
-		}),
+		convertBlob: jest.fn().mockResolvedValue({ data, sampleRateChange }),
 	};
 }
 
@@ -423,8 +425,10 @@ describe('AudioFormatConverter', () => {
 	describe('converting straight to bytes', () => {
 		it('hands the worker result back as bytes, skipping the main thread', async () => {
 			// The save path writes straight into vault.createBinary, so the
-			// Blob wrap and the full read-back it costs are skipped here.
-			const worker = workingWorker();
+			// bytes the worker transferred are handed on as they are: a Blob
+			// wrapped around them was a whole-file copy read straight back.
+			const bytes = new Uint8Array([1, 2, 3]).buffer;
+			const worker = workingWorker(bytes);
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
 			const result = await convertBlobToFormatBuffer(
@@ -447,7 +451,7 @@ describe('AudioFormatConverter', () => {
 				undefined,
 			);
 			expect(conversionInit).not.toHaveBeenCalled();
-			expect(result).toBeInstanceOf(ArrayBuffer);
+			expect(result.data).toBe(bytes);
 		});
 
 		it('passes the channel mode to the worker', async () => {
@@ -510,59 +514,44 @@ describe('AudioFormatConverter', () => {
 			);
 
 			expect(conversionInit).toHaveBeenCalledTimes(1);
-			expect(result).toBeInstanceOf(ArrayBuffer);
+			expect(result.data).toBeInstanceOf(ArrayBuffer);
 		});
 
-		it('reports the rate the worker wrote the file at, once', async () => {
+		// The caller learns of a resampled file only from what the ladder
+		// returns, so a step that drops the change hides it from the notice.
+		it('returns the rate the worker wrote the file at', async () => {
 			const change = { from: 16000, to: 44100 };
-			const worker = {
-				isAvailable: () => true,
-				convertBlob: jest.fn().mockResolvedValue({
-					blob: new Blob(['converted']),
-					sampleRateChange: change,
-				}),
-			};
-			const onSampleRateChange = jest.fn();
+			const worker = workingWorker(new ArrayBuffer(1), change);
 
-			await convertBlobToFormatBuffer(
+			const result = await convertBlobToFormatBuffer(
 				new Blob(['test'], { type: 'audio/wav' }),
 				'm4a',
 				96000,
 				undefined,
-				{
-					workerClient: partial<EncodingWorkerClient>(worker),
-					onSampleRateChange,
-				},
+				{ workerClient: partial<EncodingWorkerClient>(worker) },
 			);
 
-			expect(onSampleRateChange).toHaveBeenCalledTimes(1);
-			expect(onSampleRateChange).toHaveBeenCalledWith(change);
+			expect(result.sampleRateChange).toEqual(change);
 		});
 
-		it('reports the rate the main-thread step wrote the file at', async () => {
+		it('returns the rate the main-thread step wrote the file at', async () => {
 			jest.spyOn(console, 'warn').mockImplementation();
 			getPrimaryAudioTrack.mockResolvedValue(
 				audioTrack({ sampleRate: 16000, numberOfChannels: 1 }),
 			);
 			jest.mocked(encodableSampleRate).mockResolvedValueOnce(44100);
-			const onSampleRateChange = jest.fn();
 
-			await convertBlobToFormatBuffer(
+			const result = await convertBlobToFormatBuffer(
 				new Blob(['test'], { type: 'audio/wav' }),
 				'm4a',
 				96000,
 				undefined,
-				{ onSampleRateChange },
 			);
 
-			expect(onSampleRateChange).toHaveBeenCalledTimes(1);
-			expect(onSampleRateChange).toHaveBeenCalledWith({
-				from: 16000,
-				to: 44100,
-			});
+			expect(result.sampleRateChange).toEqual({ from: 16000, to: 44100 });
 		});
 
-		it('reports nothing when the step that wrote the file kept the source rate', async () => {
+		it('returns no change when the step that wrote the file kept the source rate', async () => {
 			jest.spyOn(console, 'warn').mockImplementation();
 			const worker = {
 				isAvailable: () => true,
@@ -570,22 +559,18 @@ describe('AudioFormatConverter', () => {
 					.fn()
 					.mockRejectedValue(new Error('worker died')),
 			};
-			const onSampleRateChange = jest.fn();
 
-			await convertBlobToFormatBuffer(
+			const result = await convertBlobToFormatBuffer(
 				new Blob(['test'], { type: 'audio/webm' }),
 				'mp4',
 				128000,
 				undefined,
-				{
-					workerClient: partial<EncodingWorkerClient>(worker),
-					onSampleRateChange,
-				},
+				{ workerClient: partial<EncodingWorkerClient>(worker) },
 			);
 
 			// The main-thread step wrote the file at the source rate.
 			expect(conversionInit).toHaveBeenCalledTimes(1);
-			expect(onSampleRateChange).not.toHaveBeenCalled();
+			expect(result.sampleRateChange).toBeNull();
 		});
 
 		// The regression this pair exists for: a worker that hangs used to
@@ -616,7 +601,7 @@ describe('AudioFormatConverter', () => {
 			const result = await converted;
 
 			expect(conversionInit).toHaveBeenCalledTimes(1);
-			expect(result).toBeInstanceOf(ArrayBuffer);
+			expect(result.data).toBeInstanceOf(ArrayBuffer);
 			jest.useRealTimers();
 		});
 
@@ -637,7 +622,10 @@ describe('AudioFormatConverter', () => {
 				expect.objectContaining({ format: 'mp3' }),
 				undefined,
 			);
-			expect(result).toBeInstanceOf(ArrayBuffer);
+			expect(result).toEqual({
+				data: expect.any(ArrayBuffer),
+				sampleRateChange: null,
+			});
 		});
 
 		it('downmixes on the decode fallback when a mono mode is requested', async () => {
@@ -738,7 +726,7 @@ describe('AudioFormatConverter', () => {
 			const workerClient = workingWorker();
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
-			const result = await convertBlobToFormat(
+			const { data: result } = await convertBlobToFormat(
 				blob,
 				'mp3',
 				192000,
@@ -791,7 +779,7 @@ describe('AudioFormatConverter', () => {
 			};
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
-			const result = await convertBlobToFormat(
+			const { data: result } = await convertBlobToFormat(
 				blob,
 				'mp4',
 				128000,
@@ -808,7 +796,11 @@ describe('AudioFormatConverter', () => {
 		it('converts via the streaming Conversion pipeline', async () => {
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
-			const result = await convertBlobToFormat(blob, 'mp4', 128000);
+			const { data: result } = await convertBlobToFormat(
+				blob,
+				'mp4',
+				128000,
+			);
 
 			expect(conversionInit).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -948,7 +940,11 @@ describe('AudioFormatConverter', () => {
 			);
 			const blob = new Blob(['test'], { type: 'audio/mp4' });
 
-			const result = await convertBlobToFormat(blob, 'mp3', 192000);
+			const { data: result } = await convertBlobToFormat(
+				blob,
+				'mp3',
+				192000,
+			);
 
 			expect(mockConversionExecute).toHaveBeenCalledTimes(1);
 			expect(result.type).toBe('audio/mp3');
@@ -991,7 +987,11 @@ describe('AudioFormatConverter', () => {
 				.mockImplementation(() => undefined);
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
-			const result = await convertBlobToFormat(blob, 'mp4', 128000);
+			const { data: result } = await convertBlobToFormat(
+				blob,
+				'mp4',
+				128000,
+			);
 
 			expect(result).toBeInstanceOf(Blob);
 			expect(AudioContext).toHaveBeenCalledTimes(1);

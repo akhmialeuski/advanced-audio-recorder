@@ -14,6 +14,7 @@
 
 import { CustomAudioEncoder, EncodedPacket, registerEncoder } from 'mediabunny';
 import type { AudioCodec, AudioSample } from 'mediabunny';
+import { MPEG4_SAMPLING_FREQUENCIES } from 'src/audio/AudioEncoder';
 import { PLATFORM_AAC_SAMPLE_RATES } from './encoderProfiles';
 
 /**
@@ -21,15 +22,6 @@ import { PLATFORM_AAC_SAMPLE_RATES } from './encoderProfiles';
  * PLATFORM_AAC_SAMPLE_RATES.
  */
 const CHROMIUM_AAC_CHANNEL_COUNTS: readonly number[] = [1, 2, 6];
-
-/**
- * The MPEG-4 sampling frequency table, in index order, which is how an
- * AudioSpecificConfig names a rate.
- */
-const MPEG4_SAMPLING_FREQUENCIES: readonly number[] = [
-	96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025,
-	8000, 7350,
-];
 
 /** The audio object type of AAC-LC in an AudioSpecificConfig. */
 const AAC_LC_OBJECT_TYPE = 2;

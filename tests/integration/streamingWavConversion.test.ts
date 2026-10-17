@@ -67,7 +67,7 @@ async function readBack(bytes: ArrayBuffer): Promise<{
 
 describe('converting to WAV through the streaming pipeline', () => {
 	it('writes a 16-bit WAV at the source rate', async () => {
-		const { buffer: converted } = await runStreamingConversion(
+		const { data: converted } = await runStreamingConversion(
 			stereoWav(),
 			'wav',
 			0,
@@ -83,7 +83,7 @@ describe('converting to WAV through the streaming pipeline', () => {
 	});
 
 	it('downmixes to mono with the average of both channels', async () => {
-		const { buffer: converted } = await runStreamingConversion(
+		const { data: converted } = await runStreamingConversion(
 			stereoWav(),
 			'wav',
 			0,

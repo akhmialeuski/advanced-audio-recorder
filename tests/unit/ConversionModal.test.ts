@@ -51,7 +51,10 @@ jest.mock('src/utils/LinkUpdater', () => ({
 jest.mock('src/audio/AudioFormatConverter', () => ({
 	...require('../mocks/modules/audioFormatConverter'),
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
-	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue({
+		data: new ArrayBuffer(8),
+		sampleRateChange: null,
+	}),
 }));
 
 // Mock AudioEncoder
@@ -281,11 +284,15 @@ describe('ConversionModal', () => {
 		});
 
 		it('shows a background notice when closed mid-conversion', async () => {
-			let resolveConversion: (data: ArrayBuffer) => void = () =>
-				undefined;
+			let resolveConversion = (): void => undefined;
 			jest.mocked(convertBlobToFormatBuffer).mockReturnValueOnce(
-				new Promise<ArrayBuffer>((resolve) => {
-					resolveConversion = resolve;
+				new Promise((resolve) => {
+					resolveConversion = (): void => {
+						resolve({
+							data: new ArrayBuffer(8),
+							sampleRateChange: null,
+						});
+					};
 				}),
 			);
 			const { modal, progressEl } = createModal();
@@ -302,7 +309,7 @@ describe('ConversionModal', () => {
 			expect(background).toBeDefined();
 			expect(background?.timeout).toBe(0);
 
-			resolveConversion(new ArrayBuffer(8));
+			resolveConversion();
 			await conversionPromise;
 
 			// Progress was mirrored into the notice and it was hidden
@@ -613,7 +620,10 @@ describe('ConversionModal', () => {
 				() =>
 					new Promise((resolve) => {
 						settle = (): void => {
-							resolve(new ArrayBuffer(8));
+							resolve({
+								data: new ArrayBuffer(8),
+								sampleRateChange: null,
+							});
 						};
 					}),
 			);
