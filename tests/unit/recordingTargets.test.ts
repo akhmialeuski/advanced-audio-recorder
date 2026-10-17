@@ -17,7 +17,7 @@ import type { FileContext } from 'src/actions/PluginAction';
 import { recordingVault } from '../helpers/recordingVault';
 import { createMarkdownView } from '../helpers/createApp';
 import { asMockWorkspace } from '../helpers/obsidianMock';
-import { accepted } from '../helpers/assertions';
+import { valueOrThrow } from 'src/utils/refusal';
 
 const STANDUP = 'Recordings/standup.webm';
 const RETRO = 'Recordings/retro.mp3';
@@ -97,7 +97,7 @@ describe('the recordings a note links', () => {
 
 		expect(
 			paths(
-				accepted(
+				valueOrThrow(
 					namedRecordings(sut.services, {
 						path: STANDUP,
 						note: 'Team Meeting',
@@ -275,7 +275,9 @@ describe('the recordings a command line names', () => {
 		const sut = createSut();
 
 		expect(
-			paths(accepted(namedRecordings(sut.services, { path: STANDUP }))),
+			paths(
+				valueOrThrow(namedRecordings(sut.services, { path: STANDUP })),
+			),
 		).toEqual([[STANDUP, undefined]]);
 	});
 
@@ -298,9 +300,9 @@ describe('the recordings a command line names', () => {
 	])('is found by $how, as Obsidian finds a file', ({ args, note }) => {
 		const sut = createSut();
 
-		expect(paths(accepted(namedRecordings(sut.services, args)))).toEqual([
-			[STANDUP, note],
-		]);
+		expect(
+			paths(valueOrThrow(namedRecordings(sut.services, args))),
+		).toEqual([[STANDUP, note]]);
 	});
 
 	it('carries the note named beside it', () => {
@@ -308,7 +310,7 @@ describe('the recordings a command line names', () => {
 
 		expect(
 			paths(
-				accepted(
+				valueOrThrow(
 					namedRecordings(sut.services, {
 						path: STANDUP,
 						note: 'Team Meeting',
@@ -322,7 +324,9 @@ describe('the recordings a command line names', () => {
 		const sut = createSut({ meeting: [RETRO] });
 
 		expect(
-			paths(accepted(namedRecordings(sut.services, { path: MEETING }))),
+			paths(
+				valueOrThrow(namedRecordings(sut.services, { path: MEETING })),
+			),
 		).toEqual([[RETRO, MEETING]]);
 	});
 
@@ -330,7 +334,7 @@ describe('the recordings a command line names', () => {
 		const sut = createSut();
 
 		expect(
-			accepted(
+			valueOrThrow(
 				namedRecordings(sut.services, { path: MEETING, all: 'true' }),
 			),
 		).toHaveLength(2);
@@ -345,7 +349,7 @@ describe('the recordings a command line names', () => {
 
 		expect(
 			paths(
-				accepted(
+				valueOrThrow(
 					namedRecordings(sut.services, { path: MEETING, recording }),
 				),
 			),
@@ -355,7 +359,7 @@ describe('the recordings a command line names', () => {
 	it('stands in the active file when nothing is named', () => {
 		const sut = createSut({ active: STANDUP });
 
-		expect(paths(accepted(namedRecordings(sut.services, {})))).toEqual([
+		expect(paths(valueOrThrow(namedRecordings(sut.services, {})))).toEqual([
 			[STANDUP, undefined],
 		]);
 	});

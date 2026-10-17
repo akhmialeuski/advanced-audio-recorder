@@ -41,11 +41,10 @@ import {
 	cliSwitch,
 	cliText,
 	flagParam,
-	isRefusal,
 	valueParam,
-	type CliRead,
 } from '../obsidian/cliArgs';
 import type { FileContext } from './PluginAction';
+import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** Answers once the run is over instead of once it started. */
 export const WAIT_FLAG = 'wait';
@@ -68,7 +67,7 @@ interface ChoiceOption {
 	 */
 	readonly read: (
 		args: CliData,
-	) => CliRead<((run: AudioRecorderSettings) => void) | null>;
+	) => Refusable<((run: AudioRecorderSettings) => void) | null>;
 }
 
 /**
@@ -286,7 +285,7 @@ export interface TranscriptionRun {
 export function transcriptionRun(
 	live: AudioRecorderSettings,
 	args: CliData,
-): CliRead<TranscriptionRun> {
+): Refusable<TranscriptionRun> {
 	const changes: ((run: AudioRecorderSettings) => void)[] = [];
 	const language = cliText(args, 'language');
 	if (language !== null) {

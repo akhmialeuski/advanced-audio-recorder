@@ -19,8 +19,8 @@
  * @module settings/profiles
  */
 
-import type { CliRead } from '../obsidian/cliArgs';
 import type { AudioRecorderSettings } from './settingsSchema';
+import type { Refusable } from '../utils/refusal';
 
 /**
  * Every kind of profile the plugin stores, as a stored entry names itself.
@@ -144,7 +144,7 @@ export function profileIdNamed(
 	profiles: readonly Profile[],
 	kind: ProfileKindId,
 	name: string,
-): CliRead<string> {
+): Refusable<string> {
 	const wanted = name.trim().toLowerCase();
 	if (wanted === NO_PROFILE_NAME) {
 		return { value: '' };

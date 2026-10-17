@@ -43,9 +43,7 @@ import {
 	cliNumber,
 	cliText,
 	flagParam,
-	isRefusal,
 	valueParam,
-	type CliRead,
 } from '../obsidian/cliArgs';
 import type {
 	ActionFamily,
@@ -56,6 +54,7 @@ import type {
 import { FILE_TARGET_PARAMS, namedVaultFile } from './recordingTargets';
 import { editorLines, noteLines } from './transcriptLines';
 import { findNoteView } from '../utils/noteViews';
+import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** The lines a selection holds text on, and where it starts and ends. */
 interface SelectedLines {
@@ -222,7 +221,7 @@ const LINES_CHANGED =
 export function speakerChoiceNamed(
 	options: readonly LineSpeakerOption[],
 	name: string,
-): CliRead<LineSpeakerChoice> {
+): Refusable<LineSpeakerChoice> {
 	const wanted = name.toLowerCase();
 	const option = options.find((candidate) =>
 		candidate.choice.kind === 'existing' ||
@@ -257,7 +256,7 @@ function typedSpeaker(
 	param: string,
 	options: readonly LineSpeakerOption[],
 	startValue: string,
-): CliRead<LineSpeakerChoice> {
+): Refusable<LineSpeakerChoice> {
 	const typed = cliText(args, param);
 	return typed === null
 		? { value: pickedChoice(startValue) }
@@ -278,10 +277,10 @@ async function splitFromCli(
 	const { app } = context.services;
 	const options = dialogOptions(context);
 	const prepared = await prepareSplit(app, options, context);
-	if (typeof prepared === 'string') {
-		return prepared;
+	if (isRefusal(prepared)) {
+		return prepared.refusal;
 	}
-	const defaults = splitDefaults(prepared);
+	const defaults = splitDefaults(prepared.value);
 	const selected = typedSpeaker(
 		args,
 		SPEAKER_PARAM,
@@ -293,7 +292,7 @@ async function splitFromCli(
 	}
 	// Nothing follows the selection when it runs to the end of the line, and
 	// then there is no rest for a speaker to be picked for.
-	const after: CliRead<LineSpeakerChoice> = defaults.afterOptions
+	const after: Refusable<LineSpeakerChoice> = defaults.afterOptions
 		? typedSpeaker(args, REST_PARAM, defaults.afterOptions, defaults.after)
 		: { value: { kind: 'none' } };
 	if (isRefusal(after)) {
@@ -328,24 +327,21 @@ async function mergeFromCli(
 	const { app } = context.services;
 	const options = dialogOptions(context);
 	const prepared = await prepareMerge(app, options, context);
-	if (typeof prepared === 'string') {
-		return prepared;
+	if (isRefusal(prepared)) {
+		return prepared.refusal;
 	}
-	const speakerOptions = mergeSpeakerOptions(prepared);
+	const { rows } = prepared.value;
 	const choice = typedSpeaker(
 		args,
 		SPEAKER_PARAM,
-		speakerOptions,
-		speakerValue(prepared.rows[0]?.speaker),
+		mergeSpeakerOptions(prepared.value),
+		speakerValue(rows[0]?.speaker),
 	);
 	if (isRefusal(choice)) {
 		return choice.refusal;
 	}
-	if (
-		mergeNeedsConfirmation(prepared.rows.length) &&
-		!cliFlag(args, CONFIRM_FLAG)
-	) {
-		return `${mergeConfirmationMessage(prepared.rows.length, choice.value)} Add ${CONFIRM_FLAG} to merge them.`;
+	if (mergeNeedsConfirmation(rows.length) && !cliFlag(args, CONFIRM_FLAG)) {
+		return `${mergeConfirmationMessage(rows.length, choice.value)} Add ${CONFIRM_FLAG} to merge them.`;
 	}
 	return performMerge(app, options, context, choice.value, LINES_CHANGED);
 }
@@ -453,7 +449,7 @@ export const TRANSCRIPT_ACTIONS: readonly TranscriptAction[] = [
 function columnsOf(
 	lineText: string,
 	text: string | null,
-): CliRead<{ from: number; to: number }> {
+): Refusable<{ from: number; to: number }> {
 	if (text === null) {
 		return { value: { from: 0, to: lineText.length } };
 	}
@@ -481,7 +477,7 @@ function columnsOf(
 async function namedSelection(
 	services: ActionServices,
 	args: CliData,
-): Promise<CliRead<TranscriptSelectionContext[]>> {
+): Promise<Refusable<TranscriptSelectionContext[]>> {
 	const { app } = services;
 	const named = namedVaultFile(app, args);
 	if (isRefusal(named)) {

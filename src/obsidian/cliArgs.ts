@@ -16,9 +16,7 @@
 
 import type { CliData, CliFlag } from 'obsidian';
 import { parseTimecode } from '../utils/TimeUtils';
-
-/** What a reader found: the value, or the reason to refuse the command. */
-export type CliRead<T> = { readonly value: T } | { readonly refusal: string };
+import type { Refusable } from '../utils/refusal';
 
 /** The string Obsidian passes for a bare flag or a parameter left empty. */
 const BARE = 'true';
@@ -28,16 +26,6 @@ const OFF_WORDS: ReadonlySet<string> = new Set(['off', 'false', 'no', '0']);
 
 /** Values a switch accepts as on, matched without regard to case. */
 const ON_WORDS: ReadonlySet<string> = new Set(['on', 'true', 'yes', '1']);
-
-/**
- * Whether a reader refused rather than read.
- * @param read - What the reader answered
- */
-export function isRefusal<T>(
-	read: CliRead<T>,
-): read is { readonly refusal: string } {
-	return 'refusal' in read;
-}
 
 /**
  * The value of a `name=value` parameter, trimmed.
@@ -77,7 +65,7 @@ export function cliChoice<T extends string>(
 	args: CliData,
 	name: string,
 	choices: readonly T[],
-): CliRead<T | null> {
+): Refusable<T | null> {
 	const text = cliText(args, name);
 	if (text === null) {
 		return { value: null };
@@ -101,7 +89,7 @@ export function cliChoice<T extends string>(
 export function cliSwitch(
 	args: CliData,
 	name: string,
-): CliRead<boolean | null> {
+): Refusable<boolean | null> {
 	const raw = args[name];
 	if (raw === undefined) {
 		return { value: null };
@@ -137,7 +125,7 @@ export function cliNumber(
 	args: CliData,
 	name: string,
 	range: CliNumberRange,
-): CliRead<number | null> {
+): Refusable<number | null> {
 	const text = cliText(args, name);
 	if (text === null) {
 		return { value: null };
@@ -164,7 +152,7 @@ export function cliNumber(
  * @param name - Parameter name
  * @returns Seconds, null when not given, or the refusal
  */
-export function cliTime(args: CliData, name: string): CliRead<number | null> {
+export function cliTime(args: CliData, name: string): Refusable<number | null> {
 	const text = cliText(args, name);
 	if (text === null) {
 		return { value: null };

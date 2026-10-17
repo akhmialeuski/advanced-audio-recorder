@@ -43,6 +43,7 @@ import {
 	prepareMerge,
 	type PreparedMerge,
 } from './transcriptLineEdits';
+import { isRefusal } from '../utils/refusal';
 
 /** Preview id of the merged passage (the player plays one excerpt at a time). */
 const MERGED_PREVIEW_ID = 'merged';
@@ -92,11 +93,11 @@ export class TranscriptMergeModal extends PluginModal {
 		const { contentEl } = this;
 		contentEl.empty();
 		this.renderSource(this.context.audio);
-		if (typeof prepared === 'string') {
-			this.renderEmptyState(prepared);
+		if (isRefusal(prepared)) {
+			this.renderEmptyState(prepared.refusal);
 			return;
 		}
-		this.renderForm(prepared);
+		this.renderForm(prepared.value);
 	}
 
 	/**

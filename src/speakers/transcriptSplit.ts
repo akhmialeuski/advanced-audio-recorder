@@ -23,6 +23,7 @@ import {
 } from '../transcription/transcriptFormat';
 import type { TranscriptSegment } from '../transcription/TranscriptTypes';
 import { parseTimecode } from '../utils/TimeUtils';
+import type { Refusable } from '../utils/refusal';
 import {
 	formatLineTime,
 	type RowTiming,
@@ -121,20 +122,24 @@ export function estimateSplitTimes(
  * @param end - Text of the end field
  * @param timing - Where the line sits
  * @param texts - The line cut at the selection
- * @returns The times, or why they cannot split this line
+ * @returns The times, or the refusal saying why they cannot split this line
  */
 export function readSplitTimes(
 	start: string,
 	end: string,
 	timing: RowTiming,
 	texts: SplitTexts,
-): TimelineSpan | string {
+): Refusable<TimelineSpan> {
 	const times = { start: parseTimecode(start), end: parseTimecode(end) };
 	if (times.start === null || times.end === null) {
-		return 'Enter the start and the end as a timecode, for example 1:23 or 1:23.5.';
+		return {
+			refusal:
+				'Enter the start and the end as a timecode, for example 1:23 or 1:23.5.',
+		};
 	}
 	const read = { start: times.start, end: times.end };
-	return splitTimesProblem(read, timing, texts) ?? read;
+	const problem = splitTimesProblem(read, timing, texts);
+	return problem === null ? { value: read } : { refusal: problem };
 }
 
 /**

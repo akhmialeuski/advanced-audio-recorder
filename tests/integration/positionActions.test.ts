@@ -19,8 +19,8 @@ import { recordingVault } from '../helpers/recordingVault';
 import { createMarkdownView } from '../helpers/createApp';
 import { asMockWorkspace } from '../helpers/obsidianMock';
 import { noticeMessages } from '../mocks/obsidian';
-import { accepted, at as itemAt } from '../helpers/assertions';
-import type { CliRead } from 'src/obsidian/cliArgs';
+import { at as itemAt } from '../helpers/assertions';
+import { valueOrThrow, type Refusable } from 'src/utils/refusal';
 
 const LECTURE = 'Recordings/lecture.webm';
 const NOTES = 'Notes/lecture.md';
@@ -38,7 +38,7 @@ function createSut(
 ): ReturnType<typeof recordingVault> & {
 	family: ReturnType<typeof positionActionFamily>;
 	store: ReturnType<typeof makeMarkerStore>;
-	resolve: (args: CliData) => Promise<CliRead<readonly PositionContext[]>>;
+	resolve: (args: CliData) => Promise<Refusable<readonly PositionContext[]>>;
 } {
 	const vault = recordingVault({
 		recordings: [LECTURE],
@@ -273,7 +273,7 @@ describe('the point a command line names', () => {
 		const sut = createSut();
 
 		const target = itemAt(
-			accepted(await sut.resolve({ path: NOTES, at: '10' })),
+			valueOrThrow(await sut.resolve({ path: NOTES, at: '10' })),
 			0,
 		);
 
@@ -303,7 +303,7 @@ describe('the point a command line names', () => {
 		asMockWorkspace(sut.app.workspace).seedActiveFile(sut.file(NOTES));
 
 		const target = itemAt(
-			accepted(await sut.resolve({ recording: 'lecture', at: '5' })),
+			valueOrThrow(await sut.resolve({ recording: 'lecture', at: '5' })),
 			0,
 		);
 

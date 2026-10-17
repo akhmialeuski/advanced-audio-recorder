@@ -28,7 +28,7 @@ import {
 } from 'src/ui/TranscriptionModal';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { recordingVault } from '../helpers/recordingVault';
-import { accepted } from '../helpers/assertions';
+import { valueOrThrow } from 'src/utils/refusal';
 
 jest.mock('src/ui/TranscriptionModal', () => ({
 	TranscriptionModal: jest.fn(() => ({ open: jest.fn() })),
@@ -115,13 +115,15 @@ function runOf(args: CliData): ReturnType<typeof transcriptionRun> {
  */
 function applied(args: CliData): AudioRecorderSettings {
 	const sut = createSut();
-	return accepted(transcriptionRun(sut.settings, args)).apply(sut.settings);
+	return valueOrThrow(transcriptionRun(sut.settings, args)).apply(
+		sut.settings,
+	);
 }
 
 describe('the choices a command line makes for one run', () => {
 	it('changes nothing when nothing is typed', () => {
 		const sut = createSut();
-		const run = accepted(transcriptionRun(sut.settings, {}));
+		const run = valueOrThrow(transcriptionRun(sut.settings, {}));
 
 		expect(run).toEqual({ apply: expect.any(Function), picks: [] });
 		expect(run.apply(sut.settings)).toEqual(sut.settings);
@@ -166,7 +168,7 @@ describe('the choices a command line makes for one run', () => {
 
 	it('picks a profile by its name, whatever its case', () => {
 		const sut = createSut();
-		const run = accepted(
+		const run = valueOrThrow(
 			transcriptionRun(sut.settings, { participants: 'team' }),
 		);
 
@@ -191,7 +193,7 @@ describe('the choices a command line makes for one run', () => {
 
 	it('leaves the plugin settings as they are', () => {
 		const sut = createSut();
-		const run = accepted(
+		const run = valueOrThrow(
 			transcriptionRun(sut.settings, {
 				diarize: 'on',
 				participants: 'Team',
@@ -208,7 +210,7 @@ describe('the choices a command line makes for one run', () => {
 
 	it('lays its choices over the settings as they stand when read', () => {
 		const sut = createSut();
-		const run = accepted(
+		const run = valueOrThrow(
 			transcriptionRun(sut.settings, { language: 'de' }),
 		);
 

@@ -11,19 +11,14 @@ import type { App, CliData } from 'obsidian';
 import { COMMAND_IDS } from '../constants';
 import { isAudioFile } from '../utils/audioFile';
 import { transcriptionRefusal } from '../settings/settingsAttention';
-import {
-	cliFlag,
-	cliText,
-	flagParam,
-	valueParam,
-	type CliRead,
-} from '../obsidian/cliArgs';
+import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
 import type {
 	ActionFamily,
 	ActionServices,
 	FolderAction,
 	FolderContext,
 } from './PluginAction';
+import type { Refusable } from '../utils/refusal';
 
 /** Names the folder on the command line. */
 export const FOLDER_PARAM = 'folder';
@@ -117,7 +112,7 @@ function foldersWithRecordings(app: App): TFolder[] {
 function namedFolder(
 	services: ActionServices,
 	args: CliData,
-): CliRead<FolderContext[]> {
+): Refusable<FolderContext[]> {
 	const path = cliText(args, FOLDER_PARAM);
 	if (path === null) {
 		return {

@@ -18,13 +18,7 @@ import {
 } from '../obsidian/timecodeRefs';
 import { formatTimecode } from '../utils/TimeUtils';
 import { isAudioFile } from '../utils/audioFile';
-import {
-	cliText,
-	cliTime,
-	isRefusal,
-	valueParam,
-	type CliRead,
-} from '../obsidian/cliArgs';
+import { cliText, cliTime, valueParam } from '../obsidian/cliArgs';
 import type { PlaybackControlsState } from '../player/playbackControls';
 import type {
 	ActionFamily,
@@ -40,6 +34,7 @@ import {
 	SINGLE_RECORDING_PARAMS,
 	namedRecordings,
 } from './recordingTargets';
+import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** Where in the recording, on the command line. */
 export const AT_PARAM = 'at';
@@ -231,7 +226,7 @@ function namedPosition(
 	services: ActionServices,
 	playback: () => PlaybackControlsState | null,
 	args: CliData,
-): CliRead<PositionContext[]> {
+): Refusable<PositionContext[]> {
 	const at = cliTime(args, AT_PARAM);
 	if (isRefusal(at)) {
 		return at;

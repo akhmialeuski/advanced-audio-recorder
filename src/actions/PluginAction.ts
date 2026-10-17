@@ -23,7 +23,7 @@ import type { MarkerKind } from '../markers/markerModel';
 import type { MarkerHit } from '../markers/MarkerSearchIndex';
 import type { RecordingMarkerHandle } from '../recording/recordingMarkers';
 import type { RecordingStatus } from '../types';
-import type { CliRead } from '../obsidian/cliArgs';
+import type { Refusable } from '../utils/refusal';
 
 /**
  * Primes freshly written files for the enhanced player: starts their
@@ -124,7 +124,7 @@ export interface CliTarget<TContext> {
 	 */
 	resolve(
 		args: CliData,
-	): CliRead<readonly TContext[]> | Promise<CliRead<readonly TContext[]>>;
+	): Refusable<readonly TContext[]> | Promise<Refusable<readonly TContext[]>>;
 }
 
 /**

@@ -12,8 +12,6 @@
  * @module tests/helpers/assertions
  */
 
-import { isRefusal, type CliRead } from 'src/obsidian/cliArgs';
-
 /**
  * The element at an index, asserting it exists.
  * @param list - The list to read from
@@ -50,18 +48,6 @@ export function defined<T>(value: T | undefined | null, what = 'value'): T {
 		throw new Error(`Expected ${what} to be defined, got ${String(value)}`);
 	}
 	return value;
-}
-
-/**
- * The value a command-line reader read, asserting it did not refuse.
- * @param read - What the reader answered
- * @returns The value, narrowed
- */
-export function accepted<T>(read: CliRead<T>): T {
-	if (isRefusal(read)) {
-		throw new Error(`Expected a value, got the refusal: ${read.refusal}`);
-	}
-	return read.value;
 }
 
 /**

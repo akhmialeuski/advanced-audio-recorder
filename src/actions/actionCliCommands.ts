@@ -15,9 +15,10 @@
 import type { CliData, CliFlags } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { errorMessage } from '../errors';
-import { cliFlag, flagParam, isRefusal } from '../obsidian/cliArgs';
+import { cliFlag, flagParam } from '../obsidian/cliArgs';
 import type { CliCommand } from '../obsidian/cliCommands';
 import type { ActionFamily, PluginCommand } from './PluginAction';
+import { isRefusal } from '../utils/refusal';
 
 /** The flag that opens an action's dialog instead of running it here. */
 export const DIALOG_FLAG = 'dialog';

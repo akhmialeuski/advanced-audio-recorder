@@ -18,7 +18,6 @@ import {
 	setSelectedProfileId,
 } from '../settings/profiles';
 import { ensureSelectedInList } from '../settings/modelList';
-import { isRefusal } from '../obsidian/cliArgs';
 import { vendorEngine } from '../providers/providers';
 import { applyEngineSettings } from '../providers/engineSettings';
 import {
@@ -26,6 +25,7 @@ import {
 	LLM_VENDOR_IDS,
 	LlmJobId,
 } from '../transcription/llm/vendors';
+import { isRefusal } from '../utils/refusal';
 
 /** The job these choices configure. */
 const CHAPTERS_JOB = LlmJobId.AutoChapters;

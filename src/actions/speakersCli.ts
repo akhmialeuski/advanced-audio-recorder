@@ -27,15 +27,9 @@ import {
 import type { SpeakerMerge } from '../speakers/speakerRename';
 import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import { collectingNotify } from '../utils/notify';
-import {
-	cliFlag,
-	cliText,
-	flagParam,
-	isRefusal,
-	valueParam,
-	type CliRead,
-} from '../obsidian/cliArgs';
+import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
 import type { FileContext } from './PluginAction';
+import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** Names the speakers: `label=name`, one pair per speaker, `;` between. */
 export const MAP_PARAM = 'map';
@@ -94,7 +88,7 @@ function listSpeakers(section: TranscriptSection): string {
 export function parseSpeakerMap(
 	section: TranscriptSection,
 	map: string,
-): CliRead<Map<string, string>> {
+): Refusable<Map<string, string>> {
 	const labels = new Set(section.speakers.map((entry) => entry.label));
 	const names = new Map<string, string>();
 	for (const pair of map.split(PAIR_SEPARATOR)) {
@@ -135,7 +129,7 @@ function namesProfile(
 	context: FileContext,
 	section: TranscriptSection,
 	args: CliData,
-): CliRead<string> {
+): Refusable<string> {
 	const profiles = context.services.getSettings().profiles;
 	const typed = cliText(args, PROFILE_PARAM);
 	return typed === null

@@ -14,7 +14,6 @@ import {
 	transcriptActionFamily,
 } from 'src/actions/transcriptActions';
 import type { TranscriptSelectionContext } from 'src/actions/PluginAction';
-import type { CliRead } from 'src/obsidian/cliArgs';
 import { COMMAND_IDS } from 'src/constants';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import type { LineSpeakerOption } from 'src/speakers/transcriptRows';
@@ -24,13 +23,17 @@ import {
 	FRAGMENTED,
 	MIXED_TURN,
 	NOTE_PATH,
+	openLineDialog,
 	renderedNote,
 	type Sut,
 } from '../helpers/transcriptEditHarness';
+import { TranscriptSplitModal } from 'src/ui/TranscriptSplitModal';
+import { TranscriptMergeModal } from 'src/ui/TranscriptMergeModal';
 import { asMockApp } from '../helpers/obsidianMock';
 import { createMarkdownView } from '../helpers/createApp';
 import { silenceConsole } from '../helpers/doubles';
-import { accepted, at } from '../helpers/assertions';
+import { at } from '../helpers/assertions';
+import { valueOrThrow, type Refusable } from 'src/utils/refusal';
 
 jest.mock('src/utils/mediaDuration', () => ({
 	...jest.requireActual<object>('src/utils/mediaDuration'),
@@ -59,7 +62,7 @@ const LINE_COUNT = String(renderedNote().split('\n').length);
 function resolve(
 	sut: Sut,
 	args: CliData,
-): Promise<CliRead<readonly TranscriptSelectionContext[]>> {
+): Promise<Refusable<readonly TranscriptSelectionContext[]>> {
 	return Promise.resolve(
 		transcriptActionFamily(sut.services).cliTarget.resolve(args),
 	);
@@ -71,7 +74,7 @@ async function selection(
 	args: CliData,
 ): Promise<TranscriptSelectionContext> {
 	const resolved = await resolve(sut, { path: NOTE_PATH, ...args });
-	return at(accepted(resolved), 0, 'line');
+	return at(valueOrThrow(resolved), 0, 'line');
 }
 
 /** The action of the given command id. */
@@ -503,30 +506,44 @@ describe('a transcript note open in Obsidian', () => {
 });
 
 describe('lines whose recording cannot be edited', () => {
-	it.each([
-		COMMAND_IDS.splitTranscriptSelection,
-		COMMAND_IDS.mergeTranscriptLines,
-	])('%s answers why, writing nothing', async (commandId) => {
+	// The dialog and the command line read the line through one prepare
+	// step, so the sentence the dialog shows is the answer the command gives.
+	it('answers a split with the refusal the split dialog shows, writing nothing', async () => {
 		silenceConsole('warn');
-		const transcript =
-			commandId === COMMAND_IDS.mergeTranscriptLines
-				? FRAGMENTED
-				: undefined;
-		const sut = createSut({
-			corrupt: true,
-			...(transcript ? { transcript } : {}),
-		});
-		const args =
-			commandId === COMMAND_IDS.mergeTranscriptLines
-				? {
-						line: lineOf('I think', FRAGMENTED),
-						to: lineOf('we should wait', FRAGMENTED),
-					}
-				: { line: lineOf(MIXED_TURN) };
+		const sut = createSut({ corrupt: true });
+		sut.editor.select(MIXED_TURN);
+		const dialog = await openLineDialog(sut, TranscriptSplitModal);
 
-		await expect(execute(sut, commandId, args)).resolves.toMatch(
-			/sidecar/i,
+		const answer = await execute(
+			sut,
+			COMMAND_IDS.splitTranscriptSelection,
+			{
+				line: lineOf(MIXED_TURN),
+			},
 		);
-		await expect(noteNow(sut)).resolves.toBe(renderedNote(transcript));
+
+		expect(answer).toMatch(
+			/^The sidecar file of this recording could not be read/,
+		);
+		expect(dialog.contentEl.textContent).toContain(answer);
+		await expect(noteNow(sut)).resolves.toBe(renderedNote());
+	});
+
+	it('answers a merge with the refusal the merge dialog shows, writing nothing', async () => {
+		silenceConsole('warn');
+		const sut = createSut({ corrupt: true, transcript: FRAGMENTED });
+		sut.editor.selectLines('I think', 'we should wait');
+		const dialog = await openLineDialog(sut, TranscriptMergeModal);
+
+		const answer = await execute(sut, COMMAND_IDS.mergeTranscriptLines, {
+			line: lineOf('I think', FRAGMENTED),
+			to: lineOf('we should wait', FRAGMENTED),
+		});
+
+		expect(answer).toMatch(
+			/^The sidecar file of this recording could not be read/,
+		);
+		expect(dialog.contentEl.textContent).toContain(answer);
+		await expect(noteNow(sut)).resolves.toBe(renderedNote(FRAGMENTED));
 	});
 });

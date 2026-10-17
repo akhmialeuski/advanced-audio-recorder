@@ -64,6 +64,7 @@ import {
 	type TranscriptEditModalOptions,
 	type TranscriptSource,
 } from './transcriptLineDialog';
+import { isRefusal, valueOrThrow, type Refusable } from '../utils/refusal';
 
 /** Everything read and worked out before a split can be offered. */
 export interface PreparedSplit {
@@ -94,29 +95,36 @@ export async function prepareSplit(
 	app: App,
 	options: TranscriptEditModalOptions,
 	context: TranscriptSelectionContext,
-): Promise<PreparedSplit | string> {
+): Promise<Refusable<PreparedSplit>> {
 	const { lines, note, audio, line, lineText, from, to, seconds } = context;
-	const source = await readTranscriptSource(app, options, note, audio);
-	if (typeof source === 'string') {
-		return source;
+	const read = await readTranscriptSource(app, options, note, audio);
+	if (isRefusal(read)) {
+		return read;
 	}
-	const read = readTranscriptLine(source, lineText);
-	if (!read) {
-		return 'This line does not have the shape the transcript of this recording was written in, so it cannot be split. Select text inside a transcript line.';
+	const source = read.value;
+	const row = readTranscriptLine(source, lineText);
+	if (!row) {
+		return {
+			refusal:
+				'This line does not have the shape the transcript of this recording was written in, so it cannot be split. Select text inside a transcript line.',
+		};
 	}
-	const texts = splitLineText(lineText, read.parsed, from, to);
+	const texts = splitLineText(lineText, row.parsed, from, to);
 	if (!texts) {
-		return 'The selection holds none of the spoken text of the line. Select the words that belong to another speaker.';
+		return {
+			refusal:
+				'The selection holds none of the spoken text of the line. Select the words that belong to another speaker.',
+		};
 	}
 	const nextSeconds = nextLineSeconds(app, lines, note, audio, line);
 	const { recorded } = source;
 	const span = recorded
 		? locateRowSegments(recorded.transcript, {
 				seconds,
-				speaker: read.speaker,
+				speaker: row.speaker,
 				nextSeconds,
 				merge: source.options.mergeConsecutiveSpeaker,
-				text: restoreWikilinks(read.text),
+				text: restoreWikilinks(row.text),
 			})
 		: null;
 	const timing: RowTiming =
@@ -129,12 +137,14 @@ export async function prepareSplit(
 						(await recordingDuration(app, options, audio)),
 				};
 	return {
-		source,
-		span,
-		texts,
-		timing,
-		rowSpeaker: read.speaker,
-		sources: speakerSources(source, [read.speaker]),
+		value: {
+			source,
+			span,
+			texts,
+			timing,
+			rowSpeaker: row.speaker,
+			sources: speakerSources(source, [row.speaker]),
+		},
 	};
 }
 
@@ -233,15 +243,11 @@ export async function performSplit(
 	choices: SplitChoices,
 	changed: string,
 ): Promise<string> {
-	const prepared = await prepareSplit(app, options, context);
-	if (typeof prepared === 'string') {
-		throw new Error(prepared);
-	}
+	const prepared = valueOrThrow(await prepareSplit(app, options, context));
 	const { texts, timing, source } = prepared;
-	const times = readSplitTimes(choices.start, choices.end, timing, texts);
-	if (typeof times === 'string') {
-		throw new Error(times);
-	}
+	const times = valueOrThrow(
+		readSplitTimes(choices.start, choices.end, timing, texts),
+	);
 	const requests: LineSpeakerRequest[] = [
 		{ choice: choices.selected, times },
 	];
@@ -314,12 +320,13 @@ export async function prepareMerge(
 	app: App,
 	options: TranscriptEditModalOptions,
 	context: TranscriptSelectionContext,
-): Promise<PreparedMerge | string> {
+): Promise<Refusable<PreparedMerge>> {
 	const { lines, note, audio, lastLine, lineTexts } = context;
-	const source = await readTranscriptSource(app, options, note, audio);
-	if (typeof source === 'string') {
-		return source;
+	const read = await readTranscriptSource(app, options, note, audio);
+	if (isRefusal(read)) {
+		return read;
 	}
+	const source = read.value;
 	const kinds: SelectedLineKind[] = [];
 	const rows: MergedRow[] = [];
 	for (const text of lineTexts) {
@@ -328,20 +335,20 @@ export async function prepareMerge(
 			continue;
 		}
 		const ref = lineTimecodeRef(app, note, text);
-		const read =
+		const row =
 			ref?.file.path === audio.path
 				? readTranscriptLine(source, text)
 				: null;
-		if (!ref || !read) {
+		if (!ref || !row) {
 			kinds.push('other');
 			continue;
 		}
 		kinds.push('row');
-		rows.push({ ...read, seconds: ref.seconds });
+		rows.push({ ...row, seconds: ref.seconds });
 	}
 	const problem = mergeSelectionProblem(kinds);
 	if (problem) {
-		return problem;
+		return { refusal: problem };
 	}
 	const lastNext = nextLineSeconds(app, lines, note, audio, lastLine);
 	const { recorded } = source;
@@ -369,14 +376,16 @@ export async function prepareMerge(
 						(await recordingDuration(app, options, audio)),
 				};
 	return {
-		source,
-		rows,
-		span,
-		timing,
-		sources: speakerSources(
+		value: {
 			source,
-			rows.map((row) => row.speaker),
-		),
+			rows,
+			span,
+			timing,
+			sources: speakerSources(
+				source,
+				rows.map((row) => row.speaker),
+			),
+		},
 	};
 }
 
@@ -413,10 +422,7 @@ export async function performMerge(
 	choice: LineSpeakerChoice,
 	changed: string,
 ): Promise<string> {
-	const prepared = await prepareMerge(app, options, context);
-	if (typeof prepared === 'string') {
-		throw new Error(prepared);
-	}
+	const prepared = valueOrThrow(await prepareMerge(app, options, context));
 	const { rows, timing, source } = prepared;
 	const { names, added } = resolveLineSpeakers(prepared.sources, [
 		{ choice, times: mergedSpan(timing) },

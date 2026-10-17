@@ -60,11 +60,10 @@ import {
 	cliChoice,
 	cliNumber,
 	cliText,
-	isRefusal,
 	valueParam,
-	type CliRead,
 } from '../obsidian/cliArgs';
 import type { FileContext } from './PluginAction';
+import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** Every channel layout the conversion and the cleanup offer. */
 const CHANNEL_MODES: readonly ChannelMode[] = Object.values(ChannelMode);
@@ -101,7 +100,10 @@ const BITRATE_PARAM: CliFlags = {
  * @param args - The arguments as typed
  * @param fallback - The setting
  */
-function readDeleteSource(args: CliData, fallback: boolean): CliRead<boolean> {
+function readDeleteSource(
+	args: CliData,
+	fallback: boolean,
+): Refusable<boolean> {
 	const read = cliChoice(args, 'source', SOURCE_CHOICES);
 	if (isRefusal(read)) {
 		return read;
@@ -117,7 +119,7 @@ function readDeleteSource(args: CliData, fallback: boolean): CliRead<boolean> {
 function readLinkAction(
 	args: CliData,
 	fallback: ConversionLinkAction,
-): CliRead<ConversionLinkAction> {
+): Refusable<ConversionLinkAction> {
 	const read = cliChoice(args, 'links', LINK_CHOICES);
 	return isRefusal(read) ? read : { value: read.value ?? fallback };
 }
@@ -134,7 +136,7 @@ function readBitrate(
 	args: CliData,
 	format: string,
 	fallback: number,
-): CliRead<number> {
+): Refusable<number> {
 	const read = cliNumber(args, 'bitrate', { min: 1, max: 2000 });
 	if (isRefusal(read)) {
 		return read;
@@ -279,7 +281,7 @@ export const SPLIT_PARAMS: CliFlags = {
  */
 async function chapterCuts(
 	context: FileContext,
-): Promise<CliRead<ChapterCut[]>> {
+): Promise<Refusable<ChapterCut[]>> {
 	const markers = await context.services.recordingSidecar.getMarkers(
 		context.file.path,
 	);
@@ -415,7 +417,7 @@ function readStage(
 	name: string,
 	stage: Stage,
 	range: { min: number; max: number },
-): CliRead<Stage> {
+): Refusable<Stage> {
 	const text = cliText(args, name)?.toLowerCase();
 	if (text === 'on' || text === 'off') {
 		return { value: { ...stage, enabled: text === 'on' } };
@@ -440,7 +442,7 @@ function readStage(
 function cleanupConfig(
 	context: FileContext,
 	args: CliData,
-): CliRead<AudioDspConfig> {
+): Refusable<AudioDspConfig> {
 	const base = resolveAudioDspConfig(context.services.getSettings());
 	const highPass = readStage(
 		args,

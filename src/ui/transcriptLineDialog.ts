@@ -34,6 +34,7 @@ import {
 	type TranscriptMarkdownOptions,
 } from '../transcription/transcriptFormat';
 import { collectSpeakers } from '../transcription/transcriptModel';
+import type { Refusable } from '../utils/refusal';
 
 /** Longest excerpt of a line's text the dialogs quote. */
 const EXCERPT_MAX_CHARS = 160;
@@ -120,10 +121,13 @@ export async function readTranscriptSource(
 	dialog: TranscriptEditModalOptions,
 	note: TFile,
 	audio: TFile,
-): Promise<TranscriptSource | string> {
+): Promise<Refusable<TranscriptSource>> {
 	const section = await loadTranscriptSection(dialog.sidecar, audio.path);
 	if (section === null) {
-		return 'The sidecar file of this recording could not be read, so the speakers stored for it are unknown. Fix or remove the .markers.json file next to the recording and try again.';
+		return {
+			refusal:
+				'The sidecar file of this recording could not be read, so the speakers stored for it are unknown. Fix or remove the .markers.json file next to the recording and try again.',
+		};
 	}
 	const output = section.noteOutputs.find(
 		(candidate) => candidate.path === note.path,
@@ -143,14 +147,16 @@ export async function readTranscriptSource(
 	// their text (a bold word, a "Note:") is read as one.
 	const undiarized = recorded !== null && known.length === 0;
 	return {
-		section,
-		options,
-		recorded,
-		shown,
-		known,
-		lineOptions: undiarized
-			? { ...options, includeSpeakers: false }
-			: options,
+		value: {
+			section,
+			options,
+			recorded,
+			shown,
+			known,
+			lineOptions: undiarized
+				? { ...options, includeSpeakers: false }
+				: options,
+		},
 	};
 }
 

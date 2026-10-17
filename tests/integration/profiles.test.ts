@@ -30,7 +30,7 @@ import {
 	serializeSettings,
 } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import { isRefusal } from 'src/obsidian/cliArgs';
+import { isRefusal } from 'src/utils/refusal';
 
 /** A profile of the kind under test, so the helpers are exercised on their own. */
 const simple = (
