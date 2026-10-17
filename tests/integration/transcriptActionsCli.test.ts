@@ -14,6 +14,7 @@ import {
 	transcriptActionFamily,
 } from 'src/actions/transcriptActions';
 import type { TranscriptSelectionContext } from 'src/actions/PluginAction';
+import type { CliRead } from 'src/obsidian/cliArgs';
 import { COMMAND_IDS } from 'src/constants';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import type { LineSpeakerOption } from 'src/speakers/transcriptRows';
@@ -29,6 +30,7 @@ import {
 import { asMockApp } from '../helpers/obsidianMock';
 import { createMarkdownView } from '../helpers/createApp';
 import { silenceConsole } from '../helpers/doubles';
+import { accepted, at } from '../helpers/assertions';
 
 jest.mock('src/utils/mediaDuration', () => ({
 	...jest.requireActual<object>('src/utils/mediaDuration'),
@@ -57,7 +59,7 @@ const LINE_COUNT = String(renderedNote().split('\n').length);
 function resolve(
 	sut: Sut,
 	args: CliData,
-): Promise<readonly TranscriptSelectionContext[] | string> {
+): Promise<CliRead<readonly TranscriptSelectionContext[]>> {
 	return Promise.resolve(
 		transcriptActionFamily(sut.services).cliTarget.resolve(args),
 	);
@@ -69,12 +71,7 @@ async function selection(
 	args: CliData,
 ): Promise<TranscriptSelectionContext> {
 	const resolved = await resolve(sut, { path: NOTE_PATH, ...args });
-	if (typeof resolved === 'string' || !resolved[0]) {
-		throw new Error(
-			`Expected lines, got: ${typeof resolved === 'string' ? resolved : 'none'}`,
-		);
-	}
-	return resolved[0];
+	return at(accepted(resolved), 0, 'line');
 }
 
 /** The action of the given command id. */
@@ -156,7 +153,7 @@ describe('the lines a command line names', () => {
 
 		await expect(
 			resolve(sut, { line: lineOf(MIXED_TURN) }),
-		).resolves.toHaveLength(1);
+		).resolves.toEqual({ value: [expect.anything()] });
 	});
 
 	it.each([
@@ -215,7 +212,7 @@ describe('the lines a command line names', () => {
 				'"a" appears more than once on the line; quote more of it.',
 		},
 	])('refuses when $name', async ({ args, refusal }) => {
-		await expect(resolve(createSut(), args)).resolves.toBe(refusal);
+		await expect(resolve(createSut(), args)).resolves.toEqual({ refusal });
 	});
 });
 
@@ -241,13 +238,14 @@ describe('the speaker a command line names', () => {
 		{ name: 'new', choice: { kind: 'new' } },
 		{ name: 'none', choice: { kind: 'none' } },
 	])('picks $name', ({ name, choice }) => {
-		expect(speakerChoiceNamed(options, name)).toEqual(choice);
+		expect(speakerChoiceNamed(options, name)).toEqual({ value: choice });
 	});
 
 	it('names the speakers to choose from for one that is not there', () => {
-		expect(speakerChoiceNamed(options, 'Dave')).toBe(
-			'No speaker "Dave" to choose. Choose one of: Bob, Carol, new, none.',
-		);
+		expect(speakerChoiceNamed(options, 'Dave')).toEqual({
+			refusal:
+				'No speaker "Dave" to choose. Choose one of: Bob, Carol, new, none.',
+		});
 	});
 });
 

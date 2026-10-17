@@ -19,6 +19,7 @@
  * @module settings/profiles
  */
 
+import type { CliRead } from '../obsidian/cliArgs';
 import type { AudioRecorderSettings } from './settingsSchema';
 
 /**
@@ -143,15 +144,15 @@ export function profileIdNamed(
 	profiles: readonly Profile[],
 	kind: ProfileKindId,
 	name: string,
-): { id: string } | { refusal: string } {
+): CliRead<string> {
 	const wanted = name.trim().toLowerCase();
 	if (wanted === NO_PROFILE_NAME) {
-		return { id: '' };
+		return { value: '' };
 	}
 	const ofKind = profilesOfKind(profiles, kind);
 	const profile = ofKind.find((p) => p.name.toLowerCase() === wanted);
 	return profile
-		? { id: profile.id }
+		? { value: profile.id }
 		: {
 				refusal: `No profile named "${name}". The ones to choose from: ${[
 					NO_PROFILE_NAME,

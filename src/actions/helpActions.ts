@@ -66,7 +66,7 @@ export function helpActionFamily(
 	return {
 		actions: HELP_ACTIONS,
 		activeTargets: () => [services],
-		cliTarget: { params: {}, resolve: () => [services] },
+		cliTarget: { params: {}, resolve: () => ({ value: [services] }) },
 		describe: () => 'the plugin',
 	};
 }

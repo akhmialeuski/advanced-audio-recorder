@@ -23,6 +23,7 @@ import type { MarkerKind } from '../markers/markerModel';
 import type { MarkerHit } from '../markers/MarkerSearchIndex';
 import type { RecordingMarkerHandle } from '../recording/recordingMarkers';
 import type { RecordingStatus } from '../types';
+import type { CliRead } from '../obsidian/cliArgs';
 
 /**
  * Primes freshly written files for the enhanced player: starts their
@@ -118,12 +119,12 @@ export interface CliTarget<TContext> {
 	/**
 	 * Resolves the target the parameters name.
 	 * @param args - Everything typed after the command
-	 * @returns One target, several to run in turn, or the sentence saying why
+	 * @returns One target, several to run in turn, or the refusal saying why
 	 *   none could be resolved
 	 */
 	resolve(
 		args: CliData,
-	): readonly TContext[] | string | Promise<readonly TContext[] | string>;
+	): CliRead<readonly TContext[]> | Promise<CliRead<readonly TContext[]>>;
 }
 
 /**

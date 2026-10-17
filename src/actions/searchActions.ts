@@ -244,7 +244,7 @@ export function searchActionFamily(
 	return {
 		actions: SEARCH_ACTIONS,
 		activeTargets: () => [services],
-		cliTarget: { params: {}, resolve: () => [services] },
+		cliTarget: { params: {}, resolve: () => ({ value: [services] }) },
 		describe: () => 'the vault',
 	};
 }

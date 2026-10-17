@@ -318,7 +318,7 @@ export function sessionActionFamily(
 	return {
 		actions: SESSION_ACTIONS,
 		activeTargets: () => [services],
-		cliTarget: { params: {}, resolve: () => [services] },
+		cliTarget: { params: {}, resolve: () => ({ value: [services] }) },
 		describe: () => 'the recorder',
 	};
 }

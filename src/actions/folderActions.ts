@@ -11,7 +11,13 @@ import type { App, CliData } from 'obsidian';
 import { COMMAND_IDS } from '../constants';
 import { isAudioFile } from '../utils/audioFile';
 import { transcriptionRefusal } from '../settings/settingsAttention';
-import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
+import {
+	cliFlag,
+	cliText,
+	flagParam,
+	valueParam,
+	type CliRead,
+} from '../obsidian/cliArgs';
 import type {
 	ActionFamily,
 	ActionServices,
@@ -111,21 +117,26 @@ function foldersWithRecordings(app: App): TFolder[] {
 function namedFolder(
 	services: ActionServices,
 	args: CliData,
-): FolderContext[] | string {
+): CliRead<FolderContext[]> {
 	const path = cliText(args, FOLDER_PARAM);
 	if (path === null) {
-		return `Name the folder with ${FOLDER_PARAM}=<path>; ${FOLDER_PARAM}=/ is the whole vault.`;
+		return {
+			refusal: `Name the folder with ${FOLDER_PARAM}=<path>; ${FOLDER_PARAM}=/ is the whole vault.`,
+		};
 	}
 	const folder =
 		path === '/'
 			? services.app.vault.getRoot()
 			: services.app.vault.getAbstractFileByPath(normalizePath(path));
 	if (folder instanceof TFolder) {
-		return [{ folder, services }];
+		return { value: [{ folder, services }] };
 	}
-	return folder instanceof TFile
-		? `${path} is a file, not a folder.`
-		: `No folder at "${path}" in this vault.`;
+	return {
+		refusal:
+			folder instanceof TFile
+				? `${path} is a file, not a folder.`
+				: `No folder at "${path}" in this vault.`,
+	};
 }
 
 /**

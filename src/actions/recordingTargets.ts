@@ -273,19 +273,22 @@ function recordingsOfNote(
 	note: TFile,
 	args: CliData,
 	reach: RecordingReach,
-): FileContext[] | string {
+): CliRead<FileContext[]> {
 	const recordings = recordingsInNote(services.app, note);
 	if (recordings.length === 0) {
-		return `${note.path} links no recording.`;
+		return { refusal: `${note.path} links no recording.` };
 	}
-	const toContexts = (files: readonly TFile[]): FileContext[] =>
-		files.map((file) => ({ file, note, services, noteFixed: true }));
+	const toContexts = (files: readonly TFile[]): CliRead<FileContext[]> => ({
+		value: files.map((file) => ({ file, note, services, noteFixed: true })),
+	});
 	const name = cliText(args, RECORDING_PARAM);
 	if (name !== null) {
 		const picked = pickRecording(services.app, note, recordings, name);
 		return picked
 			? toContexts([picked])
-			: `${note.path} links no recording named "${name}". It links: ${listed(recordings)}.`;
+			: {
+					refusal: `${note.path} links no recording named "${name}". It links: ${listed(recordings)}.`,
+				};
 	}
 	if (recordings.length === 1 || cliFlag(args, ALL_FLAG)) {
 		return toContexts(recordings);
@@ -293,7 +296,9 @@ function recordingsOfNote(
 	const choose = reach.several
 		? `Name one with ${RECORDING_PARAM}=<name>, or add ${ALL_FLAG} to run on each.`
 		: `Name one with ${RECORDING_PARAM}=<name>.`;
-	return `${note.path} links ${String(recordings.length)} recordings: ${listed(recordings)}. ${choose}`;
+	return {
+		refusal: `${note.path} links ${String(recordings.length)} recordings: ${listed(recordings)}. ${choose}`,
+	};
 }
 
 /**
@@ -304,28 +309,32 @@ function recordingsOfNote(
  * @param args - The arguments as typed
  * @param reach - Whether the command runs on several recordings, as every
  *   file action does
- * @returns The targets, or the sentence saying why there are none
+ * @returns The targets, or the refusal saying why there are none
  */
 export function namedRecordings(
 	services: ActionServices,
 	args: CliData,
 	reach: RecordingReach = { several: true },
-): FileContext[] | string {
+): CliRead<FileContext[]> {
 	const named = namedVaultFile(services.app, args);
 	if (isRefusal(named)) {
-		return named.refusal;
+		return named;
 	}
 	const target = named.value ?? services.app.workspace.getActiveFile();
 	if (!target) {
-		return `Name a recording or a note with ${FILE_PARAM}=<name> or ${PATH_PARAM}=<vault path>, or open one in Obsidian.`;
+		return {
+			refusal: `Name a recording or a note with ${FILE_PARAM}=<name> or ${PATH_PARAM}=<vault path>, or open one in Obsidian.`,
+		};
 	}
 	if (isAudioFile(target)) {
 		if (cliText(args, RECORDING_PARAM) !== null) {
-			return `${RECORDING_PARAM}= picks a recording of a note, and ${target.path} is a recording itself.`;
+			return {
+				refusal: `${RECORDING_PARAM}= picks a recording of a note, and ${target.path} is a recording itself.`,
+			};
 		}
 		const note = namedNote(services.app, args);
 		if (isRefusal(note)) {
-			return note.refusal;
+			return note;
 		}
 		// What a command does to the note - writes a transcript into it,
 		// removes links from it - is only right for a note of this recording.
@@ -333,19 +342,30 @@ export function namedRecordings(
 			note.value &&
 			!recordingsInNote(services.app, note.value).includes(target)
 		) {
-			return `${note.value.path} does not link ${target.path}. Name the note the recording belongs to.`;
+			return {
+				refusal: `${note.value.path} does not link ${target.path}. Name the note the recording belongs to.`,
+			};
 		}
-		return [
-			note.value
-				? { file: target, note: note.value, services, noteFixed: true }
-				: { file: target, services, noteFixed: true },
-		];
+		return {
+			value: [
+				note.value
+					? {
+							file: target,
+							note: note.value,
+							services,
+							noteFixed: true,
+						}
+					: { file: target, services, noteFixed: true },
+			],
+		};
 	}
 	if (target.extension !== 'md') {
-		return `${target.path} is neither a recording nor a note.`;
+		return { refusal: `${target.path} is neither a recording nor a note.` };
 	}
 	if (cliText(args, NOTE_PARAM) !== null) {
-		return `${NOTE_PARAM}= names the note of a recording, and ${target.path} is a note itself.`;
+		return {
+			refusal: `${NOTE_PARAM}= names the note of a recording, and ${target.path} is a note itself.`,
+		};
 	}
 	return recordingsOfNote(services, target, args, reach);
 }

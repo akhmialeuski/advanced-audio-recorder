@@ -33,7 +33,7 @@ function family(actions: PluginCommand<string>[]): ActionFamily<string> {
 	return {
 		actions,
 		activeTargets: () => ['it'],
-		cliTarget: { params: {}, resolve: () => ['it'] },
+		cliTarget: { params: {}, resolve: () => ({ value: ['it'] }) },
 		describe: (target) => target,
 	};
 }

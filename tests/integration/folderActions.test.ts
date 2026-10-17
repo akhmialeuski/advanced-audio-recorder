@@ -10,7 +10,8 @@ import { FOLDER_ACTIONS, folderActionFamily } from 'src/actions/folderActions';
 import type { FolderContext } from 'src/actions/PluginAction';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { recordingVault } from '../helpers/recordingVault';
-import { at } from '../helpers/assertions';
+import { accepted, at } from '../helpers/assertions';
+import type { CliRead } from 'src/obsidian/cliArgs';
 
 /** Settings a transcription could run on. */
 const RUNNABLE = {
@@ -26,7 +27,7 @@ function createSut(settings: Record<string, unknown> = RUNNABLE): ReturnType<
 	typeof recordingVault
 > & {
 	family: ReturnType<typeof folderActionFamily>;
-	resolve: (args: CliData) => Promise<readonly FolderContext[] | string>;
+	resolve: (args: CliData) => Promise<CliRead<readonly FolderContext[]>>;
 	execute: (args?: CliData) => Promise<string>;
 } {
 	const vault = recordingVault({
@@ -40,7 +41,7 @@ function createSut(settings: Record<string, unknown> = RUNNABLE): ReturnType<
 	const family = folderActionFamily(vault.services);
 	const resolve = (
 		args: CliData,
-	): Promise<readonly FolderContext[] | string> =>
+	): Promise<CliRead<readonly FolderContext[]>> =>
 		Promise.resolve(family.cliTarget.resolve(args));
 	return {
 		...vault,
@@ -50,7 +51,7 @@ function createSut(settings: Record<string, unknown> = RUNNABLE): ReturnType<
 			const targets = await resolve({ folder: 'Recordings', ...args });
 			return Promise.resolve(
 				at(FOLDER_ACTIONS, 0).cli.execute(
-					at(targets as FolderContext[], 0),
+					at(accepted(targets), 0),
 					args,
 				),
 			);
@@ -127,9 +128,9 @@ describe('the folder a command line names', () => {
 	])('finds $folder', async ({ folder, named }) => {
 		const sut = createSut();
 
-		const [target] = (await sut.resolve({ folder })) as FolderContext[];
+		const target = at(accepted(await sut.resolve({ folder })), 0);
 
-		expect(target && sut.family.describe(target)).toBe(named);
+		expect(sut.family.describe(target)).toBe(named);
 	});
 
 	it.each([
@@ -150,7 +151,7 @@ describe('the folder a command line names', () => {
 			refusal: 'Recordings/retro.mp3 is a file, not a folder.',
 		},
 	])('refuses when $name', async ({ args, refusal }) => {
-		await expect(createSut().resolve(args)).resolves.toBe(refusal);
+		await expect(createSut().resolve(args)).resolves.toEqual({ refusal });
 	});
 });
 

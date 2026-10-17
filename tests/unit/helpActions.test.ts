@@ -51,7 +51,7 @@ describe("what's new", () => {
 		expect(family.activeTargets()).toEqual([services]);
 		await expect(
 			Promise.resolve(family.cliTarget.resolve({})),
-		).resolves.toEqual([services]);
+		).resolves.toEqual({ value: [services] });
 		expect(family.describe(services)).toBe('the plugin');
 		expect(whatsNew.isAvailable(services)).toBe(true);
 	});

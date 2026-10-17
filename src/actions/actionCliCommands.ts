@@ -15,7 +15,7 @@
 import type { CliData, CliFlags } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { errorMessage } from '../errors';
-import { cliFlag, flagParam } from '../obsidian/cliArgs';
+import { cliFlag, flagParam, isRefusal } from '../obsidian/cliArgs';
 import type { CliCommand } from '../obsidian/cliCommands';
 import type { ActionFamily, PluginCommand } from './PluginAction';
 
@@ -128,10 +128,11 @@ export function actionCliCommands<TContext>(
 		description: action.cli.description,
 		flags: withoutEmpty(actionCliParams(family, action)),
 		handler: async (args: CliData): Promise<string> => {
-			const targets = await family.cliTarget.resolve(args);
-			if (typeof targets === 'string') {
-				return targets;
+			const resolved = await family.cliTarget.resolve(args);
+			if (isRefusal(resolved)) {
+				return resolved.refusal;
 			}
+			const targets = resolved.value;
 			if (targets.length === 1) {
 				return runOnTarget(
 					family,

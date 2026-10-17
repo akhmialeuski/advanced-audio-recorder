@@ -18,6 +18,7 @@ import {
 	setSelectedProfileId,
 } from '../settings/profiles';
 import { ensureSelectedInList } from '../settings/modelList';
+import { isRefusal } from '../obsidian/cliArgs';
 import { vendorEngine } from '../providers/providers';
 import { applyEngineSettings } from '../providers/engineSettings';
 import {
@@ -85,10 +86,10 @@ export function applyChapterRunChoices(
 			ProfileKindId.ChapterPrompt,
 			choices.profile,
 		);
-		if ('refusal' in picked) {
+		if (isRefusal(picked)) {
 			return picked.refusal;
 		}
-		setSelectedProfileId(run, ProfileKindId.ChapterPrompt, picked.id);
+		setSelectedProfileId(run, ProfileKindId.ChapterPrompt, picked.value);
 	}
 	if (choices.llm) {
 		const llm = LLM_VENDOR_IDS.find((id) => id === choices.llm);

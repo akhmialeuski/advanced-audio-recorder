@@ -56,9 +56,9 @@ function makeAction(
  */
 function createSut(
 	action: PluginCommand<Target> = makeAction(),
-	resolve: ActionFamily<Target>['cliTarget']['resolve'] = () => [
-		{ name: 'a', takes: true },
-	],
+	resolve: ActionFamily<Target>['cliTarget']['resolve'] = () => ({
+		value: [{ name: 'a', takes: true }],
+	}),
 	params: ActionFamily<Target>['cliTarget']['params'] = {},
 ): {
 	family: ActionFamily<Target>;
@@ -100,7 +100,7 @@ describe('the commands a family declares', () => {
 			params: { label: { value: '<text>', description: 'Label.' } },
 			opensDialog: true,
 		});
-		const { family } = createSut(action, () => [], {
+		const { family } = createSut(action, () => ({ value: [] }), {
 			path: { value: '<path>', description: 'Path.' },
 		});
 
@@ -118,24 +118,28 @@ describe('what a command answers', () => {
 	});
 
 	it('answers with why no target resolved', async () => {
-		const { run } = createSut(makeAction(), () => 'Name a recording.');
+		const { run } = createSut(makeAction(), () => ({
+			refusal: 'Name a recording.',
+		}));
 
 		await expect(run()).resolves.toBe('Name a recording.');
 	});
 
 	it('waits for a target that resolves later', async () => {
 		const { run } = createSut(makeAction(), () =>
-			Promise.resolve([{ name: 'b', takes: true }]),
+			Promise.resolve({ value: [{ name: 'b', takes: true }] }),
 		);
 
 		await expect(run()).resolves.toBe('Acted on b.');
 	});
 
 	it('runs on every target in turn, a line each', async () => {
-		const { run } = createSut(makeAction(), () => [
-			{ name: 'a', takes: true },
-			{ name: 'b', takes: true },
-		]);
+		const { run } = createSut(makeAction(), () => ({
+			value: [
+				{ name: 'a', takes: true },
+				{ name: 'b', takes: true },
+			],
+		}));
 
 		await expect(run()).resolves.toBe('Acted on a.\nActed on b.');
 	});
@@ -147,10 +151,12 @@ describe('what a command answers', () => {
 		);
 		const { run } = createSut(
 			makeAction({ waitFlag: 'wait', execute }),
-			() => [
-				{ name: 'a', takes: true },
-				{ name: 'b', takes: true },
-			],
+			() => ({
+				value: [
+					{ name: 'a', takes: true },
+					{ name: 'b', takes: true },
+				],
+			}),
 		);
 
 		await expect(run({ language: 'de' })).resolves.toBe(
@@ -174,10 +180,12 @@ describe('what a command answers', () => {
 
 	it('opens no dialog over several targets', async () => {
 		const action = makeAction({ opensDialog: true });
-		const { run } = createSut(action, () => [
-			{ name: 'a', takes: true },
-			{ name: 'b', takes: true },
-		]);
+		const { run } = createSut(action, () => ({
+			value: [
+				{ name: 'a', takes: true },
+				{ name: 'b', takes: true },
+			],
+		}));
 
 		await expect(run({ [DIALOG_FLAG]: 'true' })).resolves.toBe(
 			'dialog opens the dialog on one target: name one rather than 2.',
@@ -189,15 +197,17 @@ describe('what a command answers', () => {
 		const action = makeAction({
 			unavailable: (target) => `${target.name} is switched off.`,
 		});
-		const { run } = createSut(action, () => [{ name: 'a', takes: false }]);
+		const { run } = createSut(action, () => ({
+			value: [{ name: 'a', takes: false }],
+		}));
 
 		await expect(run()).resolves.toBe('a is switched off.');
 	});
 
 	it('says so in general words where the action has none', async () => {
-		const { run } = createSut(makeAction(), () => [
-			{ name: 'a', takes: false },
-		]);
+		const { run } = createSut(makeAction(), () => ({
+			value: [{ name: 'a', takes: false }],
+		}));
 
 		await expect(run()).resolves.toBe('Act is not available for a.');
 	});

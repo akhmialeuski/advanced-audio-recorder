@@ -27,7 +27,14 @@ import {
 import type { SpeakerMerge } from '../speakers/speakerRename';
 import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import { collectingNotify } from '../utils/notify';
-import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
+import {
+	cliFlag,
+	cliText,
+	flagParam,
+	isRefusal,
+	valueParam,
+	type CliRead,
+} from '../obsidian/cliArgs';
 import type { FileContext } from './PluginAction';
 
 /** Names the speakers: `label=name`, one pair per speaker, `;` between. */
@@ -87,7 +94,7 @@ function listSpeakers(section: TranscriptSection): string {
 export function parseSpeakerMap(
 	section: TranscriptSection,
 	map: string,
-): Map<string, string> | string {
+): CliRead<Map<string, string>> {
 	const labels = new Set(section.speakers.map((entry) => entry.label));
 	const names = new Map<string, string>();
 	for (const pair of map.split(PAIR_SEPARATOR)) {
@@ -96,20 +103,24 @@ export function parseSpeakerMap(
 		}
 		const separator = pair.indexOf('=');
 		if (separator < 0) {
-			return `"${pair.trim()}" is not <label>=<name>.`;
+			return { refusal: `"${pair.trim()}" is not <label>=<name>.` };
 		}
 		const label = pair.slice(0, separator).trim();
 		if (!labels.has(label)) {
-			return `No speaker labelled "${label}". The labels are: ${[...labels].join(', ')}.`;
+			return {
+				refusal: `No speaker labelled "${label}". The labels are: ${[...labels].join(', ')}.`,
+			};
 		}
 		if (names.has(label)) {
-			return `"${label}" is named twice.`;
+			return { refusal: `"${label}" is named twice.` };
 		}
 		names.set(label, pair.slice(separator + 1).trim());
 	}
 	return names.size === 0
-		? `${MAP_PARAM}= names no speaker. Use ${MAP_PARAM}="<label>=<name>".`
-		: names;
+		? {
+				refusal: `${MAP_PARAM}= names no speaker. Use ${MAP_PARAM}="<label>=<name>".`,
+			}
+		: { value: names };
 }
 
 /**
@@ -124,12 +135,12 @@ function namesProfile(
 	context: FileContext,
 	section: TranscriptSection,
 	args: CliData,
-): { id: string } | { refusal: string } {
+): CliRead<string> {
 	const profiles = context.services.getSettings().profiles;
 	const typed = cliText(args, PROFILE_PARAM);
 	return typed === null
 		? {
-				id: effectiveProfileId(
+				value: effectiveProfileId(
 					profilesOfKind(profiles, ProfileKindId.Participants),
 					section.participantProfileId ?? '',
 				),
@@ -182,11 +193,11 @@ export async function speakersFromCli(
 		return listSpeakers(section);
 	}
 	const names = parseSpeakerMap(section, map);
-	if (typeof names === 'string') {
-		return names;
+	if (isRefusal(names)) {
+		return names.refusal;
 	}
 	const profile = namesProfile(context, section, args);
-	if ('refusal' in profile) {
+	if (isRefusal(profile)) {
 		return profile.refusal;
 	}
 	let unconfirmed: readonly SpeakerMerge[] = [];
@@ -195,10 +206,10 @@ export async function speakersFromCli(
 		// dialog's rows start out filled with the stored names.
 		entries: section.speakers.map((entry) => ({
 			label: entry.label,
-			name: names.get(entry.label) ?? entry.name ?? '',
+			name: names.value.get(entry.label) ?? entry.name ?? '',
 		})),
 		allowBroad,
-		profileId: profile.id,
+		profileId: profile.value,
 		confirmMerges: (merges) => {
 			unconfirmed = merges;
 			return Promise.resolve(cliFlag(args, MERGE_FLAG));

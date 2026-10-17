@@ -279,14 +279,14 @@ export const SPLIT_PARAMS: CliFlags = {
  */
 async function chapterCuts(
 	context: FileContext,
-): Promise<ChapterCut[] | string> {
+): Promise<CliRead<ChapterCut[]>> {
 	const markers = await context.services.recordingSidecar.getMarkers(
 		context.file.path,
 	);
 	const cuts = chapterCutsOf(markers);
 	return cuts.length > 0
-		? cuts
-		: `${context.file.path} has no chapters to cut at.`;
+		? { value: cuts }
+		: { refusal: `${context.file.path} has no chapters to cut at.` };
 }
 
 /**
@@ -341,10 +341,10 @@ export async function splitFromCli(
 	let cuts: ChapterCut[] | undefined;
 	if (by.value === 'chapters') {
 		const found = await chapterCuts(context);
-		if (typeof found === 'string') {
-			return found;
+		if (isRefusal(found)) {
+			return found.refusal;
 		}
-		cuts = found;
+		cuts = found.value;
 	}
 	const outcome = await service.split(
 		{

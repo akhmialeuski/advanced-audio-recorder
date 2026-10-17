@@ -19,6 +19,8 @@ import { recordingVault } from '../helpers/recordingVault';
 import { createMarkdownView } from '../helpers/createApp';
 import { asMockWorkspace } from '../helpers/obsidianMock';
 import { noticeMessages } from '../mocks/obsidian';
+import { accepted, at as itemAt } from '../helpers/assertions';
+import type { CliRead } from 'src/obsidian/cliArgs';
 
 const LECTURE = 'Recordings/lecture.webm';
 const NOTES = 'Notes/lecture.md';
@@ -36,7 +38,7 @@ function createSut(
 ): ReturnType<typeof recordingVault> & {
 	family: ReturnType<typeof positionActionFamily>;
 	store: ReturnType<typeof makeMarkerStore>;
-	resolve: (args: CliData) => Promise<readonly PositionContext[] | string>;
+	resolve: (args: CliData) => Promise<CliRead<readonly PositionContext[]>>;
 } {
 	const vault = recordingVault({
 		recordings: [LECTURE],
@@ -262,20 +264,20 @@ describe('the point a command line names', () => {
 
 		await expect(
 			sut.resolve({ path: LECTURE, at: '1:15' }),
-		).resolves.toEqual([
-			expect.objectContaining({ seconds: 75, editable: true }),
-		]);
+		).resolves.toEqual({
+			value: [expect.objectContaining({ seconds: 75, editable: true })],
+		});
 	});
 
 	it('carries the note the recording was reached through', async () => {
 		const sut = createSut();
 
-		const [target] = (await sut.resolve({
-			path: NOTES,
-			at: '10',
-		})) as PositionContext[];
+		const target = itemAt(
+			accepted(await sut.resolve({ path: NOTES, at: '10' })),
+			0,
+		);
 
-		expect(target?.note?.path).toBe(NOTES);
+		expect(target.note?.path).toBe(NOTES);
 	});
 
 	it('is where the playback is when nothing is named', async () => {
@@ -286,9 +288,9 @@ describe('the point a command line names', () => {
 			}),
 		});
 
-		await expect(sut.resolve({})).resolves.toEqual([
-			expect.objectContaining({ seconds: 30 }),
-		]);
+		await expect(sut.resolve({})).resolves.toEqual({
+			value: [expect.objectContaining({ seconds: 30 })],
+		});
 	});
 
 	it('takes the recording named, not the one playing', async () => {
@@ -300,15 +302,15 @@ describe('the point a command line names', () => {
 		});
 		asMockWorkspace(sut.app.workspace).seedActiveFile(sut.file(NOTES));
 
-		const [target] = (await sut.resolve({
-			recording: 'lecture',
-			at: '5',
-		})) as PositionContext[];
+		const target = itemAt(
+			accepted(await sut.resolve({ recording: 'lecture', at: '5' })),
+			0,
+		);
 
 		// Reached through the active note, as recording= names it, at the
 		// time typed rather than where the playback stands.
-		expect(target?.seconds).toBe(5);
-		expect(target?.note?.path).toBe(NOTES);
+		expect(target.seconds).toBe(5);
+		expect(target.note?.path).toBe(NOTES);
 	});
 
 	it('moves off the playback by the time typed', async () => {
@@ -316,9 +318,9 @@ describe('the point a command line names', () => {
 			playback: makePlaybackState({ recordingPath: LECTURE }),
 		});
 
-		await expect(sut.resolve({ at: '5' })).resolves.toEqual([
-			expect.objectContaining({ seconds: 5 }),
-		]);
+		await expect(sut.resolve({ at: '5' })).resolves.toEqual({
+			value: [expect.objectContaining({ seconds: 5 })],
+		});
 	});
 
 	it.each([
@@ -345,7 +347,7 @@ describe('the point a command line names', () => {
 			refusal: 'No file at "gone.webm" in this vault.',
 		},
 	])('refuses when $name', async ({ args, refusal }) => {
-		await expect(createSut().resolve(args)).resolves.toBe(refusal);
+		await expect(createSut().resolve(args)).resolves.toEqual({ refusal });
 	});
 
 	it('names the recordings to pick from without offering all', async () => {
@@ -359,9 +361,9 @@ describe('the point a command line names', () => {
 
 		await expect(
 			Promise.resolve(family.cliTarget.resolve({ path: NOTES, at: '1' })),
-		).resolves.toBe(
-			`${NOTES} links 2 recordings: ${LECTURE}, Recordings/qa.webm. Name one with recording=<name>.`,
-		);
+		).resolves.toEqual({
+			refusal: `${NOTES} links 2 recordings: ${LECTURE}, Recordings/qa.webm. Name one with recording=<name>.`,
+		});
 	});
 
 	it('refuses a note of several recordings asked for all of them', async () => {
@@ -375,8 +377,9 @@ describe('the point a command line names', () => {
 			Promise.resolve(
 				family.cliTarget.resolve({ path: NOTES, at: '1', all: 'true' }),
 			),
-		).resolves.toBe(
-			'A time belongs to one recording; name it with recording=<name>.',
-		);
+		).resolves.toEqual({
+			refusal:
+				'A time belongs to one recording; name it with recording=<name>.',
+		});
 	});
 });

@@ -150,7 +150,7 @@ describe('driving the recorder from the command line', () => {
 		expect(family.activeTargets()).toEqual([services]);
 		await expect(
 			Promise.resolve(family.cliTarget.resolve({})),
-		).resolves.toEqual([services]);
+		).resolves.toEqual({ value: [services] });
 		expect(family.describe(services)).toBe('the recorder');
 	});
 });

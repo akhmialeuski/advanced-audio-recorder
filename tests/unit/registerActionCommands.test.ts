@@ -55,7 +55,7 @@ function createSut(
 	const family: ActionFamily<Target> = {
 		actions: [action],
 		activeTargets: () => targets,
-		cliTarget: { params: {}, resolve: () => targets },
+		cliTarget: { params: {}, resolve: () => ({ value: targets }) },
 		describe: (target) => target.name,
 	};
 	const pick = jest.fn();
@@ -156,7 +156,7 @@ describe('a family registered on the palette', () => {
 				actions: [makeAction(run)],
 				activeTargets: targets,
 				offeredWithoutTargets: () => true,
-				cliTarget: { params: {}, resolve: () => [] },
+				cliTarget: { params: {}, resolve: () => ({ value: [] }) },
 				describe: (target) => target.name,
 			},
 			jest.fn(),
@@ -179,7 +179,7 @@ describe('a family registered on the palette', () => {
 				actions: [makeAction()],
 				activeTargets: () => [],
 				offeredWithoutTargets: () => true,
-				cliTarget: { params: {}, resolve: () => [] },
+				cliTarget: { params: {}, resolve: () => ({ value: [] }) },
 				describe: (target) => target.name,
 			},
 			jest.fn(),
