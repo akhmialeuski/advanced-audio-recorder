@@ -1640,6 +1640,19 @@ export class ButtonComponent {
 		document.createElement('button'),
 	);
 
+	/**
+	 * @param containerEl - Where the button goes, as in Obsidian; optional
+	 *   here because the mock Setting places the buttons it builds itself
+	 */
+	constructor(containerEl?: HTMLElement) {
+		containerEl?.appendChild(this.buttonEl);
+	}
+
+	setClass(cls: string): this {
+		this.buttonEl.classList.add(cls);
+		return this;
+	}
+
 	setButtonText(text: string): this {
 		this.buttonEl.textContent = text;
 		return this;
@@ -1681,9 +1694,11 @@ export class ButtonComponent {
 		return this;
 	}
 
-	onClick(callback: () => void): this {
-		// Clicking buttonEl triggers the handler, as in Obsidian
-		this.buttonEl.addEventListener('click', callback);
+	onClick(callback: (evt: MouseEvent) => unknown): this {
+		// Clicking buttonEl triggers the handler with the click, as in Obsidian
+		this.buttonEl.addEventListener('click', (evt) => {
+			callback(evt);
+		});
 		return this;
 	}
 }

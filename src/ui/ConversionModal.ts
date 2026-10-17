@@ -5,7 +5,8 @@
 
 import { App, Notice, Setting, TFile } from 'obsidian';
 import { PluginModal } from './PluginModal';
-import type { DropdownComponent } from 'obsidian';
+import { JobProgressNotice } from './JobProgressNotice';
+import type { ButtonComponent, DropdownComponent } from 'obsidian';
 import {
 	ChannelMode,
 	channelCountFor,
@@ -21,6 +22,7 @@ import {
 import { getEncoderDescription } from './formatDescriptions';
 import { ConversionService, conversionTargets } from '../recording/api';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
+import { CancellationSource } from '../utils/cancellation';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -47,10 +49,17 @@ export class ConversionModal extends PluginModal {
 	private formatDropdown: DropdownComponent | null = null;
 	/** Bitrate row, re-offered when the target format changes. */
 	private bitrateRow: BitrateRow | null = null;
-	/** Whether the conversion pipeline is currently running. */
-	private isConverting = false;
+	/**
+	 * The cancellation of the latest conversion, replaced at every run. Whether
+	 * one is running is the frame's busy flag; this is only what Cancel pulls.
+	 */
+	private cancellation = new CancellationSource();
+	/** The Convert button, disabled while a conversion runs. */
+	private runButton: ButtonComponent | null = null;
+	/** The Cancel button, shown only while a conversion runs. */
+	private cancelButton: ButtonComponent | null = null;
 	/** Progress notice shown when the modal is closed mid-conversion. */
-	private progressNotice: Notice | null = null;
+	private progressNotice: JobProgressNotice | null = null;
 	/** Conversion pipeline behind the form. */
 	private readonly conversionService: ConversionService;
 	private readonly onConverted?:
@@ -170,17 +179,28 @@ export class ConversionModal extends PluginModal {
 			cls: 'aar-conversion-progress',
 		});
 
-		new Setting(contentEl).addButton((button) => {
-			button
-				.setButtonText('Convert')
-				.setCta()
-				.onClick(() => {
-					button.setDisabled(true);
-					void this.runConversion(progressEl).finally(() => {
-						button.setDisabled(false);
-					});
-				});
-		});
+		this.renderActions(
+			{
+				text: 'Convert',
+				cta: true,
+				ref: (button) => {
+					this.runButton = button;
+				},
+				onClick: () => this.runConversion(progressEl),
+			},
+			{
+				text: 'Cancel',
+				ref: (button) => {
+					this.cancelButton = button;
+					button.buttonEl.toggle(false);
+				},
+				onClick: () => {
+					this.cancelButton?.setDisabled(true);
+					this.setProgress(progressEl, 'Cancelling...');
+					this.cancellation.cancel();
+				},
+			},
+		);
 	}
 
 	/**
@@ -227,15 +247,16 @@ export class ConversionModal extends PluginModal {
 	}
 
 	override onClose(): void {
-		if (this.isConverting && !this.progressNotice) {
-			// Timeout 0 keeps the notice visible until hidden explicitly;
-			// setProgress mirrors further pipeline progress into it
-			this.progressNotice = new Notice(
+		if (this.busy && !this.progressNotice) {
+			// The notice is where the conversion can still be cancelled
+			// from; setProgress mirrors further pipeline progress into it
+			this.progressNotice = new JobProgressNotice(
+				`Converting "${this.sourceFile.name}"`,
+				this.cancellation,
 				`Converting "${this.sourceFile.name}" continues in the background...`,
-				0,
 			);
 		}
-		this.contentEl.empty();
+		super.onClose();
 	}
 
 	/**
@@ -246,47 +267,68 @@ export class ConversionModal extends PluginModal {
 	 */
 	private setProgress(progressEl: HTMLElement, text: string): void {
 		progressEl.setText(text);
-		if (this.progressNotice && text !== '') {
-			this.progressNotice.setMessage(
-				`Converting "${this.sourceFile.name}": ${text}`,
-			);
-		}
+		this.progressNotice?.setProgress(text);
 	}
 
+	/**
+	 * Runs the conversion, at most one at a time, with a Cancel offered for as
+	 * long as it runs: in the dialog, and in the notice once the dialog is
+	 * closed.
+	 * @param progressEl - Progress element inside the modal
+	 */
 	private async runConversion(progressEl: HTMLElement): Promise<void> {
-		this.isConverting = true;
-		try {
-			const outcome = await this.conversionService.convert(
-				{
-					sourceFile: this.sourceFile,
-					targetFormat: this.targetFormat,
-					bitrate: this.bitrate,
-					channelMode: this.channelMode,
-					deleteSource: this.deleteSource,
-					linkAction: this.linkAction,
-				},
-				(text) => {
-					this.setProgress(progressEl, text);
-				},
-			);
-			if (outcome.status !== 'completed') {
-				return;
-			}
+		let converted = false;
+		await this.runExclusive(async () => {
+			this.cancellation = new CancellationSource();
+			this.runButton?.setDisabled(true);
+			this.cancelButton?.setDisabled(false);
+			this.cancelButton?.buttonEl.toggle(true);
+			try {
+				const outcome = await this.conversionService.convert(
+					{
+						sourceFile: this.sourceFile,
+						targetFormat: this.targetFormat,
+						bitrate: this.bitrate,
+						channelMode: this.channelMode,
+						deleteSource: this.deleteSource,
+						linkAction: this.linkAction,
+					},
+					(text) => {
+						this.setProgress(progressEl, text);
+					},
+					this.cancellation.token,
+				);
+				if (outcome.status === 'cancelled') {
+					new Notice(
+						`Cancelled converting "${this.sourceFile.name}".`,
+					);
+					return;
+				}
+				if (outcome.status !== 'completed') {
+					return;
+				}
 
-			this.setProgress(progressEl, '');
-			// Conversion already rewrote the note's link (linkAction); prime the
-			// new file so the enhanced player applies without reopening the note.
-			this.onConverted?.(outcome.newPath);
-			const action = this.deleteSource ? 'Replaced with' : 'Converted to';
-			new Notice(`${action} ${outcome.newFileName}`);
-			// Cleared before close() so onClose does not start a
-			// background notice for an already finished conversion
-			this.isConverting = false;
+				this.setProgress(progressEl, '');
+				// Conversion already rewrote the note's link (linkAction); prime
+				// the new file so the enhanced player applies without reopening
+				// the note.
+				this.onConverted?.(outcome.newPath);
+				const action = this.deleteSource
+					? 'Replaced with'
+					: 'Converted to';
+				new Notice(`${action} ${outcome.newFileName}`);
+				converted = true;
+			} finally {
+				this.runButton?.setDisabled(false);
+				this.cancelButton?.buttonEl.toggle(false);
+				this.progressNotice?.hide();
+				this.progressNotice = null;
+			}
+		});
+		// Closed once the run is over, so onClose finds nothing running and
+		// leaves no background notice for a conversion that has finished.
+		if (converted) {
 			this.close();
-		} finally {
-			this.isConverting = false;
-			this.progressNotice?.hide();
-			this.progressNotice = null;
 		}
 	}
 }

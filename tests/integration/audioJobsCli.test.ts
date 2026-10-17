@@ -25,6 +25,11 @@ import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
 import type { Notify } from 'src/utils/notify';
 import { recordingVault } from '../helpers/recordingVault';
 import { at } from '../helpers/assertions';
+import type { CancellationToken } from 'src/utils/cancellation';
+import { noticeInstances, noticeText } from '../mocks/obsidian';
+import { el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
+import { tick } from '../helpers/async';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
@@ -153,6 +158,8 @@ describe('converting a recording', () => {
 				linkAction: 'replace',
 			},
 			expect.any(Function),
+			// The notice's Cancel, which is how a command is stopped.
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
 		);
 	});
 
@@ -432,6 +439,72 @@ describe('splitting a recording', () => {
 
 		expect(answer).toMatch(/^Part suffix /);
 	});
+});
+
+describe('cancelling a job started from the command line', () => {
+	/**
+	 * A service step that reports one line of progress and then runs until
+	 * the command's cancellation fires, answering as a cancelled job does.
+	 */
+	function runsUntilCancelled(
+		_request: unknown,
+		onProgress: (text: string) => void,
+		token?: CancellationToken,
+	): Promise<{ status: 'cancelled' }> {
+		onProgress('Writing part 1 of 3...');
+		return new Promise((resolve) => {
+			token?.signal?.addEventListener('abort', () => {
+				resolve({ status: 'cancelled' });
+			});
+		});
+	}
+
+	it.each([
+		{
+			job: 'conversion',
+			run: (context: FileContext): Promise<string> => {
+				jest.spyOn(
+					ConversionService.prototype,
+					'convert',
+				).mockImplementation(runsUntilCancelled);
+				return convertFromCli(context, { to: 'mp3' });
+			},
+			title: 'Converting "take.webm"',
+			answer: `Conversion of ${TAKE} was cancelled in Obsidian.`,
+		},
+		{
+			job: 'split',
+			run: (context: FileContext): Promise<string> => {
+				jest.spyOn(SplitService.prototype, 'split').mockImplementation(
+					runsUntilCancelled,
+				);
+				return splitFromCli(context, {});
+			},
+			title: 'Splitting "take.webm"',
+			answer: `Split of ${TAKE} was cancelled in Obsidian.`,
+		},
+	])(
+		'shows the $job in a notice whose Cancel stops it and answers so',
+		async ({ run, title, answer }) => {
+			const settled = run(createSut().context);
+			await tick();
+
+			// The progress the terminal cannot show, in the app
+			const notice = at(noticeInstances, 0);
+			expect(noticeText(notice)).toBe(
+				`${title}: Writing part 1 of 3... Cancel`,
+			);
+			expect(notice.timeout).toBe(0);
+
+			el(
+				notice.initialMessage as DocumentFragment,
+				MODAL.noticeAction,
+			).click();
+
+			await expect(settled).resolves.toBe(answer);
+			expect(notice.hide).toHaveBeenCalled();
+		},
+	);
 });
 
 describe('cleaning up a recording', () => {

@@ -226,6 +226,8 @@ export const MODAL = {
 	/** The running clock of a transcription in flight. */
 	transcribeElapsed: '.aar-transcribe-elapsed',
 	silentChannelConvert: '.aar-silent-channel-convert',
+	/** An action inside a Notice, such as Convert to mono or Cancel. */
+	noticeAction: '.aar-notice-action',
 	/**
 	 * The body the release notes are rendered into. Obsidian's own class for
 	 * rendered Markdown rather than one of the plugin's: the dialog adds no

@@ -51,6 +51,12 @@ export interface CapturedButton {
 	 */
 	setDisabled: jest.Mock;
 	click: () => unknown;
+	/**
+	 * The button element, for a dialog that shows or hides a button as its
+	 * state changes rather than only disabling it. Absent on an icon-only
+	 * extra button, which no code under test reaches into.
+	 */
+	buttonEl?: HTMLButtonElement;
 }
 
 /**
@@ -456,8 +462,12 @@ export class CapturingSetting {
 			disabled: false,
 			setDisabled: jest.fn(),
 			click: () => undefined,
+			buttonEl: addObsidianDomExtensions(
+				document.createElement('button'),
+			),
 		};
 		const button = {
+			buttonEl: captured.buttonEl,
 			setButtonText(text: string) {
 				captured.label = text;
 				return this;

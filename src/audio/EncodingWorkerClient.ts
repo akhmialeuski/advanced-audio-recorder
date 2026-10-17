@@ -14,8 +14,18 @@ import {
 	PLUGIN_LOG_PREFIX,
 } from '../constants';
 import { scaledTimeoutMs } from '../utils/TimeUtils';
+import {
+	NEVER_CANCELLED,
+	cancellationReason,
+	onCancelled,
+	type CancellationToken,
+} from '../utils/cancellation';
 import { ChannelMode } from './downmix';
-import type { WorkerRequest, WorkerResponse } from './encodingWorker';
+import type {
+	WorkerMessage,
+	WorkerRequest,
+	WorkerResponse,
+} from './encodingWorker';
 import type { ConvertedAudio } from './streamingConversion';
 
 /** Pending request bookkeeping. */
@@ -27,6 +37,8 @@ interface PendingRequest {
 	timer: number;
 	/** How long this request may go unanswered, for each re-arming. */
 	readonly timeoutMs: number;
+	/** Stops listening for the caller's cancel, once the request settles. */
+	detachCancel: () => void;
 }
 
 /**
@@ -67,10 +79,13 @@ export class EncodingWorkerClient {
 	 * @param allowRemux - Allow packet copy when the codecs match
 	 * @param channelMode - Channel layout for the output audio
 	 * @param onProgress - Optional progress callback (0-100)
+	 * @param token - Cancels the conversion in the worker and settles the
+	 *   request at once, without waiting for the worker to say it stopped
 	 * @returns Bytes of the converted file, with the rate they were written
 	 *   at when that is not the source's
 	 * @throws Error when the worker is unavailable or the conversion
-	 * fails (the caller falls back to the main-thread pipeline)
+	 * fails (the caller falls back to the main-thread pipeline), and the
+	 * cancellation reason once the token is cancelled
 	 */
 	convertBlob(
 		blob: Blob,
@@ -79,7 +94,11 @@ export class EncodingWorkerClient {
 		allowRemux: boolean,
 		channelMode: ChannelMode = ChannelMode.Source,
 		onProgress?: (percent: number) => void,
+		token: CancellationToken = NEVER_CANCELLED,
 	): Promise<ConvertedAudio<ArrayBuffer>> {
+		if (token.isCancelled()) {
+			return Promise.reject(cancellationReason(token.signal));
+		}
 		const worker = this.ensureWorker();
 		if (!worker) {
 			return Promise.reject(
@@ -94,13 +113,20 @@ export class EncodingWorkerClient {
 			maxMs: ENCODING_WORKER_MAX_TIMEOUT_MS,
 		});
 		return new Promise<ConvertedAudio<ArrayBuffer>>((resolve, reject) => {
-			this.pending.set(id, {
+			const pending: PendingRequest = {
 				resolve,
 				reject,
 				onProgress,
 				timeoutMs,
 				timer: this.armWatchdog(id, timeoutMs),
-			});
+				// The token is not cancelled yet, checked above, so this
+				// only listens; every path that settles the request detaches
+				// it, which is what lets the cancel assume it is in flight.
+				detachCancel: onCancelled(token, () => {
+					this.cancelRequest(id, token);
+				}),
+			};
+			this.pending.set(id, pending);
 			const request: WorkerRequest = {
 				id,
 				kind: 'convertBlob',
@@ -112,6 +138,44 @@ export class EncodingWorkerClient {
 			};
 			worker.postMessage(request);
 		});
+	}
+
+	/**
+	 * Gives up on one request because its caller cancelled it, and tells the
+	 * worker to stop the conversion. The request settles here rather than
+	 * when the worker answers: the caller asked to stop, and a worker busy
+	 * in its loop answers only once mediabunny notices. The worker stays
+	 * available, since a cancel says nothing about its health.
+	 * @param id - The request being cancelled
+	 * @param token - Its cancellation, whose reason it rejects with
+	 */
+	private cancelRequest(id: number, token: CancellationToken): void {
+		// Told before the request settles, since settling the last request
+		// of a client given up on releases the worker it would be sent to.
+		const cancel: WorkerMessage = { id, kind: 'cancel' };
+		this.worker?.postMessage(cancel);
+		this.settle(id)?.reject(cancellationReason(token.signal));
+	}
+
+	/**
+	 * Takes a request out of the table, on every path it leaves by: answered,
+	 * failed, timed out, cancelled or torn down. Its watchdog stops, it stops
+	 * listening for its caller's cancel, and a worker given up on is released
+	 * once nothing waits on it.
+	 * @param id - The request leaving
+	 * @returns Its bookkeeping, to settle the caller's promise with, or
+	 *   undefined when it already left
+	 */
+	private settle(id: number): PendingRequest | undefined {
+		const request = this.pending.get(id);
+		if (!request) {
+			return undefined;
+		}
+		window.clearTimeout(request.timer);
+		request.detachCancel();
+		this.pending.delete(id);
+		this.releaseIfSpent();
+		return request;
 	}
 
 	/**
@@ -130,14 +194,13 @@ export class EncodingWorkerClient {
 	 */
 	private armWatchdog(id: number, timeoutMs: number): number {
 		return window.setTimeout(() => {
-			const request = this.pending.get(id);
-			if (!request) {
+			if (!this.pending.has(id)) {
 				return;
 			}
-			this.pending.delete(id);
+			// Given up on before the request settles, so settling the last
+			// one releases the wedged worker.
 			this.unavailable = true;
-			this.releaseIfSpent();
-			request.reject(
+			this.settle(id)?.reject(
 				new Error(
 					`Encoding worker did not answer within ${String(
 						timeoutMs,
@@ -257,19 +320,13 @@ export class EncodingWorkerClient {
 				request.onProgress?.(response.percent);
 				break;
 			case 'result':
-				window.clearTimeout(request.timer);
-				this.pending.delete(response.id);
-				this.releaseIfSpent();
-				request.resolve({
+				this.settle(response.id)?.resolve({
 					data: response.data,
 					sampleRateChange: response.sampleRateChange,
 				});
 				break;
 			case 'error':
-				window.clearTimeout(request.timer);
-				this.pending.delete(response.id);
-				this.releaseIfSpent();
-				request.reject(new Error(response.message));
+				this.settle(response.id)?.reject(new Error(response.message));
 				break;
 		}
 	}
@@ -279,10 +336,8 @@ export class EncodingWorkerClient {
 	 * @param error - Rejection error
 	 */
 	private rejectAllPending(error: Error): void {
-		for (const request of this.pending.values()) {
-			window.clearTimeout(request.timer);
-			request.reject(error);
+		for (const id of [...this.pending.keys()]) {
+			this.settle(id)?.reject(error);
 		}
-		this.pending.clear();
 	}
 }

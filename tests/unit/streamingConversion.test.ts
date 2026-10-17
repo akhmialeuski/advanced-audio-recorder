@@ -24,6 +24,8 @@ import {
 import { BufferTarget } from 'mediabunny';
 import { encodableSampleRate } from 'src/audio/AudioEncoder';
 import { partial } from '../helpers/doubles';
+import { CancellationSource } from 'src/utils/cancellation';
+import { flushMicrotasks, outcomeOf, waitFor } from '../helpers/async';
 
 jest.mock('src/audio/AudioEncoder', () =>
 	require('../mocks/modules/streamingAudioEncoder'),
@@ -65,6 +67,102 @@ describe('runStreamingConversion', () => {
 			sampleRateChange: null,
 		});
 		expect(mockConversionExecute).toHaveBeenCalledTimes(1);
+	});
+
+	describe('a cancel while mediabunny converts', () => {
+		/**
+		 * A conversion that runs until mediabunny's own cancel() stops it,
+		 * which then rejects execute the way mediabunny does.
+		 * @param cancel - What cancel() answers with
+		 */
+		function convertingUntilCancelled(cancel: jest.Mock): jest.Mock {
+			let stop = (): void => undefined;
+			const execute = jest.fn(
+				() =>
+					new Promise((_resolve, reject) => {
+						stop = (): void => {
+							reject(new Error('Conversion was canceled.'));
+						};
+					}),
+			);
+			conversionInit.mockResolvedValueOnce({
+				...conversionStub,
+				execute,
+				cancel: jest.fn(() => {
+					stop();
+					return cancel();
+				}),
+			});
+			return execute;
+		}
+
+		it('stops the conversion inside mediabunny', async () => {
+			const cancel = jest.fn().mockResolvedValue(undefined);
+			const execute = convertingUntilCancelled(cancel);
+			const source = new CancellationSource();
+
+			const conversion = runStreamingConversion(
+				inputBlob,
+				'mp3',
+				128000,
+				false,
+				undefined,
+				ChannelMode.Source,
+				source.token,
+			);
+			await waitFor(() => execute.mock.calls.length > 0);
+			source.cancel();
+
+			await expect(conversion).rejects.toThrow('canceled');
+			expect(cancel).toHaveBeenCalledTimes(1);
+		});
+
+		// A cancel() that fails leaves nothing for the caller to do, since the
+		// conversion it was asked to stop has stopped answering already, so it
+		// is logged rather than left as an unhandled rejection.
+		it('logs a cancel that mediabunny could not carry out', async () => {
+			const warn = jest.spyOn(console, 'warn').mockImplementation();
+			const execute = convertingUntilCancelled(
+				jest.fn().mockRejectedValue(new Error('busy')),
+			);
+			const source = new CancellationSource();
+
+			const conversion = runStreamingConversion(
+				inputBlob,
+				'mp3',
+				128000,
+				false,
+				undefined,
+				ChannelMode.Source,
+				source.token,
+			);
+			await waitFor(() => execute.mock.calls.length > 0);
+			source.cancel();
+			await outcomeOf(conversion);
+			await flushMicrotasks();
+
+			const [[logged, reason]] = warn.mock.calls as [[string, Error]];
+			expect(logged).toContain('could not be stopped');
+			expect(reason.message).toBe('busy');
+		});
+
+		it('never starts a conversion cancelled before it began', async () => {
+			const source = new CancellationSource();
+			source.cancel();
+
+			await expect(
+				runStreamingConversion(
+					inputBlob,
+					'mp3',
+					128000,
+					false,
+					undefined,
+					ChannelMode.Source,
+					source.token,
+				),
+			).rejects.toMatchObject({ name: 'AbortError' });
+			expect(mockConversionExecute).not.toHaveBeenCalled();
+		});
 	});
 
 	it('throws for a format without codec mapping', async () => {

@@ -5,6 +5,7 @@
  * @module tests/unit/SplitService.test
  */
 
+import { CancellationSource, NEVER_CANCELLED } from 'src/utils/cancellation';
 import { SplitService } from 'src/recording/SplitService';
 import type { SplitRequest } from 'src/recording/SplitService';
 import { App, TFile } from 'obsidian';
@@ -474,6 +475,7 @@ describe('SplitService', () => {
 				expect.any(ArrayBuffer),
 				'mp3',
 				64000,
+				NEVER_CANCELLED,
 			);
 		});
 
@@ -565,6 +567,41 @@ describe('SplitService', () => {
 
 			// Nothing writes them again, so they stay recoverable where the
 			// user's deletion preference puts them.
+			expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
+				expect.objectContaining({ path: 'Audio/recording-part1.mp3' }),
+			);
+			expect(mockApp.vault.delete).not.toHaveBeenCalled();
+		});
+
+		// A part can fail as a streamed split failure while the cancel is
+		// already pending, such as an encoder that produced nothing because
+		// the user stopped it. The cancel decides, not the shape of the
+		// failure: a whole-file decode cannot be interrupted, so answering
+		// the cancel with one makes the user wait out a decode they stopped.
+		it('answers a part failing after a cancel as cancelled, without decoding the whole file', async () => {
+			const cancellation = new CancellationSource();
+			const { nextPart } = streamingSource(25);
+			nextPart
+				.mockResolvedValueOnce(new ArrayBuffer(8))
+				.mockImplementationOnce(() => {
+					cancellation.cancel();
+					return Promise.reject(
+						new StreamedSplitError(
+							'The part encoder produced no output.',
+						),
+					);
+				});
+
+			const outcome = await service.split(
+				createRequest(),
+				jest.fn(),
+				cancellation.token,
+			);
+
+			expect(outcome).toEqual({ status: 'cancelled' });
+			expect(decode()).not.toHaveBeenCalled();
+			// Nothing writes the parts again, so they go where a cancelled
+			// split's parts go: the trash, recoverable.
 			expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
 				expect.objectContaining({ path: 'Audio/recording-part1.mp3' }),
 			);

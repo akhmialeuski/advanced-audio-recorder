@@ -16,6 +16,12 @@ import type { AudioCodec, AudioEncodingConfig, OutputFormat } from 'mediabunny';
 import { EncodingError, errorMessage } from '../errors';
 import { FORMAT_MP3, FORMAT_FLAC } from '../constants';
 import { FORMAT_REGISTRY, getFormatDescriptor } from './formatRegistry';
+import {
+	NEVER_CANCELLED,
+	onCancelled,
+	throwIfCancelled,
+	type CancellationToken,
+} from '../utils/cancellation';
 
 /**
  * The codec string of AAC-LC, the profile every AAC file this plugin writes is
@@ -119,17 +125,20 @@ export async function ensureEncoderRegistered(format: string): Promise<void> {
  * @param buffer - Source AudioBuffer to encode
  * @param options - Encoding configuration
  * @param onProgress - Optional progress callback (0-100)
+ * @param token - Cancels the encode inside mediabunny
  * @returns Blob containing the encoded audio
+ * @throws The cancellation reason once the token is cancelled
  */
 export async function encodeAudioBuffer(
 	buffer: AudioBuffer,
 	options: EncodingOptions,
 	onProgress?: ProgressCallback,
+	token: CancellationToken = NEVER_CANCELLED,
 ): Promise<Blob> {
 	const { format } = options;
 
 	if (getFormatDescriptor(format)) {
-		return encodeWithMediabunny(buffer, options, onProgress);
+		return encodeWithMediabunny(buffer, options, onProgress, token);
 	}
 
 	throw new EncodingError(`Unsupported format: ${format}`, format);
@@ -181,7 +190,8 @@ export async function encodingConfigFor(
 async function encodeWithMediabunny(
 	buffer: AudioBuffer,
 	options: EncodingOptions,
-	onProgress?: ProgressCallback,
+	onProgress: ProgressCallback | undefined,
+	token: CancellationToken,
 ): Promise<Blob> {
 	const { format, bitrate } = options;
 
@@ -200,14 +210,24 @@ async function encodeWithMediabunny(
 		);
 		output.addAudioTrack(audioSource);
 
-		await output.start();
-		onProgress?.(10);
+		// The whole buffer goes to the encoder in one add, so a cancel has to
+		// reach inside it: cancelling the output releases the encoder and
+		// refuses the samples still to come.
+		const detach = onCancelled(token, () => output.cancel());
+		try {
+			await output.start();
+			onProgress?.(10);
 
-		await audioSource.add(buffer);
-		onProgress?.(80);
+			await audioSource.add(buffer);
+			throwIfCancelled(token);
+			onProgress?.(80);
 
-		await output.finalize();
-		onProgress?.(100);
+			await output.finalize();
+			throwIfCancelled(token);
+			onProgress?.(100);
+		} finally {
+			detach();
+		}
 
 		const mimeType = `audio/${format}`;
 		const resultBuffer = target.buffer;
@@ -216,6 +236,9 @@ async function encodeWithMediabunny(
 		}
 		return new Blob([resultBuffer], { type: mimeType });
 	} catch (error) {
+		// A cancel is the user's, not the encoder's, so it is not reported
+		// as an encoding failure.
+		throwIfCancelled(token);
 		if (error instanceof EncodingError) {
 			throw error;
 		}

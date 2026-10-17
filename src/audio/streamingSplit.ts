@@ -40,6 +40,11 @@ import {
 	probeOfflineEncodingSupport,
 } from './AudioEncoder';
 import { errorMessage } from '../errors';
+import {
+	NEVER_CANCELLED,
+	throwIfCancelled,
+	type CancellationToken,
+} from '../utils/cancellation';
 
 /**
  * How far short of the container's stated end the split plans its parts, in
@@ -124,6 +129,8 @@ export class StreamedSplit implements Disposable {
 		readonly numberOfChannels: number,
 		/** Frames the parts are planned over, a little short of the end. */
 		readonly plannedFrames: number,
+		/** Stops the decode between two of its samples. */
+		private readonly token: CancellationToken,
 	) {}
 
 	/**
@@ -140,12 +147,14 @@ export class StreamedSplit implements Disposable {
 	 * @param bytes - The recording's bytes, which are read and not taken
 	 * @param targetFormat - Format the parts are encoded to
 	 * @param bitrate - Bitrate the parts are encoded at
+	 * @param token - Cancels the split while a part is being encoded
 	 * @returns The open split, or null where it cannot run here
 	 */
 	static async open(
 		bytes: ArrayBuffer,
 		targetFormat: string,
 		bitrate: number,
+		token: CancellationToken = NEVER_CANCELLED,
 	): Promise<StreamedSplit | null> {
 		const input = new Input({
 			source: new BufferSource(bytes),
@@ -189,6 +198,7 @@ export class StreamedSplit implements Disposable {
 				sampleRate,
 				numberOfChannels,
 				Math.max(0, Math.floor(seconds * sampleRate)),
+				token,
 			);
 		} catch (error) {
 			console.warn(
@@ -207,8 +217,9 @@ export class StreamedSplit implements Disposable {
 	 * recording.
 	 * @param endFrame - Frame the part stops before, or null for the last part
 	 * @returns The encoded part
-	 * @throws StreamedSplitError when decoding or encoding fails, or when the
-	 *   audio ends before the part has any frames
+	 * @throws StreamedSplitError when decoding or encoding fails, when the
+	 *   audio ends before the part has any frames, or once the token is
+	 *   cancelled; the caller asks the token to tell a cancel apart
 	 */
 	async nextPart(endFrame: number | null): Promise<ArrayBuffer> {
 		try {
@@ -276,6 +287,9 @@ export class StreamedSplit implements Disposable {
 	): Promise<void> {
 		const partStart = this.consumed;
 		while (endFrame === null || this.consumed < endFrame) {
+			// Asked per decoded sample, since one part of a long recording
+			// is minutes of decoding with no boundary in between.
+			throwIfCancelled(this.token);
 			const sample =
 				this.pending ?? (await nextPresentedSample(this.samples));
 			this.pending = null;

@@ -7,6 +7,13 @@
 import type { RecordingTarget } from 'src/types';
 import { at } from '../helpers/assertions';
 
+/**
+ * The token a conversion nobody can cancel carries: one that answers the
+ * question and has no signal to abort. Matched by shape, since importing the
+ * constant would make this suite wire one more module than a unit test may.
+ */
+const UNCANCELLABLE = { isCancelled: expect.any(Function) };
+
 // Mock AudioEncoder module
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -379,6 +386,7 @@ describe('AudioFormatConverter', () => {
 				expect.objectContaining({ sampleRate: 44100 }),
 				expect.objectContaining({ format: 'wav' }),
 				undefined,
+				UNCANCELLABLE,
 			);
 		});
 
@@ -449,6 +457,7 @@ describe('AudioFormatConverter', () => {
 				true,
 				'source',
 				undefined,
+				UNCANCELLABLE,
 			);
 			expect(conversionInit).not.toHaveBeenCalled();
 			expect(result.data).toBe(bytes);
@@ -475,6 +484,7 @@ describe('AudioFormatConverter', () => {
 				false,
 				'mono-left',
 				undefined,
+				UNCANCELLABLE,
 			);
 		});
 
@@ -621,6 +631,7 @@ describe('AudioFormatConverter', () => {
 				expect.objectContaining({ sampleRate: 44100 }),
 				expect.objectContaining({ format: 'mp3' }),
 				undefined,
+				UNCANCELLABLE,
 			);
 			expect(result).toEqual({
 				data: expect.any(ArrayBuffer),
@@ -682,6 +693,7 @@ describe('AudioFormatConverter', () => {
 				false,
 				'mono-right',
 				undefined,
+				UNCANCELLABLE,
 			);
 		});
 	});
@@ -744,6 +756,7 @@ describe('AudioFormatConverter', () => {
 				true,
 				'source',
 				undefined,
+				UNCANCELLABLE,
 			);
 			// The main-thread pipeline is never touched
 			expect(conversionInit).not.toHaveBeenCalled();
@@ -766,6 +779,7 @@ describe('AudioFormatConverter', () => {
 				false,
 				'mono-left',
 				undefined,
+				UNCANCELLABLE,
 			);
 		});
 
@@ -919,6 +933,7 @@ describe('AudioFormatConverter', () => {
 				expect.anything(),
 				{ format: 'mp4', bitrate: 128000 },
 				undefined,
+				UNCANCELLABLE,
 			);
 			expect(warnSpy).toHaveBeenCalled();
 		});
@@ -999,6 +1014,7 @@ describe('AudioFormatConverter', () => {
 				expect.objectContaining({ sampleRate: 44100 }),
 				{ format: 'mp4', bitrate: 128000 },
 				undefined,
+				UNCANCELLABLE,
 			);
 			expect(warnSpy).toHaveBeenCalled();
 		});
@@ -1016,6 +1032,7 @@ describe('AudioFormatConverter', () => {
 				expect.anything(),
 				{ format: 'aac', bitrate: 256000 },
 				undefined,
+				UNCANCELLABLE,
 			);
 		});
 
@@ -1031,6 +1048,7 @@ describe('AudioFormatConverter', () => {
 				expect.anything(),
 				{ format: 'mp4', bitrate: 128000 },
 				progressFn,
+				UNCANCELLABLE,
 			);
 		});
 	});

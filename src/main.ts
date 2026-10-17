@@ -3,7 +3,7 @@
  * @module main
  */
 
-import { Notice, Plugin, normalizePath } from 'obsidian';
+import { ButtonComponent, Notice, Plugin, normalizePath } from 'obsidian';
 import type { TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
@@ -1516,22 +1516,26 @@ export default class AudioRecorderPlugin extends Plugin {
 					`Recording's ${suggestion.silentSide} channel is silent. `,
 				);
 			}
-			const button = createEl('button', {
-				cls: 'aar-silent-channel-convert',
-				text:
+			const actionEl = createSpan();
+			new ButtonComponent(actionEl)
+				.setButtonText(
 					suggestions.length === 1
 						? 'Convert to mono'
 						: `Convert ${suggestion.file.name}`,
-				attr: { type: 'button' },
-			});
-			button.addEventListener('click', () => {
-				if (suggestions.length === 1) {
-					this.silentChannelNotice?.hide();
-					this.silentChannelNotice = null;
-				}
-				this.openMonoConversion(suggestion.file, suggestion.keepMode);
-			});
-			fragment.append(button);
+				)
+				.setClass('aar-notice-action')
+				.setClass('aar-silent-channel-convert')
+				.onClick(() => {
+					if (suggestions.length === 1) {
+						this.silentChannelNotice?.hide();
+						this.silentChannelNotice = null;
+					}
+					this.openMonoConversion(
+						suggestion.file,
+						suggestion.keepMode,
+					);
+				});
+			fragment.append(actionEl);
 		}
 		this.silentChannelNotice = new Notice(fragment, 0);
 	}

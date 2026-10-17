@@ -1370,8 +1370,10 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			notice.message,
 			MODAL.silentChannelConvert,
 		);
+		// A native button, Obsidian's ButtonComponent, is what makes the
+		// action reachable from the keyboard. A notice holds no form, so the
+		// button's type submits nothing whatever it is.
 		expect(button.tagName).toBe('BUTTON');
-		expect(button.type).toBe('button');
 		button.click();
 		expect(notice.hide).toHaveBeenCalled();
 		expect(openSpy).toHaveBeenCalledWith(file, 'mono-left');
