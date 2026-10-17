@@ -20,6 +20,7 @@
  */
 
 import type { AudioRecorderSettings } from './settingsSchema';
+import type { Refusable } from '../utils/refusal';
 
 /**
  * Every kind of profile the plugin stores, as a stored entry names itself.
@@ -143,15 +144,15 @@ export function profileIdNamed(
 	profiles: readonly Profile[],
 	kind: ProfileKindId,
 	name: string,
-): { id: string } | { refusal: string } {
+): Refusable<string> {
 	const wanted = name.trim().toLowerCase();
 	if (wanted === NO_PROFILE_NAME) {
-		return { id: '' };
+		return { value: '' };
 	}
 	const ofKind = profilesOfKind(profiles, kind);
 	const profile = ofKind.find((p) => p.name.toLowerCase() === wanted);
 	return profile
-		? { id: profile.id }
+		? { value: profile.id }
 		: {
 				refusal: `No profile named "${name}". The ones to choose from: ${[
 					NO_PROFILE_NAME,

@@ -41,11 +41,10 @@ import {
 	cliSwitch,
 	cliText,
 	flagParam,
-	isRefusal,
 	valueParam,
-	type CliRead,
 } from '../obsidian/cliArgs';
 import type { FileContext } from './PluginAction';
+import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** Answers once the run is over instead of once it started. */
 export const WAIT_FLAG = 'wait';
@@ -68,7 +67,7 @@ interface ChoiceOption {
 	 */
 	readonly read: (
 		args: CliData,
-	) => CliRead<((run: AudioRecorderSettings) => void) | null>;
+	) => Refusable<((run: AudioRecorderSettings) => void) | null>;
 }
 
 /**
@@ -281,12 +280,12 @@ export interface TranscriptionRun {
  * dialog's controls change its own copy, checking each value first.
  * @param live - The plugin's settings, which name the profiles to pick from
  * @param args - The arguments as typed
- * @returns The run, or the sentence naming what was typed wrong
+ * @returns The run, or the refusal naming what was typed wrong
  */
 export function transcriptionRun(
 	live: AudioRecorderSettings,
 	args: CliData,
-): TranscriptionRun | string {
+): Refusable<TranscriptionRun> {
 	const changes: ((run: AudioRecorderSettings) => void)[] = [];
 	const language = cliText(args, 'language');
 	if (language !== null) {
@@ -297,7 +296,7 @@ export function transcriptionRun(
 	for (const option of CHOICES) {
 		const read = option.read(args);
 		if (isRefusal(read)) {
-			return read.refusal;
+			return read;
 		}
 		if (read.value !== null) {
 			changes.push(read.value);
@@ -306,7 +305,7 @@ export function transcriptionRun(
 	for (const option of SWITCHES) {
 		const read = cliSwitch(args, option.param);
 		if (isRefusal(read)) {
-			return read.refusal;
+			return read;
 		}
 		const { value } = read;
 		if (value !== null) {
@@ -322,23 +321,26 @@ export function transcriptionRun(
 			continue;
 		}
 		const picked = profileIdNamed(live.profiles, option.kind, name);
-		if ('refusal' in picked) {
-			return picked.refusal;
+		if (isRefusal(picked)) {
+			return picked;
 		}
-		picks.push({ kind: option.kind, id: picked.id });
+		const id = picked.value;
+		picks.push({ kind: option.kind, id });
 		changes.push((run) => {
-			setSelectedProfileId(run, option.kind, picked.id);
+			setSelectedProfileId(run, option.kind, id);
 		});
 	}
 	return {
-		apply: (base) => {
-			const run: AudioRecorderSettings = { ...base };
-			for (const change of changes) {
-				change(run);
-			}
-			return run;
+		value: {
+			apply: (base) => {
+				const run: AudioRecorderSettings = { ...base };
+				for (const change of changes) {
+					change(run);
+				}
+				return run;
+			},
+			picks,
 		},
-		picks,
 	};
 }
 
@@ -409,10 +411,11 @@ export async function transcribeFromCli(
 ): Promise<string> {
 	const { file, services } = context;
 	const live = services.getSettings();
-	const run = transcriptionRun(live, args);
-	if (typeof run === 'string') {
-		return run;
+	const read = transcriptionRun(live, args);
+	if (isRefusal(read)) {
+		return read.refusal;
 	}
+	const run = read.value;
 	// Asked before anything opens: the same conditions the run refuses on, so
 	// a job that cannot work is answered with its reason rather than started.
 	const refusal = transcriptionRefusal(run.apply(live));

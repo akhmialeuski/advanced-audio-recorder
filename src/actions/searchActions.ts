@@ -24,7 +24,6 @@ import {
 	cliNumber,
 	cliText,
 	flagParam,
-	isRefusal,
 	valueParam,
 } from '../obsidian/cliArgs';
 import type {
@@ -33,6 +32,7 @@ import type {
 	SearchAction,
 	SearchServices,
 } from './PluginAction';
+import { isRefusal } from '../utils/refusal';
 
 /** Needs nothing beyond the plugin being loaded. */
 const always = (): boolean => true;
@@ -244,7 +244,7 @@ export function searchActionFamily(
 	return {
 		actions: SEARCH_ACTIONS,
 		activeTargets: () => [services],
-		cliTarget: { params: {}, resolve: () => [services] },
+		cliTarget: { params: {}, resolve: () => ({ value: [services] }) },
 		describe: () => 'the vault',
 	};
 }

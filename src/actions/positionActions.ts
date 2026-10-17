@@ -18,7 +18,7 @@ import {
 } from '../obsidian/timecodeRefs';
 import { formatTimecode } from '../utils/TimeUtils';
 import { isAudioFile } from '../utils/audioFile';
-import { cliText, cliTime, isRefusal, valueParam } from '../obsidian/cliArgs';
+import { cliText, cliTime, valueParam } from '../obsidian/cliArgs';
 import type { PlaybackControlsState } from '../player/playbackControls';
 import type {
 	ActionFamily,
@@ -34,6 +34,7 @@ import {
 	SINGLE_RECORDING_PARAMS,
 	namedRecordings,
 } from './recordingTargets';
+import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** Where in the recording, on the command line. */
 export const AT_PARAM = 'at';
@@ -225,10 +226,10 @@ function namedPosition(
 	services: ActionServices,
 	playback: () => PlaybackControlsState | null,
 	args: CliData,
-): PositionContext[] | string {
+): Refusable<PositionContext[]> {
 	const at = cliTime(args, AT_PARAM);
 	if (isRefusal(at)) {
-		return at.refusal;
+		return at;
 	}
 	// Any parameter naming a recording or its note names the target; only
 	// with none of them is the recording playing in Obsidian the one meant.
@@ -238,33 +239,44 @@ function namedPosition(
 	if (!named) {
 		const playing = playbackPosition(services, playback());
 		if (playing) {
-			return [
-				at.value === null ? playing : { ...playing, seconds: at.value },
-			];
+			return {
+				value: [
+					at.value === null
+						? playing
+						: { ...playing, seconds: at.value },
+				],
+			};
 		}
 	}
 	if (at.value === null) {
-		return `Name the time with ${AT_PARAM}=<seconds|m:ss|h:mm:ss>, or play the recording in Obsidian.`;
+		return {
+			refusal: `Name the time with ${AT_PARAM}=<seconds|m:ss|h:mm:ss>, or play the recording in Obsidian.`,
+		};
 	}
 	// A time belongs to one recording, so a note of several is answered
 	// with the names to pick from, never with the advice to run on each.
 	const recordings = namedRecordings(services, args, { several: false });
-	if (typeof recordings === 'string') {
+	if (isRefusal(recordings)) {
 		return recordings;
 	}
-	const only = recordings.length === 1 ? recordings[0] : undefined;
+	const only =
+		recordings.value.length === 1 ? recordings.value[0] : undefined;
 	if (!only) {
-		return `A time belongs to one recording; name it with ${RECORDING_PARAM}=<name>.`;
+		return {
+			refusal: `A time belongs to one recording; name it with ${RECORDING_PARAM}=<name>.`,
+		};
 	}
-	return [
-		{
-			file: only.file,
-			seconds: at.value,
-			editable: true,
-			...(only.note ? { note: only.note } : {}),
-			services,
-		},
-	];
+	return {
+		value: [
+			{
+				file: only.file,
+				seconds: at.value,
+				editable: true,
+				...(only.note ? { note: only.note } : {}),
+				services,
+			},
+		],
+	};
 }
 
 /**

@@ -28,6 +28,7 @@ import {
 } from 'src/ui/TranscriptionModal';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { recordingVault } from '../helpers/recordingVault';
+import { valueOrThrow } from 'src/utils/refusal';
 
 jest.mock('src/ui/TranscriptionModal', () => ({
 	TranscriptionModal: jest.fn(() => ({ open: jest.fn() })),
@@ -114,22 +115,18 @@ function runOf(args: CliData): ReturnType<typeof transcriptionRun> {
  */
 function applied(args: CliData): AudioRecorderSettings {
 	const sut = createSut();
-	const run = transcriptionRun(sut.settings, args);
-	if (typeof run === 'string') {
-		throw new Error(run);
-	}
-	return run.apply(sut.settings);
+	return valueOrThrow(transcriptionRun(sut.settings, args)).apply(
+		sut.settings,
+	);
 }
 
 describe('the choices a command line makes for one run', () => {
 	it('changes nothing when nothing is typed', () => {
 		const sut = createSut();
-		const run = transcriptionRun(sut.settings, {});
+		const run = valueOrThrow(transcriptionRun(sut.settings, {}));
 
 		expect(run).toEqual({ apply: expect.any(Function), picks: [] });
-		expect(typeof run !== 'string' && run.apply(sut.settings)).toEqual(
-			sut.settings,
-		);
+		expect(run.apply(sut.settings)).toEqual(sut.settings);
 	});
 
 	it('sets each dropdown of the dialog', () => {
@@ -171,10 +168,9 @@ describe('the choices a command line makes for one run', () => {
 
 	it('picks a profile by its name, whatever its case', () => {
 		const sut = createSut();
-		const run = transcriptionRun(sut.settings, { participants: 'team' });
-		if (typeof run === 'string') {
-			throw new Error(run);
-		}
+		const run = valueOrThrow(
+			transcriptionRun(sut.settings, { participants: 'team' }),
+		);
 
 		expect(run.picks).toEqual([
 			{ kind: ProfileKindId.Participants, id: TEAM.id },
@@ -188,22 +184,21 @@ describe('the choices a command line makes for one run', () => {
 	});
 
 	it('picks no profile with none', () => {
-		expect(runOf({ dictionary: 'none' })).toEqual(
-			expect.objectContaining({
+		expect(runOf({ dictionary: 'none' })).toEqual({
+			value: expect.objectContaining({
 				picks: [{ kind: ProfileKindId.Dictionary, id: '' }],
 			}),
-		);
+		});
 	});
 
 	it('leaves the plugin settings as they are', () => {
 		const sut = createSut();
-		const run = transcriptionRun(sut.settings, {
-			diarize: 'on',
-			participants: 'Team',
-		});
-		if (typeof run === 'string') {
-			throw new Error(run);
-		}
+		const run = valueOrThrow(
+			transcriptionRun(sut.settings, {
+				diarize: 'on',
+				participants: 'Team',
+			}),
+		);
 
 		run.apply(sut.settings);
 
@@ -215,10 +210,9 @@ describe('the choices a command line makes for one run', () => {
 
 	it('lays its choices over the settings as they stand when read', () => {
 		const sut = createSut();
-		const run = transcriptionRun(sut.settings, { language: 'de' });
-		if (typeof run === 'string') {
-			throw new Error(run);
-		}
+		const run = valueOrThrow(
+			transcriptionRun(sut.settings, { language: 'de' }),
+		);
 
 		const later = { ...sut.settings, whisperApiKey: 'sk-new' };
 
@@ -250,7 +244,9 @@ describe('the choices a command line makes for one run', () => {
 				/^No profile named "Board"\. The ones to choose from: none, Team\.$/,
 		},
 	])('refuses $args', ({ args, refusal }) => {
-		expect(runOf(args)).toMatch(refusal);
+		expect(runOf(args)).toEqual({
+			refusal: expect.stringMatching(refusal),
+		});
 	});
 });
 

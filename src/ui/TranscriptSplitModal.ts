@@ -32,6 +32,7 @@ import {
 	type LineSpeakerOption,
 } from '../speakers/transcriptRows';
 import { parseTimecode } from '../utils/TimeUtils';
+import { isRefusal } from '../utils/refusal';
 import { PluginModal } from './PluginModal';
 import { TimeSpanSlider } from './TimeSpanSlider';
 import {
@@ -107,11 +108,11 @@ export class TranscriptSplitModal extends PluginModal {
 		const { contentEl } = this;
 		contentEl.empty();
 		this.renderSource(this.context.audio);
-		if (typeof prepared === 'string') {
-			this.renderEmptyState(prepared);
+		if (isRefusal(prepared)) {
+			this.renderEmptyState(prepared.refusal);
 			return;
 		}
-		this.renderForm(prepared);
+		this.renderForm(prepared.value);
 	}
 
 	/**

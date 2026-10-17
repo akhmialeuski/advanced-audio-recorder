@@ -16,6 +16,7 @@
 
 import { hostProcess } from '../platform/hostProcess';
 import { errorMessage } from '../errors';
+import { isRefusal, valueOrThrow, type Refusable } from '../utils/refusal';
 
 /** One grant handed back to a display-media request. */
 interface DisplayMediaGrant {
@@ -78,11 +79,6 @@ interface LoopbackHost {
 	readonly install: InstallDisplayMediaHandler;
 	/** The source list the grant's video half is named from. */
 	readonly capturer: DesktopCapturer;
-}
-
-/** Why the system output cannot be granted here, in the user's words. */
-interface LoopbackRefusal {
-	readonly refusal: string;
 }
 
 /**
@@ -166,7 +162,7 @@ function desktopCapturer(): DesktopCapturer | null {
  * actually stopped it.
  * @returns The three halves of a grant, or the reason there are not three
  */
-function loopbackHost(): LoopbackHost | LoopbackRefusal {
+function loopbackHost(): Refusable<LoopbackHost> {
 	if (hostProcess()?.platform !== LOOPBACK_GRANT_PLATFORM) {
 		return {
 			refusal:
@@ -192,7 +188,7 @@ function loopbackHost(): LoopbackHost | LoopbackRefusal {
 				'audio grant needs. Record a loopback input device instead.',
 		};
 	}
-	return { session, install, capturer };
+	return { value: { session, install, capturer } };
 }
 
 /**
@@ -203,7 +199,7 @@ function loopbackHost(): LoopbackHost | LoopbackRefusal {
  * @returns True when a grant has everything it needs here
  */
 export function isSystemAudioLoopbackAvailable(): boolean {
-	return !('refusal' in loopbackHost());
+	return !isRefusal(loopbackHost());
 }
 
 /**
@@ -239,11 +235,7 @@ export function isSystemAudioLoopbackAvailable(): boolean {
  *   none and a capture that is not one.
  */
 export async function captureSystemAudioStream(): Promise<MediaStream> {
-	const host = loopbackHost();
-	if ('refusal' in host) {
-		throw new Error(host.refusal);
-	}
-	const { session, install, capturer } = host;
+	const { session, install, capturer } = valueOrThrow(loopbackHost());
 	let installed = false;
 	try {
 		const screen = await screenForGrant(capturer);

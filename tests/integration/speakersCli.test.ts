@@ -157,9 +157,9 @@ describe('reading the names typed', () => {
 			],
 		},
 	])('reads $map', ({ map, names }) => {
-		expect(parseSpeakerMap(roster(), map)).toEqual(
-			new Map(names as [string, string][]),
-		);
+		expect(parseSpeakerMap(roster(), map)).toEqual({
+			value: new Map(names as [string, string][]),
+		});
 	});
 
 	it.each([
@@ -178,7 +178,7 @@ describe('reading the names typed', () => {
 			refusal: 'map= names no speaker. Use map="<label>=<name>".',
 		},
 	])('refuses $map', ({ map, refusal }) => {
-		expect(parseSpeakerMap(roster(), map)).toBe(refusal);
+		expect(parseSpeakerMap(roster(), map)).toEqual({ refusal });
 	});
 
 	it('writes nothing when the names are typed wrong', async () => {

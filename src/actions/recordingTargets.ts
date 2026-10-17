@@ -20,15 +20,9 @@ import { isAudioFile } from '../utils/audioFile';
 import { linkAtColumn } from '../obsidian/sourceLinks';
 import { recordingsInNote } from '../obsidian/noteRecordings';
 import { hasTimecodeSubpath } from '../player/timecodeLinks';
-import {
-	cliFlag,
-	cliText,
-	flagParam,
-	isRefusal,
-	valueParam,
-	type CliRead,
-} from '../obsidian/cliArgs';
+import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
 import type { ActionServices, FileContext, LinkLocation } from './PluginAction';
+import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** Names a recording or a note by how a wikilink resolves it. */
 export const FILE_PARAM = 'file';
@@ -80,7 +74,10 @@ export const RECORDING_TARGET_PARAMS: CliFlags = {
  * @param args - The arguments as typed
  * @returns The file, null when neither parameter was given, or the refusal
  */
-export function namedVaultFile(app: App, args: CliData): CliRead<TFile | null> {
+export function namedVaultFile(
+	app: App,
+	args: CliData,
+): Refusable<TFile | null> {
 	const path = cliText(args, PATH_PARAM);
 	if (path !== null) {
 		const file = app.vault.getFileByPath(normalizePath(path));
@@ -119,7 +116,7 @@ function fileNamed(app: App, name: string): TFile | null {
  * @param args - The arguments as typed
  * @returns The note, null when not given, or the refusal
  */
-function namedNote(app: App, args: CliData): CliRead<TFile | null> {
+function namedNote(app: App, args: CliData): Refusable<TFile | null> {
 	const name = cliText(args, NOTE_PARAM);
 	if (name === null) {
 		return { value: null };
@@ -273,19 +270,22 @@ function recordingsOfNote(
 	note: TFile,
 	args: CliData,
 	reach: RecordingReach,
-): FileContext[] | string {
+): Refusable<FileContext[]> {
 	const recordings = recordingsInNote(services.app, note);
 	if (recordings.length === 0) {
-		return `${note.path} links no recording.`;
+		return { refusal: `${note.path} links no recording.` };
 	}
-	const toContexts = (files: readonly TFile[]): FileContext[] =>
-		files.map((file) => ({ file, note, services, noteFixed: true }));
+	const toContexts = (files: readonly TFile[]): Refusable<FileContext[]> => ({
+		value: files.map((file) => ({ file, note, services, noteFixed: true })),
+	});
 	const name = cliText(args, RECORDING_PARAM);
 	if (name !== null) {
 		const picked = pickRecording(services.app, note, recordings, name);
 		return picked
 			? toContexts([picked])
-			: `${note.path} links no recording named "${name}". It links: ${listed(recordings)}.`;
+			: {
+					refusal: `${note.path} links no recording named "${name}". It links: ${listed(recordings)}.`,
+				};
 	}
 	if (recordings.length === 1 || cliFlag(args, ALL_FLAG)) {
 		return toContexts(recordings);
@@ -293,7 +293,9 @@ function recordingsOfNote(
 	const choose = reach.several
 		? `Name one with ${RECORDING_PARAM}=<name>, or add ${ALL_FLAG} to run on each.`
 		: `Name one with ${RECORDING_PARAM}=<name>.`;
-	return `${note.path} links ${String(recordings.length)} recordings: ${listed(recordings)}. ${choose}`;
+	return {
+		refusal: `${note.path} links ${String(recordings.length)} recordings: ${listed(recordings)}. ${choose}`,
+	};
 }
 
 /**
@@ -304,28 +306,32 @@ function recordingsOfNote(
  * @param args - The arguments as typed
  * @param reach - Whether the command runs on several recordings, as every
  *   file action does
- * @returns The targets, or the sentence saying why there are none
+ * @returns The targets, or the refusal saying why there are none
  */
 export function namedRecordings(
 	services: ActionServices,
 	args: CliData,
 	reach: RecordingReach = { several: true },
-): FileContext[] | string {
+): Refusable<FileContext[]> {
 	const named = namedVaultFile(services.app, args);
 	if (isRefusal(named)) {
-		return named.refusal;
+		return named;
 	}
 	const target = named.value ?? services.app.workspace.getActiveFile();
 	if (!target) {
-		return `Name a recording or a note with ${FILE_PARAM}=<name> or ${PATH_PARAM}=<vault path>, or open one in Obsidian.`;
+		return {
+			refusal: `Name a recording or a note with ${FILE_PARAM}=<name> or ${PATH_PARAM}=<vault path>, or open one in Obsidian.`,
+		};
 	}
 	if (isAudioFile(target)) {
 		if (cliText(args, RECORDING_PARAM) !== null) {
-			return `${RECORDING_PARAM}= picks a recording of a note, and ${target.path} is a recording itself.`;
+			return {
+				refusal: `${RECORDING_PARAM}= picks a recording of a note, and ${target.path} is a recording itself.`,
+			};
 		}
 		const note = namedNote(services.app, args);
 		if (isRefusal(note)) {
-			return note.refusal;
+			return note;
 		}
 		// What a command does to the note - writes a transcript into it,
 		// removes links from it - is only right for a note of this recording.
@@ -333,19 +339,30 @@ export function namedRecordings(
 			note.value &&
 			!recordingsInNote(services.app, note.value).includes(target)
 		) {
-			return `${note.value.path} does not link ${target.path}. Name the note the recording belongs to.`;
+			return {
+				refusal: `${note.value.path} does not link ${target.path}. Name the note the recording belongs to.`,
+			};
 		}
-		return [
-			note.value
-				? { file: target, note: note.value, services, noteFixed: true }
-				: { file: target, services, noteFixed: true },
-		];
+		return {
+			value: [
+				note.value
+					? {
+							file: target,
+							note: note.value,
+							services,
+							noteFixed: true,
+						}
+					: { file: target, services, noteFixed: true },
+			],
+		};
 	}
 	if (target.extension !== 'md') {
-		return `${target.path} is neither a recording nor a note.`;
+		return { refusal: `${target.path} is neither a recording nor a note.` };
 	}
 	if (cliText(args, NOTE_PARAM) !== null) {
-		return `${NOTE_PARAM}= names the note of a recording, and ${target.path} is a note itself.`;
+		return {
+			refusal: `${NOTE_PARAM}= names the note of a recording, and ${target.path} is a note itself.`,
+		};
 	}
 	return recordingsOfNote(services, target, args, reach);
 }

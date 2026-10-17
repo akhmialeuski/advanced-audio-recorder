@@ -14,7 +14,6 @@ import {
 	cliText,
 	cliTime,
 	flagParam,
-	isRefusal,
 	valueParam,
 } from 'src/obsidian/cliArgs';
 
@@ -158,15 +157,6 @@ describe('a time', () => {
 		expect(cliTime({ at: 'noon' }, 'at')).toEqual({
 			refusal: 'at=noon is not a time: use seconds, m:ss or h:mm:ss.',
 		});
-	});
-});
-
-describe('telling a refusal from a value', () => {
-	it.each([
-		{ read: { refusal: 'no' }, refused: true },
-		{ read: { value: null }, refused: false },
-	])('reads $read as refused: $refused', ({ read, refused }) => {
-		expect(isRefusal(read)).toBe(refused);
 	});
 });
 

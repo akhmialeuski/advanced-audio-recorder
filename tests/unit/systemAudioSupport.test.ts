@@ -436,6 +436,31 @@ describe('captureSystemAudioStream', () => {
 		);
 	});
 
+	// A grant reads the electron module twice, once for the session and once
+	// for the capturer, and only the session lookup sits inside a guard of
+	// its own. A require that answers the first and fails the second has to
+	// end in the refusal a user can act on, not in the loader's own wording.
+	it('refuses for the missing source list when electron fails to load the second time', async () => {
+		usePlatform('win32');
+		let loads = 0;
+		restore.push(
+			useElectron(electronWithHandler(), () => {
+				loads += 1;
+				if (loads > 1) {
+					throw new Error("Cannot find module 'electron'");
+				}
+			}),
+		);
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			new Error(
+				'This Obsidian build exposes no screen source list, which a ' +
+					'system audio grant needs. Record a loopback input device ' +
+					'instead.',
+			),
+		);
+	});
+
 	// Asked anyway on a platform Electron grants no loopback on, the request
 	// still reaches getDisplayMedia, which raises the operating system's own
 	// screen-share prompt and then answers with a stream carrying no audio.

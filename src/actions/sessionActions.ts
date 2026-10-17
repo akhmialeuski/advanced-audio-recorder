@@ -25,7 +25,6 @@ import {
 	choiceParam,
 	cliChoice,
 	cliText,
-	isRefusal,
 	valueParam,
 } from '../obsidian/cliArgs';
 import type {
@@ -34,6 +33,7 @@ import type {
 	SessionServices,
 } from './PluginAction';
 import { LABEL_PARAM, MARKER_LABEL_PARAMS } from './positionActions';
+import { isRefusal } from '../utils/refusal';
 
 /** Availability gate for the action that starts a session as well as ends it. */
 const always = (): boolean => true;
@@ -318,7 +318,7 @@ export function sessionActionFamily(
 	return {
 		actions: SESSION_ACTIONS,
 		activeTargets: () => [services],
-		cliTarget: { params: {}, resolve: () => [services] },
+		cliTarget: { params: {}, resolve: () => ({ value: [services] }) },
 		describe: () => 'the recorder',
 	};
 }

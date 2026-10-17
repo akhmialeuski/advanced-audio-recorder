@@ -18,6 +18,7 @@ import type {
 	FolderAction,
 	FolderContext,
 } from './PluginAction';
+import type { Refusable } from '../utils/refusal';
 
 /** Names the folder on the command line. */
 export const FOLDER_PARAM = 'folder';
@@ -111,21 +112,26 @@ function foldersWithRecordings(app: App): TFolder[] {
 function namedFolder(
 	services: ActionServices,
 	args: CliData,
-): FolderContext[] | string {
+): Refusable<FolderContext[]> {
 	const path = cliText(args, FOLDER_PARAM);
 	if (path === null) {
-		return `Name the folder with ${FOLDER_PARAM}=<path>; ${FOLDER_PARAM}=/ is the whole vault.`;
+		return {
+			refusal: `Name the folder with ${FOLDER_PARAM}=<path>; ${FOLDER_PARAM}=/ is the whole vault.`,
+		};
 	}
 	const folder =
 		path === '/'
 			? services.app.vault.getRoot()
 			: services.app.vault.getAbstractFileByPath(normalizePath(path));
 	if (folder instanceof TFolder) {
-		return [{ folder, services }];
+		return { value: [{ folder, services }] };
 	}
-	return folder instanceof TFile
-		? `${path} is a file, not a folder.`
-		: `No folder at "${path}" in this vault.`;
+	return {
+		refusal:
+			folder instanceof TFile
+				? `${path} is a file, not a folder.`
+				: `No folder at "${path}" in this vault.`,
+	};
 }
 
 /**

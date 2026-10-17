@@ -234,8 +234,8 @@ export function playbackActionFamily(
 			resolve: () => {
 				const targets = playing();
 				return targets.length > 0
-					? targets
-					: 'Nothing is playing in Obsidian.';
+					? { value: targets }
+					: { refusal: 'Nothing is playing in Obsidian.' };
 			},
 		},
 		describe: (state) => state.recordingPath,

@@ -37,11 +37,11 @@ import {
 	cliFlag,
 	cliText,
 	flagParam,
-	isRefusal,
 	valueParam,
 } from '../obsidian/cliArgs';
 import type { ActionServices, FileContext } from './PluginAction';
 import type { TFile } from 'obsidian';
+import { isRefusal } from '../utils/refusal';
 
 /**
  * One sentence saying what the top-up did.

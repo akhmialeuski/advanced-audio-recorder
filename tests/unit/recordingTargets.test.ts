@@ -17,6 +17,7 @@ import type { FileContext } from 'src/actions/PluginAction';
 import { recordingVault } from '../helpers/recordingVault';
 import { createMarkdownView } from '../helpers/createApp';
 import { asMockWorkspace } from '../helpers/obsidianMock';
+import { valueOrThrow } from 'src/utils/refusal';
 
 const STANDUP = 'Recordings/standup.webm';
 const RETRO = 'Recordings/retro.mp3';
@@ -37,10 +38,8 @@ function createSut(
 }
 
 /** The recordings of the targets, by path, with the note each came through. */
-const paths = (targets: readonly FileContext[] | string): unknown =>
-	typeof targets === 'string'
-		? targets
-		: targets.map((target) => [target.file.path, target.note?.path]);
+const paths = (targets: readonly FileContext[]): unknown =>
+	targets.map((target) => [target.file.path, target.note?.path]);
 
 describe('the recordings a note links', () => {
 	it('lists them in the order the note does', () => {
@@ -98,10 +97,12 @@ describe('the recordings a note links', () => {
 
 		expect(
 			paths(
-				namedRecordings(sut.services, {
-					path: STANDUP,
-					note: 'Team Meeting',
-				}),
+				valueOrThrow(
+					namedRecordings(sut.services, {
+						path: STANDUP,
+						note: 'Team Meeting',
+					}),
+				),
 			),
 		).toEqual([[STANDUP, MEETING]]);
 	});
@@ -273,9 +274,11 @@ describe('the recordings a command line names', () => {
 	it('is the recording named', () => {
 		const sut = createSut();
 
-		expect(paths(namedRecordings(sut.services, { path: STANDUP }))).toEqual(
-			[[STANDUP, undefined]],
-		);
+		expect(
+			paths(
+				valueOrThrow(namedRecordings(sut.services, { path: STANDUP })),
+			),
+		).toEqual([[STANDUP, undefined]]);
 	});
 
 	it.each([
@@ -297,9 +300,9 @@ describe('the recordings a command line names', () => {
 	])('is found by $how, as Obsidian finds a file', ({ args, note }) => {
 		const sut = createSut();
 
-		expect(paths(namedRecordings(sut.services, args))).toEqual([
-			[STANDUP, note],
-		]);
+		expect(
+			paths(valueOrThrow(namedRecordings(sut.services, args))),
+		).toEqual([[STANDUP, note]]);
 	});
 
 	it('carries the note named beside it', () => {
@@ -307,10 +310,12 @@ describe('the recordings a command line names', () => {
 
 		expect(
 			paths(
-				namedRecordings(sut.services, {
-					path: STANDUP,
-					note: 'Team Meeting',
-				}),
+				valueOrThrow(
+					namedRecordings(sut.services, {
+						path: STANDUP,
+						note: 'Team Meeting',
+					}),
+				),
 			),
 		).toEqual([[STANDUP, MEETING]]);
 	});
@@ -318,16 +323,20 @@ describe('the recordings a command line names', () => {
 	it('is the only recording of the note named', () => {
 		const sut = createSut({ meeting: [RETRO] });
 
-		expect(paths(namedRecordings(sut.services, { path: MEETING }))).toEqual(
-			[[RETRO, MEETING]],
-		);
+		expect(
+			paths(
+				valueOrThrow(namedRecordings(sut.services, { path: MEETING })),
+			),
+		).toEqual([[RETRO, MEETING]]);
 	});
 
 	it('is every recording of the note with all', () => {
 		const sut = createSut();
 
 		expect(
-			namedRecordings(sut.services, { path: MEETING, all: 'true' }),
+			valueOrThrow(
+				namedRecordings(sut.services, { path: MEETING, all: 'true' }),
+			),
 		).toHaveLength(2);
 	});
 
@@ -339,14 +348,18 @@ describe('the recordings a command line names', () => {
 		const sut = createSut();
 
 		expect(
-			paths(namedRecordings(sut.services, { path: MEETING, recording })),
+			paths(
+				valueOrThrow(
+					namedRecordings(sut.services, { path: MEETING, recording }),
+				),
+			),
 		).toEqual([[RETRO, MEETING]]);
 	});
 
 	it('stands in the active file when nothing is named', () => {
 		const sut = createSut({ active: STANDUP });
 
-		expect(paths(namedRecordings(sut.services, {}))).toEqual([
+		expect(paths(valueOrThrow(namedRecordings(sut.services, {})))).toEqual([
 			[STANDUP, undefined],
 		]);
 	});
@@ -411,7 +424,7 @@ describe('the recordings a command line names', () => {
 	])('refuses when $name', ({ args, refusal }) => {
 		const sut = createSut();
 
-		expect(namedRecordings(sut.services, args)).toBe(refusal);
+		expect(namedRecordings(sut.services, args)).toEqual({ refusal });
 	});
 });
 

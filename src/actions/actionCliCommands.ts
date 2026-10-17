@@ -18,6 +18,7 @@ import { errorMessage } from '../errors';
 import { cliFlag, flagParam } from '../obsidian/cliArgs';
 import type { CliCommand } from '../obsidian/cliCommands';
 import type { ActionFamily, PluginCommand } from './PluginAction';
+import { isRefusal } from '../utils/refusal';
 
 /** The flag that opens an action's dialog instead of running it here. */
 export const DIALOG_FLAG = 'dialog';
@@ -128,10 +129,11 @@ export function actionCliCommands<TContext>(
 		description: action.cli.description,
 		flags: withoutEmpty(actionCliParams(family, action)),
 		handler: async (args: CliData): Promise<string> => {
-			const targets = await family.cliTarget.resolve(args);
-			if (typeof targets === 'string') {
-				return targets;
+			const resolved = await family.cliTarget.resolve(args);
+			if (isRefusal(resolved)) {
+				return resolved.refusal;
 			}
+			const targets = resolved.value;
 			if (targets.length === 1) {
 				return runOnTarget(
 					family,

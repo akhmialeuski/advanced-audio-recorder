@@ -43,7 +43,6 @@ import {
 	cliNumber,
 	cliText,
 	flagParam,
-	isRefusal,
 	valueParam,
 } from '../obsidian/cliArgs';
 import type {
@@ -55,6 +54,7 @@ import type {
 import { FILE_TARGET_PARAMS, namedVaultFile } from './recordingTargets';
 import { editorLines, noteLines } from './transcriptLines';
 import { findNoteView } from '../utils/noteViews';
+import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** The lines a selection holds text on, and where it starts and ends. */
 interface SelectedLines {
@@ -221,7 +221,7 @@ const LINES_CHANGED =
 export function speakerChoiceNamed(
 	options: readonly LineSpeakerOption[],
 	name: string,
-): LineSpeakerChoice | string {
+): Refusable<LineSpeakerChoice> {
 	const wanted = name.toLowerCase();
 	const option = options.find((candidate) =>
 		candidate.choice.kind === 'existing' ||
@@ -230,7 +230,7 @@ export function speakerChoiceNamed(
 			: candidate.value === wanted,
 	);
 	if (option) {
-		return option.choice;
+		return { value: option.choice };
 	}
 	const names = options.map((candidate) =>
 		candidate.choice.kind === 'existing' ||
@@ -238,7 +238,9 @@ export function speakerChoiceNamed(
 			? candidate.choice.name
 			: candidate.value,
 	);
-	return `No speaker "${name}" to choose. Choose one of: ${names.join(', ')}.`;
+	return {
+		refusal: `No speaker "${name}" to choose. Choose one of: ${names.join(', ')}.`,
+	};
 }
 
 /**
@@ -254,10 +256,10 @@ function typedSpeaker(
 	param: string,
 	options: readonly LineSpeakerOption[],
 	startValue: string,
-): LineSpeakerChoice | string {
+): Refusable<LineSpeakerChoice> {
 	const typed = cliText(args, param);
 	return typed === null
-		? pickedChoice(startValue)
+		? { value: pickedChoice(startValue) }
 		: speakerChoiceNamed(options, typed);
 }
 
@@ -275,34 +277,34 @@ async function splitFromCli(
 	const { app } = context.services;
 	const options = dialogOptions(context);
 	const prepared = await prepareSplit(app, options, context);
-	if (typeof prepared === 'string') {
-		return prepared;
+	if (isRefusal(prepared)) {
+		return prepared.refusal;
 	}
-	const defaults = splitDefaults(prepared);
+	const defaults = splitDefaults(prepared.value);
 	const selected = typedSpeaker(
 		args,
 		SPEAKER_PARAM,
 		defaults.options,
 		defaults.selected,
 	);
-	if (typeof selected === 'string') {
-		return selected;
+	if (isRefusal(selected)) {
+		return selected.refusal;
 	}
 	// Nothing follows the selection when it runs to the end of the line, and
 	// then there is no rest for a speaker to be picked for.
-	const after: LineSpeakerChoice | string = defaults.afterOptions
+	const after: Refusable<LineSpeakerChoice> = defaults.afterOptions
 		? typedSpeaker(args, REST_PARAM, defaults.afterOptions, defaults.after)
-		: { kind: 'none' };
-	if (typeof after === 'string') {
-		return after;
+		: { value: { kind: 'none' } };
+	if (isRefusal(after)) {
+		return after.refusal;
 	}
 	return performSplit(
 		app,
 		options,
 		context,
 		{
-			selected,
-			after,
+			selected: selected.value,
+			after: after.value,
 			start:
 				cliText(args, 'start') ?? formatLineTime(defaults.times.start),
 			end: cliText(args, 'end') ?? formatLineTime(defaults.times.end),
@@ -325,26 +327,23 @@ async function mergeFromCli(
 	const { app } = context.services;
 	const options = dialogOptions(context);
 	const prepared = await prepareMerge(app, options, context);
-	if (typeof prepared === 'string') {
-		return prepared;
+	if (isRefusal(prepared)) {
+		return prepared.refusal;
 	}
-	const speakerOptions = mergeSpeakerOptions(prepared);
+	const { rows } = prepared.value;
 	const choice = typedSpeaker(
 		args,
 		SPEAKER_PARAM,
-		speakerOptions,
-		speakerValue(prepared.rows[0]?.speaker),
+		mergeSpeakerOptions(prepared.value),
+		speakerValue(rows[0]?.speaker),
 	);
-	if (typeof choice === 'string') {
-		return choice;
+	if (isRefusal(choice)) {
+		return choice.refusal;
 	}
-	if (
-		mergeNeedsConfirmation(prepared.rows.length) &&
-		!cliFlag(args, CONFIRM_FLAG)
-	) {
-		return `${mergeConfirmationMessage(prepared.rows.length, choice)} Add ${CONFIRM_FLAG} to merge them.`;
+	if (mergeNeedsConfirmation(rows.length) && !cliFlag(args, CONFIRM_FLAG)) {
+		return `${mergeConfirmationMessage(rows.length, choice.value)} Add ${CONFIRM_FLAG} to merge them.`;
 	}
-	return performMerge(app, options, context, choice, LINES_CHANGED);
+	return performMerge(app, options, context, choice.value, LINES_CHANGED);
 }
 
 /** Every action on a transcript selection, in menu order. */
@@ -450,18 +449,20 @@ export const TRANSCRIPT_ACTIONS: readonly TranscriptAction[] = [
 function columnsOf(
 	lineText: string,
 	text: string | null,
-): { from: number; to: number } | string {
+): Refusable<{ from: number; to: number }> {
 	if (text === null) {
-		return { from: 0, to: lineText.length };
+		return { value: { from: 0, to: lineText.length } };
 	}
 	const from = lineText.indexOf(text);
 	if (from < 0) {
-		return `The line does not hold "${text}".`;
+		return { refusal: `The line does not hold "${text}".` };
 	}
 	if (lineText.indexOf(text, from + 1) >= 0) {
-		return `"${text}" appears more than once on the line; quote more of it.`;
+		return {
+			refusal: `"${text}" appears more than once on the line; quote more of it.`,
+		};
 	}
-	return { from, to: from + text.length };
+	return { value: { from, to: from + text.length } };
 }
 
 /**
@@ -476,15 +477,18 @@ function columnsOf(
 async function namedSelection(
 	services: ActionServices,
 	args: CliData,
-): Promise<TranscriptSelectionContext[] | string> {
+): Promise<Refusable<TranscriptSelectionContext[]>> {
 	const { app } = services;
 	const named = namedVaultFile(app, args);
 	if (isRefusal(named)) {
-		return named.refusal;
+		return named;
 	}
 	const note = named.value ?? app.workspace.getActiveFile();
 	if (!(note instanceof TFile) || note.extension !== 'md') {
-		return 'Name the note of the transcript with file=<name> or path=<vault path>, or open it in Obsidian.';
+		return {
+			refusal:
+				'Name the note of the transcript with file=<name> or path=<vault path>, or open it in Obsidian.',
+		};
 	}
 	// An open note is edited where it is open: the line numbers are the ones
 	// its editor shows, including what is not saved yet, and the edit can be
@@ -496,35 +500,39 @@ async function namedSelection(
 	const range = { min: 1, max: lines.lineCount(), integer: true };
 	const first = cliNumber(args, LINE_PARAM, range);
 	if (isRefusal(first)) {
-		return first.refusal;
+		return first;
 	}
 	if (first.value === null) {
-		return `Name the line with ${LINE_PARAM}=<number>, as the editor numbers it.`;
+		return {
+			refusal: `Name the line with ${LINE_PARAM}=<number>, as the editor numbers it.`,
+		};
 	}
 	const last = cliNumber(args, TO_PARAM, range);
 	if (isRefusal(last)) {
-		return last.refusal;
+		return last;
 	}
 	const lastLine = (last.value ?? first.value) - 1;
 	const line = first.value - 1;
 	if (lastLine < line) {
-		return `${TO_PARAM}= comes before ${LINE_PARAM}=.`;
+		return { refusal: `${TO_PARAM}= comes before ${LINE_PARAM}=.` };
 	}
 	const columns =
 		lastLine === line
 			? columnsOf(lines.getLine(line), cliText(args, TEXT_PARAM))
-			: { from: 0, to: lines.getLine(lastLine).length };
-	if (typeof columns === 'string') {
+			: { value: { from: 0, to: lines.getLine(lastLine).length } };
+	if (isRefusal(columns)) {
 		return columns;
 	}
 	const context = selectionOver(services, lines, note, {
 		line,
 		lastLine,
-		...columns,
+		...columns.value,
 	});
 	return context
-		? [context]
-		: `Line ${String(first.value)} of ${note.path} carries no timecode link to a recording.`;
+		? { value: [context] }
+		: {
+				refusal: `Line ${String(first.value)} of ${note.path} carries no timecode link to a recording.`,
+			};
 }
 
 /**

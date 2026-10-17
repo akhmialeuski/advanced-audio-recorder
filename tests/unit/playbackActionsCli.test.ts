@@ -121,7 +121,7 @@ describe('the playback the commands act on', () => {
 		expect(family.activeTargets()).toEqual([state]);
 		await expect(
 			Promise.resolve(family.cliTarget.resolve({})),
-		).resolves.toEqual([state]);
+		).resolves.toEqual({ value: [state] });
 		expect(family.describe(state)).toBe('Recordings/lecture.webm');
 	});
 
@@ -131,6 +131,6 @@ describe('the playback the commands act on', () => {
 		expect(family.activeTargets()).toEqual([]);
 		await expect(
 			Promise.resolve(family.cliTarget.resolve({})),
-		).resolves.toBe('Nothing is playing in Obsidian.');
+		).resolves.toEqual({ refusal: 'Nothing is playing in Obsidian.' });
 	});
 });

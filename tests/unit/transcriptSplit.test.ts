@@ -146,19 +146,21 @@ describe('readSplitTimes', () => {
 	it('reads the times the fields hold', () => {
 		expect(
 			readSplitTimes('0:12', '0:15.5', timing, texts('a', 'b', 'c')),
-		).toEqual({ start: 12, end: 15.5 });
+		).toEqual({ value: { start: 12, end: 15.5 } });
 	});
 
 	it('asks for both times', () => {
-		expect(readSplitTimes('', '0:15', timing, texts('', 'b', ''))).toMatch(
-			/Enter the start and the end/,
-		);
+		expect(readSplitTimes('', '0:15', timing, texts('', 'b', ''))).toEqual({
+			refusal: expect.stringMatching(/Enter the start and the end/),
+		});
 	});
 
 	it('says why times inside the field are refused', () => {
 		expect(
 			readSplitTimes('0:15', '0:12', timing, texts('', 'b', '')),
-		).toMatch(/has to come after its start/);
+		).toEqual({
+			refusal: expect.stringMatching(/has to come after its start/),
+		});
 	});
 });
 

@@ -25,6 +25,7 @@ import {
 	LLM_VENDOR_IDS,
 	LlmJobId,
 } from '../transcription/llm/vendors';
+import { isRefusal } from '../utils/refusal';
 
 /** The job these choices configure. */
 const CHAPTERS_JOB = LlmJobId.AutoChapters;
@@ -85,10 +86,10 @@ export function applyChapterRunChoices(
 			ProfileKindId.ChapterPrompt,
 			choices.profile,
 		);
-		if ('refusal' in picked) {
+		if (isRefusal(picked)) {
 			return picked.refusal;
 		}
-		setSelectedProfileId(run, ProfileKindId.ChapterPrompt, picked.id);
+		setSelectedProfileId(run, ProfileKindId.ChapterPrompt, picked.value);
 	}
 	if (choices.llm) {
 		const llm = LLM_VENDOR_IDS.find((id) => id === choices.llm);
