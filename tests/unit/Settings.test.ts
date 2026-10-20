@@ -19,6 +19,7 @@ import {
 } from 'src/settings/settingsSerialization';
 import type { Profile } from 'src/settings/profiles';
 import {
+	LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
 	MODEL_SEED_GENERATION,
 	LLM_PROVIDER_IDS,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -113,7 +114,8 @@ describe('Settings', () => {
 			['llmCustom'],
 		] as const)('seeds one selected default %s profile', (kind) => {
 			const profiles = DEFAULT_SETTINGS.profiles.filter(
-				(profile) => profile.kind === kind,
+				(profile) =>
+					profile.kind === kind && profile.name === 'Default',
 			);
 			expect(profiles).toHaveLength(1);
 			expect(profiles[0]?.name).toBe('Default');
@@ -135,6 +137,71 @@ describe('Settings', () => {
 			).toEqual([]);
 			expect(DEFAULT_SETTINGS.selectedProfileIds.dictionary).toBe('');
 			expect(DEFAULT_SETTINGS.selectedProfileIds.participants).toBe('');
+		});
+
+		it('ships the language lesson cleanup profile beside the default, not in use', () => {
+			const lesson = DEFAULT_SETTINGS.profiles.find(
+				(profile) => profile.id === LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+			);
+			expect(lesson).toMatchObject({
+				kind: 'llmCleanup',
+				name: 'Language lesson',
+			});
+			// The prompt names no language: which ones a lesson holds is the
+			// transcript's to say.
+			expect(lesson?.body).not.toMatch(/Polish|Ukrainian|Belarusian/);
+			expect(DEFAULT_SETTINGS.selectedProfileIds.llmCleanup).not.toBe(
+				LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+			);
+			expect(DEFAULT_SETTINGS.shippedProfileIds).toEqual([
+				LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+			]);
+		});
+	});
+
+	describe('profiles shipped after the first release', () => {
+		const lessonIn = (settings: AudioRecorderSettings): Profile[] =>
+			settings.profiles.filter(
+				(profile) => profile.id === LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+			);
+		const storedProfile: Profile = {
+			id: 'mine',
+			kind: 'llmCleanup',
+			name: 'Interviews',
+			body: 'Keep the questions.',
+		};
+
+		it('gives a config saved before the profile existed one copy of it', () => {
+			const merged = mergeSettings({ profiles: [storedProfile] });
+
+			expect(lessonIn(merged)).toHaveLength(1);
+			expect(merged.profiles[0]).toEqual(storedProfile);
+			expect(merged.shippedProfileIds).toEqual([
+				LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+			]);
+		});
+
+		it('does not bring back a shipped profile the user deleted', () => {
+			const merged = mergeSettings({
+				profiles: [storedProfile],
+				shippedProfileIds: [LANGUAGE_LESSON_CLEANUP_PROFILE_ID],
+			});
+
+			expect(lessonIn(merged)).toEqual([]);
+		});
+
+		it('starts a fresh install with exactly one copy', () => {
+			expect(lessonIn(mergeSettings({}))).toHaveLength(1);
+		});
+
+		it('numbers the name when the user already holds it', () => {
+			const merged = mergeSettings({
+				profiles: [{ ...storedProfile, name: 'Language lesson' }],
+			});
+
+			expect(lessonIn(merged).map((profile) => profile.name)).toEqual([
+				'Language lesson 2',
+			]);
 		});
 	});
 

@@ -17,6 +17,7 @@ import { allEls, el, textOf } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
 import { internalsOf, partial } from '../helpers/doubles';
 import { asMockPlugin, asMockVault } from '../helpers/obsidianMock';
+import { SHIPPED_PROFILES_GIVEN } from '../helpers/settingsFixtures';
 import { modalInstances } from '../mocks/obsidian';
 import { ReleaseNotesModal } from 'src/ui/ReleaseNotesModal';
 import { ActionTargetModal } from 'src/ui/ActionTargetModal';
@@ -683,6 +684,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		/** The glossary as data.json stores it, cached as the given text. */
 		const storedGlossary = (body: string): Record<string, unknown> => ({
+			...SHIPPED_PROFILES_GIVEN,
 			profiles: [
 				{
 					id: 'g1',

@@ -9,6 +9,7 @@
  */
 
 import {
+	LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
 	MODEL_SEED_GENERATION,
 	LLM_PROVIDER_IDS,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -16,9 +17,19 @@ import {
 import {
 	DEFAULT_SETTINGS,
 	RecordingBannerAnchor,
+	shippedProfiles,
 	type AudioRecorderSettings,
 	type AudioSource,
 } from 'src/settings/settingsSchema';
+
+/**
+ * What a stored config holds once it has been given every shipped profile.
+ * Spread into a stored config by a suite whose subject is a profile list of
+ * its own, so the load does not add the shipped ones to it.
+ */
+export const SHIPPED_PROFILES_GIVEN = {
+	shippedProfileIds: shippedProfiles().map((profile) => profile.id),
+};
 
 /**
  * Copies a settings value all the way down, Maps included. jsdom exposes no
@@ -220,6 +231,12 @@ export function fullyPopulatedSettings(): Omit<
 				name: 'Tidy',
 				body: 'Tidy the dictation.',
 			},
+		],
+		// Every shipped profile already given, plus an id from a release this
+		// one does not ship, so nothing is added back over the list above.
+		shippedProfileIds: [
+			'shipped-retired-profile',
+			LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
 		],
 		selectedProfileIds: {
 			participants: '',

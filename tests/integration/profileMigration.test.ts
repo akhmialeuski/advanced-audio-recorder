@@ -21,7 +21,9 @@ import {
 import {
 	DEFAULT_LLM_CLEANUP_PROMPT,
 	DEFAULT_LLM_CUSTOM_PROFILE_ID,
+	LANGUAGE_LESSON_CLEANUP_PROMPT,
 } from 'src/constants';
+import { SHIPPED_PROFILES_GIVEN } from '../helpers/settingsFixtures';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 /** A config as the version before the unification wrote it. */
@@ -98,7 +100,15 @@ describe('upgrading a pre-unification config', () => {
 		);
 		expect(inUse(result, 'llmCustom')?.body).toBe('Rewrite as a memo.');
 		expect(inUse(result, 'llmCleanup')?.name).toBe('Default');
-		expect(profilesOfKind(result.profiles, 'llmCleanup')).toHaveLength(1);
+		// The tuned prompt goes to the profile in use alone. The shipped lesson
+		// profile of the same kind keeps its own text, which a migration
+		// matching by kind overwrote.
+		const cleanups = profilesOfKind(result.profiles, 'llmCleanup');
+		expect(cleanups.map((profile) => profile.name)).toEqual([
+			'Default',
+			'Language lesson',
+		]);
+		expect(cleanups[1]?.body).toBe(LANGUAGE_LESSON_CLEANUP_PROMPT);
 	});
 
 	it('carries a prompt the user had emptied, rather than seeding one back', () => {
@@ -190,6 +200,7 @@ describe('upgrading a pre-unification config', () => {
 		// belongs must load as an empty catalogue rather than throw and reset
 		// every other setting to its default.
 		const result = mergeSettings({
+			...SHIPPED_PROFILES_GIVEN,
 			profiles: 'not a list' as never,
 			selectedProfileIds: { dictionary: 'd1' },
 		});

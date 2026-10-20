@@ -42,6 +42,7 @@ import {
 import { flushMicrotasks } from '../helpers/async';
 import { installControlledAudio } from '../helpers/mediaMocks';
 import type { ControlledAudio } from '../helpers/mediaMocks';
+import { SHIPPED_PROFILES_GIVEN } from '../helpers/settingsFixtures';
 
 jest.mock('src/speakers/applySpeakerRenames', () => ({
 	applySpeakerRenamesWithSidecar: jest.fn(),
@@ -1454,6 +1455,7 @@ describe('SpeakerRenameModal', () => {
 	/** Settings holding one participant profile, the name to collide with. */
 	const withRoster = (): AudioRecorderSettings =>
 		mergeSettings({
+			...SHIPPED_PROFILES_GIVEN,
 			profiles: [
 				{
 					id: 'p1',
