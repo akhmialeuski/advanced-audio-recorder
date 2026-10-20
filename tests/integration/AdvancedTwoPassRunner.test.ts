@@ -227,6 +227,39 @@ describe('a second pass that is adopted', () => {
 		});
 	});
 
+	it('adopts a pass whose prevailing language tipped on a several-language run', async () => {
+		// Both passes were told the recording switches between Polish and
+		// Ukrainian, so which one most of the text is in is no sign of drift.
+		mockGenerateContext.mockResolvedValue(usableContext());
+		const { runner } = createSut(
+			{
+				transcribeOptions: {
+					diarize: false,
+					wordTimestamps: false,
+					language: 'pl',
+					languages: ['pl', 'uk'],
+				},
+				baseline: transcriptOf(
+					'a first pass of comparable length here now',
+					'pl',
+				),
+			},
+			async (_o, passResults) => {
+				passResults.push({
+					offsetSeconds: 0,
+					transcript: transcriptOf(
+						'a second pass of comparable length here',
+						'uk',
+					),
+				});
+			},
+		);
+
+		const outcome = await runner.run();
+
+		expect(outcome.status).toBe('improved');
+	});
+
 	it('pins the second pass to the language the first pass detected', async () => {
 		mockGenerateContext.mockResolvedValue(usableContext());
 		const transcribePass = jest.fn<

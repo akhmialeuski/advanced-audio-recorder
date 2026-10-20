@@ -98,6 +98,7 @@ describe('audioPrepOptions', () => {
 		biasChannel: 'prompt',
 		supportsSpeechTranslation: false,
 		readsLanguageHint: true,
+		readsLanguageList: false,
 	};
 
 	it('bounds the chunk size by the provider limit for network providers', () => {
@@ -136,6 +137,7 @@ describe('audioPrepOptions', () => {
 			biasChannel: 'prompt',
 			supportsSpeechTranslation: false,
 			readsLanguageHint: true,
+			readsLanguageList: false,
 		};
 		const options = audioPrepOptions(
 			localCaps,
@@ -158,6 +160,7 @@ describe('audioPrepOptions', () => {
 			biasChannel: 'prompt',
 			supportsSpeechTranslation: false,
 			readsLanguageHint: true,
+			readsLanguageList: false,
 		};
 		const options = audioPrepOptions(
 			cappedCaps,
@@ -183,6 +186,7 @@ describe('audioPrepOptions', () => {
 			biasChannel: 'prompt',
 			supportsSpeechTranslation: false,
 			readsLanguageHint: true,
+			readsLanguageList: false,
 		};
 		const options = audioPrepOptions(diarizingCaps, true, 1000, true);
 		expect(options.diarize).toBe(true);

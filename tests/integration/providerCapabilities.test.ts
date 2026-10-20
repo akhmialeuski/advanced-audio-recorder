@@ -15,9 +15,12 @@ import {
 	GEMINI_CAPABILITIES,
 	VOXTRAL_CAPABILITIES,
 	configuredLanguageHint,
+	configuredLanguages,
 	effectiveLanguage,
+	effectiveLanguages,
 	languageNote,
 	providerReadsLanguageHint,
+	providerReadsLanguageList,
 	isProviderAvailableOnPlatform,
 	LOCAL_WHISPER_CAPABILITIES,
 	effectiveWordTimestamps,
@@ -369,6 +372,66 @@ describe('the language hint gate', () => {
 		expect(configuredLanguageHint('ru')).toBe('ru');
 		expect(languageNote(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL)).toMatch(
 			/Auto chapters still read it/,
+		);
+	});
+});
+
+describe('a field naming several languages', () => {
+	it('reads the codes in the order typed and ignores spacing', () => {
+		expect(configuredLanguages(' pl ,uk, be ')).toEqual(['pl', 'uk', 'be']);
+		expect(configuredLanguages('auto')).toEqual([]);
+		expect(configuredLanguages('')).toEqual([]);
+		expect(configuredLanguageHint('pl, uk')).toBe('pl');
+	});
+
+	it('records Gemini as the one engine that reads a list', () => {
+		expect(
+			Object.values(TRANSCRIPTION_PROVIDER_IDS).filter((id) =>
+				providerReadsLanguageList(id),
+			),
+		).toEqual([TRANSCRIPTION_PROVIDER_IDS.GEMINI]);
+	});
+
+	it.each([
+		{
+			name: 'sends every code to an engine that reads a list',
+			id: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			language: 'pl, uk',
+			languages: ['pl', 'uk'],
+			hint: 'pl',
+		},
+		{
+			name: 'sends the first code to an engine that takes one',
+			id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			language: 'pl, uk',
+			languages: undefined,
+			hint: 'pl',
+		},
+		{
+			name: 'keeps a single code a single-language request',
+			id: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			language: 'pl',
+			languages: undefined,
+			hint: 'pl',
+		},
+		{
+			name: 'sends nothing to an engine that reads no language',
+			id: TRANSCRIPTION_PROVIDER_IDS.VOXTRAL,
+			language: 'pl, uk',
+			languages: undefined,
+			hint: undefined,
+		},
+	])('$name', ({ id, language, languages, hint }) => {
+		expect(effectiveLanguages(id, language)).toEqual(languages);
+		expect(effectiveLanguage(id, language)).toBe(hint);
+	});
+
+	it('tells each engine what a list does on it', () => {
+		expect(languageNote(TRANSCRIPTION_PROVIDER_IDS.GEMINI)).toMatch(
+			/each segment is written in its own language/,
+		);
+		expect(languageNote(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API)).toMatch(
+			/only the first is sent/,
 		);
 	});
 });

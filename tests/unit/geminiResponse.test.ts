@@ -57,6 +57,37 @@ describe('mapGeminiResponse', () => {
 		expect(at(result.segments, 1).speaker).toBe('Speaker 2');
 	});
 
+	it('keeps the language of each segment and names the prevailing one', () => {
+		// A Polish lesson with a Ukrainian explanation: the top-level field the
+		// model filled names the start of the recording, and the transcript's
+		// language follows the text instead.
+		const result = mapGeminiResponse(
+			geminiBody({
+				language: 'uk',
+				segments: [
+					{ start: 0, text: 'Добрий день.', language: 'uk' },
+					{
+						start: 2,
+						text: 'Jestem młodym Białorusinem.',
+						language: ' pl ',
+					},
+					{
+						start: 6,
+						text: 'Mieszkam i pracuję w Warszawie.',
+						language: 'pl',
+					},
+				],
+			}),
+			false,
+		);
+		expect(result.segments.map((s) => s.language)).toEqual([
+			'uk',
+			'pl',
+			'pl',
+		]);
+		expect(result.language).toBe('pl');
+	});
+
 	it('omits speaker labels when diarization is off', () => {
 		const result = mapGeminiResponse(
 			geminiBody({

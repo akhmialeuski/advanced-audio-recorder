@@ -683,9 +683,14 @@ describe('settings definitions', () => {
 			expect(validate('auto')).toBeUndefined();
 			// Empty means "detect", which is what the placeholder says.
 			expect(validate('  ')).toBeUndefined();
-			expect(validate('English please')).toBe(
-				'Use an ISO code such as en or ru, or "auto".',
-			);
+			// Several codes describe a recording that switches language.
+			expect(validate('pl, uk')).toBeUndefined();
+			expect(validate('pl,uk,be')).toBeUndefined();
+			const refusal =
+				'Use an ISO code such as en, several separated by commas such as pl, uk, or "auto".';
+			expect(validate('auto, pl')).toBe(refusal);
+			expect(validate('pl uk')).toBe(refusal);
+			expect(validate('English please')).toBe(refusal);
 		});
 
 		it('keeps the language row editable on an engine that ignores it', () => {

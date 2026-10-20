@@ -69,31 +69,69 @@ const SYSTEM_PROMPT =
 	'not translate, and keep technology names as spoken. Provide a start (and ' +
 	'when possible an end) timecode in seconds for every segment.';
 
+/** Fields every transcript segment the schema describes must carry. */
+const SEGMENT_REQUIRED_FIELDS = ['start', 'text'];
+
 /**
  * Structured-output schema (Gemini uses UPPERCASE OpenAPI type names): an
  * object with optional detected `language` and an array of `segments`, each a
  * start/end in seconds, an optional speaker label, and the spoken text.
+ *
+ * A recording configured with several languages asks every segment for its
+ * own, limited to the configured codes. A free-form field was the other
+ * choice, and it leaves the model free to answer "Polish" where a code is
+ * read; the enum is also the shape a run on a Polish and Ukrainian lesson was
+ * checked with before this was written.
+ * @param languages - The configured languages, when more than one
+ * @returns The response schema for the request
  */
-const TRANSCRIPT_SCHEMA = {
-	type: 'OBJECT',
-	properties: {
-		language: { type: 'STRING' },
-		segments: {
-			type: 'ARRAY',
-			items: {
-				type: 'OBJECT',
-				properties: {
-					start: { type: 'NUMBER' },
-					end: { type: 'NUMBER' },
-					speaker: { type: 'STRING' },
-					text: { type: 'STRING' },
+function transcriptSchema(languages: readonly string[] | undefined): object {
+	const segmentProperties: Record<string, object> = {
+		start: { type: 'NUMBER' },
+		end: { type: 'NUMBER' },
+		speaker: { type: 'STRING' },
+		text: { type: 'STRING' },
+	};
+	const required = [...SEGMENT_REQUIRED_FIELDS];
+	if (languages) {
+		segmentProperties.language = { type: 'STRING', enum: [...languages] };
+		required.push('language');
+	}
+	return {
+		type: 'OBJECT',
+		properties: {
+			language: { type: 'STRING' },
+			segments: {
+				type: 'ARRAY',
+				items: {
+					type: 'OBJECT',
+					properties: segmentProperties,
+					required,
 				},
-				required: ['start', 'text'],
 			},
 		},
-	},
-	required: ['segments'],
-};
+		required: ['segments'],
+	};
+}
+
+/**
+ * The instruction for a recording that switches between the configured
+ * languages. It names no language of its own: the list is the user's, and the
+ * rules hold for any pair. Script and spelling are named because a model that
+ * settles on one language writes the other in its orthography, which is how a
+ * Ukrainian passage came back as Polish-looking Latin text.
+ * @param languages - The configured languages, more than one
+ * @returns The sentences that replace the single-language line
+ */
+function languageListInstruction(languages: readonly string[]): string {
+	return (
+		`The recording switches between these languages: ${languages.join(', ')}. ` +
+		'Speakers may change language between sentences or inside one sentence. ' +
+		"Write every segment in the language actually spoken, in that language's own script and spelling, " +
+		"never respell one language in another's orthography, and never translate. " +
+		"Start a new segment wherever the language changes, and set each segment's language to the code of the language it is written in."
+	);
+}
 
 /**
  * Task-specific remedy appended to the truncation error. Unlike the LLM path,
@@ -108,9 +146,11 @@ const TRUNCATION_REMEDY =
 function buildInstruction(options: TranscribeOptions): string {
 	const lines = [
 		'Transcribe the attached audio into ordered segments.',
-		options.language
-			? `The primary language is "${options.language}", but transcribe each segment in the language actually spoken.`
-			: 'Detect the spoken language(s) and transcribe each segment in the language actually spoken.',
+		options.languages
+			? languageListInstruction(options.languages)
+			: options.language
+				? `The primary language is "${options.language}", but transcribe each segment in the language actually spoken.`
+				: 'Detect the spoken language(s) and transcribe each segment in the language actually spoken.',
 		options.diarize
 			? 'Identify distinct speakers and label each segment (e.g. "Speaker 1", "Speaker 2"); use real names when clearly stated.'
 			: 'Do not include speaker labels.',
@@ -211,7 +251,7 @@ export class GeminiProvider implements TranscriptionProvider {
 					systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
 					generationConfig: {
 						responseMimeType: 'application/json',
-						responseSchema: TRANSCRIPT_SCHEMA,
+						responseSchema: transcriptSchema(options.languages),
 						...controls,
 					},
 				}),

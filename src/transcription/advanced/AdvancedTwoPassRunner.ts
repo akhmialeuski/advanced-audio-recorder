@@ -286,7 +286,13 @@ export class AdvancedTwoPassRunner {
 			// lost this much text is discarded in favour of the baseline.
 			return { status: 'skipped', reason: 'too-short' };
 		}
-		if (!keepsDetectedLanguage(baseline.language, secondPass.language)) {
+		// A recording configured with several languages is asked for all of
+		// them on both passes, and which one prevails can tip between two
+		// faithful decodes, so only a single-language run is held to it.
+		if (
+			!transcribeOptions.languages &&
+			!keepsDetectedLanguage(baseline.language, secondPass.language)
+		) {
 			// The same guard on the other axis: a pass that answered in another
 			// language transcribed something the first pass did not, however
 			// long it came out, and the field asking for the language cannot

@@ -27,8 +27,12 @@ import { transcriptionEngineChoiceRow } from './rowHelpers';
 import { ProfileSection } from '../profileKinds';
 import type { SettingDefinitionItem, SettingGroupItem } from 'obsidian';
 
-/** Accepted shape of the transcription language field: an ISO code or empty. */
-const LANGUAGE_CODE_PATTERN = /^([a-z]{2,3}(-[a-z0-9]{2,8})?|auto)?$/i;
+/**
+ * Accepted shape of the transcription language field: empty, "auto", one ISO
+ * code, or several separated by commas for a recording that switches language.
+ */
+const LANGUAGE_CODE_PATTERN =
+	/^(auto|[a-z]{2,3}(-[a-z0-9]{2,8})?(\s*,\s*[a-z]{2,3}(-[a-z0-9]{2,8})?)*)?$/i;
 
 /**
  * The transcription section. Everything below the section's own switch is
@@ -111,7 +115,7 @@ export function transcriptionGroup(
 					validate: (value: string): string | undefined =>
 						LANGUAGE_CODE_PATTERN.test(value.trim())
 							? undefined
-							: 'Use an ISO code such as en or ru, or "auto".',
+							: 'Use an ISO code such as en, several separated by commas such as pl, uk, or "auto".',
 				},
 			},
 			{

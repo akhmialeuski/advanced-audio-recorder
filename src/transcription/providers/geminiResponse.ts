@@ -9,6 +9,7 @@
  */
 
 import type { TranscriptSegment } from '../TranscriptTypes';
+import { dominantSegmentLanguage } from '../transcriptModel';
 import { parseTimecode } from '../../utils/TimeUtils';
 import { PLUGIN_LOG_PREFIX } from '../../constants';
 import type { WhisperResult } from './whisperResponse';
@@ -77,8 +78,6 @@ export function mapGeminiResponse(
 		);
 		return { segments: [], ...(usage ? { usage } : {}) };
 	}
-	const language =
-		typeof parsed.language === 'string' ? parsed.language : undefined;
 	const segments: TranscriptSegment[] = [];
 	for (const entry of parsed.segments) {
 		if (!isRecord(entry)) {
@@ -96,12 +95,20 @@ export function mapGeminiResponse(
 			entry.speaker.trim() !== ''
 				? entry.speaker.trim()
 				: undefined;
+		// Present only when the request named several languages, whose schema
+		// asks every segment for the one it was spoken in.
+		const segmentLanguage =
+			typeof entry.language === 'string' ? entry.language.trim() : '';
 		segments.push({
 			start,
 			end,
 			text: segText,
 			...(speaker ? { speaker } : {}),
+			...(segmentLanguage ? { language: segmentLanguage } : {}),
 		});
 	}
+	const language =
+		dominantSegmentLanguage(segments) ??
+		(typeof parsed.language === 'string' ? parsed.language : undefined);
 	return { language, segments, ...(usage ? { usage } : {}) };
 }

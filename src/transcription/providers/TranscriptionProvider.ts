@@ -15,6 +15,13 @@ import type { WhisperResult } from './whisperResponse';
 export interface TranscribeOptions {
 	/** Language hint (BCP-47/ISO), or undefined to auto-detect. */
 	language?: string | undefined;
+	/**
+	 * Every language the recording switches between, when more than one is
+	 * configured and the engine reads a list (see
+	 * {@link ProviderCapabilities.readsLanguageList}). {@link language} then
+	 * holds the first of them for whatever reads a single code.
+	 */
+	languages?: string[] | undefined;
 	/** Request speaker diarization when the provider supports it. */
 	diarize: boolean;
 	/**
@@ -194,6 +201,14 @@ export interface ProviderCapabilities {
 	 * says so rather than looking as though it applied.
 	 */
 	readsLanguageHint: boolean;
+	/**
+	 * Whether the engine can be told every language a recording switches
+	 * between and answer with the language of each segment. Only Gemini can,
+	 * because its instruction and response schema are ours to write; every
+	 * other request field takes one code, so those engines receive the first
+	 * code of a configured list.
+	 */
+	readsLanguageList: boolean;
 }
 
 /** A provider that transcribes a single audio payload. */

@@ -242,7 +242,7 @@ Transcription is a paid job that can run for minutes, so the command starts it i
 
 | Parameter                                                                                      | What it sets for this run                                                           |
 | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `language=<code>`                                                                              | The language, or `auto`.                                                            |
+| `language=<code>`                                                                              | The language, `auto`, or several codes separated by commas, such as `pl,uk`.        |
 | `engine=whisper-api\|deepgram\|gemini\|voxtral\|local-whisper`                                 | The transcription engine.                                                           |
 | `destination=note\|file\|both\|link`                                                           | Where the transcript goes.                                                          |
 | `format=json\|srt\|vtt\|txt`                                                                   | The format of the transcript file.                                                  |

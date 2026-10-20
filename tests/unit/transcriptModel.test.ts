@@ -6,6 +6,7 @@ import {
 	buildTranscript,
 	collectFirstTurns,
 	collectSpeakers,
+	dominantSegmentLanguage,
 	normalizeSegments,
 	normalizeWhitespace,
 	offsetSegment,
@@ -133,6 +134,22 @@ describe('stripSpeakers', () => {
 		);
 	});
 
+	it('keeps the language a segment was spoken in', () => {
+		// The strip once rebuilt each segment from a list of fields, and a
+		// run without diarization lost every per-segment language with it.
+		const stripped = stripSpeakers(
+			buildTranscript([
+				{ ...seg(0, 1, 'Добрий день.', 'A'), language: 'uk' },
+			]),
+		);
+		expect(at(stripped.segments, 0)).toEqual({
+			start: 0,
+			end: 1,
+			text: 'Добрий день.',
+			language: 'uk',
+		});
+	});
+
 	it('preserves word-level timings and other metadata', () => {
 		const transcript: Transcript = {
 			language: 'en',
@@ -218,6 +235,59 @@ describe('stitchChunks', () => {
 		expect(combined.segments.map((s) => s.start)).toEqual([0, 60]);
 		expect(combined.segments.map((s) => s.text)).toEqual(['one', 'two']);
 		expect(combined.language).toBe('en');
+	});
+
+	it('names the language most of the text is in when segments carry their own', () => {
+		// The first part of a lesson opens in Ukrainian and the rest is
+		// Polish: the first part's language would speak for neither.
+		const opening = buildTranscript(
+			[{ ...seg(0, 5, 'Добрий день, як справи?'), language: 'uk' }],
+			{ language: 'uk' },
+		);
+		const rest = buildTranscript(
+			[
+				{ ...seg(0, 4, 'Jestem młodym Białorusinem.'), language: 'pl' },
+				{
+					...seg(4, 9, 'Mieszkam i pracuję w Warszawie.'),
+					language: 'pl',
+				},
+			],
+			{ language: 'pl' },
+		);
+		const combined = stitchChunks([
+			{ offsetSeconds: 0, transcript: opening },
+			{ offsetSeconds: 900, transcript: rest },
+		]);
+		expect(combined.language).toBe('pl');
+		expect(combined.segments.map((s) => s.language)).toEqual([
+			'uk',
+			'pl',
+			'pl',
+		]);
+	});
+});
+
+describe('dominantSegmentLanguage', () => {
+	it('weighs languages by characters, not by segment count', () => {
+		const segments: TranscriptSegment[] = [
+			{ ...seg(0, 1, 'Tak.'), language: 'pl' },
+			{ ...seg(1, 2, 'Tak.'), language: 'pl' },
+			{
+				...seg(
+					2,
+					9,
+					'Це письмо, окремо граматика, і її треба тренувати.',
+				),
+				language: 'uk',
+			},
+		];
+		expect(dominantSegmentLanguage(segments)).toBe('uk');
+		// The order the languages appear in does not decide it either.
+		expect(dominantSegmentLanguage([...segments].reverse())).toBe('uk');
+	});
+
+	it('names no language when no segment carries one', () => {
+		expect(dominantSegmentLanguage([seg(0, 1, 'hello')])).toBeUndefined();
 	});
 });
 

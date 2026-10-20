@@ -35,6 +35,13 @@ export interface TranscriptSegment {
 	 * or undefined when speakers are not distinguished.
 	 */
 	speaker?: string;
+	/**
+	 * Language this segment was spoken in, as an ISO code, when the engine was
+	 * told the recording switches between several languages and answered per
+	 * segment. Undefined otherwise, the transcript's own `language` then
+	 * covering every segment.
+	 */
+	language?: string;
 	/** Optional word-level timings within this segment. */
 	words?: TranscriptWord[];
 }

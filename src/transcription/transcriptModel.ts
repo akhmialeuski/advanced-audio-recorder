@@ -113,15 +113,10 @@ export function stripSpeakers(transcript: Transcript): Transcript {
 	return {
 		...transcript,
 		segments: transcript.segments.map((segment) => {
-			// Rebuild without the speaker field; preserve word-level timings.
-			const stripped: TranscriptSegment = {
-				start: segment.start,
-				end: segment.end,
-				text: segment.text,
-			};
-			if (segment.words) {
-				stripped.words = segment.words;
-			}
+			// A copy without the speaker field, so every other field the
+			// segment carries (word timings, its language) survives the strip.
+			const stripped: TranscriptSegment = { ...segment };
+			delete stripped.speaker;
 			return stripped;
 		}),
 		speakers: [],
@@ -214,10 +209,44 @@ export function buildTranscript(
 }
 
 /**
+ * The language most of the text is in, when the segments name their own:
+ * the one transcript-wide code that cleanup, chapters and file names read for
+ * a recording that switches languages. Measured by characters rather than by
+ * segments, because a run of short replies in one language would otherwise
+ * outvote a long explanation in the other.
+ * @param segments - Transcript segments
+ * @returns The prevailing segment language, or undefined when none names one
+ */
+export function dominantSegmentLanguage(
+	segments: readonly TranscriptSegment[],
+): string | undefined {
+	const characters = new Map<string, number>();
+	for (const { language, text } of segments) {
+		if (language) {
+			characters.set(
+				language,
+				(characters.get(language) ?? 0) + text.length,
+			);
+		}
+	}
+	let dominant: string | undefined;
+	let most = 0;
+	for (const [language, count] of characters) {
+		if (count > most) {
+			dominant = language;
+			most = count;
+		}
+	}
+	return dominant;
+}
+
+/**
  * Stitches a series of per-chunk transcripts into one, offsetting each
  * chunk's timestamps by its start offset on the original timeline. The
- * detected language and model are taken from the first chunk that
- * provides them. Returns a fully built transcript.
+ * detected language is the one most of the text is in when the segments name
+ * their own, since the first part of a recording that switches languages
+ * speaks for none of the rest; otherwise it and the model are taken from the
+ * first chunk that provides them. Returns a fully built transcript.
  * @param chunks - Per-chunk results, each with its timeline start offset
  * @param meta - Optional provenance/metadata for the combined transcript
  */
@@ -233,7 +262,10 @@ export function stitchChunks(
 			segments.push(offsetSegment(segment, offsetSeconds));
 		}
 	}
-	return buildTranscript(segments, { ...meta, language });
+	return buildTranscript(segments, {
+		...meta,
+		language: dominantSegmentLanguage(segments) ?? language,
+	});
 }
 
 /**
