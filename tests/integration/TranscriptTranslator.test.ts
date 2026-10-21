@@ -229,6 +229,29 @@ describe('an answer that does not line up', () => {
 		warn.mockRestore();
 	});
 
+	it('drops the spoken language only from the lines it translated', async () => {
+		const warn = quietWarn();
+		const source: Transcript = {
+			segments: [
+				{ start: 0, end: 59, text: 'Добрий день', language: 'uk' },
+				{ start: 60, end: 119, text: 'Dzień dobry', language: 'pl' },
+			],
+			speakers: [],
+			language: 'pl',
+		};
+		const { translator } = createSut(source, ['0||Buenos dias']);
+
+		const { transcript: result } = await translator.translate();
+
+		// The translated line is in Spanish now, which the transcript's own
+		// language says; the untranslated one is still Polish.
+		expect(result.segments.map((s) => s.language)).toEqual([
+			undefined,
+			'pl',
+		]);
+		warn.mockRestore();
+	});
+
 	it.each([
 		{ case: 'a line with no fields', answer: 'Hola' },
 		{ case: 'a line numbered with words', answer: 'one||Hola' },

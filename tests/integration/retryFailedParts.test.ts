@@ -216,6 +216,30 @@ describe('splicing recovered segments into a transcript', () => {
 		expect(spliced).toBe(1);
 	});
 
+	it('names the language most of the completed transcript is in', () => {
+		// The stored language was measured over the parts that succeeded, so
+		// the recovered Polish parts outweigh the Ukrainian opening once back.
+		const { transcript } = spliceSegments(
+			{
+				...transcriptOf([
+					{ start: 0, end: 30, text: 'Добрий день', language: 'uk' },
+				]),
+				language: 'uk',
+			},
+			[
+				{
+					start: 60,
+					end: 90,
+					text: 'Możemy od razu po polsku, dobrze?',
+					language: 'pl',
+				},
+			],
+			ASKED,
+		);
+
+		expect(transcript.language).toBe('pl');
+	});
+
 	it('keeps everything else about the transcript', () => {
 		const { transcript } = spliceSegments(transcriptOf(HEARD), [], ASKED);
 

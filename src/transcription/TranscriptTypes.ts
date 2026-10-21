@@ -35,9 +35,24 @@ export interface TranscriptSegment {
 	 * or undefined when speakers are not distinguished.
 	 */
 	speaker?: string;
+	/**
+	 * Language this segment was spoken in, as an ISO code, when the engine was
+	 * told the recording switches between several languages and answered per
+	 * segment, or {@link OTHER_SEGMENT_LANGUAGE} for speech in none of them.
+	 * Undefined otherwise, the transcript's own `language` then covering every
+	 * segment.
+	 */
+	language?: string;
 	/** Optional word-level timings within this segment. */
 	words?: TranscriptWord[];
 }
+
+/**
+ * The segment language an engine answers for speech in none of the languages
+ * it was told to expect, so a third language spoken in passing is not tagged
+ * with a code it is not in.
+ */
+export const OTHER_SEGMENT_LANGUAGE = 'other';
 
 /**
  * A fully assembled transcript.

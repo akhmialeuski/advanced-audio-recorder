@@ -52,6 +52,62 @@ function usableContext(): Awaited<ReturnType<typeof generateContext>> {
 	};
 }
 
+/** A run told the recording switches between Polish and Ukrainian. */
+const POLISH_AND_UKRAINIAN: AdvancedTwoPassInput['transcribeOptions'] = {
+	diarize: false,
+	wordTimestamps: false,
+	language: 'pl',
+	languages: ['pl', 'uk'],
+};
+
+/**
+ * A second pass of comparable length that came back in `language`.
+ * @param language - The language the pass reports
+ */
+function secondPassIn(language: string): TranscribePass {
+	return async (_options, passResults) => {
+		passResults.push({
+			offsetSeconds: 0,
+			transcript: transcriptOf(
+				'a second pass of comparable length here',
+				language,
+			),
+		});
+	};
+}
+
+/**
+ * Parts fifteen minutes apart, one per language, each a single segment
+ * tagged with its language the way a several-language Gemini part is.
+ * @param languages - The language of each part's segment
+ */
+function partsTagged(...languages: string[]): PassResult[] {
+	return languages.map((language, index) => ({
+		offsetSeconds: index * 900,
+		transcript: {
+			segments: [
+				{
+					start: 0,
+					end: 10,
+					text: 'a part of comparable length',
+					language,
+				},
+			],
+			speakers: [],
+		},
+	}));
+}
+
+/**
+ * A second pass that came back as the given parts.
+ * @param parts - The parts the pass returns
+ */
+function secondPassOf(parts: PassResult[]): TranscribePass {
+	return async (_options, passResults) => {
+		passResults.push(...parts);
+	};
+}
+
 function createSut(
 	overrides: Partial<AdvancedTwoPassInput> = {},
 	passBehaviour: TranscribePass = async (
@@ -65,9 +121,13 @@ function createSut(
 	},
 ): { runner: AdvancedTwoPassRunner; secondPassResults: PassResult[] } {
 	const secondPassResults: PassResult[] = [];
+	const baseline =
+		overrides.baseline ??
+		transcriptOf('a first pass of comparable length here now');
 	const runner = new AdvancedTwoPassRunner({
 		settings: mergeSettings({ transcriptionAdvancedSettingsEnabled: true }),
-		baseline: transcriptOf('a first pass of comparable length here now'),
+		baseline,
+		baselineResults: [{ offsetSeconds: 0, transcript: baseline }],
 		transcribeOptions: { diarize: false, wordTimestamps: false },
 		engineId: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		sourcePath: 'rec.webm',
@@ -164,15 +224,93 @@ describe('a second pass that is declined', () => {
 		// options carry the first pass's language, but an engine that reads no
 		// language hint discards that field, so the answer is what decides.
 		mockGenerateContext.mockResolvedValue(usableContext());
-		const { runner } = createSut({}, async (_o, passResults) => {
-			passResults.push({
-				offsetSeconds: 0,
-				transcript: transcriptOf(
-					'a second pass of comparable length here',
-					'en',
-				),
-			});
+		const { runner } = createSut({}, secondPassIn('en'));
+
+		const outcome = await runner.run();
+
+		expect(outcome).toEqual({
+			status: 'skipped',
+			reason: 'language-drift',
 		});
+	});
+
+	it('declines a several-language pass that came back in none of the listed languages', async () => {
+		// The bias can flip the decode into English whatever languages were
+		// listed: its segments are then tagged "other", and the language the
+		// pass reports is the one the engine named for the whole answer.
+		mockGenerateContext.mockResolvedValue(usableContext());
+		const { runner } = createSut(
+			{
+				transcribeOptions: POLISH_AND_UKRAINIAN,
+				baseline: transcriptOf(
+					'a first pass of comparable length here now',
+					'pl',
+				),
+			},
+			secondPassIn('en'),
+		);
+
+		const outcome = await runner.run();
+
+		expect(outcome).toEqual({
+			status: 'skipped',
+			reason: 'language-drift',
+		});
+	});
+
+	it('declines a several-language pass when one of its parts drifted out of the list', async () => {
+		// Each part is its own request, so the middle one can flip into
+		// English while the stitched pass still reads as Polish.
+		mockGenerateContext.mockResolvedValue(usableContext());
+		const { runner } = createSut(
+			{
+				transcribeOptions: POLISH_AND_UKRAINIAN,
+				baselineResults: partsTagged('pl', 'uk', 'pl'),
+			},
+			secondPassOf(partsTagged('pl', 'other', 'pl')),
+		);
+
+		const outcome = await runner.run();
+
+		expect(outcome).toEqual({
+			status: 'skipped',
+			reason: 'language-drift',
+		});
+	});
+
+	it('adopts a several-language pass whose part outside the list was heard there by the first pass too', async () => {
+		// A stretch genuinely spoken in a language nobody listed is tagged
+		// "other" by both passes, and is no reason to lose the second one.
+		mockGenerateContext.mockResolvedValue(usableContext());
+		const { runner } = createSut(
+			{
+				transcribeOptions: POLISH_AND_UKRAINIAN,
+				baselineResults: partsTagged('pl', 'other', 'uk'),
+			},
+			secondPassOf(partsTagged('pl', 'other', 'pl')),
+		);
+
+		const outcome = await runner.run();
+
+		expect(outcome.status).toBe('improved');
+	});
+
+	it('declines a single-language pass whose later part answered in another language', async () => {
+		// The stitched pass takes its language from the first part, so a
+		// drifted second part passed unseen when the whole was judged.
+		mockGenerateContext.mockResolvedValue(usableContext());
+		const partsIn = (...languages: string[]): PassResult[] =>
+			languages.map((language, index) => ({
+				offsetSeconds: index * 900,
+				transcript: transcriptOf(
+					'a part of comparable length',
+					language,
+				),
+			}));
+		const { runner } = createSut(
+			{ baselineResults: partsIn('ru', 'ru') },
+			secondPassOf(partsIn('ru', 'en')),
+		);
 
 		const outcome = await runner.run();
 
@@ -225,6 +363,57 @@ describe('a second pass that is adopted', () => {
 				],
 			}),
 		});
+	});
+
+	it('adopts a pass whose prevailing language tipped on a several-language run', async () => {
+		// Both passes were told the recording switches between Polish and
+		// Ukrainian, so which one most of the text is in is no sign of drift.
+		mockGenerateContext.mockResolvedValue(usableContext());
+		const { runner } = createSut(
+			{
+				transcribeOptions: POLISH_AND_UKRAINIAN,
+				baseline: transcriptOf(
+					'a first pass of comparable length here now',
+					'pl',
+				),
+			},
+			secondPassIn('uk'),
+		);
+
+		const outcome = await runner.run();
+
+		expect(outcome.status).toBe('improved');
+	});
+
+	it('tells the context agents the language most of a several-language draft is in', async () => {
+		// "pl" was typed first, but the draft is mostly Ukrainian, so the bias
+		// sentence is written in Ukrainian.
+		mockGenerateContext.mockResolvedValue(null);
+		const { runner } = createSut({
+			transcribeOptions: POLISH_AND_UKRAINIAN,
+			baseline: transcriptOf('Добрий день, як справи сьогодні', 'uk'),
+		});
+
+		await runner.run();
+
+		expect(mockGenerateContext.mock.calls[0]?.[2].language).toBe('uk');
+	});
+
+	it('tells the context agents the first listed language when the draft names none', async () => {
+		// A draft whose segments were all tagged outside the list, with no
+		// language of its own, would otherwise leave the agents guessing.
+		mockGenerateContext.mockResolvedValue(null);
+		const { runner } = createSut({
+			transcribeOptions: POLISH_AND_UKRAINIAN,
+			baseline: {
+				segments: [{ start: 0, end: 10, text: 'Гэта па-беларуску.' }],
+				speakers: [],
+			},
+		});
+
+		await runner.run();
+
+		expect(mockGenerateContext.mock.calls[0]?.[2].language).toBe('pl');
 	});
 
 	it('pins the second pass to the language the first pass detected', async () => {

@@ -11,6 +11,7 @@
     - [Mistral Voxtral](#mistral-voxtral)
     - [Local whisper.cpp (desktop)](#local-whispercpp-desktop)
 - [Model picker and language](#model-picker-and-language)
+    - [Several languages in one recording](#several-languages-in-one-recording)
 - [Speakers and diarization](#speakers-and-diarization)
     - [Naming speakers](#naming-speakers)
 - [Biasing recognition toward your own terms](#biasing-recognition-toward-your-own-terms)
@@ -36,7 +37,7 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 1. **Transcription engine** - the row naming the service that transcribes, with the **Engines** entry under it opening the page where that service is configured: base URL, API key, and model.
 2. **Transcribe after recording** - auto-transcribe each saved recording (off by default).
 3. **Show cost estimates** - the estimated API cost before a run and the running session total (on by default).
-4. **Language** - `auto` to detect, or an ISO code.
+4. **Language** - `auto` to detect, an ISO code, or several codes separated by commas for a recording that switches language.
 5. **Speaker diarization** - request speaker labels (only some engines).
 6. **Translate speech to English** - write the recording down in English whatever was spoken, using the engine's own translating operation (only some engines).
 7. **Participant profile** - shown while diarization is on, with the **Participant profiles** catalogue under it.
@@ -146,6 +147,7 @@ Behavior and limits:
 - **Container conversion.** Containers Gemini does not accept directly (notably `webm`, `mp4`, and `m4a`) are decoded to **16 kHz mono WAV** before upload. WAV, MP3, AAC, OGG, FLAC, and AIFF are sent as-is.
 - **Long recordings are split.** A recording **longer than 15 minutes** is split into parts of equal length, each transcribed and stitched back onto the timeline; a recording of exactly 15 minutes still goes in one request. Splitting **resets Gemini's per-request speaker numbering**, so a diarized split shows a warning that speaker labels may differ between parts; the message suggests using Deepgram or splitting the recording for consistent speakers.
 - **Diarization supported.** Turn on **Speaker diarization** to request speaker labels.
+- **Several languages in one recording.** The only engine that reads a list of languages. With **Language** set to codes separated by commas, every segment comes back in the language it was spoken in and is tagged with its code. See [Several languages in one recording](#several-languages-in-one-recording).
 
 Getting a key: [Gemini API key](use-cases/gemini-api-key.md). The **Gemini model list** link in the **Model** row's description points at the [Gemini model list](https://ai.google.dev/gemini-api/docs/models).
 
@@ -220,6 +222,44 @@ The **Language** setting controls the spoken language sent to the engine:
 
 - Leave it as **`auto`** to let the engine detect the language.
 - Or set an **ISO code** such as `en`, `ru`, or `es` to force a language. All languages supported by the chosen model work.
+- Or list **several codes separated by commas**, such as `pl, uk`, for a recording that switches between them. What the engine does with the list is described below.
+
+### Several languages in one recording
+
+A language lesson, an interview with an interpreter, or a meeting where people switch between two languages is transcribed badly when the engine settles on one language: the passages in the other language come back respelled in the first one's alphabet, and their meaning is lost. Listing every language the recording holds in **Language**, separated by commas, tells the engine to expect the switch.
+
+```text
+pl, uk
+```
+
+![The Language row with Google Gemini as the transcription engine and pl, uk typed in the field, its note saying that a list of languages makes each segment come back in its own language](images/settings-transcription-language-list.png)
+
+With that value, a Polish lesson whose tutor explains the grammar in Ukrainian comes back with each line in its own language and script:
+
+```text
+0:33 - Speaker 2: Możemy od razu po polsku, czy chciałby pan na początku
+0:35 - Speaker 2: по-українськи щось мені повідомити?
+14:27 - Speaker 2: Jest? Dobrze. Andrzej to mój przyjaciel.
+```
+
+Only one engine can be told several languages at once, because only its request is ours to write. The rest receive the first code of the list:
+
+| Engine            | Several codes in **Language**                                                                                                             |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Google Gemini     | Every code is sent. Each segment is written in its own language and script, tagged with its code, and a language may change mid-sentence. |
+| Whisper API       | Only the first code is sent, so the whole recording is transcribed as that language.                                                      |
+| Deepgram          | Only the first code is sent. Deepgram's own `multi` mode does not cover every language pair, so the plugin does not use it.               |
+| Local whisper.cpp | Only the first code is sent.                                                                                                              |
+| Mistral Voxtral   | Nothing is sent. The engine detects the language itself.                                                                                  |
+
+What the list changes on Gemini:
+
+- **Every segment carries its language.** The JSON output stores the code on each segment as `language`. Markdown, SubRip and WebVTT outputs show the text only.
+- **The recording's own language is the one most of the text is in.** It is what the recording panel shows, what auto chapters write in, and what post-processing is told. A Polish lesson with a Ukrainian opening reads as `pl`.
+- **A language outside the list is tagged `other`.** The language field of the response schema takes the codes listed and `other`, so a third language spoken in passing is written in its own script and tagged `other` rather than with a code it is not in. It never becomes the recording's own language, and listing every language you expect gives those segments their real code.
+- **Advanced two-pass transcription keeps working.** The second pass is told the same languages, and it is not discarded when the language most of the text is in differs between the passes. It is discarded when any of its parts comes back in a language outside the list that the first pass did not hear in that part.
+
+The plugin names no language of its own in the instruction it sends: the codes come from the field and nowhere else, so any pair or triple works the same way, for example `pl, uk, be` or `de, en`.
 
 ---
 
@@ -351,7 +391,7 @@ Deepgram's biasing depends on the selected **Deepgram model**, which is worth re
 
 **Advanced two-pass transcription (experimental)** is a sub-toggle of the **Advanced settings** master switch (**Settings > Advanced Audio Recorder > Transcription > Advanced settings**), sitting just below the dictionary profiles it reuses. It applies the method from *Whisper: Courtside Edition* (arXiv:2602.18966) inside the plugin: instead of one recognition pass, the recording is transcribed twice. Between the passes a team of LLM agents mines the first (draft) transcript for the meeting's domain context - the topic, proper names, domain jargon, and especially English technical terms and acronyms spoken inside another language - and assembles it into a compact hint that the second pass receives as a decoding bias. The second pass re-decodes the same audio leaning toward the right names and spellings while still checking against the acoustics; unlike an LLM edit of the text, it actually re-listens to the recording.
 
-The mode targets the words a single pass gets wrong most stubbornly in, for example, Russian technical meetings: Russian proper names (rare, inflected, easily invented), professional jargon, and English terms and acronyms that a single pass transliterates ("кубернетис", "си ай си ди") or spells out. The agents put the canonical spellings (`Kubernetes`, `CI/CD`) into the second pass's hint, and the second pass asks for the language the first pass detected, so an English-heavy hint does not flip a Russian recording into English. Asking is not always enough: Mistral Voxtral reads no language hint at all, and any engine may detect afresh, so the language the second pass actually came back in is compared against the first pass's and a pass that drifted is discarded in favor of the baseline.
+The mode targets the words a single pass gets wrong most stubbornly in, for example, Russian technical meetings: Russian proper names (rare, inflected, easily invented), professional jargon, and English terms and acronyms that a single pass transliterates ("кубернетис", "си ай си ди") or spells out. The agents put the canonical spellings (`Kubernetes`, `CI/CD`) into the second pass's hint, and the second pass asks for the language the first pass detected, so an English-heavy hint does not flip a Russian recording into English. Asking is not always enough: Mistral Voxtral reads no language hint at all, and any engine may detect afresh, so the language the second pass actually came back in is compared against the first pass's, part by part for a recording that is split, and a pass with any part that drifted is discarded in favor of the baseline.
 
 **It is off by default and costs real money and time when on:** every file runs two engine passes (roughly 2x the engine cost and duration) plus four to six sequential LLM calls on the engine its own **Context agents engine** row names, which sits beside the two-pass toggle so this mode can run on a different service from post-processing, and because a keyword-biased engine such as Deepgram reads only a keyterm list it runs two fewer of them, skipping the topic and sentence agents it does not need. On a cheap LLM model the money is small, but the sequential calls add latency. Turn it on for the recordings where names and terminology matter, and leave the normal single pass for everything else. The regular LLM post-processing still runs afterwards, on top of whichever pass won. Because that choice is usually made per recording, the **Transcribe audio** dialog carries its own **Advanced two-pass transcription** toggle that overrides this saved setting for a single run: enable the pricier pass for one important meeting, or skip it for a routine file, without changing the default. The toggle defaults from your saved setting, and the length safeguard stays in the settings tab.
 
@@ -571,31 +611,31 @@ The **Auto chapters** block and the **Engines** entry stay in settings when **En
 
 All transcription settings live under **Settings > Advanced Audio Recorder > Transcription**. The global and output settings:
 
-| Setting                             | Description                                                                                             | Default                        |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| **Enable transcription**            | Master toggle that reveals the rest of the section.                                                     | Off                            |
-| **Transcribe after recording**      | Auto-transcribe each saved recording (first file only).                                                 | Off                            |
-| **Show cost estimates**             | Show an approximate API cost before a run and a running session total (cloud engines only).             | On                             |
-| **Transcription engine**            | Whisper API / Deepgram / Google Gemini / Mistral Voxtral / Local whisper.cpp.                           | Whisper API                    |
-| **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`). Ignored by Voxtral, which detects it itself.       | `auto`                         |
-| **Speaker diarization**             | Request speaker labels (Deepgram, Gemini, and Voxtral only).                                            | Off                            |
-| **Translate speech to English**     | Write the recording down in English whatever was spoken (Whisper API only).                             | Off                            |
-| **Word-level timestamps**           | Per-word timing in JSON file output. Selectable on Whisper API, the one engine that reads the request.  | Off                            |
-| **Request timeout**                 | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.                    | 10                             |
-| **Local run timeout**               | Minutes before the local whisper.cpp process is stopped (that engine only). Range 1-720.                | 120                            |
-| **Advanced settings**               | Master switch revealing the dictionary and the two-pass mode; off keeps one plain pass with no biasing. | Off                            |
-| **Advanced two-pass transcription** | Two engine passes with LLM-generated context biasing the second (roughly 2x cost; experimental).        | Off                            |
-| **Second-pass length safeguard**    | Keep the biased second pass only when its text is at least this fraction of the first pass.             | 0.8                            |
-| **Destination**                     | Insert into note / Save to file / Note and file / Save to file and link it in the note.                 | Insert into note               |
-| **File format**                     | JSON / SubRip (.srt) / WebVTT (.vtt) / Plain text (.txt). Shown when destination is not note-only.      | JSON                           |
-| **Note heading**                    | Heading inserted above the transcript (empty for none).                                                 | `## Transcript`                |
-| **Include timestamps**              | Render timestamps on each line.                                                                         | On                             |
-| **Timestamps as player links**      | Render each timestamp as a `#t=` player link.                                                           | On                             |
-| **Include speakers**                | Render speaker labels (diarization-gated).                                                              | On                             |
-| **Merge speaker turns**             | Merge consecutive same-speaker segments (diarization-gated).                                            | On                             |
-| **Timestamp format**                | Template wrapping `{time}`.                                                                             | `{time}`                       |
-| **Speaker format**                  | Template wrapping `{speaker}` (diarization-gated).                                                      | `**{speaker}**`                |
-| **Line format**                     | Arrangement of `{timestamp} {speaker} {text}`.                                                          | `{timestamp} {speaker} {text}` |
+| Setting                             | Description                                                                                                                               | Default                        |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| **Enable transcription**            | Master toggle that reveals the rest of the section.                                                                                       | Off                            |
+| **Transcribe after recording**      | Auto-transcribe each saved recording (first file only).                                                                                   | Off                            |
+| **Show cost estimates**             | Show an approximate API cost before a run and a running session total (cloud engines only).                                               | On                             |
+| **Transcription engine**            | Whisper API / Deepgram / Google Gemini / Mistral Voxtral / Local whisper.cpp.                                                             | Whisper API                    |
+| **Language**                        | `auto` to detect, an ISO code (`en`, `ru`, `es`), or several separated by commas (`pl, uk`). Ignored by Voxtral, which detects it itself. | `auto`                         |
+| **Speaker diarization**             | Request speaker labels (Deepgram, Gemini, and Voxtral only).                                                                              | Off                            |
+| **Translate speech to English**     | Write the recording down in English whatever was spoken (Whisper API only).                                                               | Off                            |
+| **Word-level timestamps**           | Per-word timing in JSON file output. Selectable on Whisper API, the one engine that reads the request.                                    | Off                            |
+| **Request timeout**                 | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.                                                      | 10                             |
+| **Local run timeout**               | Minutes before the local whisper.cpp process is stopped (that engine only). Range 1-720.                                                  | 120                            |
+| **Advanced settings**               | Master switch revealing the dictionary and the two-pass mode; off keeps one plain pass with no biasing.                                   | Off                            |
+| **Advanced two-pass transcription** | Two engine passes with LLM-generated context biasing the second (roughly 2x cost; experimental).                                          | Off                            |
+| **Second-pass length safeguard**    | Keep the biased second pass only when its text is at least this fraction of the first pass.                                               | 0.8                            |
+| **Destination**                     | Insert into note / Save to file / Note and file / Save to file and link it in the note.                                                   | Insert into note               |
+| **File format**                     | JSON / SubRip (.srt) / WebVTT (.vtt) / Plain text (.txt). Shown when destination is not note-only.                                        | JSON                           |
+| **Note heading**                    | Heading inserted above the transcript (empty for none).                                                                                   | `## Transcript`                |
+| **Include timestamps**              | Render timestamps on each line.                                                                                                           | On                             |
+| **Timestamps as player links**      | Render each timestamp as a `#t=` player link.                                                                                             | On                             |
+| **Include speakers**                | Render speaker labels (diarization-gated).                                                                                                | On                             |
+| **Merge speaker turns**             | Merge consecutive same-speaker segments (diarization-gated).                                                                              | On                             |
+| **Timestamp format**                | Template wrapping `{time}`.                                                                                                               | `{time}`                       |
+| **Speaker format**                  | Template wrapping `{speaker}` (diarization-gated).                                                                                        | `**{speaker}**`                |
+| **Line format**                     | Arrangement of `{timestamp} {speaker} {text}`.                                                                                            | `{timestamp} {speaker} {text}` |
 
 Per-engine fields (base URL, key, model picker, upload chunk size) are documented in [Engines](#engines) above.
 

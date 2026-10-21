@@ -132,6 +132,9 @@ export class TranscriptTranslator {
 	 * Returns the transcript translated into the configured language. Every
 	 * segment keeps its start, end, speaker, and word timings; only the text
 	 * changes, and a segment the model failed to answer for keeps its own.
+	 * A translated segment drops the language it was spoken in, so the
+	 * transcript's language, the target, covers it. One left untranslated
+	 * keeps it, because its text is still in that language.
 	 * @returns The translated transcript and the language it is in
 	 */
 	async translate(): Promise<TranslationResult> {
@@ -148,10 +151,18 @@ export class TranscriptTranslator {
 				...this.request.transcript,
 				language,
 				segments: this.request.transcript.segments.map(
-					(segment, index) => ({
-						...segment,
-						text: translated.get(index) ?? segment.text,
-					}),
+					(segment, index) => {
+						const text = translated.get(index);
+						if (text === undefined) {
+							return segment;
+						}
+						const translatedSegment: TranscriptSegment = {
+							...segment,
+							text,
+						};
+						delete translatedSegment.language;
+						return translatedSegment;
+					},
 				),
 			},
 		};

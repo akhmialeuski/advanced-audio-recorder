@@ -101,6 +101,7 @@ import { jobVendorId, LlmJobId } from './llm/vendors';
 import {
 	effectiveDiarize,
 	effectiveLanguage,
+	effectiveLanguages,
 	effectiveSpeechTranslation,
 	effectiveWordTimestamps,
 } from './providers/capabilities';
@@ -643,6 +644,7 @@ export class TranscriptionService {
 			const outcome = await new AdvancedTwoPassRunner({
 				settings,
 				baseline: stitched,
+				baselineResults: ledger.results,
 				transcribeOptions,
 				engineId: provider.id,
 				sourcePath: file.path,
@@ -1035,6 +1037,10 @@ export class TranscriptionService {
 				// itself never sees a hint it would have to refuse, and a code
 				// stored while another engine was selected stops travelling.
 				language: effectiveLanguage(
+					settings.transcriptionProvider,
+					settings.transcriptionLanguage,
+				),
+				languages: effectiveLanguages(
 					settings.transcriptionProvider,
 					settings.transcriptionLanguage,
 				),

@@ -230,7 +230,10 @@ const PROFILES: readonly ProfileOption[] = [
 
 /** The parameters of the transcribe command, beyond its target. */
 export const TRANSCRIBE_PARAMS: CliFlags = {
-	language: valueParam('<code>', 'Language code, or auto.'),
+	language: valueParam(
+		'<codes>',
+		'Language code, several separated by commas, or auto.',
+	),
 	...Object.fromEntries(
 		CHOICES.map((option) => [
 			option.param,

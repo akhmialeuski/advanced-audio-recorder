@@ -26,6 +26,8 @@ import {
 	providerSupportsDictionary,
 } from '../providers/capabilities';
 import { transcriptionEngine } from '../providers/engines';
+import type { Transcript } from '../TranscriptTypes';
+import { dominantSegmentLanguage } from '../transcriptModel';
 import type { GeneratedContext } from './contextPipeline';
 
 /** The bias fields to add to the second pass's transcription options. */
@@ -185,4 +187,85 @@ export function keepsDetectedLanguage(
 		return true;
 	}
 	return baseline === secondPass;
+}
+
+/**
+ * The same guard for a recording configured with several languages: whether
+ * the biased second pass came back in one of them, or in the language the
+ * first pass found there.
+ *
+ * Which listed language prevails can tip between two faithful decodes of a
+ * recording that switches between them, so a listed language is always kept.
+ * A pass that flipped into a language outside the list is not: its segments
+ * are tagged as in none of the listed languages. The first pass vouches for
+ * such a language only when it heard the same one, which is a stretch
+ * genuinely spoken in a language nobody listed. Normalized and left unjudged
+ * when unknown, as {@link keepsDetectedLanguage} is.
+ * @param languages - The languages the recording was configured with
+ * @param baselineLanguage - Language the first pass found, when it did
+ * @param secondPassLanguage - Language the second pass reported, when it did
+ * @returns True when the second pass may be adopted on this evidence
+ */
+export function keepsConfiguredLanguage(
+	languages: readonly string[],
+	baselineLanguage: string | undefined,
+	secondPassLanguage: string | undefined,
+): boolean {
+	const secondPass = secondPassLanguage?.trim().toLowerCase();
+	return (
+		!secondPass ||
+		languages.some((language) => language.toLowerCase() === secondPass) ||
+		baselineLanguage?.trim().toLowerCase() === secondPass
+	);
+}
+
+/** One transcribed part of a pass, on its own timeline from its offset. */
+interface PassPart {
+	offsetSeconds: number;
+	transcript: Transcript;
+}
+
+/**
+ * The language guard, judged part by part.
+ *
+ * Every part of a pass is its own request, so one part can flip into another
+ * language while the stitched transcript still reports the language most of
+ * the text, or its first part, is in. Each part of the second pass is held
+ * against the first pass's part that covers the same offset. A part's
+ * language is the one most of its text is in when its segments name their
+ * own, speech outside the listed languages included, and the language the
+ * engine reported for it otherwise.
+ * @param firstPass - The parts of the first pass
+ * @param secondPass - The parts of the second pass
+ * @param languages - The configured languages, when more than one
+ * @returns True when no part of the second pass drifted
+ */
+export function keepsLanguageInEveryPart(
+	firstPass: readonly PassPart[],
+	secondPass: readonly PassPart[],
+	languages: readonly string[] | undefined,
+): boolean {
+	const languageOf = (part: PassPart | undefined): string | undefined =>
+		part
+			? (dominantSegmentLanguage(part.transcript.segments, {
+					includeOther: true,
+				}) ?? part.transcript.language)
+			: undefined;
+	const latestFirst = [...firstPass].sort(
+		(a, b) => b.offsetSeconds - a.offsetSeconds,
+	);
+	return secondPass.every((part) => {
+		// The covering first-pass part is the last one starting at or before
+		// this offset, which also matches a part subdivided in one pass only.
+		const covering = latestFirst.find(
+			(first) => first.offsetSeconds <= part.offsetSeconds,
+		);
+		return languages
+			? keepsConfiguredLanguage(
+					languages,
+					languageOf(covering),
+					languageOf(part),
+				)
+			: keepsDetectedLanguage(languageOf(covering), languageOf(part));
+	});
 }

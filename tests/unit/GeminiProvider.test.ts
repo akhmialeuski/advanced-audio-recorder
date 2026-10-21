@@ -38,6 +38,16 @@ interface GenerateBody {
 	generationConfig: {
 		temperature: number;
 		responseMimeType: string;
+		responseSchema: {
+			properties: {
+				segments: {
+					items: {
+						properties: Record<string, { enum?: string[] }>;
+						required: string[];
+					};
+				};
+			};
+		};
 		thinkingConfig?: { thinkingBudget?: number; thinkingLevel?: string };
 	};
 }
@@ -218,6 +228,41 @@ describe('GeminiProvider.transcribe', () => {
 		// Named as the primary language rather than the only one: a bilingual
 		// recording still has to be transcribed in the language spoken.
 		expect(instruction).toContain('primary language is "de"');
+		// A single code keeps the schema it always had: no per-segment field.
+		const segment =
+			flow.generateBody().generationConfig.responseSchema.properties
+				.segments.items;
+		expect(Object.keys(segment.properties)).not.toContain('language');
+	});
+
+	it('names every configured language and asks each segment for its own', async () => {
+		const flow = scriptTranscriptFlow();
+
+		await provider().transcribe(payload('audio/wav'), {
+			diarize: false,
+			wordTimestamps: false,
+			language: 'pl',
+			languages: ['pl', 'uk'],
+		});
+
+		const instruction = instructionOf(flow);
+		expect(instruction).toContain(
+			'The recording switches between these languages: pl, uk.',
+		);
+		expect(instruction).not.toContain('primary language');
+		expect(instruction).toContain(
+			'or to "other" when it is in none of the listed languages.',
+		);
+		const segment =
+			flow.generateBody().generationConfig.responseSchema.properties
+				.segments.items;
+		// "other" keeps a third language from being tagged with a listed code.
+		expect(segment.properties.language?.enum).toEqual([
+			'pl',
+			'uk',
+			'other',
+		]);
+		expect(segment.required).toEqual(['start', 'text', 'language']);
 	});
 
 	it('asks Gemini to label speakers when the run diarizes', async () => {

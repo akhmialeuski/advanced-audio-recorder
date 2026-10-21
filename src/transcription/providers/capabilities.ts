@@ -42,6 +42,7 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	// fields as transcription and answering in the same shape.
 	supportsSpeechTranslation: true,
 	readsLanguageHint: true,
+	readsLanguageList: false,
 };
 
 /** Deepgram pre-recorded API: diarizes a whole request with stable labels. */
@@ -58,6 +59,7 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	biasChannel: AdvancedBiasChannel.Keyterm,
 	supportsSpeechTranslation: false,
 	readsLanguageHint: true,
+	readsLanguageList: false,
 };
 
 /** Local whisper.cpp: no upload limit, needs decoded WAV, no diarization. */
@@ -73,6 +75,7 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	biasChannel: AdvancedBiasChannel.Prompt,
 	supportsSpeechTranslation: false,
 	readsLanguageHint: true,
+	readsLanguageList: false,
 };
 
 /**
@@ -97,6 +100,10 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	biasChannel: AdvancedBiasChannel.Prompt,
 	supportsSpeechTranslation: false,
 	readsLanguageHint: true,
+	// The instruction names every configured language and the response schema
+	// asks each segment for its own, so a recording that switches language
+	// comes back with each part written in the language it was spoken in.
+	readsLanguageList: true,
 };
 
 /**
@@ -154,6 +161,7 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	// timestamp_granularities is documented as incompatible with language, and
 	// the granularity is always sent, so the engine detects the language itself.
 	readsLanguageHint: false,
+	readsLanguageList: false,
 };
 
 /** Capabilities for every engine, keyed by its settings id. */
@@ -297,25 +305,62 @@ export function providerReadsLanguageHint(
 	return TRANSCRIPTION_PROVIDER_CAPABILITIES[id].readsLanguageHint;
 }
 
+/** Separator between the codes of a language field naming several languages. */
+const LANGUAGE_LIST_SEPARATOR = ',';
+
+/** The language field's value that asks the engine to detect the language. */
+const AUTO_LANGUAGE = 'auto';
+
 /**
- * The language field's own rule, wherever that field is read: an empty value
- * and "auto" both mean "let the service decide", so both resolve to no hint.
+ * Whether the engine can be told every language a recording switches between.
+ * @param id - Selected transcription engine id
+ * @returns True when the engine reads a list of languages
+ */
+export function providerReadsLanguageList(
+	id: TranscriptionProviderId,
+): boolean {
+	return TRANSCRIPTION_PROVIDER_CAPABILITIES[id].readsLanguageList;
+}
+
+/**
+ * The language field's own rule, wherever that field is read: the codes it
+ * names, in the order typed. An empty value and "auto" both mean "let the
+ * service decide", so both name none, and a field naming several codes
+ * separated by commas describes a recording that switches between them.
  *
  * The comparison is case-insensitive because the field's validator is: its
  * pattern carries the `i` flag, so `Auto` and `AUTO` are accepted and stored
  * exactly as typed. Matching only the lowercase spelling passed `Auto` on as
- * though it were an ISO code, which no service resolves.
+ * though it were an ISO code, which no service resolves. A code typed twice,
+ * in any case, counts once, so `pl, PL` stays a single-language request.
+ * @param language - The configured language field, as the field stores it
+ * @returns The codes, empty when the field asks for detection
+ */
+export function configuredLanguages(language: string): string[] {
+	const codes = new Map<string, string>();
+	for (const typed of language.split(LANGUAGE_LIST_SEPARATOR)) {
+		const code = typed.trim();
+		const key = code.toLowerCase();
+		if (code !== '' && key !== AUTO_LANGUAGE && !codes.has(key)) {
+			codes.set(key, code);
+		}
+	}
+	return [...codes.values()];
+}
+
+/**
+ * The one code a reader that takes a single language is given: the first the
+ * field names.
  *
  * Shared with auto-chapter generation, which needs the same answer about the
  * same field for a different reason - it names the language to the LLM rather
  * than to a transcription engine - so the rule lives once here instead of in
  * a copy per reader that can drift out of step.
- * @param language - The configured language code, as the field stores it
+ * @param language - The configured language field, as the field stores it
  * @returns The code, or undefined when the field asks for detection
  */
 export function configuredLanguageHint(language: string): string | undefined {
-	const trimmed = language.trim();
-	return trimmed && trimmed.toLowerCase() !== 'auto' ? trimmed : undefined;
+	return configuredLanguages(language)[0];
 }
 
 /**
@@ -338,6 +383,24 @@ export function effectiveLanguage(
 }
 
 /**
+ * Every language a run tells the engine the recording switches between: the
+ * configured codes when the field names more than one and the engine reads a
+ * list, so a single code keeps the request it always produced.
+ * @param id - Selected transcription engine id
+ * @param language - The configured language field
+ * @returns The codes to send, or undefined when no list should be
+ */
+export function effectiveLanguages(
+	id: TranscriptionProviderId,
+	language: string,
+): string[] | undefined {
+	const codes = configuredLanguages(language);
+	return providerReadsLanguageList(id) && codes.length > 1
+		? codes
+		: undefined;
+}
+
+/**
  * What to tell the user about the language hint on this engine. Kept beside the
  * capability rather than at each surface, so the settings tab and the per-run
  * dialog cannot describe the same engine differently.
@@ -354,9 +417,12 @@ export function effectiveLanguage(
  * @returns The sentence for the language row's description
  */
 export function languageNote(id: TranscriptionProviderId): string {
-	return providerReadsLanguageHint(id)
-		? 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it.'
-		: 'This engine detects the spoken language itself, because it cannot be asked for timed segments and a language at the same time, so a code here does not reach its request. Auto chapters still read it when the transcript carries no detected language.';
+	if (!providerReadsLanguageHint(id)) {
+		return 'This engine detects the spoken language itself, because it cannot be asked for timed segments and a language at the same time, so a code here does not reach its request. Auto chapters still read it when the transcript carries no detected language.';
+	}
+	return providerReadsLanguageList(id)
+		? 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it. For a recording that switches languages, list them separated by commas (e.g. pl, uk), and each segment is written in its own language.'
+		: 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it. This engine takes one language, so of several codes separated by commas only the first is sent.';
 }
 
 /**
