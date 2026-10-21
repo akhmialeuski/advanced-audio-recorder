@@ -220,6 +220,25 @@ export default tseslint.config(
         },
     },
     {
+        // The crap-gate size limits, the same numbers as crap-gate.toml so the
+        // agent edit hook and the commit agree. Code lines only, so JSDoc never
+        // pushes a function or a file over. Debt that predates the gate is
+        // recorded in eslint-suppressions.json and may shrink but not grow.
+        files: ['src/**/*.ts'],
+        rules: {
+            complexity: ['error', 8],
+            'max-params': ['error', 5],
+            'max-lines': [
+                'error',
+                { max: 500, skipComments: true, skipBlankLines: true },
+            ],
+            'max-lines-per-function': [
+                'error',
+                { max: 50, skipComments: true, skipBlankLines: true },
+            ],
+        },
+    },
+    {
         // Non-ASCII typography is banned everywhere (source and tests),
         // in comments and user-facing strings alike.
         files: ['src/**/*.ts', 'tests/**/*.ts'],
