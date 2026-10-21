@@ -34,6 +34,72 @@ export const MAX_SHOWN_VERSIONS = 10;
  * version cannot be titled one thing here and another there.
  */
 export const RELEASE_NOTES: Readonly<Record<string, string>> = {
+	'2.4.0': `
+This release adds a recording panel to the sidebar, keeps API keys in Obsidian's keychain, and transcribes a recording that switches between languages. The **recording panel** shows the length, the format, the transcription, and the participants of the recording in front of you, with its actions one click away. API keys move out of \`data.json\` into **Settings > Keychain**. **Language** takes several codes, such as \`pl, uk\`, and a new **Language lesson** cleanup profile keeps every line in the language it was spoken in. Every action of the plugin is now in the command palette and on the command line, and a conversion or a split can be cancelled while it runs. This release requires Obsidian 1.14.4 or later.
+
+## New: The recording panel
+
+A sidebar tab under the plugin's microphone icon, next to **Outline** and **Backlinks**, follows the file you have open: a recording opened on its own, or a note that embeds or links one, a property such as \`recording: "[[standup.webm]]"\` included. When a note refers to several recordings, a dropdown picks one.
+
+- A row of icon buttons runs the recording's file actions, starts or stops a recording, shows the transcription queue, and opens the settings.
+- **Recording** lists the file, its duration, size, format, and creation time, and which engine transcribed it, in which language and when.
+- **Participants** lists each person with the speaker label given to their name.
+- The sections fold the way **Properties** does, and the panel remembers which are folded. **Open the recording panel** brings a closed panel back.
+
+## New: API keys in Obsidian's keychain
+
+The keys of the six engines were kept in plain text in \`data.json\` and its backup. Each **API key** row now links a secret in **Settings > Keychain** through Obsidian's own picker, and \`data.json\` holds only its ID. Keys an earlier version stored are copied into the keychain on the first start, under IDs such as \`openai-api-key\`, and a notice says so. The plain-text copy leaves \`data.json\` at the next start of the same device, once the keychain is found holding the key, so a keychain write lost on the way to disk costs no key.
+
+The keychain does not sync, and on the desktop each vault has a keychain of its own. A second device therefore shows **No key** for an engine until its key is added there once under the same ID.
+
+## New: Several languages in one recording
+
+**Language** takes several codes separated by commas, such as \`pl, uk\` for a Polish lesson with a Ukrainian-speaking tutor. Google Gemini is told every code and returns each segment in the language and the script it was spoken in, tagged with its code in the JSON transcript. Every other engine receives the first code. Splitting a line, merging lines, and translating keep each segment's language, and the advanced two-pass mode no longer discards a second pass as language drift when a list is set.
+
+Cleanup no longer brings a mixed transcript over into one language: the prompt names every language of the transcript and asks to keep each line in its own. A new **Language lesson** cleanup profile ships beside **Default**. It keeps the student's mistakes and the tutor's corrections, and it is used only once you pick it under **Cleanup prompt profile**.
+
+## New: Every action in the palette and on the command line
+
+Every action of the plugin is now one command offered in three places: the command palette, where it can take a hotkey, its context menu, and Obsidian's command line as \`advanced-audio-recorder:<name>\`. The palette grows from a handful of commands to 37, and the command line from four to 40.
+
+- From the palette an action works on the open recording, or on the recordings the open note embeds or links, and asks which one when there are several.
+- **Delete recording** is offered for a recording reached on its own, in the file explorer or opened as a file. Reached through a note or a link, only **Delete recording & link to file** is offered, and timecode links are kept.
+- The **Command line** page of the documentation lists every command and its parameters, with a meeting processed end to end by a script.
+
+## New: Cancelling a conversion or a split
+
+The **Convert audio format** and **Split audio into parts** dialogs show a **Cancel** button while the job runs, and it stops the job in the middle of the transcoding. A dialog closed mid-job leaves a notice with the progress and a **Cancel** of its own. A cancelled job leaves the vault as it found it: the parts a split already wrote go to the trash, and no link changes.
+
+## Changed
+
+- Colours, text sizes, corner radii, and the focus ring come from Obsidian's theme tokens, and the status-bar controls, the volume sliders, the progress bars, and the input device picker are Obsidian's own components. On mobile the plugin's text and icons follow the system text size.
+- With reduced motion switched on in the operating system, the ribbon and banner pulses and every transition stop. The recording icon and dot stay red.
+- Every icon-only control has an accessible name, and the input meter, the progress bars, and the volume sliders announce their values to a screen reader.
+- The model lists are checked against the providers' October 2026 catalogues. The defaults become \`gemini-3.8-flash\`, \`gpt-6.1-sol\`, and \`claude-opus-5-5\`, shut-down models leave the seeded lists, and the cost estimate carries the current rates. A model you chose stays selected.
+- A new recording is embedded in the link format set in Obsidian, and deleting a recording sends its sidecar to the trash you chose.
+- A \`.aac\` file is now a bare AAC stream in ADTS frames. Earlier versions wrote an MP4 container under that name, and those files still play and convert.
+- A menu opens in the pop-out window it was called from, and destructive actions are no longer offered on timestamp links.
+
+## Fixed
+
+- The advanced two-pass mode failed on every current Claude model, the earlier default \`claude-opus-4-8\` included, because the context agents sent a temperature those models refuse. A request to Anthropic now drops a field the endpoint refuses and sends the request again.
+- A 16 kHz mono recording converted to M4A came out as stereo at 48 kHz without a word. The conversion now keeps the channel count, picks the nearest rate the device's encoder takes, and says so in a notice.
+- Renaming a recording while the plugin read its sidecar could leave the moved sidecar empty, losing the recording's markers and transcription details.
+- A link whose target holds \`%20\`, or a time after \`#t=\`, is now read the way Obsidian reads it.
+- The **Convert to mono** action of the silent-channel notice rendered as a grey box instead of a link.
+
+## Internal
+
+- The settings tab renders only through Obsidian's settings framework, and about 900 lines kept for older Obsidian versions are gone.
+- mediabunny moves to 1.61.4, and the Obsidian typings to 1.14.4.
+- The suite is 7694 tests across 324 suites.
+
+## Compatibility
+
+Requires Obsidian 1.14.4+, raised from 1.6.6, and an older Obsidian keeps receiving 2.3.5. Existing recordings, stored settings, the recorder, and the players are unaffected. API keys move into the keychain on the first start, so a plugin version older than this one, installed afterwards, finds no keys in \`data.json\`. Every existing install receives the **Language lesson** cleanup profile once and unselected, and a profile you delete stays deleted.
+
+**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.5...2.4.0
+`,
 	'2.3.5': `
 This release makes the mobile recording banner reachable and movable. The banner no longer sits at the very top of the screen, where a touch opens the system's notification shade, and it can now be dragged to one of six places on the screen and stays there for later recordings. Both banner settings move to a new **Mobile** settings page. Existing recordings, stored settings, and the recorder are unaffected.
 
@@ -244,14 +310,6 @@ This release makes an online call recordable from both ends and gives the embedd
 Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existing recordings, stored settings, the recorder, and the players are unaffected. The track source and track processing fields are absent from settings written by an earlier version and read as **Input device** and **Same as global settings**, so nothing migrates. System audio as a track source needs the Obsidian desktop app on Windows, the row under **Track N source** reports whether the installed build can grant it, and a session holding it cannot be started from the command line. The screenshots in the documentation still show the previous player.
 
 **Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.0...2.3.1
-`,
-	'2.3.0': `
-## What's Changed
-* feat(settings): offer bitrates down to 24 kbps, floored by the codec by @akhmialeuski in https://github.com/akhmialeuski/advanced-audio-recorder/pull/89
-* feat(transcription): add Mistral Voxtral and Mistral post-processing by @akhmialeuski in https://github.com/akhmialeuski/advanced-audio-recorder/pull/90
-
-
-**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.2.3...2.3.0
 `,
 };
 
