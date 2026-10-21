@@ -31,6 +31,9 @@ jobs:
             - name: Coverage and suite-size regression guard
               run: node scripts/coverage-diff.mjs
 
+            - name: CRAP per function stays within its baseline
+              run: bash scripts/crap-gate.sh
+
             - name: Test layers match what each test covers
               run: node scripts/layer-check.mjs
 

@@ -1,0 +1,818 @@
+{
+	"src/actions/audioJobsCli.ts": {
+		"complexity": {
+			"count": 3
+		},
+		"max-lines-per-function": {
+			"count": 3
+		}
+	},
+	"src/actions/fileActions.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/actions/positionActions.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/actions/recordingTargets.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/actions/speakersCli.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/actions/transcribeCli.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/actions/transcriptActions.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/audio/AudioCapabilityDetector.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/audio/AudioFormatConverter.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		},
+		"max-params": {
+			"count": 2
+		}
+	},
+	"src/audio/EncodingWorkerClient.ts": {
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/audio/WavEncoder.ts": {
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/audio/downmix.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/audio/streamingConversion.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		},
+		"max-params": {
+			"count": 2
+		}
+	},
+	"src/audio/streamingSplit.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		},
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/chapters/AutoChapterService.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/chapters/chapterGeneration.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/chapters/transcriptSources.ts": {
+		"complexity": {
+			"count": 3
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/cleanup/AudioProcessingModal.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/cleanup/AudioProcessingService.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		},
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/cleanup/audioDsp.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/diagnostics/SystemDiagnostics.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/main.ts": {
+		"complexity": {
+			"count": 3
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 3
+		}
+	},
+	"src/markers/markerModel.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/obsidian/noteRecordings.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/panel/RecordingPanelView.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/panel/recordingPanelModel.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/player/AudioPlayer.ts": {
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 3
+		},
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/player/AudioPlayerRegistry.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/player/DetachedPlayback.ts": {
+		"max-params": {
+			"count": 2
+		}
+	},
+	"src/player/EnhancedPlayerRegistrar.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/player/MediaKindStore.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/player/WaveformData.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/player/views/MarkerListView.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/player/views/PlayerControlsView.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/providers/engineSettings.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/providers/providers.ts": {
+		"max-lines": {
+			"count": 1
+		}
+	},
+	"src/quicknotes/QuickNoteController.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/recording/AudioSplitter.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/recording/AudioStreamHandler.ts": {
+		"complexity": {
+			"count": 3
+		}
+	},
+	"src/recording/CaptureSession.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/recording/ConversionService.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/recording/MemoryRecorder.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/recording/NoteInserter.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/recording/PartRotationController.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 2
+		},
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/recording/PcmStreamRecorder.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/recording/RecordingFinalizer.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		},
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/recording/RecordingManager.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 5
+		},
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/recording/RecordingMarkerCoordinator.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/recording/RecoveryService.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/recording/SplitService.ts": {
+		"complexity": {
+			"count": 3
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 4
+		},
+		"max-params": {
+			"count": 2
+		}
+	},
+	"src/recording/StreamingMixer.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/recording/mixMath.ts": {
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/recording/silentChannelDetector.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/SettingsTab.ts": {
+		"complexity": {
+			"count": 4
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 5
+		}
+	},
+	"src/settings/apiKeySecrets.ts": {
+		"complexity": {
+			"count": 2
+		}
+	},
+	"src/settings/controlValues.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/audioCleanupSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/audioInputSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/audioSplittingSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/enginesSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/llmSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/multiTrackSection.ts": {
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/settings/sections/outputFormatSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/profilesSection.ts": {
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/settings/sections/quickNotesSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/transcriptOutputSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/transcriptionAdvancedSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/transcriptionSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/settingControls.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/settings/settingsAttention.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/settings/settingsDefinitions.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/settingsSchema.ts": {
+		"max-lines": {
+			"count": 1
+		}
+	},
+	"src/settings/settingsSerialization.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/settings/settingsValidation.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/sidecar/RecordingSidecarStore.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines": {
+			"count": 1
+		}
+	},
+	"src/sidecar/recordingSidecarModel.ts": {
+		"complexity": {
+			"count": 6
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/speakers/applySpeakerRenames.ts": {
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/speakers/applyTranscriptEdit.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/speakers/speakerRename.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/speakers/speakerRenameFlow.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 3
+		}
+	},
+	"src/speakers/transcriptRows.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/speakers/transcriptSplit.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/transcription/TranscriptionService.ts": {
+		"complexity": {
+			"count": 4
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 4
+		},
+		"max-params": {
+			"count": 2
+		}
+	},
+	"src/transcription/advanced/AdvancedTwoPassRunner.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		},
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/transcription/advanced/contextPipeline.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/transcription/audioPrep.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/transcription/costs.ts": {
+		"complexity": {
+			"count": 2
+		}
+	},
+	"src/transcription/dictionaryBias.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/transcription/httpClient.ts": {
+		"complexity": {
+			"count": 3
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/transcription/llmPostProcess.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/transcription/providers/DeepgramProvider.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/transcription/providers/GeminiProvider.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/transcription/providers/LocalWhisperProvider.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/transcription/providers/WhisperApiProvider.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/transcription/providers/deepgramResponse.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/transcription/providers/geminiFileApi.ts": {
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/transcription/providers/geminiResponse.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/transcription/providers/geminiShared.ts": {
+		"complexity": {
+			"count": 2
+		}
+	},
+	"src/transcription/providers/whisperResponse.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/transcription/runTranscription.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/transcription/transcriptFormat.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/transcription/transcriptOutput.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/ui/ContextMenu.ts": {
+		"complexity": {
+			"count": 4
+		},
+		"max-lines-per-function": {
+			"count": 3
+		}
+	},
+	"src/ui/ConversionModal.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/ui/RecordingBanner.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/ui/SpeakerRenameModal.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/ui/SplitModal.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/ui/StatusBar.ts": {
+		"complexity": {
+			"count": 3
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/ui/TranscriptMergeModal.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/ui/TranscriptSplitModal.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/ui/TranscriptionModal.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 3
+		}
+	},
+	"src/ui/transcriptLineEdits.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
+	"src/utils/AudioFileAnalyzer.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/utils/LinkUpdater.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		},
+		"max-params": {
+			"count": 1
+		}
+	},
+	"src/utils/TimeUtils.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/utils/formatBytes.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
+	"src/utils/listLines.ts": {
+		"complexity": {
+			"count": 1
+		}
+	}
+}
