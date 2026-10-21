@@ -260,6 +260,25 @@ describe('a second pass that is adopted', () => {
 		expect(outcome.status).toBe('improved');
 	});
 
+	it('tells the context agents the language most of a several-language draft is in', async () => {
+		// "pl" was typed first, but the draft is mostly Ukrainian, so the bias
+		// sentence is written in Ukrainian.
+		mockGenerateContext.mockResolvedValue(null);
+		const { runner } = createSut({
+			transcribeOptions: {
+				diarize: false,
+				wordTimestamps: false,
+				language: 'pl',
+				languages: ['pl', 'uk'],
+			},
+			baseline: transcriptOf('Добрий день, як справи сьогодні', 'uk'),
+		});
+
+		await runner.run();
+
+		expect(mockGenerateContext.mock.calls[0]?.[2].language).toBe('uk');
+	});
+
 	it('pins the second pass to the language the first pass detected', async () => {
 		mockGenerateContext.mockResolvedValue(usableContext());
 		const transcribePass = jest.fn<

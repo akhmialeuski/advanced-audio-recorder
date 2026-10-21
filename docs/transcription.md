@@ -256,7 +256,7 @@ What the list changes on Gemini:
 
 - **Every segment carries its language.** The JSON output stores the code on each segment as `language`. Markdown, SubRip and WebVTT outputs show the text only.
 - **The recording's own language is the one most of the text is in.** It is what the recording panel shows, what auto chapters write in, and what post-processing is told. A Polish lesson with a Ukrainian opening reads as `pl`.
-- **The language field of the response schema is limited to the codes listed.** A third language spoken in passing is still written in its own script, but it is tagged with the closest listed code, so list every language you expect.
+- **A language outside the list is tagged `other`.** The language field of the response schema takes the codes listed and `other`, so a third language spoken in passing is written in its own script and tagged `other` rather than with a code it is not in. It never becomes the recording's own language, and listing every language you expect gives those segments their real code.
 - **Advanced two-pass transcription keeps working.** The second pass is told the same languages, and it is not discarded when the language most of the text is in differs between the passes.
 
 The plugin names no language of its own in the instruction it sends: the codes come from the field and nowhere else, so any pair or triple works the same way, for example `pl, uk, be` or `de, en`.

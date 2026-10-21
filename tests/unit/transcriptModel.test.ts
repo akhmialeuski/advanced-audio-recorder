@@ -289,6 +289,19 @@ describe('dominantSegmentLanguage', () => {
 	it('names no language when no segment carries one', () => {
 		expect(dominantSegmentLanguage([seg(0, 1, 'hello')])).toBeUndefined();
 	});
+
+	it('never names speech outside the expected languages', () => {
+		// A long Belarusian aside in a Polish lesson tagged as none of them
+		// still leaves the transcript a code the readers can use.
+		const segments: TranscriptSegment[] = [
+			{ ...seg(0, 1, 'Tak.'), language: 'pl' },
+			{
+				...seg(1, 9, 'Гэта доўгае тлумачэнне па-беларуску.'),
+				language: 'other',
+			},
+		];
+		expect(dominantSegmentLanguage(segments)).toBe('pl');
+	});
 });
 
 describe('plainText', () => {

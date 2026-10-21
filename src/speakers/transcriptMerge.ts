@@ -163,5 +163,6 @@ export function buildMergedSegment(
 		end,
 		text: restoreWikilinks(mergedLineText(texts)),
 		...(speaker === undefined ? {} : { speaker }),
+		...(timing.language ? { language: timing.language } : {}),
 	};
 }

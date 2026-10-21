@@ -6,10 +6,11 @@
  * @module transcription/transcriptModel
  */
 
-import type {
-	Transcript,
-	TranscriptSegment,
-	TranscriptWord,
+import {
+	OTHER_SEGMENT_LANGUAGE,
+	type Transcript,
+	type TranscriptSegment,
+	type TranscriptWord,
 } from './TranscriptTypes';
 
 /**
@@ -213,7 +214,8 @@ export function buildTranscript(
  * the one transcript-wide code that cleanup, chapters and file names read for
  * a recording that switches languages. Measured by characters rather than by
  * segments, because a run of short replies in one language would otherwise
- * outvote a long explanation in the other.
+ * outvote a long explanation in the other. Speech tagged as in none of the
+ * expected languages names no code, so it never becomes the transcript's.
  * @param segments - Transcript segments
  * @returns The prevailing segment language, or undefined when none names one
  */
@@ -222,7 +224,7 @@ export function dominantSegmentLanguage(
 ): string | undefined {
 	const characters = new Map<string, number>();
 	for (const { language, text } of segments) {
-		if (language) {
+		if (language && language !== OTHER_SEGMENT_LANGUAGE) {
 			characters.set(
 				language,
 				(characters.get(language) ?? 0) + text.length,

@@ -384,6 +384,14 @@ describe('a field naming several languages', () => {
 		expect(configuredLanguageHint('pl, uk')).toBe('pl');
 	});
 
+	it('counts a code typed twice once, whatever its case', () => {
+		expect(configuredLanguages('pl, PL, uk, pl')).toEqual(['pl', 'uk']);
+		// So a repeated single code keeps the single-language request.
+		expect(
+			effectiveLanguages(TRANSCRIPTION_PROVIDER_IDS.GEMINI, 'pl, pl'),
+		).toBeUndefined();
+	});
+
 	it('records Gemini as the one engine that reads a list', () => {
 		expect(
 			Object.values(TRANSCRIPTION_PROVIDER_IDS).filter((id) =>

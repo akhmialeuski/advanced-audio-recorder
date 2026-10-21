@@ -225,7 +225,11 @@ export class AdvancedTwoPassRunner {
 			jobVendorId(settings, LlmJobId.ContextAgents),
 		);
 		const context = await generateContext(baseline, llm, {
-			language: transcribeOptions.language ?? baseline.language,
+			// With several languages the first one typed is only the first in
+			// the list, so the agents write in the one most of the draft is in.
+			language: transcribeOptions.languages
+				? baseline.language
+				: (transcribeOptions.language ?? baseline.language),
 			glossary: resolveDictionaryTermList(settings),
 			buildPromptSentence:
 				advancedBiasChannel(settings.transcriptionProvider) ===

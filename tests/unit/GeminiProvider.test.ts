@@ -250,10 +250,18 @@ describe('GeminiProvider.transcribe', () => {
 			'The recording switches between these languages: pl, uk.',
 		);
 		expect(instruction).not.toContain('primary language');
+		expect(instruction).toContain(
+			'or to "other" when it is in none of the listed languages.',
+		);
 		const segment =
 			flow.generateBody().generationConfig.responseSchema.properties
 				.segments.items;
-		expect(segment.properties.language?.enum).toEqual(['pl', 'uk']);
+		// "other" keeps a third language from being tagged with a listed code.
+		expect(segment.properties.language?.enum).toEqual([
+			'pl',
+			'uk',
+			'other',
+		]);
 		expect(segment.required).toEqual(['start', 'text', 'language']);
 	});
 

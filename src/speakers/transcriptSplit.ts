@@ -221,6 +221,7 @@ export function buildSplitPieces(
 		end,
 		text: restoreWikilinks(text),
 		...(speaker === undefined ? {} : { speaker }),
+		...(timing.language ? { language: timing.language } : {}),
 	});
 	const pieces: TranscriptSegment[] = [];
 	if (texts.before) {

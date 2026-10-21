@@ -306,7 +306,7 @@ export function providerReadsLanguageHint(
 }
 
 /** Separator between the codes of a language field naming several languages. */
-export const LANGUAGE_LIST_SEPARATOR = ',';
+const LANGUAGE_LIST_SEPARATOR = ',';
 
 /** The language field's value that asks the engine to detect the language. */
 const AUTO_LANGUAGE = 'auto';
@@ -331,15 +331,21 @@ export function providerReadsLanguageList(
  * The comparison is case-insensitive because the field's validator is: its
  * pattern carries the `i` flag, so `Auto` and `AUTO` are accepted and stored
  * exactly as typed. Matching only the lowercase spelling passed `Auto` on as
- * though it were an ISO code, which no service resolves.
+ * though it were an ISO code, which no service resolves. A code typed twice,
+ * in any case, counts once, so `pl, PL` stays a single-language request.
  * @param language - The configured language field, as the field stores it
  * @returns The codes, empty when the field asks for detection
  */
 export function configuredLanguages(language: string): string[] {
-	return language
-		.split(LANGUAGE_LIST_SEPARATOR)
-		.map((code) => code.trim())
-		.filter((code) => code !== '' && code.toLowerCase() !== AUTO_LANGUAGE);
+	const codes = new Map<string, string>();
+	for (const typed of language.split(LANGUAGE_LIST_SEPARATOR)) {
+		const code = typed.trim();
+		const key = code.toLowerCase();
+		if (code !== '' && key !== AUTO_LANGUAGE && !codes.has(key)) {
+			codes.set(key, code);
+		}
+	}
+	return [...codes.values()];
 }
 
 /**

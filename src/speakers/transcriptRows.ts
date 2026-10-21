@@ -26,6 +26,7 @@ import {
 } from '../transcription/transcriptFormat';
 import {
 	collectSpeakers,
+	dominantSegmentLanguage,
 	normalizeWhitespace,
 } from '../transcription/transcriptModel';
 import type {
@@ -163,21 +164,29 @@ export interface RowTiming {
 	end: number | null;
 	/** Word timings of the line's segments, when the engine gave them. */
 	words?: TranscriptWord[];
+	/**
+	 * Language most of the line's text is in, when its segments name their
+	 * own, so a segment rebuilt from the line keeps it.
+	 */
+	language?: string;
 }
 
 /**
  * The timing of the segments behind a line: from the first one's start to the
- * last one's end, with every word timing they carry.
+ * last one's end, with every word timing they carry and the language most of
+ * their text is in.
  * @param transcript - The transcript the line was rendered from
  * @param span - The line's segments
  */
 export function rowTiming(transcript: Transcript, span: RowSpan): RowTiming {
 	const segments = transcript.segments.slice(span.first, span.last + 1);
 	const words = segments.flatMap((segment) => segment.words ?? []);
+	const language = dominantSegmentLanguage(segments);
 	return {
 		start: Math.min(...segments.map((segment) => segment.start)),
 		end: Math.max(...segments.map((segment) => segment.end)),
 		...(words.length > 0 ? { words } : {}),
+		...(language ? { language } : {}),
 	};
 }
 

@@ -33,6 +33,7 @@ import {
 	geminiGenerationControls,
 } from './geminiShared';
 import type { WhisperResult } from './whisperResponse';
+import { OTHER_SEGMENT_LANGUAGE } from '../TranscriptTypes';
 import type {
 	AudioPayload,
 	ProviderCapabilities,
@@ -78,10 +79,10 @@ const SEGMENT_REQUIRED_FIELDS = ['start', 'text'];
  * start/end in seconds, an optional speaker label, and the spoken text.
  *
  * A recording configured with several languages asks every segment for its
- * own, limited to the configured codes. A free-form field was the other
- * choice, and it leaves the model free to answer "Polish" where a code is
- * read; the enum is also the shape a run on a Polish and Ukrainian lesson was
- * checked with before this was written.
+ * own, limited to the configured codes plus {@link OTHER_SEGMENT_LANGUAGE}.
+ * A free-form field was the other choice, and it leaves the model free to
+ * answer "Polish" where a code is read. Without the extra value a third
+ * language spoken in passing has to be tagged with a code it is not in.
  * @param languages - The configured languages, when more than one
  * @returns The response schema for the request
  */
@@ -94,7 +95,10 @@ function transcriptSchema(languages: readonly string[] | undefined): object {
 	};
 	const required = [...SEGMENT_REQUIRED_FIELDS];
 	if (languages) {
-		segmentProperties.language = { type: 'STRING', enum: [...languages] };
+		segmentProperties.language = {
+			type: 'STRING',
+			enum: [...languages, OTHER_SEGMENT_LANGUAGE],
+		};
 		required.push('language');
 	}
 	return {
@@ -129,7 +133,8 @@ function languageListInstruction(languages: readonly string[]): string {
 		'Speakers may change language between sentences or inside one sentence. ' +
 		"Write every segment in the language actually spoken, in that language's own script and spelling, " +
 		"never respell one language in another's orthography, and never translate. " +
-		"Start a new segment wherever the language changes, and set each segment's language to the code of the language it is written in."
+		"Start a new segment wherever the language changes, and set each segment's language to the code of the language it is written in, " +
+		`or to "${OTHER_SEGMENT_LANGUAGE}" when it is in none of the listed languages.`
 	);
 }
 

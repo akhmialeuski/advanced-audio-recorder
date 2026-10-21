@@ -206,6 +206,17 @@ describe('rowTiming', () => {
 			words: wordsOf('one two three', 5),
 		});
 	});
+
+	it('names the language most of the line is in when its segments name theirs', () => {
+		const transcript = transcriptOf(
+			{ ...seg(5, 7, 'Tak.', 'Anna'), language: 'pl' },
+			{ ...seg(7, 9, 'Це довге пояснення.', 'Anna'), language: 'uk' },
+		);
+
+		expect(rowTiming(transcript, { first: 0, last: 1 }).language).toBe(
+			'uk',
+		);
+	});
 });
 
 describe('formatLineTime', () => {
