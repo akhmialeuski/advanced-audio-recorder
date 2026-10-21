@@ -48,6 +48,9 @@ import {
 	DEFAULT_LLM_SUMMARY_PROFILE_ID,
 	DEFAULT_LLM_CUSTOM_PROFILE_ID,
 	DEFAULT_PROFILE_NAME,
+	LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+	LANGUAGE_LESSON_CLEANUP_PROFILE_NAME,
+	LANGUAGE_LESSON_CLEANUP_PROMPT,
 	DEFAULT_CLEANUP_HIGHPASS_HZ,
 	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
 	DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
@@ -658,6 +661,12 @@ export interface AudioRecorderSettings {
 	 */
 	profiles: Profile[];
 	/**
+	 * Ids of the profiles shipped after this plugin's first release that this
+	 * configuration has already been given (see {@link shippedProfiles}). A
+	 * shipped profile is added once, so one the user deleted stays deleted.
+	 */
+	shippedProfileIds: string[];
+	/**
 	 * The profile each kind applies, by kind; '' means none. An id naming a
 	 * profile that was removed reads as none, so nothing has to be cleaned up
 	 * here when a profile is deleted.
@@ -950,6 +959,24 @@ function seededProfiles(): Profile[] {
 			name: DEFAULT_PROFILE_NAME,
 			body: DEFAULT_LLM_CUSTOM_INSTRUCTION,
 		},
+		...shippedProfiles(),
+	];
+}
+
+/**
+ * The profiles a release added after the first one: a fresh install starts
+ * with them, and an existing one is given each of them once when it loads.
+ * None of them is put in use, so adding one never changes what a run does.
+ * @returns The shipped profiles, in the order their catalogues show them
+ */
+export function shippedProfiles(): Profile[] {
+	return [
+		{
+			id: LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+			kind: ProfileKindId.LlmCleanup,
+			name: LANGUAGE_LESSON_CLEANUP_PROFILE_NAME,
+			body: LANGUAGE_LESSON_CLEANUP_PROMPT,
+		},
 	];
 }
 
@@ -1052,6 +1079,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmPostProcessTask: LlmTask.Cleanup,
 	llmTranslateTargetLanguage: '',
 	profiles: seededProfiles(),
+	shippedProfileIds: shippedProfiles().map((profile) => profile.id),
 	selectedProfileIds: {
 		...noSelectedProfiles(),
 		[ProfileKindId.ChapterPrompt]: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,

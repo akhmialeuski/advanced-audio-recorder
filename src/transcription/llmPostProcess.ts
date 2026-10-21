@@ -47,6 +47,12 @@ export interface PostProcessOptions {
 	/** Detected/declared language name or code, when known. */
 	language?: string | undefined;
 	/**
+	 * Every language the transcript's segments were spoken in, when the engine
+	 * answered per segment. More than one means a recording that switches
+	 * language, which the cleanup clause then names instead of the one above.
+	 */
+	segmentLanguages?: readonly string[] | undefined;
+	/**
 	 * Editable cleanup system prompt (base text, before the language clause).
 	 * Falls back to {@link DEFAULT_LLM_CLEANUP_PROMPT} when empty.
 	 */
@@ -76,10 +82,19 @@ export interface PostProcessOptions {
 
 /**
  * Builds the language clause appended to the cleanup prompt: keep the answer in
- * the transcript's language.
+ * the transcript's language, or, for a transcript that switches language, keep
+ * every line in its own. Naming one language there told the model to bring the
+ * passages in the other one over into it.
  * @param language - Detected/declared language, when known
+ * @param segmentLanguages - The languages the segments were spoken in
  */
-function cleanupLanguageClause(language?: string): string {
+function cleanupLanguageClause(
+	language?: string,
+	segmentLanguages: readonly string[] = [],
+): string {
+	if (segmentLanguages.length > 1) {
+		return ` The transcript mixes ${segmentLanguages.join(', ')}. Keep every line in the language it is written in, and do not translate any of it.`;
+	}
 	return language
 		? ` The transcript language is ${language}; respond in that same language.`
 		: ' Respond in the same language as the transcript.';
@@ -142,7 +157,10 @@ export function buildPostProcessPrompt(
 					(options.cleanupPrompt?.trim() ||
 						DEFAULT_LLM_CLEANUP_PROMPT) +
 					cleanupGlossaryClause(options.glossary) +
-					cleanupLanguageClause(options.language),
+					cleanupLanguageClause(
+						options.language,
+						options.segmentLanguages,
+					),
 				user: text,
 			};
 		case LlmTask.Summary:

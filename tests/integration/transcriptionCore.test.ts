@@ -233,6 +233,31 @@ describe('buildPostProcessPrompt', () => {
 		expect(prompt.system).toContain('ru');
 	});
 
+	it('keeps each line in its own language when the segments switch language', () => {
+		// Naming one language told the model to bring the lines in the other
+		// one over into it, so a mixed transcript names all of them instead.
+		const prompt = buildPostProcessPrompt('raw text', {
+			task: 'cleanup',
+			language: 'pl',
+			segmentLanguages: ['uk', 'pl'],
+		});
+		expect(prompt.system).toContain(
+			'The transcript mixes uk, pl. Keep every line in the language it is written in',
+		);
+		expect(prompt.system).not.toContain('respond in that same language');
+	});
+
+	it('names the one language when every segment is in it', () => {
+		const prompt = buildPostProcessPrompt('raw text', {
+			task: 'cleanup',
+			language: 'pl',
+			segmentLanguages: ['pl'],
+		});
+		expect(prompt.system).toContain(
+			'The transcript language is pl; respond in that same language.',
+		);
+	});
+
 	it('names the target language in the translation prompt', () => {
 		const prompt = buildPostProcessPrompt('0||Hello', {
 			task: 'translate',

@@ -10,7 +10,14 @@
 import type { App, TFile } from 'obsidian';
 import { TranscriptionService } from 'src/transcription/TranscriptionService';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import {
+	LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+	LLM_PROVIDER_IDS,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from 'src/constants';
+import { EngineLabel } from 'src/providers/providers';
+import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mapGeminiResponse } from 'src/transcription/providers/geminiResponse';
 import { serializeTranscriptFile } from 'src/transcription/transcriptFormat';
 import { readRecordedTranscript } from 'src/transcription/recordedTranscript';
@@ -76,11 +83,15 @@ const MIXED_ANSWER = {
  * with the real Gemini mapping of {@link MIXED_ANSWER}.
  * @param language - The Language field as typed
  * @param engine - The engine the settings name
+ * @param overrides - Further settings the run is made with
+ * @param llm - The language model a post-processing pass runs on
  * @returns The run's transcript and the double, for its call log
  */
 async function transcribeLesson(
 	language: string,
 	engine: TranscriptionProviderId = TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+	overrides: Partial<AudioRecorderSettings> = {},
+	llm?: LlmProvider,
 ): Promise<{
 	provider: FakeProvider;
 	result: Awaited<ReturnType<TranscriptionService['run']>>;
@@ -101,8 +112,12 @@ async function transcribeLesson(
 			mergeSettings({
 				transcriptionProvider: engine,
 				transcriptionLanguage: language,
+				...overrides,
 			}),
-		{ createProvider: () => provider },
+		{
+			createProvider: () => provider,
+			...(llm ? { createLlm: () => llm } : {}),
+		},
 	);
 	const result = await service.run(audioFile, {
 		notePathForLinks: 'lesson.md',
@@ -177,5 +192,38 @@ describe('a recording that switches between configured languages', () => {
 		const options = provider.transcribe.mock.lastCall?.[1];
 		expect(options?.languages).toBeUndefined();
 		expect(options?.language).toBe('pl');
+	});
+
+	it('cleans the lesson up with every language named and none imposed', async () => {
+		const complete = jest.fn<
+			ReturnType<LlmProvider['complete']>,
+			Parameters<LlmProvider['complete']>
+		>(async (prompt) => ({ text: prompt.user }));
+		const llm: LlmProvider = {
+			id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			label: EngineLabel.OpenAi,
+			complete,
+		};
+
+		await transcribeLesson(
+			'pl, uk',
+			TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			{
+				llmPostProcessEnabled: true,
+				selectedProfileIds: {
+					...mergeSettings({}).selectedProfileIds,
+					llmCleanup: LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+				},
+			},
+			llm,
+		);
+
+		const system = complete.mock.lastCall?.[0].system ?? '';
+		expect(system).toContain(
+			'The transcript is a recording of a language lesson',
+		);
+		// In the order the lesson spoke them, and no single language imposed.
+		expect(system).toContain('The transcript mixes uk, pl.');
+		expect(system).not.toContain('respond in that same language');
 	});
 });

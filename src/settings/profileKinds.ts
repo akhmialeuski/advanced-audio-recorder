@@ -220,7 +220,7 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		selectionDesc: promptSelectionDesc('the cleanup pass'),
 		bodyName: 'Cleanup prompt',
 		bodyDesc:
-			'System instruction for the cleanup pass. The transcript language is appended automatically.',
+			'System instruction for the cleanup pass. The transcript language, or every language of a transcript that switches language, is appended automatically.',
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&

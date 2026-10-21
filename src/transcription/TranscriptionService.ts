@@ -55,6 +55,7 @@ import {
 	collectFirstTurns,
 	plainText,
 	renameSpeakers,
+	segmentLanguages,
 	stitchChunks,
 	stripSpeakers,
 } from './transcriptModel';
@@ -1592,6 +1593,7 @@ export class TranscriptionService {
 			{
 				task: settings.llmPostProcessTask,
 				language: transcript.language,
+				segmentLanguages: segmentLanguages(transcript.segments),
 				cleanupPrompt: resolveLlmPrompt(settings, LlmTask.Cleanup),
 				summaryPrompt: resolveLlmPrompt(settings, LlmTask.Summary),
 				customInstruction: resolveLlmPrompt(settings, LlmTask.Custom),

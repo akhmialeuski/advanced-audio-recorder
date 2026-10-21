@@ -61,6 +61,7 @@ These guides combine several features into one end-to-end procedure.
 | [A meeting from a script](../command-line.md#a-meeting-from-a-script)     | Transcribe, name speakers, chapter and split a meeting from a terminal.     |
 | [Script recordings from the terminal](scripting-from-the-terminal.md)     | Timed recordings, overnight queues, marker search, exports from a shell.    |
 | [Record a voice memo or lecture on your phone](record-on-mobile.md)       | Record on the Obsidian mobile app and optionally transcribe in the cloud.   |
+| [Transcribe a language lesson](language-lesson.md)                        | Keep each language of a lesson in its own script and the student's errors.  |
 
 The meeting-notes workflow produces a single note with the recording, a diarized transcript, and an LLM summary - see the finished example in that guide.
 

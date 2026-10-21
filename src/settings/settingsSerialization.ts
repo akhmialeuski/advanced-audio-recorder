@@ -46,6 +46,7 @@ import {
 	normalizeRecordingBannerAnchor,
 	normalizeTrackProcessingMode,
 	normalizeTrackSourceKind,
+	shippedProfiles,
 	type AudioRecorderSettings,
 	type PrimitiveSettingKey,
 	type AudioRecorderSettingsInput,
@@ -61,6 +62,7 @@ import {
 } from './settingsSchema';
 import {
 	createProfile,
+	freeProfileName,
 	noSelectedProfiles,
 	profilesOfKind,
 	ProfileKindId,
@@ -357,6 +359,7 @@ export function mergeSettings(
 	normalizeProfiles(merged);
 	migrateLegacyProfileLists(merged, userSettings);
 	migrateLegacyPrompts(merged, userSettings);
+	giveShippedProfiles(merged, userSettings);
 	migrateLegacyTranscriptionDictionary(merged, userSettings);
 	migrateAdvancedDictionaryGate(merged, userSettings);
 	return merged;
@@ -617,6 +620,44 @@ function migrateLegacyProfileLists(
 }
 
 /**
+ * Gives a stored config every shipped profile it has not been given yet.
+ *
+ * Profiles are stored as one list that replaces the shipped one on load, so a
+ * profile a release adds would otherwise reach fresh installs only. Which ones
+ * a config has been given is read from the stored config itself rather than
+ * from the merged one, whose default already names them all. A profile whose id
+ * is already there is left alone, and a name the user already took gets a
+ * numbered variant, because the settings tree addresses a page by its name.
+ * @param merged - The merged settings to migrate in place
+ * @param raw - The raw user settings as loaded from disk
+ */
+function giveShippedProfiles(
+	merged: AudioRecorderSettings,
+	raw: AudioRecorderSettingsInput,
+): void {
+	const legacy: Record<string, unknown> = isRecord(raw) ? raw : {};
+	const stored = legacy.shippedProfileIds;
+	const given = Array.isArray(stored)
+		? stored.filter((id): id is string => typeof id === 'string')
+		: [];
+	for (const profile of shippedProfiles()) {
+		if (given.includes(profile.id)) {
+			continue;
+		}
+		given.push(profile.id);
+		if (merged.profiles.some((existing) => existing.id === profile.id)) {
+			continue;
+		}
+		const name = freeProfileName(
+			profilesOfKind(merged.profiles, profile.kind),
+			profile.name,
+		);
+		merged.profiles = [...merged.profiles, { ...profile, name }];
+	}
+	merged.shippedProfileIds = given;
+}
+
+/**
  * Carries the pre-profile post-processing prompts into profiles of their own.
  *
  * Each task used to hold one editable prompt, and that text is what the user
@@ -643,14 +684,14 @@ function migrateLegacyPrompts(
 	for (const field of LEGACY_PROMPT_FIELDS) {
 		const prompt: unknown = stored[field.key];
 		if (!alreadyUnified && typeof prompt === 'string') {
-			// The seeded default of the task is where the prompt belongs, and
-			// a config from before the catalogues existed holds exactly that
-			// one profile per task - the one the merged selection already
-			// names, since it named nothing of its own.
+			// The seeded default of the task is where the prompt belongs: the
+			// one the merged selection already names, since a config from
+			// before the catalogues existed named nothing of its own. Matched
+			// by that id rather than by kind, because the seeded list also
+			// holds shipped profiles of the same kind that keep their own text.
+			const target = merged.selectedProfileIds[field.kind];
 			merged.profiles = merged.profiles.map((profile) =>
-				profile.kind === field.kind
-					? { ...profile, body: prompt }
-					: profile,
+				profile.id === target ? { ...profile, body: prompt } : profile,
 			);
 		}
 		deleteLegacyField(merged, field.key);

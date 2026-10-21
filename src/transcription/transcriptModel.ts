@@ -210,6 +210,21 @@ export function buildTranscript(
 }
 
 /**
+ * Every language the segments name, in the order each first appears.
+ * @param segments - Transcript segments
+ * @returns The distinct segment languages, empty when none names one
+ */
+export function segmentLanguages(
+	segments: readonly TranscriptSegment[],
+): string[] {
+	return [
+		...new Set(
+			segments.flatMap(({ language }) => (language ? [language] : [])),
+		),
+	];
+}
+
+/**
  * The language most of the text is in, when the segments name their own:
  * the one transcript-wide code that cleanup, chapters and file names read for
  * a recording that switches languages. Measured by characters rather than by

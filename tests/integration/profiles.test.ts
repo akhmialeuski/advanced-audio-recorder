@@ -31,6 +31,7 @@ import {
 } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { isRefusal } from 'src/utils/refusal';
+import { SHIPPED_PROFILES_GIVEN } from '../helpers/settingsFixtures';
 
 /** A profile of the kind under test, so the helpers are exercised on their own. */
 const simple = (
@@ -353,6 +354,7 @@ describe('a note-backed profile in data.json', () => {
 
 	it('reads an empty or non-string path as no note at all', () => {
 		const settings = mergeSettings({
+			...SHIPPED_PROFILES_GIVEN,
 			profiles: [
 				{
 					id: 'empty',

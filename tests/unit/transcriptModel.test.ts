@@ -11,6 +11,7 @@ import {
 	normalizeWhitespace,
 	offsetSegment,
 	plainText,
+	segmentLanguages,
 	stitchChunks,
 	stripSpeakers,
 } from 'src/transcription/transcriptModel';
@@ -264,6 +265,19 @@ describe('stitchChunks', () => {
 			'pl',
 			'pl',
 		]);
+	});
+});
+
+describe('segmentLanguages', () => {
+	it('lists each language once, in the order it first appears', () => {
+		expect(
+			segmentLanguages([
+				{ ...seg(0, 1, 'Добрий день.'), language: 'uk' },
+				seg(1, 2, 'Mhm.'),
+				{ ...seg(2, 3, 'Dzień dobry.'), language: 'pl' },
+				{ ...seg(3, 4, 'Так.'), language: 'uk' },
+			]),
+		).toEqual(['uk', 'pl']);
 	});
 });
 

@@ -1103,6 +1103,49 @@ export const DEFAULT_LLM_SUMMARY_PROFILE_ID = 'default-llm-summary';
 export const DEFAULT_LLM_CUSTOM_PROFILE_ID = 'default-llm-custom';
 
 /**
+ * Id of the cleanup profile for language lessons, shipped beside the default
+ * one. A stable literal like the defaults' ids, because the migration that
+ * hands it to an install which predates it finds it by this id.
+ */
+export const LANGUAGE_LESSON_CLEANUP_PROFILE_ID =
+	'shipped-llm-cleanup-language-lesson';
+
+/** Name the shipped language lesson cleanup profile carries. */
+export const LANGUAGE_LESSON_CLEANUP_PROFILE_NAME = 'Language lesson';
+
+/**
+ * Cleanup instruction for a recorded language lesson, where a student and a
+ * tutor switch between the language being learned and one they share. It
+ * names no language: which ones a lesson holds is the transcript's to say, and
+ * the clause appended for a transcript that switches language names them.
+ * Built from a profile written for a Polish lesson with a Ukrainian tutor, with
+ * the language pair taken out.
+ */
+export const LANGUAGE_LESSON_CLEANUP_PROMPT = [
+	'You are an expert multilingual transcription editor. The transcript is a recording of a language lesson: a student learning a language talks with a tutor, and both switch between the language being learned and a language they share, between sentences or inside one sentence.',
+	'',
+	'Languages',
+	"- Keep every phrase in the language it was spoken in, written in that language's own script and spelling.",
+	"- Never translate, and never respell a phrase of one language in another language's orthography.",
+	'- A word of one language quoted inside a sentence in the other stays as it was spoken.',
+	'',
+	'Corrections',
+	'- Correct punctuation, capitalization, and clear speech-recognition errors.',
+	'- Do not rebuild a phrase from what a fluent speaker would probably have said, and never add words that were not spoken. When a passage cannot be corrected with confidence, leave it as it is.',
+	'',
+	"The student's mistakes",
+	"- The student's mistakes are the record of the lesson. Keep their grammar, word choice, endings, and word order exactly as spoken, together with hesitations, self-corrections, and unfinished attempts.",
+	"- When the tutor corrects the student, keep both the student's version and the tutor's correction.",
+	'- Keep dictation, repeated words, and spelled-out letters as they were said.',
+	'',
+	'Structure',
+	'- Keep every timestamp, audio link, and speaker label exactly as it appears, each line in its place and in its order.',
+	'- Do not merge, split, reorder, or omit lines, and add no headings, summaries, notes, language tags, or comments.',
+	'',
+	'Return only the cleaned transcript, with no preamble and no code fence.',
+].join('\n');
+
+/**
  * Name every seeded profile carries. A profile the plugin created rather than
  * the user reads as the default one at a glance, and a user who edits it keeps
  * the name unless they rename it.
