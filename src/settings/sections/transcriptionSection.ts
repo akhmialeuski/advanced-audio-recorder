@@ -115,7 +115,7 @@ export function transcriptionGroup(
 					validate: (value: string): string | undefined =>
 						LANGUAGE_CODE_PATTERN.test(value.trim())
 							? undefined
-							: 'Use an ISO code such as en, several separated by commas such as pl, uk, or "auto".',
+							: 'Use "auto", an ISO code such as en, or several codes separated by commas, such as pl, uk.',
 				},
 			},
 			{

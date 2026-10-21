@@ -217,6 +217,36 @@ describe('rowTiming', () => {
 			'uk',
 		);
 	});
+
+	it('names speech outside the expected languages as the language of a line spoken in it', () => {
+		// The transcript-wide rule skips "other", but a line spoken entirely
+		// in a third language has no other language to name.
+		const transcript = transcriptOf({
+			...seg(5, 7, 'Гэта па-беларуску.', 'Anna'),
+			language: 'other',
+		});
+
+		expect(rowTiming(transcript, { first: 0, last: 0 }).language).toBe(
+			'other',
+		);
+	});
+
+	it('holds each language from its segment start to the next one', () => {
+		// The second segment has no end of its own, as Gemini may answer.
+		const transcript = transcriptOf(
+			{ ...seg(5, 7, 'Tak.', 'Anna'), language: 'pl' },
+			{ ...seg(7, 7, 'Це пояснення.', 'Anna'), language: 'uk' },
+			{ ...seg(9, 12, 'Dobrze.', 'Anna'), language: 'pl' },
+		);
+
+		expect(
+			rowTiming(transcript, { first: 0, last: 2 }).languageSpans,
+		).toEqual([
+			{ start: 5, end: 7, language: 'pl' },
+			{ start: 7, end: 9, language: 'uk' },
+			{ start: 9, end: 12, language: 'pl' },
+		]);
+	});
 });
 
 describe('formatLineTime', () => {

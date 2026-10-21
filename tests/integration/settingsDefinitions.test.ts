@@ -687,7 +687,7 @@ describe('settings definitions', () => {
 			expect(validate('pl, uk')).toBeUndefined();
 			expect(validate('pl,uk,be')).toBeUndefined();
 			const refusal =
-				'Use an ISO code such as en, several separated by commas such as pl, uk, or "auto".';
+				'Use "auto", an ISO code such as en, or several codes separated by commas, such as pl, uk.';
 			expect(validate('auto, pl')).toBe(refusal);
 			expect(validate('pl uk')).toBe(refusal);
 			expect(validate('English please')).toBe(refusal);

@@ -10,6 +10,7 @@
 import {
 	advancedBiasUnsupportedReason,
 	advancedTwoPassWillRun,
+	keepsConfiguredLanguage,
 	keepsDetectedLanguage,
 	meetsLengthSafeguard,
 } from 'src/transcription/advanced/advancedBias';
@@ -94,6 +95,26 @@ describe('keepsDetectedLanguage', () => {
 			expect(keepsDetectedLanguage(first, second)).toBe(true);
 		},
 	);
+});
+
+describe('keepsConfiguredLanguage', () => {
+	const LISTED = ['pl', 'uk'];
+
+	it('adopts a pass in any of the listed languages, whichever prevails', () => {
+		expect(keepsConfiguredLanguage(LISTED, 'uk')).toBe(true);
+	});
+
+	it('declines a pass that came back in a language outside the list', () => {
+		expect(keepsConfiguredLanguage(LISTED, 'en')).toBe(false);
+	});
+
+	it('ignores a cosmetic difference in how a listed code is written', () => {
+		expect(keepsConfiguredLanguage(['PL', 'uk'], ' pl ')).toBe(true);
+	});
+
+	it('leaves the judgement to the length guard when the pass reported none', () => {
+		expect(keepsConfiguredLanguage(LISTED, undefined)).toBe(true);
+	});
 });
 
 describe('advancedTwoPassWillRun', () => {

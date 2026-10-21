@@ -156,6 +156,16 @@ export function locateRowSegments(
 	return only && others.length === 0 ? only : null;
 }
 
+/** A stretch of a line spoken in one language. */
+export interface LanguageSpan {
+	/** Offset the stretch starts at. */
+	start: number;
+	/** Offset the stretch ends at. */
+	end: number;
+	/** Language its segment names. */
+	language: string;
+}
+
 /** Where a line sits on the timeline, as far as it is known. */
 export interface RowTiming {
 	/** Offset the line starts at. */
@@ -165,28 +175,52 @@ export interface RowTiming {
 	/** Word timings of the line's segments, when the engine gave them. */
 	words?: TranscriptWord[];
 	/**
-	 * Language most of the line's text is in, when its segments name their
-	 * own, so a segment rebuilt from the line keeps it.
+	 * Language most of the line's text is in, speech outside the expected
+	 * languages included, when its segments name their own, so a segment
+	 * rebuilt from the whole line keeps it.
 	 */
 	language?: string;
+	/**
+	 * Where each of the line's segments that names a language is spoken, so
+	 * a piece cut out of a line that switches language takes the language
+	 * spoken there rather than the line's.
+	 */
+	languageSpans?: LanguageSpan[];
 }
 
 /**
  * The timing of the segments behind a line: from the first one's start to the
- * last one's end, with every word timing they carry and the language most of
- * their text is in.
+ * last one's end, with every word timing they carry, the language most of
+ * their text is in, and where each language is spoken.
+ *
+ * A segment's language holds from its start to the next segment's start, the
+ * last one's to the line's end: an engine that gave no end leaves a segment
+ * ending where it starts, which would otherwise cover no time at all.
  * @param transcript - The transcript the line was rendered from
  * @param span - The line's segments
  */
 export function rowTiming(transcript: Transcript, span: RowSpan): RowTiming {
 	const segments = transcript.segments.slice(span.first, span.last + 1);
 	const words = segments.flatMap((segment) => segment.words ?? []);
-	const language = dominantSegmentLanguage(segments);
+	const end = Math.max(...segments.map((segment) => segment.end));
+	const language = dominantSegmentLanguage(segments, { includeOther: true });
+	const languageSpans = segments.flatMap((segment, index) =>
+		segment.language
+			? [
+					{
+						start: segment.start,
+						end: segments[index + 1]?.start ?? end,
+						language: segment.language,
+					},
+				]
+			: [],
+	);
 	return {
 		start: Math.min(...segments.map((segment) => segment.start)),
-		end: Math.max(...segments.map((segment) => segment.end)),
+		end,
 		...(words.length > 0 ? { words } : {}),
 		...(language ? { language } : {}),
+		...(languageSpans.length > 0 ? { languageSpans } : {}),
 	};
 }
 

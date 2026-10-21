@@ -52,6 +52,30 @@ function usableContext(): Awaited<ReturnType<typeof generateContext>> {
 	};
 }
 
+/** A run told the recording switches between Polish and Ukrainian. */
+const POLISH_AND_UKRAINIAN: AdvancedTwoPassInput['transcribeOptions'] = {
+	diarize: false,
+	wordTimestamps: false,
+	language: 'pl',
+	languages: ['pl', 'uk'],
+};
+
+/**
+ * A second pass of comparable length that came back in `language`.
+ * @param language - The language the pass reports
+ */
+function secondPassIn(language: string): TranscribePass {
+	return async (_options, passResults) => {
+		passResults.push({
+			offsetSeconds: 0,
+			transcript: transcriptOf(
+				'a second pass of comparable length here',
+				language,
+			),
+		});
+	};
+}
+
 function createSut(
 	overrides: Partial<AdvancedTwoPassInput> = {},
 	passBehaviour: TranscribePass = async (
@@ -164,15 +188,31 @@ describe('a second pass that is declined', () => {
 		// options carry the first pass's language, but an engine that reads no
 		// language hint discards that field, so the answer is what decides.
 		mockGenerateContext.mockResolvedValue(usableContext());
-		const { runner } = createSut({}, async (_o, passResults) => {
-			passResults.push({
-				offsetSeconds: 0,
-				transcript: transcriptOf(
-					'a second pass of comparable length here',
-					'en',
-				),
-			});
+		const { runner } = createSut({}, secondPassIn('en'));
+
+		const outcome = await runner.run();
+
+		expect(outcome).toEqual({
+			status: 'skipped',
+			reason: 'language-drift',
 		});
+	});
+
+	it('declines a several-language pass that came back in none of the listed languages', async () => {
+		// The bias can flip the decode into English whatever languages were
+		// listed: its segments are then tagged "other", and the language the
+		// pass reports is the one the engine named for the whole answer.
+		mockGenerateContext.mockResolvedValue(usableContext());
+		const { runner } = createSut(
+			{
+				transcribeOptions: POLISH_AND_UKRAINIAN,
+				baseline: transcriptOf(
+					'a first pass of comparable length here now',
+					'pl',
+				),
+			},
+			secondPassIn('en'),
+		);
 
 		const outcome = await runner.run();
 
@@ -233,26 +273,13 @@ describe('a second pass that is adopted', () => {
 		mockGenerateContext.mockResolvedValue(usableContext());
 		const { runner } = createSut(
 			{
-				transcribeOptions: {
-					diarize: false,
-					wordTimestamps: false,
-					language: 'pl',
-					languages: ['pl', 'uk'],
-				},
+				transcribeOptions: POLISH_AND_UKRAINIAN,
 				baseline: transcriptOf(
 					'a first pass of comparable length here now',
 					'pl',
 				),
 			},
-			async (_o, passResults) => {
-				passResults.push({
-					offsetSeconds: 0,
-					transcript: transcriptOf(
-						'a second pass of comparable length here',
-						'uk',
-					),
-				});
-			},
+			secondPassIn('uk'),
 		);
 
 		const outcome = await runner.run();
@@ -265,18 +292,30 @@ describe('a second pass that is adopted', () => {
 		// sentence is written in Ukrainian.
 		mockGenerateContext.mockResolvedValue(null);
 		const { runner } = createSut({
-			transcribeOptions: {
-				diarize: false,
-				wordTimestamps: false,
-				language: 'pl',
-				languages: ['pl', 'uk'],
-			},
+			transcribeOptions: POLISH_AND_UKRAINIAN,
 			baseline: transcriptOf('Добрий день, як справи сьогодні', 'uk'),
 		});
 
 		await runner.run();
 
 		expect(mockGenerateContext.mock.calls[0]?.[2].language).toBe('uk');
+	});
+
+	it('tells the context agents the first listed language when the draft names none', async () => {
+		// A draft whose segments were all tagged outside the list, with no
+		// language of its own, would otherwise leave the agents guessing.
+		mockGenerateContext.mockResolvedValue(null);
+		const { runner } = createSut({
+			transcribeOptions: POLISH_AND_UKRAINIAN,
+			baseline: {
+				segments: [{ start: 0, end: 10, text: 'Гэта па-беларуску.' }],
+				speakers: [],
+			},
+		});
+
+		await runner.run();
+
+		expect(mockGenerateContext.mock.calls[0]?.[2].language).toBe('pl');
 	});
 
 	it('pins the second pass to the language the first pass detected', async () => {

@@ -290,17 +290,25 @@ describe('dominantSegmentLanguage', () => {
 		expect(dominantSegmentLanguage([seg(0, 1, 'hello')])).toBeUndefined();
 	});
 
+	/** A short Polish reply and a long Belarusian aside tagged as neither. */
+	const WITH_ASIDE: TranscriptSegment[] = [
+		{ ...seg(0, 1, 'Tak.'), language: 'pl' },
+		{
+			...seg(1, 9, 'Гэта доўгае тлумачэнне па-беларуску.'),
+			language: 'other',
+		},
+	];
+
 	it('never names speech outside the expected languages', () => {
-		// A long Belarusian aside in a Polish lesson tagged as none of them
-		// still leaves the transcript a code the readers can use.
-		const segments: TranscriptSegment[] = [
-			{ ...seg(0, 1, 'Tak.'), language: 'pl' },
-			{
-				...seg(1, 9, 'Гэта доўгае тлумачэнне па-беларуску.'),
-				language: 'other',
-			},
-		];
-		expect(dominantSegmentLanguage(segments)).toBe('pl');
+		// The aside still leaves the transcript a code the readers can use.
+		expect(dominantSegmentLanguage(WITH_ASIDE)).toBe('pl');
+	});
+
+	it('names speech outside the expected languages when asked to count it', () => {
+		// One line spoken mostly in a third language is that language's line.
+		expect(
+			dominantSegmentLanguage(WITH_ASIDE, { includeOther: true }),
+		).toBe('other');
 	});
 });
 

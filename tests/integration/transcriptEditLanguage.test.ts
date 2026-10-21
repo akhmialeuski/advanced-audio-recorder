@@ -47,9 +47,31 @@ const LESSON = buildTranscript([
 ]);
 
 /**
- * Writes the lesson's JSON output into an in-memory vault, edits the lines
+ * One speaker's turn that switches from Polish to Ukrainian mid-line, then a
+ * Belarusian aside the engine tagged as none of the expected languages.
+ */
+const SWITCHING_TURN = buildTranscript([
+	{
+		start: 33,
+		end: 35,
+		text: 'Możemy od razu po polsku, czy chciałby pan na początku',
+		language: 'pl',
+	},
+	{
+		start: 35,
+		end: 37,
+		text: 'по-українськи щось мені повідомити?',
+		language: 'uk',
+	},
+	{ start: 40, end: 42, text: 'Я крыху разумею.', language: 'other' },
+	{ start: 42, end: 44, text: 'Але не ўсё.', language: 'other' },
+]);
+
+/**
+ * Writes a transcript's JSON output into an in-memory vault, edits the lines
  * at `span` into `pieces`, and reads the JSON back.
  * @param edit - Builds the pieces from the recorded transcript
+ * @param transcript - The transcript the JSON output holds
  * @returns The language of every segment in the rewritten JSON
  */
 async function editAndReadBack(
@@ -57,9 +79,13 @@ async function editAndReadBack(
 		span: RowSpan;
 		pieces: TranscriptSegment[];
 	},
+	transcript = LESSON,
 ): Promise<(string | undefined)[] | undefined> {
 	const files = fakeVaultFiles([
-		[JSON_PATH, serializeTranscriptFile(LESSON, TranscriptFileFormat.Json)],
+		[
+			JSON_PATH,
+			serializeTranscriptFile(transcript, TranscriptFileFormat.Json),
+		],
 	]);
 	const { app } = createMockApp({ vault: files.vault });
 	const recorded = await readRecordedTranscript(app, OUTPUTS);
@@ -121,5 +147,48 @@ describe('a transcript edit on a recording whose segments name their language', 
 		});
 
 		expect(languages).toEqual(['uk', 'pl']);
+	});
+
+	it('gives each piece of a line that switches language the language spoken there', async () => {
+		// The Ukrainian half handed to another speaker stays Ukrainian, though
+		// most of the line is Polish.
+		const languages = await editAndReadBack(({ transcript }) => {
+			const span = { first: 0, last: 1 };
+			return {
+				span,
+				pieces: buildSplitPieces(
+					rowTiming(transcript, span),
+					{
+						before: 'Możemy od razu po polsku, czy chciałby pan na początku',
+						selected: 'по-українськи щось мені повідомити?',
+						after: '',
+					},
+					{ start: 35, end: 37 },
+					{ row: undefined, selected: 'Speaker 1', after: undefined },
+				),
+			};
+		}, SWITCHING_TURN);
+
+		expect(languages).toEqual(['pl', 'uk', 'other', 'other']);
+	});
+
+	it('keeps a line spoken outside the expected languages tagged as such when merged', async () => {
+		// Without the tag the merged aside would read as the transcript's
+		// own language, a code it is not in.
+		const languages = await editAndReadBack(({ transcript }) => {
+			const span = { first: 2, last: 3 };
+			return {
+				span,
+				pieces: [
+					buildMergedSegment(
+						rowTiming(transcript, span),
+						['Я крыху разумею.', 'Але не ўсё.'],
+						undefined,
+					),
+				],
+			};
+		}, SWITCHING_TURN);
+
+		expect(languages).toEqual(['pl', 'uk', 'other']);
 	});
 });

@@ -33,6 +33,7 @@ import type { PartFailure } from '../partFailure';
 import {
 	AdvancedBiasChannel,
 	advancedBiasChannel,
+	keepsConfiguredLanguage,
 	keepsDetectedLanguage,
 	meetsLengthSafeguard,
 	planAdvancedBias,
@@ -226,9 +227,10 @@ export class AdvancedTwoPassRunner {
 		);
 		const context = await generateContext(baseline, llm, {
 			// With several languages the first one typed is only the first in
-			// the list, so the agents write in the one most of the draft is in.
+			// the list, so the agents write in the one most of the draft is in,
+			// and fall back to it only when the draft names none.
 			language: transcribeOptions.languages
-				? baseline.language
+				? (baseline.language ?? transcribeOptions.language)
 				: (transcribeOptions.language ?? baseline.language),
 			glossary: resolveDictionaryTermList(settings),
 			buildPromptSentence:
@@ -290,17 +292,19 @@ export class AdvancedTwoPassRunner {
 			// lost this much text is discarded in favour of the baseline.
 			return { status: 'skipped', reason: 'too-short' };
 		}
-		// A recording configured with several languages is asked for all of
-		// them on both passes, and which one prevails can tip between two
-		// faithful decodes, so only a single-language run is held to it.
-		if (
-			!transcribeOptions.languages &&
-			!keepsDetectedLanguage(baseline.language, secondPass.language)
-		) {
-			// The same guard on the other axis: a pass that answered in another
-			// language transcribed something the first pass did not, however
-			// long it came out, and the field asking for the language cannot
-			// prevent it on an engine that never reads one.
+		// The same guard on the other axis: a pass that answered in another
+		// language transcribed something the first pass did not, however long
+		// it came out, and the field asking for the language cannot prevent it
+		// on an engine that never reads one. A recording configured with
+		// several languages is held to the list instead, because which listed
+		// language prevails can tip between two faithful decodes.
+		const keepsLanguage = transcribeOptions.languages
+			? keepsConfiguredLanguage(
+					transcribeOptions.languages,
+					secondPass.language,
+				)
+			: keepsDetectedLanguage(baseline.language, secondPass.language);
+		if (!keepsLanguage) {
 			return { status: 'skipped', reason: 'language-drift' };
 		}
 		// Reached only with `secondFailed` empty, because the guard above turns

@@ -215,16 +215,21 @@ export function buildTranscript(
  * a recording that switches languages. Measured by characters rather than by
  * segments, because a run of short replies in one language would otherwise
  * outvote a long explanation in the other. Speech tagged as in none of the
- * expected languages names no code, so it never becomes the transcript's.
+ * expected languages names no code, so it never becomes the transcript's,
+ * unless `includeOther` asks for it: one line of a transcript may well be
+ * spoken entirely in such a language, and the segment rebuilt from it says so.
  * @param segments - Transcript segments
+ * @param options - Whether {@link OTHER_SEGMENT_LANGUAGE} is counted too
+ * @param options.includeOther - Count speech outside the expected languages
  * @returns The prevailing segment language, or undefined when none names one
  */
 export function dominantSegmentLanguage(
 	segments: readonly TranscriptSegment[],
+	{ includeOther = false }: { includeOther?: boolean } = {},
 ): string | undefined {
 	const characters = new Map<string, number>();
 	for (const { language, text } of segments) {
-		if (language && language !== OTHER_SEGMENT_LANGUAGE) {
+		if (language && (includeOther || language !== OTHER_SEGMENT_LANGUAGE)) {
 			characters.set(
 				language,
 				(characters.get(language) ?? 0) + text.length,

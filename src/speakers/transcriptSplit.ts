@@ -199,7 +199,8 @@ export function afterSelection(
  * before the selection keeps the line's start and speaker and ends where the
  * selection starts, the selection spans the entered times, and the text after
  * it runs from there to the line's end. Texts are read from the note, so the
- * wikilink escaping the renderer added is taken back off.
+ * wikilink escaping the renderer added is taken back off. Each piece names
+ * the language spoken over most of its time.
  * @param timing - Where the line sits
  * @param texts - The line cut at the selection
  * @param times - Where the selection is spoken
@@ -216,13 +217,27 @@ export function buildSplitPieces(
 		end: number,
 		text: string,
 		speaker: string | undefined,
-	): TranscriptSegment => ({
-		start,
-		end,
-		text: restoreWikilinks(text),
-		...(speaker === undefined ? {} : { speaker }),
-		...(timing.language ? { language: timing.language } : {}),
-	});
+	): TranscriptSegment => {
+		// The language spoken over most of the piece's time, so the Ukrainian
+		// half of a line that switches from Polish keeps its own code.
+		let language = timing.language;
+		let longest = 0;
+		for (const span of timing.languageSpans ?? []) {
+			const overlap =
+				Math.min(end, span.end) - Math.max(start, span.start);
+			if (overlap > longest) {
+				language = span.language;
+				longest = overlap;
+			}
+		}
+		return {
+			start,
+			end,
+			text: restoreWikilinks(text),
+			...(speaker === undefined ? {} : { speaker }),
+			...(language ? { language } : {}),
+		};
+	};
 	const pieces: TranscriptSegment[] = [];
 	if (texts.before) {
 		pieces.push(

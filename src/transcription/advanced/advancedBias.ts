@@ -186,3 +186,28 @@ export function keepsDetectedLanguage(
 	}
 	return baseline === secondPass;
 }
+
+/**
+ * The same guard for a recording configured with several languages: whether
+ * the biased second pass came back in one of them.
+ *
+ * Which listed language prevails can tip between two faithful decodes of a
+ * recording that switches between them, so the first pass's answer is no
+ * measure here. A pass that flipped into a language outside the list is: its
+ * segments are tagged as in none of the listed languages, and the language it
+ * reports is the one the engine named for the whole response. Normalized and
+ * left unjudged when unknown, as {@link keepsDetectedLanguage} is.
+ * @param languages - The languages the recording was configured with
+ * @param secondPassLanguage - Language the second pass reported, when it did
+ * @returns True when the second pass may be adopted on this evidence
+ */
+export function keepsConfiguredLanguage(
+	languages: readonly string[],
+	secondPassLanguage: string | undefined,
+): boolean {
+	const secondPass = secondPassLanguage?.trim().toLowerCase();
+	return (
+		!secondPass ||
+		languages.some((language) => language.toLowerCase() === secondPass)
+	);
+}
