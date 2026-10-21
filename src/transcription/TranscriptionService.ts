@@ -644,6 +644,7 @@ export class TranscriptionService {
 			const outcome = await new AdvancedTwoPassRunner({
 				settings,
 				baseline: stitched,
+				baselineResults: ledger.results,
 				transcribeOptions,
 				engineId: provider.id,
 				sourcePath: file.path,

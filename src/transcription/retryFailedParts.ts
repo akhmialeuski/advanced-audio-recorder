@@ -25,6 +25,7 @@
 import type { App, TFile } from 'obsidian';
 import type { PartFailure, RecordingRange } from './partFailure';
 import type { Transcript, TranscriptSegment } from './TranscriptTypes';
+import { dominantSegmentLanguage } from './transcriptModel';
 import {
 	readRecordedTranscript,
 	rewriteRecordedTranscriptFiles,
@@ -190,7 +191,14 @@ export function spliceSegments(
 	];
 	merged.sort((a, b) => a.start - b.start);
 	return {
-		transcript: { ...existing, segments: merged },
+		// The language is counted again over the completed transcript, as a
+		// stitched run counts it, because the stored one was measured without
+		// the parts that failed and may not be the one most of the text is in.
+		transcript: {
+			...existing,
+			segments: merged,
+			language: dominantSegmentLanguage(merged) ?? existing.language,
+		},
 		spliced: taken.length,
 	};
 }

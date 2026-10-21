@@ -33,8 +33,7 @@ import type { PartFailure } from '../partFailure';
 import {
 	AdvancedBiasChannel,
 	advancedBiasChannel,
-	keepsConfiguredLanguage,
-	keepsDetectedLanguage,
+	keepsLanguageInEveryPart,
 	meetsLengthSafeguard,
 	planAdvancedBias,
 } from './advancedBias';
@@ -87,6 +86,8 @@ export interface AdvancedTwoPassInput {
 	readonly settings: AudioRecorderSettings;
 	/** The transcript the first pass produced, and the floor the result must beat. */
 	readonly baseline: Transcript;
+	/** The first pass's parts, which each part of the second pass is held to. */
+	readonly baselineResults: readonly PassResult[];
 	/** The options the first pass ran with, which the second pass extends. */
 	readonly transcribeOptions: TranscribeOptions;
 	/** Id of the engine that produced the baseline, for the stitched result. */
@@ -295,16 +296,16 @@ export class AdvancedTwoPassRunner {
 		// The same guard on the other axis: a pass that answered in another
 		// language transcribed something the first pass did not, however long
 		// it came out, and the field asking for the language cannot prevent it
-		// on an engine that never reads one. A recording configured with
-		// several languages is held to the list instead, because which listed
-		// language prevails can tip between two faithful decodes.
-		const keepsLanguage = transcribeOptions.languages
-			? keepsConfiguredLanguage(
-					transcribeOptions.languages,
-					secondPass.language,
-				)
-			: keepsDetectedLanguage(baseline.language, secondPass.language);
-		if (!keepsLanguage) {
+		// on an engine that never reads one. Judged part by part, because each
+		// part is its own request and can drift alone while the stitched
+		// transcript still names the language the rest is in.
+		if (
+			!keepsLanguageInEveryPart(
+				this.input.baselineResults,
+				this.input.secondPassResults,
+				transcribeOptions.languages,
+			)
+		) {
 			return { status: 'skipped', reason: 'language-drift' };
 		}
 		// Reached only with `secondFailed` empty, because the guard above turns
