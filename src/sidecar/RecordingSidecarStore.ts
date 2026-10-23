@@ -1061,18 +1061,11 @@ export class RecordingSidecarStore {
 
 	/**
 	 * Removes the file of a document that became empty because the user
-	 * cleared the last thing in it, with `Vault.delete` rather than
-	 * `FileManager.trashFile`. This is the store tidying its own data, not a
-	 * user deleting a file: what the user removed was a marker, a position or
-	 * a record, each through its own control, and the file only goes because
-	 * nothing is left to keep in it. It happens routinely - a sidecar holding
-	 * only a playback position is emptied every time a recording is heard to
-	 * the end - so trashing it would leave a stray JSON file in the user's
-	 * trash after every finished listen. The vault still fires its delete
-	 * event, which is what takes the recording out of the marker search.
-	 * The obsidianmd `prefer-file-manager-trash-file` lint warning on the call
-	 * is expected: the rule's config forbids silencing it inline, and the
-	 * advice it gives is right for a file the user deletes, which this is not.
+	 * cleared the last thing in it. Like every other removal of a sidecar it
+	 * goes through `FileManager.trashFile`, so it lands where the user's
+	 * "Deleted files" preference sends deleted files and can be restored from
+	 * there. The vault still fires its delete event, which is what takes the
+	 * recording out of the marker search.
 	 *
 	 * A file that turned up under a document no file stood behind is left
 	 * alone, for the same reason {@link writeFile} will not overwrite it: the
@@ -1090,7 +1083,7 @@ export class RecordingSidecarStore {
 			}
 			await (located === UNINDEXED
 				? this.app.vault.adapter.remove(filePath)
-				: this.app.vault.delete(located));
+				: this.app.fileManager.trashFile(located));
 		}
 		this.unbacked.add(sidecar);
 		return true;

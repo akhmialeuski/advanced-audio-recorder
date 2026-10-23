@@ -525,13 +525,11 @@ describe('SplitService', () => {
 
 			// The decoded split starts from where the streamed one did: its
 			// first part is gone, and the decode writes every part again.
-			// Removed outright rather than trashed, since the split goes on
-			// and the user's trash would otherwise keep a part of a split
-			// that succeeded.
-			expect(mockApp.vault.delete).toHaveBeenCalledWith(
+			// The part goes where the user's deletion preference puts it.
+			expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
 				expect.objectContaining({ path: 'Audio/recording-part1.mp3' }),
 			);
-			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+			expect(mockApp.vault.delete).not.toHaveBeenCalled();
 			expect(decode()).toHaveBeenCalledTimes(1);
 			expect(outcome).toEqual({
 				status: 'completed',
