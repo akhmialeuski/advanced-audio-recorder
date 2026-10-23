@@ -125,7 +125,8 @@ describe('systemAudioGrantSupport', () => {
 		expect(systemAudioGrantSupport().permission).toBe(
 			'macOS hands its output only to an app allowed to record it. ' +
 				`Allow Obsidian under ${MAC_PERMISSION_PANE} (Screen Recording ` +
-				'on macOS 14), then quit and reopen Obsidian.',
+				'on macOS 14), adding it with the + button if it is not listed, ' +
+				'then quit and reopen Obsidian.',
 		);
 	});
 
@@ -834,7 +835,8 @@ describe('captureSystemAudioStream', () => {
 			expect(message).toContain(said);
 			expect(message).toContain(
 				`Allow Obsidian under ${MAC_PERMISSION_PANE} (Screen Recording ` +
-					'on macOS 14), then quit and reopen Obsidian. Or record a ' +
+					'on macOS 14), adding it with the + button if it is not ' +
+					'listed, then quit and reopen Obsidian. Or record a ' +
 					'loopback input device instead, such as BlackHole.',
 			);
 			expect(message).not.toContain('Stereo Mix');

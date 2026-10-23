@@ -106,12 +106,15 @@ const MAC_LOOPBACK_INPUT =
  * it takes for a change there to reach a running app. The pane is called
  * Screen & System Audio Recording from macOS 15 and Screen Recording before
  * it, and macOS reads the answer when an app starts rather than while it
- * runs, which is why the restart is part of the step.
+ * runs, which is why the restart is part of the step. Obsidian may be
+ * missing from that list: Electron raises no macOS prompt for a source the
+ * app picks itself rather than through the system picker
+ * (electron/electron#52738), so the step says how to add it by hand.
  */
 const MAC_PERMISSION_STEP =
 	'Allow Obsidian under System Settings > Privacy & Security > Screen & ' +
-	'System Audio Recording (Screen Recording on macOS 14), then quit and ' +
-	'reopen Obsidian.';
+	'System Audio Recording (Screen Recording on macOS 14), adding it with ' +
+	'the + button if it is not listed, then quit and reopen Obsidian.';
 
 /** The way out a macOS refusal offers after the permission step. */
 const MAC_PERMISSION_FALLBACK =
