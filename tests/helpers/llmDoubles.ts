@@ -9,9 +9,11 @@
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import type {
 	LlmCompletion,
+	LlmProvider,
 	LlmVendorIdentity,
 } from 'src/transcription/llm/LlmProvider';
 import type { LlmUsage } from 'src/transcription/llm/llmResponse';
+import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import { EngineLabel } from 'src/providers/providers';
 
 /**
@@ -46,4 +48,45 @@ export function completed(text: string): LlmCompletion {
  */
 export function billed(text: string, usage: LlmUsage): LlmCompletion {
 	return { text, usage };
+}
+
+/**
+ * What each context agent of the advanced two-pass mode answers, keyed by a
+ * fragment of its system prompt. Mined from a Russian draft that transliterated
+ * an English term ("кубернетис") and carries an inflected name, which is the
+ * case the mode exists for.
+ */
+const CONTEXT_AGENT_REPLIES: readonly (readonly [string, string])[] = [
+	['domain and topic', 'Митинг про инфраструктуру.'],
+	['proper names', 'Иванов'],
+	['domain terminology', 'деплой'],
+	['English technical terms', 'Kubernetes'],
+	['verify candidate terms', 'Kubernetes'],
+	[
+		'context prompt',
+		'Обсуждение инфраструктуры: деплой, Иванов, Kubernetes.',
+	],
+];
+
+/**
+ * An LLM that answers the advanced mode's context agents, recording every
+ * prompt it was sent. The agents' answers lead the second pass to the
+ * canonical spelling `Kubernetes`, so a second pass that ran shows in the
+ * transcript.
+ * @returns The provider double and the prompts it received, in order
+ */
+export function contextAgentsLlm(): { llm: LlmProvider; calls: LlmPrompt[] } {
+	const calls: LlmPrompt[] = [];
+	const llm: LlmProvider = {
+		id: LLM_PROVIDER_IDS.GEMINI,
+		label: EngineLabel.Gemini,
+		complete: (prompt: LlmPrompt): Promise<LlmCompletion> => {
+			calls.push(prompt);
+			const match = CONTEXT_AGENT_REPLIES.find(([fragment]) =>
+				prompt.system.includes(fragment),
+			);
+			return Promise.resolve(completed(match?.[1] ?? ''));
+		},
+	};
+	return { llm, calls };
 }

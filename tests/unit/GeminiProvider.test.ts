@@ -1,8 +1,10 @@
 /**
  * Tests for the GeminiProvider transcription orchestration: the upload ->
  * poll-until-ACTIVE -> generateContent -> best-effort delete flow scripted
- * through the shared requestUrl mock, the WAV-passthrough vs decode-to-WAV
- * branch, the thinking-off generationConfig, and the truncation/block guards.
+ * through the shared requestUrl mock, the payload uploaded as it was lent, the
+ * thinking-off generationConfig, and the truncation/block guards. Which
+ * containers reach the provider undecoded is the capability's to say, and is
+ * tested with the capabilities.
  */
 
 import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';
@@ -17,12 +19,6 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { withRequestUrl } from '../helpers/network';
-
-// Decoding an unsupported container needs OfflineAudioContext, which jsdom
-// lacks; mock the audio helpers so the decode branch is testable by eye.
-jest.mock('src/transcription/audioChunks', () =>
-	require('../mocks/modules/audioChunks'),
-);
 
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
@@ -277,24 +273,37 @@ describe('GeminiProvider.transcribe', () => {
 		expect(instruction).toContain('Identify distinct speakers');
 	});
 
-	it('decodes an unsupported container to WAV before upload', async () => {
+	it('uploads the container it is handed as it stands', async () => {
 		const flow = scriptTranscriptFlow();
 
-		await provider().transcribe(payload('audio/webm'), {
+		await provider().transcribe(payload('audio/ogg'), {
 			diarize: false,
 			wordTimestamps: false,
 		});
 
-		// webm is not accepted, so it is decoded and uploaded as WAV.
-		expect(
-			at(at(flow.generateBody().contents, 0).parts, 0).fileData?.mimeType,
-		).toBe('audio/wav');
 		const start = flow.calls.find((c) =>
 			c.url.endsWith('/upload/v1beta/files'),
 		);
 		expect(start?.headers?.['X-Goog-Upload-Header-Content-Type']).toBe(
-			'audio/wav',
+			'audio/ogg',
 		);
+		expect(
+			at(at(flow.generateBody().contents, 0).parts, 0).fileData?.mimeType,
+		).toBe('audio/ogg');
+	});
+
+	// The service sends the same payload again after a refusal it waits out,
+	// so the provider may only read what it was lent (issue #136).
+	it('leaves the payload it uploaded readable for the next send', async () => {
+		scriptTranscriptFlow();
+		const lent = payload('audio/wav');
+
+		await provider().transcribe(lent, {
+			diarize: false,
+			wordTimestamps: false,
+		});
+
+		expect(lent.data.byteLength).toBe(8);
 	});
 
 	it('throws when the response was truncated at the token limit', async () => {

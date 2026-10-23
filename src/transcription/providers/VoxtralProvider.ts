@@ -15,8 +15,6 @@
 
 import {
 	TRANSCRIPTION_PROVIDER_IDS,
-	VOXTRAL_AUDIO_EXTENSIONS,
-	VOXTRAL_MAX_REQUEST_SECONDS,
 	VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS,
 } from '../../constants';
 import { EngineLabel } from '../../providers/providers';
@@ -31,7 +29,6 @@ import {
 	type MultipartField,
 } from '../httpClient';
 import { VOXTRAL_CAPABILITIES } from './capabilities';
-import { uploadContainer } from './uploadContainer';
 import { mapWhisperResponse, type WhisperResult } from './whisperResponse';
 import type {
 	AudioPayload,
@@ -62,12 +59,6 @@ const VOXTRAL_TRANSCRIPTIONS_PATH = '/audio/transcriptions';
  */
 const SEGMENT_GRANULARITY = 'segment';
 
-/**
- * The containers the endpoint reads, in the refusal's own words, so a user
- * told to convert is told what to convert to.
- */
-const VOXTRAL_ACCEPTED_CONTAINERS = 'mp3, m4a, ogg, flac or wav';
-
 /** Configuration for the Voxtral provider. */
 export interface VoxtralConfig {
 	baseUrl: string;
@@ -78,10 +69,11 @@ export interface VoxtralConfig {
 }
 
 /**
- * Mistral Voxtral transcription provider. Accepts the original container for
- * the formats the endpoint takes and decodes the rest - notably the `audio/webm`
- * this plugin records by default - to 16 kHz mono WAV, the way the Gemini
- * provider does for the same reason.
+ * Mistral Voxtral transcription provider. Uploads the payload it is lent as it
+ * stands: a recording in a container the endpoint does not read - notably the
+ * `audio/webm` this plugin records by default - arrives already decoded to
+ * 16 kHz mono WAV and split at the three-hour cap by the service, which does
+ * that once per run for every engine.
  */
 export class VoxtralProvider implements TranscriptionProvider {
 	readonly id = TRANSCRIPTION_PROVIDER_IDS.VOXTRAL;
@@ -95,33 +87,16 @@ export class VoxtralProvider implements TranscriptionProvider {
 		payload: AudioPayload,
 		options: TranscribeOptions,
 	): Promise<WhisperResult> {
-		const audio = await uploadContainer(payload, {
-			// Asked by extension, the unit Mistral publishes its list in. A MIME
-			// gate could not tell the `m4a` the endpoint reads from the `mp4`
-			// it does not, because the format registry gives both `audio/mp4`,
-			// and `mp4` is what iOS falls back to recording in.
-			accepts: ({ extension }) => VOXTRAL_AUDIO_EXTENSIONS.has(extension),
-			engineLabel: this.label,
-			acceptedContainers: VOXTRAL_ACCEPTED_CONTAINERS,
-			// Read from the engine's own declaration rather than named again
-			// here, so the ceiling the service proves the source against and
-			// the one a decoded upload is proven against are one number.
-			maxRequestBytes: this.capabilities.maxRequestBytes,
-			// Not the capability's duration cap, which stays unbounded so the
-			// service keeps uploading whole containers (see
-			// VOXTRAL_MAX_REQUEST_SECONDS). The endpoint's real limit binds well
-			// before the byte ceiling does - three hours is about 346 MB of this
-			// WAV against a 1 GB request - so without it the nine hours that
-			// gigabyte holds were uploaded before Mistral declined them.
-			maxRequestSeconds: VOXTRAL_MAX_REQUEST_SECONDS,
-		});
+		// Already in a container the endpoint reads (see the capability's
+		// originalContainers), and only read here: the same payload is sent
+		// again when the service waits out a refusal.
 		const fields: MultipartField[] = [
 			{
 				type: 'file',
 				name: 'file',
-				filename: audio.filename,
-				contentType: audio.contentType,
-				data: audio.data,
+				filename: payload.filename,
+				contentType: payload.contentType,
+				data: payload.data,
 			},
 			{ type: 'text', name: 'model', value: this.config.model },
 			// Sent on every run and never joined by a second level: without a

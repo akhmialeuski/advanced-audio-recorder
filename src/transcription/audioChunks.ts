@@ -16,26 +16,8 @@
  */
 
 import { TRANSCRIBE_BYTES_PER_SEC, TRANSCRIBE_SAMPLE_RATE } from '../constants';
-import {
-	encodeFloatsAsInt16Wav,
-	int16WavByteLength,
-	WAV_HEADER_SIZE,
-} from '../audio/WavEncoder';
+import { encodeFloatsAsInt16Wav, WAV_HEADER_SIZE } from '../audio/WavEncoder';
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
-
-/**
- * How many bytes {@link encodeMonoWav} will return for this many samples.
- *
- * Answering it without encoding is what lets a caller refuse an upload before
- * it allocates one: the decoded samples are already in memory at that point,
- * and the WAV would add half as much again on top of them. Shared with the
- * encoder itself so the answer and the allocation cannot drift apart.
- * @param sampleCount - Number of mono samples
- * @returns Byte length of the WAV those samples encode to
- */
-export function monoWavByteLength(sampleCount: number): number {
-	return int16WavByteLength(sampleCount, 1);
-}
 
 /**
  * Encodes mono Float32 samples (range -1..1) into the 16-bit PCM WAV a

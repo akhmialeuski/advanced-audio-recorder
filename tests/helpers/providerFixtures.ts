@@ -21,14 +21,15 @@ import type { WhisperResult } from 'src/transcription/providers/whisperResponse'
 import { TRANSCRIPTION_ENGINES } from 'src/transcription/providers/engines';
 
 /**
- * An engine with no request limits that takes the original container. This is
+ * An engine with no request limits that reads every container. This is
  * the shape that keeps a test on the whole-file path, where no Web Audio
  * decode is needed and the service issues exactly one request.
  */
 export const UNLIMITED_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: Number.POSITIVE_INFINITY,
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
-	acceptsOriginalContainer: true,
+	durationCapCheck: 'proven-by-bytes',
+	originalContainers: { accepts: () => true },
 	supportsDiarization: true,
 	supportsDictionary: true,
 	wordTimestamps: 'requested',
