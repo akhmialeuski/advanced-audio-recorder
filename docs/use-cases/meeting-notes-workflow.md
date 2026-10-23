@@ -161,15 +161,17 @@ For a transcribe-and-diarize workflow, **Single file** is usually the right choi
 
 Everything above assumes the meeting is in the room with you. A Zoom, Teams or Meet call is different: your microphone carries your voice, and every other participant arrives as **playback**, on an output device. The plugin records input devices, so a call recorded with nothing else configured holds one side of the conversation.
 
-On **Windows** the plugin can capture the system output directly, and the shortest way to ask for it is the **Include system audio** switch under **Settings > Advanced Audio Recorder > Audio input**. Turn it on and the next recording holds two tracks - your microphone as the rows beside the switch describe it, and the call - mixed into one file. There is nothing to install and nothing else to set: the second track has no device to pick, no filtering to choose and no place in the mix to set, which is what makes it one switch rather than a page. It is off on mobile, which cannot open two captures at once, and the row says so itself where the build cannot be granted the output, which is every platform but Windows.
+On **Windows** and on **macOS** the plugin can capture the system output directly, and the shortest way to ask for it is the **Include system audio** switch under **Settings > Advanced Audio Recorder > Audio input**. Turn it on and the next recording holds two tracks - your microphone as the rows beside the switch describe it, and the call - mixed into one file. There is nothing to install and nothing else to set: the second track has no device to pick, no filtering to choose and no place in the mix to set, which is what makes it one switch rather than a page. It is off on mobile, which cannot open two captures at once, and where the build cannot be granted the output the row says so itself and names the reason, which is Linux, a Mac older than macOS 14.2, or an Obsidian installer built on an Electron older than 39.
+
+A Mac asks for two things the first time. macOS hands its output only to an app you allowed to record it, so before the first call open **System Settings > Privacy & Security > Screen & System Audio Recording** (**Screen Recording** on macOS 14), turn **Obsidian** on, then quit and reopen Obsidian, since macOS reads that answer only when an app starts. Without it the recording does not start, and the notice says which pane to open, rather than the session recording a silent track. The second thing is a recent enough installer: the capture needs macOS 14.2 or later and an Obsidian installer built on Electron 39 or later. Obsidian's in-app updates do not replace Electron, so an install that has been updating itself for years can still run an old one, and the remedy is the current installer from [obsidian.md](https://obsidian.md/download). **Settings > Diagnostics > System info** shows both the macOS and the Electron version, and the reason the output is refused when it is.
 
 Turning on multi-track recording hands those answers back to you, and the switch stands down for it: set **Track N source** to **System audio (this computer)** for the track that records the machine's own output, and its device dropdown disappears because such a track names no device. Go that way when two mixed tracks are not what the meeting needs - a third microphone in the room, one file per side, or a level correction on the remote participants.
 
-Everywhere else, and on Windows if you prefer it, route that output back into the machine as an **input** and record it on a second track. Any such input appears in the device dropdowns like a microphone, marked `(system audio)`.
+Everywhere else, which is Linux and a Mac below those versions, and on Windows or macOS if you prefer it, route that output back into the machine as an **input** and record it on a second track. Any such input appears in the device dropdowns like a microphone, marked `(system audio)`.
 
 **Windows.** Some Realtek drivers already publish **Stereo Mix**. It is disabled by default: open **Sound settings > More sound settings > Recording**, right-click in the list, choose **Show Disabled Devices**, then enable it. Many newer laptops do not ship it at all, in which case install [VB-CABLE](https://vb-audio.com/Cable/) or VoiceMeeter, both free. Note the naming: with VB-CABLE, applications play into **CABLE Input** and the recorder captures **CABLE Output**. Plain VB-CABLE also takes the audio away from your speakers while it is routed, so you stop hearing the call; VoiceMeeter exists precisely to route and monitor at the same time and is worth the extra ten minutes for a call you have to take part in.
 
-**macOS.** Install [BlackHole](https://existential.audio/blackhole/) (free). To hear the call while recording it, open **Audio MIDI Setup**, create a **Multi-Output Device** containing both your normal output and BlackHole, and select that as the system output. Record from **BlackHole 2ch**. Loopback by Rogue Amoeba does the same with a friendlier interface.
+**macOS.** On a Mac below macOS 14.2, or where you would rather not grant the recording permission, install [BlackHole](https://existential.audio/blackhole/) (free). To hear the call while recording it, open **Audio MIDI Setup**, create a **Multi-Output Device** containing both your normal output and BlackHole, and select that as the system output. Record from **BlackHole 2ch**. Loopback by Rogue Amoeba does the same with a friendlier interface.
 
 **Linux.** Nothing to install. PipeWire and PulseAudio publish a `Monitor of ...` source for every output, and it is already in the device list.
 
@@ -177,7 +179,7 @@ With the routing in place, configure the session under **Settings > Advanced Aud
 
 1. Turn on **Enable multi-track recording** and set **Maximum tracks** to 2.
 2. Leave **Track 1 source** on **Input device** and set **Track 1 input** to your microphone.
-3. For track 2, either set **Track 2 source** to **System audio (this computer)** on Windows, or leave it on **Input device** and set **Track 2 input** to the loopback input.
+3. For track 2, either set **Track 2 source** to **System audio (this computer)** on Windows or on a Mac that can be granted it, or leave it on **Input device** and set **Track 2 input** to the loopback input.
 4. On the loopback-input route, set **Track 2 processing** to **Raw**. This is the step that decides whether the recording is usable: the browser's echo cancellation treats the far end of a call as this machine's own speaker output and suppresses it, so a loopback track captured with the default filtering fades in and out or goes quiet altogether. Leave **Track 1 processing** on **Same as global settings** or set it to **Voice**, since your own microphone does want that filtering.
 5. Leave **Output mode** on **Single file**, so both sides land on one timeline and the transcription engine can diarize across everyone.
 6. If the remote side comes in louder or quieter than your own voice, correct it with **Track 2 level** rather than at the operating system.
@@ -257,6 +259,7 @@ Use this once to confirm your setup, then just record.
 7. (Optional) **Transcribe after recording** = On for hands-off transcription.
 8. (Optional) **Audio player > Enhanced audio player** = On, then **Markers and chapters** = On (this toggle appears only after the enhanced player is enabled), to mark agenda items.
 9. (Optional) **Multi-track recording** = On (Single file) if you use several microphones.
+10. (Optional) **Audio input > Include system audio** = On to record the remote side of a call, on Windows or on macOS 14.2 or later. On a Mac, allow Obsidian under **System Settings > Privacy & Security > Screen & System Audio Recording** first and reopen Obsidian.
 
 **Per meeting**
 
@@ -281,6 +284,8 @@ Use this once to confirm your setup, then just record.
 - **The summary is cut off** - raise **Max output tokens** (default 4096), up to whatever your model allows; the service refuses a larger budget and names its own maximum.
 - **Transcription accuracy is poor in a noisy room** - run [Clean up audio](../audio-cleanup.md) first, or move to a better microphone.
 - **The transcription dialog closed and the job stopped** - closing the dialog cancels the job. Use **Minimize** to keep it running in the status bar.
+- **On a Mac, a recording with Include system audio does not start and the notice names Screen & System Audio Recording** - macOS has not allowed Obsidian to record its output. Turn **Obsidian** on under **System Settings > Privacy & Security > Screen & System Audio Recording** (**Screen Recording** on macOS 14), quit and reopen Obsidian, and start the recording again.
+- **On a Mac, Include system audio says it needs macOS 14.2 or an Electron 39 installer** - the row names which of the two is short. Update macOS, or download and run the current installer from [obsidian.md](https://obsidian.md/download), since Obsidian's own updates do not replace Electron. Until then, record the call through BlackHole as described in [Recording a call with its remote participants](#recording-a-call-with-its-remote-participants).
 
 For diagnostics, the **System info** report, and verbose **Debug mode**, see [Troubleshooting](../troubleshooting.md).
 

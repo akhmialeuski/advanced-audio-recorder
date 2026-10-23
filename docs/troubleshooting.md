@@ -8,6 +8,7 @@ This guide helps you diagnose and fix problems with Advanced Audio Recorder. It 
     - [Debug mode](#debug-mode)
 - [Common problems and fixes](#common-problems-and-fixes)
     - [No sound is recorded](#no-sound-is-recorded)
+    - [This computer's output is not recorded](#this-computers-output-is-not-recorded)
     - [Voice only in one channel (hard-panned left or right)](#voice-only-in-one-channel-hard-panned-left-or-right)
     - [A recording format is not available](#a-recording-format-is-not-available)
     - [Conversion fails](#conversion-fails)
@@ -60,13 +61,13 @@ The test uses exactly the same input device, sample rate, bitrate, and browser i
 
 The snapshot contains the following groups:
 
-| Group                       | What it includes                                                                                                                                                                                                                                             |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Plugin settings**         | Recording format, bitrate, sample rate, bit depth, save folder, save-near-active-file, active-file subfolder, file prefix, multi-track on/off, max tracks, output mode, per-track sources, selected input device id, and debug flag.                         |
-| **Environment**             | Obsidian (API) version, Electron, Chromium and Node versions, platform, architecture, and user agent.                                                                                                                                                        |
-| **Audio devices**           | Every detected audio input and output device, with id, label, group id, and kind.                                                                                                                                                                            |
-| **Audio capabilities**      | Supported formats, sample rates and bitrates, the bitrates each compressed format's encoder really accepts on this device at the rate an offline encode runs at, the per-codec support matrix, and whether `MediaRecorder` and `getUserMedia` are available. |
-| **Active recording config** | The format actually handed to the recorder, the resolved MIME type, the expected codec, whether that MIME type is supported, and the pre-recording validation result.                                                                                        |
+| Group                       | What it includes                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Plugin settings**         | Recording format, bitrate, sample rate, bit depth, save folder, save-near-active-file, active-file subfolder, file prefix, multi-track on/off, max tracks, output mode, per-track sources, selected input device id, and debug flag.                                                                                                                      |
+| **Environment**             | Obsidian (API) version, Electron, Chromium and Node versions, platform, operating system version, architecture, and user agent.                                                                                                                                                                                                                           |
+| **Audio devices**           | Every detected audio input and output device, with id, label, group id, and kind.                                                                                                                                                                                                                                                                         |
+| **Audio capabilities**      | Supported formats, sample rates and bitrates, the bitrates each compressed format's encoder really accepts on this device at the rate an offline encode runs at, the per-codec support matrix, whether `MediaRecorder` and `getUserMedia` are available, and whether this computer's own output can be captured directly, with the reason when it cannot. |
+| **Active recording config** | The format actually handed to the recorder, the resolved MIME type, the expected codec, whether that MIME type is supported, and the pre-recording validation result.                                                                                                                                                                                     |
 
 The snapshot never contains your API keys, transcripts, or note contents - only the technical configuration listed above. It is safe to share in a public issue.
 
@@ -107,9 +108,21 @@ The recording finishes but the file is silent, or **Test recording** plays back 
 5. With **Input level meter** enabled (**Settings > Audio processing & feedback**), watch the meter move when you speak - a flat meter means no signal is reaching the plugin.
 6. If a `Test recording failed:` message mentions a denied permission, grant access and restart Obsidian.
 
-If the recording holds your own voice but not the other participants of a call, nothing is broken: a recording captures an input device by default, and the remote side of a Zoom or Teams call goes to an output device. On Windows, turn on **Include system audio** under **Audio input**, which records the machine's own output beside the microphone and mixes both into one file; on a session that configures its tracks by hand, set that track's **Track N source** to **System audio (this computer)** instead. Elsewhere, route the output back in as an input and record it on a second track. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
+If the recording holds your own voice but not the other participants of a call, nothing is broken: a recording captures an input device by default, and the remote side of a Zoom or Teams call goes to an output device. On Windows, and on macOS 14.2 or later, turn on **Include system audio** under **Audio input**, which records the machine's own output beside the microphone and mixes both into one file; on a session that configures its tracks by hand, set that track's **Track N source** to **System audio (this computer)** instead. Elsewhere, route the output back in as an input and record it on a second track. See [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
 
 See also: [Recording](recording.md), [Settings reference](settings-reference.md#audio-input).
+
+### This computer's output is not recorded
+
+**Include system audio** and a track whose **Track N source** is **System audio (this computer)** ask the host for the machine's own output. When that cannot be had, the recording does not start, and the notice says why; the same sentence is under the setting itself and in **System info**, so it can be read before a call rather than during one.
+
+- **Granted on Windows and on macOS only** - Electron offers no direct capture of the output on Linux. Record the `Monitor of ...` input PipeWire or PulseAudio publishes for every output instead.
+- **Needs macOS 14.2 or later** - the capture goes through an Apple API that macOS 14.2 introduced. Update macOS, or route the output through [BlackHole](https://existential.audio/blackhole/) and record that input.
+- **Needs an Obsidian installer built on Electron 39 or later** - Electron is the runtime the Obsidian installer ships, and Obsidian's in-app updates do not replace it. Download and run the current installer from [obsidian.md](https://obsidian.md/download); **System info** shows the Electron version under **Environment**.
+- **Names System Settings > Privacy & Security > Screen & System Audio Recording** - macOS has not allowed Obsidian to record its output. Turn **Obsidian** on in that pane (**Screen Recording** on macOS 14), then quit and reopen Obsidian, since macOS reads the answer only when an app starts. A Mac without that permission would otherwise hand over a track that never carries a sound, which is why the plugin refuses it rather than recording silence.
+- **Granted only in answer to a user action in a focused Obsidian window** - the operating system grants the output only to a click or a key press in Obsidian, so a session started from the command line cannot ask for it. Start it from the ribbon icon, the command palette or a hotkey.
+
+See also: [Recording this computer's own output](recording.md#recording-this-computers-own-output), [Recording a call with its remote participants](use-cases/meeting-notes-workflow.md#recording-a-call-with-its-remote-participants).
 
 ### Voice only in one channel (hard-panned left or right)
 

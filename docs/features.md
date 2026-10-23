@@ -75,7 +75,7 @@ Learn more: [Splitting](splitting.md#automatic-splitting-during-recording)
 
 ## System audio beside the microphone
 
-Turn on **Include system audio** under **Audio input** and a recording captures two tracks - the microphone as the rows beside that switch describe it, and this computer's own output - mixed into one file. It is how the remote participants of a Zoom, Teams or Meet call reach a recording with nothing installed and nothing else configured. Electron grants the machine's output on Windows only, and the row says so where the build cannot; the switch is off on mobile, which cannot open two captures at once, and it stands down while multi-track recording is on, where a track's own source row says the same thing with every answer left open.
+Turn on **Include system audio** under **Audio input** and a recording captures two tracks - the microphone as the rows beside that switch describe it, and this computer's own output - mixed into one file. It is how the remote participants of a Zoom, Teams or Meet call reach a recording with nothing installed and nothing else configured. Electron grants the machine's output on Windows, and on macOS 14.2 or later once **Obsidian** is allowed under **Screen & System Audio Recording** in System Settings, and the row names the reason where the build cannot; the switch is off on mobile, which cannot open two captures at once, and it stands down while multi-track recording is on, where a track's own source row says the same thing with every answer left open.
 
 Learn more: [Recording this computer's own output](recording.md#recording-this-computers-own-output)
 
@@ -211,7 +211,7 @@ Learn more: [Recording panel](recording-panel.md)
 
 ## Diagnostics
 
-Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian, Electron and Chromium versions, platform, devices, supported formats and codecs, active configuration, and the recording-related settings) plus a **Copy to clipboard** button. API keys and the transcription, player and cleanup settings are left out of it. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
+Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian, Electron and Chromium versions, platform and operating system version, devices, whether this computer's own output can be captured, supported formats and codecs, active configuration, and the recording-related settings) plus a **Copy to clipboard** button. API keys and the transcription, player and cleanup settings are left out of it. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
 
 ![The System diagnostics modal with the Copy to clipboard button above the JSON snapshot of plugin settings and environment](images/modal-system-info.png)
 
