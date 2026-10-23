@@ -16,6 +16,7 @@ import type {
 } from '../settingsSchema';
 import {
 	type DeviceOptions,
+	FILTER_LINE_LIST_CLASS,
 	SETTINGS_ROOT_CLASS,
 	SETTINGS_SECTION_CLASS,
 } from './context';
@@ -144,6 +145,19 @@ export function deviceRowDesc(
 		return 'The list of audio devices could not be read here, so recording uses the system default microphone.';
 	}
 	return whenListed;
+}
+
+/**
+ * The classes of a list of named entries declared without a heading: the
+ * block every group carries, and the one that puts the add button on the
+ * filter's line while the list has entries to filter.
+ * @param count - How many entries the list holds
+ * @returns The list's class string
+ */
+export function listClass(count: number): string {
+	return count > 0
+		? `${SETTINGS_SECTION_CLASS} ${FILTER_LINE_LIST_CLASS}`
+		: SETTINGS_SECTION_CLASS;
 }
 
 /**

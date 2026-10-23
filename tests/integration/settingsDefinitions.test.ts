@@ -55,6 +55,7 @@ import {
 	WHISPER_API_MODELS_DOC_URL,
 } from 'src/constants';
 import {
+	FILTER_LINE_LIST_CLASS,
 	SETTINGS_BLOCK_ROW_CLASS,
 	SETTINGS_ROOT_CLASS,
 	SETTINGS_SECTION_CLASS,
@@ -1251,6 +1252,23 @@ describe('settings definitions', () => {
 			expect(modelList().emptyState).toContain('No models saved yet');
 		});
 
+		it('puts the add button on the filter line only while there are models to filter', () => {
+			// An empty list shows no filter, so its add button stays where
+			// Obsidian puts it.
+			const classes = (): string[] =>
+				((modelList() as { cls?: string }).cls ?? '').split(' ');
+			seedModels();
+
+			expect(classes()).toEqual([
+				SETTINGS_SECTION_CLASS,
+				FILTER_LINE_LIST_CLASS,
+			]);
+
+			settings.whisperApiModels = [];
+
+			expect(classes()).toEqual([SETTINGS_SECTION_CLASS]);
+		});
+
 		it('declares no catalogue for the local engine, which serves none', () => {
 			// It runs a binary against a file on disk: there is no list of
 			// served ids to keep, so its page holds the paths instead.
@@ -1294,6 +1312,23 @@ describe('settings definitions', () => {
 			for (const item of list.items) {
 				expect((item as { type?: string }).type).toBe('page');
 			}
+		});
+
+		it('puts the add button on the filter line only while there are profiles to filter', () => {
+			const classes = (): string[] =>
+				(
+					(listOf('Dictionary profiles') as { cls?: string }).cls ??
+					''
+				).split(' ');
+
+			expect(classes()).toEqual([
+				SETTINGS_SECTION_CLASS,
+				FILTER_LINE_LIST_CLASS,
+			]);
+
+			profileEntries = [];
+
+			expect(classes()).toEqual([SETTINGS_SECTION_CLASS]);
 		});
 
 		it('leaves the list without a per-row delete affordance', () => {

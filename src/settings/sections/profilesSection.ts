@@ -18,7 +18,7 @@ import {
 	STACKED_TEXT_CLASS,
 } from './context';
 import { profileControlKey } from './controlKeys';
-import { nameFilter } from './rowHelpers';
+import { listClass, nameFilter } from './rowHelpers';
 import type { SettingGroupItem } from 'obsidian';
 
 /** Visible lines a profile body field opens with. */
@@ -221,7 +221,7 @@ function profileGroups(
 			items: [
 				{
 					type: 'list',
-					cls: SETTINGS_SECTION_CLASS,
+					cls: listClass(entries.length),
 					emptyState: 'No profiles yet. Add one to start.',
 					search: nameFilter('Filter profiles'),
 					addItem: { name: 'Add profile', action: add },

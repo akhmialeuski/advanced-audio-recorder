@@ -360,6 +360,7 @@ If your plugin does not need CSS, delete this file.
 /* Save and background progress in the status bar */
 .aar-status-progress-content {
     position: relative;
+    isolation: isolate;
     width: 100%;
     border-radius: var(--radius-s);
 }
@@ -371,7 +372,8 @@ If your plugin does not need CSS, delete this file.
  * sibling, so a screen reader still reads it, and the button's ::after
  * stretches over the whole surface, bar included, so a click anywhere on it
  * restores the window. The hover and the focus ring are drawn on the surface
- * the click covers rather than on the text line alone.
+ * the click covers rather than on the text line alone, by the button's
+ * ::before, which spans the same surface and sits under the text and the bar.
  */
 .aar-status-progress-actionable {
     display: block;
@@ -382,10 +384,16 @@ If your plugin does not need CSS, delete this file.
     text-align: inherit;
 }
 
+.aar-status-progress-actionable::before,
 .aar-status-progress-actionable::after {
     content: '';
     position: absolute;
     inset: 0;
+}
+
+.aar-status-progress-actionable::before {
+    z-index: -1;
+    border-radius: var(--radius-s);
 }
 
 .aar-status-progress-actionable:hover,
@@ -394,11 +402,11 @@ If your plugin does not need CSS, delete this file.
     box-shadow: none;
 }
 
-.aar-status-progress-content:has(> .aar-status-progress-actionable:hover) {
+.aar-status-progress-actionable:hover::before {
     background-color: var(--background-modifier-hover);
 }
 
-.aar-status-progress-content:has(> .aar-status-progress-actionable:focus-visible) {
+.aar-status-progress-actionable:focus-visible::before {
     box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
@@ -1635,22 +1643,23 @@ button.aar-player-marker-row {
    because Obsidian puts the list's add button there, as a plus icon whose
    tooltip names the entry. The row then holds nothing but that icon and stands
    empty above the filter. The icon moves onto the filter's line instead, so the
-   list opens with one row of controls. The mobile app draws its add row inside
-   the list and builds no header, and a list with nothing in it shows no
-   filter, so neither matches and both keep Obsidian's layout. */
-.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) {
+   list opens with one row of controls. The settings code marks such a list
+   while it has entries, since an empty list shows no filter; the mobile app
+   draws its add row inside the list and builds no header. Neither of those
+   matches, and both keep Obsidian's layout. */
+body:not(.is-mobile) .setting-group.mod-list.aar-filter-line-list {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-group-search {
+body:not(.is-mobile) .setting-group.mod-list.aar-filter-line-list > .setting-group-search {
     grid-row: 1;
     grid-column: 1;
 }
 
 /* The header copies the filter's own block padding, so the icon sits level
    with the input rather than with the top of the row. */
-.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-item-heading {
+body:not(.is-mobile) .setting-group.mod-list.aar-filter-line-list > .setting-item-heading {
     grid-row: 1;
     grid-column: 2;
     margin-bottom: 0;
@@ -1658,11 +1667,11 @@ button.aar-player-marker-row {
     padding-inline: 0 var(--setting-items-padding-x);
 }
 
-.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-item-heading > .setting-item-name {
+body:not(.is-mobile) .setting-group.mod-list.aar-filter-line-list > .setting-item-heading > .setting-item-name {
     display: none;
 }
 
-.setting-group.mod-list.aar-settings-section:has(> .setting-item-heading > .setting-item-name:empty):has(> .setting-group-search:not(:empty)) > .setting-items {
+body:not(.is-mobile) .setting-group.mod-list.aar-filter-line-list > .setting-items {
     grid-column: 1 / -1;
 }
 
