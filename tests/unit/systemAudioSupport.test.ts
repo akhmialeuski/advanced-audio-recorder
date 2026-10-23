@@ -84,8 +84,9 @@ describe('systemAudioGrantSupport', () => {
 	});
 
 	// Chromium captures a Mac's output through Apple's CoreAudio tap, which
-	// macOS 14.2 introduced and which Electron 39 made the default. The
-	// floor itself is a row, so an off-by-one in either comparison fails.
+	// macOS 14.2 introduced and which Electron 39 made the default; the tap
+	// also needs an Info.plist key Electron ships from 39.6. The floor itself
+	// is a row, so an off-by-one in either comparison fails.
 	it.each([
 		{ name: 'at both floors', mac: MAC_GRANT_FLOOR },
 		{
@@ -96,16 +97,16 @@ describe('systemAudioGrantSupport', () => {
 		{
 			// Compared as numbers: as text, '14.10' sorts before '14.2'.
 			name: 'with a two-digit minor macOS version',
-			mac: { system: '14.10', electron: '39.0.0' },
+			mac: { system: '14.10', electron: MAC_GRANT_FLOOR.electron },
 		},
 		{
 			// A missing minor counts as zero rather than failing the parse.
 			name: 'reporting a bare major macOS version',
-			mac: { system: '26', electron: '39.0.0' },
+			mac: { system: '26', electron: MAC_GRANT_FLOOR.electron },
 		},
 		{
-			name: 'on an Electron pre-release of the first version',
-			mac: { system: '15.0', electron: '39.0.0-beta.4' },
+			name: 'on an Electron pre-release above the floor',
+			mac: { system: '15.0', electron: '43.0.0-beta.4' },
 		},
 	] satisfies { name: string; mac: MacHost }[])(
 		'reports the grant on a Mac $name',
@@ -156,9 +157,23 @@ describe('systemAudioGrantSupport', () => {
 			reason: 'this Mac runs a macOS that does not report its version.',
 		},
 		{
+			// The last 39.x without the Info.plist key the tap needs.
 			name: 'an installer just below the Electron floor',
+			mac: { system: '15.5', electron: '39.5.2' },
+			reason: 'built on Electron 39.6 or later, and this one runs Electron 39.5.2.',
+		},
+		{
+			// The Obsidian 1.11.4 installer: its Chromium already uses the
+			// tap, and its Info.plist lacks NSAudioCaptureUsageDescription,
+			// so macOS hands over an ended track no permission can cure.
+			name: 'an installer whose Electron uses the tap without its key',
+			mac: { system: '15.5', electron: '39.2.6' },
+			reason: 'built on Electron 39.6 or later, and this one runs Electron 39.2.6.',
+		},
+		{
+			name: 'an installer before the CoreAudio tap',
 			mac: { system: '15.5', electron: '38.4.0' },
-			reason: 'built on Electron 39 or later, and this one runs Electron 38.4.0.',
+			reason: 'built on Electron 39.6 or later, and this one runs Electron 38.4.0.',
 		},
 		{
 			name: 'an installer that does not report its Electron',
@@ -168,7 +183,7 @@ describe('systemAudioGrantSupport', () => {
 		{
 			name: 'an Electron version that is not a version',
 			mac: { system: '15.5', electron: 'unknown' },
-			reason: 'built on Electron 39 or later',
+			reason: 'built on Electron 39.6 or later',
 		},
 		{
 			// macOS is named first: it is the floor no Obsidian update lifts.
@@ -194,7 +209,7 @@ describe('systemAudioGrantSupport', () => {
 
 		expect(systemAudioGrantSupport().refusal).toBe(
 			'Recording the system output directly on macOS needs an Obsidian ' +
-				'installer built on Electron 39 or later, and this one runs ' +
+				'installer built on Electron 39.6 or later, and this one runs ' +
 				'Electron 37.2.0. Download and run the current installer from ' +
 				"obsidian.md, since Obsidian's own updates do not replace it. " +
 				'Record a loopback input device instead, such as BlackHole.',

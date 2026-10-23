@@ -5,8 +5,8 @@
  * `navigator.mediaDevices.getDisplayMedia` call fails here. A plugin may
  * register one for the length of a single request through Electron's remote
  * module, and Electron grants system audio on Windows, and on macOS 14.2 or
- * later from Electron 39 on, where Chromium takes it through Apple's CoreAudio
- * tap. Both halves of that answer are runtime facts about the installed build
+ * later from Electron 39.6 on, where Chromium takes it through Apple's
+ * CoreAudio tap. Both halves of that answer are runtime facts about the installed build
  * and the machine rather than policy, which is why they are probed here and
  * not declared in {@link module:platform/capabilities}.
  *
@@ -87,8 +87,14 @@ interface Version {
  * made Apple's CoreAudio tap the default for it in Electron 39; before that
  * it sat behind feature switches an app sets at launch, which Obsidian does
  * not, so on an older build a grant is nothing the plugin can count on.
+ * The tap also needs the NSAudioCaptureUsageDescription key in the app's
+ * Info.plist, which Electron's own Info.plist carries only from 39.6.0
+ * (electron/electron#49740). Without it macOS hands over an ended track that
+ * no permission can cure, as on the Obsidian 1.11.4 installer, built on
+ * Electron 39.2.6. Electron 40.0 to 40.4 lack the key too, and no Obsidian
+ * installer was built on them.
  */
-const MAC_LOOPBACK_ELECTRON: Version = { major: 39, minor: 0 };
+const MAC_LOOPBACK_ELECTRON: Version = { major: 39, minor: 6 };
 
 /** The first macOS offering the CoreAudio tap Chromium captures through. */
 const MAC_LOOPBACK_SYSTEM: Version = { major: 14, minor: 2 };
@@ -266,7 +272,7 @@ function macRefusal(proc: HostProcess): string | null {
 				: `Electron ${electron}`;
 		return (
 			'Recording the system output directly on macOS needs an Obsidian ' +
-			`installer built on Electron 39 or later, and this one runs ${running}. ` +
+			`installer built on Electron 39.6 or later, and this one runs ${running}. ` +
 			'Download and run the current installer from obsidian.md, since ' +
 			`Obsidian's own updates do not replace it. ${MAC_LOOPBACK_INPUT}`
 		);

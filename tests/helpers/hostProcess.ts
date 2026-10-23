@@ -43,20 +43,20 @@ export function usePlatform(platform: string): void {
 export interface MacHost {
 	/** What process.getSystemVersion() answers, such as '14.2.1'. */
 	readonly system?: string;
-	/** What process.versions.electron answers, such as '39.0.0'. */
+	/** What process.versions.electron answers, such as '39.6.0'. */
 	readonly electron?: string;
 }
 
 /**
  * The lowest Mac Electron grants the system output on: macOS 14.2, where the
  * CoreAudio tap Chromium captures through first appears, in an installer
- * built on Electron 39, the first whose Chromium uses that tap by default.
- * At the floor rather than above it, so every case run on it also shows the
- * floor itself is accepted.
+ * built on Electron 39.6, the first whose Info.plist carries the key that tap
+ * needs. At the floor rather than above it, so every case run on it also
+ * shows the floor itself is accepted.
  */
 export const MAC_GRANT_FLOOR = {
 	system: '14.2',
-	electron: '39.0.0',
+	electron: '39.6.0',
 } as const satisfies MacHost;
 
 /**

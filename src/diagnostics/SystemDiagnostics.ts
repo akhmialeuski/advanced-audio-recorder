@@ -146,7 +146,7 @@ export interface DiagnosticsAudioCapabilities {
 	/**
 	 * Whether this build could be granted the machine's own output as a
 	 * stream. True on Windows, and on macOS 14.2 or later in an Obsidian
-	 * installer built on Electron 39 or later; false everywhere else, and on
+	 * installer built on Electron 39.6 or later; false everywhere else, and on
 	 * a build that exposes no way to register a display-media handler.
 	 */
 	systemAudioLoopbackAvailable: boolean;
