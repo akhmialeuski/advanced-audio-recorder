@@ -60,6 +60,7 @@ export {
 } from './sections/controlKeys';
 
 export {
+	FILTER_LINE_LIST_CLASS,
 	SETTINGS_BLOCK_ROW_CLASS,
 	SETTINGS_ROOT_CLASS,
 	SETTINGS_SECTION_CLASS,

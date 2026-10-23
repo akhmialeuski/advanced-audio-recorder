@@ -63,6 +63,16 @@ export const STACKED_TEXT_CLASS = 'aar-stacked-text';
 export const SETTINGS_SECTION_CLASS = 'aar-settings-section';
 
 /**
+ * Marks a list declared without a heading that has entries, and so shows its
+ * filter. On the desktop Obsidian still builds the list a header row to hold
+ * its add button, and the stylesheet moves that button onto the filter's line
+ * so the list opens with one row of controls. An empty list shows no filter,
+ * so it does not carry the class and keeps Obsidian's layout. The tree is
+ * rebuilt when an entry is added or removed, so the class follows the count.
+ */
+export const FILTER_LINE_LIST_CLASS = 'aar-filter-line-list';
+
+/**
  * Marks the block whose rows repeat the same pair of pickers. Sized to its own
  * text, each picker ends where its longest option ends, which turns a block of
  * identical rows into a ragged column; the stylesheet gives them one width.

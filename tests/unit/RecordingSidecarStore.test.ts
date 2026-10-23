@@ -6,7 +6,7 @@
  * mutations racing them through the write chain), recorded-output renames,
  * snapshot isolation, atomic marker updates, corrupt-file protection,
  * concurrent writes to both sections, and the file living in the vault: moved
- * through the vault, trashed with its recording, removed for good once empty,
+ * through the vault, trashed with its recording, trashed once empty,
  * never written over when sync delivers it late, and still reachable before
  * the vault index lists it.
  */
@@ -1452,11 +1452,9 @@ describe('RecordingSidecarStore', () => {
 			);
 		});
 
-		// Emptying is the store tidying its own data, not the user deleting a
-		// file: a position-only sidecar empties every time a recording is
-		// heard to the end, and each of those would otherwise land in the
-		// user's trash.
-		it('removes an emptied sidecar for good instead of trashing it', async () => {
+		// The file goes where the user's deletion preference sends deleted
+		// files, so the last thing cleared from it can still be restored.
+		it('sends an emptied sidecar to the trash', async () => {
 			const { app, files, trash } = makeApp();
 			const store = new RecordingSidecarStore(app);
 			await store.setPlayback('rec.wav', {
@@ -1467,7 +1465,7 @@ describe('RecordingSidecarStore', () => {
 			await store.setPlayback('rec.wav', null);
 
 			expect(files.has('rec.wav.markers.json')).toBe(false);
-			expect(trash.size).toBe(0);
+			expect(trash.has('rec.wav.markers.json')).toBe(true);
 		});
 
 		it('creates the file again after the emptied one was removed', async () => {

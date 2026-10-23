@@ -11,7 +11,7 @@
  * @module chapters/transcriptSources
  */
 
-import type { App, TFile } from 'obsidian';
+import { type App, TFile, TFolder } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { audioTimecodeRefs } from '../obsidian/timecodeRefs';
 import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
@@ -68,13 +68,16 @@ function findTranscriptSidecarFiles(
 	audioFile: TFile,
 ): TranscriptSidecar[] {
 	const dir = directoryOf(audioFile.path);
-	// One pass over the vault to collect the recording's own directory. A
-	// transcript sidecar always sits next to its recording, so nothing outside
-	// this directory can match - and scanning every file once per format
-	// instead made the cost four full vault walks per chapter generation.
-	const inDirectory = app.vault
-		.getFiles()
-		.filter((file) => directoryOf(file.path) === dir);
+	// A transcript sidecar always sits next to its recording, so only the
+	// recording's own folder is read: nothing outside it can match, and the
+	// rest of the vault is never listed.
+	const folder = app.vault.getAbstractFileByPath(dir === '' ? '/' : dir);
+	const inDirectory =
+		folder instanceof TFolder
+			? folder.children.filter(
+					(child): child is TFile => child instanceof TFile,
+				)
+			: [];
 	// Other recordings sharing the directory own their own canonical sidecars;
 	// those paths must not be attributed to this recording as collisions.
 	const siblingAudio = inDirectory.filter(

@@ -7,7 +7,7 @@
  * then referencing notes). "No transcript" is reported as null.
  */
 
-import type { App, CachedMetadata, TFile } from 'obsidian';
+import { type App, type CachedMetadata, type TFile, TFolder } from 'obsidian';
 import {
 	loadTranscriptLines,
 	timedLinesFromTranscript,
@@ -19,6 +19,7 @@ import {
 	type TranscriptSection,
 } from 'src/sidecar/recordingSidecarModel';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
+import { directoryOf } from 'src/utils/paths';
 import {
 	createFile,
 	createMockApp,
@@ -37,8 +38,16 @@ function makeApp(
 	const { resolvedLinks = {}, caches = {} } = opts;
 	return createMockApp({
 		vault: {
-			getFiles: (): TFile[] =>
-				[...files.keys()].map((path) => createFile(path)),
+			getAbstractFileByPath: (path: string): TFolder => {
+				// The folder the recording sits in, holding the files of the
+				// map that sit in it too.
+				const folder = new TFolder();
+				const dir = path === '/' ? '' : path;
+				folder.children = [...files.keys()]
+					.filter((file) => directoryOf(file) === dir)
+					.map((file) => createFile(file));
+				return folder;
+			},
 			getFileByPath: (path: string): TFile | null =>
 				files.has(path) ? createFile(path) : null,
 			cachedRead: async (file: TFile): Promise<string> =>
@@ -84,6 +93,40 @@ describe('loadTranscriptLines', () => {
 	it('returns null when the recording has no transcript anywhere', async () => {
 		const files = new Map([['rec.wav', '']]);
 		const app = makeApp(files);
+		expect(
+			await loadTranscriptLines(app, createFile('rec.wav')),
+		).toBeNull();
+	});
+
+	it('looks for the transcript in the folder of the recording only', async () => {
+		const srt = '1\n00:00:01,000 --> 00:00:02,000\nhello\n';
+		const files = new Map([
+			['Calls/rec.wav', ''],
+			['Calls/rec.srt', srt],
+			['Other/rec.transcript.json', '{"segments":[]}'],
+		]);
+		const app = makeApp(files);
+		const found = await loadTranscriptLines(
+			app,
+			createFile('Calls/rec.wav'),
+		);
+		expect(found?.origin).toBe('Calls/rec.srt');
+
+		// A same-named transcript in another folder belongs to another
+		// recording, so a recording without its own has none.
+		files.delete('Calls/rec.srt');
+		expect(
+			await loadTranscriptLines(app, createFile('Calls/rec.wav')),
+		).toBeNull();
+	});
+
+	it('finds no transcript file when the vault does not list the folder', async () => {
+		const files = new Map([
+			['rec.wav', ''],
+			['rec.srt', '1\n00:00:01,000 --> 00:00:02,000\nhello\n'],
+		]);
+		const app = makeApp(files);
+		app.vault.getAbstractFileByPath = (): null => null;
 		expect(
 			await loadTranscriptLines(app, createFile('rec.wav')),
 		).toBeNull();

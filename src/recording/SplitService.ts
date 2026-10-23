@@ -643,9 +643,8 @@ export class SplitService {
 	/**
 	 * Writes all part files, yielding to the UI between parts.
 	 * On failure removes already-written parts and rethrows, keeping
-	 * the source file intact: deleted when a streamed part failed and the
-	 * split is about to run again, trashed when the split ends here, which
-	 * a cancel does too.
+	 * the source file intact. The parts go to the trash the user's deletion
+	 * preference names, whether the split ends here or runs again.
 	 * @param parts - Prepared parts in order
 	 * @param partPaths - Resolved part paths
 	 * @param onProgress - Receives pipeline progress text
@@ -688,26 +687,13 @@ export class SplitService {
 			// are rewritten to the parts.
 			throwIfCancelled(token);
 		} catch (error) {
-			// A failed streamed part is answered by splitting again from a
-			// whole-file decode, which writes every part anew, so what was
-			// written so far is the split's own scratch and is removed
-			// outright, the way the sidecar store removes a file it emptied.
-			// Trashing it would leave parts of a split that went on to
-			// succeed in the user's trash. The obsidianmd
-			// prefer-file-manager-trash-file warning on that call is expected
-			// for the same reason as the sidecar store's, and its config
-			// forbids silencing it inline. Any other failure ends the split,
-			// and so does a cancel, whatever the part failed with; their
-			// parts go where the user's deletion preference puts them,
-			// recoverable.
-			const retried =
-				error instanceof StreamedSplitError && !token.isCancelled();
+			// Every part written so far goes where the user's deletion
+			// preference puts it, recoverable, whether the split ends here or
+			// runs again from a whole-file decode that writes every part anew.
 			for (const part of written) {
 				try {
 					if (part.file) {
-						await (retried
-							? this.app.vault.delete(part.file)
-							: this.app.fileManager.trashFile(part.file));
+						await this.app.fileManager.trashFile(part.file);
 					} else {
 						await this.app.vault.adapter.remove(part.path);
 					}

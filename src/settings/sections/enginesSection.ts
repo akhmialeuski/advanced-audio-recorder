@@ -31,13 +31,10 @@ import {
 	type PageStatus,
 } from '../settingsAttention';
 import type { AudioRecorderSettings } from '../settingsSchema';
-import {
-	SETTINGS_SECTION_CLASS,
-	type SettingsDefinitionContext,
-	type TranscriptionBlocks,
-} from './context';
+import type { SettingsDefinitionContext, TranscriptionBlocks } from './context';
 import {
 	imperativeBlockRow,
+	listClass,
 	nameFilter,
 	sectionItems,
 	transcriptionPageActive,
@@ -195,7 +192,7 @@ function modelCataloguePage(
 		items: [
 			{
 				type: 'list',
-				cls: SETTINGS_SECTION_CLASS,
+				cls: listClass(saved.length),
 				emptyState:
 					'No models saved yet. Add the model id your endpoint serves.',
 				search: nameFilter('Filter models'),

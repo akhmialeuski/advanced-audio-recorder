@@ -58,6 +58,13 @@ Everything else keeps your audio tidy. Convert recordings between WAV, WebM, OGG
 
 No default hotkeys are assigned. Set your own in Settings, under Hotkeys.
 
+## Privacy and permissions
+
+- **Network.** Audio and text leave your device only for the transcription and LLM engines you set up, and only when you run them. The local `whisper.cpp` engine makes no network request. The plugin has no telemetry.
+- **Files in your vault.** Two features list the vault's files: the marker search, which looks for the `.markers.json` sidecars that hold each recording's markers, and the folder transcription command, which offers the folders that hold recordings. Neither reads a file it was not looking for, and nothing is sent anywhere. Transcript lookup reads only the recording's own folder.
+- **Deleting files.** Every file the plugin removes, a split's leftover parts and an emptied sidecar included, goes where Obsidian's **Deleted files** setting sends deleted files.
+- **Clipboard.** The plugin writes to the clipboard and never reads from it. It does so when you click a copy action (a timestamp link, a chapter outline, file info, the diagnostics report), and when a quick note finishes while no note is open to take its text.
+
 ## Support
 
 If this plugin saves you time, consider supporting its development: [Buy Me A Coffee](https://coff.ee/akhmelevskiy).

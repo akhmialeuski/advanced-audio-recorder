@@ -884,10 +884,10 @@
 				"lines": 100
 			},
 			"src/settings/sections/enginesSection.ts": {
-				"statements": 98.38,
+				"statements": 98.36,
 				"branches": 94.11,
 				"functions": 100,
-				"lines": 98.38
+				"lines": 98.36
 			},
 			"src/settings/sections/fileStorageSection.ts": {
 				"statements": 100,
