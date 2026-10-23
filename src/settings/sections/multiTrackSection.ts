@@ -18,6 +18,7 @@ import { multiTrackStatus, type PageStatus } from '../settingsAttention';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import { TrackSourceKind } from '../settingsSchema';
 import { OutputMode } from '../../types';
+import type { SystemAudioGrantSupport } from '../../recording/systemAudioSupport';
 import { type DeviceOptions, TRACK_ROWS_CLASS } from './context';
 import { MAX_TRACK_COUNT, trackControlKey } from './controlKeys';
 import { deviceRowDesc, sectionItems } from './rowHelpers';
@@ -27,18 +28,21 @@ import type { SettingGroupItem } from 'obsidian';
  * What the source row says about recording this computer's own output.
  *
  * Whether the host can grant it is a fact of the installed build and of the
- * platform, so the row says which of the two answers applies here rather than
- * offering a choice that would fail at the start of a recording. The option
- * stays selectable either way: a configuration synced from a machine that can
- * do it must survive a visit to a machine that cannot.
- * @param grantAvailable - Whether this build can be granted the system output
+ * platform, so the row says which of the two answers applies here, with the
+ * platform's own reason or the permission it asks for, rather than offering a
+ * choice that would fail at the start of a recording. The option stays
+ * selectable either way: a configuration synced from a machine that can do it
+ * must survive a visit to a machine that cannot.
+ * @param grant - What this build answers about granting the system output
  * @returns The row's description
  */
-function systemAudioSourceDesc(grantAvailable: boolean): string {
+function systemAudioSourceDesc(grant: SystemAudioGrantSupport): string {
 	const base = 'What this track records.';
-	return grantAvailable
-		? `${base} System audio captures this computer's own output, so the other participants of a call reach the recording.`
-		: `${base} System audio is unavailable on this build, which grants it on Windows only. Record a loopback input device instead, such as Stereo Mix, VB-CABLE or a PipeWire monitor.`;
+	if (grant.refusal !== null) {
+		return `${base} System audio is unavailable on this build. ${grant.refusal}`;
+	}
+	const permission = grant.permission === null ? '' : ` ${grant.permission}`;
+	return `${base} System audio captures this computer's own output, so the other participants of a call reach the recording.${permission}`;
 }
 
 /**
@@ -51,13 +55,13 @@ function systemAudioSourceDesc(grantAvailable: boolean): string {
  * rebuilding the tab.
  * @param settings - Live settings, read by the predicates
  * @param devices - Input devices as last enumerated
- * @param systemAudioAvailable - Whether this build can be granted the system
+ * @param systemAudio - What this build answers about granting the system
  *   output, asked once for the whole tree
  */
 export function multiTrackPage(
 	settings: AudioRecorderSettings,
 	devices: DeviceOptions,
-	systemAudioAvailable: boolean,
+	systemAudio: SystemAudioGrantSupport,
 ): SettingGroupItem {
 	const available = isMultiTrackCaptureSupported();
 	const active = (): boolean => settings.enableMultiTrack && available;
@@ -66,7 +70,7 @@ export function multiTrackPage(
 	// identical on all eight rows, and asking it costs a synchronous trip
 	// through the remote module - which the framework would otherwise pay per
 	// track, on every rebuild of the settings tree.
-	const sourceDesc = systemAudioSourceDesc(systemAudioAvailable);
+	const sourceDesc = systemAudioSourceDesc(systemAudio);
 	const trackRows = (): SettingGroupItem[] => {
 		const rows: SettingGroupItem[] = [];
 		for (let track = 1; track <= MAX_TRACK_COUNT; track++) {

@@ -2,14 +2,20 @@
  * Standing in for the Electron host a system-audio capture asks for a grant.
  *
  * Two suites need the same arrangement: a platform Electron grants loopback
- * on, and a session exposing the display-media handler. The platform half is
+ * on, Windows or a recent enough Mac, and a session exposing the
+ * display-media handler. The platform half is
  * {@link module:tests/helpers/hostProcess}, which every suite that swaps the
  * process shares; what is described here is the electron module reached
  * through the desktop `require`.
  * @module tests/helpers/displayMediaHost
  */
 
-import { usePlatform } from './hostProcess';
+import {
+	MAC_GRANT_FLOOR,
+	useMacHost,
+	usePlatform,
+	type MacHost,
+} from './hostProcess';
 
 /**
  * Exposes an electron module through the desktop `require` the plugin reads.
@@ -74,18 +80,22 @@ export interface DisplayMediaHostOptions {
 	 */
 	readonly sourceListFailure?: string;
 	/**
-	 * Run the host on this platform instead of the one Electron grants the
-	 * loopback on. Swapped here rather than by a second call, so a test
-	 * never states the platform twice and has them disagree.
+	 * Run the host on this platform instead of Windows. Swapped here rather
+	 * than by a second call, so a test never states the platform twice and
+	 * has them disagree. 'darwin' runs it on a Mac reporting the versions in
+	 * {@link DisplayMediaHostOptions.mac}.
 	 */
 	readonly platform?: string;
+	/**
+	 * What the Mac reports, where the platform is 'darwin'. Defaults to the
+	 * lowest Mac the grant is made on.
+	 */
+	readonly mac?: MacHost;
 }
 
-/** Platform Electron grants a system-audio loopback stream on. */
-const LOOPBACK_GRANT_PLATFORM = 'win32';
-
 /**
- * Installs a Windows host that can grant the system output.
+ * Installs a host that can grant the system output, on Windows unless the
+ * options name another platform.
  *
  * Both halves are here because a grant needs both: the handler answers the
  * request, and desktopCapturer supplies the video source the request is
@@ -102,7 +112,11 @@ export function installDisplayMediaHost(
 		? []
 		: [{ id: 'screen:0:0', name: 'Entire screen' }];
 	let probes = 0;
-	usePlatform(options.platform ?? LOOPBACK_GRANT_PLATFORM);
+	if (options.platform === 'darwin') {
+		useMacHost(options.mac ?? MAC_GRANT_FLOOR);
+	} else {
+		usePlatform(options.platform ?? 'win32');
+	}
 	const restoreElectron = useElectron(
 		{
 			remote: {

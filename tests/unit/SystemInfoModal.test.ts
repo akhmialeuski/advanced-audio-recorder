@@ -51,6 +51,7 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 			chromeVersion: '120.0.6099.109',
 			nodeVersion: '20.0.0',
 			platform: 'linux',
+			osVersion: '6.8.0-45-generic',
 			arch: 'x64',
 			userAgent: 'test-agent',
 		},
@@ -87,6 +88,10 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 			mediaRecorderAvailable: true,
 			getUserMediaAvailable: true,
 			systemAudioLoopbackAvailable: false,
+			systemAudioLoopbackRefusal:
+				'Recording the system output directly is granted on Windows ' +
+				'and on macOS only. Record a loopback input device instead, ' +
+				'such as a PipeWire monitor.',
 		},
 		...overrides,
 	};

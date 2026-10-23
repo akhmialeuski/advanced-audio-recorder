@@ -72,6 +72,7 @@ import {
 	useMobilePlatform,
 } from '../helpers/platform';
 import { maybeEl } from '../helpers/dom';
+import { usePlatform } from '../helpers/hostProcess';
 import {
 	installDisplayMediaHost,
 	type DisplayMediaHost,
@@ -980,7 +981,69 @@ describe('settings definitions', () => {
 			).not.toMatch(/unavailable on this build/);
 			expect(
 				rowOf(definitions, 'Audio input', 'Include system audio').desc,
-			).not.toMatch(/Windows only/);
+			).not.toMatch(/is refused here/);
+		});
+
+		// A Mac hands its output only to an app the user allowed, so the row
+		// offering it says where that is allowed before the first recording
+		// is stopped by it.
+		it('names the macOS permission on the source row of a Mac', () => {
+			withGrantingHost({ platform: 'darwin' });
+			settings.enableMultiTrack = true;
+
+			const desc = rowOf(build(), MULTI, 'Track 1 source').desc;
+
+			expect(desc).toMatch(/this computer's own output/);
+			expect(desc).toMatch(
+				/System Settings > Privacy & Security > Screen & System Audio Recording/,
+			);
+		});
+
+		// The row says the reason a recording would be refused with, so a
+		// user on an old Mac reads which version is short rather than a
+		// platform list their machine seems to belong to.
+		it('says which version a Mac falls short on', () => {
+			withGrantingHost({
+				platform: 'darwin',
+				mac: { system: '13.6.7', electron: '43.7.7' },
+			});
+			settings.enableMultiTrack = true;
+
+			const desc = rowOf(build(), MULTI, 'Track 1 source').desc;
+
+			expect(desc).toMatch(/unavailable on this build/);
+			expect(desc).toMatch(
+				/needs macOS 14\.2 or later, and this Mac runs macOS 13\.6\.7/,
+			);
+		});
+
+		// The same answer as the track source row, read from the same probe,
+		// so the switch tells a Mac user what to allow before the pairing is
+		// first used and still says how multi-track overrides it.
+		it('names the macOS permission on the audio-input switch of a Mac', () => {
+			withGrantingHost({ platform: 'darwin' });
+
+			const desc = rowOf(
+				build(),
+				'Audio input',
+				'Include system audio',
+			).desc;
+
+			expect(desc).toMatch(
+				/macOS hands its output only to an app allowed to record it\. Allow Obsidian under System Settings/,
+			);
+			expect(desc).toMatch(/Multi-track recording overrides it/);
+		});
+
+		// Windows asks for nothing beyond the click that starts a recording,
+		// so its row carries no permission step meant for a Mac.
+		it('names no permission on the source row of a Windows build', () => {
+			withGrantingHost();
+			settings.enableMultiTrack = true;
+
+			const desc = rowOf(build(), MULTI, 'Track 1 source').desc;
+
+			expect(desc).not.toMatch(/System Settings/);
 		});
 
 		it('offers the source row for every track it offers an input for', () => {
@@ -1128,9 +1191,13 @@ describe('settings definitions', () => {
 		// that can record the system output has to show the setting it carries
 		// on one that cannot, or it cannot be turned off there either.
 		it('says where this build cannot be granted the system output', () => {
+			usePlatform('linux');
+
 			const row = rowOf(build(), INPUT, SWITCH);
 
-			expect(row.desc).toMatch(/Windows only/);
+			expect(row.desc).toMatch(
+				/A recording started with it on is refused here\. Recording the system output directly is granted on Windows and on macOS only\./,
+			);
 			expect(disabledOf(row.control)).toBe(false);
 		});
 	});

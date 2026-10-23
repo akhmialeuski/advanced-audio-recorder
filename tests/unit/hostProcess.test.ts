@@ -3,8 +3,12 @@
  * @module tests/unit/hostProcess.test
  */
 
-import { hostProcess } from 'src/platform/hostProcess';
-import { usePlatform, withoutProcess } from '../helpers/hostProcess';
+import { hostProcess, hostSystemVersion } from 'src/platform/hostProcess';
+import {
+	useHostProcess,
+	usePlatform,
+	withoutProcess,
+} from '../helpers/hostProcess';
 
 describe('hostProcess', () => {
 	it('answers with the process where the runtime declares one', () => {
@@ -21,5 +25,46 @@ describe('hostProcess', () => {
 		withoutProcess();
 
 		expect(hostProcess()).toBeNull();
+	});
+});
+
+describe('hostSystemVersion', () => {
+	it('answers with the version the host reports', () => {
+		useHostProcess({
+			platform: 'darwin',
+			getSystemVersion: () => '14.2.1',
+		});
+
+		expect(hostSystemVersion(hostProcess())).toBe('14.2.1');
+	});
+
+	// Node's own process has no such method; only Electron adds it.
+	it.each([
+		{ name: 'a process without the method', proc: { platform: 'linux' } },
+		{
+			name: 'an empty answer',
+			proc: { platform: 'darwin', getSystemVersion: () => '' },
+		},
+		{
+			// A native call that throws must not take a settings tab or a
+			// diagnostics report down with it.
+			name: 'a lookup that throws',
+			proc: {
+				platform: 'darwin',
+				getSystemVersion: (): string => {
+					throw new Error('not available');
+				},
+			},
+		},
+	])('answers undefined for $name', ({ proc }) => {
+		useHostProcess(proc);
+
+		expect(hostSystemVersion(hostProcess())).toBeUndefined();
+	});
+
+	it('answers undefined where the runtime declares no process', () => {
+		withoutProcess();
+
+		expect(hostSystemVersion(hostProcess())).toBeUndefined();
 	});
 });
