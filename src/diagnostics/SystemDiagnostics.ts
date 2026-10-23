@@ -28,8 +28,8 @@ import {
 	isLoopbackInputLabel,
 	recordingEncodingFor,
 } from '../recording/AudioStreamHandler';
-import { isSystemAudioLoopbackAvailable } from '../recording/systemAudioSupport';
-import { hostProcess } from '../platform/hostProcess';
+import { systemAudioGrantSupport } from '../recording/systemAudioSupport';
+import { hostProcess, hostSystemVersion } from '../platform/hostProcess';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
@@ -78,6 +78,13 @@ export interface DiagnosticsEnvironment {
 	chromeVersion: string;
 	nodeVersion: string;
 	platform: string;
+	/**
+	 * The operating system's own version, such as '14.2.1' on macOS. What a
+	 * Mac can be granted its own output on is decided by it, so a report
+	 * asking why the system output is refused has to carry it. 'unknown'
+	 * where the runtime does not report it.
+	 */
+	osVersion: string;
 	arch: string;
 	/**
 	 * The WebView's own identification. The only place a version comes from on
@@ -138,10 +145,17 @@ export interface DiagnosticsAudioCapabilities {
 	getUserMediaAvailable: boolean;
 	/**
 	 * Whether this build could be granted the machine's own output as a
-	 * stream. False everywhere but Windows, and false on a Windows build
-	 * that exposes no way to register a display-media handler.
+	 * stream. True on Windows, and on macOS 14.2 or later in an Obsidian
+	 * installer built on Electron 39.6 or later; false everywhere else, and on
+	 * a build that exposes no way to register a display-media handler.
 	 */
 	systemAudioLoopbackAvailable: boolean;
+	/**
+	 * Why the grant is not available, in the words a refused recording would
+	 * use, or null where it is. The flag alone says that a Mac is refused
+	 * and not whether macOS or the installer is the reason.
+	 */
+	systemAudioLoopbackRefusal: string | null;
 }
 
 /**
@@ -226,6 +240,7 @@ export class SystemDiagnostics {
 		const chromeVersion = proc?.versions?.chrome ?? 'unknown';
 		const nodeVersion = proc?.versions?.node ?? 'unknown';
 		const platform = proc?.platform ?? 'unknown';
+		const osVersion = hostSystemVersion(proc) ?? 'unknown';
 		const arch = proc?.arch ?? 'unknown';
 		// Read through the same guard as process: the mobile WebView has a
 		// navigator and no process, and a test environment may have neither.
@@ -241,6 +256,7 @@ export class SystemDiagnostics {
 			chromeVersion,
 			nodeVersion,
 			platform,
+			osVersion,
 			arch,
 			userAgent: agent === undefined || agent === '' ? 'unknown' : agent,
 		};
@@ -311,6 +327,9 @@ export class SystemDiagnostics {
 		const mediaRecorderAvailable = typeof MediaRecorder !== 'undefined';
 		const getUserMediaAvailable =
 			typeof audioDeviceApi()?.getUserMedia === 'function';
+		// Asked once for both fields, so the flag and the reason beside it
+		// are read from the same answer of the host.
+		const systemAudio = systemAudioGrantSupport();
 
 		// A lossless format takes no bitrate, so there is nothing to measure.
 		// Asked through the registry's own test rather than by reading the
@@ -344,7 +363,8 @@ export class SystemDiagnostics {
 			codecSupport: detectCodecSupport(),
 			mediaRecorderAvailable,
 			getUserMediaAvailable,
-			systemAudioLoopbackAvailable: isSystemAudioLoopbackAvailable(),
+			systemAudioLoopbackAvailable: systemAudio.refusal === null,
+			systemAudioLoopbackRefusal: systemAudio.refusal,
 		};
 	}
 

@@ -36,7 +36,7 @@ import {
 import { diagnosticsPage } from './sections/diagnosticsSection';
 import { enginesPage } from './sections/enginesSection';
 import { fileStorageGroup } from './sections/fileStorageSection';
-import { isSystemAudioLoopbackAvailable } from '../recording/systemAudioSupport';
+import { systemAudioGrantSupport } from '../recording/systemAudioSupport';
 import { llmGroup } from './sections/llmSection';
 import { mobilePage } from './sections/mobileSection';
 import { multiTrackPage } from './sections/multiTrackSection';
@@ -93,7 +93,7 @@ export function buildSettingsDefinitions(
 	// differ between them, and asking it costs a synchronous trip through
 	// Electron's remote module - which is why it is asked here, once per build
 	// of the tree, rather than by each row that reports it.
-	const systemAudioAvailable = isSystemAudioLoopbackAvailable();
+	const systemAudio = systemAudioGrantSupport();
 	return [
 		...sectionItems([
 			{
@@ -121,7 +121,7 @@ export function buildSettingsDefinitions(
 			ctx.settings,
 			ctx.devices,
 			ctx.sampleRates,
-			systemAudioAvailable,
+			systemAudio,
 		),
 		outputFormatGroup(ctx.outputFormat, ctx.settings),
 		fileStorageGroup(ctx.settings),
@@ -131,7 +131,7 @@ export function buildSettingsDefinitions(
 			// tuned with.
 			quickNotesPage(ctx),
 			audioSplittingPage(ctx.settings),
-			multiTrackPage(ctx.settings, ctx.devices, systemAudioAvailable),
+			multiTrackPage(ctx.settings, ctx.devices, systemAudio),
 			audioPlayerPage(ctx.settings),
 			{
 				// Forty-odd settings with a scope of their own: the style guide's

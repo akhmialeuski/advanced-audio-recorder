@@ -5,7 +5,7 @@
 
 import {
 	captureSystemAudioStream,
-	isSystemAudioLoopbackAvailable,
+	systemAudioGrantSupport,
 } from 'src/recording/systemAudioSupport';
 import { AudioStreamError } from 'src/errors';
 import { partial } from '../helpers/doubles';
@@ -14,7 +14,18 @@ import {
 	useElectron,
 	type DisplayMediaHostOptions,
 } from '../helpers/displayMediaHost';
-import { usePlatform, withoutProcess } from '../helpers/hostProcess';
+import {
+	MAC_GRANT_FLOOR,
+	useHostProcess,
+	useMacHost,
+	usePlatform,
+	withoutProcess,
+	type MacHost,
+} from '../helpers/hostProcess';
+
+/** Where macOS keeps the permission every macOS capture refusal names. */
+const MAC_PERMISSION_PANE =
+	'System Settings > Privacy & Security > Screen & System Audio Recording';
 
 /**
  * An electron module with both halves a grant needs: the display-media
@@ -33,7 +44,7 @@ function electronWithHandler(): unknown {
 	};
 }
 
-describe('isSystemAudioLoopbackAvailable', () => {
+describe('systemAudioGrantSupport', () => {
 	let restore: (() => void)[] = [];
 
 	afterEach(() => {
@@ -52,15 +63,182 @@ describe('isSystemAudioLoopbackAvailable', () => {
 		restore.push(useElectron(electron));
 	}
 
+	/**
+	 * Runs the case on a Mac reporting these versions, with a host exposing
+	 * both halves of a grant, so the versions are all that decides it.
+	 * @param mac - What the Mac reports
+	 */
+	function onMac(mac: MacHost): void {
+		useMacHost(mac);
+		expose(electronWithHandler());
+	}
+
 	it('reports the grant on a Windows build that exposes the handler', () => {
 		usePlatform('win32');
 		expose(electronWithHandler());
 
-		expect(isSystemAudioLoopbackAvailable()).toBe(true);
+		expect(systemAudioGrantSupport()).toEqual({
+			refusal: null,
+			permission: null,
+		});
 	});
 
-	// Electron documents the loopback grant as Windows-only, so the other
-	// platforms are refused before the host is even asked.
+	// Chromium captures a Mac's output through Apple's CoreAudio tap, which
+	// macOS 14.2 introduced and which Electron 39 made the default; the tap
+	// also needs an Info.plist key Electron ships from 39.6. The floor itself
+	// is a row, so an off-by-one in either comparison fails.
+	it.each([
+		{ name: 'at both floors', mac: MAC_GRANT_FLOOR },
+		{
+			// The configuration the grant was first verified on.
+			name: 'reported in the issue',
+			mac: { system: '27.0.1', electron: '43.7.7' },
+		},
+		{
+			// Compared as numbers: as text, '14.10' sorts before '14.2'.
+			name: 'with a two-digit minor macOS version',
+			mac: { system: '14.10', electron: MAC_GRANT_FLOOR.electron },
+		},
+		{
+			// A missing minor counts as zero rather than failing the parse.
+			name: 'reporting a bare major macOS version',
+			mac: { system: '26', electron: MAC_GRANT_FLOOR.electron },
+		},
+		{
+			name: 'on an Electron pre-release above the floor',
+			mac: { system: '15.0', electron: '43.0.0-beta.4' },
+		},
+	] satisfies { name: string; mac: MacHost }[])(
+		'reports the grant on a Mac $name',
+		({ mac }) => {
+			onMac(mac);
+
+			expect(systemAudioGrantSupport().refusal).toBeNull();
+		},
+	);
+
+	// macOS hands the output only to an app the user allowed, and reads that
+	// answer at launch. Said where the grant is available, because that is
+	// where a user is about to be stopped by it.
+	it('names the macOS permission where a Mac can be granted the output', () => {
+		onMac(MAC_GRANT_FLOOR);
+
+		expect(systemAudioGrantSupport().permission).toBe(
+			'macOS hands its output only to an app allowed to record it. ' +
+				`Allow Obsidian under ${MAC_PERMISSION_PANE} (Screen Recording ` +
+				'on macOS 14), adding it with the + button if it is not listed, ' +
+				'then quit and reopen Obsidian.',
+		);
+	});
+
+	// Below either floor the request would still raise the screen-recording
+	// prompt and then answer with an audio track that never carries a
+	// sample, so the Mac is refused before the host is asked, naming which
+	// of its versions is the reason.
+	it.each([
+		{
+			name: 'macOS just below the floor',
+			mac: { system: '14.1', electron: '43.7.7' },
+			reason: 'needs macOS 14.2 or later, and this Mac runs macOS 14.1.',
+		},
+		{
+			name: 'macOS 13, which has no CoreAudio tap',
+			mac: { system: '13.6.7', electron: '43.7.7' },
+			reason: 'needs macOS 14.2 or later, and this Mac runs macOS 13.6.7.',
+		},
+		{
+			name: 'a macOS that does not report its version',
+			mac: { electron: '43.7.7' },
+			reason: 'this Mac runs a macOS that does not report its version.',
+		},
+		{
+			name: 'a macOS that reports an empty version',
+			mac: { system: '', electron: '43.7.7' },
+			reason: 'this Mac runs a macOS that does not report its version.',
+		},
+		{
+			// The last 39.x without the Info.plist key the tap needs.
+			name: 'an installer just below the Electron floor',
+			mac: { system: '15.5', electron: '39.5.2' },
+			reason: 'built on Electron 39.6 or later, and this one runs Electron 39.5.2.',
+		},
+		{
+			// The Obsidian 1.11.4 installer: its Chromium already uses the
+			// tap, and its Info.plist lacks NSAudioCaptureUsageDescription,
+			// so macOS hands over an ended track no permission can cure.
+			name: 'an installer whose Electron uses the tap without its key',
+			mac: { system: '15.5', electron: '39.2.6' },
+			reason: 'built on Electron 39.6 or later, and this one runs Electron 39.2.6.',
+		},
+		{
+			name: 'an installer before the CoreAudio tap',
+			mac: { system: '15.5', electron: '38.4.0' },
+			reason: 'built on Electron 39.6 or later, and this one runs Electron 38.4.0.',
+		},
+		{
+			name: 'an installer that does not report its Electron',
+			mac: { system: '15.5' },
+			reason: 'this one runs an Electron that does not report its version.',
+		},
+		{
+			name: 'an Electron version that is not a version',
+			mac: { system: '15.5', electron: 'unknown' },
+			reason: 'built on Electron 39.6 or later',
+		},
+		{
+			// macOS is named first: it is the floor no Obsidian update lifts.
+			name: 'both below their floors',
+			mac: { system: '13.0', electron: '38.0.0' },
+			reason: 'needs macOS 14.2 or later, and this Mac runs macOS 13.0.',
+		},
+	] satisfies { name: string; mac: MacHost; reason: string }[])(
+		'refuses the grant on $name',
+		({ mac, reason }) => {
+			onMac(mac);
+
+			expect(systemAudioGrantSupport().refusal).toContain(reason);
+		},
+	);
+
+	// Electron is updated only by running a new installer, so an Obsidian
+	// kept current by its own updates can still run an old one. Told to
+	// "update Obsidian", the user would update, still be refused, and have
+	// no idea why.
+	it('sends a Mac on an old Electron to the installer rather than to an update', () => {
+		onMac({ system: '15.5', electron: '37.2.0' });
+
+		expect(systemAudioGrantSupport().refusal).toBe(
+			'Recording the system output directly on macOS needs an Obsidian ' +
+				'installer built on Electron 39.6 or later, and this one runs ' +
+				'Electron 37.2.0. Download and run the current installer from ' +
+				"obsidian.md, since Obsidian's own updates do not replace it. " +
+				'Record a loopback input device instead, such as BlackHole.',
+		);
+	});
+
+	// A native call on the host process that throws must leave the answer
+	// at "unknown" rather than take the settings tab down with it.
+	it('refuses the grant on a Mac whose version lookup throws', () => {
+		useHostProcess({
+			platform: 'darwin',
+			versions: { electron: '43.7.7' },
+			getSystemVersion: () => {
+				throw new Error('not available in this renderer');
+			},
+		});
+		expose(electronWithHandler());
+
+		expect(systemAudioGrantSupport().refusal).toContain(
+			'a macOS that does not report its version',
+		);
+	});
+
+	it('names no permission where the grant is refused', () => {
+		onMac({ system: '13.6.7', electron: '43.7.7' });
+
+		expect(systemAudioGrantSupport().permission).toBeNull();
+	});
+
 	// The capturer is the other half of the answer: a host that answers the
 	// handler but hides it cannot complete a request, so reporting the
 	// grant as available would promise a capture that fails.
@@ -68,18 +246,23 @@ describe('isSystemAudioLoopbackAvailable', () => {
 		const host = installDisplayMediaHost({ withoutCapturer: true });
 		restore.push(host.restore);
 
-		expect(isSystemAudioLoopbackAvailable()).toBe(false);
+		expect(systemAudioGrantSupport().refusal).toContain(
+			'no screen source list',
+		);
 	});
 
-	it.each([{ platform: 'darwin' }, { platform: 'linux' }])(
-		'refuses the grant on $platform',
-		({ platform }) => {
-			usePlatform(platform);
-			expose(electronWithHandler());
+	// Electron grants no loopback on Linux, so it is refused before the host
+	// is even asked, with the loopback input that platform does offer.
+	it('refuses the grant on Linux, pointing at a monitor input', () => {
+		usePlatform('linux');
+		expose(electronWithHandler());
 
-			expect(isSystemAudioLoopbackAvailable()).toBe(false);
-		},
-	);
+		expect(systemAudioGrantSupport().refusal).toBe(
+			'Recording the system output directly is granted on Windows and ' +
+				'on macOS only. Record a loopback input device instead, such ' +
+				'as a PipeWire monitor.',
+		);
+	});
 
 	// Obsidian mobile is a WebView that declares no `process` at all, and an
 	// undeclared name throws on the way to `?.` rather than answering
@@ -90,7 +273,7 @@ describe('isSystemAudioLoopbackAvailable', () => {
 		withoutProcess();
 		expose(electronWithHandler());
 
-		expect(isSystemAudioLoopbackAvailable()).toBe(false);
+		expect(systemAudioGrantSupport().refusal).not.toBeNull();
 	});
 
 	// Every way the host can fail to offer the handler reads the same to a
@@ -139,7 +322,9 @@ describe('isSystemAudioLoopbackAvailable', () => {
 		usePlatform('win32');
 		install();
 
-		expect(isSystemAudioLoopbackAvailable()).toBe(false);
+		expect(systemAudioGrantSupport().refusal).toContain(
+			'no way to capture the system output',
+		);
 	});
 });
 
@@ -147,13 +332,64 @@ describe('captureSystemAudioStream', () => {
 	const realMediaDevices = navigator.mediaDevices;
 	let restore: (() => void)[] = [];
 
-	/** A live track that records whether it was stopped. */
-	function fakeTrack(kind: 'audio' | 'video'): MediaStreamTrack {
+	/**
+	 * A track that records whether it was stopped.
+	 * @param kind - What the track carries
+	 * @param readyState - The state it arrives in, live unless a case says
+	 * @returns The track
+	 */
+	function fakeTrack(
+		kind: 'audio' | 'video',
+		readyState: MediaStreamTrackState = 'live',
+	): MediaStreamTrack {
 		return partial<MediaStreamTrack>({
 			kind,
-			readyState: 'live',
+			readyState,
 			stop: jest.fn(),
 		});
+	}
+
+	/**
+	 * A video and an audio track the build holds open as one capture: both
+	 * arrive live, and stopping the video ends the audio with it.
+	 * @returns The video track, then the audio track
+	 */
+	function tracksEndingTogether(): MediaStreamTrack[] {
+		let audioState: MediaStreamTrackState = 'live';
+		const audio = partial<MediaStreamTrack>({
+			kind: 'audio',
+			stop: jest.fn(),
+		});
+		Object.defineProperty(audio, 'readyState', {
+			get: () => audioState,
+		});
+		const video = partial<MediaStreamTrack>({
+			kind: 'video',
+			readyState: 'live',
+			stop: jest.fn(() => {
+				audioState = 'ended';
+			}),
+		});
+		return [video, audio];
+	}
+
+	/** One grant handed back to a display-media request. */
+	type Grant = { video?: unknown; audio?: string };
+
+	/**
+	 * What the first handler the capture installed grants a request with,
+	 * asked the way Electron asks it.
+	 * @param handlers - The handlers the host recorded
+	 * @returns Every grant the handler answered with
+	 */
+	function grantsOf(handlers: (unknown | null)[]): Grant[] {
+		const handler = handlers[0] as (
+			request: unknown,
+			callback: (grant: Grant) => void,
+		) => void;
+		const granted: Grant[] = [];
+		handler({}, (grant) => granted.push(grant));
+		return granted;
 	}
 
 	/** A granted stream carrying the given tracks. */
@@ -231,13 +467,8 @@ describe('captureSystemAudioStream', () => {
 			grantedStream([fakeTrack('audio')]),
 		);
 		await captureSystemAudioStream();
-		const handler = host.handlers[0] as (
-			request: unknown,
-			callback: (grant: { video?: unknown; audio?: string }) => void,
-		) => void;
-		const granted: { video?: unknown; audio?: string }[] = [];
 
-		handler({}, (grant) => granted.push(grant));
+		const granted = grantsOf(host.handlers);
 
 		expect(granted).toEqual([
 			{
@@ -333,30 +564,30 @@ describe('captureSystemAudioStream', () => {
 	// the build. Where it does, dropping the video hands back a stream whose
 	// only track is already dead: the recorders are built on it, and the
 	// session ends seconds in announcing a capture that stopped for no reason
-	// the user can see.
-	it('refuses a grant whose audio ends with the video it came with', async () => {
-		const { getDisplayMedia } = withSession();
-		let audioState: MediaStreamTrackState = 'live';
-		const audio = partial<MediaStreamTrack>({
-			kind: 'audio',
-			stop: jest.fn(),
-		});
-		Object.defineProperty(audio, 'readyState', {
-			get: () => audioState,
-		});
-		const video = partial<MediaStreamTrack>({
-			kind: 'video',
-			readyState: 'live',
-			stop: jest.fn(() => {
-				audioState = 'ended';
-			}),
-		});
-		getDisplayMedia.mockResolvedValue(grantedStream([video, audio]));
+	// the user can see. On a Mac it is told apart from the missing
+	// permission, which hands the track over dead before the video is
+	// touched: no permission changes a build holding the two as one.
+	it.each([
+		{ platform: 'win32', instead: 'such as Stereo Mix or VB-CABLE.' },
+		{ platform: 'darwin', instead: 'such as BlackHole.' },
+	])(
+		'refuses a grant whose audio ends with the video it came with on $platform',
+		async ({ platform, instead }) => {
+			const { getDisplayMedia } = withSession({ platform });
+			getDisplayMedia.mockResolvedValue(
+				grantedStream(tracksEndingTogether()),
+			);
 
-		await expect(captureSystemAudioStream()).rejects.toThrow(
-			"This computer's output ended together with the screen capture",
-		);
-	});
+			await expect(captureSystemAudioStream()).rejects.toThrow(
+				new Error(
+					"This computer's output ended together with the screen " +
+						'capture it was granted alongside, which this build ' +
+						'holds open as one. Record a loopback input device ' +
+						`instead, ${instead}`,
+				),
+			);
+		},
+	);
 
 	// The capturer is the half that was missed, and missing it produced a
 	// request Chromium refused rather than a sentence anyone could act on.
@@ -465,19 +696,37 @@ describe('captureSystemAudioStream', () => {
 	// still reaches getDisplayMedia, which raises the operating system's own
 	// screen-share prompt and then answers with a stream carrying no audio.
 	// A user who chose the system output would be shown a screen picker and
-	// then told their screen had no sound in it.
-	it('refuses a platform without the grant before it asks the host', async () => {
-		const { handlers, getDisplayMedia } = withSession({
-			platform: 'linux',
-		});
+	// then told their screen had no sound in it. A Mac below the floors is
+	// the same case: the screen-recording prompt, then a silent track.
+	it.each([
+		{ name: 'Linux', host: { platform: 'linux' } },
+		{
+			name: 'a Mac below the macOS floor',
+			host: {
+				platform: 'darwin',
+				mac: { system: '13.6.7', electron: '43.7.7' },
+			},
+		},
+		{
+			name: 'a Mac below the Electron floor',
+			host: {
+				platform: 'darwin',
+				mac: { system: '15.5', electron: '38.4.0' },
+			},
+		},
+	] satisfies { name: string; host: DisplayMediaHostOptions }[])(
+		'refuses $name before it asks the host',
+		async ({ host }) => {
+			const { handlers, getDisplayMedia } = withSession(host);
 
-		await expect(captureSystemAudioStream()).rejects.toThrow(
-			'granted on Windows only',
-		);
+			await expect(captureSystemAudioStream()).rejects.toThrow(
+				'Recording the system output directly',
+			);
 
-		expect(getDisplayMedia).not.toHaveBeenCalled();
-		expect(handlers).toHaveLength(0);
-	});
+			expect(getDisplayMedia).not.toHaveBeenCalled();
+			expect(handlers).toHaveLength(0);
+		},
+	);
 
 	// A refusal is the reason a capture was never attempted, and the user
 	// reads it through describeRecordingError, which prints the message as
@@ -485,7 +734,7 @@ describe('captureSystemAudioStream', () => {
 	// access audio device", naming a device a system-audio track has not
 	// got, ahead of the sentence that says what to do instead.
 	it('refuses with the reason alone, not as a device access failure', async () => {
-		withSession({ platform: 'darwin' });
+		withSession({ platform: 'linux' });
 
 		const refusal = await captureSystemAudioStream().catch(
 			(error: unknown) => error,
@@ -493,9 +742,154 @@ describe('captureSystemAudioStream', () => {
 
 		expect(refusal).not.toBeInstanceOf(AudioStreamError);
 		expect((refusal as Error).message).toBe(
-			'Recording the system output directly is granted on Windows only. ' +
-				'Record a loopback input device instead, such as Stereo Mix, ' +
-				'VB-CABLE or a PipeWire monitor.',
+			'Recording the system output directly is granted on Windows and ' +
+				'on macOS only. Record a loopback input device instead, such ' +
+				'as a PipeWire monitor.',
 		);
+	});
+
+	// The path is the same on a Mac as on Windows: the same handler, the
+	// same loopback grant, the same video dropped. Only what a failure says
+	// differs between them.
+	it('grants the system output on a Mac at the floors', async () => {
+		const host = withSession({ platform: 'darwin' });
+		host.getDisplayMedia.mockResolvedValue(
+			grantedStream([fakeTrack('video'), fakeTrack('audio')]),
+		);
+
+		const stream = await captureSystemAudioStream();
+
+		const granted = grantsOf(host.handlers);
+		expect(stream.getAudioTracks()).toHaveLength(1);
+		expect(stream.getVideoTracks()).toHaveLength(0);
+		expect(granted).toEqual([
+			{
+				video: { id: 'screen:0:0', name: 'Entire screen' },
+				audio: 'loopback',
+			},
+		]);
+	});
+
+	// Every refusal on a Mac that the permission can cure sends the user to
+	// the one pane that grants it, and offers the virtual device a Mac has
+	// rather than the Windows ones. Stereo Mix and VB-CABLE do not exist
+	// there, and a microphone permission has no bearing on any of these.
+	it.each([
+		{
+			// What the issue reported: without the permission Electron
+			// refuses the source list before any prompt is shown.
+			name: 'the screen source list is refused',
+			arrange: (): void => {
+				const host = installDisplayMediaHost({
+					platform: 'darwin',
+					sourceListFailure: 'Failed to get sources.',
+				});
+				restore.push(host.restore);
+			},
+			said: 'macOS lists them only to an app allowed to record the screen.',
+		},
+		{
+			name: 'the machine offers no screen',
+			arrange: (): void => {
+				const host = installDisplayMediaHost({
+					platform: 'darwin',
+					withoutScreens: true,
+				});
+				restore.push(host.restore);
+			},
+			said: 'This machine offered no screen to capture from',
+		},
+		{
+			name: 'the grant is denied',
+			arrange: (): void => {
+				withSession({
+					platform: 'darwin',
+				}).getDisplayMedia.mockRejectedValue(
+					new DOMException('Permission denied', 'NotAllowedError'),
+				);
+			},
+			said: 'the screen and system audio recording permission rather than the microphone one',
+		},
+		{
+			name: 'the answer carries no audio',
+			arrange: (): void => {
+				withSession({
+					platform: 'darwin',
+				}).getDisplayMedia.mockResolvedValue(
+					grantedStream([fakeTrack('video')]),
+				);
+			},
+			said: 'The system output was not granted as audio.',
+		},
+		{
+			// Electron's own documentation: without the System Audio
+			// Recording permission the track is created already ended and
+			// never delivers a sample, and nothing is raised anywhere.
+			name: 'the audio track arrives already ended',
+			arrange: (): void => {
+				withSession({
+					platform: 'darwin',
+				}).getDisplayMedia.mockResolvedValue(
+					grantedStream([
+						fakeTrack('video'),
+						fakeTrack('audio', 'ended'),
+					]),
+				);
+			},
+			said: 'which is what it does when Obsidian is not allowed to record system audio.',
+		},
+	] satisfies { name: string; arrange: () => void; said: string }[])(
+		'names the macOS permission when $name',
+		async ({ arrange, said }) => {
+			arrange();
+
+			const message = await captureSystemAudioStream().catch(
+				(error: unknown) => (error as Error).message,
+			);
+
+			expect(message).toContain(said);
+			expect(message).toContain(
+				`Allow Obsidian under ${MAC_PERMISSION_PANE} (Screen Recording ` +
+					'on macOS 14), adding it with the + button if it is not ' +
+					'listed, then quit and reopen Obsidian. Or record a ' +
+					'loopback input device instead, such as BlackHole.',
+			);
+			expect(message).not.toContain('Stereo Mix');
+		},
+	);
+
+	// The reason a Mac failed for keeps its own words, with the device a Mac
+	// can route its output through rather than the Windows ones.
+	it('offers BlackHole when a Mac fails for any other reason', async () => {
+		const { getDisplayMedia } = withSession({ platform: 'darwin' });
+		getDisplayMedia.mockRejectedValue(new Error('capture pipeline died'));
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			new Error(
+				"This computer's output could not be captured: capture " +
+					'pipeline died. Record a loopback input device instead, ' +
+					'such as BlackHole.',
+			),
+		);
+	});
+
+	// A track dead on arrival was never alive to end with anything, so the
+	// sentence about the screen capture taking it down would be false.
+	it('tells a track that arrived ended from one the video took down on Windows', async () => {
+		const { getDisplayMedia } = withSession();
+		const video = fakeTrack('video');
+		getDisplayMedia.mockResolvedValue(
+			grantedStream([video, fakeTrack('audio', 'ended')]),
+		);
+
+		await expect(captureSystemAudioStream()).rejects.toThrow(
+			new Error(
+				"This computer's output was granted as a track that had " +
+					'already ended, so there is nothing to record from it. ' +
+					'Record a loopback input device instead, such as Stereo ' +
+					'Mix or VB-CABLE.',
+			),
+		);
+		expect(video.stop).toHaveBeenCalledTimes(1);
 	});
 });

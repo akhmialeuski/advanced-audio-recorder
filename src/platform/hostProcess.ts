@@ -26,6 +26,12 @@ export interface HostProcess {
 	readonly platform?: string;
 	/** The CPU architecture, in Node's spelling. */
 	readonly arch?: string;
+	/**
+	 * The operating system's own version, which Electron adds to the process
+	 * of every renderer. On macOS it is the product version, such as
+	 * '14.2.1', rather than the Darwin kernel version `os.release()` gives.
+	 */
+	readonly getSystemVersion?: () => string;
 }
 
 /**
@@ -40,4 +46,26 @@ export function hostProcess(): HostProcess | null {
 	// assignable to the narrow shape read here, so naming that shape is all
 	// the narrowing this needs.
 	return typeof process !== 'undefined' ? process : null;
+}
+
+/**
+ * The operating system's own version, or undefined where the host does not
+ * report one.
+ *
+ * Read inside a guard because it is a native call Electron adds to the
+ * process rather than a field, and one that throws must leave the answer at
+ * "unknown" rather than take a settings tab or a report down with it. An
+ * empty answer counts as none.
+ * @param proc - The host process, as {@link hostProcess} answers
+ * @returns The version, such as '14.2.1' on macOS, or undefined
+ */
+export function hostSystemVersion(
+	proc: HostProcess | null,
+): string | undefined {
+	try {
+		const version = proc?.getSystemVersion?.();
+		return version === '' ? undefined : version;
+	} catch {
+		return undefined;
+	}
 }

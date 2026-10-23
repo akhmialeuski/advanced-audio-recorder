@@ -9,6 +9,7 @@ import {
 	isMultiTrackCaptureSupported,
 	isSampleRateSelectionSupported,
 } from '../../platform/capabilities';
+import type { SystemAudioGrantSupport } from '../../recording/systemAudioSupport';
 import { CHANNEL_MODE_LABELS } from '../labels';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import { type DeviceOptions, SETTINGS_SECTION_CLASS } from './context';
@@ -18,19 +19,20 @@ import type { SettingDefinitionItem } from 'obsidian';
 /**
  * What the system-audio row says, given what this device can do with it.
  *
- * Three sentences at most, and which ones are said is a fact of the build
- * rather than a choice: what the switch does, then either the platform's
- * refusal or the way out of the pairing's fixed answers. The switch stays
- * offered whatever they say - a vault synced from a machine that can record
- * the system output must show the setting it carries on one that cannot, or a
+ * Which sentences are said is a fact of the build rather than a choice: what
+ * the switch does, then either the platform's own refusal, word for word as a
+ * recording started anyway would end, or the permission the platform asks for
+ * and the way out of the pairing's fixed answers. The switch stays offered
+ * whatever they say - a vault synced from a machine that can record the
+ * system output must show the setting it carries on one that cannot, or a
  * user who cannot see it cannot turn it off either.
  * @param captureAvailable - Whether this device can open two captures at once
- * @param grantAvailable - Whether this build can be granted the system output
+ * @param grant - What this build answers about granting the system output
  * @returns The row's description
  */
 function systemAudioRowDesc(
 	captureAvailable: boolean,
-	grantAvailable: boolean,
+	grant: SystemAudioGrantSupport,
 ): string {
 	const base =
 		"Record this computer's own output beside the microphone. The session " +
@@ -41,10 +43,11 @@ function systemAudioRowDesc(
 	if (!captureAvailable) {
 		return `${base} Not available on this device: recording captures a single track from the default microphone.`;
 	}
-	if (!grantAvailable) {
-		return `${base} This build grants the system output on Windows only, so a recording started with it on elsewhere is refused. Record a loopback input device instead, such as Stereo Mix, VB-CABLE or a PipeWire monitor.`;
+	if (grant.refusal !== null) {
+		return `${base} A recording started with it on is refused here. ${grant.refusal}`;
 	}
-	return `${base} Multi-track recording overrides it: with that on, a track's own source row says which track records the system output, and what it is captured and mixed with.`;
+	const permission = grant.permission === null ? '' : ` ${grant.permission}`;
+	return `${base}${permission} Multi-track recording overrides it: with that on, a track's own source row says which track records the system output, and what it is captured and mixed with.`;
 }
 
 /**
@@ -52,14 +55,14 @@ function systemAudioRowDesc(
  * @param settings - Live settings, read by the predicates
  * @param devices - Input devices as last enumerated
  * @param sampleRates - Capture rates this device offers
- * @param systemAudioAvailable - Whether this build can be granted the system
+ * @param systemAudio - What this build answers about granting the system
  *   output, asked once for the whole tree
  */
 export function audioInputGroup(
 	settings: AudioRecorderSettings,
 	devices: DeviceOptions,
 	sampleRates: readonly number[],
-	systemAudioAvailable: boolean,
+	systemAudio: SystemAudioGrantSupport,
 ): SettingDefinitionItem {
 	const deviceSelectable = isDeviceSelectionSupported();
 	const rateSelectable = isSampleRateSelectionSupported();
@@ -97,10 +100,7 @@ export function audioInputGroup(
 					'call',
 					'meeting',
 				],
-				desc: systemAudioRowDesc(
-					pairingAvailable,
-					systemAudioAvailable,
-				),
+				desc: systemAudioRowDesc(pairingAvailable, systemAudio),
 				control: {
 					type: 'toggle',
 					key: 'includeSystemAudio',

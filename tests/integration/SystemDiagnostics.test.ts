@@ -18,7 +18,8 @@ import {
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { createMockApp } from '../helpers/createApp';
 import { installAudioContextRate } from '../helpers/mediaMocks';
-import { useHostProcess } from '../helpers/hostProcess';
+import { useHostProcess, useMacHost } from '../helpers/hostProcess';
+import { installDisplayMediaHost } from '../helpers/displayMediaHost';
 import type { App } from 'obsidian';
 import { DEFAULT_MOCK_API_VERSION } from '../mocks/obsidian';
 
@@ -206,6 +207,28 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 		expect(result.nodeVersion).toBe('20.11.0');
 		expect(result.platform).toBe('win32');
 		expect(result.arch).toBe('x64');
+	});
+
+	// What a Mac can be granted its own output on is decided by its macOS
+	// version, so a report asking why the system output is refused has to
+	// carry it.
+	it('reports the operating system version the host gives', () => {
+		useHostProcess({
+			platform: 'darwin',
+			getSystemVersion: () => '14.2.1',
+		});
+
+		const result = SystemDiagnostics.collectEnvironment(makeApp());
+
+		expect(result.osVersion).toBe('14.2.1');
+	});
+
+	it('uses "unknown" for the operating system version the host does not give', () => {
+		useHostProcess({ platform: 'linux' });
+
+		const result = SystemDiagnostics.collectEnvironment(makeApp());
+
+		expect(result.osVersion).toBe('unknown');
 	});
 
 	it('uses "unknown" when process.platform is absent', () => {
@@ -530,6 +553,32 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 		expect(result.mediaRecorderAvailable).toBe(
 			typeof MediaRecorder !== 'undefined',
 		);
+	});
+
+	// The flag says a Mac is refused and not whether macOS or the installer
+	// is short, which is the one thing a report about it is asked for.
+	it('reports why the system output cannot be granted here', async () => {
+		stubCapabilities();
+		useMacHost({ system: '13.6.7', electron: '43.7.7' });
+
+		const result = await collectCapabilities();
+
+		expect(result.systemAudioLoopbackAvailable).toBe(false);
+		expect(result.systemAudioLoopbackRefusal).toBe(
+			'Recording the system output directly needs macOS 14.2 or later, ' +
+				'and this Mac runs macOS 13.6.7. Record a loopback input ' +
+				'device instead, such as BlackHole.',
+		);
+	});
+
+	it('reports no refusal where the system output can be granted', async () => {
+		stubCapabilities();
+		const host = installDisplayMediaHost({ platform: 'darwin' });
+
+		const result = await collectCapabilities().finally(host.restore);
+
+		expect(result.systemAudioLoopbackAvailable).toBe(true);
+		expect(result.systemAudioLoopbackRefusal).toBeNull();
 	});
 
 	it('reports getUserMediaAvailable based on navigator.mediaDevices', async () => {
