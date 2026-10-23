@@ -595,15 +595,13 @@ export const VOXTRAL_MAX_REQUEST_BYTES = 1024 * 1024 * 1024;
  * Hard per-request duration ceiling for Voxtral, in seconds: three hours, the
  * length the Voxtral Transcribe 2 announcement documents for one request.
  *
- * Deliberately separate from `VOXTRAL_CAPABILITIES.maxRequestSeconds`, which is
- * the cap `audioPrep` splits on and has to stay unbounded. That cap is proven
- * through a byte proxy ({@link MIN_AUDIO_BYTES_PER_SEC}), so stating three
- * hours there would clear only files under about 10.8 MB and send every longer
- * recording down the decode path, which is the whole-file upload this engine is
- * chosen for. This ceiling is proven exactly instead, against the decoded
- * sample count, which is the first moment the real duration is known and still
- * early enough to refuse locally rather than after uploading several hundred
- * megabytes the endpoint then declines.
+ * Held two ways, by `VOXTRAL_CAPABILITIES`. A container the endpoint reads is
+ * sent whole and the endpoint enforces this itself, because proving it through
+ * a byte proxy ({@link MIN_AUDIO_BYTES_PER_SEC}) would clear only files under
+ * about 10.8 MB and send every longer recording down the decode path, which is
+ * the whole-file upload this engine is chosen for. A recording that is decoded
+ * anyway has its exact length, and is split at this ceiling before anything is
+ * uploaded rather than after several hundred megabytes the endpoint declines.
  */
 export const VOXTRAL_MAX_REQUEST_SECONDS = 3 * 60 * 60;
 

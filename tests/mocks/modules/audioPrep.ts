@@ -18,5 +18,8 @@
  */
 
 export const prepareAudio = jest.fn();
-export const audioMimeFromExtension = jest.fn(() => 'audio/webm');
+export const audioContainerFromExtension = jest.fn((extension: string) => ({
+	contentType: 'audio/webm',
+	extension,
+}));
 export const audioPrepOptions = jest.fn(() => ({}));

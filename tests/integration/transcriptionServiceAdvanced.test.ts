@@ -23,11 +23,7 @@ import type {
 } from 'src/transcription/providers/TranscriptionProvider';
 import { WHISPER_API_CAPABILITIES } from 'src/transcription/providers/capabilities';
 import { prepareAudio } from 'src/transcription/audioPrep';
-import type {
-	LlmProvider,
-	LlmCompletion,
-} from 'src/transcription/llm/LlmProvider';
-import type { LlmPrompt } from 'src/transcription/llmPostProcess';
+import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettingsInput } from 'src/settings/settingsSchema';
@@ -39,7 +35,7 @@ import {
 import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
-import { completed } from '../helpers/llmDoubles';
+import { contextAgentsLlm } from '../helpers/llmDoubles';
 import { EngineLabel } from 'src/providers/providers';
 import { TRANSCRIPTION_ENGINES } from 'src/transcription/providers/engines';
 
@@ -144,35 +140,8 @@ function makeProvider(
 	return { provider, calls };
 }
 
-/** Scripted context agents keyed by a fragment of their system prompt. */
-const AGENT_REPLIES: [string, string][] = [
-	['domain and topic', 'Митинг про инфраструктуру.'],
-	['proper names', 'Иванов'],
-	['domain terminology', 'деплой'],
-	['English technical terms', 'Kubernetes'],
-	['verify candidate terms', 'Kubernetes'],
-	[
-		'context prompt',
-		'Обсуждение инфраструктуры: деплой, Иванов, Kubernetes.',
-	],
-];
-
 /** Fake LLM that answers the scripted agents and records each call. */
-function makeLlm(): { llm: LlmProvider; calls: LlmPrompt[] } {
-	const calls: LlmPrompt[] = [];
-	const llm: LlmProvider = {
-		id: LLM_PROVIDER_IDS.GEMINI,
-		label: EngineLabel.Gemini,
-		complete: (prompt: LlmPrompt): Promise<LlmCompletion> => {
-			calls.push(prompt);
-			const match = AGENT_REPLIES.find(([fragment]) =>
-				prompt.system.includes(fragment),
-			);
-			return Promise.resolve(completed(match?.[1] ?? ''));
-		},
-	};
-	return { llm, calls };
-}
+const makeLlm = contextAgentsLlm;
 
 /** A fake LLM whose every call fails (unreachable endpoint, bad key). */
 function makeDeadLlm(): LlmProvider {

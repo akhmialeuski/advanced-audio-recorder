@@ -76,6 +76,30 @@ export function outcomeOf<T>(work: Promise<T>): Promise<Outcome<T>> {
 }
 
 /**
+ * Lets work that waits on the fake clock run to its end, and hands back how it
+ * ended: its value, or its rejection rethrown.
+ *
+ * The shape every suite about a run with retry pauses needs - advance the clock
+ * past every pause, then read the result - with the rejection watched from the
+ * start for the reason {@link outcomeOf} gives.
+ * @param work - The work to settle, already started
+ * @param elapseMs - How far to move the fake clock while it runs
+ * @returns What the work resolved with
+ */
+export async function settleAcross<T>(
+	work: Promise<T>,
+	elapseMs: number,
+): Promise<T> {
+	const settled = outcomeOf(work);
+	await jest.advanceTimersByTimeAsync(elapseMs);
+	const outcome = await settled;
+	if ('error' in outcome) {
+		throw outcome.error;
+	}
+	return outcome.value;
+}
+
+/**
  * Polls until the condition holds, then returns. Throws a readable error if it
  * never does, so a hung expectation names what it was waiting for instead of
  * failing later on an unrelated assertion.

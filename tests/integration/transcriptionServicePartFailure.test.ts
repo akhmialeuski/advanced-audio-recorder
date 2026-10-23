@@ -31,10 +31,10 @@ import {
 } from 'src/constants';
 import { HttpError } from 'src/transcription/httpClient';
 import { CancellationSource } from 'src/utils/cancellation';
-import { partial } from '../helpers/doubles';
+import { partial, silenceConsole } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
-import { outcomeOf } from '../helpers/async';
+import { outcomeOf, settleAcross } from '../helpers/async';
 import { completed } from '../helpers/llmDoubles';
 import { EngineLabel } from 'src/providers/providers';
 
@@ -886,6 +886,9 @@ describe('a part the provider refused for now', () => {
 	beforeEach(() => {
 		jest.useFakeTimers();
 		prepareTwoParts();
+		// Every refusal the run waits out is logged with its cause, which is
+		// what these cases provoke on purpose.
+		silenceConsole('warn');
 	});
 
 	afterEach(() => {
@@ -907,16 +910,13 @@ describe('a part the provider refused for now', () => {
 	 * elapse.
 	 * @param service - The service under test
 	 */
-	async function runPastThePauses(
+	function runPastThePauses(
 		service: TranscriptionService,
 	): ReturnType<TranscriptionService['run']> {
-		const settled = outcomeOf(runToCompletion(service));
-		await jest.advanceTimersByTimeAsync(TRANSCRIBE_RETRY_MAX_DELAY_MS * 4);
-		const outcome = await settled;
-		if ('error' in outcome) {
-			throw outcome.error;
-		}
-		return outcome.value;
+		return settleAcross(
+			runToCompletion(service),
+			TRANSCRIBE_RETRY_MAX_DELAY_MS * 4,
+		);
 	}
 
 	it('sends the part again and keeps the whole transcript', async () => {

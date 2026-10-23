@@ -500,7 +500,12 @@ describe('provider factories', () => {
 			}),
 		);
 		expect(provider.id).toBe(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
-		expect(provider.capabilities.acceptsOriginalContainer).toBe(true);
+		expect(
+			provider.capabilities.originalContainers.accepts({
+				contentType: 'audio/webm',
+				extension: 'webm',
+			}),
+		).toBe(true);
 		expect(provider.capabilities.supportsDiarization).toBe(true);
 	});
 

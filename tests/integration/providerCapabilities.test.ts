@@ -33,6 +33,11 @@ import {
 	WHISPER_API_CAPABILITIES,
 } from 'src/transcription/providers/capabilities';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import {
+	DurationCapCheck,
+	type ProviderCapabilities,
+} from 'src/transcription/providers/TranscriptionProvider';
+import { audioContainerFromExtension } from 'src/transcription/audioPrep';
 import { TRANSCRIPTION_PROVIDER_LABELS } from 'src/settings/labels';
 import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvider';
 import { DeepgramProvider } from 'src/transcription/providers/DeepgramProvider';
@@ -65,10 +70,12 @@ describe('transcription provider capabilities', () => {
 		expect(VOXTRAL_CAPABILITIES.wordTimestamps).toBe('none');
 	});
 
-	it('caps only Gemini by per-request duration; others are unbounded', () => {
+	it('caps Gemini and Voxtral by per-request duration; others are unbounded', () => {
 		// Gemini transcribes a whole file in one synchronous request, so a long
-		// recording must be split; the whole-file APIs have no duration limit.
+		// recording must be split; Voxtral's endpoint takes three hours per
+		// request; the other whole-file APIs have no duration limit.
 		expect(GEMINI_CAPABILITIES.maxRequestSeconds).toBe(15 * 60);
+		expect(VOXTRAL_CAPABILITIES.maxRequestSeconds).toBe(3 * 60 * 60);
 		expect(WHISPER_API_CAPABILITIES.maxRequestSeconds).toBe(
 			Number.POSITIVE_INFINITY,
 		);
@@ -78,12 +85,19 @@ describe('transcription provider capabilities', () => {
 		expect(LOCAL_WHISPER_CAPABILITIES.maxRequestSeconds).toBe(
 			Number.POSITIVE_INFINITY,
 		);
-		// Voxtral takes about three hours per request, but the cheap
-		// whole-file proof reads bytes rather than seconds, so a cap here
-		// would decode every recording past roughly ten megabytes instead of
-		// uploading the container it already accepts.
-		expect(VOXTRAL_CAPABILITIES.maxRequestSeconds).toBe(
-			Number.POSITIVE_INFINITY,
+	});
+
+	// The two caps mean different things. Gemini's is how much one request
+	// answers reliably, so a file that cannot prove itself short is measured.
+	// Voxtral's is the endpoint's own and three hours long, and proving it
+	// through the byte size would decode every recording past roughly ten
+	// megabytes instead of uploading the container the endpoint reads.
+	it("proves Gemini's cap before a whole-file upload and leaves Voxtral's to the endpoint", () => {
+		expect(GEMINI_CAPABILITIES.durationCapCheck).toBe(
+			DurationCapCheck.ProvenByBytes,
+		);
+		expect(VOXTRAL_CAPABILITIES.durationCapCheck).toBe(
+			DurationCapCheck.LeftToEndpoint,
 		);
 	});
 
@@ -509,5 +523,99 @@ describe('transcription engine id constants', () => {
 				),
 			).toBe(true);
 		});
+	});
+});
+
+/**
+ * Whether an engine reads a file stored under this extension as it stands.
+ * @param capabilities - The engine's declaration
+ * @param extension - The file's extension, which also gives its MIME type
+ * @returns True when the original bytes are uploaded with no decode
+ */
+function readsAsItStands(
+	capabilities: ProviderCapabilities,
+	extension: string,
+): boolean {
+	return capabilities.originalContainers.accepts(
+		audioContainerFromExtension(extension),
+	);
+}
+
+// The service decodes every other container to 16 kHz mono WAV before the
+// provider sees it, so these answers decide which recordings pay a decode.
+// Getting one wrong either way is costly: a container claimed but unread is
+// refused by the endpoint after the upload, and one read but unclaimed is
+// expanded to a WAV several times its size for nothing.
+describe('the containers each engine reads as they stand', () => {
+	it.each([
+		{ name: 'Whisper API', capabilities: WHISPER_API_CAPABILITIES },
+		{ name: 'Deepgram', capabilities: DEEPGRAM_CAPABILITIES },
+	])('reads every container on $name', ({ capabilities }) => {
+		expect(
+			['webm', 'ogg', 'mp3', 'm4a', 'mp4', 'wav', 'flac', 'aac'].filter(
+				(extension) => !readsAsItStands(capabilities, extension),
+			),
+		).toEqual([]);
+	});
+
+	// A user's WAV is rarely the 16 kHz mono whisper.cpp needs, so even WAV is
+	// decoded and resampled.
+	it('reads none on local whisper.cpp, WAV included', () => {
+		expect(
+			['webm', 'ogg', 'mp3', 'wav'].filter((extension) =>
+				readsAsItStands(LOCAL_WHISPER_CAPABILITIES, extension),
+			),
+		).toEqual([]);
+	});
+
+	it.each([
+		{ extension: 'wav', reads: true },
+		{ extension: 'mp3', reads: true },
+		{ extension: 'aac', reads: true },
+		{ extension: 'ogg', reads: true },
+		{ extension: 'flac', reads: true },
+		{ extension: 'webm', reads: false },
+		{ extension: 'm4a', reads: false },
+		{ extension: 'mp4', reads: false },
+	])('answers $reads for $extension on Gemini', ({ extension, reads }) => {
+		expect(readsAsItStands(GEMINI_CAPABILITIES, extension)).toBe(reads);
+	});
+
+	// `m4a` and `mp4` are one `audio/mp4` in the format registry and Mistral
+	// lists only m4a, so a type-keyed gate sent every iOS recording - mp4 is
+	// what that platform falls back to - as a container the endpoint never
+	// claimed to read. The extension is what decides.
+	it.each([
+		{ extension: 'wav', reads: true },
+		{ extension: 'mp3', reads: true },
+		{ extension: 'm4a', reads: true },
+		{ extension: 'ogg', reads: true },
+		{ extension: 'flac', reads: true },
+		{ extension: 'mp4', reads: false },
+		{ extension: 'webm', reads: false },
+	])('answers $reads for $extension on Voxtral', ({ extension, reads }) => {
+		expect(readsAsItStands(VOXTRAL_CAPABILITIES, extension)).toBe(reads);
+	});
+
+	it('reads the extension in any case', () => {
+		expect(readsAsItStands(VOXTRAL_CAPABILITIES, 'M4A')).toBe(true);
+	});
+
+	// The names are what a refusal tells the user to convert to, so each has
+	// to be a container the same engine reads.
+	it.each([
+		{ name: 'Gemini', capabilities: GEMINI_CAPABILITIES },
+		{ name: 'Voxtral', capabilities: VOXTRAL_CAPABILITIES },
+	])('advises only containers $name reads', ({ capabilities }) => {
+		const named = (capabilities.originalContainers.acceptedNames ?? '')
+			.split(/, | or /)
+			.filter((extension) => extension !== '');
+
+		expect(named.length).toBeGreaterThan(0);
+		expect(
+			named.filter(
+				(extension) => !readsAsItStands(capabilities, extension),
+			),
+		).toEqual([]);
 	});
 });

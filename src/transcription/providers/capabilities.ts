@@ -10,19 +10,57 @@
 
 import {
 	DEEPGRAM_MAX_REQUEST_BYTES,
+	GEMINI_AUDIO_MIME_TYPES,
 	GEMINI_MAX_REQUEST_BYTES,
 	GEMINI_MAX_WHOLE_FILE_SECONDS,
 	TRANSCRIPTION_PROVIDER_IDS,
+	VOXTRAL_AUDIO_EXTENSIONS,
 	VOXTRAL_MAX_REQUEST_BYTES,
+	VOXTRAL_MAX_REQUEST_SECONDS,
 	WHISPER_API_MAX_REQUEST_BYTES,
 } from '../../constants';
 import { isLocalTranscriptionSupported } from '../../platform/capabilities';
 import type { TranscriptionProviderId } from '../../settings/settingsSchema';
 import {
 	AdvancedBiasChannel,
+	type ContainerSupport,
+	DurationCapCheck,
 	type ProviderCapabilities,
 	WordTimestampSupport,
 } from './TranscriptionProvider';
+
+/**
+ * An engine that reads any common audio container, so nothing is decoded
+ * unless the file is too large or too long for one request.
+ */
+const ANY_CONTAINER: ContainerSupport = { accepts: () => true };
+
+/**
+ * An engine that reads only the 16 kHz mono WAV the service decodes to, so
+ * every recording is decoded whatever container it arrived in.
+ */
+const DECODED_WAV_ONLY: ContainerSupport = { accepts: () => false };
+
+/**
+ * Gemini's File API, asked by MIME type - the unit Google documents the list
+ * in. Everything else, notably the `webm` this plugin records by default and
+ * the `mp4`/`m4a` it can record, is decoded to WAV before upload.
+ */
+const GEMINI_CONTAINERS: ContainerSupport = {
+	accepts: ({ contentType }) => GEMINI_AUDIO_MIME_TYPES.has(contentType),
+	acceptedNames: 'mp3, aac, ogg, flac, aiff or wav',
+};
+
+/**
+ * Voxtral's endpoint, asked by extension - the unit Mistral publishes its list
+ * in. A MIME gate could not tell the `m4a` the endpoint reads from the `mp4` it
+ * does not, because the format registry gives both `audio/mp4`, and `mp4` is
+ * what iOS falls back to recording in.
+ */
+const VOXTRAL_CONTAINERS: ContainerSupport = {
+	accepts: ({ extension }) => VOXTRAL_AUDIO_EXTENSIONS.has(extension),
+	acceptedNames: 'mp3, m4a, ogg, flac or wav',
+};
 
 /**
  * OpenAI-compatible Whisper API. OpenAI's `whisper-1` does not return speaker
@@ -31,7 +69,8 @@ import {
 export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: WHISPER_API_MAX_REQUEST_BYTES,
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
-	acceptsOriginalContainer: true,
+	durationCapCheck: DurationCapCheck.ProvenByBytes,
+	originalContainers: ANY_CONTAINER,
 	supportsDiarization: false,
 	// OpenAI Whisper accepts a `prompt` that seeds recognition with spellings.
 	supportsDictionary: true,
@@ -49,7 +88,8 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: DEEPGRAM_MAX_REQUEST_BYTES,
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
-	acceptsOriginalContainer: true,
+	durationCapCheck: DurationCapCheck.ProvenByBytes,
+	originalContainers: ANY_CONTAINER,
 	supportsDiarization: true,
 	// Deepgram biases via keyterm (nova-3) or keywords (nova-2 and older).
 	supportsDictionary: true,
@@ -66,7 +106,8 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: Number.POSITIVE_INFINITY,
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
-	acceptsOriginalContainer: false,
+	durationCapCheck: DurationCapCheck.ProvenByBytes,
+	originalContainers: DECODED_WAV_ONLY,
 	supportsDiarization: false,
 	// whisper.cpp accepts an initial prompt via the --prompt CLI flag.
 	supportsDictionary: true,
@@ -81,8 +122,9 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 /**
  * Google Gemini: a multimodal model that transcribes a whole file uploaded via
  * the File API in one request, so it diarizes with stable speaker numbering.
- * Accepts the original container (unsupported formats are decoded to WAV inside
- * the provider). Bounded by a per-request duration cap: a recording longer than
+ * Reads the containers its File API lists as they stand; a recording in any
+ * other is decoded to WAV by the service first. Bounded by a per-request
+ * duration cap: a recording longer than
  * {@link GEMINI_MAX_WHOLE_FILE_SECONDS} is split into parts so one request never
  * outlasts the timeout or truncates the output, at the cost of speaker numbering
  * resetting between parts (surfaced to the user as a warning).
@@ -90,7 +132,10 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: GEMINI_MAX_REQUEST_BYTES,
 	maxRequestSeconds: GEMINI_MAX_WHOLE_FILE_SECONDS,
-	acceptsOriginalContainer: true,
+	// The cap is about how much one request answers reliably, so a file that
+	// cannot prove itself short is measured rather than sent on trust.
+	durationCapCheck: DurationCapCheck.ProvenByBytes,
+	originalContainers: GEMINI_CONTAINERS,
 	supportsDiarization: true,
 	// Gemini biases via the instruction text sent alongside the audio.
 	supportsDictionary: true,
@@ -110,21 +155,23 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
  * Mistral Voxtral Mini Transcribe 2: one request carries about three hours of
  * audio, so a recording is sent whole and speaker numbering stays consistent.
  *
- * The duration cap is deliberately left unbounded *here*. The cheap proof in
- * `audioPrep` reads bytes rather than seconds, so a three-hour cap would only
- * clear files under about 10.8 MB and would decode every longer recording into
- * a 16 kHz mono WAV several times its size - which is exactly the whole-file
- * upload this engine is chosen for. The endpoint's real three-hour limit is
- * proven where the duration is known exactly instead, against the decoded
- * samples in `uploadContainer`; see `VOXTRAL_MAX_REQUEST_SECONDS` for why
- * the two live apart. Leaving it to the endpoint was not enough: the byte
- * ceiling alone holds about nine hours of this WAV, so hours of audio were
- * uploaded only to be declined on arrival.
+ * The three-hour cap is the endpoint's own, and it is not proven through the
+ * byte size of a container the endpoint reads. That proof reads bytes rather
+ * than seconds, so three hours would only clear files under about 10.8 MB and
+ * would decode every longer recording into a 16 kHz mono WAV several times its
+ * size - which is exactly the whole-file upload this engine is chosen for. So
+ * such a file is sent whole and the endpoint holds it to the cap. A recording
+ * that is decoded anyway (a container the endpoint does not read, notably
+ * `webm`) has its length measured exactly and is split at three hours.
+ * Leaving that one to the endpoint was not enough: the byte ceiling alone
+ * holds about nine hours of this WAV, so hours of audio were uploaded only to
+ * be declined on arrival.
  */
 export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: VOXTRAL_MAX_REQUEST_BYTES,
-	maxRequestSeconds: Number.POSITIVE_INFINITY,
-	acceptsOriginalContainer: true,
+	maxRequestSeconds: VOXTRAL_MAX_REQUEST_SECONDS,
+	durationCapCheck: DurationCapCheck.LeftToEndpoint,
+	originalContainers: VOXTRAL_CONTAINERS,
 	supportsDiarization: true,
 	// Voxtral biases through context_bias, a flat list of terms bounded by an
 	// entry count, which is the keyterm shape rather than the prompt one.

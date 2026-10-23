@@ -3,14 +3,15 @@
  * then asks `generateContent` for a structured JSON transcript with timecodes
  * and optional speaker labels. The orchestrator sends a short recording whole
  * (one payload, so speaker numbering stays consistent across it) and splits a
- * recording too long for one request into parts. Containers Gemini does not
- * accept (e.g. webm) are decoded to 16 kHz mono WAV before upload.
+ * recording too long for one request into parts. A container Gemini does not
+ * read (e.g. webm) arrives already decoded to 16 kHz mono WAV: the service
+ * converts it once per run, so this provider uploads the bytes it is lent and
+ * nothing else.
  * @module transcription/providers/GeminiProvider
  */
 
 import {
 	GEMINI_API_KEY_HEADER,
-	GEMINI_AUDIO_MIME_TYPES,
 	GEMINI_GENERATE_MIN_TIMEOUT_MS,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
@@ -25,7 +26,6 @@ import {
 	waitUntilActive,
 } from './geminiFileApi';
 import { mapGeminiResponse } from './geminiResponse';
-import { uploadContainer } from './uploadContainer';
 import {
 	assertGeminiNotBlocked,
 	assertGeminiNotTruncated,
@@ -56,12 +56,6 @@ export interface GeminiConfig {
 	/** Per-request timeout cap (ms); the user-configured transcription limit. */
 	requestTimeoutMs?: number;
 }
-
-/**
- * The containers the File API reads, in the refusal's own words, so a user
- * told to convert is told what to convert to.
- */
-const GEMINI_ACCEPTED_CONTAINERS = 'mp3, aac, ogg, flac, aiff or wav';
 
 /** System instruction; the response schema enforces the output shape. */
 const SYSTEM_PROMPT =
@@ -192,25 +186,15 @@ export class GeminiProvider implements TranscriptionProvider {
 		payload: AudioPayload,
 		options: TranscribeOptions,
 	): Promise<WhisperResult> {
-		// The File API reads only certain audio containers; anything else
-		// (e.g. webm) is decoded to 16 kHz mono WAV first, under the shared
-		// rule that also refuses a file too large for this platform to decode.
-		const audio = await uploadContainer(payload, {
-			// Asked by MIME type, the unit the File API documents its list in.
-			accepts: ({ contentType }) =>
-				GEMINI_AUDIO_MIME_TYPES.has(contentType),
-			engineLabel: this.label,
-			acceptedContainers: GEMINI_ACCEPTED_CONTAINERS,
-			maxRequestBytes: this.capabilities.maxRequestBytes,
-			maxRequestSeconds: this.capabilities.maxRequestSeconds,
-		});
-
+		// Already in a container the File API reads (see the capability's
+		// originalContainers), and only read here: the same payload is sent
+		// again when the service waits out a refusal.
 		const file = await uploadFile(
 			this.config.baseUrl,
 			this.config.apiKey,
-			audio.data,
-			audio.contentType,
-			audio.filename,
+			payload.data,
+			payload.contentType,
+			payload.filename,
 			this.config.requestTimeoutMs,
 			options.signal,
 		);
@@ -219,7 +203,7 @@ export class GeminiProvider implements TranscriptionProvider {
 				this.config.baseUrl,
 				this.config.apiKey,
 				file.name,
-				fileProcessingWaitMs(audio.data.byteLength),
+				fileProcessingWaitMs(payload.data.byteLength),
 				options.signal,
 			);
 			const url = geminiGenerateContentUrl(
@@ -245,7 +229,7 @@ export class GeminiProvider implements TranscriptionProvider {
 							parts: [
 								{
 									fileData: {
-										mimeType: audio.contentType,
+										mimeType: payload.contentType,
 										fileUri: file.uri,
 									},
 								},
@@ -261,7 +245,7 @@ export class GeminiProvider implements TranscriptionProvider {
 					},
 				}),
 				timeoutMs: inferenceTimeoutMs(
-					audio.data.byteLength,
+					payload.data.byteLength,
 					GEMINI_GENERATE_MIN_TIMEOUT_MS,
 					this.config.requestTimeoutMs,
 				),

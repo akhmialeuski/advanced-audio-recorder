@@ -14,24 +14,71 @@ jest.mock('src/transcription/audioChunks', () => {
 	return { ...actual, decodeToMono16k: jest.fn() };
 });
 
+// The platform ceiling is a real byte count no fixture can reach, so the one
+// answer these tests need is stubbed while the refusal wording stays real.
+jest.mock('src/platform/capabilities', () => ({
+	...jest.requireActual<typeof import('src/platform/capabilities')>(
+		'src/platform/capabilities',
+	),
+	isDecodableSize: jest.fn(() => true),
+}));
+
 import {
-	audioMimeFromExtension,
+	audioContainerFromExtension,
 	audioPrepOptions,
 	prepareAudio,
+	sendsWholeFile,
 	shouldWarnDiarizationSplit,
 	withinDurationCap,
 } from 'src/transcription/audioPrep';
 import { at, defined } from '../helpers/assertions';
 import { decodeToMono16k } from 'src/transcription/audioChunks';
+import { isDecodableSize } from 'src/platform/capabilities';
+import { useMobilePlatform } from '../helpers/platform';
 import {
 	MIN_SUBDIVIDE_SECONDS,
 	TRANSCRIBE_BYTES_PER_SEC,
 	TRANSCRIBE_SAMPLE_RATE,
 } from 'src/constants';
 import { WAV_HEADER_SIZE } from 'src/audio/WavEncoder';
-import type { ProviderCapabilities } from 'src/transcription/providers/TranscriptionProvider';
+import { UNLIMITED_CAPABILITIES } from '../helpers/providerFixtures';
+import {
+	DurationCapCheck,
+	type AudioContainer,
+	type ContainerSupport,
+	type ProviderCapabilities,
+} from 'src/transcription/providers/TranscriptionProvider';
 
 const decodeMock = jest.mocked(decodeToMono16k);
+const decodableMock = jest.mocked(isDecodableSize);
+
+/** An engine that reads any container, as Whisper API and Deepgram do. */
+const READS_EVERY_CONTAINER: ContainerSupport = { accepts: () => true };
+
+/** An engine that reads none, as local whisper.cpp does. */
+const READS_NO_CONTAINER: ContainerSupport = { accepts: () => false };
+
+/** An engine that reads mp3 alone, with the words a refusal advises it by. */
+const READS_MP3: ContainerSupport = {
+	accepts: ({ extension }) => extension === 'mp3',
+	acceptedNames: 'mp3',
+};
+
+/**
+ * The container-side options of an engine that reads every container and
+ * proves its duration cap through the byte size, which is how most of these
+ * cases want preparation to behave around the limit each one varies.
+ */
+const READS_EVERYTHING = {
+	durationCapCheck: DurationCapCheck.ProvenByBytes,
+	originalContainers: READS_EVERY_CONTAINER,
+	engineLabel: 'Test Engine',
+};
+
+/** The container of a file stored under this extension. */
+function container(extension: string): AudioContainer {
+	return audioContainerFromExtension(extension);
+}
 
 /** Synthetic 16 kHz mono samples spanning the given number of seconds. */
 function samplesForSeconds(seconds: number): Float32Array {
@@ -45,23 +92,26 @@ function wavBytesForSeconds(seconds: number): number {
 
 beforeEach(() => {
 	decodeMock.mockReset();
+	decodableMock.mockReturnValue(true);
 });
 
-describe('audioMimeFromExtension', () => {
-	it('maps known extensions to container MIME types', () => {
-		expect(audioMimeFromExtension('mp3')).toBe('audio/mpeg');
-		expect(audioMimeFromExtension('wav')).toBe('audio/wav');
-		expect(audioMimeFromExtension('m4a')).toBe('audio/mp4');
-		expect(audioMimeFromExtension('webm')).toBe('audio/webm');
-		expect(audioMimeFromExtension('flac')).toBe('audio/flac');
+describe('audioContainerFromExtension', () => {
+	it('names the container by both its MIME type and its lowercase extension', () => {
+		expect(audioContainerFromExtension('M4A')).toEqual({
+			contentType: 'audio/mp4',
+			extension: 'm4a',
+		});
 	});
 
-	it('is case-insensitive', () => {
-		expect(audioMimeFromExtension('WAV')).toBe('audio/wav');
-	});
-
-	it('defaults to audio/<ext> for unmapped extensions', () => {
-		expect(audioMimeFromExtension('opus')).toBe('audio/opus');
+	it.each([
+		{ extension: 'mp3', type: 'audio/mpeg' },
+		{ extension: 'wav', type: 'audio/wav' },
+		{ extension: 'webm', type: 'audio/webm' },
+		{ extension: 'flac', type: 'audio/flac' },
+		{ extension: 'WAV', type: 'audio/wav' },
+		{ extension: 'opus', type: 'audio/opus' },
+	])('types $extension as $type', ({ extension, type }) => {
+		expect(audioContainerFromExtension(extension).contentType).toBe(type);
 	});
 });
 
@@ -88,22 +138,24 @@ describe('withinDurationCap', () => {
 });
 
 describe('audioPrepOptions', () => {
-	const networkCaps: ProviderCapabilities = {
-		maxRequestBytes: 25 * 1024 * 1024,
-		maxRequestSeconds: Number.POSITIVE_INFINITY,
-		acceptsOriginalContainer: true,
-		supportsDiarization: false,
-		supportsDictionary: false,
-		wordTimestamps: 'none',
-		biasChannel: 'prompt',
-		supportsSpeechTranslation: false,
-		readsLanguageHint: true,
-		readsLanguageList: false,
-	};
+	/**
+	 * An engine's declaration with only the limits a case varies spelled out.
+	 * @param overrides - The fields this case is about
+	 * @returns The capabilities to derive options from
+	 */
+	function capabilities(
+		overrides: Partial<ProviderCapabilities>,
+	): ProviderCapabilities {
+		return { ...UNLIMITED_CAPABILITIES, ...overrides };
+	}
+
+	/** A network engine with the Whisper API's 25 MB request limit. */
+	const networkCaps = capabilities({ maxRequestBytes: 25 * 1024 * 1024 });
 
 	it('bounds the chunk size by the provider limit for network providers', () => {
 		const options = audioPrepOptions(
 			networkCaps,
+			'Test Engine',
 			true,
 			100 * 1024 * 1024,
 			false,
@@ -112,12 +164,12 @@ describe('audioPrepOptions', () => {
 		expect(options.chunkSeconds).toBe(819);
 		expect(options.maxRequestBytes).toBe(25 * 1024 * 1024);
 		expect(options.maxRequestSeconds).toBe(Number.POSITIVE_INFINITY);
-		expect(options.acceptsOriginalContainer).toBe(true);
 	});
 
 	it('uses the user chunk size when it is under the provider limit', () => {
 		const options = audioPrepOptions(
 			networkCaps,
+			'Test Engine',
 			true,
 			10 * 1024 * 1024,
 			false,
@@ -127,20 +179,9 @@ describe('audioPrepOptions', () => {
 	});
 
 	it('produces a single chunk for an unbounded local provider', () => {
-		const localCaps: ProviderCapabilities = {
-			maxRequestBytes: Number.POSITIVE_INFINITY,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: false,
-			supportsDiarization: false,
-			supportsDictionary: false,
-			wordTimestamps: 'none',
-			biasChannel: 'prompt',
-			supportsSpeechTranslation: false,
-			readsLanguageHint: true,
-			readsLanguageList: false,
-		};
 		const options = audioPrepOptions(
-			localCaps,
+			capabilities({ originalContainers: READS_NO_CONTAINER }),
+			'Test Engine',
 			false,
 			10 * 1024 * 1024,
 			false,
@@ -150,20 +191,12 @@ describe('audioPrepOptions', () => {
 
 	it('sizes parts by the duration cap, ignoring the user chunk size', () => {
 		// A duration-capped provider chunks by time, not the user's MB setting.
-		const cappedCaps: ProviderCapabilities = {
-			maxRequestBytes: 2 * 1024 * 1024 * 1024,
-			maxRequestSeconds: 900,
-			acceptsOriginalContainer: true,
-			supportsDiarization: true,
-			supportsDictionary: false,
-			wordTimestamps: 'none',
-			biasChannel: 'prompt',
-			supportsSpeechTranslation: false,
-			readsLanguageHint: true,
-			readsLanguageList: false,
-		};
 		const options = audioPrepOptions(
-			cappedCaps,
+			capabilities({
+				maxRequestBytes: 2 * 1024 * 1024 * 1024,
+				maxRequestSeconds: 900,
+			}),
+			'Test Engine',
 			true,
 			24 * 1024 * 1024,
 			true,
@@ -176,21 +209,36 @@ describe('audioPrepOptions', () => {
 	});
 
 	it('carries the diarization flag and request limits through', () => {
-		const diarizingCaps: ProviderCapabilities = {
-			maxRequestBytes: 1000,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
-			supportsDiarization: true,
-			supportsDictionary: false,
-			wordTimestamps: 'none',
-			biasChannel: 'prompt',
-			supportsSpeechTranslation: false,
-			readsLanguageHint: true,
-			readsLanguageList: false,
-		};
-		const options = audioPrepOptions(diarizingCaps, true, 1000, true);
+		const options = audioPrepOptions(
+			capabilities({ maxRequestBytes: 1000 }),
+			'Test Engine',
+			true,
+			1000,
+			true,
+		);
 		expect(options.diarize).toBe(true);
 		expect(options.maxRequestSeconds).toBe(Number.POSITIVE_INFINITY);
+	});
+
+	it('carries what the engine reads, how its cap is held, and its name', () => {
+		const declared = capabilities({
+			durationCapCheck: DurationCapCheck.LeftToEndpoint,
+			originalContainers: READS_MP3,
+		});
+
+		const options = audioPrepOptions(
+			declared,
+			'Test Engine',
+			true,
+			1000,
+			false,
+		);
+
+		expect(options).toMatchObject({
+			durationCapCheck: DurationCapCheck.LeftToEndpoint,
+			originalContainers: READS_MP3,
+			engineLabel: 'Test Engine',
+		});
 	});
 });
 
@@ -208,13 +256,212 @@ describe('shouldWarnDiarizationSplit', () => {
 	});
 });
 
+describe('sendsWholeFile', () => {
+	/** Limits wide enough that only the field a row varies can decide. */
+	const roomy = {
+		maxRequestBytes: 10_000_000,
+		maxRequestSeconds: 900,
+		durationCapCheck: DurationCapCheck.ProvenByBytes,
+		originalContainers: READS_MP3,
+	};
+
+	it.each([
+		{
+			name: 'a short file in a container the engine reads',
+			bytes: 500,
+			extension: 'mp3',
+			options: roomy,
+			whole: true,
+		},
+		{
+			name: 'a short file in a container the engine does not read',
+			bytes: 500,
+			extension: 'webm',
+			options: roomy,
+			whole: false,
+		},
+		{
+			name: 'a file past the byte limit',
+			bytes: 10_000_001,
+			extension: 'mp3',
+			options: roomy,
+			whole: false,
+		},
+		{
+			name: 'a file its size cannot prove within the cap',
+			bytes: 900_001,
+			extension: 'mp3',
+			options: roomy,
+			whole: false,
+		},
+		{
+			name: 'the same file when the endpoint holds the cap',
+			bytes: 900_001,
+			extension: 'mp3',
+			options: {
+				...roomy,
+				durationCapCheck: DurationCapCheck.LeftToEndpoint,
+			},
+			whole: true,
+		},
+		{
+			name: 'a file past the byte limit when the endpoint holds the cap',
+			bytes: 10_000_001,
+			extension: 'mp3',
+			options: {
+				...roomy,
+				durationCapCheck: DurationCapCheck.LeftToEndpoint,
+			},
+			whole: false,
+		},
+		{
+			name: 'a container the endpoint does not read when it holds the cap',
+			bytes: 500,
+			extension: 'webm',
+			options: {
+				...roomy,
+				durationCapCheck: DurationCapCheck.LeftToEndpoint,
+			},
+			whole: false,
+		},
+	])('answers $whole for $name', ({ bytes, extension, options, whole }) => {
+		expect(sendsWholeFile(bytes, container(extension), options)).toBe(
+			whole,
+		);
+	});
+});
+
+/**
+ * Prepares a file of the given container and size, named after its container.
+ * @param extension - The file's container, as its extension
+ * @param byteLength - How large the encoded file is
+ * @param options - Provider-derived preparation options
+ * @returns What preparation produced
+ */
+function prepareFile(
+	extension: string,
+	byteLength: number,
+	options: Parameters<typeof prepareAudio>[3],
+): ReturnType<typeof prepareAudio> {
+	return prepareAudio(
+		new Uint8Array(byteLength).buffer,
+		`rec.${extension}`,
+		container(extension),
+		options,
+	);
+}
+
+describe('prepareAudio (a container the engine does not read)', () => {
+	const options = {
+		maxRequestBytes: 10_000_000,
+		maxRequestSeconds: Number.POSITIVE_INFINITY,
+		durationCapCheck: DurationCapCheck.ProvenByBytes,
+		originalContainers: READS_MP3,
+		engineLabel: 'Test Engine',
+		chunkSeconds: 60,
+		diarize: false,
+	};
+
+	// A short webm fits every limit, and it used to be sent as it stood for
+	// the provider to decode from the run's own buffer. The decode belongs
+	// here, where the result is kept for every send of the part.
+	it('decodes it to WAV even though it fits one request', async () => {
+		decodeMock.mockResolvedValue(samplesForSeconds(3));
+
+		const result = await prepareFile('webm', 500, options);
+
+		expect(decodeMock).toHaveBeenCalledTimes(1);
+		expect(result.payloads.map((part) => part.contentType)).toEqual([
+			'audio/wav',
+		]);
+	});
+
+	// The second pass and every retry materialize the part again, so each
+	// call has to produce the whole WAV rather than share one buffer that an
+	// earlier send might have given away.
+	it('builds a fresh WAV each time the part is materialized', async () => {
+		decodeMock.mockResolvedValue(samplesForSeconds(3));
+		const part = at((await prepareFile('webm', 500, options)).payloads, 0);
+
+		const first = await part.createData();
+		const second = await part.createData();
+
+		expect(second).not.toBe(first);
+		expect(second.byteLength).toBe(wavBytesForSeconds(3));
+	});
+
+	it('refuses a file too large to decode with the containers that avoid the decode', async () => {
+		decodableMock.mockReturnValue(false);
+
+		await expect(prepareFile('webm', 500, options)).rejects.toThrow(
+			'File is too large to transcribe with Test Engine. Record or convert it to mp3, which this engine uploads without decoding.',
+		);
+		expect(decodeMock).not.toHaveBeenCalled();
+	});
+
+	// The way out on a phone is the desktop, whatever the container, because
+	// the ceiling there is the device's rather than the engine's.
+	it('sends a phone user to the desktop instead', async () => {
+		useMobilePlatform();
+		decodableMock.mockReturnValue(false);
+
+		await expect(prepareFile('webm', 500, options)).rejects.toThrow(
+			'File is too large to transcribe with Test Engine on this device. Convert or split it on desktop instead.',
+		);
+	});
+
+	// Converting would not help a file the engine reads already, which is
+	// decoded only for being too long or too large for one request.
+	it('gives the generic advice for a container the engine reads', async () => {
+		decodableMock.mockReturnValue(false);
+
+		await expect(prepareFile('mp3', 10_000_001, options)).rejects.toThrow(
+			'File is too large to transcribe. Split it into parts first.',
+		);
+	});
+});
+
+describe('prepareAudio (a cap the endpoint holds)', () => {
+	const options = {
+		maxRequestBytes: 10_000_000,
+		maxRequestSeconds: 2,
+		durationCapCheck: DurationCapCheck.LeftToEndpoint,
+		originalContainers: READS_MP3,
+		engineLabel: 'Test Engine',
+		chunkSeconds: 2,
+		diarize: true,
+	};
+
+	it('sends a container the engine reads whole whatever its size proves', async () => {
+		const result = await prepareFile('mp3', 500_000, options);
+
+		expect(decodeMock).not.toHaveBeenCalled();
+		expect(result.payloads.map((part) => part.contentType)).toEqual([
+			'audio/mpeg',
+		]);
+	});
+
+	// Once decoded the length is exact, so the cap the endpoint would have
+	// refused after the upload is applied before it instead.
+	it('splits a decoded recording at the cap', async () => {
+		decodeMock.mockResolvedValue(samplesForSeconds(6));
+
+		const result = await prepareFile('webm', 500, options);
+
+		expect(result.payloads.map((part) => part.offsetSeconds)).toEqual([
+			0, 2, 4,
+		]);
+		expect(result.diarizationSplitWarning).toBe(true);
+	});
+});
+
 describe('prepareAudio (whole-file path)', () => {
 	it('sends the original bytes untouched when within the limits', async () => {
 		const raw = new Uint8Array([1, 2, 3, 4]).buffer;
-		const result = await prepareAudio(raw, 'rec.webm', 'audio/webm', {
+		const result = await prepareAudio(raw, 'rec.webm', container('webm'), {
 			maxRequestBytes: 1000,
 			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
+			...READS_EVERYTHING,
 			chunkSeconds: 60,
 			diarize: false,
 		});
@@ -228,10 +475,10 @@ describe('prepareAudio (whole-file path)', () => {
 
 	it('does not flag a diarization split when the whole file is sent', async () => {
 		const raw = new Uint8Array([1, 2, 3, 4]).buffer;
-		const result = await prepareAudio(raw, 'rec.webm', 'audio/webm', {
+		const result = await prepareAudio(raw, 'rec.webm', container('webm'), {
 			maxRequestBytes: 1000,
 			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
+			...READS_EVERYTHING,
 			chunkSeconds: 60,
 			diarize: true,
 		});
@@ -240,10 +487,10 @@ describe('prepareAudio (whole-file path)', () => {
 
 	it('sends a short file whole when the byte size proves it within the cap', async () => {
 		const raw = new Uint8Array(500).buffer;
-		const result = await prepareAudio(raw, 'rec.mp3', 'audio/mpeg', {
+		const result = await prepareAudio(raw, 'rec.mp3', container('mp3'), {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 900,
-			acceptsOriginalContainer: true,
+			...READS_EVERYTHING,
 			chunkSeconds: 900,
 			diarize: true,
 		});
@@ -260,10 +507,10 @@ describe('prepareAudio (duration-cap decode path)', () => {
 		// duration cap (2 s here) forces a decode-and-split into three parts.
 		decodeMock.mockResolvedValue(samplesForSeconds(6));
 		const raw = new Uint8Array(50_000).buffer;
-		const result = await prepareAudio(raw, 'rec.mp4', 'audio/mp4', {
+		const result = await prepareAudio(raw, 'rec.mp4', container('mp4'), {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 2,
-			acceptsOriginalContainer: true,
+			...READS_EVERYTHING,
 			chunkSeconds: 2,
 			diarize: true,
 		});
@@ -282,10 +529,10 @@ describe('prepareAudio (duration-cap decode path)', () => {
 	it('does not warn about speakers when diarization is off', async () => {
 		decodeMock.mockResolvedValue(samplesForSeconds(6));
 		const raw = new Uint8Array(50_000).buffer;
-		const result = await prepareAudio(raw, 'rec.mp4', 'audio/mp4', {
+		const result = await prepareAudio(raw, 'rec.mp4', container('mp4'), {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 2,
-			acceptsOriginalContainer: true,
+			...READS_EVERYTHING,
 			chunkSeconds: 2,
 			diarize: false,
 		});
@@ -302,10 +549,10 @@ describe('prepareAudio (duration-cap decode path)', () => {
 		decodeMock.mockResolvedValue(samplesForSeconds(4));
 		const raw = new Uint8Array(500_000).buffer;
 
-		const result = await prepareAudio(raw, 'rec.mp4', 'audio/mp4', {
+		const result = await prepareAudio(raw, 'rec.mp4', container('mp4'), {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 4,
-			acceptsOriginalContainer: true,
+			...READS_EVERYTHING,
 			chunkSeconds: 4,
 			diarize: true,
 		});
@@ -318,10 +565,10 @@ describe('prepareAudio (duration-cap decode path)', () => {
 		decodeMock.mockResolvedValue(samplesForSeconds(5));
 		const raw = new Uint8Array(500_000).buffer;
 
-		const result = await prepareAudio(raw, 'rec.mp4', 'audio/mp4', {
+		const result = await prepareAudio(raw, 'rec.mp4', container('mp4'), {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 4,
-			acceptsOriginalContainer: true,
+			...READS_EVERYTHING,
 			chunkSeconds: 4,
 			diarize: false,
 		});
@@ -336,10 +583,10 @@ describe('prepareAudio (duration-cap decode path)', () => {
 		// split and no speaker warning.
 		decodeMock.mockResolvedValue(samplesForSeconds(2));
 		const raw = new Uint8Array(2_000_000).buffer;
-		const result = await prepareAudio(raw, 'rec.mp4', 'audio/mp4', {
+		const result = await prepareAudio(raw, 'rec.mp4', container('mp4'), {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 900,
-			acceptsOriginalContainer: true,
+			...READS_EVERYTHING,
 			chunkSeconds: 900,
 			diarize: true,
 		});
@@ -367,11 +614,11 @@ describe('prepareAudio (a decoded part the provider still rejects)', () => {
 			// Past the cheap byte proof: 500 kB cannot be argued short.
 			new Uint8Array(500_000).buffer,
 			'rec.mp4',
-			'audio/mp4',
+			container('mp4'),
 			{
 				maxRequestBytes: 10_000_000,
 				maxRequestSeconds: partSeconds,
-				acceptsOriginalContainer: true,
+				...READS_EVERYTHING,
 				chunkSeconds: partSeconds,
 				diarize: false,
 			},

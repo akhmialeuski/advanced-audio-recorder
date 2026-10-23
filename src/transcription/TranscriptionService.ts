@@ -37,7 +37,7 @@ import {
 	quickNoteTranscriptionSettings,
 } from '../settings/settingsSchema';
 import {
-	audioMimeFromExtension,
+	audioContainerFromExtension,
 	audioPrepOptions,
 	prepareAudio,
 	type PreparedAudio,
@@ -139,6 +139,10 @@ export interface TranscribeRunOptions {
 	 * file's bytes - the dialog reads them to probe the duration for the cost
 	 * estimate - passing them here avoids reading the whole file a second
 	 * time. Omitted, the service reads the file itself.
+	 *
+	 * Handed over rather than lent: a recording the engine cannot read as it
+	 * stands is decoded from this very buffer, and the browser's decoder leaves
+	 * it detached, so the caller does not read it again after the run starts.
 	 */
 	audioBytes?: ArrayBuffer | undefined;
 	/** Cancellation token. */
@@ -392,7 +396,10 @@ interface RunLedger {
 
 /** Audio held in memory, with no file in the vault behind it. */
 export interface DictationAudio {
-	/** The recorded container bytes. */
+	/**
+	 * The recorded container bytes, handed over to the run the way
+	 * {@link TranscribeRunOptions.audioBytes} are.
+	 */
 	readonly bytes: ArrayBuffer;
 	/** Container the bytes are in, as a file extension without the dot. */
 	readonly extension: string;
@@ -493,6 +500,47 @@ function retryWaitMs(error: unknown, attempt: number): number | null {
 		TRANSCRIBE_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
 		TRANSCRIBE_RETRY_MAX_DELAY_MS,
 	);
+}
+
+/**
+ * Whether a buffer was transferred away, which leaves it empty for good.
+ *
+ * Read through the ES2024 `detached` property, typed here because the plugin
+ * compiles against ES2022. A runtime without the property answers false, which
+ * leaves the send to go ahead exactly as it did before the check existed.
+ * @param buffer - The bytes about to be sent
+ * @returns True when the buffer was detached
+ */
+function isDetached(buffer: ArrayBuffer): boolean {
+	return (
+		(buffer as ArrayBuffer & { readonly detached?: boolean }).detached ===
+		true
+	);
+}
+
+/**
+ * Refuses to send audio that something has already used up.
+ *
+ * A part is sent more than once - again after a refusal the run waits out, and
+ * again for the advanced second pass - and the browser's decoder empties any
+ * buffer it is handed. Audio decoded inside a provider was exactly that: the
+ * retry after a 503 found the bytes gone, and the run reported a decode
+ * failure instead of the refusal it had been waiting out (issue #136).
+ * Preparation now does every decode once, from bytes nothing reads again, so
+ * this cannot happen on the shipping path; asked anyway because the failure
+ * it stands guard over is a paid upload of nothing, or an error naming the
+ * wrong cause, and both are far easier to fix when they say what they are.
+ * @param payload - The part about to be sent
+ * @param label - The part, as the run names it ('' for a single-part run)
+ * @throws When the part's bytes were detached before the send
+ */
+function assertUnconsumed(payload: AudioPayload, label: string): void {
+	if (isDetached(payload.data)) {
+		throw new Error(
+			`The audio for ${label || 'the recording'} was used up before it ` +
+				'could be sent. This is a defect in the plugin; please report it.',
+		);
+	}
 }
 
 /**
@@ -1170,7 +1218,9 @@ export class TranscriptionService {
 	 *
 	 * The bytes come from the caller, which reads a recording from the vault
 	 * or already holds them - the dialog reads the file to probe its duration
-	 * for the cost estimate, and a dictation never had a file at all.
+	 * for the cost estimate, and a dictation never had a file at all. They are
+	 * the run's from here on: a decode takes them (see `prepareAudio`), and
+	 * every send reads the parts preparation hands back, never these.
 	 * @param bytes - The audio, in the container its extension names
 	 * @param fileName - Name the audio is uploaded under
 	 * @param extension - Container extension without the dot
@@ -1190,9 +1240,10 @@ export class TranscriptionService {
 		const prepared = await prepareAudio(
 			bytes,
 			fileName,
-			audioMimeFromExtension(extension),
+			audioContainerFromExtension(extension),
 			audioPrepOptions(
 				provider.capabilities,
+				provider.label,
 				provider.requiresNetwork,
 				Math.max(1, settings.transcriptionChunkMb) * BYTES_PER_MB,
 				diarize,
@@ -1508,6 +1559,7 @@ export class TranscriptionService {
 		payload: AudioPayload,
 	): Promise<WhisperResult> {
 		for (let attempt = 1; ; attempt++) {
+			assertUnconsumed(payload, part.label);
 			try {
 				return await part.provider.transcribe(
 					payload,
@@ -1518,6 +1570,17 @@ export class TranscriptionService {
 				if (waitMs === null) {
 					throw error;
 				}
+				// The refusal is only ever shown as a passing progress line,
+				// and the error a run ends with is the last attempt's. Written
+				// here so the cause that started the retries is on record even
+				// when a later attempt fails differently - which is how a 503
+				// once hid behind an unrelated decode error.
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} ${part.label || 'The audio'} was ` +
+						`refused on attempt ${String(attempt)}; sending it ` +
+						`again in ${String(Math.ceil(waitMs / MS_PER_SECOND))}s.`,
+					error,
+				);
 				part.onRetryWait(waitMs, part.label);
 				try {
 					await delay(waitMs, part.token.signal);

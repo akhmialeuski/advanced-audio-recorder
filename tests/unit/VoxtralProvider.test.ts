@@ -3,19 +3,16 @@
  * unconditional because the response carries no segments without it and is
  * never joined by a second the endpoint refuses, the language hint that is never
  * sent because Mistral refuses it alongside that granularity, the context_bias
- * encoding that has to survive the endpoint's no-whitespace rule, and the
- * decode branch for a container it does not take - which has to rename the
- * part it decodes as well as retype it - the two ceilings one request is proven
- * against, and the deadline a whole-file request is given.
+ * encoding that has to survive the endpoint's no-whitespace rule, the payload
+ * uploaded as it was lent, and the deadline a whole-file request is given.
+ * Which containers reach the provider undecoded, and the three-hour split of a
+ * decoded recording, belong to the capability and to audio preparation, and are
+ * tested there.
  */
 
 import { VoxtralProvider } from 'src/transcription/providers/VoxtralProvider';
 import { VOXTRAL_CONTEXT_BIAS_LIMIT } from 'src/transcription/dictionaryBias';
-import {
-	TRANSCRIBE_SAMPLE_RATE,
-	VOXTRAL_MAX_REQUEST_SECONDS,
-	VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS,
-} from 'src/constants';
+import { VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS } from 'src/constants';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
 // Mock-only surface: these exist on the test double, not on Obsidian's
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
@@ -27,39 +24,21 @@ import {
 import { requestBodyText, withRequestUrl } from '../helpers/network';
 import { at } from '../helpers/assertions';
 import { transcribeOptions } from '../helpers/providerFixtures';
-// The same module instance the jest.mock factory installs, so this is the
-// double the provider actually calls.
-import { decodeToMono16k, decodedSamples } from '../mocks/modules/audioChunks';
-
-// Decoding an unsupported container needs OfflineAudioContext, which jsdom
-// lacks; mock the audio helpers so the decode branch is testable by eye.
-jest.mock('src/transcription/audioChunks', () =>
-	require('../mocks/modules/audioChunks'),
-);
 
 const BASE_URL = 'https://mistral.example/v1';
 const MODEL = 'voxtral-mini-latest';
 
-/**
- * The containers under test, each with the extension it is stored under.
- *
- * `m4a` and `mp4` carry the same MIME type on purpose: that is what the format
- * registry gives both, only the first is on Mistral's list, and the second is
- * what iOS falls back to recording in.
- */
+/** The containers under test, each with the extension it is stored under. */
 const CONTAINERS = {
 	wav: 'audio/wav',
 	mp3: 'audio/mpeg',
 	m4a: 'audio/mp4',
-	mp4: 'audio/mp4',
-	webm: 'audio/webm',
 } as const;
 
 /**
  * A payload as a vault file arrives: the container's own MIME type and a name
  * carrying the matching extension. Both come from one argument on purpose, so
- * no fixture can quietly hold a name and a type that disagree - which is the
- * very thing the upload part has to keep true after a decode.
+ * no fixture can quietly hold a name and a type that disagree.
  */
 function payload(extension: keyof typeof CONTAINERS = 'wav'): AudioPayload {
 	return {
@@ -92,8 +71,8 @@ function capture(): MockRequestUrlParam[] {
 /**
  * The multipart body a run over one container produces.
  *
- * Four cases differ only in the container they hand over and read the same two
- * things back out of the request, so the arrangement is named once here.
+ * Several cases differ only in the container they hand over and read the same
+ * two things back out of the request, so the arrangement is named once here.
  * @param extension - The container the vault file is stored as
  * @returns The request body as text
  */
@@ -295,60 +274,30 @@ describe('VoxtralProvider context bias', () => {
 	});
 });
 
-describe('VoxtralProvider container handling', () => {
-	it('uploads an accepted container untouched, under its own name', async () => {
-		const body = await uploadedBody('mp3');
+describe('VoxtralProvider upload', () => {
+	it.each([
+		{ extension: 'mp3', type: 'audio/mpeg' },
+		{ extension: 'wav', type: 'audio/wav' },
+		{ extension: 'm4a', type: 'audio/mp4' },
+	] as const)(
+		'uploads $extension as it stands, under its own name',
+		async ({ extension, type }) => {
+			const body = await uploadedBody(extension);
 
-		expect(body).toContain('Content-Type: audio/mpeg');
-		expect(uploadFilename(body)).toBe('rec.mp3');
-	});
+			expect(body).toContain(`Content-Type: ${type}`);
+			expect(uploadFilename(body)).toBe(`rec.${extension}`);
+		},
+	);
 
-	it('renames the part it decodes to match the bytes it now holds', async () => {
-		// webm is what this plugin records by default and is absent from the
-		// endpoint's list, so it is decoded to 16 kHz mono WAV before upload.
-		// Mistral's own client reads a part's type from its filename, so a WAV
-		// body still called `.webm` announces one container in the header and
-		// another in the name - on this engine's most common input.
-		const body = await uploadedBody('webm');
+	// The service sends the same payload again after a refusal it waits out,
+	// so the provider may only read what it was lent (issue #136).
+	it('leaves the payload it uploaded readable for the next send', async () => {
+		capture();
+		const lent = payload('wav');
 
-		expect(body).toContain('Content-Type: audio/wav');
-		expect(uploadFilename(body)).toBe('rec.wav');
-	});
+		await provider().transcribe(lent, transcribeOptions());
 
-	it('uploads m4a untouched, the one of the two mp4 names Mistral lists', async () => {
-		expect(uploadFilename(await uploadedBody('m4a'))).toBe('rec.m4a');
-	});
-
-	it('decodes mp4, which shares the m4a type but is not on the list', async () => {
-		// The two containers are one `audio/mp4` in the format registry and
-		// Mistral lists only m4a, so a type-keyed gate sent every iOS recording
-		// - mp4 is what that platform falls back to - as a container the
-		// endpoint never claimed to read. The name is what decides instead.
-		const body = await uploadedBody('mp4');
-
-		expect(body).toContain('Content-Type: audio/wav');
-		expect(uploadFilename(body)).toBe('rec.wav');
-	});
-
-	it('refuses a recording past the three hours one request carries', async () => {
-		// The engine's two ceilings are hours apart: three hours is about 346 MB
-		// of this WAV against a 1 GB request, so proving only the bytes uploaded
-		// about nine hours of audio before Mistral declined it. The capability
-		// stays unbounded so whole containers keep being uploaded untouched,
-		// which is why the endpoint's real limit has to reach the decode path.
-		const calls = capture();
-		decodeToMono16k.mockResolvedValueOnce(
-			decodedSamples(
-				(VOXTRAL_MAX_REQUEST_SECONDS + 1) * TRANSCRIBE_SAMPLE_RATE,
-			),
-		);
-
-		await expect(
-			provider().transcribe(payload('webm'), transcribeOptions()),
-		).rejects.toThrow(
-			'Recording is too long to transcribe with Mistral Voxtral in one request. Split it into parts first.',
-		);
-		expect(calls).toHaveLength(0);
+		expect(lent.data.byteLength).toBe(8);
 	});
 });
 

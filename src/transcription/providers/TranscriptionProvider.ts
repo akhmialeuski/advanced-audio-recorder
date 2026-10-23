@@ -79,9 +79,22 @@ export interface TranscribeOptions {
  * accepts the container format and the file fits its limit) or a decoded
  * 16 kHz mono WAV chunk. Segment timings returned by the provider are
  * relative to this payload; the service re-bases them by `offsetSeconds`.
+ *
+ * The payload is always in a container the provider reads as it stands, and
+ * it is lent rather than given: the service sends the same payload again after
+ * a refusal it may get past, so a provider only reads the bytes and never
+ * decodes, transfers or rewrites them. Turning a container into one the engine
+ * reads is the service's job, done once per run before any request (see
+ * {@link ProviderCapabilities.originalContainers}). It used to be done inside
+ * two providers, from the bytes the service still held, and the browser's
+ * decoder takes the buffer it is given - so the retry after a 503 sent Gemini
+ * an empty WebM and the run reported a decode failure instead of the refusal.
  */
 export interface AudioPayload {
-	/** Encoded bytes to send (original container bytes, or a WAV chunk). */
+	/**
+	 * Encoded bytes to send (original container bytes, or a WAV chunk).
+	 * Read-only to the provider, for the reason given on the interface.
+	 */
 	data: ArrayBuffer;
 	/** MIME type of the bytes (e.g. 'audio/wav', 'audio/webm'). */
 	contentType: string;
@@ -129,6 +142,70 @@ export const WordTimestampSupport = {
 export type WordTimestampSupport =
 	(typeof WordTimestampSupport)[keyof typeof WordTimestampSupport];
 
+/** The two things that name the container a recording arrives in. */
+export interface AudioContainer {
+	/** MIME type declared for the bytes, e.g. 'audio/webm'. */
+	readonly contentType: string;
+	/** Lowercase file extension without its dot, '' when there is none. */
+	readonly extension: string;
+}
+
+/**
+ * Which original containers an engine reads as they stand.
+ *
+ * A question rather than a set, because the engines publish their lists in
+ * different units and neither unit can state the other's list. Google documents
+ * Gemini's File API by MIME type; Mistral documents Voxtral by file extension,
+ * and this plugin's format registry maps two extensions (`m4a`, `mp4`) onto one
+ * `audio/mp4`, so a MIME set claiming Mistral's list would also claim the
+ * container it left out.
+ *
+ * It answers for the recording's own container only. A recording in any other
+ * container is decoded to 16 kHz mono WAV, which every engine reads whatever
+ * this says about a WAV file the user recorded (local whisper.cpp reads none
+ * of them as they stand, because a user's WAV is rarely 16 kHz mono).
+ */
+export interface ContainerSupport {
+	/**
+	 * Whether the engine reads this container with no decode.
+	 * @param container - The recording's container
+	 * @returns True when the original bytes can be sent as they are
+	 */
+	accepts(container: AudioContainer): boolean;
+	/**
+	 * The containers {@link accepts} admits, in the words a refusal uses to tell
+	 * the user what to record or convert to. Absent for an engine that reads
+	 * every container, or none, where converting would not avoid the decode.
+	 */
+	readonly acceptedNames?: string;
+}
+
+/**
+ * How a per-request duration cap is held against a recording the engine reads
+ * as it stands, whose length is not known without decoding it.
+ */
+export const DurationCapCheck = {
+	/**
+	 * The file is sent whole only when its byte size proves it is within the
+	 * cap (see `withinDurationCap`); any other is decoded, which measures it,
+	 * and split at the cap. For a cap that is about how much one request can
+	 * answer reliably, where sending too much fails the run.
+	 */
+	ProvenByBytes: 'proven-by-bytes',
+	/**
+	 * The file is sent whole whatever its length and the endpoint enforces
+	 * the cap. For a cap so long that the byte proof would decode nearly every
+	 * recording into a WAV several times its size - which is the whole-file
+	 * upload the engine is chosen for. A recording that is decoded anyway is
+	 * still split at the cap, since its length is then known exactly.
+	 */
+	LeftToEndpoint: 'left-to-endpoint',
+} as const;
+
+/** One way of holding the cap (derived from {@link DurationCapCheck}). */
+export type DurationCapCheck =
+	(typeof DurationCapCheck)[keyof typeof DurationCapCheck];
+
 /**
  * What a provider can accept in a single request. The service uses these
  * to decide whether to send the original file untouched or to decode and
@@ -147,13 +224,21 @@ export interface ProviderCapabilities {
 	 * time and the output transcript grow with audio duration, not bytes. Use
 	 * Number.POSITIVE_INFINITY when the provider has no practical per-request
 	 * duration limit (a whole-file API like Deepgram, or a local engine).
+	 * {@link durationCapCheck} says how the cap is held against a container
+	 * sent as it stands.
 	 */
 	maxRequestSeconds: number;
 	/**
-	 * Whether the provider accepts the original container bytes (any common
-	 * audio format). When false, the provider needs decoded 16 kHz mono WAV.
+	 * How {@link maxRequestSeconds} is held against a recording sent in its own
+	 * container. Irrelevant to an engine without a cap.
 	 */
-	acceptsOriginalContainer: boolean;
+	durationCapCheck: DurationCapCheck;
+	/**
+	 * Which original containers the provider reads as they stand. Any other
+	 * is decoded to 16 kHz mono WAV by the service before the provider sees it,
+	 * so a provider never decodes anything itself.
+	 */
+	originalContainers: ContainerSupport;
 	/**
 	 * Whether the provider can return speaker labels at all. Gates the
 	 * diarization UI and the diarize request: an engine that cannot diarize

@@ -1,11 +1,18 @@
 /**
  * Prepares an audio file for a transcription provider, entirely in memory.
  * The cheap path sends the original container bytes untouched (when the
- * provider accepts them and the file fits its limit); the fallback path
- * decodes to 16 kHz mono and splits into WAV chunks under the limit. No
+ * provider reads that container and the file fits its limits); the fallback
+ * path decodes to 16 kHz mono and splits into WAV chunks under the limits. No
  * temporary files are written, so preparation works on desktop and mobile
  * alike, and avoiding the decode keeps peak memory at the encoded file
  * size for providers that take the original format.
+ *
+ * This is the only place a recording is decoded for transcription. Every part
+ * it hands out is already in a container its engine reads, so a provider only
+ * uploads; and each part rebuilds its bytes from what preparation kept rather
+ * than from the caller's buffer, so the same part can be sent again - after a
+ * refusal the run waits out, or for the advanced second pass - without
+ * anything having been used up by the first send.
  * @module transcription/audioPrep
  */
 
@@ -16,6 +23,7 @@ import {
 	WAV_MIME,
 } from '../constants';
 import { audioMimeForExtension } from '../audio/formatRegistry';
+import { isDecodableSize, tooLargeMessage } from '../platform/capabilities';
 import {
 	decodeToMono16k,
 	extractChunkWav,
@@ -24,16 +32,23 @@ import {
 	splitChunkPlan,
 	type ChunkPlan,
 } from './audioChunks';
-import type { ProviderCapabilities } from './providers/TranscriptionProvider';
+import {
+	DurationCapCheck,
+	type AudioContainer,
+	type ContainerSupport,
+	type ProviderCapabilities,
+} from './providers/TranscriptionProvider';
 
 /**
- * Resolves an upload MIME type for a file extension, defaulting to
- * `audio/<ext>` for anything not explicitly mapped.
+ * Names the container of a file by its extension, in both of the units an
+ * engine states its list in. The MIME type defaults to `audio/<ext>` for an
+ * extension the format registry does not map.
  * @param extension - File extension without the dot (case-insensitive)
- * @returns A container MIME type suitable for an upload
+ * @returns The container, with its MIME type and its lowercase extension
  */
-export function audioMimeFromExtension(extension: string): string {
-	return audioMimeForExtension(extension.toLowerCase());
+export function audioContainerFromExtension(extension: string): AudioContainer {
+	const lower = extension.toLowerCase();
+	return { contentType: audioMimeForExtension(lower), extension: lower };
 }
 
 /** How the audio should be prepared for a specific provider. */
@@ -42,13 +57,18 @@ export interface AudioPrepOptions {
 	maxRequestBytes: number;
 	/**
 	 * Longest recording, in seconds, the provider transcribes in one request.
-	 * A recording longer than this is decoded and split even when its bytes fit
-	 * {@link maxRequestBytes}. Number.POSITIVE_INFINITY disables the duration
-	 * gate (the whole-file decision then rests on bytes alone).
+	 * A decoded recording is split at it; whether a file sent in its own
+	 * container has to prove itself within it first is {@link durationCapCheck}.
+	 * Number.POSITIVE_INFINITY disables the duration gate (the whole-file
+	 * decision then rests on bytes alone).
 	 */
 	maxRequestSeconds: number;
-	/** Whether the provider accepts the original container bytes. */
-	acceptsOriginalContainer: boolean;
+	/** How {@link maxRequestSeconds} is held against an undecoded file. */
+	durationCapCheck: DurationCapCheck;
+	/** Which original containers the provider reads as they stand. */
+	originalContainers: ContainerSupport;
+	/** The engine's name, which a refusal names the operation by. */
+	engineLabel: string;
 	/**
 	 * Longest part, in seconds, produced when decoding is required. Ignored on
 	 * the whole-file path. Use Number.POSITIVE_INFINITY to produce a single
@@ -145,50 +165,120 @@ export function withinDurationCap(
 }
 
 /**
+ * Whether a file goes to the provider as it stands, in one request: its
+ * container is one the provider reads, its bytes fit one request, and its
+ * length is either proven within the duration cap by its size or left to the
+ * endpoint to enforce. Pure, so the decision is unit tested without audio.
+ * @param byteLength - Encoded file size in bytes
+ * @param container - The file's container
+ * @param options - Provider-derived preparation options
+ * @returns True when the original bytes are sent whole, with no decode
+ */
+export function sendsWholeFile(
+	byteLength: number,
+	container: AudioContainer,
+	options: Pick<
+		AudioPrepOptions,
+		| 'durationCapCheck'
+		| 'maxRequestBytes'
+		| 'maxRequestSeconds'
+		| 'originalContainers'
+	>,
+): boolean {
+	return (
+		options.originalContainers.accepts(container) &&
+		byteLength <= options.maxRequestBytes &&
+		(options.durationCapCheck === DurationCapCheck.LeftToEndpoint ||
+			withinDurationCap(byteLength, options.maxRequestSeconds))
+	);
+}
+
+/**
+ * Refuses, before any allocation, a file this platform cannot decode.
+ *
+ * Asked here although the decoder asks it too, because only here is it known
+ * why the file has to be decoded at all. When the engine does not read the
+ * file's container, converting to one it does read avoids the decode entirely,
+ * and that is better advice than splitting the file. The decode itself expands
+ * the file to full PCM, and on a phone exceeding the ceiling is not a catchable
+ * error but the OS killing the WebView, so the question comes first.
+ * @param byteLength - Encoded file size in bytes
+ * @param container - The file's container
+ * @param options - Provider-derived preparation options
+ * @throws When the file is too large to decode on this platform
+ */
+function assertDecodable(
+	byteLength: number,
+	container: AudioContainer,
+	options: Pick<AudioPrepOptions, 'engineLabel' | 'originalContainers'>,
+): void {
+	if (isDecodableSize(byteLength)) {
+		return;
+	}
+	const { acceptedNames } = options.originalContainers;
+	if (acceptedNames && !options.originalContainers.accepts(container)) {
+		throw new Error(
+			tooLargeMessage(`transcribe with ${options.engineLabel}`, {
+				desktopAdvice:
+					`Record or convert it to ${acceptedNames}, ` +
+					'which this engine uploads without decoding.',
+			}),
+		);
+	}
+	throw new Error(tooLargeMessage('transcribe'));
+}
+
+/**
  * Prepares an audio file into provider-ready payloads.
  *
- * Whole-file path: when the provider accepts the original container, the
- * encoded file is within its byte limit, and the byte size proves the
- * recording is within the provider's per-request duration cap, the original
- * bytes are sent as one payload - no decode, so peak memory is just the file
- * size and any whole-file diarization stays consistent.
+ * Whole-file path: when {@link sendsWholeFile} holds - the provider reads the
+ * original container, the encoded file is within its byte limit, and its length
+ * is within the duration cap or left to the endpoint - the original bytes are
+ * sent as one payload. No decode, so peak memory is just the file size and any
+ * whole-file diarization stays consistent.
  *
- * Decode path: otherwise (an unsupported container, an over-limit file, or a
- * recording too long for one request) the file is decoded to 16 kHz mono and
- * split into WAV chunks bounded by `chunkSeconds` (a single chunk when it still
- * fits, e.g. a duration cap the byte proxy could not rule out cheaply). A
- * diarized split is flagged so the caller can warn that speaker numbering may
- * reset between parts.
+ * Decode path: otherwise (a container the provider does not read, an
+ * over-limit file, or a recording too long for one request) the file is decoded
+ * to 16 kHz mono and split into WAV chunks bounded by `chunkSeconds` (a single
+ * chunk when it still fits, e.g. a duration cap the byte proxy could not rule
+ * out cheaply). A diarized split is flagged so the caller can warn that speaker
+ * numbering may reset between parts.
  *
- * The decode path always emits WAV, even for a single part that fits whole.
- * Re-sending the original bytes instead would save the WAV size on an accepted
- * compressed container, but it would force a second decode in a provider that
- * decodes containers it does not accept (Gemini re-decodes mp4/webm) - and
- * those are this plugin's own recording formats, the common case. Emitting WAV
- * keeps the recorded-file path to a single decode; the only cost is a larger
- * upload for the uncommon case of an imported accepted container (mp3/aac/etc.)
- * big enough to miss the cheap whole-file proof yet short enough to fit.
- * @param raw - Encoded file bytes
+ * The decode path always emits WAV, even for a single part that fits whole and
+ * is in a container the provider reads. Re-sending the original bytes would
+ * save the WAV size, but the decode has already taken them (see `raw`); the
+ * only cost is a larger upload for the uncommon case of an imported accepted
+ * container (mp3/aac/etc.) big enough to miss the cheap whole-file proof yet
+ * short enough to fit.
+ *
+ * The bytes are the run's to give. On the whole-file path they are only read,
+ * and every send of the part reads the same buffer. On the decode path they are
+ * handed to the browser's decoder, which transfers its input and leaves the
+ * caller holding an empty, detached buffer - so a caller passes bytes it will
+ * not read again, as the transcribe dialog does with the ones it read for its
+ * estimate. Decoding a copy instead would keep them readable at the price of a
+ * second copy of the file for the length of the decode, which on a phone is
+ * close to the ceiling the decode is bounded by. Nothing downstream needs the
+ * original once it is decoded: every part rebuilds its WAV from the kept
+ * samples each time it is materialized.
+ * @param raw - Encoded file bytes; taken by the decode when one is needed
  * @param fileName - Source file name (used as the upload filename)
- * @param fileMime - MIME type for the original container
+ * @param container - The original container, by MIME type and extension
  * @param options - Provider-derived preparation options
  * @returns Prepared payloads ready to transcribe
+ * @throws When the file must be decoded and is too large to decode here
  */
 export async function prepareAudio(
 	raw: ArrayBuffer,
 	fileName: string,
-	fileMime: string,
+	container: AudioContainer,
 	options: AudioPrepOptions,
 ): Promise<PreparedAudio> {
-	if (
-		options.acceptsOriginalContainer &&
-		raw.byteLength <= options.maxRequestBytes &&
-		withinDurationCap(raw.byteLength, options.maxRequestSeconds)
-	) {
+	if (sendsWholeFile(raw.byteLength, container, options)) {
 		return {
 			payloads: [
 				{
-					contentType: fileMime,
+					contentType: container.contentType,
 					filename: fileName,
 					offsetSeconds: 0,
 					createData: () => raw,
@@ -197,6 +287,8 @@ export async function prepareAudio(
 			diarizationSplitWarning: false,
 		};
 	}
+
+	assertDecodable(raw.byteLength, container, options);
 
 	// The full decoded PCM stays alive for the whole run (~230 MB for an
 	// hour at 16 kHz mono, audit finding 6.8): each chunk's WAV is
@@ -245,9 +337,10 @@ export async function prepareAudio(
  * user's preferred chunk size.
  *
  * Two different limits arrive here and only one of them is about bytes. A
- * per-request duration cap (Gemini) is already the answer the planner needs,
- * so it is passed through as it stands: the whole-file threshold and the split
- * size then agree, and a recording of exactly the cap goes in one request.
+ * per-request duration cap (Gemini, Voxtral) is already the answer the planner
+ * needs, so it is passed through as it stands: the whole-file threshold and
+ * the split size then agree, and a recording of exactly the cap goes in one
+ * request.
  * Converting it into bytes and back used to cost it the WAV header allowance,
  * which is a whole second at 16 kHz mono, so fifteen minutes came out as a
  * part of 899 seconds and a part of one. The user's byte-oriented chunk size
@@ -258,6 +351,7 @@ export async function prepareAudio(
  * honors the user's chunk size within the provider limit; a local provider
  * with no upload limit produces a single part.
  * @param capabilities - The provider's declared capabilities
+ * @param engineLabel - The engine's name, for a refusal to name it by
  * @param requiresNetwork - Whether the provider uploads over the network
  * @param userChunkBytes - The user-configured chunk size in bytes
  * @param diarize - Whether speaker diarization is requested for this run
@@ -265,6 +359,7 @@ export async function prepareAudio(
  */
 export function audioPrepOptions(
 	capabilities: ProviderCapabilities,
+	engineLabel: string,
 	requiresNetwork: boolean,
 	userChunkBytes: number,
 	diarize: boolean,
@@ -281,7 +376,9 @@ export function audioPrepOptions(
 	return {
 		maxRequestBytes: capabilities.maxRequestBytes,
 		maxRequestSeconds: capabilities.maxRequestSeconds,
-		acceptsOriginalContainer: capabilities.acceptsOriginalContainer,
+		durationCapCheck: capabilities.durationCapCheck,
+		originalContainers: capabilities.originalContainers,
+		engineLabel,
 		chunkSeconds,
 		diarize,
 	};
