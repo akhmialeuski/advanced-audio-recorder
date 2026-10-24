@@ -9,9 +9,10 @@
 
 import {
 	PCM_SAMPLE_BYTES,
+	PcmSampleFormat,
 	writePcmSample,
-	type PcmSampleFormat,
 } from 'src/audio/pcm';
+import { assembleWavFromPcmSegments } from 'src/audio/WavEncoder';
 
 /**
  * Writes samples into raw interleaved PCM bytes.
@@ -30,6 +31,22 @@ export function encodePcmSamples(
 		writePcmSample(view, index * width, format, sample);
 	});
 	return bytes;
+}
+
+/**
+ * A stereo 16-bit WAV with raw sample data, which the split copies byte by
+ * byte and the conversion streams through mediabunny.
+ * @param sampleRate - Frames per second
+ * @param seconds - Length of the recording
+ * @returns The file's bytes
+ */
+export function stereoWav(sampleRate: number, seconds: number): ArrayBuffer {
+	const interleaved: number[] = [];
+	for (let frame = 0; frame < sampleRate * seconds; frame++) {
+		interleaved.push((frame % 2000) * 8, 4000);
+	}
+	const pcm = encodePcmSamples(PcmSampleFormat.Int16, interleaved);
+	return assembleWavFromPcmSegments([pcm], 2, sampleRate);
 }
 
 /**

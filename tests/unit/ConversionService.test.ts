@@ -228,6 +228,48 @@ describe('ConversionService', () => {
 		);
 	});
 
+	// TFile.parent is null for a file Obsidian holds no folder for, and the
+	// converted file then lands at the vault root rather than under "/".
+	it.each([
+		{
+			targetFormat: 'webm',
+			channelMode: undefined,
+			path: 'recording.webm',
+		},
+		{
+			targetFormat: 'wav',
+			channelMode: 'mono-mix',
+			path: 'recording-mono.wav',
+		},
+	] as const)(
+		'writes $path at the vault root for a source with no parent folder',
+		async ({ targetFormat, channelMode, path }) => {
+			const sourceFile = Object.assign(createSourceFile(), {
+				path: 'recording.wav',
+				parent: null,
+			});
+
+			const outcome = await service.convert(
+				createRequest({
+					sourceFile,
+					targetFormat,
+					...(channelMode ? { channelMode } : {}),
+				}),
+				jest.fn(),
+			);
+
+			expect(outcome).toEqual({
+				status: 'completed',
+				newFileName: path,
+				newPath: path,
+			});
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				path,
+				expect.any(ArrayBuffer),
+			);
+		},
+	);
+
 	it('treats an uppercase source extension as the same format', async () => {
 		// A .WAV source converting to wav differs from the source path
 		// only in case - still the same format, so it must get the
