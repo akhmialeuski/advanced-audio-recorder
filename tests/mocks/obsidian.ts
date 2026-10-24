@@ -213,6 +213,13 @@ export class Plugin {
 		this.registeredViews.set(type, factory);
 	}
 
+	/** CodeMirror extensions the plugin added to every Markdown editor. */
+	readonly editorExtensions: unknown[] = [];
+
+	registerEditorExtension(extension: unknown): void {
+		this.editorExtensions.push(extension);
+	}
+
 	addStatusBarItem(): HTMLElement {
 		const el = addObsidianDomExtensions(document.createElement('div'));
 		this.statusBarItems.push(el);

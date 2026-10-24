@@ -26,12 +26,12 @@ import { EngineLabel } from 'src/providers/providers';
 import { noticeMessages } from '../mocks/obsidian';
 import { InputLevelMonitor } from 'src/recording/InputLevelMonitor';
 import type { MockInputLevelMonitor } from '../mocks/modules/inputLevelMonitor';
+import { createFile, createMockApp, renameFile } from '../helpers/createApp';
 import {
-	createFile,
-	createMarkdownView,
-	createMockApp,
-	type SpiedMarkdownView,
-} from '../helpers/createApp';
+	mountLiveMarkdownView,
+	type LiveMarkdownView,
+} from '../helpers/liveEditor';
+import { dictationAnchorField } from 'src/quicknotes/dictationAnchor';
 import { fakeProvider, type FakeProvider } from '../helpers/providerFixtures';
 import { completed } from '../helpers/llmDoubles';
 import { partial, silenceConsole } from '../helpers/doubles';
@@ -54,6 +54,37 @@ const HEARD = 'buy milk and eggs';
 /** What the quick note profile turns it into. */
 const REWRITTEN = '- Buy milk\n- Buy eggs';
 
+/** The note a dictation is started in, before anything is inserted. */
+const NOTE = 'Shopping:\n\nDone.';
+
+/** Where its cursor stands: the empty line under the heading. */
+const CURSOR = NOTE.indexOf('\n\n') + 1;
+
+/**
+ * The note with text inserted where the cursor stood.
+ * @param text - The inserted text
+ * @returns The note's source
+ */
+function noteWith(text: string): string {
+	return NOTE.slice(0, CURSOR) + text + NOTE.slice(CURSOR);
+}
+
+/**
+ * Mounts a note in a real editor carrying the plugin's dictation anchor.
+ * @param path - The note's vault path
+ * @param doc - Its source
+ * @param cursor - Where its cursor stands
+ * @returns The mounted note
+ */
+function openNote(path: string, doc = NOTE, cursor = CURSOR): LiveMarkdownView {
+	return mountLiveMarkdownView({
+		doc,
+		cursor,
+		file: createFile(path),
+		extensions: [dictationAnchorField],
+	});
+}
+
 /** The instruction the selected profile carries. */
 const LIST_INSTRUCTION = 'Turn the dictation into a bulleted list.';
 
@@ -69,7 +100,7 @@ interface Harness {
 	stages: string[];
 	microphone: InstalledMicrophone;
 	/** The note the dictation is started in. */
-	note: SpiedMarkdownView;
+	note: LiveMarkdownView;
 	app: App;
 }
 
@@ -80,7 +111,7 @@ interface HarnessOptions {
 	/** Whether a recording session holds the microphone. */
 	recordingActive?: boolean;
 	/** Markdown views the workspace shows, the first one active. */
-	views?: (note: SpiedMarkdownView) => SpiedMarkdownView[];
+	views?: (note: LiveMarkdownView) => LiveMarkdownView[];
 }
 
 /**
@@ -96,11 +127,10 @@ function harness(options: HarnessOptions = {}): Harness {
 		whisperApiKey: 'sk-test',
 		...options.settings,
 	});
-	const note = createMarkdownView({
-		file: createFile('Notes/today.md'),
-		cursor: { line: 3, ch: 5 },
-	});
-	const views = options.views?.(note) ?? [note];
+	const note = openNote('Notes/today.md');
+	const views = (options.views?.(note) ?? [note]).map(
+		(view) => view.markdownView,
+	);
 	const app = createMockApp({
 		workspace: {
 			getActiveViewOfType: jest.fn(() => views[0] ?? null),
@@ -234,7 +264,7 @@ describe('quick notes', () => {
 
 		await dictate(h.controller);
 
-		expect(h.note.editor.replaceSelection).toHaveBeenCalledWith(HEARD);
+		expect(h.note.text()).toBe(noteWith(HEARD));
 		// No profile is selected, so the dictation is transcription alone.
 		expect(h.llm.complete).not.toHaveBeenCalled();
 		expect(h.statuses.at(0)).toBe(RecordingStatus.Recording);
@@ -326,7 +356,7 @@ describe('quick notes', () => {
 		await dictate(h.controller);
 
 		expect(h.llm.complete).not.toHaveBeenCalled();
-		expect(h.note.editor.replaceSelection).toHaveBeenCalledWith(HEARD);
+		expect(h.note.text()).toBe(noteWith(HEARD));
 	});
 
 	it('rewrites the dictation with the selected profile before inserting it', async () => {
@@ -339,7 +369,7 @@ describe('quick notes', () => {
 			{ system: string; user: string },
 		];
 		expect(prompt).toEqual({ system: LIST_INSTRUCTION, user: HEARD });
-		expect(h.note.editor.replaceSelection).toHaveBeenCalledWith(REWRITTEN);
+		expect(h.note.text()).toBe(noteWith(REWRITTEN));
 	});
 
 	it('inserts the text as dictated when the rewrite fails, and says so', async () => {
@@ -350,7 +380,7 @@ describe('quick notes', () => {
 
 		await dictate(h.controller);
 
-		expect(h.note.editor.replaceSelection).toHaveBeenCalledWith(HEARD);
+		expect(h.note.text()).toBe(noteWith(HEARD));
 		expect(noticeMessages()).toContain(
 			'Quick note rewrite failed; inserting the text as dictated.',
 		);
@@ -390,17 +420,15 @@ describe('quick notes', () => {
 		expect(h.settings.transcriptionProvider).toBe(
 			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		);
-		expect(h.note.editor.replaceSelection).toHaveBeenCalledWith(HEARD);
+		expect(h.note.text()).toBe(noteWith(HEARD));
 		expect(callsPerEngine(h.costs)).toEqual([
 			{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, calls: 1 },
 		]);
 	});
 
-	it('puts the text into the note it started in, when another note became active meanwhile', async () => {
-		const other = createMarkdownView({
-			file: createFile('Notes/other.md'),
-		});
-		let active: SpiedMarkdownView | null = null;
+	it('puts the text into the note it started in, and names it, when another note became active meanwhile', async () => {
+		const other = openNote('Notes/other.md', 'Other note.', 0);
+		let active: LiveMarkdownView | null = null;
 		const h = harness({
 			views: (note) => {
 				active = note;
@@ -412,12 +440,130 @@ describe('quick notes', () => {
 		// is still open in a background pane.
 		active = other;
 		jest.mocked(h.app.workspace.getActiveViewOfType).mockImplementation(
-			() => active,
+			() => active?.markdownView ?? null,
 		);
 		await h.controller.toggle();
 
-		expect(h.note.editor.replaceSelection).toHaveBeenCalledWith(HEARD);
-		expect(other.editor.replaceSelection).not.toHaveBeenCalled();
+		expect(h.note.text()).toBe(noteWith(HEARD));
+		expect(other.text()).toBe('Other note.');
+		expect(noticeMessages()).toContain(
+			'Quick note inserted into Notes/today.md.',
+		);
+	});
+
+	it('inserts where the cursor stood when the dictation began, after edits above it', async () => {
+		const h = harness();
+		await h.controller.toggle();
+		// While the dictation records, the user adds a line at the top and
+		// goes on typing at the end of the note.
+		h.note.view.dispatch({ changes: { from: 0, insert: 'Monday\n' } });
+		h.note.view.dispatch({
+			changes: { from: h.note.text().length, insert: ' Later.' },
+			selection: { anchor: h.note.text().length + ' Later.'.length },
+		});
+		await h.controller.toggle();
+
+		expect(h.note.text()).toBe(`Monday\n${noteWith(HEARD)} Later.`);
+		// The cursor the user moved stays where they put it.
+		expect(h.note.view.state.selection.main.head).toBe(
+			h.note.text().length,
+		);
+		expect(noticeMessages()).not.toContain(
+			'Quick note inserted into Notes/today.md.',
+		);
+	});
+
+	it('moves a cursor that stayed where the dictation began past the text', async () => {
+		const h = harness();
+
+		await dictate(h.controller);
+
+		expect(h.note.view.state.selection.main.head).toBe(
+			CURSOR + HEARD.length,
+		);
+	});
+
+	it('keeps text typed at the cursor during the dictation after the dictated text', async () => {
+		const h = harness();
+		await h.controller.toggle();
+		h.note.view.dispatch({
+			changes: { from: CURSOR, insert: 'typed' },
+			selection: { anchor: CURSOR + 'typed'.length },
+		});
+		await h.controller.toggle();
+
+		expect(h.note.text()).toBe(noteWith(`${HEARD}typed`));
+	});
+
+	it('writes the text into the file at the start position when the note was closed', async () => {
+		const h = harness();
+		// The vault hands out the same TFile the note's view showed.
+		const file = h.note.markdownView.file;
+		let saved = NOTE;
+		jest.mocked(h.app.vault.getFileByPath).mockReturnValue(file);
+		jest.mocked(h.app.vault.process).mockImplementation(
+			async (_file, edit: (data: string) => string) => {
+				saved = edit(saved);
+				return saved;
+			},
+		);
+		await h.controller.toggle();
+		// The note's tab is closed while the dictation records.
+		h.note.view.destroy();
+		jest.mocked(h.app.workspace.getLeavesOfType).mockReturnValue([]);
+		jest.mocked(h.app.workspace.getActiveViewOfType).mockReturnValue(null);
+		await h.controller.toggle();
+
+		expect(jest.mocked(h.app.vault.process).mock.calls).toEqual([
+			[file, expect.any(Function)],
+		]);
+		expect(saved).toBe(noteWith(HEARD));
+		expect(noticeMessages()).toContain(
+			'Quick note inserted into Notes/today.md.',
+		);
+	});
+
+	// A new note is the common case: the user starts dictating into
+	// Untitled.md and types its title into the inline title meanwhile, which
+	// renames the same TFile.
+	it('inserts into the note it started in when that note was renamed meanwhile', async () => {
+		const h = harness();
+		await h.controller.toggle();
+		const file = h.note.markdownView.file;
+		if (!file) {
+			throw new Error('The harness note shows no file.');
+		}
+		renameFile(file, 'Notes/Shopping.md');
+		await h.controller.toggle();
+
+		expect(h.note.text()).toBe(noteWith(HEARD));
+		expect(noticeMessages()).not.toContainEqual(
+			expect.stringContaining('clipboard'),
+		);
+	});
+
+	it('names the deleted note when its text goes to the clipboard', async () => {
+		const writeText = jest.fn().mockResolvedValue(undefined);
+		Object.assign(navigator, { clipboard: { writeText } });
+		const other = openNote('Notes/other.md', 'Other note.', 0);
+		const h = harness();
+		await h.controller.toggle();
+		// The note is deleted while the dictation records, and another one
+		// is active when the text arrives.
+		h.note.view.destroy();
+		jest.mocked(h.app.workspace.getLeavesOfType).mockReturnValue([
+			{ view: other.markdownView },
+		] as never);
+		jest.mocked(h.app.workspace.getActiveViewOfType).mockReturnValue(
+			other.markdownView,
+		);
+		await h.controller.toggle();
+
+		expect(writeText).toHaveBeenCalledWith(HEARD);
+		expect(other.text()).toBe('Other note.');
+		expect(noticeMessages()).toContain(
+			'Quick note: Notes/today.md no longer exists, so its text was copied to the clipboard.',
+		);
 	});
 
 	it('copies the text to the clipboard when no note is open to take it', async () => {
@@ -499,7 +645,7 @@ describe('quick notes', () => {
 			'The last quick note is still being transcribed.',
 		);
 		expect(h.microphone.getUserMedia).toHaveBeenCalledTimes(1);
-		expect(h.note.editor.replaceSelection).toHaveBeenCalledTimes(1);
+		expect(h.note.text()).toBe(noteWith(HEARD));
 	});
 
 	it('inserts nothing once cancelled mid-transcription, and returns to idle', async () => {
@@ -524,7 +670,7 @@ describe('quick notes', () => {
 		h.controller.cancel();
 		await stopping;
 
-		expect(h.note.editor.replaceSelection).not.toHaveBeenCalled();
+		expect(h.note.text()).toBe(NOTE);
 		expect(h.controller.getStatus()).toBe(RecordingStatus.Idle);
 		expect(noticeMessages()).not.toContainEqual(
 			expect.stringContaining('Quick note failed'),
@@ -599,7 +745,7 @@ describe('quick notes that go wrong', () => {
 		expect(noticeMessages()).toContainEqual(
 			expect.stringMatching(/^Quick note failed: .*401 bad key/),
 		);
-		expect(h.note.editor.replaceSelection).not.toHaveBeenCalled();
+		expect(h.note.text()).toBe(NOTE);
 		expect(h.controller.getStatus()).toBe(RecordingStatus.Idle);
 	});
 
@@ -612,7 +758,7 @@ describe('quick notes that go wrong', () => {
 		expect(noticeMessages()).toContain(
 			'Nothing was recognized in the quick note.',
 		);
-		expect(h.note.editor.replaceSelection).not.toHaveBeenCalled();
+		expect(h.note.text()).toBe(NOTE);
 	});
 
 	it('reports no state change when cancelled with nothing under way', () => {
@@ -652,7 +798,7 @@ describe('quick notes that go wrong', () => {
 
 		await dictate(h.controller);
 
-		expect(h.note.editor.replaceSelection).not.toHaveBeenCalled();
+		expect(h.note.text()).toBe(NOTE);
 		expect(h.controller.getStatus()).toBe(RecordingStatus.Idle);
 	});
 
@@ -672,7 +818,7 @@ describe('quick notes that go wrong', () => {
 		await Promise.all(presses);
 
 		expect(h.provider.transcribe).toHaveBeenCalledTimes(1);
-		expect(h.note.editor.replaceSelection).toHaveBeenCalledTimes(1);
+		expect(h.note.text()).toBe(noteWith(HEARD));
 		expect(noticeMessages()).toContain(
 			'The last quick note is still being transcribed.',
 		);

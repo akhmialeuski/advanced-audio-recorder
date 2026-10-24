@@ -128,33 +128,20 @@ export function insertFileLinks(
 }
 
 /**
- * Inserts text at the cursor of the note a dictation was started in.
- *
- * The note is the one active when the dictation began, because that is the
- * note the user was writing in when they asked for it, and the position is
- * that editor's cursor as it stands now: a user who went on typing while the
- * dictation was transcribed wants it where they are, not where they were.
- * When that note is no longer open, the active note takes it instead.
+ * Inserts text at the cursor of the active note, for a dictation started where
+ * no note was active to anchor it.
  * @param app - Obsidian App instance
  * @param text - The text to insert, verbatim
- * @param insertionContext - The note captured when the dictation began
  * @returns The path of the note the text went into, or null when no note was
  *   open to take it
  */
-export function insertTextAtCursor(
-	app: App,
-	text: string,
-	insertionContext: InsertionContext | null,
-): string | null {
-	const view =
-		(insertionContext
-			? findNoteView(app, insertionContext.filePath)
-			: null) ?? app.workspace.getActiveViewOfType(MarkdownView);
+export function insertTextAtCursor(app: App, text: string): string | null {
+	const view = app.workspace.getActiveViewOfType(MarkdownView);
 	if (!view) {
 		return null;
 	}
 	view.editor.replaceSelection(text);
-	return view.file?.path ?? insertionContext?.filePath ?? null;
+	return view.file?.path ?? null;
 }
 
 /**

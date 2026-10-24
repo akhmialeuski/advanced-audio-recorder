@@ -198,6 +198,17 @@ export function createFile(
 }
 
 /**
+ * Renames a file the way Obsidian does, by rewriting its path fields on the
+ * same TFile, so code holding the file sees the new path.
+ * @param file - The file to rename
+ * @param path - Its new vault path
+ * @returns The same file
+ */
+export function renameFile(file: TFile, path: string): TFile {
+	return Object.assign(file, pathFields(path));
+}
+
+/**
  * The fields Obsidian derives from a file's path, which a rename rewrites on
  * the same TFile object.
  * @param path - Vault path
@@ -404,7 +415,7 @@ export function fakeVaultFiles(
 			}
 			drop(file.path);
 			files.set(newPath, content);
-			handles.set(newPath, Object.assign(file, pathFields(newPath)));
+			handles.set(newPath, renameFile(file, newPath));
 			return Promise.resolve();
 		}),
 		delete: jest.fn((file: TFile) => {
