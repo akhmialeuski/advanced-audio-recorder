@@ -2617,6 +2617,11 @@ export function normalizePath(path: string): string {
 	return normalized === '' ? '/' : normalized;
 }
 
+/** Mock arrayBufferToBase64, the standard base64 of the bytes. */
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+	return Buffer.from(buffer).toString('base64');
+}
+
 /**
  * Mock setIcon: records the icon on the element as `data-icon`.
  *
