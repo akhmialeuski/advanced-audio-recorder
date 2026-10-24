@@ -213,6 +213,13 @@ export class Plugin {
 		this.registeredViews.set(type, factory);
 	}
 
+	/** CodeMirror extensions the plugin added to every Markdown editor. */
+	readonly editorExtensions: unknown[] = [];
+
+	registerEditorExtension(extension: unknown): void {
+		this.editorExtensions.push(extension);
+	}
+
 	addStatusBarItem(): HTMLElement {
 		const el = addObsidianDomExtensions(document.createElement('div'));
 		this.statusBarItems.push(el);
@@ -2615,6 +2622,11 @@ export function normalizePath(path: string): string {
 		.replace(/\/+/g, '/')
 		.replace(/^\/|\/$/g, '');
 	return normalized === '' ? '/' : normalized;
+}
+
+/** Mock arrayBufferToBase64, the standard base64 of the bytes. */
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+	return Buffer.from(buffer).toString('base64');
 }
 
 /**

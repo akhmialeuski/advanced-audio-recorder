@@ -1,6 +1,6 @@
 # Get a Google Gemini API key
 
-Google Gemini is a multimodal model that transcribes audio directly. In Advanced Audio Recorder it is one of the five [transcription](../transcription.md) engines, and the **same key** also powers the [Gemini LLM post-processing](../llm-post-processing.md) provider - set it once and both features work. Gemini uploads the whole recording in one piece (up to 2 GB via the File API), supports speaker [diarization](../transcription.md#speakers-and-diarization), and Google's [AI Studio](https://aistudio.google.com/apikey) hands out a key with a free tier in a couple of clicks. This guide walks you from a blank settings tab to a working transcript.
+Google Gemini is a multimodal model that transcribes audio directly. In Advanced Audio Recorder it is one of the five [transcription](../transcription.md) engines, and the **same key** also powers the [Gemini LLM post-processing](../llm-post-processing.md) provider - set it once and both features work. Gemini takes the whole recording in one piece (inline in the request up to 14 MB, uploaded through the File API up to 2 GB), supports speaker [diarization](../transcription.md#speakers-and-diarization), and Google's [AI Studio](https://aistudio.google.com/apikey) hands out a key with a free tier in a couple of clicks. This guide walks you from a blank settings tab to a working transcript.
 
 - [Why Gemini](#why-gemini)
 - [Step 1: Create the API key in Google AI Studio](#step-1-create-the-api-key-in-google-ai-studio)
@@ -15,7 +15,7 @@ Google Gemini is a multimodal model that transcribes audio directly. In Advanced
 
 Gemini reads the audio itself rather than running a dedicated speech model, which makes it a strong all-rounder for the plugin:
 
-- **Whole-file uploads.** Recordings up to **2 GB** are uploaded in one piece through Google's File API, so speaker numbering stays consistent across the file (subject to the splitting rule below).
+- **Whole-file requests.** Audio up to **14 MB**, which covers a quick note and about seven minutes of decoded WAV, travels inline in the transcription request itself, with no upload. Larger recordings up to **2 GB** are uploaded in one piece through Google's File API. Either way speaker numbering stays consistent across the file (subject to the splitting rule below).
 - **Speaker diarization.** Gemini can label distinct speakers (`Speaker 1`, `Speaker 2`, and real names when clearly stated) - useful for meetings and interviews. Diarization is off by default and is only available on Gemini, Deepgram, and Mistral Voxtral.
 - **Free tier.** Google AI Studio includes a free quota to get started; heavier use moves to paid billing.
 - **One key, two features.** The same Gemini key transcribes audio **and** drives Gemini-based [LLM post-processing](../llm-post-processing.md) (clean up, summarize, translate, or a custom instruction).
@@ -26,7 +26,7 @@ Gemini reads the audio itself rather than running a dedicated speech model, whic
 | Engine name in settings | **Google Gemini**                                                  |
 | Default base URL        | `https://generativelanguage.googleapis.com`                        |
 | Default model           | `gemini-3.8-flash`                                                 |
-| Max file size           | 2 GB (uploaded whole via the File API)                             |
+| Max file size           | 2 GB (inline up to 14 MB, larger uploaded whole via the File API)  |
 | Diarization             | Supported (off by default)                                         |
 | Word-level timestamps   | Not available - Gemini returns segment-level timing only           |
 | Cost                    | Free tier in AI Studio, then paid                                  |
@@ -83,7 +83,7 @@ For the shared output settings (destination, file format, in-note formatting, ti
 
 A few behaviors are specific to Gemini and worth knowing before you transcribe a long meeting:
 
-- **Container conversion.** Gemini's File API accepts `wav`, `mp3`, `aac`, `ogg`, `flac`, and `aiff` directly. The plugin's default recording containers **WebM** and **M4A/MP4** are **not** accepted, so the plugin first decodes them to **16 kHz mono WAV** before uploading. This is automatic; you do not configure it.
+- **Container conversion.** Gemini accepts `wav`, `mp3`, `aac`, `ogg`, `flac`, and `aiff` directly, inline and through the File API alike. The plugin's default recording containers **WebM** and **M4A/MP4** are **not** accepted, so the plugin first decodes them to **16 kHz mono WAV** before sending them. This is automatic, and there is nothing to configure.
 - **Long recordings are split and stitched.** A recording longer than **15 minutes** is split into parts, each transcribed in its own request, then stitched back onto one timeline. This keeps a long job from outrunning the request timeout or hitting the model's output-token limit.
 - **Diarization resets across splits.** Because each split is a separate request, **speaker numbering restarts** in each part (the `Speaker 1` in part two is not necessarily the `Speaker 1` in part one). When this happens on a diarized job, the plugin surfaces a **warning** so you know to reconcile the labels. For perfectly consistent speaker numbering on a long file, consider [Deepgram](deepgram-api-key.md), which sends up to 2 GB whole.
 - **Request timeout.** Each request honors the **Request timeout** setting (default 10 minutes, range 1-60). A whole, healthy upload scales its timeout with size; a genuinely hung request is aborted and reported.

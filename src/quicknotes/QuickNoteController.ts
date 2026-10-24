@@ -1,8 +1,8 @@
 /**
  * Quick notes: dictate into the note at the cursor.
  *
- * One press opens the microphone, the next one stops it, and the text lands at
- * the cursor of the note the dictation was started in, rewritten first by the
+ * One press opens the microphone, the next one stops it, and the text lands
+ * where the cursor stood when the dictation began, rewritten first by the
  * quick note profile when one is selected. Everything between is the plugin's
  * existing machinery: the capture is the in-memory recorder the settings test
  * uses, the transcription and the rewrite are {@link TranscriptionService}'s
@@ -15,7 +15,7 @@
  * @module quicknotes/QuickNoteController
  */
 
-import { Notice } from 'obsidian';
+import { MarkdownView, Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { RecordingStatus } from '../types';
@@ -26,11 +26,8 @@ import {
 	type CaptureLiveStats,
 	type MemoryRecorder,
 } from '../recording/MemoryRecorder';
-import {
-	captureInsertionContext,
-	insertTextAtCursor,
-} from '../recording/NoteInserter';
-import { DebugLogger } from '../utils/DebugLogger';
+import { insertTextAtCursor } from '../recording/NoteInserter';
+import { DictationAnchor } from './dictationAnchor';
 import {
 	CancellationSource,
 	type CancellationToken,
@@ -42,7 +39,7 @@ import type {
 } from '../transcription/TranscriptionService';
 import { TranscriptionCancelledError } from '../transcription/TranscriptionService';
 import type { RunCostSink } from '../transcription/SessionCostTracker';
-import type { InsertionContext, SaveProgress } from '../types';
+import type { SaveProgress } from '../types';
 import { errorMessage } from '../errors';
 
 /** What the quick note controller needs from the rest of the plugin. */
@@ -83,8 +80,8 @@ export class QuickNoteController {
 	private status: RecordingStatus = RecordingStatus.Idle;
 	/** Settles once the microphone open started by the last press is done. */
 	private starting: Promise<boolean> = Promise.resolve(false);
-	/** The note the dictation was started in. */
-	private insertionContext: InsertionContext | null = null;
+	/** Where the dictation's text goes: the cursor it was started at. */
+	private anchor: DictationAnchor | null = null;
 	/** Cancels the run in flight when the plugin unloads. */
 	private run: CancellationSource | null = null;
 	/**
@@ -143,6 +140,7 @@ export class QuickNoteController {
 			return;
 		}
 		this.attempt++;
+		this.releaseAnchor();
 		this.deps.recorder.cancel();
 		this.run?.cancel();
 		this.run = null;
@@ -167,11 +165,8 @@ export class QuickNoteController {
 			new Notice('Stop the recording before dictating a quick note.');
 			return false;
 		}
-		this.insertionContext = captureInsertionContext(
-			this.deps.app,
-			true,
-			new DebugLogger(settings),
-		);
+		this.releaseAnchor();
+		this.anchor = DictationAnchor.place(this.deps.app);
 		// Shown before the microphone opens, so a second press during the
 		// permission prompt stops this dictation instead of starting another.
 		this.setStatus(RecordingStatus.Recording);
@@ -188,6 +183,7 @@ export class QuickNoteController {
 				);
 			}
 			if (started !== CaptureStart.Started) {
+				this.releaseAnchor();
 				this.setStatus(RecordingStatus.Idle);
 				return false;
 			}
@@ -203,6 +199,7 @@ export class QuickNoteController {
 			new Notice(
 				`Quick note could not open the microphone: ${errorMessage(error)}`,
 			);
+			this.releaseAnchor();
 			this.setStatus(RecordingStatus.Idle);
 			return false;
 		}
@@ -269,6 +266,7 @@ export class QuickNoteController {
 		} finally {
 			if (this.run === run) {
 				this.run = null;
+				this.releaseAnchor();
 				this.setStatus(RecordingStatus.Idle);
 			}
 		}
@@ -276,8 +274,9 @@ export class QuickNoteController {
 
 	/**
 	 * Puts the text where the dictation was asked for, or on the clipboard
-	 * when no note is open to take it, so a paid dictation is never lost for
-	 * want of a cursor.
+	 * when no note is left to take it, so a paid dictation is never lost for
+	 * want of a cursor. Text that lands in a note other than the active one is
+	 * named in a notice, because the user is looking somewhere else.
 	 * @param text - The text to insert
 	 * @param token - Cancellation for the run; a cancelled run inserts nothing
 	 */
@@ -292,9 +291,24 @@ export class QuickNoteController {
 			new Notice('Nothing was recognized in the quick note.');
 			return;
 		}
-		if (insertTextAtCursor(this.deps.app, text, this.insertionContext)) {
+		const { app } = this.deps;
+		const anchor = this.anchor;
+		this.anchor = null;
+		const notePath = anchor
+			? await anchor.insert(app, text)
+			: insertTextAtCursor(app, text);
+		if (notePath !== null) {
+			const active = app.workspace.getActiveViewOfType(MarkdownView);
+			if (active?.file?.path !== notePath) {
+				new Notice(`Quick note inserted into ${notePath}.`);
+			}
 			return;
 		}
+		// An anchor that took nothing means its note was deleted, which other
+		// open notes would make "no note is open" a false thing to say.
+		const reason = anchor
+			? `Quick note: ${anchor.notePath} no longer exists`
+			: 'No note is open to take the quick note';
 		try {
 			await navigator.clipboard.writeText(text);
 		} catch (error) {
@@ -306,14 +320,18 @@ export class QuickNoteController {
 				error,
 			);
 			new Notice(
-				`No note is open to take the quick note, and the clipboard refused it. The text: ${text}`,
+				`${reason}, and the clipboard refused it. The text: ${text}`,
 				0,
 			);
 			return;
 		}
-		new Notice(
-			'No note is open to take the quick note, so its text was copied to the clipboard.',
-		);
+		new Notice(`${reason}, so its text was copied to the clipboard.`);
+	}
+
+	/** Drops the anchor of a dictation that ends without inserting. */
+	private releaseAnchor(): void {
+		this.anchor?.release();
+		this.anchor = null;
 	}
 
 	/**

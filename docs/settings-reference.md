@@ -240,7 +240,7 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 
 ### Engine: Google Gemini
 
-One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on, and also the page the post-processing prompts are configured on when they run through Gemini. Google's multimodal `generateContent` plus the File API. Files up to 2 GB are uploaded whole. Containers Gemini does not accept (for example `webm`, `m4a`) are decoded to 16 kHz mono WAV first. Recordings longer than 15 minutes are split into parts and stitched; a diarized split resets speaker numbering and surfaces a warning. See [Gemini API key](use-cases/gemini-api-key.md).
+One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on, and also the page the post-processing prompts are configured on when they run through Gemini. Google's multimodal `generateContent`. Audio up to 14 MB travels inline in that one request, and larger files up to 2 GB are uploaded whole through the File API first. Containers Gemini does not accept (for example `webm`, `m4a`) are decoded to 16 kHz mono WAV first. Recordings longer than 15 minutes are split into parts and stitched, and a diarized split resets speaker numbering and surfaces a warning. See [Gemini API key](use-cases/gemini-api-key.md).
 
 ![Google Gemini engine settings with the base URL, API key keychain picker, model and max output tokens rows](images/settings-llm-gemini-provider.png)
 

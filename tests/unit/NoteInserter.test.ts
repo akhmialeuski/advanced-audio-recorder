@@ -474,51 +474,34 @@ describe('NoteInserter', () => {
 	});
 
 	describe('insertTextAtCursor', () => {
-		const context: InsertionContext = {
-			filePath: 'notes/daily.md',
-			line: 1,
-			ch: 0,
-		};
-
-		it("inserts at the captured note's cursor as it stands now, even when another note is active", () => {
-			// The user may have gone on typing, or switched notes, while the
-			// dictation was being transcribed: the text follows the cursor of
-			// the note it was dictated into.
-			const dictatedInto = createMockView('notes/daily.md', 9, 2);
-			const active = createMockView('notes/other.md', 0, 0);
-			const app = appWithViews({
-				activeView: active,
-				leaves: [{ view: active }, { view: dictatedInto }],
-			});
-
-			const path = insertTextAtCursor(app, 'dictated', context);
-
-			expect(path).toBe('notes/daily.md');
-			expect(dictatedInto.editor.replaceSelection).toHaveBeenCalledWith(
-				'dictated',
-			);
-			expect(active.editor.replaceSelection).not.toHaveBeenCalled();
-		});
-
-		it('falls back to the active note when the captured one was closed', () => {
+		it("inserts at the active note's cursor", () => {
 			const active = createMockView('notes/other.md', 0, 0);
 			const app = appWithViews({
 				activeView: active,
 				leaves: [{ view: active }],
 			});
 
-			expect(insertTextAtCursor(app, 'dictated', context)).toBe(
-				'notes/other.md',
-			);
+			expect(insertTextAtCursor(app, 'dictated')).toBe('notes/other.md');
 			expect(active.editor.replaceSelection).toHaveBeenCalledWith(
 				'dictated',
 			);
 		});
 
+		it('names no note for an active view that shows no file', () => {
+			const unsaved = createMockView(null, 0, 0);
+			const app = appWithViews({
+				activeView: unsaved,
+				leaves: [{ view: unsaved }],
+			});
+
+			expect(insertTextAtCursor(app, 'dictated')).toBeNull();
+			expect(unsaved.editor.replaceSelection).toHaveBeenCalledWith(
+				'dictated',
+			);
+		});
+
 		it('reports that no note took the text when none is open', () => {
-			expect(
-				insertTextAtCursor(appWithViews(), 'dictated', context),
-			).toBeNull();
+			expect(insertTextAtCursor(appWithViews(), 'dictated')).toBeNull();
 		});
 	});
 

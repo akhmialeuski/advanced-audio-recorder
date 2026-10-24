@@ -1,6 +1,7 @@
 /**
- * Transcription via Google Gemini. Uploads one audio payload with the File API,
- * then asks `generateContent` for a structured JSON transcript with timecodes
+ * Transcription via Google Gemini. Sends one audio payload inline when it fits
+ * an inline request and through the File API otherwise, then asks
+ * `generateContent` for a structured JSON transcript with timecodes
  * and optional speaker labels. The orchestrator sends a short recording whole
  * (one payload, so speaker numbering stays consistent across it) and splits a
  * recording too long for one request into parts. A container Gemini does not
@@ -10,9 +11,11 @@
  * @module transcription/providers/GeminiProvider
  */
 
+import { arrayBufferToBase64 } from 'obsidian';
 import {
 	GEMINI_API_KEY_HEADER,
 	GEMINI_GENERATE_MIN_TIMEOUT_MS,
+	GEMINI_INLINE_MAX_BYTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import { EngineLabel } from '../../providers/providers';
@@ -173,6 +176,15 @@ function buildInstruction(options: TranscribeOptions): string {
 	return lines.join(' ');
 }
 
+/**
+ * The audio part of a `generateContent` request, in the shape of the official
+ * client's `Part`: `inlineData` is its `Blob` (`data` a base64 string,
+ * `mimeType`), `fileData` its `FileData` (`fileUri`, `mimeType`).
+ */
+type GeminiAudioPart =
+	| { inlineData: { mimeType: string; data: string } }
+	| { fileData: { mimeType: string; fileUri: string } };
+
 /** Google Gemini multimodal transcription provider. */
 export class GeminiProvider implements TranscriptionProvider {
 	readonly id = TRANSCRIPTION_PROVIDER_IDS.GEMINI;
@@ -186,9 +198,19 @@ export class GeminiProvider implements TranscriptionProvider {
 		payload: AudioPayload,
 		options: TranscribeOptions,
 	): Promise<WhisperResult> {
-		// Already in a container the File API reads (see the capability's
+		// Already in a container Gemini reads (see the capability's
 		// originalContainers), and only read here: the same payload is sent
 		// again when the service waits out a refusal.
+		if (payload.data.byteLength <= GEMINI_INLINE_MAX_BYTES) {
+			// One request instead of four: no upload session to open, no file
+			// to poll until ACTIVE and none to delete afterwards.
+			return this.generate(payload, options, {
+				inlineData: {
+					mimeType: payload.contentType,
+					data: arrayBufferToBase64(payload.data),
+				},
+			});
+		}
 		const file = await uploadFile(
 			this.config.baseUrl,
 			this.config.apiKey,
@@ -206,57 +228,9 @@ export class GeminiProvider implements TranscriptionProvider {
 				fileProcessingWaitMs(payload.data.byteLength),
 				options.signal,
 			);
-			const url = geminiGenerateContentUrl(
-				this.config.baseUrl,
-				this.config.model,
-			);
-			// Transcription is deterministic, so the request asks for as
-			// little reasoning as this model's generation allows and for the
-			// temperature that generation is tuned for. Both follow from the
-			// generation, so both are answered in one place.
-			const controls = geminiGenerationControls(
-				this.config.model,
-				DETERMINISTIC_TEMPERATURE,
-			);
-			const json = await requestJson({
-				url,
-				method: 'POST',
-				headers: authHeader(GEMINI_API_KEY_HEADER, this.config.apiKey),
-				contentType: 'application/json',
-				body: JSON.stringify({
-					contents: [
-						{
-							parts: [
-								{
-									fileData: {
-										mimeType: payload.contentType,
-										fileUri: file.uri,
-									},
-								},
-								{ text: buildInstruction(options) },
-							],
-						},
-					],
-					systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-					generationConfig: {
-						responseMimeType: 'application/json',
-						responseSchema: transcriptSchema(options.languages),
-						...controls,
-					},
-				}),
-				timeoutMs: inferenceTimeoutMs(
-					payload.data.byteLength,
-					GEMINI_GENERATE_MIN_TIMEOUT_MS,
-					this.config.requestTimeoutMs,
-				),
-				signal: options.signal,
+			return await this.generate(payload, options, {
+				fileData: { mimeType: payload.contentType, fileUri: file.uri },
 			});
-			// A truncated (MAX_TOKENS) response yields invalid JSON, and a
-			// safety/policy block yields no candidate; both would otherwise map
-			// to an empty transcript with no explanation.
-			assertGeminiNotTruncated(json, TRUNCATION_REMEDY);
-			assertGeminiNotBlocked(json);
-			return mapGeminiResponse(json, options.diarize);
 		} finally {
 			// Best-effort cleanup; a left-over file expires on Google's side.
 			try {
@@ -269,5 +243,59 @@ export class GeminiProvider implements TranscriptionProvider {
 				// Ignore cleanup failures.
 			}
 		}
+	}
+
+	/**
+	 * Asks `generateContent` for the structured transcript of the audio part.
+	 * @param payload - The audio, for the size the timeout scales with
+	 * @param options - The run's options
+	 * @param audio - The audio part: inline bytes or an uploaded file
+	 * @returns The mapped transcript
+	 */
+	private async generate(
+		payload: AudioPayload,
+		options: TranscribeOptions,
+		audio: GeminiAudioPart,
+	): Promise<WhisperResult> {
+		// Transcription is deterministic, so the request asks for as little
+		// reasoning as this model's generation allows and for the temperature
+		// that generation is tuned for. Both follow from the generation, so
+		// both are answered in one place.
+		const controls = geminiGenerationControls(
+			this.config.model,
+			DETERMINISTIC_TEMPERATURE,
+		);
+		const json = await requestJson({
+			url: geminiGenerateContentUrl(
+				this.config.baseUrl,
+				this.config.model,
+			),
+			method: 'POST',
+			headers: authHeader(GEMINI_API_KEY_HEADER, this.config.apiKey),
+			contentType: 'application/json',
+			body: JSON.stringify({
+				contents: [
+					{ parts: [audio, { text: buildInstruction(options) }] },
+				],
+				systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+				generationConfig: {
+					responseMimeType: 'application/json',
+					responseSchema: transcriptSchema(options.languages),
+					...controls,
+				},
+			}),
+			timeoutMs: inferenceTimeoutMs(
+				payload.data.byteLength,
+				GEMINI_GENERATE_MIN_TIMEOUT_MS,
+				this.config.requestTimeoutMs,
+			),
+			signal: options.signal,
+		});
+		// A truncated (MAX_TOKENS) response yields invalid JSON, and a
+		// safety/policy block yields no candidate; both would otherwise map
+		// to an empty transcript with no explanation.
+		assertGeminiNotTruncated(json, TRUNCATION_REMEDY);
+		assertGeminiNotBlocked(json);
+		return mapGeminiResponse(json, options.diarize);
 	}
 }
