@@ -9,6 +9,7 @@
  */
 
 import type { OutputFormat, AudioCodec } from 'mediabunny';
+import type { AudioEngine } from './audioEngine';
 import {
 	FORMAT_WAV,
 	FORMAT_WEBM,
@@ -74,9 +75,7 @@ export interface AudioFormatDescriptor {
 	/** Mediabunny codec used when encoding to this format. */
 	readonly codec: AudioCodec;
 	/** Creates the mediabunny container writer for this format. */
-	readonly createOutputFormat: (
-		mediabunny: typeof import('./mediabunnyRuntime'),
-	) => OutputFormat;
+	readonly createOutputFormat: (mediabunny: AudioEngine) => OutputFormat;
 	/** Uncompressed PCM: a bitrate option is invalid for the encoder. */
 	readonly isPcm: boolean;
 	/**

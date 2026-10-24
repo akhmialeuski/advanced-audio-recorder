@@ -52,7 +52,7 @@ async function readBack(bytes: ArrayBuffer): Promise<{
 }> {
 	return withPrimaryAudioTrack(bytes, async (track, input) => {
 		const sink = new AudioSampleSink(track);
-		const first = await sink.getSample(0);
+		using first = await sink.getSample(0);
 		const samples = new Float32Array(first?.numberOfFrames ?? 0);
 		first?.copyTo(samples, { planeIndex: 0, format: 'f32-planar' });
 		return {

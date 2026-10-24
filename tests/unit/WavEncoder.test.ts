@@ -676,7 +676,7 @@ describe('encodeFloatsAsInt16Wav', () => {
 		});
 
 		const track = defined(await input.getPrimaryAudioTrack());
-		const sample = await new AudioSampleSink(track).getSample(0);
+		using sample = await new AudioSampleSink(track).getSample(0);
 		const decoded = new Float32Array(6);
 		sample?.copyTo(decoded, { planeIndex: 0, format: 'f32' });
 

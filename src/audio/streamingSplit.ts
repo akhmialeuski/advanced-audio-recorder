@@ -30,6 +30,7 @@ import {
 	encodingConfigFor,
 	probeOfflineEncodingSupport,
 } from './AudioEncoder';
+import { loadAudioEngine } from './audioEngine';
 import { errorMessage } from '../errors';
 import {
 	NEVER_CANCELLED,
@@ -148,7 +149,7 @@ export class StreamedSplit implements Disposable {
 		token: CancellationToken = NEVER_CANCELLED,
 	): Promise<StreamedSplit | null> {
 		const { ALL_FORMATS, AudioSampleSink, BufferSource, Input } =
-			await import('./mediabunnyRuntime');
+			await loadAudioEngine();
 		const input = new Input({
 			source: new BufferSource(bytes),
 			formats: ALL_FORMATS,
@@ -235,7 +236,7 @@ export class StreamedSplit implements Disposable {
 	 */
 	private async encodeUntil(endFrame: number | null): Promise<ArrayBuffer> {
 		const { AudioSampleSource, BufferTarget, Output } =
-			await import('./mediabunnyRuntime');
+			await loadAudioEngine();
 		const target = new BufferTarget();
 		const output = new Output({
 			format: await createOutputFormat(this.targetFormat),

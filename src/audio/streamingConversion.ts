@@ -21,6 +21,7 @@ import {
 	encodableSampleRate,
 } from './AudioEncoder';
 import { getFormatDescriptor } from './formatRegistry';
+import { loadAudioEngine } from './audioEngine';
 import { ChannelMode, monoPickIndex } from './downmix';
 import { disposableOf } from '../utils/disposables';
 import {
@@ -181,7 +182,7 @@ export async function runStreamingConversion(
 
 	// The Input holds readers over the blob; `using` frees them on
 	// success and on every throw path alike
-	const mediabunny = await import('./mediabunnyRuntime');
+	const mediabunny = await loadAudioEngine();
 	using input = disposableOf(
 		new mediabunny.Input({
 			source: new mediabunny.BlobSource(recordedBlob),
@@ -219,7 +220,7 @@ async function convertWithInput(
 		throw new Error('Input contains no audio track');
 	}
 
-	const mediabunny = await import('./mediabunnyRuntime');
+	const mediabunny = await loadAudioEngine();
 	const target = new mediabunny.BufferTarget();
 	const output = new mediabunny.Output({
 		format: await createOutputFormat(targetFormat),

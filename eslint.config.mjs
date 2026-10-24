@@ -136,9 +136,11 @@ export default tseslint.config(
                 ...globals.browser,
                 ...globals.node,
                 ...globals.es2021,
-                // Build-time global injected by esbuild (see
+                // Build-time globals injected by esbuild (see
                 // esbuild.config.mjs and src/globals.d.ts)
                 __ENCODING_WORKER_SOURCE__: 'readonly',
+                __AUDIO_ENGINE_SOURCE__: 'readonly',
+                __AUDIO_ENGINE_GLOBAL__: 'readonly',
             },
             parserOptions: {
                 project: './tsconfig.eslint.json',
@@ -173,12 +175,13 @@ export default tseslint.config(
         },
     },
     {
-        // A static value import of mediabunny makes esbuild run its module
-        // initializers at the bundle's top level, which Obsidian times as the
-        // plugin's load on every start. Plugin code takes its values from
-        // `await import('./mediabunnyRuntime')` where they are used, which
-        // esbuild keeps behind a lazy initializer; type imports cost nothing
-        // at runtime. The runtime module is the one place that imports it.
+        // A static value import of mediabunny or of its encoders makes esbuild
+        // run their module initializers at the bundle's top level, which
+        // Obsidian times as the plugin's load on every start. Plugin code
+        // takes engine values from `await loadAudioEngine()` where they are
+        // used, and audioEngine.ts alone decides how the engine is loaded.
+        // Type imports cost nothing at runtime. The runtime module is the one
+        // place that imports the packages.
         files: ['src/**/*.ts'],
         ignores: ['src/audio/mediabunnyRuntime.ts'],
         rules: {
@@ -191,15 +194,15 @@ export default tseslint.config(
                             name: 'mediabunny',
                             allowTypeImports: true,
                             message:
-                                "Take mediabunny values from await import('./mediabunnyRuntime') where they are used: a static import runs mediabunny at plugin load.",
+                                'Take mediabunny values from await loadAudioEngine() where they are used: a static import runs mediabunny at plugin load.',
                         },
                     ],
                     patterns: [
                         {
-                            group: ['**/mediabunnyRuntime'],
+                            group: ['**/mediabunnyRuntime', '@mediabunny/*'],
                             allowTypeImports: true,
                             message:
-                                "Import mediabunnyRuntime dynamically, await import('./mediabunnyRuntime'): a static import runs mediabunny at plugin load.",
+                                'Take engine values from await loadAudioEngine() where they are used: a static import runs the engine at plugin load.',
                         },
                     ],
                 },

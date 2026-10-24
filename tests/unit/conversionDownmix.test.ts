@@ -80,9 +80,8 @@ describe('the conversion downmix', () => {
 				noise(index + 1),
 			);
 
-			const mixed = new AudioSample(
-				averageChannelsSample(planarSample(channels)),
-			);
+			using source = planarSample(channels);
+			using mixed = new AudioSample(averageChannelsSample(source));
 
 			expect(monoOf(mixed)).toEqual(
 				downmixChannelData(channels, ChannelMode.MonoMix),
@@ -96,17 +95,16 @@ describe('the conversion downmix', () => {
 	])('keeps the $mode channel exactly', ({ mode, index }) => {
 		const channels = [noise(1), noise(2)];
 
-		const picked = new AudioSample(
-			extractChannelSample(planarSample(channels), index),
-		);
+		using source = planarSample(channels);
+		using picked = new AudioSample(extractChannelSample(source, index));
 
 		expect(monoOf(picked)).toEqual(downmixChannelData(channels, mode));
 	});
 
 	it('keeps the timing of the sample it mixed', () => {
-		const sample = planarSample([noise(1), noise(2)]);
+		using sample = planarSample([noise(1), noise(2)]);
 
-		const mixed = new AudioSample(averageChannelsSample(sample));
+		using mixed = new AudioSample(averageChannelsSample(sample));
 
 		expect({
 			timestamp: mixed.timestamp,

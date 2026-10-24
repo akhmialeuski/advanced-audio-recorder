@@ -42,6 +42,7 @@ import {
 } from './recording/RecoveryService';
 import { RecoveryModal } from './ui/RecoveryModal';
 import { EncodingWorkerClient } from './audio/EncodingWorkerClient';
+import { encodingWorkerScript } from './audio/audioEngine';
 import {
 	updateStatusBar,
 	updateRecordingLiveStats,
@@ -301,11 +302,14 @@ export default class AudioRecorderPlugin extends Plugin {
 		);
 
 		// Offload streaming conversions to a Web Worker when the build
-		// injected its source; everything falls back to the main thread
+		// injected its source; everything falls back to the main thread.
+		// The worker runs the one engine script ahead of its own code.
 		this.encodingWorker = new EncodingWorkerClient(
-			typeof __ENCODING_WORKER_SOURCE__ === 'string'
-				? __ENCODING_WORKER_SOURCE__
-				: null,
+			encodingWorkerScript(
+				typeof __ENCODING_WORKER_SOURCE__ === 'string'
+					? __ENCODING_WORKER_SOURCE__
+					: null,
+			),
 		);
 		this.journal = new SessionJournal(
 			this.getPluginFilePath(JOURNAL_FILE_NAME),
