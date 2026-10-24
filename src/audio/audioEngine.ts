@@ -12,6 +12,8 @@
  * @module audio/audioEngine
  */
 
+import { errorMessage } from '../errors';
+
 /** The engine's values, as re-exported by the runtime module. */
 export type AudioEngine = typeof import('./mediabunnyRuntime');
 
@@ -74,6 +76,15 @@ async function runEngineScript(source: string): Promise<AudioEngine> {
 		new Blob([source], { type: 'text/javascript' }),
 	);
 	const script = createEl('script', { attr: { src: url } });
+	// A classic script that throws while it is parsed or run still fires load,
+	// and the browser reports the exception only to the window's error event
+	let failure: unknown;
+	const onWindowError = (event: ErrorEvent): void => {
+		if (event.filename === url) {
+			failure = event.error ?? event.message;
+		}
+	};
+	window.addEventListener('error', onWindowError);
 	try {
 		await new Promise<void>((resolve, reject) => {
 			script.addEventListener('load', () => {
@@ -85,6 +96,7 @@ async function runEngineScript(source: string): Promise<AudioEngine> {
 			document.head.appendChild(script);
 		});
 	} finally {
+		window.removeEventListener('error', onWindowError);
 		script.remove();
 		URL.revokeObjectURL(url);
 	}
@@ -93,7 +105,9 @@ async function runEngineScript(source: string): Promise<AudioEngine> {
 	)[__AUDIO_ENGINE_GLOBAL__];
 	if (!loaded) {
 		throw new Error(
-			`The audio engine script declared no ${__AUDIO_ENGINE_GLOBAL__}`,
+			`The audio engine script declared no ${__AUDIO_ENGINE_GLOBAL__}` +
+				(failure === undefined ? '' : `: ${errorMessage(failure)}`),
+			{ cause: failure },
 		);
 	}
 	return loaded;

@@ -152,4 +152,24 @@ describe('loadAudioEngine with the engine script the build carries', () => {
 			`The audio engine script declared no ${GLOBAL}`,
 		);
 	});
+
+	// A script that throws while it runs still fires load, and the browser
+	// reports the exception only to the window, so the rejection must carry it
+	it('rejects with the error the script threw while it ran', async () => {
+		const loading = freshAccessor().loadAudioEngine();
+		const thrown = new TypeError('engine init failed');
+		window.dispatchEvent(
+			new ErrorEvent('error', {
+				message: `Uncaught ${thrown.message}`,
+				filename: BLOB_URL,
+				error: thrown,
+			}),
+		);
+		engineScript().dispatchEvent(new Event('load'));
+
+		await expect(loading).rejects.toThrow(
+			`The audio engine script declared no ${GLOBAL}: engine init failed`,
+		);
+		await expect(loading).rejects.toHaveProperty('cause', thrown);
+	});
 });
