@@ -531,13 +531,24 @@ function originOf(url: string): string | null {
  * status is beside the point - a 404 or a 405 proves as much as a 200.
  * It answers for a HEAD and not for the request behind it, so a refusal here
  * is not one there: see {@link originTakesFetch} for what is remembered.
- * @param url - The URL the real request is about to go to
+ *
+ * It goes to the request's path without its query. The path names the
+ * endpoint, which is what the real request meets: the root of an API host is
+ * often another handler, and api.openai.com and api.mistral.ai answer a HEAD
+ * there without CORS headers while their endpoints send them. The query can
+ * name something the endpoint does not. Google's API answers a HEAD without
+ * CORS headers everywhere except at a resumable upload session, which is its
+ * `upload_id`, so a probe sent with it marked the whole origin as taking
+ * fetch. The session's finalize response carries no CORS headers either, so
+ * fetch failed after Google had already taken the bytes, and the fallback sent
+ * them again to a closed session: "Upload has already been terminated".
+ * @param probeUrl - The request URL without its query
  * @param outer - The run's own cancel, so pressing Cancel during the probe
  *   does not leave the dialog waiting out the probe's deadline
  * @returns Which of the three answers came back
  */
 async function probeCors(
-	url: string,
+	probeUrl: string,
 	outer: AbortSignal | undefined,
 ): Promise<CorsProbeOutcome> {
 	const controller = new AbortController();
@@ -558,7 +569,7 @@ async function probeCors(
 		// Reached through window for the same reason as fetchResponse: it
 		// keeps the call off the no-restricted-globals ban without an inline
 		// eslint-disable.
-		await window.fetch(url, {
+		await window.fetch(probeUrl, {
 			method: 'HEAD',
 			signal: controller.signal,
 		});
@@ -584,15 +595,15 @@ async function probeCors(
  * {@link PROBES_PER_ORIGIN} asks have gone unanswered, after which it is left
  * to the fallback rather than probed on every request for the rest of the
  * session.
- * @param url - Full request URL
- * @param origin - The URL's origin, or null when it has none to remember
+ * @param probeUrl - The request URL without its query, which the probe asks
+ * @param origin - The request's origin, or null when it has none to remember
  * @param outer - The run's own cancel, handed to the probe so a Cancel during
  *   it ends the run rather than waiting out the probe's deadline
  * @returns True to use `fetch`, false to use `requestUrl`, null when the
  *   question could not be answered
  */
 async function fetchIsUsable(
-	url: string,
+	probeUrl: string,
 	origin: string | null,
 	outer: AbortSignal | undefined,
 ): Promise<boolean | null> {
@@ -609,7 +620,7 @@ async function fetchIsUsable(
 	if (unanswered >= PROBES_PER_ORIGIN) {
 		return null;
 	}
-	const outcome = await probeCors(url, outer);
+	const outcome = await probeCors(probeUrl, outer);
 	if (outcome === 'answered') {
 		unansweredProbes.delete(origin);
 		originTakesFetch.set(origin, true);
@@ -641,6 +652,12 @@ async function fetchIsUsable(
  * promise the real request will: this one carries an Authorization header and
  * therefore a preflight of its own, which the endpoint may refuse. That
  * refusal happens before the body is sent, so it costs nothing but the retry.
+ * A response the endpoint sends without CORS headers after a preflight it
+ * allowed fails fetch the same way, but only once the body has arrived, and
+ * then the retry sends it a second time. Google's upload session answers like
+ * that, which is why the probe asks the request's path without the query that
+ * names the session: an endpoint that answers every request without CORS
+ * headers never reaches fetch at all.
  * @param options - Request options
  * @param timeoutMs - Deadline in milliseconds
  * @param safeUrl - Query-stripped URL for error messages
@@ -656,15 +673,15 @@ async function dispatchRequest(
 	// probe could not read says nothing about the request it went ahead of.
 	let refusalToConfirm = false;
 	if (options.signal !== undefined) {
-		const usable = await fetchIsUsable(options.url, origin, options.signal);
+		const usable = await fetchIsUsable(safeUrl, origin, options.signal);
 		if (usable === true) {
 			try {
 				return await fetchResponse(options, timeoutMs, safeUrl);
 			} catch (error) {
 				// An HttpError here is a timeout or cancel - final either
 				// way. A TypeError is fetch's network-layer failure
-				// (a refused preflight, DNS, a dropped link); only then is
-				// requestUrl worth a try.
+				// (a refused preflight, DNS, a dropped link, or a response
+				// without CORS headers); only then is requestUrl worth a try.
 				if (
 					error instanceof HttpError ||
 					!(error instanceof TypeError)
