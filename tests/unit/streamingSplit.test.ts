@@ -243,13 +243,18 @@ describe('a streamed split', () => {
 			// Asserted below.
 		});
 		const split = await openSplit();
-		internalsOf<{ samples: AsyncGenerator<unknown> }>(
+		const { samples } = internalsOf<{ samples: AsyncGenerator<unknown> }>(
 			split,
-		).samples.return = (): Promise<never> =>
+		);
+		const stopDecoder = samples.return.bind(samples);
+		samples.return = (): Promise<never> =>
 			Promise.reject(new Error('decoder gone'));
 
 		split[Symbol.dispose]();
 		await flushMicrotasks();
+		// The stub left the real decoder running; stopping it closes the
+		// samples it had already queued
+		await stopDecoder(undefined);
 
 		expect(warn).toHaveBeenCalledWith(
 			expect.stringContaining('could not stop the decoder'),
