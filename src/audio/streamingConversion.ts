@@ -8,17 +8,13 @@
  * @module audio/streamingConversion
  */
 
-import {
-	Input,
-	Output,
-	BlobSource,
-	BufferTarget,
-	ALL_FORMATS,
+import type {
+	AudioCodec,
 	AudioSample,
-	Conversion,
-	Quality,
+	AudioSampleInit,
+	ConversionAudioOptions,
+	Input,
 } from 'mediabunny';
-import type { AudioCodec, ConversionAudioOptions } from 'mediabunny';
 import {
 	ensureEncoderRegistered,
 	createOutputFormat,
@@ -71,38 +67,38 @@ export interface ConvertedAudio<T> {
 const REMUX_SHIFT_TOLERANCE_SECONDS = 0.25;
 
 /**
- * Builds a mono AudioSample holding one picked channel of the input
- * sample. Used as the mediabunny `process` hook for the left/right
- * channel modes; mediabunny closes the input sample itself after the
- * hook returns. The pick is clamped so a right pick on mono input
- * returns that channel instead of failing. Exported for unit tests.
+ * Builds the mono sample holding one picked channel of the input sample,
+ * as the init the `process` hook for the left/right channel modes wraps in
+ * an AudioSample; mediabunny closes the input sample itself after the hook
+ * returns. The pick is clamped so a right pick on mono input returns that
+ * channel instead of failing. Exported for unit tests.
  * @param sample - Decoded input sample (any channel count)
  * @param channelIndex - Zero-based channel to keep
- * @returns Mono sample at the input's rate and timestamp
+ * @returns Init of a mono sample at the input's rate and timestamp
  */
 export function extractChannelSample(
 	sample: AudioSample,
 	channelIndex: number,
-): AudioSample {
+): AudioSampleInit {
 	const pick = Math.max(
 		0,
 		Math.min(channelIndex, sample.numberOfChannels - 1),
 	);
 	const data = new Float32Array(sample.numberOfFrames);
 	sample.copyTo(data, { planeIndex: pick, format: 'f32-planar' });
-	return new AudioSample({
+	return {
 		data,
 		format: 'f32',
 		numberOfChannels: 1,
 		sampleRate: sample.sampleRate,
 		timestamp: sample.timestamp,
-	});
+	};
 }
 
 /**
- * Builds a mono AudioSample holding the plain average of every channel
- * of the input sample. Used as the mediabunny `process` hook for the
- * mono mix mode so the conversion downmix is sample-identical to the
+ * Builds the mono sample holding the plain average of every channel of the
+ * input sample, as the init the `process` hook for the mono mix mode wraps
+ * in an AudioSample, so the conversion downmix is sample-identical to the
  * PCM capture worklet and downmixChannelData.
  *
  * Mediabunny's own `numberOfChannels: 1` is not a substitute, not even for
@@ -117,9 +113,9 @@ export function extractChannelSample(
  * rules instead, which weight 5.1 layouts and drop the LFE. Exported for
  * unit tests.
  * @param sample - Decoded input sample (any channel count)
- * @returns Mono sample at the input's rate and timestamp
+ * @returns Init of a mono sample at the input's rate and timestamp
  */
-export function averageChannelsSample(sample: AudioSample): AudioSample {
+export function averageChannelsSample(sample: AudioSample): AudioSampleInit {
 	const frames = sample.numberOfFrames;
 	const channels = sample.numberOfChannels;
 	const interleaved = new Float32Array(frames * channels);
@@ -132,13 +128,13 @@ export function averageChannelsSample(sample: AudioSample): AudioSample {
 		}
 		mono[frame] = sum / channels;
 	}
-	return new AudioSample({
+	return {
 		data: mono,
 		format: 'f32',
 		numberOfChannels: 1,
 		sampleRate: sample.sampleRate,
 		timestamp: sample.timestamp,
-	});
+	};
 }
 
 /**
@@ -185,10 +181,11 @@ export async function runStreamingConversion(
 
 	// The Input holds readers over the blob; `using` frees them on
 	// success and on every throw path alike
+	const mediabunny = await import('./mediabunnyRuntime');
 	using input = disposableOf(
-		new Input({
-			source: new BlobSource(recordedBlob),
-			formats: ALL_FORMATS,
+		new mediabunny.Input({
+			source: new mediabunny.BlobSource(recordedBlob),
+			formats: mediabunny.ALL_FORMATS,
 		}),
 	);
 	return await convertWithInput(
@@ -222,9 +219,10 @@ async function convertWithInput(
 		throw new Error('Input contains no audio track');
 	}
 
-	const target = new BufferTarget();
-	const output = new Output({
-		format: createOutputFormat(targetFormat),
+	const mediabunny = await import('./mediabunnyRuntime');
+	const target = new mediabunny.BufferTarget();
+	const output = new mediabunny.Output({
+		format: await createOutputFormat(targetFormat),
 		target,
 	});
 
@@ -243,12 +241,15 @@ async function convertWithInput(
 	if (channelMode !== ChannelMode.Source) {
 		const sourceChannels = await audioTrack.getNumberOfChannels();
 		if (sourceChannels > 1 && channelMode === ChannelMode.MonoMix) {
-			monoProcess = averageChannelsSample;
+			monoProcess = (sample: AudioSample): AudioSample =>
+				new mediabunny.AudioSample(averageChannelsSample(sample));
 		} else if (sourceChannels > 1) {
 			const pick = monoPickIndex(channelMode, sourceChannels);
 			if (pick !== null) {
 				monoProcess = (sample: AudioSample): AudioSample =>
-					extractChannelSample(sample, pick);
+					new mediabunny.AudioSample(
+						extractChannelSample(sample, pick),
+					);
 			}
 		}
 	}
@@ -268,7 +269,7 @@ async function convertWithInput(
 	let audio: ConversionAudioOptions = { codec };
 	let sampleRateChange: SampleRateChange | null = null;
 	if (!remuxEligible && !isPcmTarget) {
-		const quality = new Quality({ bitrate });
+		const quality = new mediabunny.Quality({ bitrate });
 		audio = { codec, quality };
 		const sourceRate = await audioTrack.getSampleRate();
 		// The encoder is handed what the mono hook returns, so that is the
@@ -302,7 +303,7 @@ async function convertWithInput(
 			processedNumberOfChannels: 1,
 		};
 	}
-	const conversion = await Conversion.init({
+	const conversion = await mediabunny.Conversion.init({
 		input,
 		output,
 		audio,

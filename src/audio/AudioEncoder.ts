@@ -5,14 +5,12 @@
  * @module audio/AudioEncoder
  */
 
-import {
-	Output,
-	BufferTarget,
-	AudioBufferSource,
-	canEncodeAudio,
+import type {
+	AudioCodec,
+	AudioEncodingConfig,
+	OutputFormat,
 	Quality,
 } from 'mediabunny';
-import type { AudioCodec, AudioEncodingConfig, OutputFormat } from 'mediabunny';
 import { EncodingError, errorMessage } from '../errors';
 import { FORMAT_MP3, FORMAT_FLAC } from '../constants';
 import { FORMAT_REGISTRY, getFormatDescriptor } from './formatRegistry';
@@ -63,6 +61,7 @@ async function codecStringFor(
 		return {};
 	}
 	const lowComplexity = { fullCodecString: AAC_LC_CODEC_STRING };
+	const { canEncodeAudio } = await import('./mediabunnyRuntime');
 	return (await canEncodeAudio(codec, { ...question, ...lowComplexity }))
 		? lowComplexity
 		: {};
@@ -86,12 +85,14 @@ export type ProgressCallback = (percent: number) => void;
 /**
  * Creates the appropriate Mediabunny OutputFormat for the given format.
  */
-export function createOutputFormat(format: string): OutputFormat {
+export async function createOutputFormat(
+	format: string,
+): Promise<OutputFormat> {
 	const descriptor = getFormatDescriptor(format);
 	if (!descriptor) {
 		throw new EncodingError(`No output format for "${format}"`, format);
 	}
-	return descriptor.createOutputFormat();
+	return descriptor.createOutputFormat(await import('./mediabunnyRuntime'));
 }
 
 /**
@@ -102,6 +103,7 @@ export function createOutputFormat(format: string): OutputFormat {
  * @param format - Target audio format
  */
 export async function ensureEncoderRegistered(format: string): Promise<void> {
+	const { canEncodeAudio } = await import('./mediabunnyRuntime');
 	if (
 		format === FORMAT_FLAC &&
 		!(await canEncodeAudio(FORMAT_REGISTRY[FORMAT_FLAC].codec))
@@ -175,6 +177,7 @@ export async function encodingConfigFor(
 	if (descriptor.isPcm) {
 		return { codec };
 	}
+	const { Quality } = await import('./mediabunnyRuntime');
 	const quality = new Quality({ bitrate });
 	return {
 		codec,
@@ -198,7 +201,9 @@ async function encodeWithMediabunny(
 	try {
 		await ensureEncoderRegistered(format);
 
-		const outputFormat = createOutputFormat(format);
+		const { AudioBufferSource, BufferTarget, Output } =
+			await import('./mediabunnyRuntime');
+		const outputFormat = await createOutputFormat(format);
 		const target = new BufferTarget();
 		const output = new Output({ format: outputFormat, target });
 
@@ -302,6 +307,7 @@ export async function probeOfflineEncodingSupport(
 	}
 	try {
 		await ensureEncoderRegistered(format);
+		const { Quality, canEncodeAudio } = await import('./mediabunnyRuntime');
 		const { bitrate, ...dimensions } = quality ?? {};
 		const question: EncoderQuestion = {
 			...dimensions,
@@ -366,6 +372,7 @@ export async function encodableSampleRate(
 	question: Required<EncoderQuestion>,
 ): Promise<number | null> {
 	const { sampleRate } = question;
+	const { canEncodeAudio } = await import('./mediabunnyRuntime');
 	const candidates = [
 		sampleRate,
 		...STANDARD_SAMPLE_RATES.filter((rate) => rate > sampleRate),

@@ -91,27 +91,29 @@ async function classifyFromHeaders(
 ): Promise<MediaProbeResult | null> {
 	let timer = 0;
 	try {
-		return await withMediaInput(resourceSource(resourceUrl), (input) =>
-			Promise.race([
-				(async (): Promise<MediaProbeResult | null> => {
-					if ((await input.getVideoTracks()).length > 0) {
-						return { kind: MEDIA_KIND.video, confident: true };
-					}
-					if (!(await input.getPrimaryAudioTrack())) {
-						return null;
-					}
-					return canPlayType(await input.getMimeType())
-						? { kind: MEDIA_KIND.audio, confident: true }
-						: null;
-				})(),
-				new Promise<null>((resolve) => {
-					// The read is abandoned rather than waited on: leaving
-					// the scope disposes the input, which cancels it.
-					timer = window.setTimeout(() => {
-						resolve(null);
-					}, HEADER_READ_TIMEOUT_MS);
-				}),
-			]),
+		return await withMediaInput(
+			await resourceSource(resourceUrl),
+			(input) =>
+				Promise.race([
+					(async (): Promise<MediaProbeResult | null> => {
+						if ((await input.getVideoTracks()).length > 0) {
+							return { kind: MEDIA_KIND.video, confident: true };
+						}
+						if (!(await input.getPrimaryAudioTrack())) {
+							return null;
+						}
+						return canPlayType(await input.getMimeType())
+							? { kind: MEDIA_KIND.audio, confident: true }
+							: null;
+					})(),
+					new Promise<null>((resolve) => {
+						// The read is abandoned rather than waited on: leaving
+						// the scope disposes the input, which cancels it.
+						timer = window.setTimeout(() => {
+							resolve(null);
+						}, HEADER_READ_TIMEOUT_MS);
+					}),
+				]),
 		);
 	} catch {
 		// Not a container mediabunny reads, or a read that failed: the

@@ -12,12 +12,12 @@ import {
 } from '../mocks/modules/mediabunny';
 
 describe('resourceSource', () => {
-	it('reads the resource URL it was given', () => {
+	it('reads the resource URL it was given', async () => {
 		const { UrlSource } = jest.requireMock<{ UrlSource: jest.Mock }>(
 			'mediabunny',
 		);
 
-		resourceSource('app://vault/a.webm');
+		await resourceSource('app://vault/a.webm');
 
 		expect(UrlSource).toHaveBeenCalledWith(
 			'app://vault/a.webm',
@@ -25,15 +25,20 @@ describe('resourceSource', () => {
 		);
 	});
 
-	it.each([1, 2, 10])('never retries, even after %i attempts', (attempts) => {
-		resourceSource('app://vault/a.webm');
+	it.each([1, 2, 10])(
+		'never retries, even after %i attempts',
+		async (attempts) => {
+			await resourceSource('app://vault/a.webm');
 
-		expect(firstUrlSourceOptions().getRetryDelay?.(attempts)).toBeNull();
-	});
+			expect(
+				firstUrlSourceOptions().getRetryDelay?.(attempts),
+			).toBeNull();
+		},
+	);
 
-	it('logs a failed read nobody was waiting on instead of throwing it', () => {
+	it('logs a failed read nobody was waiting on instead of throwing it', async () => {
 		const warn = jest.spyOn(console, 'warn').mockImplementation();
-		resourceSource('app://vault/a.webm');
+		await resourceSource('app://vault/a.webm');
 		const error = new Error('connection reset');
 
 		firstUrlSourceOptions().handleUnhandledError?.(error);
@@ -48,7 +53,7 @@ describe('resourceSource', () => {
 describe('withMediaInput', () => {
 	it('answers with what the read returned', async () => {
 		const answer = await withMediaInput(
-			resourceSource('app://vault/a.webm'),
+			await resourceSource('app://vault/a.webm'),
 			() => Promise.resolve(42),
 		);
 
@@ -56,8 +61,10 @@ describe('withMediaInput', () => {
 	});
 
 	it('releases the input when the read fails', async () => {
+		const source = await resourceSource('app://vault/a.webm');
+
 		await expect(
-			withMediaInput(resourceSource('app://vault/a.webm'), () =>
+			withMediaInput(source, () =>
 				Promise.reject(new Error('unparseable')),
 			),
 		).rejects.toThrow('unparseable');

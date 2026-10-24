@@ -12,6 +12,17 @@ import jest from 'eslint-plugin-jest';
 // alike) uses their plain ASCII equivalents instead.
 const NON_ASCII_TYPOGRAPHY = /[–—‘’“”…←→↔×≈]/;
 
+// The restricted imports the obsidianmd recommended set ships, so the
+// mediabunny entry below extends them instead of replacing them.
+const OBSIDIAN_RESTRICTED_IMPORTS = obsidianmd.configs.recommended
+    .map((entry) => entry.rules?.['@typescript-eslint/no-restricted-imports'])
+    .find(Array.isArray);
+if (!OBSIDIAN_RESTRICTED_IMPORTS) {
+    throw new Error(
+        'eslint-plugin-obsidianmd no longer configures @typescript-eslint/no-restricted-imports; revisit the mediabunny restriction.',
+    );
+}
+
 // Local plugin: ban banner/divider comments (a run of three or more dashes).
 // It inspects comment tokens only, so dashes inside string literals (e.g. a
 // multipart boundary or YAML front-matter in a test fixture) are never flagged.
@@ -158,6 +169,40 @@ export default tseslint.config(
             'obsidianmd/ui/sentence-case': [
                 'warn',
                 { ignoreWords: ['WAV', 'dB', 'dBFS'] },
+            ],
+        },
+    },
+    {
+        // A static value import of mediabunny makes esbuild run its module
+        // initializers at the bundle's top level, which Obsidian times as the
+        // plugin's load on every start. Plugin code takes its values from
+        // `await import('./mediabunnyRuntime')` where they are used, which
+        // esbuild keeps behind a lazy initializer; type imports cost nothing
+        // at runtime. The runtime module is the one place that imports it.
+        files: ['src/**/*.ts'],
+        ignores: ['src/audio/mediabunnyRuntime.ts'],
+        rules: {
+            '@typescript-eslint/no-restricted-imports': [
+                'error',
+                {
+                    paths: [
+                        ...OBSIDIAN_RESTRICTED_IMPORTS.slice(1),
+                        {
+                            name: 'mediabunny',
+                            allowTypeImports: true,
+                            message:
+                                "Take mediabunny values from await import('./mediabunnyRuntime') where they are used: a static import runs mediabunny at plugin load.",
+                        },
+                    ],
+                    patterns: [
+                        {
+                            group: ['**/mediabunnyRuntime'],
+                            allowTypeImports: true,
+                            message:
+                                "Import mediabunnyRuntime dynamically, await import('./mediabunnyRuntime'): a static import runs mediabunny at plugin load.",
+                        },
+                    ],
+                },
             ],
         },
     },

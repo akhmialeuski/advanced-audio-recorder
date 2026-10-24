@@ -7,7 +7,6 @@
  */
 
 import { App, Notice, TFile } from 'obsidian';
-import { BufferSource } from 'mediabunny';
 import type { Input, InputAudioTrack } from 'mediabunny';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import {
@@ -291,7 +290,7 @@ async function probeAtAddress<T extends ProbedAudioMetadata>(
 	read: (input: Input) => Promise<T | null>,
 ): Promise<{ url: string; metadata: T | null }> {
 	const url = app.vault.getResourcePath(file);
-	const ranged = await withMediaInput(resourceSource(url), read);
+	const ranged = await withMediaInput(await resourceSource(url), read);
 	return {
 		url,
 		metadata: ranged
@@ -385,6 +384,7 @@ async function readBytes<T extends ProbedAudioMetadata>(
 	parse: (input: Input) => Promise<T | null>,
 	fromDecode: (decoded: ProbedAudioMetadata) => T,
 ): Promise<T | null> {
+	const { BufferSource } = await import('../audio/mediabunnyRuntime');
 	const probed = await withMediaInput(new BufferSource(data), parse);
 	if (probed) {
 		return await withReadDuration(probed, () =>
@@ -424,6 +424,7 @@ export async function probeAudioMetadata(
 	data: ArrayBuffer,
 	path: string,
 ): Promise<ProbedAudioMetadata | null> {
+	const { BufferSource } = await import('../audio/mediabunnyRuntime');
 	return await withMediaInput(new BufferSource(data), (input) =>
 		readTrackMetadata(input, path),
 	);

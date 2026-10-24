@@ -11,6 +11,7 @@
  * @module tests/unit/formatContainers.test
  */
 
+import * as mediabunny from 'mediabunny';
 import { ALL_FORMATS, BufferSource, Input } from 'mediabunny';
 import type { OutputFormat } from 'mediabunny';
 import { getFormatDescriptor } from 'src/audio/formatRegistry';
@@ -26,7 +27,7 @@ import {
  * @param format - Registry format id
  */
 function containerOf(format: string): OutputFormat {
-	return defined(getFormatDescriptor(format)).createOutputFormat();
+	return defined(getFormatDescriptor(format)).createOutputFormat(mediabunny);
 }
 
 describe('the container a format is written in', () => {
