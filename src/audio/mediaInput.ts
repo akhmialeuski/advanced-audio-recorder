@@ -8,6 +8,7 @@
 import type { Input, Source, UrlSource } from 'mediabunny';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { disposableOf } from '../utils/disposables';
+import { loadAudioEngine } from './audioEngine';
 
 /**
  * A source reading a vault file through its resource URL, by range, so a
@@ -30,7 +31,7 @@ import { disposableOf } from '../utils/disposables';
  * @returns A source for an Input
  */
 export async function resourceSource(url: string): Promise<UrlSource> {
-	const { UrlSource } = await import('./mediabunnyRuntime');
+	const { UrlSource } = await loadAudioEngine();
 	return new UrlSource(url, {
 		getRetryDelay: () => null,
 		handleUnhandledError: (error: unknown) => {
@@ -60,7 +61,7 @@ export async function withMediaInput<T>(
 	source: Source,
 	read: (input: Input) => Promise<T>,
 ): Promise<T> {
-	const { ALL_FORMATS, Input } = await import('./mediabunnyRuntime');
+	const { ALL_FORMATS, Input } = await loadAudioEngine();
 	using input = disposableOf(new Input({ source, formats: ALL_FORMATS }));
 	return await read(input);
 }

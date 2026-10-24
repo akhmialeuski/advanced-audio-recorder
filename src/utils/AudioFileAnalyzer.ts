@@ -23,6 +23,7 @@ import { formatByteSize } from './formatBytes';
 import { formatTimecode } from './TimeUtils';
 import { autoClosing } from './disposables';
 import { resourceSource, withMediaInput } from '../audio/mediaInput';
+import { loadAudioEngine } from '../audio/audioEngine';
 
 /**
  * Represents detailed information about an audio file.
@@ -384,7 +385,7 @@ async function readBytes<T extends ProbedAudioMetadata>(
 	parse: (input: Input) => Promise<T | null>,
 	fromDecode: (decoded: ProbedAudioMetadata) => T,
 ): Promise<T | null> {
-	const { BufferSource } = await import('../audio/mediabunnyRuntime');
+	const { BufferSource } = await loadAudioEngine();
 	const probed = await withMediaInput(new BufferSource(data), parse);
 	if (probed) {
 		return await withReadDuration(probed, () =>
@@ -424,7 +425,7 @@ export async function probeAudioMetadata(
 	data: ArrayBuffer,
 	path: string,
 ): Promise<ProbedAudioMetadata | null> {
-	const { BufferSource } = await import('../audio/mediabunnyRuntime');
+	const { BufferSource } = await loadAudioEngine();
 	return await withMediaInput(new BufferSource(data), (input) =>
 		readTrackMetadata(input, path),
 	);

@@ -4,6 +4,7 @@
  */
 
 import {
+	createOutputFormat,
 	encodableSampleRate,
 	encodeAudioBuffer,
 	isOfflineEncodingSupported,
@@ -412,6 +413,15 @@ describe('AudioEncoder', () => {
 				expect.stringContaining('could not be stopped'),
 				expect.objectContaining({ message: 'busy' }),
 			);
+		});
+	});
+
+	describe('createOutputFormat', () => {
+		it('refuses a format the registry has no container writer for', async () => {
+			const writing = createOutputFormat('xyz');
+
+			await expect(writing).rejects.toBeInstanceOf(EncodingError);
+			await expect(writing).rejects.toThrow('No output format for "xyz"');
 		});
 	});
 
