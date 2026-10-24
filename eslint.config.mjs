@@ -136,9 +136,11 @@ export default tseslint.config(
                 ...globals.browser,
                 ...globals.node,
                 ...globals.es2021,
-                // Build-time global injected by esbuild (see
+                // Build-time globals injected by esbuild (see
                 // esbuild.config.mjs and src/globals.d.ts)
                 __ENCODING_WORKER_SOURCE__: 'readonly',
+                __AUDIO_ENGINE_SOURCE__: 'readonly',
+                __AUDIO_ENGINE_GLOBAL__: 'readonly',
             },
             parserOptions: {
                 project: './tsconfig.eslint.json',

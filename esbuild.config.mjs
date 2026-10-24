@@ -36,10 +36,71 @@ const copyStaticFiles = {
 	}
 };
 
-// First pass: bundle the encoding worker so its source can be inlined
-// into the main bundle (the plugin starts it via a Blob URL). In watch
-// mode the worker source is captured once at startup; restart the dev
-// build after editing src/audio/encodingWorker.ts.
+// The audio engine (mediabunny with its FLAC and MP3 encoders) travels in
+// main.js once, as a classic script nobody compiles at plugin load. The main
+// thread runs it from a Blob URL on first use (src/audio/audioEngine.ts),
+// and the encoding worker runs it ahead of its own code. The engine script
+// declares itself under this global name.
+const ENGINE_GLOBAL = "__aarAudioEngine";
+
+// Any of these inputs outside the engine's own bundle is a second copy.
+const ENGINE_INPUT = /(^|\/)node_modules\/(mediabunny|@mediabunny)\//;
+
+/**
+ * Fails a build whose output carries code of the engine. A static or
+ * dynamic import of the engine packages or of src/audio/mediabunnyRuntime.ts
+ * anywhere but through loadAudioEngine() would otherwise grow main.js back
+ * to two copies without a word.
+ */
+const refuseEngineCopy = {
+	name: "refuse-engine-copy",
+	setup(build) {
+		build.onEnd((result) => {
+			const found = Object.keys(result.metafile?.inputs ?? {}).filter(
+				(input) => ENGINE_INPUT.test(input),
+			);
+			return found.length === 0
+				? null
+				: {
+						errors: [
+							{
+								text: `${build.initialOptions.entryPoints} carries its own copy of the audio engine (${found.length} inputs, first ${found[0]}); reach the engine through loadAudioEngine()`,
+							},
+						],
+					};
+		});
+	},
+};
+
+// The worker reads the engine the engine script ahead of it declared.
+const engineFromGlobal = {
+	name: "engine-from-global",
+	setup(build) {
+		build.onResolve({ filter: /\/mediabunnyRuntime$/ }, () => ({
+			path: "engine",
+			namespace: "engine-global",
+		}));
+		build.onLoad({ filter: /.*/, namespace: "engine-global" }, () => ({
+			contents: `module.exports = ${ENGINE_GLOBAL};`,
+			loader: "js",
+		}));
+	},
+};
+
+// First passes: the engine and the encoding worker, both inlined into the
+// main bundle as source text. In watch mode they are captured once at
+// startup; restart the dev build after editing the worker or the engine.
+const engineBuild = await esbuild.build({
+	entryPoints: ["src/audio/mediabunnyRuntime.ts"],
+	bundle: true,
+	format: "iife",
+	globalName: ENGINE_GLOBAL,
+	target: "es2022",
+	minify: prod,
+	write: false,
+});
+const audioEngineSource = engineBuild.outputFiles[0].text;
+
 const workerBuild = await esbuild.build({
 	entryPoints: ["src/audio/encodingWorker.ts"],
 	bundle: true,
@@ -47,6 +108,11 @@ const workerBuild = await esbuild.build({
 	target: "es2022",
 	minify: prod,
 	write: false,
+	metafile: true,
+	define: {
+		__AUDIO_ENGINE_SOURCE__: "undefined",
+	},
+	plugins: [engineFromGlobal, refuseEngineCopy],
 });
 const encodingWorkerSource = workerBuild.outputFiles[0].text;
 
@@ -57,8 +123,11 @@ const context = await esbuild.context({
 	entryPoints: ["src/main.ts"],
 	bundle: true,
 	define: {
+		__AUDIO_ENGINE_SOURCE__: JSON.stringify(audioEngineSource),
+		__AUDIO_ENGINE_GLOBAL__: JSON.stringify(ENGINE_GLOBAL),
 		__ENCODING_WORKER_SOURCE__: JSON.stringify(encodingWorkerSource),
 	},
+	metafile: true,
 	external: [
 		"obsidian",
 		"electron",
@@ -85,7 +154,7 @@ const context = await esbuild.context({
 	// readable in this repository
 	minify: prod,
 	outfile: "dist/main.js",
-	plugins: [copyStaticFiles],
+	plugins: [copyStaticFiles, refuseEngineCopy],
 });
 
 if (prod) {
