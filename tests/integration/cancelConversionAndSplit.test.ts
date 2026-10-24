@@ -22,32 +22,20 @@ import {
 	type WorkerResponse,
 } from 'src/audio/encodingWorker';
 import { ChannelMode } from 'src/audio/downmix';
-import { assembleWavFromPcmSegments } from 'src/audio/WavEncoder';
-import { PcmSampleFormat } from 'src/audio/pcm';
 import { CancellationSource } from 'src/utils/cancellation';
 import * as LinkUpdater from 'src/utils/LinkUpdater';
 import { asMockApp } from '../helpers/obsidianMock';
 import { defined } from '../helpers/assertions';
-import { alawWav, encodePcmSamples } from '../helpers/pcmFixtures';
+import { alawWav, stereoWav } from '../helpers/pcmFixtures';
 import { noticeMessages } from '../mocks/obsidian';
 import { waitFor } from '../helpers/async';
 
-/** Rate of the PCM fixtures, deliberately not the device's own. */
-const PCM_RATE = 22050;
-
 /**
- * A stereo 16-bit WAV, long enough that mediabunny reports progress well
- * before it is done.
- * @param seconds - Length of the recording
+ * Rate of the PCM fixtures, deliberately not the device's own. Thirty seconds
+ * at it is long enough that mediabunny reports progress well before it is
+ * done.
  */
-function stereoWav(seconds: number): ArrayBuffer {
-	const interleaved: number[] = [];
-	for (let frame = 0; frame < PCM_RATE * seconds; frame++) {
-		interleaved.push((frame % 2000) * 8, 4000);
-	}
-	const pcm = encodePcmSamples(PcmSampleFormat.Int16, interleaved);
-	return assembleWavFromPcmSegments([pcm], 2, PCM_RATE);
-}
+const PCM_RATE = 22050;
 
 /** The recording every case acts on. */
 const RECORDING = 'Calls/call.wav';
@@ -155,7 +143,7 @@ describe('cancelling a conversion', () => {
 	});
 
 	it('stops the streaming conversion inside mediabunny and writes nothing', async () => {
-		const { app, recording } = vaultHolding(stereoWav(30));
+		const { app, recording } = vaultHolding(stereoWav(PCM_RATE, 30));
 		const cancellation = new CancellationSource();
 		const progress = cancellingOn(cancellation, /^Converting\.\.\. \d+%$/);
 
@@ -182,7 +170,7 @@ describe('cancelling a conversion', () => {
 		global.URL.createObjectURL = jest.fn().mockReturnValue('blob:worker');
 		global.URL.revokeObjectURL = jest.fn();
 		const worker = new EncodingWorkerClient('worker-source');
-		const { app, recording } = vaultHolding(stereoWav(30));
+		const { app, recording } = vaultHolding(stereoWav(PCM_RATE, 30));
 		const cancellation = new CancellationSource();
 		const progress = cancellingOn(cancellation, /^Converting\.\.\. \d+%$/);
 
@@ -231,7 +219,7 @@ describe('cancelling a conversion', () => {
 
 		await expect(
 			worker.convertBlob(
-				new Blob([stereoWav(1)]),
+				new Blob([stereoWav(PCM_RATE, 1)]),
 				'wav',
 				0,
 				false,
@@ -279,7 +267,7 @@ describe('cancelling a split', () => {
 	});
 
 	it('trashes the parts the WAV byte copy already wrote and keeps the source', async () => {
-		const { app, recording } = vaultHolding(stereoWav(3));
+		const { app, recording } = vaultHolding(stereoWav(PCM_RATE, 3));
 		const cancellation = new CancellationSource();
 		const progress = cancellingOn(cancellation, /^Writing part 2 of 3/);
 
