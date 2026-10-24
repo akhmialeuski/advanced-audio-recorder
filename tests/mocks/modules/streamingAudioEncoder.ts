@@ -19,7 +19,7 @@
 
 export const ensureEncoderRegistered = jest.fn().mockResolvedValue(undefined);
 
-export const createOutputFormat = jest.fn().mockReturnValue({});
+export const createOutputFormat = jest.fn().mockResolvedValue({});
 
 /** Leaves a conversion at the rate it came in with. */
 export const encodableSampleRate = jest.fn(

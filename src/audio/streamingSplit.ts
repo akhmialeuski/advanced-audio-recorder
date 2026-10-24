@@ -23,16 +23,7 @@
  * @module audio/streamingSplit
  */
 
-import {
-	ALL_FORMATS,
-	AudioSampleSink,
-	AudioSampleSource,
-	BufferSource,
-	BufferTarget,
-	Input,
-	Output,
-} from 'mediabunny';
-import type { AudioSample } from 'mediabunny';
+import type { AudioSample, AudioSampleSource, Input } from 'mediabunny';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	createOutputFormat,
@@ -156,6 +147,8 @@ export class StreamedSplit implements Disposable {
 		bitrate: number,
 		token: CancellationToken = NEVER_CANCELLED,
 	): Promise<StreamedSplit | null> {
+		const { ALL_FORMATS, AudioSampleSink, BufferSource, Input } =
+			await import('./mediabunnyRuntime');
 		const input = new Input({
 			source: new BufferSource(bytes),
 			formats: ALL_FORMATS,
@@ -241,9 +234,11 @@ export class StreamedSplit implements Disposable {
 	 * @returns The encoded part
 	 */
 	private async encodeUntil(endFrame: number | null): Promise<ArrayBuffer> {
+		const { AudioSampleSource, BufferTarget, Output } =
+			await import('./mediabunnyRuntime');
 		const target = new BufferTarget();
 		const output = new Output({
-			format: createOutputFormat(this.targetFormat),
+			format: await createOutputFormat(this.targetFormat),
 			target,
 		});
 		const source = new AudioSampleSource(

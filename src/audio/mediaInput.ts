@@ -5,8 +5,7 @@
  * @module audio/mediaInput
  */
 
-import { ALL_FORMATS, Input, UrlSource } from 'mediabunny';
-import type { Source } from 'mediabunny';
+import type { Input, Source, UrlSource } from 'mediabunny';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { disposableOf } from '../utils/disposables';
 
@@ -30,7 +29,8 @@ import { disposableOf } from '../utils/disposables';
  * @param url - Resource URL from app.vault.getResourcePath
  * @returns A source for an Input
  */
-export function resourceSource(url: string): UrlSource {
+export async function resourceSource(url: string): Promise<UrlSource> {
+	const { UrlSource } = await import('./mediabunnyRuntime');
 	return new UrlSource(url, {
 		getRetryDelay: () => null,
 		handleUnhandledError: (error: unknown) => {
@@ -60,6 +60,7 @@ export async function withMediaInput<T>(
 	source: Source,
 	read: (input: Input) => Promise<T>,
 ): Promise<T> {
+	const { ALL_FORMATS, Input } = await import('./mediabunnyRuntime');
 	using input = disposableOf(new Input({ source, formats: ALL_FORMATS }));
 	return await read(input);
 }

@@ -32,7 +32,7 @@ jest.mock('src/audio/AudioEncoder', () => ({
 		].includes(format);
 	}),
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
-	createOutputFormat: jest.fn().mockReturnValue({}),
+	createOutputFormat: jest.fn().mockResolvedValue({}),
 	encodableSampleRate: jest.requireActual<
 		typeof import('../mocks/modules/streamingAudioEncoder')
 	>('../mocks/modules/streamingAudioEncoder').encodableSampleRate,

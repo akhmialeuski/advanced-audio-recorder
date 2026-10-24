@@ -8,15 +8,6 @@
  * @module audio/formatRegistry
  */
 
-import {
-	AdtsOutputFormat,
-	Mp4OutputFormat,
-	WebMOutputFormat,
-	OggOutputFormat,
-	FlacOutputFormat,
-	Mp3OutputFormat,
-	WavOutputFormat,
-} from 'mediabunny';
 import type { OutputFormat, AudioCodec } from 'mediabunny';
 import {
 	FORMAT_WAV,
@@ -83,7 +74,9 @@ export interface AudioFormatDescriptor {
 	/** Mediabunny codec used when encoding to this format. */
 	readonly codec: AudioCodec;
 	/** Creates the mediabunny container writer for this format. */
-	readonly createOutputFormat: () => OutputFormat;
+	readonly createOutputFormat: (
+		mediabunny: typeof import('./mediabunnyRuntime'),
+	) => OutputFormat;
 	/** Uncompressed PCM: a bitrate option is invalid for the encoder. */
 	readonly isPcm: boolean;
 	/**
@@ -134,7 +127,8 @@ export interface AudioFormatDescriptor {
 export const FORMAT_REGISTRY = {
 	[FORMAT_WAV]: {
 		codec: 'pcm-s16',
-		createOutputFormat: (): OutputFormat => new WavOutputFormat(),
+		createOutputFormat: (mediabunny): OutputFormat =>
+			new mediabunny.WavOutputFormat(),
 		isPcm: true,
 		lossless: true,
 		minBitrate: noBitrateFloor,
@@ -148,7 +142,8 @@ export const FORMAT_REGISTRY = {
 	},
 	[FORMAT_WEBM]: {
 		codec: 'opus',
-		createOutputFormat: (): OutputFormat => new WebMOutputFormat(),
+		createOutputFormat: (mediabunny): OutputFormat =>
+			new mediabunny.WebMOutputFormat(),
 		isPcm: false,
 		lossless: false,
 		minBitrate: opusBitrateFloor,
@@ -162,7 +157,8 @@ export const FORMAT_REGISTRY = {
 	},
 	[FORMAT_OGG]: {
 		codec: 'opus',
-		createOutputFormat: (): OutputFormat => new OggOutputFormat(),
+		createOutputFormat: (mediabunny): OutputFormat =>
+			new mediabunny.OggOutputFormat(),
 		isPcm: false,
 		lossless: false,
 		minBitrate: opusBitrateFloor,
@@ -176,7 +172,8 @@ export const FORMAT_REGISTRY = {
 	},
 	[FORMAT_MP3]: {
 		codec: 'mp3',
-		createOutputFormat: (): OutputFormat => new Mp3OutputFormat(),
+		createOutputFormat: (mediabunny): OutputFormat =>
+			new mediabunny.Mp3OutputFormat(),
 		isPcm: false,
 		lossless: false,
 		minBitrate: mp3BitrateFloor,
@@ -190,7 +187,8 @@ export const FORMAT_REGISTRY = {
 	},
 	[FORMAT_M4A]: {
 		codec: 'aac',
-		createOutputFormat: (): OutputFormat => new Mp4OutputFormat(),
+		createOutputFormat: (mediabunny): OutputFormat =>
+			new mediabunny.Mp4OutputFormat(),
 		isPcm: false,
 		lossless: false,
 		minBitrate: noBitrateFloor,
@@ -204,7 +202,8 @@ export const FORMAT_REGISTRY = {
 	},
 	[FORMAT_MP4]: {
 		codec: 'aac',
-		createOutputFormat: (): OutputFormat => new Mp4OutputFormat(),
+		createOutputFormat: (mediabunny): OutputFormat =>
+			new mediabunny.Mp4OutputFormat(),
 		isPcm: false,
 		lossless: false,
 		minBitrate: noBitrateFloor,
@@ -223,7 +222,8 @@ export const FORMAT_REGISTRY = {
 	},
 	[FORMAT_FLAC]: {
 		codec: 'flac',
-		createOutputFormat: (): OutputFormat => new FlacOutputFormat(),
+		createOutputFormat: (mediabunny): OutputFormat =>
+			new mediabunny.FlacOutputFormat(),
 		isPcm: false,
 		lossless: true,
 		minBitrate: noBitrateFloor,
@@ -242,7 +242,8 @@ export const FORMAT_REGISTRY = {
 		// where a reader sniffed the bytes instead of trusting the name, and an
 		// upload declared as audio/aac handed the engine a file it was told was
 		// something else.
-		createOutputFormat: (): OutputFormat => new AdtsOutputFormat(),
+		createOutputFormat: (mediabunny): OutputFormat =>
+			new mediabunny.AdtsOutputFormat(),
 		isPcm: false,
 		lossless: false,
 		minBitrate: noBitrateFloor,
