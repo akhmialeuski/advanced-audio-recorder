@@ -1,6 +1,6 @@
 # Quick notes
 
-A **quick note** is a dictation that lands in the note you are writing. Press the quick note button, say what you want to write down, press it again, and the recognized text is inserted at the cursor. The audio is never saved: it exists only while it is being recorded and transcribed, and it is dropped as soon as the text is ready. A **quick note profile** can rewrite the text with an LLM before it is inserted, so a stream of thoughts comes out as a tidy paragraph, a bulleted list, or a task.
+A **quick note** is a dictation that lands in the note you are writing. Press the quick note button, say what you want to write down, press it again, and the recognized text is inserted where the cursor stood when you started. The audio is never saved: it exists only while it is being recorded and transcribed, and it is dropped as soon as the text is ready. A **quick note profile** can rewrite the text with an LLM before it is inserted, so a stream of thoughts comes out as a tidy paragraph, a bulleted list, or a task.
 
 - [How it works](#how-it-works)
 - [Enabling quick notes](#enabling-quick-notes)
@@ -20,7 +20,7 @@ Quick notes reuse the plugin's own pipeline rather than a second one:
 1. The microphone is opened with the same device, channel and encoding settings a recording uses, and the audio is kept in memory rather than written to the vault.
 2. When you stop, the audio is sent to the **Quick note transcription engine**, with the language of the Transcription page and, when the advanced settings are on, its dictionary profile.
 3. When a quick note profile is selected, the recognized text is sent to the **Quick note rewrite engine** with the profile's instruction.
-4. The final text is inserted at the cursor, and the audio is discarded.
+4. The final text is inserted where the cursor stood when the dictation began, and the audio is discarded.
 
 A quick note asks for plain text in the language it was spoken in. Speaker labels, word timings, **Translate speech to English**, the advanced two-pass mode, the transcript output format and the LLM post-processing of recordings are left to recordings, so a dictation is never billed for them and never comes back translated.
 
@@ -54,7 +54,7 @@ On a setup saved by a version before the transcription engine of quick notes cou
 2. Click the waveform button in the ribbon, or run **Start/stop quick note**. The button turns red and pulses, and the status bar shows `Quick note...` with a stop button, the elapsed time, the recorded size and the input level meter, the way it shows a recording.
 3. Speak.
 4. Click the button again, click the stop button in the status bar, or run the command again. The ribbon button pulses in the accent colour, and the status bar follows the processing stage by stage with a progress bar: `Quick note: stopping...`, `Quick note: Preparing audio...`, `Quick note: Transcribing...` (with the part being sent for a long dictation), `Quick note: Rewriting with LLM...` when a profile is selected, and `Quick note: Done`.
-5. The text appears at the cursor, and the status bar clears.
+5. The text appears where the cursor stood in step 1, and the status bar clears.
 
 The elapsed time, the size and the meter follow the **Recording stats** and **Input level meter** switches under **Audio processing & feedback**, like those of a recording.
 
@@ -70,9 +70,9 @@ The same rule holds the other way round. While a dictation is recording, a recor
 
 ## Where the text goes
 
-The text is inserted into the note that was active when you started the dictation, at that note's cursor as it stands when the text arrives. You can keep typing while a dictation is transcribed, and the text follows your cursor. You can also switch to another note: the text still goes into the note you dictated for, as long as it is open in a pane.
+The text is inserted into the note that was active when you started the dictation, at the place the cursor stood when you started. That place moves with the note's text: you can keep typing while a dictation is recorded and transcribed, above it, below it or right at it, and the dictation still lands where you began it, before anything you typed at that spot afterwards. When the cursor has not moved, it ends up after the inserted text, as if you had typed it.
 
-When that note has been closed, the text goes into the note that is active instead. When no note is open at all, the text is copied to the clipboard and a notice says so, because a dictation you have already paid for is never thrown away for want of a cursor. When the clipboard refuses it too, as a window without focus does, a notice that stays until it is closed shows the text itself.
+You can also switch to another note. The text still goes into the note you dictated for, and a notice names that note, `Quick note inserted into Notes/today.md.`, because you are looking somewhere else. When that note has been closed, the text is written into its file at the place the cursor stood, and the same notice names it. When the dictation was started with no note active, the text goes to the cursor of the note that is active when it arrives. When no note is open at all, or the note was deleted, the text is copied to the clipboard and a notice says so, because a dictation you have already paid for is never thrown away for want of a cursor. When the clipboard refuses it too, as a window without focus does, a notice that stays until it is closed shows the text itself.
 
 The text is inserted exactly as it comes back. A profile that should produce a heading, a list or a checkbox says so in its instruction.
 
