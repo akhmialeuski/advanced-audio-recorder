@@ -39,11 +39,10 @@ import {
 	type WavLayout,
 } from './AudioSplitter';
 import { toFileNameSegment, uniqueName } from '../utils/fileNames';
-import { updateLinksInVault } from '../utils/LinkUpdater';
-import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { delay } from '../utils/TimeUtils';
-import { ConversionLinkAction } from '../settings/settingsSchema';
+import type { ConversionLinkAction } from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
+import { SourceReplacer } from './SourceReplacer';
 import { showNotice, type Notify } from '../utils/notify';
 import { chapters, type PlayerMarker } from '../markers/markerModel';
 import {
@@ -177,6 +176,9 @@ function holdingNothing(parts: PreparedPart[]): PreparedParts {
  * and optional source deletion.
  */
 export class SplitService {
+	/** Points links at the written parts and removes the source. */
+	private readonly sourceReplacer: SourceReplacer;
+
 	/**
 	 * Creates a new SplitService.
 	 * @param app - The Obsidian App instance
@@ -185,7 +187,9 @@ export class SplitService {
 	constructor(
 		private readonly app: App,
 		private readonly notify: Notify = showNotice,
-	) {}
+	) {
+		this.sourceReplacer = new SourceReplacer(app, notify);
+	}
 
 	/**
 	 * Resolves the extension the part files will get: WAV sources stay
@@ -305,7 +309,16 @@ export class SplitService {
 		}
 
 		// The parts exist on disk from here on
-		if (!(await this.finishSplit(request, written.partFiles, onProgress))) {
+		const finished = await this.sourceReplacer.replace(
+			request,
+			{
+				files: written.partFiles,
+				created: 'Parts were created',
+				frontmatterAdvice: ': properties cannot hold several links.',
+			},
+			onProgress,
+		);
+		if (!finished) {
 			return { status: 'partial' };
 		}
 
@@ -366,69 +379,6 @@ export class SplitService {
 			partCount: parts.parts.length,
 			firstPartName: partNames[0] ?? '',
 		};
-	}
-
-	/**
-	 * Post-write pipeline steps: updates links and optionally deletes
-	 * the source file. The part files already exist, so errors here are
-	 * reported as partial success and never as a failed split. The
-	 * source file is kept when some links could not be updated, because
-	 * deleting it would leave those links broken.
-	 * @param request - Split parameters
-	 * @param partFiles - Created part files in write order
-	 * @param onProgress - Receives pipeline progress text
-	 * @returns True when every requested step succeeded
-	 */
-	private async finishSplit(
-		request: SplitRequest,
-		partFiles: TFile[],
-		onProgress: (text: string) => void,
-	): Promise<boolean> {
-		let linkResult: VaultLinkUpdateResult | null = null;
-		if (request.linkAction !== ConversionLinkAction.None) {
-			onProgress('Updating links...');
-			try {
-				linkResult = await updateLinksInVault(
-					this.app,
-					request.sourceFile,
-					partFiles,
-					request.linkAction,
-				);
-			} catch (error) {
-				const message = errorMessage(error);
-				onProgress(`Error: ${message}`);
-				this.notify(
-					`Parts were created, but updating links failed: ${message}. The source file was kept.`,
-				);
-				return false;
-			}
-			if (linkResult.frontmatterReferences > 0) {
-				this.notify(
-					`${String(linkResult.frontmatterReferences)} frontmatter link(s) still point to the source file: properties cannot hold several links.`,
-				);
-			}
-		}
-
-		if (request.deleteSource) {
-			if (linkResult !== null && linkResult.skippedReferences > 0) {
-				this.notify(
-					`Source file kept: ${String(linkResult.skippedReferences)} link(s) could not be updated.`,
-				);
-			} else {
-				onProgress('Removing source file...');
-				try {
-					await this.app.fileManager.trashFile(request.sourceFile);
-				} catch (error) {
-					const message = errorMessage(error);
-					onProgress(`Error: ${message}`);
-					this.notify(
-						`Parts were created, but the source file could not be deleted: ${message}`,
-					);
-					return false;
-				}
-			}
-		}
-		return true;
 	}
 
 	/**

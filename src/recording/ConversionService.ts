@@ -10,10 +10,9 @@ import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
 import { convertBlobToFormatBuffer } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { isReadableSize, tooLargeMessage } from '../platform/capabilities';
-import { updateLinksInVault } from '../utils/LinkUpdater';
-import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
-import { ConversionLinkAction } from '../settings/settingsSchema';
+import type { ConversionLinkAction } from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
+import { SourceReplacer } from './SourceReplacer';
 import { showNotice, type Notify } from '../utils/notify';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { kilohertz } from '../audio/AudioCapabilityDetector';
@@ -83,6 +82,9 @@ export type ConversionOutcome =
  * source deletion.
  */
 export class ConversionService {
+	/** Points links at the converted file and removes the source. */
+	private readonly sourceReplacer: SourceReplacer;
+
 	/**
 	 * Creates a new ConversionService.
 	 * @param app - The Obsidian App instance
@@ -94,7 +96,9 @@ export class ConversionService {
 		private readonly getWorkerClient: () => EncodingWorkerClient | null = () =>
 			null,
 		private readonly notify: Notify = showNotice,
-	) {}
+	) {
+		this.sourceReplacer = new SourceReplacer(app, notify);
+	}
 
 	/**
 	 * Executes the conversion pipeline: existence pre-check, convert, write
@@ -240,83 +244,19 @@ export class ConversionService {
 		}
 
 		// The converted file exists on disk from here on
-		if (
-			!(await this.finishConversion(
-				request,
-				createdFile,
-				newFileName,
-				onProgress,
-			))
-		) {
+		const finished = await this.sourceReplacer.replace(
+			request,
+			{
+				files: [createdFile],
+				created: `"${newFileName}" was created`,
+				frontmatterAdvice: ' and must be updated manually.',
+			},
+			onProgress,
+		);
+		if (!finished) {
 			return { status: 'partial' };
 		}
 
 		return { status: 'completed', newFileName, newPath };
-	}
-
-	/**
-	 * Post-write pipeline steps: updates links across the whole vault
-	 * (covering notes that are not open, exactly like the split flow)
-	 * and optionally deletes the source file. The converted file already
-	 * exists, so errors here are reported as partial success. The source
-	 * file is kept when some links could not be updated, because
-	 * deleting it would leave those links broken.
-	 * @param request - Conversion parameters
-	 * @param createdFile - The converted file
-	 * @param newFileName - Display name of the converted file
-	 * @param onProgress - Receives pipeline progress text
-	 * @returns True when every requested step succeeded
-	 */
-	private async finishConversion(
-		request: ConversionRequest,
-		createdFile: TFile,
-		newFileName: string,
-		onProgress: (text: string) => void,
-	): Promise<boolean> {
-		let linkResult: VaultLinkUpdateResult | null = null;
-		if (request.linkAction !== ConversionLinkAction.None) {
-			onProgress('Updating links...');
-			try {
-				linkResult = await updateLinksInVault(
-					this.app,
-					request.sourceFile,
-					[createdFile],
-					request.linkAction,
-				);
-			} catch (error) {
-				const message = errorMessage(error);
-				onProgress(`Error: ${message}`);
-				this.notify(
-					`"${newFileName}" was created, but updating links failed: ${message}. The source file was kept.`,
-				);
-				return false;
-			}
-			if (linkResult.frontmatterReferences > 0) {
-				this.notify(
-					`${String(linkResult.frontmatterReferences)} frontmatter link(s) still point to the source file and must be updated manually.`,
-				);
-			}
-		}
-
-		if (request.deleteSource) {
-			if (linkResult !== null && linkResult.skippedReferences > 0) {
-				this.notify(
-					`Source file kept: ${String(linkResult.skippedReferences)} link(s) could not be updated.`,
-				);
-			} else {
-				onProgress('Removing source file...');
-				try {
-					await this.app.fileManager.trashFile(request.sourceFile);
-				} catch (error) {
-					const message = errorMessage(error);
-					onProgress(`Error: ${message}`);
-					this.notify(
-						`"${newFileName}" was created, but the source file could not be deleted: ${message}`,
-					);
-					return false;
-				}
-			}
-		}
-		return true;
 	}
 }
