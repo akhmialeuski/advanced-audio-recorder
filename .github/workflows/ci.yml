@@ -25,6 +25,12 @@ jobs:
             - name: Lint
               run: npm run lint
 
+            # madge counts `import type` edges, which ESLint import/no-cycle skips.
+            # package.json overrides its typescript peer (^5.4.4) with the project's
+            # 6.x until https://github.com/pahen/madge/issues/462 is fixed.
+            - name: No import cycles in src
+              run: npm run lint:cycles
+
             - name: Tests with coverage thresholds
               run: npm run test:coverage -- --randomize
 

@@ -508,4 +508,10 @@ The `src/` tree groups code by concern. The table below maps each area to its ke
 | Constants         | `constants.ts`                                                                                                                     | Format ids, limits, thresholds, defaults, and catalogue links used across the plugin                                                                                                                                                                                                                                            |
 | Errors            | `errors.ts`                                                                                                                        | Shared error classes (`AudioStreamError`, `SettingsValidationError`, `RecordingError`, `EncodingError`) thrown across recording, settings, and encoding                                                                                                                                                                         |
 
+No module under `src/` imports a module that leads back to it, and a type-only import counts as an edge like any other, because two modules that need each other's types cannot be read or moved apart either. A helper that needs only a few fields of a larger type declares those fields as its own structural interface, the way `DebugLoggingSettings` in `utils/DebugLogger.ts` and `ProfileSettings` in `settings/profiles.ts` do, so callers still pass the full object. CI runs [madge](https://github.com/pahen/madge) over the tree and fails while any cycle remains, listing each one:
+
+```bash
+npm run lint:cycles
+```
+
 For the user-facing tour of each capability, see the [Features overview](features.md). For the exact controls and defaults, see the [Settings reference](settings-reference.md). If you hit a bug, the [Troubleshooting](troubleshooting.md) guide and the [Bug reporting guide](BUG_REPORTING_GUIDE.md) explain how to collect diagnostics.
