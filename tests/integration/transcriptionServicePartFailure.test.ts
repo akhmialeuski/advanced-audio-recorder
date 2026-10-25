@@ -507,6 +507,54 @@ describe('what the user is told about the parts that went missing', () => {
 			'part 2 of 2 could not be transcribed and is missing',
 		);
 	});
+
+	// The notice carrying the reason closes after a few seconds, so the
+	// callout is what still says why once it has.
+	it('writes the reason of every missing part under the warning', async () => {
+		prepareThreeParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce(oneSegment('kept'))
+			.mockRejectedValueOnce(new Error('second failed'))
+			.mockRejectedValueOnce(new Error('third failed'));
+		const service = serviceOver(transcribe);
+
+		const result = await runToCompletion(service);
+
+		expect(result.markdown).toContain(
+			'are missing below.\n> - Part 2 of 3: second failed\n> - Part 3 of 3: third failed\n\n',
+		);
+	});
+
+	it('keeps a reason of several lines inside the callout', async () => {
+		prepareTwoParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce(oneSegment('kept'))
+			.mockRejectedValueOnce(new Error('HTTP 500\n\n  upstream reset'));
+		const service = serviceOver(transcribe);
+
+		const result = await runToCompletion(service);
+
+		expect(result.markdown).toContain(
+			'> - Part 2 of 2: HTTP 500 upstream reset\n',
+		);
+	});
+
+	it('says so when the engine gave no reason', async () => {
+		prepareTwoParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce(oneSegment('kept'))
+			.mockRejectedValueOnce(new Error(''));
+		const service = serviceOver(transcribe);
+
+		const result = await runToCompletion(service);
+
+		expect(result.markdown).toContain(
+			'> - Part 2 of 2: The engine gave no reason.\n',
+		);
+	});
 });
 
 describe('a part that cannot be subdivided any further', () => {
