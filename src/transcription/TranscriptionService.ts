@@ -97,7 +97,7 @@ import { ProfileKindId, selectedProfileId } from '../settings/profiles';
 import { ProfileTextSource } from '../settings/ProfileTextSource';
 import { readProfileNotes } from '../settings/ProfileNoteStore';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
-import { vendorMaxTokens } from '../providers/providers';
+import { sameEngine, vendorMaxTokens } from '../providers/providers';
 import { jobVendorId, LlmJobId } from './llm/vendors';
 import {
 	effectiveDiarize,
@@ -848,7 +848,9 @@ export class TranscriptionService {
 	 * recording run uses, and none of what a recording run adds for a document
 	 * is: no speakers, no word timings, no advanced second pass, no Markdown
 	 * and no transcript post-processing. A dictation is one person's text for
-	 * the cursor, and the quick note profile is the only rewrite it gets.
+	 * the cursor, and the quick note profile is the only rewrite it gets: in
+	 * the transcription request itself when the engine can rewrite there, and
+	 * as a second request to the quick note LLM otherwise.
 	 * @param audio - The dictated audio, held in memory
 	 * @param options - Progress and cancellation
 	 * @returns The text to insert and what producing it cost
@@ -906,6 +908,19 @@ export class TranscriptionService {
 			false,
 		);
 		this.throwIfCancelled(token);
+		// The rewrite rides in the transcription request when the engine can
+		// hear and rewrite at once, when the rewrite is configured on that same
+		// engine, so the model the settings name for it is the one that writes,
+		// and when the dictation goes in one part, since a rewrite per part
+		// would rewrite fragments of what was said.
+		const rewriteInRequest =
+			instruction !== '' &&
+			provider.capabilities.rewritesInRequest &&
+			sameEngine(
+				settings.transcriptionProvider,
+				jobVendorId(settings, LlmJobId.QuickNote),
+			) &&
+			prepared.payloads.length === 1;
 		const ledger = this.openLedger(
 			settings,
 			provider,
@@ -915,12 +930,14 @@ export class TranscriptionService {
 		);
 		await this.transcribePass(
 			ledger.context,
-			transcribeOptions,
+			rewriteInRequest
+				? { ...transcribeOptions, rewrite: instruction }
+				: transcribeOptions,
 			ledger.results,
 			ledger.failedParts,
 			0,
 			TRANSCRIBE_CHUNK_PROGRESS_CEILING,
-			'Transcribing',
+			rewriteInRequest ? 'Transcribing and rewriting' : 'Transcribing',
 		);
 		const transcript = this.stitchFirstPass(ledger, token, fileName);
 		const missing = missingPartsWarning(ledger.failedParts);
@@ -933,8 +950,14 @@ export class TranscriptionService {
 		// is what sizes its estimate. A dictation that heard nothing has
 		// nothing to rewrite and is not sent.
 		const lastSegment = transcript.segments.at(-1);
-		const text =
-			instruction !== '' && lastSegment !== undefined && heard !== ''
+		const text = rewriteInRequest
+			? // Several texts only when a truncated answer was retried in
+				// pieces, each rewritten on its own, kept in timeline order.
+				ledger.results
+					.map((part) => part.rewritten ?? '')
+					.filter((part) => part !== '')
+					.join('\n\n')
+			: instruction !== '' && lastSegment !== undefined && heard !== ''
 				? await this.rewriteDictation(settings, heard, instruction, {
 						durationSeconds: lastSegment.end,
 						token,
@@ -1477,6 +1500,9 @@ export class TranscriptionService {
 				// Carried per part so the run's cost sums what the provider
 				// actually reported billing for, across chunks and retries.
 				...(chunkResult.usage ? { usage: chunkResult.usage } : {}),
+				...(chunkResult.rewritten === undefined
+					? {}
+					: { rewritten: chunkResult.rewritten }),
 			});
 		} catch (error) {
 			// A cancel aborts the whole run; never salvage past it. An abort
