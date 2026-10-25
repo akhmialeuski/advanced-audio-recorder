@@ -441,11 +441,7 @@ interface PartRun {
 	/** Human label for the part ('' for a single indivisible job). */
 	readonly label: string;
 	/** Accumulates successful per-part transcripts (mutated). */
-	readonly results: {
-		offsetSeconds: number;
-		transcript: Transcript;
-		usage?: TranscriptionUsage;
-	}[];
+	readonly results: PassResult[];
 	/** Accumulates recoverable per-part failures (mutated). */
 	readonly failedParts: PartFailure[];
 	/**
