@@ -1,7 +1,8 @@
 /**
  * The dictation run of the transcription service: the audio is prepared into
  * parts exactly as a long recording is, each part is sent on its own, the text
- * comes back in timeline order, and a quick note profile rewrites it. The part
+ * comes back in timeline order, and a quick note profile rewrites it, inside
+ * the transcription request when one engine can hear and rewrite. The part
  * planning itself is covered by the audio preparation suites; this one states
  * what preparation returned and checks what the dictation run makes of it.
  * @module tests/integration/transcriptionServiceDictation.test
@@ -16,6 +17,9 @@ import { prepareAudio } from 'src/transcription/audioPrep';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { WhisperResult } from 'src/transcription/providers/whisperResponse';
+import type { ProviderCapabilities } from 'src/transcription/providers/TranscriptionProvider';
+import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';
+import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { CancellationSource } from 'src/utils/cancellation';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
@@ -26,6 +30,8 @@ import { completed } from '../helpers/llmDoubles';
 import { partial } from '../helpers/doubles';
 import { outcomeOf } from '../helpers/async';
 import { noticeMessages } from '../mocks/obsidian';
+import { captureRequests } from '../helpers/network';
+import { jsonBody } from '../helpers/assertions';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -66,15 +72,18 @@ interface Dictation {
  * Builds a service whose engine answers each part in turn.
  * @param answers - What each request resolves with, or rejects with
  * @param overrides - Settings over a vault that transcribes
+ * @param capabilities - Capability overrides of the engine
  * @returns The service and its doubles
  */
 function dictation(
 	answers: (WhisperResult | Error)[],
 	overrides: Partial<AudioRecorderSettings> = {},
+	capabilities: Partial<ProviderCapabilities> = {},
 ): Dictation {
 	prepareParts(answers.length);
 	const queue = [...answers];
 	const provider = fakeProvider({
+		capabilities,
 		transcribe: async () => {
 			const next = queue.shift();
 			if (next instanceof Error || next === undefined) {
@@ -317,4 +326,190 @@ describe("a dictation's inputs and its rewrite", () => {
 		const [prompt] = run.complete.mock.calls[0] ?? [];
 		expect(prompt).toEqual({ system: INSTRUCTION, user: 'buy milk' });
 	});
+});
+
+describe('a dictation rewritten in the transcription request', () => {
+	/** Gemini for both the quick note transcription and its rewrite. */
+	const ONE_ENGINE: Partial<AudioRecorderSettings> = {
+		...withProfile(INSTRUCTION),
+		quickNoteTranscriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+		quickNoteLlmProvider: LLM_PROVIDER_IDS.GEMINI,
+	};
+	const REWRITES: Partial<ProviderCapabilities> = { rewritesInRequest: true };
+
+	/**
+	 * Dictates through the real Gemini provider, whose every request is
+	 * answered with the given structured JSON.
+	 * @param settings - Settings over a vault that transcribes
+	 * @param structured - What the model's JSON answer holds
+	 * @returns The run's result, its doubles, and the text of each request sent
+	 */
+	async function throughGemini(
+		settings: Partial<AudioRecorderSettings>,
+		structured: unknown,
+	): Promise<{ run: Dictation; result: DictationResult; sent: string[] }> {
+		const run = dictation([heard('never sent')], settings);
+		run.createProvider.mockReturnValue(
+			new GeminiProvider({
+				baseUrl: 'https://gemini.example',
+				apiKey: 'gm-test',
+				model: 'gemini-3.8-flash',
+			}),
+		);
+		const requests = captureRequests({
+			text: JSON.stringify({
+				candidates: [
+					{
+						finishReason: 'STOP',
+						content: {
+							parts: [{ text: JSON.stringify(structured) }],
+						},
+					},
+				],
+			}),
+		});
+		const result = await dictate(run);
+		const sent = requests.map((request) =>
+			JSON.stringify(jsonBody<{ contents: unknown }>(request).contents),
+		);
+		return { run, result, sent };
+	}
+
+	it('sends Gemini one request that carries the instruction and returns its text', async () => {
+		const { run, result, sent } = await throughGemini(ONE_ENGINE, {
+			text: '- milk\n- bread',
+		});
+
+		expect(sent).toEqual([
+			expect.stringContaining(`Instruction: ${INSTRUCTION}`),
+		]);
+		expect(result.text).toBe('- milk\n- bread');
+		expect(run.createLlm).not.toHaveBeenCalled();
+	});
+
+	it('sends Gemini a plain transcription and the rewrite to a quick note LLM on another engine', async () => {
+		const { run, result, sent } = await throughGemini(
+			{
+				...ONE_ENGINE,
+				quickNoteLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			},
+			{ segments: [{ start: 0, end: 2, text: 'buy milk' }] },
+		);
+
+		expect(sent).toEqual([expect.not.stringContaining('Instruction:')]);
+		expect(run.complete).toHaveBeenCalledTimes(1);
+		const [prompt] = run.complete.mock.calls[0] ?? [];
+		expect(prompt).toEqual({ system: INSTRUCTION, user: 'buy milk' });
+		expect(result.text).toBe('- rewritten');
+	});
+
+	it('takes the text the engine rewrote and never calls the quick note LLM', async () => {
+		const run = dictation(
+			[{ segments: [], rewritten: '- milk' }],
+			ONE_ENGINE,
+			REWRITES,
+		);
+
+		const result = await dictate(run);
+
+		expect(run.provider.transcribe).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ rewrite: INSTRUCTION }),
+		);
+		expect(result.text).toBe('- milk');
+		expect(run.complete).not.toHaveBeenCalled();
+	});
+
+	it('keeps in timeline order the pieces a truncated answer was retried as', async () => {
+		const run = dictation(
+			[{ segments: [], rewritten: '- milk' }],
+			ONE_ENGINE,
+			REWRITES,
+		);
+		jest.mocked(prepareAudio).mockResolvedValue({
+			payloads: [
+				{
+					contentType: 'audio/wav',
+					filename: 'audio-0.wav',
+					offsetSeconds: 0,
+					endSeconds: 60,
+					createData: () => new ArrayBuffer(4),
+					subdivide: () =>
+						[0, 30].map((offsetSeconds) => ({
+							contentType: 'audio/wav',
+							filename: `audio-${String(offsetSeconds)}.wav`,
+							offsetSeconds,
+							endSeconds: offsetSeconds + 30,
+							createData: () => new ArrayBuffer(4),
+						})),
+				},
+			],
+			diarizationSplitWarning: false,
+		});
+		run.provider.transcribe
+			.mockRejectedValueOnce(new TranscriptTruncatedError('cut'))
+			.mockResolvedValueOnce({ segments: [], rewritten: '- milk' })
+			.mockResolvedValueOnce({ segments: [], rewritten: '- bread' });
+
+		const result = await dictate(run);
+
+		expect(run.provider.transcribe).toHaveBeenCalledTimes(3);
+		expect(result.text).toBe('- milk\n\n- bread');
+	});
+
+	it.each([
+		{ name: 'an empty text', answer: { segments: [], rewritten: '' } },
+		{ name: 'no rewritten text at all', answer: { segments: [] } },
+	])(
+		'inserts nothing when the engine answered silence with $name',
+		async ({ answer }) => {
+			const run = dictation([answer], ONE_ENGINE, REWRITES);
+
+			const result = await dictate(run);
+
+			expect(result.text).toBe('');
+			expect(run.complete).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		{
+			name: 'the quick note LLM is another engine',
+			settings: {
+				...ONE_ENGINE,
+				quickNoteLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			},
+			capabilities: REWRITES,
+			parts: 1,
+		},
+		{
+			name: 'the engine cannot rewrite in its request',
+			settings: ONE_ENGINE,
+			capabilities: {},
+			parts: 1,
+		},
+		{
+			name: 'the dictation goes in several parts',
+			settings: ONE_ENGINE,
+			capabilities: REWRITES,
+			parts: 2,
+		},
+	])(
+		'transcribes and rewrites in two requests when $name',
+		async ({ settings, capabilities, parts }) => {
+			const run = dictation(
+				Array.from({ length: parts }, () => heard('buy milk')),
+				settings,
+				capabilities,
+			);
+
+			const result = await dictate(run);
+
+			for (const [, options] of run.provider.transcribe.mock.calls) {
+				expect(options.rewrite).toBeUndefined();
+			}
+			expect(run.complete).toHaveBeenCalledTimes(1);
+			expect(result.text).toBe('- rewritten');
+		},
+	);
 });

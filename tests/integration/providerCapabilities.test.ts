@@ -54,6 +54,14 @@ describe('transcription provider capabilities', () => {
 		expect(VOXTRAL_CAPABILITIES.supportsDiarization).toBe(true);
 	});
 
+	it('lets only Gemini rewrite what it heard inside the transcription request', () => {
+		const rewriting = Object.entries(TRANSCRIPTION_PROVIDER_CAPABILITIES)
+			.filter(([, capabilities]) => capabilities.rewritesInRequest)
+			.map(([id]) => id);
+
+		expect(rewriting).toEqual([TRANSCRIPTION_PROVIDER_IDS.GEMINI]);
+	});
+
 	// Three answers, one per behaviour actually observed: Whisper API adds the
 	// `word` granularity when asked, Deepgram's mapping keeps the words of
 	// every response whether asked or not, and the other three answer with

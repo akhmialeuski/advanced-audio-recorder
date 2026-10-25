@@ -625,6 +625,20 @@ export function engineOfTranscription(
 }
 
 /**
+ * Whether a transcription id and an LLM vendor id name one engine, whose one
+ * catalogue and model setting then serve both jobs.
+ * @param transcriptionId - Id stored for the transcription
+ * @param vendorId - Id stored for the LLM job
+ * @returns True when both ids belong to the same engine
+ */
+export function sameEngine(
+	transcriptionId: TranscriptionProviderId,
+	vendorId: LlmProviderId,
+): boolean {
+	return engineOfTranscription(transcriptionId)?.llmId === vendorId;
+}
+
+/**
  * The account transcription is actually reached through, as the settings stand.
  *
  * Not the same question as whether an account can transcribe. An account that

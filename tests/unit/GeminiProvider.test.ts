@@ -35,6 +35,7 @@ interface GeneratePart {
 }
 interface GenerateBody {
 	contents: { parts: GeneratePart[] }[];
+	systemInstruction: { parts: { text: string }[] };
 	generationConfig: {
 		temperature: number;
 		responseMimeType: string;
@@ -427,6 +428,45 @@ describe('GeminiProvider.transcribe', () => {
 		// 2.0 rejects thinkingConfig, so the key must be absent entirely.
 		const config = flow.generateBody().generationConfig;
 		expect('thinkingConfig' in config).toBe(false);
+	});
+
+	it('asks for the rewritten text alone when the run carries a rewrite instruction', async () => {
+		const flow = scriptFlow(transcriptBody({ text: '- milk\n- bread' }));
+
+		const result = await provider().transcribe(payload('audio/wav'), {
+			diarize: false,
+			wordTimestamps: false,
+			rewrite: 'Turn the dictation into a list.',
+		});
+
+		const body = flow.generateBody();
+		expect(body.generationConfig.responseSchema).toEqual({
+			type: 'OBJECT',
+			properties: { text: { type: 'STRING' } },
+			required: ['text'],
+		});
+		expect(instructionOf(flow)).toMatch(
+			/return an empty text\. Instruction: Turn the dictation into a list\.$/,
+		);
+		// The transcription rules stay where they were; only the user's
+		// instruction rides in the request text.
+		expect(at(body.systemInstruction.parts, 0).text).toMatch(
+			/^You are a professional meeting transcription assistant\./,
+		);
+		expect(result).toEqual({ segments: [], rewritten: '- milk\n- bread' });
+	});
+
+	it('answers with segments and no rewritten text when no instruction is sent', async () => {
+		const flow = scriptTranscriptFlow();
+
+		const result = await provider().transcribe(payload('audio/wav'), {
+			diarize: false,
+			wordTimestamps: false,
+		});
+
+		expect(instructionOf(flow)).not.toContain('Instruction:');
+		expect(result.rewritten).toBeUndefined();
+		expect(result.segments).toHaveLength(1);
 	});
 
 	it('surfaces the transcription-specific remedy on truncation', async () => {

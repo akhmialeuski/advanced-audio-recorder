@@ -2,7 +2,9 @@
  * Pure mapping of a Gemini `generateContent` response into the plugin's
  * transcript segment model. Gemini is asked for structured JSON (segments with
  * a start, optional end, optional speaker, and text), which it returns as the
- * text of the response part; this module extracts and parses it. Tolerant of
+ * text of the response part; this module extracts and parses it, and the
+ * single rewritten `text` a request with a rewrite instruction asks for
+ * instead. Tolerant of
  * missing or malformed fields so a surprising response degrades to "best
  * available" rather than throwing.
  * @module transcription/providers/geminiResponse
@@ -111,4 +113,30 @@ export function mapGeminiResponse(
 		dominantSegmentLanguage(segments) ??
 		(typeof parsed.language === 'string' ? parsed.language : undefined);
 	return { language, segments, ...(usage ? { usage } : {}) };
+}
+
+/**
+ * Maps the response to a request that carried a rewrite instruction, whose
+ * schema asks for one `text` field instead of segments.
+ * @param body - Parsed JSON response body
+ * @returns No segments, the rewritten text ('' when none came back), and usage
+ */
+export function mapGeminiRewrite(body: unknown): WhisperResult {
+	const usage = usageFromGemini(body);
+	const text = geminiCandidateText(body);
+	let rewritten = '';
+	if (text.trim() !== '') {
+		try {
+			const parsed: unknown = JSON.parse(text);
+			if (isRecord(parsed) && typeof parsed.text === 'string') {
+				rewritten = parsed.text.trim();
+			}
+		} catch {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Gemini returned non-JSON rewrite text; treating as empty:`,
+				text.slice(0, RESPONSE_EXCERPT_LENGTH),
+			);
+		}
+	}
+	return { segments: [], rewritten, ...(usage ? { usage } : {}) };
 }

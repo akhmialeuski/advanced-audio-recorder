@@ -71,6 +71,14 @@ export interface TranscribeOptions {
 	 * operation for it.
 	 */
 	translateToEnglish?: boolean;
+	/**
+	 * The user's rewrite instruction, sent verbatim, for a request that answers
+	 * with the rewritten text instead of the transcript. Only ever set for an
+	 * engine whose {@link ProviderCapabilities.rewritesInRequest} says it can.
+	 * The provider then returns that text in {@link WhisperResult.rewritten}
+	 * and no segments.
+	 */
+	rewrite?: string;
 }
 
 /**
@@ -294,6 +302,13 @@ export interface ProviderCapabilities {
 	 * code of a configured list.
 	 */
 	readsLanguageList: boolean;
+	/**
+	 * Whether one request can both hear the audio and rewrite what it heard
+	 * by an instruction (see {@link TranscribeOptions.rewrite}). True for an
+	 * engine that is itself a prompt-following model reading audio, which
+	 * saves the second request a separate rewrite would cost.
+	 */
+	rewritesInRequest: boolean;
 }
 
 /** A provider that transcribes a single audio payload. */

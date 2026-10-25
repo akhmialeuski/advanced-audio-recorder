@@ -68,6 +68,8 @@ export interface PassResult {
 	offsetSeconds: number;
 	transcript: Transcript;
 	usage?: TranscriptionUsage;
+	/** The rewritten text, when the part was sent with a rewrite instruction. */
+	rewritten?: string;
 }
 
 /** Transcribes every prepared part once, the way the first pass was transcribed. */
