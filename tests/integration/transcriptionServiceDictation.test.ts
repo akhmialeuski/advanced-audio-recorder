@@ -337,8 +337,18 @@ describe('a dictation rewritten in the transcription request', () => {
 	};
 	const REWRITES: Partial<ProviderCapabilities> = { rewritesInRequest: true };
 
-	it('sends Gemini one request that carries the instruction and returns its text', async () => {
-		const run = dictation([heard('never sent')], ONE_ENGINE);
+	/**
+	 * Dictates through the real Gemini provider, whose every request is
+	 * answered with the given structured JSON.
+	 * @param settings - Settings over a vault that transcribes
+	 * @param structured - What the model's JSON answer holds
+	 * @returns The run's result, its doubles, and the text of each request sent
+	 */
+	async function throughGemini(
+		settings: Partial<AudioRecorderSettings>,
+		structured: unknown,
+	): Promise<{ run: Dictation; result: DictationResult; sent: string[] }> {
+		const run = dictation([heard('never sent')], settings);
 		run.createProvider.mockReturnValue(
 			new GeminiProvider({
 				baseUrl: 'https://gemini.example',
@@ -346,36 +356,51 @@ describe('a dictation rewritten in the transcription request', () => {
 				model: 'gemini-3.8-flash',
 			}),
 		);
-		const sent = captureRequests({
+		const requests = captureRequests({
 			text: JSON.stringify({
 				candidates: [
 					{
 						finishReason: 'STOP',
 						content: {
-							parts: [
-								{
-									text: JSON.stringify({
-										text: '- milk\n- bread',
-									}),
-								},
-							],
+							parts: [{ text: JSON.stringify(structured) }],
 						},
 					},
 				],
 			}),
 		});
-
 		const result = await dictate(run);
+		const sent = requests.map((request) =>
+			JSON.stringify(jsonBody<{ contents: unknown }>(request).contents),
+		);
+		return { run, result, sent };
+	}
 
-		expect(sent).toHaveLength(1);
-		const body = jsonBody<{ contents: { parts: { text?: string }[] }[] }>(
-			sent[0],
-		);
-		expect(JSON.stringify(body.contents)).toContain(
-			`Instruction: ${INSTRUCTION}`,
-		);
+	it('sends Gemini one request that carries the instruction and returns its text', async () => {
+		const { run, result, sent } = await throughGemini(ONE_ENGINE, {
+			text: '- milk\n- bread',
+		});
+
+		expect(sent).toEqual([
+			expect.stringContaining(`Instruction: ${INSTRUCTION}`),
+		]);
 		expect(result.text).toBe('- milk\n- bread');
 		expect(run.createLlm).not.toHaveBeenCalled();
+	});
+
+	it('sends Gemini a plain transcription and the rewrite to a quick note LLM on another engine', async () => {
+		const { run, result, sent } = await throughGemini(
+			{
+				...ONE_ENGINE,
+				quickNoteLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			},
+			{ segments: [{ start: 0, end: 2, text: 'buy milk' }] },
+		);
+
+		expect(sent).toEqual([expect.not.stringContaining('Instruction:')]);
+		expect(run.complete).toHaveBeenCalledTimes(1);
+		const [prompt] = run.complete.mock.calls[0] ?? [];
+		expect(prompt).toEqual({ system: INSTRUCTION, user: 'buy milk' });
+		expect(result.text).toBe('- rewritten');
 	});
 
 	it('takes the text the engine rewrote and never calls the quick note LLM', async () => {
