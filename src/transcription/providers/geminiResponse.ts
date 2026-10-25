@@ -22,11 +22,10 @@ import { isRecord } from './responseUtils';
 const RESPONSE_EXCERPT_LENGTH = 200;
 
 /**
- * Coerces a raw timecode value to seconds. Accepts a finite number (already
- * seconds) or a "HH:MM:SS"/"MM:SS"/bare-seconds string - a defensive fallback
- * in case the model emits a string despite the numeric schema - delegating the
- * string case to the shared timecode parser. Returns `fallback` for anything
- * else.
+ * Coerces a raw timecode value to seconds. Accepts the "MM:SS" string the
+ * request asks for, as well as "HH:MM:SS" and bare seconds, delegating the
+ * string case to the shared timecode parser, and a finite number, which is
+ * already seconds. Returns `fallback` for anything else.
  * @param value - Raw timecode value
  * @param fallback - Returned when `value` cannot be parsed
  * @returns Seconds as a number

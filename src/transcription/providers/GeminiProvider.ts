@@ -60,12 +60,22 @@ export interface GeminiConfig {
 	requestTimeoutMs?: number;
 }
 
-/** System instruction; the response schema enforces the output shape. */
+/**
+ * System instruction; the response schema enforces the output shape.
+ *
+ * Timecodes are asked for as MM:SS, the format Google's audio guide uses
+ * (https://ai.google.dev/gemini-api/docs/audio). Measured on a 24-minute
+ * lesson cut into two 12-minute parts with gemini-3.8-flash, five runs each:
+ * asked for seconds, 7 of 10 parts came back with lines past the part or
+ * stopping minutes early, and a phrase spoken at 14:27 landed up to 80 s
+ * late; asked for MM:SS, all 10 parts fitted and the phrase landed within a
+ * second of where it is spoken.
+ */
 const SYSTEM_PROMPT =
 	'You are a professional meeting transcription assistant. Transcribe the ' +
 	'audio verbatim. Write each segment in the language actually spoken; do ' +
 	'not translate, and keep technology names as spoken. Provide a start (and ' +
-	'when possible an end) timecode in seconds for every segment.';
+	'when possible an end) timecode for every segment, formatted as MM:SS.';
 
 /** Fields every transcript segment the schema describes must carry. */
 const SEGMENT_REQUIRED_FIELDS = ['start', 'text'];
@@ -73,7 +83,8 @@ const SEGMENT_REQUIRED_FIELDS = ['start', 'text'];
 /**
  * Structured-output schema (Gemini uses UPPERCASE OpenAPI type names): an
  * object with optional detected `language` and an array of `segments`, each a
- * start/end in seconds, an optional speaker label, and the spoken text.
+ * start/end as an MM:SS string (see {@link SYSTEM_PROMPT} for why not
+ * seconds), an optional speaker label, and the spoken text.
  *
  * A recording configured with several languages asks every segment for its
  * own, limited to the configured codes plus {@link OTHER_SEGMENT_LANGUAGE}.
@@ -85,8 +96,8 @@ const SEGMENT_REQUIRED_FIELDS = ['start', 'text'];
  */
 function transcriptSchema(languages: readonly string[] | undefined): object {
 	const segmentProperties: Record<string, object> = {
-		start: { type: 'NUMBER' },
-		end: { type: 'NUMBER' },
+		start: { type: 'STRING' },
+		end: { type: 'STRING' },
 		speaker: { type: 'STRING' },
 		text: { type: 'STRING' },
 	};

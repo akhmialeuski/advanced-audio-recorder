@@ -201,7 +201,7 @@ describe('a long dictation', () => {
 		expect(result.text).toBe('kept');
 		expect(noticeMessages()).toEqual([
 			expect.stringMatching(
-				/^Some audio could not be transcribed.*400 bad audio$/,
+				/^Some audio is missing from the transcript.*400 bad audio$/,
 			),
 		]);
 	});

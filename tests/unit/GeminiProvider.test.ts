@@ -43,7 +43,10 @@ interface GenerateBody {
 			properties: {
 				segments: {
 					items: {
-						properties: Record<string, { enum?: string[] }>;
+						properties: Record<
+							string,
+							{ type?: string; enum?: string[] }
+						>;
 						required: string[];
 					};
 				};
@@ -270,6 +273,35 @@ describe('GeminiProvider.transcribe', () => {
 			'other',
 		]);
 		expect(segment.required).toEqual(['start', 'text', 'language']);
+	});
+
+	// Asked for seconds, the model's timecodes drifted past the parts of a
+	// long recording; asked for MM:SS, they stayed where the speech is.
+	it('asks for MM:SS timecodes and reads them back as seconds', async () => {
+		const flow = scriptFlow(
+			transcriptBody({
+				segments: [
+					{ start: '14:27', end: '14:30.5', text: 'Andrzej.' },
+				],
+			}),
+		);
+
+		const result = await provider().transcribe(payload('audio/wav'), {
+			diarize: false,
+			wordTimestamps: false,
+		});
+
+		const body = flow.generateBody();
+		const { start, end } =
+			body.generationConfig.responseSchema.properties.segments.items
+				.properties;
+		expect([start?.type, end?.type]).toEqual(['STRING', 'STRING']);
+		expect(at(body.systemInstruction.parts, 0).text).toContain(
+			'timecode for every segment, formatted as MM:SS.',
+		);
+		expect(result.segments).toEqual([
+			{ start: 867, end: 870.5, text: 'Andrzej.' },
+		]);
 	});
 
 	it('asks Gemini to label speakers when the run diarizes', async () => {

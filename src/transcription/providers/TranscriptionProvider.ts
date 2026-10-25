@@ -309,6 +309,13 @@ export interface ProviderCapabilities {
 	 * saves the second request a separate rewrite would cost.
 	 */
 	rewritesInRequest: boolean;
+	/**
+	 * Whether the segment timecodes are written by the model as part of its
+	 * answer rather than measured on the audio. Such timecodes can run past
+	 * the part that was sent or stop short of it, so the service judges each
+	 * part's answer against the part and sends it once more when it left it.
+	 */
+	estimatesTimecodes: boolean;
 }
 
 /** A provider that transcribes a single audio payload. */

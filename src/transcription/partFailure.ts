@@ -53,8 +53,27 @@ export interface MissingPartsWarning {
 	notice: string;
 }
 
+/** Said for a part whose engine gave no reason at all. */
+const NO_REASON = 'The engine gave no reason.';
+
+/**
+ * One line of the callout naming a part and why it is missing. The reason is
+ * kept on one line, because a line break in it would end the callout there.
+ * @param part - The part that went missing
+ * @returns The callout line
+ */
+function reasonLine(part: PartFailure): string {
+	const label = part.label.charAt(0).toUpperCase() + part.label.slice(1);
+	const reason = part.message.replace(/\s+/g, ' ').trim() || NO_REASON;
+	return `> - ${label}: ${reason}\n`;
+}
+
 /**
  * Describes the parts that went missing, or nothing when none did.
+ *
+ * The callout names the reason of every part, because it is the one place the
+ * reason stays in front of the user: the notice that also carries it is gone
+ * a few seconds later.
  *
  * The callout is prepended only after post-processing: a cleanup or custom LLM
  * pass replaces the whole body and would otherwise strip the warning out of the
@@ -72,11 +91,15 @@ export function missingPartsWarning(
 	const verb = missingParts.length > 1 ? 'are' : 'is';
 	return {
 		callout:
-			`> [!warning] Transcription incomplete: ${labels} could not ` +
-			`be transcribed and ${verb} missing below.\n\n`,
+			// "In whole or in part", because a part whose answer left its
+			// bounds keeps the lines that fit and is listed here as well.
+			`> [!warning] Transcription incomplete: ${labels} ${verb} ` +
+			'missing from the transcript below, in whole or in part.\n' +
+			missingParts.map(reasonLine).join('') +
+			'\n',
 		notice:
-			`Some audio could not be transcribed (${labels}) and is missing ` +
-			'from the transcript; saving the parts that succeeded. ' +
+			`Some audio is missing from the transcript, in whole or in part ` +
+			`(${labels}); saving what came back. ` +
 			(missingParts[0]?.message ?? ''),
 	};
 }

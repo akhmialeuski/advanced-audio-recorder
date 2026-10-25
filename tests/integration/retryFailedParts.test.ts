@@ -33,6 +33,21 @@ const HEARD: TranscriptSegment[] = [
 	{ start: 120, end: 150, text: 'the closing' },
 ];
 
+/** The lines of {@link HEARD} with the default recovered middle spliced in. */
+const COMPLETED = ['the opening', 'the middle', 'the closing'];
+
+/**
+ * The lines of the JSON transcript a top-up wrote back.
+ * @param written - What the top-up wrote, by path
+ * @returns The text of every segment, in order
+ */
+function rewrittenTexts(written: Map<string, string>): string[] {
+	const transcript = JSON.parse(
+		written.get('rec.transcript.json') ?? '{}',
+	) as Transcript;
+	return transcript.segments.map((s) => s.text);
+}
+
 /** What the engine reported for a top-up run. */
 const RUN_COST: TranscribeRunCost = {
 	engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
@@ -264,14 +279,7 @@ describe('topping up a transcript', () => {
 
 		expect(outcome.recovered).toBe(1);
 		expect(outcome.rewritten).toBe(1);
-		const rewritten = JSON.parse(
-			written.get('rec.transcript.json') ?? '{}',
-		) as Transcript;
-		expect(rewritten.segments.map((s) => s.text)).toEqual([
-			'the opening',
-			'the middle',
-			'the closing',
-		]);
+		expect(rewrittenTexts(written)).toEqual(COMPLETED);
 	});
 
 	it('rewrites every recorded output, each in its own format', async () => {
@@ -304,6 +312,44 @@ describe('topping up a transcript', () => {
 		const clean = createSut();
 		await clean.retry.retry();
 		expect(at(clean.recorded, 0)).toEqual([]);
+	});
+
+	// A part whose model-written timecodes did not fit it is recorded as
+	// failed and keeps the lines that fit in the transcript. A top-up that
+	// gets nothing back for it must not trade those billed lines for nothing.
+	it('keeps what a stretch held when it fails again with nothing back', async () => {
+		const kept = { start: 40, end: 50, text: 'what the first run kept' };
+		const { retry, written } = createSut({
+			files: {
+				'rec.transcript.json': JSON.stringify(
+					transcriptOf([...HEARD, kept]),
+				),
+			},
+			recovered: [],
+			stillMissing: [{ ...LOST, message: 'refused again' }],
+		});
+
+		await retry.retry();
+
+		expect(rewrittenTexts(written)).toContain(kept.text);
+	});
+
+	it('replaces a stretch that fails again with the lines it brought back', async () => {
+		const { retry, written } = createSut({
+			files: {
+				'rec.transcript.json': JSON.stringify(
+					transcriptOf([
+						...HEARD,
+						{ start: 40, end: 50, text: 'an earlier attempt' },
+					]),
+				),
+			},
+			stillMissing: [{ ...LOST, message: 'stopped short again' }],
+		});
+
+		await retry.retry();
+
+		expect(rewrittenTexts(written)).toEqual(COMPLETED);
 	});
 
 	it('keeps a part it had no bounds to ask for on the record', async () => {

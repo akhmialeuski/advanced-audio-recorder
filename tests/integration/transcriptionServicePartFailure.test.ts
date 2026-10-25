@@ -458,6 +458,29 @@ describe('TranscriptionService multi-part salvage', () => {
 			expect.stringContaining('the 7:30-15:00 segment'),
 		);
 	});
+
+	// Only an engine whose timecodes the model writes is second-guessed; one
+	// that measures them on the audio is taken at its word and billed once.
+	it('takes the timecodes of an engine that measures them as they come', async () => {
+		prepareTwoPartsWithSpans();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 100, text: 'first part' }],
+			})
+			.mockResolvedValueOnce({
+				segments: [{ start: 400, end: 500, text: 'second part' }],
+			});
+		const service = serviceOver(transcribe);
+
+		const result = await runToCompletion(service);
+
+		expect(transcribe).toHaveBeenCalledTimes(2);
+		expect(result.missingParts).toEqual([]);
+		expect(result.transcript.segments.map((s) => s.end)).toEqual([
+			100, 950,
+		]);
+	});
 });
 
 describe('what the user is told about the parts that went missing', () => {
@@ -489,7 +512,7 @@ describe('what the user is told about the parts that went missing', () => {
 		const result = await runToCompletion(service);
 
 		expect(result.markdown).toContain(
-			'part 2 of 3, part 3 of 3 could not be transcribed and are missing',
+			'part 2 of 3, part 3 of 3 are missing from the transcript',
 		);
 	});
 
@@ -504,7 +527,55 @@ describe('what the user is told about the parts that went missing', () => {
 		const result = await runToCompletion(service);
 
 		expect(result.markdown).toContain(
-			'part 2 of 2 could not be transcribed and is missing',
+			'part 2 of 2 is missing from the transcript',
+		);
+	});
+
+	// The notice carrying the reason closes after a few seconds, so the
+	// callout is what still says why once it has.
+	it('writes the reason of every missing part under the warning', async () => {
+		prepareThreeParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce(oneSegment('kept'))
+			.mockRejectedValueOnce(new Error('second failed'))
+			.mockRejectedValueOnce(new Error('third failed'));
+		const service = serviceOver(transcribe);
+
+		const result = await runToCompletion(service);
+
+		expect(result.markdown).toContain(
+			'in whole or in part.\n> - Part 2 of 3: second failed\n> - Part 3 of 3: third failed\n\n',
+		);
+	});
+
+	it('keeps a reason of several lines inside the callout', async () => {
+		prepareTwoParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce(oneSegment('kept'))
+			.mockRejectedValueOnce(new Error('HTTP 500\n\n  upstream reset'));
+		const service = serviceOver(transcribe);
+
+		const result = await runToCompletion(service);
+
+		expect(result.markdown).toContain(
+			'> - Part 2 of 2: HTTP 500 upstream reset\n',
+		);
+	});
+
+	it('says so when the engine gave no reason', async () => {
+		prepareTwoParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce(oneSegment('kept'))
+			.mockRejectedValueOnce(new Error(''));
+		const service = serviceOver(transcribe);
+
+		const result = await runToCompletion(service);
+
+		expect(result.markdown).toContain(
+			'> - Part 2 of 2: The engine gave no reason.\n',
 		);
 	});
 });
