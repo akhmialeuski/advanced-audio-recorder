@@ -147,6 +147,7 @@ Behavior and limits:
 - **Up to 2 GB uploaded whole** via the File API, then transcribed in one request - so diarization keeps consistent speaker numbering across the whole file.
 - **Container conversion.** Containers Gemini does not accept directly (notably `webm`, `mp4`, and `m4a`) are decoded to **16 kHz mono WAV** before upload. WAV, MP3, AAC, OGG, FLAC, and AIFF are sent as-is.
 - **Long recordings are split.** A recording **longer than 15 minutes** is split into parts of equal length, each transcribed and stitched back onto the timeline; a recording of exactly 15 minutes still goes in one request. Splitting **resets Gemini's per-request speaker numbering**, so a diarized split shows a warning that speaker labels may differ between parts; the message suggests using Deepgram or splitting the recording for consistent speakers.
+- **A part whose timecodes do not fit it is sent again.** Gemini writes the start and end of every segment itself rather than measuring them on the audio, and on a long part they can drift from one request to the next. An answer whose lines end more than 5 seconds past the end of the part, or stop more than a minute before its end on any part but the recording's last, is set aside and the part is sent once more, which is billed like any other request. When the second answer does not fit either, the lines inside the part are kept, the lines past its end are dropped, and the part is listed in the incomplete-transcription warning with the reason, so [Transcribe the parts that failed](#transcribing-the-parts-that-failed) can ask for it again. When sending the part again fails, the first answer is kept the same way, and the reason names that failure too. An answer that spreads too little speech over the whole part still passes, because its lines stay inside the part and reach its end.
 - **Diarization supported.** Turn on **Speaker diarization** to request speaker labels.
 - **Several languages in one recording.** The only engine that reads a list of languages. With **Language** set to codes separated by commas, every segment comes back in the language it was spoken in and is tagged with its code. See [Several languages in one recording](#several-languages-in-one-recording).
 
@@ -531,6 +532,13 @@ Every queued run counts into the **"Spent this session"** total by the same rule
 ## Transcribing the parts that failed
 
 A recording longer than the engine takes in one request is sent in parts, and a part can fail on its own: a rate limit, a provider fault, a request the engine refused. The run keeps every part that came back rather than throwing the transcript away, warns about the gap in a callout, and **records what it lost** in the recording's sidecar, with the time bounds of each missing part and the reason the engine gave.
+
+The callout names every missing part with the same reason, so it is still in the note after the notice that also showed it has closed. A part Gemini answered with timecodes outside it twice is listed too, since only some of its lines are in the transcript. A run of a 24-minute recording whose first part the model refused starts with:
+
+```markdown
+> [!warning] Transcription incomplete: the 0:00-12:06 segment is missing from the transcript below, in whole or in part.
+> - The 0:00-12:06 segment: Gemini blocked the request (OTHER) and returned no output. Adjust the input or check the provider content policy.
+```
 
 **Transcribe the parts that failed**, in the recording's context menu, the editor menu of its embed, and the command palette, sends **exactly those parts again** and splices what comes back into the transcript already written. The part boundaries are a pure function of the recording's length and the engine's limit, so the same recording is cut the same way every time and the part that failed is the part that is asked for. That is what makes this a top-up rather than a second run: you are billed for the missing minutes, not for the whole recording.
 
