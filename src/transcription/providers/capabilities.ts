@@ -82,6 +82,7 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	supportsSpeechTranslation: true,
 	readsLanguageHint: true,
 	readsLanguageList: false,
+	rewritesInRequest: false,
 };
 
 /** Deepgram pre-recorded API: diarizes a whole request with stable labels. */
@@ -100,6 +101,7 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	supportsSpeechTranslation: false,
 	readsLanguageHint: true,
 	readsLanguageList: false,
+	rewritesInRequest: false,
 };
 
 /** Local whisper.cpp: no upload limit, needs decoded WAV, no diarization. */
@@ -117,6 +119,7 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	supportsSpeechTranslation: false,
 	readsLanguageHint: true,
 	readsLanguageList: false,
+	rewritesInRequest: false,
 };
 
 /**
@@ -149,6 +152,9 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	// asks each segment for its own, so a recording that switches language
 	// comes back with each part written in the language it was spoken in.
 	readsLanguageList: true,
+	// A Gemini model is a prompt-following model that reads the audio itself,
+	// so the instruction a rewrite would send separately rides in this request.
+	rewritesInRequest: true,
 };
 
 /**
@@ -209,6 +215,7 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	// the granularity is always sent, so the engine detects the language itself.
 	readsLanguageHint: false,
 	readsLanguageList: false,
+	rewritesInRequest: false,
 };
 
 /** Capabilities for every engine, keyed by its settings id. */

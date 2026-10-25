@@ -37,6 +37,7 @@ export const UNLIMITED_CAPABILITIES: ProviderCapabilities = {
 	supportsSpeechTranslation: false,
 	readsLanguageHint: true,
 	readsLanguageList: false,
+	rewritesInRequest: false,
 };
 
 /** What a suite varies about the provider it transcribes through. */

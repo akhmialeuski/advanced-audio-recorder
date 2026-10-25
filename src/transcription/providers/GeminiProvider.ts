@@ -28,7 +28,7 @@ import {
 	uploadFile,
 	waitUntilActive,
 } from './geminiFileApi';
-import { mapGeminiResponse } from './geminiResponse';
+import { mapGeminiResponse, mapGeminiRewrite } from './geminiResponse';
 import {
 	assertGeminiNotBlocked,
 	assertGeminiNotTruncated,
@@ -144,10 +144,29 @@ const TRUNCATION_REMEDY =
 	'Use a shorter recording, split it into parts, or choose a model with a ' +
 	'larger output limit.';
 
-/** Builds the per-run instruction text sent alongside the audio. */
+/**
+ * Schema of a request that carries a rewrite instruction: the rewritten text
+ * alone, since nothing downstream reads the verbatim segments of such a run.
+ */
+const REWRITE_SCHEMA = {
+	type: 'OBJECT',
+	properties: { text: { type: 'STRING' } },
+	required: ['text'],
+};
+
+/**
+ * Builds the per-run instruction text sent alongside the audio. A rewrite
+ * instruction turns the task into hearing the audio and answering with the
+ * rewritten text; the user's instruction is quoted last and verbatim, so it
+ * controls every directive about the result, while the system prompt keeps
+ * the transcription rules.
+ */
 function buildInstruction(options: TranscribeOptions): string {
+	const { rewrite } = options;
 	const lines = [
-		'Transcribe the attached audio into ordered segments.',
+		rewrite === undefined
+			? 'Transcribe the attached audio into ordered segments.'
+			: 'Transcribe the attached audio, then rewrite the transcription as the instruction below asks, and return only the rewritten text in the text field.',
 		options.languages
 			? languageListInstruction(options.languages)
 			: options.language
@@ -171,6 +190,13 @@ function buildInstruction(options: TranscribeOptions): string {
 		// from the audio.
 		lines.push(
 			`Context about this recording (topic, speaker names, domain terms, and canonical acronym spellings heard in it): ${biasPrompt}`,
+		);
+	}
+	if (rewrite !== undefined) {
+		// Without this a model asked to rewrite silence writes something.
+		lines.push(
+			'When no speech is heard, return an empty text.',
+			`Instruction: ${rewrite}`,
 		);
 	}
 	return lines.join(' ');
@@ -280,7 +306,10 @@ export class GeminiProvider implements TranscriptionProvider {
 				systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
 				generationConfig: {
 					responseMimeType: 'application/json',
-					responseSchema: transcriptSchema(options.languages),
+					responseSchema:
+						options.rewrite === undefined
+							? transcriptSchema(options.languages)
+							: REWRITE_SCHEMA,
 					...controls,
 				},
 			}),
@@ -296,6 +325,8 @@ export class GeminiProvider implements TranscriptionProvider {
 		// to an empty transcript with no explanation.
 		assertGeminiNotTruncated(json, TRUNCATION_REMEDY);
 		assertGeminiNotBlocked(json);
-		return mapGeminiResponse(json, options.diarize);
+		return options.rewrite === undefined
+			? mapGeminiResponse(json, options.diarize)
+			: mapGeminiRewrite(json);
 	}
 }

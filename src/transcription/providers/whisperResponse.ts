@@ -19,6 +19,11 @@ export interface WhisperResult {
 	segments: TranscriptSegment[];
 	/** Billing-relevant usage the provider reported, when any. */
 	usage?: TranscriptionUsage;
+	/**
+	 * The rewritten text a request carrying a rewrite instruction answered
+	 * with, line breaks kept. Absent from every other request.
+	 */
+	rewritten?: string;
 }
 
 /**
