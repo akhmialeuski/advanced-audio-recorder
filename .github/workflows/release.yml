@@ -21,7 +21,16 @@ jobs:
           # Same Node.js line the CI verify job tests on. No dependency cache:
           # a tag build signs and publishes its output, so it installs from the
           # lockfile alone rather than restoring a cache other runs could write.
+          # setup-node turns that cache on by itself when package.json names
+          # npm under devEngines.packageManager, so it is switched off here.
           node-version: "22"
+          package-manager-cache: false
+
+      # The npm bundled with Node 22 (10.x) ignores the nested madge override
+      # in package.json and rejects the lock file as out of sync. The version
+      # matches devEngines.packageManager in package.json.
+      - name: Use the npm the lock file is written with
+        run: npm install -g npm@11.6.4
 
       - name: Install dependencies
         run: npm ci
