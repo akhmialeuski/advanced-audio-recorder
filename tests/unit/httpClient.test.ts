@@ -449,8 +449,55 @@ describe('requestRaw abort support', () => {
 		expect(response.headers['x-test']).toBe('yes');
 	});
 
-	// The probe is what keeps the discovery off the request: it asks the same
-	// URL with no body, so a refusal costs a round trip instead of an upload.
+	// A query can name something the endpoint does not: a Gemini upload
+	// session answers a HEAD with CORS headers the rest of the API does not
+	// send, and trusting it sent the upload through fetch, whose unreadable
+	// response was then sent again by requestUrl as "Upload has already been
+	// terminated".
+	it('asks the request path without its query, which may name a session', async () => {
+		const fetchMock = mockFetch(() =>
+			Promise.resolve(fakeResponse(200, '{}')),
+		);
+
+		await requestRaw({
+			url: 'https://session-host.example.com/upload/v1beta/files?upload_id=abc&upload_protocol=resumable',
+			method: 'POST',
+			body: 'payload',
+			signal: new AbortController().signal,
+		});
+
+		expect(fetchMock.mock.calls[0]?.[0]).toBe(
+			'https://session-host.example.com/upload/v1beta/files',
+		);
+		expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'HEAD' });
+	});
+
+	// The root of an API host is often another handler than its endpoints:
+	// api.openai.com and api.mistral.ai answer a HEAD at the root without CORS
+	// headers and at their endpoints with them. Asking the root would leave
+	// such an engine on requestUrl, where a Cancel cannot stop the upload.
+	it('keeps fetch for an endpoint that answers when its origin root does not', async () => {
+		const fetchMock = mockFetch((input, init) =>
+			init?.method === 'HEAD' &&
+			input === 'https://root-refuses.example.com/'
+				? Promise.reject(new TypeError('Failed to fetch'))
+				: Promise.resolve(fakeResponse(200, '{"via":"fetch"}')),
+		);
+		fallbackAnswers();
+
+		const response = await requestRaw({
+			url: 'https://root-refuses.example.com/v1/audio/transcriptions',
+			method: 'POST',
+			body: 'payload',
+			signal: new AbortController().signal,
+		});
+
+		expect(response.text).toBe('{"via":"fetch"}');
+		expect(bodiesSentByFetch(fetchMock)).toHaveLength(1);
+	});
+
+	// The probe is what keeps the discovery off the request: it asks the
+	// origin with no body, so a refusal costs a round trip instead of an upload.
 	it('asks an unknown origin with a bodyless request first', async () => {
 		const fetchMock = mockFetch(() =>
 			Promise.resolve(fakeResponse(200, '{}')),

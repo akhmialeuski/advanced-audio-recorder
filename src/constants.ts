@@ -702,6 +702,15 @@ export const GEMINI_MODELS_DOC_URL =
 export const GEMINI_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
 
 /**
+ * Largest audio, in bytes, sent inline in the `generateContent` body instead
+ * of through the File API. Google caps an inline request at 20 MB in total,
+ * and base64 grows the bytes by a third, so 14 MB of audio encodes to about
+ * 18.7 MB and leaves room for the instruction and the response schema.
+ * See https://ai.google.dev/gemini-api/docs/audio
+ */
+export const GEMINI_INLINE_MAX_BYTES = 14 * 1024 * 1024;
+
+/**
  * Container MIME types the Gemini File API accepts for audio directly. Any
  * other container (notably `audio/webm` and `audio/mp4`/m4a, which the plugin
  * can record) is decoded to 16 kHz mono WAV before upload.

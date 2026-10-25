@@ -15,9 +15,10 @@
  */
 
 import { EditorState, StateField } from '@codemirror/state';
+import type { Extension } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import type { DecorationSet } from '@codemirror/view';
-import { editorInfoField } from 'obsidian';
+import { MarkdownView, editorInfoField } from 'obsidian';
 import type { Editor, EditorPosition, MarkdownFileInfo, TFile } from 'obsidian';
 import { partial } from './doubles';
 
@@ -57,6 +58,10 @@ export interface LiveEditorOptions {
 	 * view is a bare CodeMirror editor, such as another plugin's.
 	 */
 	owned?: boolean;
+	/** Where the cursor stands, as an offset; the start by default. */
+	cursor?: number;
+	/** Extensions the plugin adds to every Markdown editor. */
+	extensions?: Extension[];
 }
 
 /** A mounted Live Preview note. */
@@ -135,6 +140,7 @@ function obsidianEditorOver(
 		view.state.doc.line(pos.line + 1).from + pos.ch;
 	const editor = partial<Editor>({
 		getLine: (line: number) => view.state.doc.line(line + 1).text,
+		getValue: () => view.state.doc.toString(),
 		offsetToPos,
 		posToOffset,
 		getCursor: () => offsetToPos(view.state.selection.main.head),
@@ -180,7 +186,9 @@ export function mountLiveEditor(options: LiveEditorOptions): LiveEditor {
 	const view = new EditorView({
 		state: EditorState.create({
 			doc: options.doc,
+			selection: { anchor: options.cursor ?? 0 },
 			extensions: [
+				...(options.extensions ?? []),
 				liveDecorations(options),
 				...(options.owned === false
 					? []
@@ -223,4 +231,32 @@ export function rangeOf(
 		throw new Error(`"${needle}" does not occur in the note`);
 	}
 	return { from, to: from + needle.length };
+}
+
+/** A Markdown view over a mounted Live Preview note. */
+export interface LiveMarkdownView extends LiveEditor {
+	/** The view, as the workspace hands it out. */
+	markdownView: MarkdownView;
+}
+
+/**
+ * Mounts a note and wraps it in the Markdown view Obsidian shows it in: the
+ * view's content element holds the editor, and its `editor` is the one the
+ * editor info names, as in the app.
+ * @param options - The note's source, file, cursor and extensions
+ * @returns The mounted note and its view
+ */
+export function mountLiveMarkdownView(
+	options: LiveEditorOptions,
+): LiveMarkdownView {
+	const live = mountLiveEditor(options);
+	const markdownView = Object.assign(
+		Object.create(MarkdownView.prototype) as MarkdownView,
+		{
+			file: options.file ?? null,
+			editor: live.editor,
+			contentEl: live.parent,
+		},
+	);
+	return { ...live, markdownView };
 }

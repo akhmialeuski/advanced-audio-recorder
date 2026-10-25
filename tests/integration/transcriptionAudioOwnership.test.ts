@@ -121,7 +121,34 @@ function geminiAnswer(text: string): string {
 }
 
 /**
- * Scripts the Gemini File API and generateContent.
+ * The audio a generate request carries inline, or null when it references an
+ * uploaded file instead.
+ * @param body - The request body
+ */
+function inlineAudioOf(
+	body: unknown,
+): { mimeType: string; bytes: Uint8Array } | null {
+	if (typeof body !== 'string') {
+		return null;
+	}
+	const parsed = JSON.parse(body) as {
+		contents: {
+			parts: { inlineData?: { mimeType: string; data: string } }[];
+		}[];
+	};
+	const inline = parsed.contents[0]?.parts[0]?.inlineData;
+	return inline
+		? {
+				mimeType: inline.mimeType,
+				bytes: new Uint8Array(Buffer.from(inline.data, 'base64')),
+			}
+		: null;
+}
+
+/**
+ * Scripts the Gemini File API and generateContent. Audio reaches Gemini either
+ * uploaded through a File API session or inline in the generate request, and
+ * the log records it from whichever of the two carried it.
  * @param options.refusals - How many generate calls are refused before one is answered
  * @param options.answer - The transcript text for a generate call, given its body
  * @returns What the endpoint was sent
@@ -153,6 +180,11 @@ function scriptGemini(options: {
 			return { status: 200, headers: {}, text: JSON.stringify({ file }) };
 		}
 		if (param.url.includes(':generateContent')) {
+			const inline = inlineAudioOf(param.body);
+			if (inline) {
+				log.uploadTypes.push(inline.mimeType);
+				log.uploads.push(inline.bytes);
+			}
 			if (refusalsLeft > 0) {
 				refusalsLeft--;
 				return OVERLOADED;

@@ -131,7 +131,7 @@ Getting a key: [Deepgram API key](use-cases/deepgram-api-key.md). The **Deepgram
 
 ### Google Gemini
 
-Google's multimodal `generateContent` API, using the File API to upload the recording.
+Google's multimodal `generateContent` API. Audio up to 14 MB travels inline in that one request, and larger audio is uploaded through the File API first.
 
 Settings to fill:
 
@@ -143,6 +143,7 @@ Settings to fill:
 
 Behavior and limits:
 
+- **Short audio in one request.** Audio up to 14 MB, which covers a quick note and about seven minutes of decoded WAV, is sent inline in the `generateContent` request, with no upload, no wait for the file to be processed and no cleanup afterwards.
 - **Up to 2 GB uploaded whole** via the File API, then transcribed in one request - so diarization keeps consistent speaker numbering across the whole file.
 - **Container conversion.** Containers Gemini does not accept directly (notably `webm`, `mp4`, and `m4a`) are decoded to **16 kHz mono WAV** before upload. WAV, MP3, AAC, OGG, FLAC, and AIFF are sent as-is.
 - **Long recordings are split.** A recording **longer than 15 minutes** is split into parts of equal length, each transcribed and stitched back onto the timeline; a recording of exactly 15 minutes still goes in one request. Splitting **resets Gemini's per-request speaker numbering**, so a diarized split shows a warning that speaker labels may differ between parts; the message suggests using Deepgram or splitting the recording for consistent speakers.

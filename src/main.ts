@@ -79,6 +79,7 @@ import { RecordingMarkerModal } from './ui/MarkerModal';
 import { openPluginSettings } from './obsidian/settingsNavigation';
 import { quickNotesAvailable } from './settings/settingsSchema';
 import { QuickNoteController } from './quicknotes/QuickNoteController';
+import { dictationAnchorField } from './quicknotes/dictationAnchor';
 import { MemoryRecorder } from './recording/MemoryRecorder';
 import { TranscriptionService } from './transcription/TranscriptionService';
 import { ProfileNoteStore } from './settings/ProfileNoteStore';
@@ -369,6 +370,9 @@ export default class AudioRecorderPlugin extends Plugin {
 					: null,
 		);
 
+		// Every Markdown editor carries the field a dictation anchors its text
+		// in, so the anchor follows the edits made while it is transcribed.
+		this.registerEditorExtension(dictationAnchorField);
 		this.quickNotes = new QuickNoteController({
 			app: this.app,
 			getSettings: () => this.settings,

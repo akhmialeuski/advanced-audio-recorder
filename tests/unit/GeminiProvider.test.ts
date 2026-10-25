@@ -10,7 +10,7 @@
 import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';
 import { at, jsonBody } from '../helpers/assertions';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
-import { DEFAULT_GEMINI_MODEL } from 'src/constants';
+import { DEFAULT_GEMINI_MODEL, GEMINI_INLINE_MAX_BYTES } from 'src/constants';
 // Mock-only surface: these exist on the test double, not on Obsidian's
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
@@ -21,12 +21,16 @@ import {
 import { withRequestUrl } from '../helpers/network';
 
 const BASE_URL = 'https://gemini.example';
+
+/** The smallest payload that no longer fits an inline request. */
+const FILE_API_BYTES = GEMINI_INLINE_MAX_BYTES + 1;
 const API_KEY = 'gm-test';
 const MODEL = 'gemini-2.5-flash';
 
 /** Shape of the generateContent request body the provider posts. */
 interface GeneratePart {
 	fileData?: { mimeType: string; fileUri: string };
+	inlineData?: { mimeType: string; data: string };
 	text?: string;
 }
 interface GenerateBody {
@@ -52,9 +56,15 @@ function provider(model = MODEL): GeminiProvider {
 	return new GeminiProvider({ baseUrl: BASE_URL, apiKey: API_KEY, model });
 }
 
-function payload(contentType: string): AudioPayload {
+/**
+ * An audio payload for the provider.
+ * @param contentType - The payload's MIME type
+ * @param byteLength - Its size; the default fits an inline request, and
+ *   {@link FILE_API_BYTES} sends it through the File API
+ */
+function payload(contentType: string, byteLength = 8): AudioPayload {
 	return {
-		data: new ArrayBuffer(8),
+		data: new ArrayBuffer(byteLength),
 		contentType,
 		filename: 'rec',
 		offsetSeconds: 0,
@@ -157,10 +167,10 @@ describe('GeminiProvider.transcribe', () => {
 			}),
 		);
 
-		const result = await provider().transcribe(payload('audio/wav'), {
-			diarize: true,
-			wordTimestamps: false,
-		});
+		const result = await provider().transcribe(
+			payload('audio/wav', FILE_API_BYTES),
+			{ diarize: true, wordTimestamps: false },
+		);
 
 		expect(result.language).toBe('en');
 		expect(result.segments).toEqual([
@@ -276,7 +286,7 @@ describe('GeminiProvider.transcribe', () => {
 	it('uploads the container it is handed as it stands', async () => {
 		const flow = scriptTranscriptFlow();
 
-		await provider().transcribe(payload('audio/ogg'), {
+		await provider().transcribe(payload('audio/ogg', FILE_API_BYTES), {
 			diarize: false,
 			wordTimestamps: false,
 		});
@@ -304,6 +314,49 @@ describe('GeminiProvider.transcribe', () => {
 		});
 
 		expect(lent.data.byteLength).toBe(8);
+	});
+
+	it('sends audio that fits an inline request in one generateContent call', async () => {
+		const flow = scriptTranscriptFlow();
+		const audio = payload('audio/wav');
+		new Uint8Array(audio.data).set([1, 2, 3, 250, 251, 252, 253, 254]);
+
+		await provider().transcribe(audio, {
+			diarize: false,
+			wordTimestamps: false,
+		});
+
+		// No upload session, no status poll and no delete: the generate
+		// request is the only one the run makes.
+		expect(flow.calls.map((call) => call.method)).toEqual(['POST']);
+		expect(at(flow.calls, 0).url).toContain(':generateContent');
+		expect(
+			at(at(flow.generateBody().contents, 0).parts, 0).inlineData,
+		).toEqual({ mimeType: 'audio/wav', data: 'AQID+vv8/f4=' });
+	});
+
+	it('sends the largest inline payload inline and one byte more through the File API', async () => {
+		const inline = scriptTranscriptFlow();
+		await provider().transcribe(
+			payload('audio/wav', GEMINI_INLINE_MAX_BYTES),
+			{ diarize: false, wordTimestamps: false },
+		);
+		expect(inline.calls).toHaveLength(1);
+
+		const uploaded = scriptTranscriptFlow();
+		await provider().transcribe(payload('audio/wav', FILE_API_BYTES), {
+			diarize: false,
+			wordTimestamps: false,
+		});
+		expect(
+			uploaded.calls.map((call) => `${call.method ?? 'GET'} ${call.url}`),
+		).toEqual([
+			`POST ${BASE_URL}/upload/v1beta/files`,
+			`POST ${BASE_URL}/session`,
+			`GET ${BASE_URL}/v1beta/files/abc`,
+			expect.stringContaining(':generateContent'),
+			`DELETE ${BASE_URL}/v1beta/files/abc`,
+		]);
 	});
 
 	it('throws when the response was truncated at the token limit', async () => {
