@@ -19,7 +19,6 @@
  * @module settings/profiles
  */
 
-import type { AudioRecorderSettings } from './settingsSchema';
 import type { Refusable } from '../utils/refusal';
 
 /**
@@ -82,6 +81,18 @@ export interface Profile {
  * reads as none, so a removed profile needs no cleanup pass over this map.
  */
 export type SelectedProfileIds = Record<ProfileKindId, string>;
+
+/**
+ * The two settings fields the selection helpers read and write. Structural,
+ * so callers pass the full plugin settings without this module depending on
+ * the settings schema, which itself builds on the types declared here.
+ */
+export interface ProfileSettings {
+	/** Every stored profile, of every kind. */
+	profiles: Profile[];
+	/** The profile each kind applies. */
+	selectedProfileIds: SelectedProfileIds;
+}
 
 /** Name a freshly created profile starts out under, numbered when taken. */
 export const NEW_PROFILE_NAME = 'New profile';
@@ -293,7 +304,7 @@ export function effectiveProfileId(
  * @returns The selected profile, or undefined
  */
 export function selectedProfile(
-	settings: AudioRecorderSettings,
+	settings: ProfileSettings,
 	kind: ProfileKindId,
 ): Profile | undefined {
 	const selected = findProfile(
@@ -314,7 +325,7 @@ export function selectedProfile(
  * @returns The effective selection
  */
 export function selectedProfileId(
-	settings: AudioRecorderSettings,
+	settings: ProfileSettings,
 	kind: ProfileKindId,
 ): string {
 	return selectedProfile(settings, kind)?.id ?? '';
@@ -328,7 +339,7 @@ export function selectedProfileId(
  * @param id - Id to select ('' for none)
  */
 export function setSelectedProfileId(
-	settings: AudioRecorderSettings,
+	settings: ProfileSettings,
 	kind: ProfileKindId,
 	id: string,
 ): void {
@@ -354,7 +365,7 @@ export function setSelectedProfileId(
  * @param id - Id of the profile to remove
  */
 export function removeAndReselectProfile(
-	settings: AudioRecorderSettings,
+	settings: ProfileSettings,
 	kind: ProfileKindId,
 	id: string,
 ): void {
