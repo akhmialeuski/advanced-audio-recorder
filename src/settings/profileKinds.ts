@@ -291,7 +291,7 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 			'Instruction the dictated text is rewritten with; None inserts the text as it was recognized.',
 		bodyName: 'Instruction',
 		bodyDesc:
-			'System instruction applied to the dictated text, sent verbatim. Ask for the rewritten text alone, since the answer is inserted as it comes back.',
+			'Instruction the dictated text is rewritten with, sent verbatim. A separate rewrite engine receives it as the system instruction. With Google Gemini on both engine rows, it travels in the transcription request instead. Ask for the rewritten text alone, since the answer is inserted as it comes back.',
 		summary: promptSummary,
 		visible: quickNotesAvailable,
 	}),
