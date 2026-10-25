@@ -168,25 +168,40 @@ export interface SplicedTranscript {
  * what the top-up asked for and was billed for, so what it holds afterwards
  * is exactly what came back for it - and anything the answer carried from
  * outside it is dropped rather than added beside what is already there.
+ *
+ * A stretch that failed again and brought nothing back keeps what it held.
+ * A part whose answer did not fit it is recorded as failed while its lines
+ * that fit stay in the transcript, and replacing them with an empty answer
+ * would delete billed text for no gain.
  * @param existing - The transcript the earlier run produced
  * @param recovered - Segments the retry brought back
  * @param ranges - The stretches the retry asked for
+ * @param failedAgain - The stretches the retry recorded as failed
  * @returns The completed transcript and how many segments it took
  */
 export function spliceSegments(
 	existing: Transcript,
 	recovered: readonly TranscriptSegment[],
 	ranges: readonly RecordingRange[],
+	failedAgain: readonly RecordingRange[] = [],
 ): SplicedTranscript {
-	const inside = (segment: TranscriptSegment): boolean =>
-		ranges.some(
-			(range) =>
-				segment.start < range.endSeconds &&
-				segment.end > range.startSeconds,
-		);
+	const overlaps =
+		(stretches: readonly RecordingRange[]) =>
+		(segment: TranscriptSegment): boolean =>
+			stretches.some(
+				(range) =>
+					segment.start < range.endSeconds &&
+					segment.end > range.startSeconds,
+			);
+	const inside = overlaps(ranges);
 	const taken = recovered.filter(inside);
+	const leftAsItWas = overlaps(
+		failedAgain.filter((range) => !taken.some(overlaps([range]))),
+	);
 	const merged = [
-		...existing.segments.filter((segment) => !inside(segment)),
+		...existing.segments.filter(
+			(segment) => !inside(segment) || leftAsItWas(segment),
+		),
 		...taken,
 	];
 	merged.sort((a, b) => a.start - b.start);
@@ -257,6 +272,7 @@ export class FailedPartRetry {
 			source.transcript,
 			recovered.segments,
 			ranges,
+			partitionParts(missingParts).ranges,
 		);
 		// A part this top-up had no bounds for was never sent, so it is still
 		// missing and stays on the record. Writing only what came back would
