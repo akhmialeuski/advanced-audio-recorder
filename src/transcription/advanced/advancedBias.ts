@@ -28,7 +28,6 @@ import {
 import { transcriptionEngine } from '../providers/engines';
 import type { Transcript } from '../TranscriptTypes';
 import { dominantSegmentLanguage } from '../transcriptModel';
-import type { GeneratedContext } from './contextPipeline';
 
 /** The bias fields to add to the second pass's transcription options. */
 export interface AdvancedBiasPlan {
@@ -36,6 +35,19 @@ export interface AdvancedBiasPlan {
 	biasPrompt?: string;
 	/** Flat term list for engines that bias by discrete entries. */
 	keyterms?: string[];
+}
+
+/**
+ * The two fields of the first pass's generated context the planner reads.
+ * Structural, so the runner passes the context pipeline's output as it is
+ * without this module depending on the pipeline, which itself reaches this
+ * module through the cost model.
+ */
+export interface AdvancedBiasContext {
+	/** The decoding-bias sentence, empty when it was not built. */
+	promptSentence: string;
+	/** Flat term list, most valuable first. */
+	keyterms: string[];
 }
 
 /**
@@ -119,7 +131,7 @@ export function advancedTwoPassWillRun(
  */
 export function planAdvancedBias(
 	engineId: TranscriptionProviderId,
-	context: GeneratedContext,
+	context: AdvancedBiasContext,
 ): AdvancedBiasPlan {
 	if (advancedBiasChannel(engineId) === AdvancedBiasChannel.Keyterm) {
 		return context.keyterms.length ? { keyterms: context.keyterms } : {};
