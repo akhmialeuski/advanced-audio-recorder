@@ -91,13 +91,15 @@ export function missingPartsWarning(
 	const verb = missingParts.length > 1 ? 'are' : 'is';
 	return {
 		callout:
-			`> [!warning] Transcription incomplete: ${labels} could not ` +
-			`be transcribed and ${verb} missing below.\n` +
+			// "In whole or in part", because a part whose answer left its
+			// bounds keeps the lines that fit and is listed here as well.
+			`> [!warning] Transcription incomplete: ${labels} ${verb} ` +
+			'missing from the transcript below, in whole or in part.\n' +
 			missingParts.map(reasonLine).join('') +
 			'\n',
 		notice:
-			`Some audio could not be transcribed (${labels}) and is missing ` +
-			'from the transcript; saving the parts that succeeded. ' +
+			`Some audio is missing from the transcript, in whole or in part ` +
+			`(${labels}); saving what came back. ` +
 			(missingParts[0]?.message ?? ''),
 	};
 }

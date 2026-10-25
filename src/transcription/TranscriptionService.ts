@@ -116,6 +116,12 @@ import {
 	sumUsage,
 } from './costs';
 import { errorMessage } from '../errors';
+import {
+	judgePartTimeline,
+	timelineFaultMessage,
+	trimToPart,
+	type PartSpan,
+} from './partTimeline';
 
 // Cancellation belongs to every long job, not to transcription alone, so it
 // lives in utils and is re-exported here for the callers that already reach
@@ -365,6 +371,13 @@ export interface TranscriptionServiceDeps {
  */
 interface PassContext {
 	readonly payloads: readonly PreparedPayload[];
+	/**
+	 * Where the recording's last part ends, in seconds, or undefined when the
+	 * parts carry no measured end. Taken from the whole plan, because a top-up
+	 * sends only some of its parts and the last of those need not end the
+	 * recording.
+	 */
+	readonly recordingEndSeconds: number | undefined;
 	readonly partCount: number;
 	readonly provider: TranscriptionProvider;
 	readonly token: CancellationToken;
@@ -440,6 +453,12 @@ interface PartRun {
 	readonly token: CancellationToken;
 	/** Human label for the part ('' for a single indivisible job). */
 	readonly label: string;
+	/**
+	 * Where the recording's last part ends, in seconds, or undefined when the
+	 * parts carry no measured end. Tells a part that ends the recording from
+	 * one that ends mid-conversation.
+	 */
+	readonly recordingEndSeconds: number | undefined;
 	/** Accumulates successful per-part transcripts (mutated). */
 	readonly results: PassResult[];
 	/** Accumulates recoverable per-part failures (mutated). */
@@ -540,6 +559,29 @@ function assertUnconsumed(payload: AudioPayload, label: string): void {
 }
 
 /**
+ * The part as its answer is judged, or null when the answer is taken as it
+ * is: the engine measures its timecodes on the audio, or the part's end was
+ * never measured, as on the whole-file path.
+ * @param part - The part being transcribed
+ * @returns Its length and whether it ends the recording
+ */
+function estimatedSpan(part: PartRun): PartSpan | null {
+	const { prepared, recordingEndSeconds } = part;
+	if (
+		!part.provider.capabilities.estimatesTimecodes ||
+		prepared.endSeconds === undefined
+	) {
+		return null;
+	}
+	return {
+		durationSeconds: prepared.endSeconds - prepared.offsetSeconds,
+		isLast:
+			recordingEndSeconds === undefined ||
+			prepared.endSeconds >= recordingEndSeconds,
+	};
+}
+
+/**
  * Runs the full transcription pipeline for an audio file.
  */
 export class TranscriptionService {
@@ -635,10 +677,14 @@ export class TranscriptionService {
 		this.throwIfCancelled(token);
 
 		const payloads = selectRanges(prepared.payloads, options.onlyRanges);
-		const ledger = this.openLedger(settings, provider, payloads, token, {
-			onProgress: options.onProgress,
-			onCost: options.onCost,
-		});
+		const ledger = this.openLedger(
+			settings,
+			provider,
+			prepared.payloads,
+			payloads,
+			token,
+			{ onProgress: options.onProgress, onCost: options.onCost },
+		);
 		const { failedParts, secondPassResults } = ledger;
 		const runCost = ledger.context.runCost;
 		// The advanced mode transcribes everything twice, so it splits the
@@ -921,6 +967,7 @@ export class TranscriptionService {
 			settings,
 			provider,
 			prepared.payloads,
+			prepared.payloads,
 			token,
 			{ onProgress: options.onProgress },
 		);
@@ -1142,7 +1189,8 @@ export class TranscriptionService {
 	 * engine and model.
 	 * @param settings - The run's settings snapshot
 	 * @param provider - The engine every part is sent to
-	 * @param payloads - The parts the run sends
+	 * @param plan - Every part the recording prepared to
+	 * @param payloads - The parts of the plan the run sends
 	 * @param token - Cancellation for the run
 	 * @param report - Where progress and running cost are reported
 	 * @returns An empty ledger over those parts
@@ -1150,6 +1198,7 @@ export class TranscriptionService {
 	private openLedger(
 		settings: AudioRecorderSettings,
 		provider: TranscriptionProvider,
+		plan: readonly PreparedPayload[],
 		payloads: readonly PreparedPayload[],
 		token: CancellationToken,
 		report: Pick<PassContext, 'onProgress' | 'onCost'>,
@@ -1180,6 +1229,7 @@ export class TranscriptionService {
 		return {
 			context: {
 				payloads,
+				recordingEndSeconds: plan.at(-1)?.endSeconds,
 				partCount: payloads.length,
 				provider,
 				token,
@@ -1306,7 +1356,8 @@ export class TranscriptionService {
 		progressSpan: number,
 		verb: string,
 	): Promise<void> {
-		const { payloads, partCount, provider, token } = context;
+		const { payloads, partCount, provider, token, recordingEndSeconds } =
+			context;
 		for (let i = 0; i < partCount; i++) {
 			this.throwIfCancelled(token);
 			const payload = payloads[i];
@@ -1326,6 +1377,7 @@ export class TranscriptionService {
 				providerOptions: passOptions,
 				token,
 				label: partLabel,
+				recordingEndSeconds,
 				results: passResults,
 				failedParts: passFailed,
 				discardedUsage: context.discardedUsage,
@@ -1487,7 +1539,79 @@ export class TranscriptionService {
 			offsetSeconds: prepared.offsetSeconds,
 		};
 		try {
-			const chunkResult = await this.transcribeWithRetries(part, payload);
+			let chunkResult = await this.transcribeWithRetries(part, payload);
+			const span = estimatedSpan(part);
+			const firstFault =
+				span && judgePartTimeline(chunkResult.segments, span);
+			if (span && firstFault) {
+				// The timecodes are the model's estimate and drift from one
+				// request to the next, so the same part sent once more usually
+				// comes back inside it. The rejected answer was billed all the
+				// same, so its usage stays in the run's total.
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} ${label || 'The audio'} came back ` +
+						'with timecodes that do not fit the part; sending it again.',
+				);
+				if (chunkResult.usage) {
+					discardedUsage.push(chunkResult.usage);
+				}
+				const rejected = chunkResult;
+				let retryFailure: string | undefined;
+				try {
+					chunkResult = await this.transcribeWithRetries(
+						part,
+						payload,
+					);
+				} catch (error) {
+					// A cancel ends the run. Any other failure leaves the first
+					// answer, whose lines inside the part were billed and are
+					// kept rather than lost with the part. That includes an
+					// answer cut off at the output limit: splitting the part
+					// would send it twice more for an answer already in hand,
+					// so only the cut-off request's usage is counted. The first
+					// answer's usage is already counted with the discarded
+					// requests, so it is not carried again.
+					this.rethrowIfCancelled(error, token);
+					if (
+						error instanceof TranscriptTruncatedError &&
+						error.usage
+					) {
+						discardedUsage.push(error.usage);
+					}
+					retryFailure = errorMessage(error);
+					chunkResult = {
+						segments: rejected.segments,
+						language: rejected.language,
+					};
+				}
+				const fault = judgePartTimeline(chunkResult.segments, span);
+				if (fault) {
+					// What fits the part is kept, and the part is recorded as
+					// incomplete so the note says so and a top-up can ask for
+					// it again.
+					failedParts.push({
+						label: label || this.partTimeLabel(prepared),
+						message: timelineFaultMessage(
+							fault,
+							span,
+							part.provider.label,
+							retryFailure === undefined
+								? { firstFault }
+								: { retryFailure },
+						),
+						startSeconds: prepared.offsetSeconds,
+						endSeconds:
+							prepared.offsetSeconds + span.durationSeconds,
+					});
+					chunkResult = {
+						...chunkResult,
+						segments: trimToPart(
+							chunkResult.segments,
+							span.durationSeconds,
+						),
+					};
+				}
+			}
 			results.push({
 				offsetSeconds: payload.offsetSeconds,
 				transcript: buildTranscript(chunkResult.segments, {
