@@ -58,6 +58,9 @@ jest.mock('src/recording/PcmStreamRecorder', () =>
 
 installRecordingMediaStubs();
 
+/** What a stop pressed while another stop is still saving answers with. */
+const STILL_SAVING = 'The last recording is still being saved.';
+
 /** Puts the environment where a WAV session captures PCM directly. */
 function pcmSession(): void {
 	useDesktopPlatform();
@@ -193,6 +196,67 @@ describe('RecordingManager', () => {
 			await expect(manager.toggleRecording()).resolves.toBeNull();
 			await expect(manager.toggleRecording()).resolves.toBeNull();
 		});
+
+		// A long save runs for minutes, and a press meanwhile asked for a
+		// second stop that was refused without a word: the button looked dead.
+		it('says the last recording is still being saved', async () => {
+			let pressDuringSave: Promise<string | null> | null = null;
+			statusChangeCallback.mockImplementation(
+				(status: RecordingStatus) => {
+					if (status === RecordingStatus.Saving && !pressDuringSave) {
+						pressDuringSave = manager.toggleRecording();
+					}
+				},
+			);
+			await manager.toggleRecording();
+
+			await manager.toggleRecording();
+
+			await expect(pressDuringSave).resolves.toBe(STILL_SAVING);
+			expect(noticeMessages()).toContain(STILL_SAVING);
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+		});
+
+		// Until the save reports its first progress the status is still
+		// Recording, and a stop waiting on a part rotation that transcodes the
+		// finished part stays there for as long as that takes.
+		it('says so for a press before the save reports progress', async () => {
+			await manager.toggleRecording();
+			const stopping = manager.stopRecording();
+			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+
+			const second = await manager.toggleRecording();
+			await stopping;
+
+			expect(second).toBe(STILL_SAVING);
+			expect(noticeMessages()).toContain(STILL_SAVING);
+		});
+	});
+
+	// The save of a long recording takes minutes and reads only the files the
+	// recorders wrote. A microphone held open through it was there for a
+	// quick note to open a second time on top of the mix and the encode.
+	it('releases the microphone before the save begins', async () => {
+		makeMediaRecorderDouble();
+		const streams = stubAudioStreams();
+		let releasedBeforeSave: boolean | null = null;
+		statusChangeCallback.mockImplementation((status: RecordingStatus) => {
+			if (
+				status === RecordingStatus.Saving &&
+				releasedBeforeSave === null
+			) {
+				releasedBeforeSave = jest
+					.mocked(stopAllStreams)
+					.mock.calls.some(([released]) => released === streams);
+			}
+		});
+		await manager.startRecording();
+		jest.mocked(stopAllStreams).mockClear();
+
+		await manager.stopRecording();
+
+		expect(releasedBeforeSave).toBe(true);
+		expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 	});
 
 	describe('togglePauseResume', () => {
@@ -593,7 +657,9 @@ describe('RecordingManager', () => {
 			expect(await manager.stopRecording()).toBeNull();
 		});
 
-		it('answers that a stop is already running rather than stopping twice', async () => {
+		// The mobile banner and the status-bar Stop button call stopRecording
+		// directly and drop its answer, so the notice is all a press there shows.
+		it('tells the user a stop is already saving rather than stopping twice', async () => {
 			await manager.startRecording();
 			const [first, second] = await Promise.all([
 				manager.stopRecording(),
@@ -603,7 +669,8 @@ describe('RecordingManager', () => {
 			// One of the two did the stop; the other found it in flight and
 			// says so instead of reporting a stop it did not make.
 			expect([first, second]).toContain(null);
-			expect([first, second]).toContain('A stop is already in progress.');
+			expect([first, second]).toContain(STILL_SAVING);
+			expect(noticeMessages()).toContain(STILL_SAVING);
 		});
 	});
 

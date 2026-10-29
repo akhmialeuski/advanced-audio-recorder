@@ -204,7 +204,7 @@ For longer recordings the save can take a noticeable moment. The status bar show
 | 80%      | `Cleaning up...`      |
 | 100%     | `Saved`               |
 
-While saving is in progress the ribbon icon switches to a **save** icon, then returns to the microphone, no longer red, once the file is written.
+While saving is in progress the ribbon icon switches to a **save** icon, then returns to the microphone, no longer red, once the file is written. The microphone itself is released as soon as step 1 is done, before the file is assembled, so the system's microphone indicator goes off while the save is still running. A new recording starts only once the save has finished: pressing the button, or running the command, while it is running shows `The last recording is still being saved.`
 
 A recording that is slow to save is expected behaviour for long captures, not an error. For multi-part recordings, see [Automatic splitting](#automatic-splitting); for the full list of output formats and how each is encoded, see [Formats](formats.md).
 
