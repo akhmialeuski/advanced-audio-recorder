@@ -308,9 +308,18 @@ export class RecordingManager {
 	 *   once it has, as {@link startRecording} and {@link stopRecording} say
 	 */
 	toggleRecording(): Promise<string | null> {
-		return this.status === RecordingStatus.Idle
-			? this.startRecording()
-			: this.stopRecording();
+		if (this.status === RecordingStatus.Idle) {
+			return this.startRecording();
+		}
+		if (!this.isSessionActive()) {
+			// A press while the last session is still being written would
+			// only ask for a second stop, which is refused without a word,
+			// so the button looked dead for as long as a long save ran.
+			const busy = 'The last recording is still being saved.';
+			new Notice(busy);
+			return Promise.resolve(busy);
+		}
+		return this.stopRecording();
 	}
 
 	/**
@@ -557,14 +566,7 @@ export class RecordingManager {
 	 * one, instead of whichever path its author happened to edit.
 	 */
 	private releaseSessionResources(): void {
-		this.stopLevelMonitor();
-		this.captureLoss.release();
-		for (const track of this.captureTracks) {
-			track.release('while releasing the session');
-		}
-		this.captureTracks = [];
-		stopAllStreams(this.streams);
-		this.streams = [];
+		this.releaseCapture('while releasing the session');
 		this.chunkTargets = [];
 		this.trackOrder = [];
 		this.recordingTimestamp = null;
@@ -573,6 +575,30 @@ export class RecordingManager {
 		this.insertionContext = null;
 		this.session = IDLE_CAPTURE_SESSION;
 		this.markers.clearBuffer();
+	}
+
+	/**
+	 * Gives back the capture half of a session: the microphones, the bridges
+	 * and the meter, with the AudioContexts they hold. Safe to call twice.
+	 *
+	 * A stop calls it as soon as the recorders have delivered their last
+	 * data, ahead of the save. Held until the save was over, the device and
+	 * those contexts stayed open while a long recording was mixed and
+	 * encoded, which can take minutes, and a quick note started meanwhile
+	 * opened the same microphone and contexts of its own on top of the
+	 * decode. Nothing in the save reads them: it works from the files the
+	 * recorders wrote.
+	 * @param when - Names the path, for the log when a track refuses to go
+	 */
+	private releaseCapture(when: string): void {
+		this.stopLevelMonitor();
+		this.captureLoss.release();
+		for (const track of this.captureTracks) {
+			track.release(when);
+		}
+		this.captureTracks = [];
+		stopAllStreams(this.streams);
+		this.streams = [];
 	}
 
 	/**
@@ -859,6 +885,7 @@ export class RecordingManager {
 			await Promise.all(this.captureTracks.map((track) => track.stop()));
 
 			await this.writeQueue.drain(this.chunkTargets);
+			this.releaseCapture('after the recorders stopped');
 
 			this.finalizer.reportProgress(0, 'Saving...');
 

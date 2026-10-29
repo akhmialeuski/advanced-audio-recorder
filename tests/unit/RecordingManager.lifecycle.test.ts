@@ -193,6 +193,56 @@ describe('RecordingManager', () => {
 			await expect(manager.toggleRecording()).resolves.toBeNull();
 			await expect(manager.toggleRecording()).resolves.toBeNull();
 		});
+
+		// A long save runs for minutes, and a press meanwhile asked for a
+		// second stop that was refused without a word: the button looked dead.
+		it('says the last recording is still being saved', async () => {
+			let pressDuringSave: Promise<string | null> | null = null;
+			statusChangeCallback.mockImplementation(
+				(status: RecordingStatus) => {
+					if (status === RecordingStatus.Saving && !pressDuringSave) {
+						pressDuringSave = manager.toggleRecording();
+					}
+				},
+			);
+			await manager.toggleRecording();
+
+			await manager.toggleRecording();
+
+			await expect(pressDuringSave).resolves.toBe(
+				'The last recording is still being saved.',
+			);
+			expect(noticeMessages()).toContain(
+				'The last recording is still being saved.',
+			);
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+		});
+	});
+
+	// The save of a long recording takes minutes and reads only the files the
+	// recorders wrote. A microphone held open through it was there for a
+	// quick note to open a second time on top of the mix and the encode.
+	it('releases the microphone before the save begins', async () => {
+		makeMediaRecorderDouble();
+		const streams = stubAudioStreams();
+		let releasedBeforeSave: boolean | null = null;
+		statusChangeCallback.mockImplementation((status: RecordingStatus) => {
+			if (
+				status === RecordingStatus.Saving &&
+				releasedBeforeSave === null
+			) {
+				releasedBeforeSave = jest
+					.mocked(stopAllStreams)
+					.mock.calls.some(([released]) => released === streams);
+			}
+		});
+		await manager.startRecording();
+		jest.mocked(stopAllStreams).mockClear();
+
+		await manager.stopRecording();
+
+		expect(releasedBeforeSave).toBe(true);
+		expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 	});
 
 	describe('togglePauseResume', () => {
