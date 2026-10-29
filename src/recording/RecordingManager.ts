@@ -308,18 +308,9 @@ export class RecordingManager {
 	 *   once it has, as {@link startRecording} and {@link stopRecording} say
 	 */
 	toggleRecording(): Promise<string | null> {
-		if (this.status === RecordingStatus.Idle) {
-			return this.startRecording();
-		}
-		if (!this.isSessionActive()) {
-			// A press while the last session is still being written would
-			// only ask for a second stop, which is refused without a word,
-			// so the button looked dead for as long as a long save ran.
-			const busy = 'The last recording is still being saved.';
-			new Notice(busy);
-			return Promise.resolve(busy);
-		}
-		return this.stopRecording();
+		return this.status === RecordingStatus.Idle
+			? this.startRecording()
+			: this.stopRecording();
 	}
 
 	/**
@@ -856,9 +847,14 @@ export class RecordingManager {
 	 */
 	async stopRecording(): Promise<string | null> {
 		// Block new part rotations from starting while stopping; a
-		// false return means another stop is already in flight
+		// false return means another stop is already in flight. Said as a
+		// Notice, because every button that lands here drops the answer, and
+		// the status reads Recording until the save reports progress, so a
+		// press refused in silence looked like a dead button.
 		if (!this.rotation.requestStop()) {
-			return 'A stop is already in progress.';
+			const busy = 'The last recording is still being saved.';
+			new Notice(busy);
+			return busy;
 		}
 		// The watch belongs to the capture, not to the session, and this is
 		// where the capture ends. Left running for the save that follows, it
