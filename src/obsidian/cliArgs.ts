@@ -182,6 +182,9 @@ export function flagParam(description: string): CliFlag {
 	return { description };
 }
 
+/** Answers once a long job is over instead of once it started. */
+export const WAIT_FLAG = 'wait';
+
 /**
  * Declares a parameter restricted to a fixed set of values.
  * @param choices - The accepted values

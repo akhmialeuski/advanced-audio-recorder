@@ -42,11 +42,8 @@ import {
 	SPLIT_PARAMS,
 	splitFromCli,
 } from './audioJobsCli';
-import {
-	TRANSCRIBE_PARAMS,
-	transcribeFromCli,
-	WAIT_FLAG,
-} from './transcribeCli';
+import { TRANSCRIBE_PARAMS, transcribeFromCli } from './transcribeCli';
+import { WAIT_FLAG } from '../obsidian/cliArgs';
 import { SPEAKER_PARAMS, speakersFromCli } from './speakersCli';
 import {
 	CHAPTER_PARAMS,
