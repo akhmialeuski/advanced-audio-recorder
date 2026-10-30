@@ -365,6 +365,7 @@ describe('PartRotationController', () => {
 			// belongs to the next part, and counting it here would offer an
 			// interrupted session more length than its files carry.
 			expect(journal.addPart).toHaveBeenCalledWith(
+				createSession().sessionId,
 				expect.any(String),
 				'/part1.webm',
 				15 * MS_PER_MINUTE,

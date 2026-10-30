@@ -68,6 +68,14 @@ describe('RecordingManager', () => {
 		}
 		let mockJournal: JournalMock;
 
+		/** The id the manager opened its journal session under. */
+		const startedSessionId = (): string =>
+			(
+				mockJournal.startSession.mock.calls[0] as [
+					{ sessionId: string },
+				]
+			)[0].sessionId;
+
 		const createManager = (): RecordingManager =>
 			new RecordingManager(
 				mockApp,
@@ -114,7 +122,9 @@ describe('RecordingManager', () => {
 
 			await manager.stopRecording();
 
-			expect(mockJournal.endSession).toHaveBeenCalled();
+			expect(mockJournal.endSession).toHaveBeenCalledWith(
+				startedSessionId(),
+			);
 			expect(mockJournal.flush).toHaveBeenCalled();
 		});
 
@@ -182,6 +192,7 @@ describe('RecordingManager', () => {
 			});
 
 			expect(mockJournal.addSegment).toHaveBeenCalledWith(
+				startedSessionId(),
 				expect.stringContaining('Track1'),
 				expect.stringMatching(/-part1\.webm\.tmp$/),
 			);

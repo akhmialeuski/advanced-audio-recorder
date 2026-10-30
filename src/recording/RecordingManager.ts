@@ -409,7 +409,9 @@ export class RecordingManager {
 				});
 			}
 
+			this.recordingTimestamp = sessionTimestamp();
 			const plan = createCaptureSession({
+				sessionId: this.recordingTimestamp,
 				settings: this.settings,
 				streamCount: streams.length,
 				trackOrder,
@@ -443,7 +445,6 @@ export class RecordingManager {
 			this.rotation.beginSession(this.session);
 
 			this.recordingStartTime = Date.now();
-			this.recordingTimestamp = sessionTimestamp();
 			this.totalChunks = 0;
 			this.markers.beginSession();
 			this.recordedBytes = 0;
@@ -458,8 +459,7 @@ export class RecordingManager {
 			// until the first part lands, so a session that never reached a
 			// rotation reports no duration rather than a false zero.
 			this.journal.startSession({
-				sessionId:
-					this.recordingTimestamp ?? String(this.recordingStartTime),
+				sessionId: this.session.sessionId,
 				startedAt: this.recordingStartTime,
 				captureMode: isMidStreamSegmentFlushAllowed()
 					? 'stream'
@@ -518,12 +518,11 @@ export class RecordingManager {
 	 * and indicator on - until Obsidian restarts. The journal session
 	 * is ended too: nothing was flushed yet, and an orphaned entry
 	 * would keep an empty journal file on disk until the next launch
-	 * prunes it. Safe in every ordering - the active session id is
-	 * either null (failure before the journal start) or the id of the
-	 * failed session itself.
+	 * prunes it. Safe in every ordering: a failure before the journal start
+	 * names a session the journal never opened, which it leaves alone.
 	 */
 	private releasePartialSession(): void {
-		this.journal.endSession();
+		this.journal.endSession(this.session.sessionId);
 		this.stopRecordersNow('after start failure');
 		this.releaseSessionResources();
 	}
@@ -916,7 +915,7 @@ export class RecordingManager {
 			// their own Notices, and keeping them journaled would raise
 			// misleading recovery prompts for audio that is in the final
 			// files
-			this.journal.endSession();
+			this.journal.endSession(this.session.sessionId);
 			await this.journal.flush();
 			this.finalizer.reportProgress(100, 'Saved');
 			new Notice('Recording stopped');

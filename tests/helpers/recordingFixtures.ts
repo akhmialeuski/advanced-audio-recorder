@@ -54,6 +54,7 @@ export function createSession(
 	overrides: Partial<RecordingSessionConfig> = {},
 ): RecordingSessionConfig {
 	return {
+		sessionId: '2026-01-01T00-00-00-000Z',
 		chunkRotationBytes: null,
 		isWavPcm: false,
 		pcmFormat: 'int16',

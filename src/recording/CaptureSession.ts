@@ -66,6 +66,8 @@ export interface CaptureSessionPlan {
 
 /** What the session is built from, gathered before the first recorder exists. */
 export interface CaptureSessionRequest {
+	/** The session's journal id, its start timestamp. */
+	readonly sessionId: string;
 	/** Live settings, read once here and never again for this session. */
 	readonly settings: AudioRecorderSettings;
 	/** Number of acquired audio streams. */
@@ -139,6 +141,7 @@ export function createCaptureSession(
 	const autoSplitSkipped =
 		requestedSplit && outputMode === OutputMode.Single && streamCount > 1;
 	const session: CaptureSession = Object.freeze({
+		sessionId: request.sessionId,
 		// Platforms that must not leave raw mid-stream segments behind run
 		// their buffer flushes as full part rotations at this size boundary.
 		chunkRotationBytes: isMidStreamSegmentFlushAllowed()
@@ -180,6 +183,9 @@ export function createCaptureSession(
 
 /** The session an idle manager reports, so no reader has to test for null. */
 export const IDLE_CAPTURE_SESSION: CaptureSession = Object.freeze({
+	// No journal session has this id, so a late write addressed by it lands
+	// nowhere.
+	sessionId: '',
 	chunkRotationBytes: null,
 	isWavPcm: false,
 	pcmFormat: PcmSampleFormat.Int16,

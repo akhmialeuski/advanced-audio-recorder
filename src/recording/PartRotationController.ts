@@ -301,7 +301,11 @@ export class PartRotationController {
 			if (target.segmentPaths.length > 0) {
 				await this.finalizer.assembleWavFile(target, filePath);
 				target.partPaths.push(filePath);
-				this.journal.addPart(target.fileBaseName, filePath);
+				this.journal.addPart(
+					session.sessionId,
+					target.fileBaseName,
+					filePath,
+				);
 				this.debugLogger.log('Auto-split part saved', { filePath });
 				new Notice(`Recording part ${String(target.partIndex)} saved`);
 			}
@@ -464,6 +468,7 @@ export class PartRotationController {
 				// before this ran, so the journal learns exactly how much
 				// audio is now safe on disk
 				this.journal.addPart(
+					session.sessionId,
 					target.fileBaseName,
 					filePath,
 					boundaryActiveMs,

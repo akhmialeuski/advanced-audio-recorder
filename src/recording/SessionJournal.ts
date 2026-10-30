@@ -179,8 +179,13 @@ export interface JournalReadResult {
 export class SessionJournal {
 	/** In-memory journal state, lazily loaded from disk. */
 	private state: JournalFile | null = null;
-	/** Session id mutations apply to. */
-	private activeSessionId: string | null = null;
+	/**
+	 * Sessions this plugin instance still writes to: the one capturing and
+	 * every one still saving. A set, because a stop hands its session to the
+	 * save queue and the next recording opens its own while that one is
+	 * written.
+	 */
+	private readonly openSessionIds = new Set<string>();
 	/** Serialized operation chain (never rejected). */
 	private opChain: Promise<void> = Promise.resolve();
 	/** Whether the in-memory state has unwritten changes. */
@@ -257,23 +262,28 @@ export class SessionJournal {
 	}
 
 	/**
-	 * Registers a new active recording session.
+	 * Registers a new open recording session.
 	 * @param session - Session entry to journal
 	 */
 	startSession(session: JournalSession): void {
-		this.activeSessionId = session.sessionId;
+		this.openSessionIds.add(session.sessionId);
 		this.mutate((state) => {
 			state.sessions.push(session);
 		});
 	}
 
 	/**
-	 * Records a flushed temporary segment file of the active session.
+	 * Records a flushed temporary segment file of an open session.
+	 * @param sessionId - The session the segment belongs to
 	 * @param fileBaseName - Track identifier (RecordingTarget base name)
 	 * @param segmentPath - Vault-relative segment file path
 	 */
-	addSegment(fileBaseName: string, segmentPath: string): void {
-		this.mutateActiveSession((session) => {
+	addSegment(
+		sessionId: string,
+		fileBaseName: string,
+		segmentPath: string,
+	): void {
+		this.mutateOpenSession(sessionId, (session) => {
 			const track = session.tracks.find(
 				(entry) => entry.fileBaseName === fileBaseName,
 			);
@@ -282,16 +292,22 @@ export class SessionJournal {
 	}
 
 	/**
-	 * Records a finalized part file of the active session, together with
-	 * the recorded length that is now safely on disk.
+	 * Records a finalized part file of an open session, together with the
+	 * recorded length that is now safely on disk.
+	 * @param sessionId - The session the part belongs to
 	 * @param fileBaseName - Track identifier (RecordingTarget base name)
 	 * @param partPath - Vault-relative part file path
 	 * @param recordedMs - Active milliseconds finalized so far, where the
 	 *   caller keeps that clock; omitted on the PCM path, which splits by
 	 *   byte count and never folds an active span at a part boundary
 	 */
-	addPart(fileBaseName: string, partPath: string, recordedMs?: number): void {
-		this.mutateActiveSession((session) => {
+	addPart(
+		sessionId: string,
+		fileBaseName: string,
+		partPath: string,
+		recordedMs?: number,
+	): void {
+		this.mutateOpenSession(sessionId, (session) => {
 			const track = session.tracks.find(
 				(entry) => entry.fileBaseName === fileBaseName,
 			);
@@ -303,16 +319,17 @@ export class SessionJournal {
 	}
 
 	/**
-	 * Removes consumed segment files from the active session, across
-	 * all of its tracks.
+	 * Removes consumed segment files from an open session, across all of
+	 * its tracks.
+	 * @param sessionId - The session the segments belonged to
 	 * @param segmentPaths - Segment paths that were deleted from disk
 	 */
-	removeSegments(segmentPaths: string[]): void {
+	removeSegments(sessionId: string, segmentPaths: string[]): void {
 		if (segmentPaths.length === 0) {
 			return;
 		}
 		const removed = new Set(segmentPaths);
-		this.mutateActiveSession((session) => {
+		this.mutateOpenSession(sessionId, (session) => {
 			for (const track of session.tracks) {
 				track.segmentPaths = track.segmentPaths.filter(
 					(path) => !removed.has(path),
@@ -322,41 +339,40 @@ export class SessionJournal {
 	}
 
 	/**
-	 * Ends the active session, removing it from the journal. The
-	 * journal file disappears once no sessions remain.
+	 * Ends an open session, removing it from the journal. The journal file
+	 * disappears once no sessions remain. A session that is not open here
+	 * is left alone, so a release of a start that failed before journaling
+	 * cannot strike an entry another launch left behind.
+	 * @param sessionId - The session that is over
 	 */
-	endSession(): void {
-		const endedId = this.activeSessionId;
-		this.activeSessionId = null;
-		if (!endedId) {
+	endSession(sessionId: string): void {
+		if (!this.openSessionIds.delete(sessionId)) {
 			return;
 		}
 		this.mutate((state) => {
 			state.sessions = state.sessions.filter(
-				(session) => session.sessionId !== endedId,
+				(session) => session.sessionId !== sessionId,
 			);
 		});
 	}
 
 	/**
-	 * Replaces the non-active sessions of the journal. Used by the
-	 * recovery flow to persist pruned, recovered, or discarded
-	 * sessions; a session that started recording meanwhile is kept.
-	 * @param sessions - Remaining non-active sessions
+	 * Replaces the sessions this instance does not hold open. Used by the
+	 * recovery flow to persist pruned, recovered, or discarded sessions;
+	 * a session recording or saving meanwhile is kept.
+	 * @param sessions - Remaining sessions that are not open here
 	 */
 	async replaceSessions(sessions: JournalSession[]): Promise<void> {
 		this.mutate((state) => {
-			const active = state.sessions.find(
-				(session) => session.sessionId === this.activeSessionId,
+			const open = state.sessions.filter((session) =>
+				this.openSessionIds.has(session.sessionId),
 			);
-			state.sessions = active
-				? [
-						...sessions.filter(
-							(session) => session.sessionId !== active.sessionId,
-						),
-						active,
-					]
-				: [...sessions];
+			state.sessions = [
+				...sessions.filter(
+					(session) => !this.openSessionIds.has(session.sessionId),
+				),
+				...open,
+			];
 		});
 		await this.flush();
 	}
@@ -395,15 +411,22 @@ export class SessionJournal {
 	}
 
 	/**
-	 * Enqueues a mutation of the active session, if any.
-	 * @param change - Mutation applied to the active session entry
+	 * Enqueues a mutation of one open session. A write addressed to a session
+	 * that is not open is dropped, so a late write of a finished session
+	 * cannot reach an entry recovery owns.
+	 * @param sessionId - The session to change
+	 * @param change - Mutation applied to that session's entry
 	 */
-	private mutateActiveSession(
+	private mutateOpenSession(
+		sessionId: string,
 		change: (session: JournalSession) => void,
 	): void {
+		if (!this.openSessionIds.has(sessionId)) {
+			return;
+		}
 		this.mutate((state) => {
 			const session = state.sessions.find(
-				(entry) => entry.sessionId === this.activeSessionId,
+				(entry) => entry.sessionId === sessionId,
 			);
 			if (session) {
 				change(session);

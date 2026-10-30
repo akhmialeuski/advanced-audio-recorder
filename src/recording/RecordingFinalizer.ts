@@ -559,6 +559,7 @@ export class RecordingFinalizer {
 	): Promise<void> {
 		const failedPaths = await remove();
 		this.journal.removeSegments(
+			this.requireSession().sessionId,
 			paths.filter((path) => !failedPaths.includes(path)),
 		);
 		if (failedPaths.length > 0) {

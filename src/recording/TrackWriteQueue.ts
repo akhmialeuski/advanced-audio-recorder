@@ -158,7 +158,11 @@ export class TrackWriteQueue {
 			await combined.arrayBuffer(),
 		);
 		target.segmentPaths.push(segmentPath);
-		this.journal.addSegment(target.fileBaseName, segmentPath);
+		this.journal.addSegment(
+			session.sessionId,
+			target.fileBaseName,
+			segmentPath,
+		);
 
 		target.segmentIndex = segmentIndex;
 		target.bufferedChunks = [];
@@ -176,6 +180,7 @@ export class TrackWriteQueue {
 		if (target.pcmBuffers.length === 0) {
 			return;
 		}
+		const session = this.requireSession();
 		// The index is committed only after a successful write so a
 		// failed flush retries under the same segment number
 		const segmentIndex = target.segmentIndex + 1;
@@ -195,7 +200,11 @@ export class TrackWriteQueue {
 		await this.app.vault.adapter.writeBinary(segmentPath, merged.buffer);
 		target.segmentIndex = segmentIndex;
 		target.segmentPaths.push(segmentPath);
-		this.journal.addSegment(target.fileBaseName, segmentPath);
+		this.journal.addSegment(
+			session.sessionId,
+			target.fileBaseName,
+			segmentPath,
+		);
 		target.pcmBuffers = [];
 		target.pcmBufferedBytes = 0;
 		// A successful flush ends the failure streak: re-arm the Notice

@@ -143,6 +143,12 @@ export interface TrackMix {
  */
 export interface RecordingSessionConfig {
 	/**
+	 * The session's id in the crash-recovery journal: its start timestamp.
+	 * Every journal write of the session is addressed by it, because a session
+	 * still saving and the next one capturing are open in the journal at once.
+	 */
+	sessionId: string;
+	/**
 	 * Chunk-buffer size that forces a part rotation, or null where a
 	 * plain buffer flush may write raw mid-stream segments instead.
 	 * A mid-stream segment carries no container header, so it only means
