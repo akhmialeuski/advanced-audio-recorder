@@ -26,11 +26,13 @@ import { flushMicrotasks } from '../helpers/async';
 import { internalsOf } from '../helpers/doubles';
 import { useMobilePlatform } from '../helpers/platform';
 import {
+	createVaultApp,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 	makeMediaRecorderDouble,
 	stubAudioStreams,
 	type MockMediaRecorder,
+	type VaultFiles,
 } from '../helpers/recordingManagerTestKit';
 
 jest.mock('src/recording/AudioStreamHandler', () =>
@@ -46,70 +48,10 @@ installRecordingMediaStubs();
 /** Where the journal lives next to the plugin's data.json. */
 const JOURNAL_PATH = '.obsidian/plugins/aar/recording-journal.json';
 
-/** The vault contents the suite writes through and reads back. */
-interface VaultFiles {
-	text: Map<string, string>;
-	binary: Map<string, ArrayBuffer>;
-}
-
 /** Rotation state the suite has to await between parts. */
 interface ManagerInternals {
 	chunkTargets: { pendingWrite: Promise<void> }[];
 	rotation: { rotationPromise: Promise<void> | null };
-}
-
-/**
- * An App whose adapter is two maps, so a file written by the recording
- * pipeline is a file the recovery can find again.
- * @param files - Backing stores, shared with the test
- * @returns The App double
- */
-function createVaultApp(files: VaultFiles): App {
-	return {
-		vault: {
-			adapter: {
-				exists: jest.fn((path: string) =>
-					Promise.resolve(
-						files.text.has(path) || files.binary.has(path),
-					),
-				),
-				read: jest.fn((path: string) => {
-					const content = files.text.get(path);
-					return content === undefined
-						? Promise.reject(new Error(`missing: ${path}`))
-						: Promise.resolve(content);
-				}),
-				write: jest.fn((path: string, data: string) => {
-					files.text.set(path, data);
-					return Promise.resolve();
-				}),
-				readBinary: jest.fn((path: string) => {
-					const content = files.binary.get(path);
-					return content === undefined
-						? Promise.reject(new Error(`missing: ${path}`))
-						: Promise.resolve(content);
-				}),
-				writeBinary: jest.fn((path: string, data: ArrayBuffer) => {
-					files.binary.set(path, data);
-					return Promise.resolve();
-				}),
-				remove: jest.fn((path: string) => {
-					files.text.delete(path);
-					files.binary.delete(path);
-					return Promise.resolve();
-				}),
-			},
-			createBinary: jest.fn((path: string, data: ArrayBuffer) => {
-				files.binary.set(path, data);
-				return Promise.resolve();
-			}),
-			createFolder: jest.fn().mockResolvedValue(undefined),
-		},
-		workspace: {
-			getActiveViewOfType: jest.fn().mockReturnValue(null),
-			getActiveFile: jest.fn().mockReturnValue(null),
-		},
-	} as unknown as App;
 }
 
 /** Everything one interrupted mobile session is built from. */
