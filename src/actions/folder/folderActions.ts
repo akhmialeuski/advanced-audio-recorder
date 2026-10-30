@@ -3,22 +3,27 @@
  * folder that was right-clicked, the palette asks which folder, and the
  * command line takes the folder the way Obsidian's own commands do, as
  * `folder=<path>`.
- * @module actions/folderActions
+ * @module actions/folder/folderActions
  */
 
 import { normalizePath, TFile, TFolder } from 'obsidian';
 import type { App, CliData } from 'obsidian';
-import { COMMAND_IDS } from '../constants';
-import { isAudioFile } from '../utils/audioFile';
-import { transcriptionRefusal } from '../settings/settingsAttention';
-import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
+import { COMMAND_IDS } from '../../constants';
+import { isAudioFile } from '../../utils/audioFile';
+import { transcriptionRefusal } from '../../settings/settingsAttention';
+import {
+	cliFlag,
+	cliText,
+	flagParam,
+	valueParam,
+} from '../../obsidian/cliArgs';
 import type {
 	ActionFamily,
 	ActionServices,
 	FolderAction,
 	FolderContext,
-} from './PluginAction';
-import type { Refusable } from '../utils/refusal';
+} from '../core/PluginAction';
+import type { Refusable } from '../../utils/refusal';
 
 /** Names the folder on the command line. */
 export const FOLDER_PARAM = 'folder';

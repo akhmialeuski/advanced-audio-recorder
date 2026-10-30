@@ -7,7 +7,7 @@
 
 import { App } from 'obsidian';
 import type { Editor, EditorPosition, TFile } from 'obsidian';
-import { editorLines, noteLines } from 'src/actions/transcriptLines';
+import { editorLines, noteLines } from 'src/actions/transcript/transcriptLines';
 import { asMockVault } from '../helpers/obsidianMock';
 
 const NOTE = 'Notes/meeting.md';

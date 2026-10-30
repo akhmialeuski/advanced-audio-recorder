@@ -5,36 +5,36 @@
  * input device, and dropping a marker at the live position either through the
  * kind chooser or with the kind fixed up front, so bookmark and chapter can
  * each carry their own hotkey.
- * @module actions/sessionActions
+ * @module actions/session/sessionActions
  */
 
 import type { CliData } from 'obsidian';
-import { COMMAND_IDS, PLAYER_ICONS } from '../constants';
-import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
-import { isDeviceSelectionSupported } from '../platform/capabilities';
-import { showDeviceSelectionModal } from '../ui/DeviceSelectionModal';
-import { ICON_QUICK_NOTE } from '../ui/RibbonIcon';
-import { quickNotesAvailable } from '../settings/settingsSchema';
+import { COMMAND_IDS, PLAYER_ICONS } from '../../constants';
+import { MARKER_KIND, type MarkerKind } from '../../markers/markerModel';
+import { isDeviceSelectionSupported } from '../../platform/capabilities';
+import { showDeviceSelectionModal } from '../../ui/DeviceSelectionModal';
+import { ICON_QUICK_NOTE } from '../../ui/RibbonIcon';
+import { quickNotesAvailable } from '../../settings/settingsSchema';
 import {
 	deviceOptionLabel,
 	getAudioInputDevices,
-} from '../recording/AudioStreamHandler';
-import { savesInProgress } from '../recording/RecordingSaveQueue';
-import { RecordingStatus } from '../types';
-import { describeRecordingStatus } from '../obsidian/cliCommands';
+} from '../../recording/AudioStreamHandler';
+import { savesInProgress } from '../../recording/RecordingSaveQueue';
+import { RecordingStatus } from '../../types';
+import { describeRecordingStatus } from '../../obsidian/cliCommands';
 import {
 	choiceParam,
 	cliChoice,
 	cliText,
 	valueParam,
-} from '../obsidian/cliArgs';
+} from '../../obsidian/cliArgs';
 import type {
 	ActionFamily,
 	SessionAction,
 	SessionServices,
-} from './PluginAction';
-import { LABEL_PARAM, MARKER_LABEL_PARAMS } from './positionActions';
-import { isRefusal } from '../utils/refusal';
+} from '../core/PluginAction';
+import { LABEL_PARAM, MARKER_LABEL_PARAMS } from '../position/positionActions';
+import { isRefusal } from '../../utils/refusal';
 
 /** Availability gate for the action that starts a session as well as ends it. */
 const always = (): boolean => true;

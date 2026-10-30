@@ -10,8 +10,8 @@ import {
 	deleteRecordingWithLink,
 	exportChaptersFromCli,
 	generateChaptersFromCli,
-} from 'src/actions/recordingEdits';
-import type { FileContext } from 'src/actions/PluginAction';
+} from 'src/actions/file/recordingEdits';
+import type { FileContext } from 'src/actions/core/PluginAction';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { ProfileKindId, createProfile } from 'src/settings/profiles';
 import { recordingVault } from '../helpers/recordingVault';

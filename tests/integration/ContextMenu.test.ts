@@ -8,8 +8,8 @@
  * @module tests/unit/ContextMenu.test
  */
 
-import { ContextMenu } from 'src/ui/ContextMenu';
-import type { ActionServices } from 'src/actions/PluginAction';
+import { ContextMenu } from 'src/actions/ContextMenu';
+import type { ActionServices } from 'src/actions/core/PluginAction';
 import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
@@ -1067,16 +1067,19 @@ describe('ContextMenu', () => {
 		 *   link text without its alias, subpath included, so
 		 *   `![[a.mp3#t=30|x]]` renders `a.mp3#t=30`; a test passes another
 		 *   one only to model a widget that maps to a different link.
+		 * @param file - The note the editor shows, null for an editor that
+		 *   shows none, as a canvas card does
 		 * @returns The event, and the editor the note is open in
 		 */
 		function rightClickOnRenderedEmbed(
 			source: string,
 			embedText: string,
 			src = embedText.slice(3, -2).split('|')[0] ?? '',
+			file: TFile | null = partial<TFile>({ path: 'note.md' }),
 		): { event: MouseEvent; live: LiveEditor } {
 			const live = mountLiveEditor({
 				doc: source,
-				file: partial<TFile>({ path: 'note.md' }),
+				file,
 				embeds: [{ ...rangeOf(source, embedText), src }],
 			});
 			const event = partial<MouseEvent>({
@@ -1116,6 +1119,25 @@ describe('ContextMenu', () => {
 			await clickItem(triggeredMenu(), 'Delete recording & link to file');
 
 			expect(live.text()).toBe('Intro\nBefore  after');
+		});
+
+		it('resolves the link of a player in an editor that shows no note from the vault root', () => {
+			const { event } = rightClickOnRenderedEmbed(
+				'![[audio.mp3]]',
+				'![[audio.mp3]]',
+				'audio.mp3',
+				null,
+			);
+			const file = makeAudioFile();
+			const resolve = mockMetadataCache.getFirstLinkpathDest as jest.Mock;
+			resolve.mockReturnValue(file);
+
+			playerMenuCallback(event);
+
+			expect(resolve).toHaveBeenLastCalledWith('audio.mp3', '');
+			expect(titlesOf(triggeredMenu())).toContain(
+				'Delete recording & link to file',
+			);
 		});
 
 		it('offers no delete over a player that starts at a timestamp', () => {

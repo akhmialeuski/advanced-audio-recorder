@@ -17,7 +17,7 @@ import type {
 	ActionServices,
 	FileAction,
 	FileContext,
-} from 'src/actions/PluginAction';
+} from 'src/actions/core/PluginAction';
 import { FAILING_RUNS, internalsOf, partial } from '../helpers/doubles';
 import {
 	asMockApp,

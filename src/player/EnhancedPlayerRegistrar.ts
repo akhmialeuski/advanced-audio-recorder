@@ -43,7 +43,7 @@ import {
 	resolvePlayerSettings,
 	playerSettingsEqual,
 	type ResolvedPlayerSettings,
-} from '../player/playerSettings';
+} from './playerSettings';
 import { resolveVoiceBoostStages } from '../cleanup/audioDsp';
 import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 import { DetachedPlayback } from './DetachedPlayback';

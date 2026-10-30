@@ -7,30 +7,30 @@
  * palette tell the user in a notice, the command line answers with the same
  * sentence. Where a dialog stands between the user and the job (chapters,
  * export), the command line takes the dialog's choices as parameters.
- * @module actions/recordingEdits
+ * @module actions/file/recordingEdits
  */
 
 import type { CliData, CliFlags } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
-import { errorMessage } from '../errors';
-import { TranscriptionService } from '../transcription/TranscriptionService';
+import { PLUGIN_LOG_PREFIX } from '../../constants';
+import { errorMessage } from '../../errors';
+import { TranscriptionService } from '../../transcription/TranscriptionService';
 import {
 	FailedPartRetry,
 	serviceRunner,
 	type RetryOutcome,
-} from '../transcription/retryFailedParts';
+} from '../../transcription/retryFailedParts';
 import {
 	applyChapterRunChoices,
 	commitChapterRunSettings,
-} from '../chapters/chapterRunSettings';
+} from '../../chapters/chapterRunSettings';
 import {
 	chapterExportText,
 	ChapterExportView,
 	writeChapterExportFile,
-} from '../chapters/chapterExportFiles';
-import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
-import { removeReferences, wholeFileReferences } from '../utils/LinkUpdater';
-import { collectingNotify } from '../utils/notify';
+} from '../../chapters/chapterExportFiles';
+import { timecodeLinkBuilder } from '../../obsidian/timecodeRefs';
+import { removeReferences, wholeFileReferences } from '../../utils/LinkUpdater';
+import { collectingNotify } from '../../utils/notify';
 import {
 	choiceParam,
 	cliChoice,
@@ -38,10 +38,10 @@ import {
 	cliText,
 	flagParam,
 	valueParam,
-} from '../obsidian/cliArgs';
-import type { ActionServices, FileContext } from './PluginAction';
+} from '../../obsidian/cliArgs';
+import type { ActionServices, FileContext } from '../core/PluginAction';
 import type { TFile } from 'obsidian';
-import { isRefusal } from '../utils/refusal';
+import { isRefusal } from '../../utils/refusal';
 
 /**
  * One sentence saying what the top-up did.

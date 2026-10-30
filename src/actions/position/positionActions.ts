@@ -4,28 +4,28 @@
  * was right-clicked, the palette at the position of the playback that is
  * running, and the command line at the time it names - one definition, three
  * ways of saying "where".
- * @module actions/positionActions
+ * @module actions/position/positionActions
  */
 
 import { MarkdownView, Notice } from 'obsidian';
 import type { CliData, CliFlags } from 'obsidian';
-import { COMMAND_IDS, PLAYER_ICONS } from '../constants';
-import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
-import { addRecordingMarker } from '../markers/addRecordingMarker';
+import { COMMAND_IDS, PLAYER_ICONS } from '../../constants';
+import { MARKER_KIND, type MarkerKind } from '../../markers/markerModel';
+import { addRecordingMarker } from '../../markers/addRecordingMarker';
 import {
 	copyTimecodeLink,
 	timecodeLinkBuilder,
-} from '../obsidian/timecodeRefs';
-import { formatTimecode } from '../utils/TimeUtils';
-import { isAudioFile } from '../utils/audioFile';
-import { cliText, cliTime, valueParam } from '../obsidian/cliArgs';
-import type { PlaybackControlsState } from '../player/playbackControls';
+} from '../../obsidian/timecodeRefs';
+import { formatTimecode } from '../../utils/TimeUtils';
+import { isAudioFile } from '../../utils/audioFile';
+import { cliText, cliTime, valueParam } from '../../obsidian/cliArgs';
+import type { PlaybackControlsState } from '../../player/playbackControls';
 import type {
 	ActionFamily,
 	ActionServices,
 	PositionAction,
 	PositionContext,
-} from './PluginAction';
+} from '../core/PluginAction';
 import {
 	FILE_PARAM,
 	PATH_PARAM,
@@ -33,8 +33,8 @@ import {
 	RECORDING_PARAM,
 	SINGLE_RECORDING_PARAMS,
 	namedRecordings,
-} from './recordingTargets';
-import { isRefusal, type Refusable } from '../utils/refusal';
+} from '../file/recordingTargets';
+import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** Where in the recording, on the command line. */
 export const AT_PARAM = 'at';

@@ -11,18 +11,27 @@
  * Naming follows the Obsidian command line: `file=` resolves a name the way a
  * wikilink does, `path=` takes the exact vault path, and with neither the
  * active file is used.
- * @module actions/recordingTargets
+ * @module actions/file/recordingTargets
  */
 
 import { getLinkpath, MarkdownView, normalizePath, TFile } from 'obsidian';
 import type { App, CliData, CliFlags, Editor, EditorPosition } from 'obsidian';
-import { isAudioFile } from '../utils/audioFile';
-import { linkAtColumn } from '../obsidian/sourceLinks';
-import { recordingsInNote } from '../obsidian/noteRecordings';
-import { hasTimecodeSubpath } from '../player/timecodeLinks';
-import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
-import type { ActionServices, FileContext, LinkLocation } from './PluginAction';
-import { isRefusal, type Refusable } from '../utils/refusal';
+import { isAudioFile } from '../../utils/audioFile';
+import { linkAtColumn } from '../../obsidian/sourceLinks';
+import { recordingsInNote } from '../../obsidian/noteRecordings';
+import { hasTimecodeSubpath } from '../../player/timecodeLinks';
+import {
+	cliFlag,
+	cliText,
+	flagParam,
+	valueParam,
+} from '../../obsidian/cliArgs';
+import type {
+	ActionServices,
+	FileContext,
+	LinkLocation,
+} from '../core/PluginAction';
+import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** Names a recording or a note by how a wikilink resolves it. */
 export const FILE_PARAM = 'file';

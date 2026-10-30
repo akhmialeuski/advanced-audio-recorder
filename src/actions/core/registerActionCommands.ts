@@ -7,12 +7,12 @@
  * the command line and the Hotkeys settings therefore expose the same feature
  * set from the same definitions. No default hotkeys are assigned; the user
  * binds them in Settings -> Hotkeys.
- * @module actions/registerActionCommands
+ * @module actions/core/registerActionCommands
  */
 
 import { Notice } from 'obsidian';
 import type { Plugin } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
+import { PLUGIN_LOG_PREFIX } from '../../constants';
 import type { ActionFamily, PluginCommand } from './PluginAction';
 
 /**

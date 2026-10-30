@@ -12,7 +12,7 @@
  * A conversion and a split can run for minutes, and the host hands a command
  * no signal to interrupt it with, so both show their progress in the app in a
  * notice with a Cancel, the one a dialog closed mid-job leaves behind.
- * @module actions/audioJobsCli
+ * @module actions/file/audioJobsCli
  */
 
 import type { CliData, CliFlags } from 'obsidian';
@@ -29,46 +29,49 @@ import {
 	SECONDS_PER_MINUTE,
 	SPLIT_PART_SUFFIX_PATTERN,
 	SPLIT_PART_SUFFIX_RULE_TEXT,
-} from '../constants';
-import { effectiveBitrate } from '../audio/AudioCapabilityDetector';
-import { offlineEncodeSampleRate } from '../audio/AudioFormatConverter';
-import { ChannelMode } from '../audio/downmix';
+} from '../../constants';
+import { effectiveBitrate } from '../../audio/AudioCapabilityDetector';
+import { offlineEncodeSampleRate } from '../../audio/AudioFormatConverter';
+import { ChannelMode } from '../../audio/downmix';
 import {
 	ConversionService,
 	conversionTargets,
-} from '../recording/ConversionService';
+} from '../../recording/ConversionService';
 import {
 	clampSplitMinutes,
 	sanitizePartSuffix,
-} from '../recording/AudioSplitter';
+} from '../../recording/AudioSplitter';
 import {
 	chapterCutsOf,
 	SplitService,
 	type ChapterCut,
-} from '../recording/SplitService';
-import { embedsOf, insertProcessedAudioEmbed } from '../recording/NoteInserter';
-import { cleanUpRecording, describeCleanup } from '../cleanup/cleanupRun';
+} from '../../recording/SplitService';
+import {
+	embedsOf,
+	insertProcessedAudioEmbed,
+} from '../../recording/NoteInserter';
+import { cleanUpRecording, describeCleanup } from '../../cleanup/cleanupRun';
 import {
 	hasActiveChange,
 	resolveAudioDspConfig,
 	type AudioDspConfig,
-} from '../cleanup/audioDsp';
-import { ConversionLinkAction } from '../types';
+} from '../../cleanup/audioDsp';
+import { ConversionLinkAction } from '../../types';
 import {
 	formatAudioFileInfo,
 	getAudioFileInfo,
-} from '../utils/AudioFileAnalyzer';
-import { collectingNotify } from '../utils/notify';
+} from '../../utils/AudioFileAnalyzer';
+import { collectingNotify } from '../../utils/notify';
 import {
 	choiceParam,
 	cliChoice,
 	cliNumber,
 	cliText,
 	valueParam,
-} from '../obsidian/cliArgs';
-import type { FileContext } from './PluginAction';
-import { isRefusal, type Refusable } from '../utils/refusal';
-import { JobProgressNotice } from '../ui/JobProgressNotice';
+} from '../../obsidian/cliArgs';
+import type { FileContext } from '../core/PluginAction';
+import { isRefusal, type Refusable } from '../../utils/refusal';
+import { JobProgressNotice } from '../../ui/JobProgressNotice';
 
 /** Every channel layout the conversion and the cleanup offer. */
 const CHANNEL_MODES: readonly ChannelMode[] = Object.values(ChannelMode);

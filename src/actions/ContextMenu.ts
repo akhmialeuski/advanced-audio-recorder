@@ -6,7 +6,7 @@
  * every entry is also a palette command and a command-line command. What this
  * class adds is only what a menu knows and nothing else does: which file,
  * folder, link, selection or point of the player it was opened on.
- * @module ui/ContextMenu
+ * @module actions/ContextMenu
  */
 
 import {
@@ -35,19 +35,11 @@ import type {
 	LinkLocation,
 	PositionContext,
 	TranscriptSelectionContext,
-} from '../actions/PluginAction';
-import type {
-	ActionRegistry,
-	RegisteredFamily,
-} from '../actions/ActionRegistry';
-import { transcriptSelectionIn } from '../actions/transcriptActions';
+} from './core/PluginAction';
+import type { ActionRegistry, RegisteredFamily } from './core/ActionRegistry';
+import { transcriptSelectionIn } from './transcript/transcriptActions';
 import { recordingsInNote } from '../obsidian/noteRecordings';
-import {
-	recordingLinkAt,
-	type RecordingLink,
-} from '../actions/recordingTargets';
-
-export type { EnhancementPrimer } from '../actions/PluginAction';
+import { recordingLinkAt, type RecordingLink } from './file/recordingTargets';
 
 /** The element Obsidian draws a note transcluded into another one in. */
 const TRANSCLUSION = '.internal-embed.markdown-embed[src]';

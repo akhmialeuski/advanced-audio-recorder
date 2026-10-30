@@ -8,11 +8,11 @@
  * surface at once, and there is no second list to forget to update: a menu
  * entry that is not a palette command, or a palette command the command line
  * does not answer, cannot be written.
- * @module actions/ActionRegistry
+ * @module actions/core/ActionRegistry
  */
 
 import type { Menu, Plugin } from 'obsidian';
-import type { CliCommand } from '../obsidian/cliCommands';
+import type { CliCommand } from '../../obsidian/cliCommands';
 import { actionCliCommands } from './actionCliCommands';
 import type { ActionFamily } from './PluginAction';
 import {

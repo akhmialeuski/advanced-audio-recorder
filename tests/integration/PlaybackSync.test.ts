@@ -15,10 +15,10 @@ import { menuInstances } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
 import { allEls, clickControl, control, el } from '../helpers/dom';
 import { MARKER, PLAYBACK, PLAYER } from '../helpers/selectors';
-import { playbackActionFamily } from 'src/actions/playbackActions';
-import { positionActionFamily } from 'src/actions/positionActions';
+import { playbackActionFamily } from 'src/actions/playback/playbackActions';
+import { positionActionFamily } from 'src/actions/position/positionActions';
 import { renderPlaybackStatusBar } from 'src/ui/StatusBar';
-import { registerActionCommands } from 'src/actions/registerActionCommands';
+import { registerActionCommands } from 'src/actions/core/registerActionCommands';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import {
 	AudioPlayerRegistry,
@@ -51,12 +51,12 @@ import {
 	partialPlugin,
 } from '../helpers/obsidianMock';
 import type { Component } from 'obsidian';
-import { ContextMenu } from 'src/ui/ContextMenu';
+import { ContextMenu } from 'src/actions/ContextMenu';
 import { registeredMenus } from '../helpers/menuFamilies';
 import { makePopoutWindow } from '../helpers/popoutHarness';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
-import type { ActionServices } from 'src/actions/PluginAction';
+import type { ActionServices } from 'src/actions/core/PluginAction';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 const app = makePlayerApp();

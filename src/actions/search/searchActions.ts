@@ -7,16 +7,16 @@
  * On the command line the search answers with what it found instead of
  * opening a picker, and the queue answers with what it holds, taking the
  * queue dialog's buttons as flags.
- * @module actions/searchActions
+ * @module actions/search/searchActions
  */
 
 import { prepareSimpleSearch } from 'obsidian';
 import type { CliData } from 'obsidian';
-import { COMMAND_IDS, PLAYER_ICONS } from '../constants';
-import { ICON_MIC } from '../ui/RibbonIcon';
-import { MARKER_KIND } from '../markers/markerModel';
-import type { MarkerHit } from '../markers/MarkerSearchIndex';
-import { formatTimecode } from '../utils/TimeUtils';
+import { COMMAND_IDS, PLAYER_ICONS } from '../../constants';
+import { ICON_MIC } from '../../ui/RibbonIcon';
+import { MARKER_KIND } from '../../markers/markerModel';
+import type { MarkerHit } from '../../markers/MarkerSearchIndex';
+import { formatTimecode } from '../../utils/TimeUtils';
 import {
 	choiceParam,
 	cliChoice,
@@ -25,14 +25,14 @@ import {
 	cliText,
 	flagParam,
 	valueParam,
-} from '../obsidian/cliArgs';
+} from '../../obsidian/cliArgs';
 import type {
 	ActionFamily,
 	QueueStatusView,
 	SearchAction,
 	SearchServices,
-} from './PluginAction';
-import { isRefusal } from '../utils/refusal';
+} from '../core/PluginAction';
+import { isRefusal } from '../../utils/refusal';
 
 /** Needs nothing beyond the plugin being loaded. */
 const always = (): boolean => true;

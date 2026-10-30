@@ -40,7 +40,7 @@ import {
 import {
 	playerSettingsEqual,
 	type ResolvedPlayerSettings,
-} from '../player/playerSettings';
+} from './playerSettings';
 import { WaveformPeakCache, type AudioDecoder } from './WaveformData';
 import { playbackKey } from './AudioPlayerRegistry';
 import type {

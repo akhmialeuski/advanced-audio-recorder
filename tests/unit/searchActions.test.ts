@@ -10,12 +10,12 @@ import {
 	describeQueue,
 	SEARCH_ACTIONS,
 	searchActionFamily,
-} from 'src/actions/searchActions';
+} from 'src/actions/search/searchActions';
 import type {
 	QueueStatusView,
 	SearchServices,
 	TranscriptionQueuePort,
-} from 'src/actions/PluginAction';
+} from 'src/actions/core/PluginAction';
 import { COMMAND_IDS } from 'src/constants';
 import type { MarkerHit } from 'src/markers/MarkerSearchIndex';
 import { at } from '../helpers/assertions';

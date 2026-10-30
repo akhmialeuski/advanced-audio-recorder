@@ -9,16 +9,16 @@
  * answers with what happened. An action whose dialog is worth reaching from a
  * terminal anyway takes the `dialog` flag, which opens that dialog in Obsidian
  * on the target the command named.
- * @module actions/actionCliCommands
+ * @module actions/core/actionCliCommands
  */
 
 import type { CliData, CliFlags } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
-import { errorMessage } from '../errors';
-import { cliFlag, flagParam } from '../obsidian/cliArgs';
-import type { CliCommand } from '../obsidian/cliCommands';
+import { PLUGIN_LOG_PREFIX } from '../../constants';
+import { errorMessage } from '../../errors';
+import { cliFlag, flagParam } from '../../obsidian/cliArgs';
+import type { CliCommand } from '../../obsidian/cliCommands';
 import type { ActionFamily, PluginCommand } from './PluginAction';
-import { isRefusal } from '../utils/refusal';
+import { isRefusal } from '../../utils/refusal';
 
 /** The flag that opens an action's dialog instead of running it here. */
 export const DIALOG_FLAG = 'dialog';

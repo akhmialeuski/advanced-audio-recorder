@@ -10,8 +10,8 @@ import type { CliData } from 'obsidian';
 import {
 	POSITION_ACTIONS,
 	positionActionFamily,
-} from 'src/actions/positionActions';
-import type { PositionContext } from 'src/actions/PluginAction';
+} from 'src/actions/position/positionActions';
+import type { PositionContext } from 'src/actions/core/PluginAction';
 import { COMMAND_IDS } from 'src/constants';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { makeMarkerStore, makePlaybackState } from '../helpers/playbackHarness';

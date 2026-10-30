@@ -4,8 +4,8 @@
  */
 
 import { Menu } from 'obsidian';
-import { renderActionsIntoMenu } from 'src/actions/renderActionsIntoMenu';
-import type { PluginCommand } from 'src/actions/PluginAction';
+import { renderActionsIntoMenu } from 'src/actions/core/renderActionsIntoMenu';
+import type { PluginCommand } from 'src/actions/core/PluginAction';
 import { at } from '../helpers/assertions';
 import { asMockMenu } from '../helpers/obsidianMock';
 import { flushMicrotasks } from '../helpers/async';

@@ -3,29 +3,29 @@
  * menus render this list, the palette registers it as commands, and the
  * command line answers it, so a feature added here appears in every surface
  * (and becomes hotkey-assignable) automatically.
- * @module actions/fileActions
+ * @module actions/file/fileActions
  */
 
 import { Notice } from 'obsidian';
-import { COMMAND_IDS, PLUGIN_LOG_PREFIX } from '../constants';
-import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
-import { AudioFileInfoModal } from '../ui/AudioFileInfoModal';
-import { ConversionModal } from '../ui/ConversionModal';
-import { SplitModal } from '../ui/SplitModal';
-import { TranscriptionModal } from '../ui/TranscriptionModal';
-import { SpeakerRenameModal } from '../ui/SpeakerRenameModal';
-import { ChapterGenerationModal } from '../ui/ChapterGenerationModal';
-import { ChapterExportModal } from '../ui/ChapterExportModal';
-import type { PlayerMarker } from '../markers/markerModel';
-import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
-import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
-import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
+import { COMMAND_IDS, PLUGIN_LOG_PREFIX } from '../../constants';
+import { getAudioFileInfo } from '../../utils/AudioFileAnalyzer';
+import { AudioFileInfoModal } from '../../ui/AudioFileInfoModal';
+import { ConversionModal } from '../../ui/ConversionModal';
+import { SplitModal } from '../../ui/SplitModal';
+import { TranscriptionModal } from '../../ui/TranscriptionModal';
+import { SpeakerRenameModal } from '../../ui/SpeakerRenameModal';
+import { ChapterGenerationModal } from '../../ui/ChapterGenerationModal';
+import { ChapterExportModal } from '../../ui/ChapterExportModal';
+import type { PlayerMarker } from '../../markers/markerModel';
+import { timecodeLinkBuilder } from '../../obsidian/timecodeRefs';
+import { AudioProcessingModal } from '../../cleanup/AudioProcessingModal';
+import { insertProcessedAudioEmbed } from '../../recording/NoteInserter';
 import type {
 	ActionFamily,
 	ActionServices,
 	FileAction,
 	FileContext,
-} from './PluginAction';
+} from '../core/PluginAction';
 import {
 	activeRecordings,
 	describeRecording,
@@ -43,7 +43,7 @@ import {
 	splitFromCli,
 } from './audioJobsCli';
 import { TRANSCRIBE_PARAMS, transcribeFromCli } from './transcribeCli';
-import { WAIT_FLAG } from '../obsidian/cliArgs';
+import { WAIT_FLAG } from '../../obsidian/cliArgs';
 import { SPEAKER_PARAMS, speakersFromCli } from './speakersCli';
 import {
 	CHAPTER_PARAMS,

@@ -4,17 +4,17 @@
  * from a script. Every action delegates to the active playback snapshot
  * published by `AudioPlayerRegistry`, which is the same surface the status-bar
  * controls use, so no transport logic is duplicated here.
- * @module actions/playbackActions
+ * @module actions/playback/playbackActions
  */
 
 import {
 	COMMAND_IDS,
 	PLAYER_ICONS,
 	PLAYER_PLAYBACK_RATE_PRESETS,
-} from '../constants';
-import { steppedPlaybackRate } from '../player/playbackRate';
-import type { PlaybackControlsState } from '../player/playbackControls';
-import type { ActionFamily, PlaybackAction } from './PluginAction';
+} from '../../constants';
+import { steppedPlaybackRate } from '../../player/playbackRate';
+import type { PlaybackControlsState } from '../../player/playbackControls';
+import type { ActionFamily, PlaybackAction } from '../core/PluginAction';
 
 /**
  * Needs nothing beyond an active playback, which the family already requires

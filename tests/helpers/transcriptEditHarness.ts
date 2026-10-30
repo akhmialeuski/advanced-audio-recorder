@@ -10,11 +10,11 @@
 
 import { App, TFile } from 'obsidian';
 import type { Editor, EditorPosition } from 'obsidian';
-import { transcriptSelectionIn } from 'src/actions/transcriptActions';
+import { transcriptSelectionIn } from 'src/actions/transcript/transcriptActions';
 import type {
 	ActionServices,
 	TranscriptSelectionContext,
-} from 'src/actions/PluginAction';
+} from 'src/actions/core/PluginAction';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import {

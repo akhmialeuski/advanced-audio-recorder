@@ -7,7 +7,7 @@
  * recorded output, the same commit of the roster and its history. The one
  * thing the dialog asks about - a merge, which cannot be undone - is answered
  * on the command line by the `merge` flag, and refused without it.
- * @module actions/speakersCli
+ * @module actions/file/speakersCli
  */
 
 import type { CliData, CliFlags } from 'obsidian';
@@ -16,20 +16,25 @@ import {
 	ProfileKindId,
 	profileIdNamed,
 	profilesOfKind,
-} from '../settings/profiles';
+} from '../../settings/profiles';
 import {
 	applySpeakerNames,
 	describeMerges,
 	readSpeakerSection,
 	undoSpeakerRename,
 	type SpeakerRenameDeps,
-} from '../speakers/speakerRenameFlow';
-import type { SpeakerMerge } from '../speakers/speakerRename';
-import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
-import { collectingNotify } from '../utils/notify';
-import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
-import type { FileContext } from './PluginAction';
-import { isRefusal, type Refusable } from '../utils/refusal';
+} from '../../speakers/speakerRenameFlow';
+import type { SpeakerMerge } from '../../speakers/speakerRename';
+import type { TranscriptSection } from '../../sidecar/recordingSidecarModel';
+import { collectingNotify } from '../../utils/notify';
+import {
+	cliFlag,
+	cliText,
+	flagParam,
+	valueParam,
+} from '../../obsidian/cliArgs';
+import type { FileContext } from '../core/PluginAction';
+import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** Names the speakers: `label=name`, one pair per speaker, `;` between. */
 export const MAP_PARAM = 'map';

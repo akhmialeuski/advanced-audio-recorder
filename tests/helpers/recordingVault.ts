@@ -9,7 +9,10 @@
  */
 
 import { App, TFile } from 'obsidian';
-import type { ActionServices, FileContext } from 'src/actions/PluginAction';
+import type {
+	ActionServices,
+	FileContext,
+} from 'src/actions/core/PluginAction';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { asMockApp } from './obsidianMock';

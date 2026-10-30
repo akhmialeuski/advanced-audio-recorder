@@ -6,8 +6,11 @@
  */
 
 import { Menu } from 'obsidian';
-import { ActionRegistry } from 'src/actions/ActionRegistry';
-import type { ActionFamily, PluginCommand } from 'src/actions/PluginAction';
+import { ActionRegistry } from 'src/actions/core/ActionRegistry';
+import type {
+	ActionFamily,
+	PluginCommand,
+} from 'src/actions/core/PluginAction';
 import {
 	asMockMenu,
 	asMockPlugin,

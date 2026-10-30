@@ -7,24 +7,24 @@
  * an audio file, a position in one, the recording session, or the playback
  * that is running - so adding a feature is an entry in one of the lists in
  * this directory and nothing else.
- * @module actions/PluginAction
+ * @module actions/core/PluginAction
  */
 
 import type { App, CliData, CliFlags, Editor, TFile, TFolder } from 'obsidian';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
-import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
-import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
-import type { AutoChapterService } from '../chapters/AutoChapterService';
-import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
-import type { LlmCostSink } from '../transcription/llm/llmStep';
-import type { RunCostSink } from '../transcription/SessionCostTracker';
-import type { PlaybackControlsState } from '../player/playbackControls';
-import type { MarkerKind } from '../markers/markerModel';
-import type { MarkerHit } from '../markers/MarkerSearchIndex';
-import type { RecordingMarkerHandle } from '../recording/recordingMarkers';
-import type { RecordingSaveState } from '../recording/RecordingSaveQueue';
-import type { RecordingStatus } from '../types';
-import type { Refusable } from '../utils/refusal';
+import type { AudioRecorderSettings } from '../../settings/settingsSchema';
+import type { TranscriptionModalOptions } from '../../ui/TranscriptionModal';
+import type { EncodingWorkerClient } from '../../audio/EncodingWorkerClient';
+import type { AutoChapterService } from '../../chapters/AutoChapterService';
+import type { RecordingSidecarStore } from '../../sidecar/RecordingSidecarStore';
+import type { LlmCostSink } from '../../transcription/llm/llmStep';
+import type { RunCostSink } from '../../transcription/SessionCostTracker';
+import type { PlaybackControlsState } from '../../player/playbackControls';
+import type { MarkerKind } from '../../markers/markerModel';
+import type { MarkerHit } from '../../markers/MarkerSearchIndex';
+import type { RecordingMarkerHandle } from '../../recording/recordingMarkers';
+import type { RecordingSaveState } from '../../recording/RecordingSaveQueue';
+import type { RecordingStatus } from '../../types';
+import type { Refusable } from '../../utils/refusal';
 
 /**
  * Primes freshly written files for the enhanced player: starts their

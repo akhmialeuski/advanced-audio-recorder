@@ -43,11 +43,11 @@ import type {
 	ActionServices,
 	FileAction,
 	FileContext,
-} from '../actions/PluginAction';
+} from '../actions/core/PluginAction';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
-import { renderActionsIntoMenu } from '../actions/renderActionsIntoMenu';
+import { renderActionsIntoMenu } from '../actions/core/renderActionsIntoMenu';
 import { recordingsInNote } from '../obsidian/noteRecordings';
-import { runReported } from '../actions/registerActionCommands';
+import { runReported } from '../actions/core/registerActionCommands';
 import { RecordingStatus } from '../types';
 import { isAudioFile } from '../utils/audioFile';
 import { formatByteSize } from '../utils/formatBytes';

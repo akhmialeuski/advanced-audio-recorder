@@ -11,9 +11,9 @@ import {
 	describeRecording,
 	namedRecordings,
 	namedVaultFile,
-} from 'src/actions/recordingTargets';
+} from 'src/actions/file/recordingTargets';
 import { recordingsInNote } from 'src/obsidian/noteRecordings';
-import type { FileContext } from 'src/actions/PluginAction';
+import type { FileContext } from 'src/actions/core/PluginAction';
 import { recordingVault } from '../helpers/recordingVault';
 import { createMarkdownView } from '../helpers/createApp';
 import { asMockWorkspace } from '../helpers/obsidianMock';

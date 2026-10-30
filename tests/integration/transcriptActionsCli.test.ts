@@ -12,8 +12,8 @@ import {
 	speakerChoiceNamed,
 	TRANSCRIPT_ACTIONS,
 	transcriptActionFamily,
-} from 'src/actions/transcriptActions';
-import type { TranscriptSelectionContext } from 'src/actions/PluginAction';
+} from 'src/actions/transcript/transcriptActions';
+import type { TranscriptSelectionContext } from 'src/actions/core/PluginAction';
 import { COMMAND_IDS } from 'src/constants';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import type { LineSpeakerOption } from 'src/speakers/transcriptRows';

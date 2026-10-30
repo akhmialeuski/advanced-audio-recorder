@@ -4,9 +4,9 @@
  * @module tests/unit/helpActions.test
  */
 
-import { HELP_ACTIONS, helpActionFamily } from 'src/actions/helpActions';
+import { HELP_ACTIONS, helpActionFamily } from 'src/actions/help/helpActions';
 import { releaseNotesSince } from 'src/release/releaseNotes';
-import type { HelpServices } from 'src/actions/PluginAction';
+import type { HelpServices } from 'src/actions/core/PluginAction';
 import { at } from '../helpers/assertions';
 
 /** The help services, the dialog a spy. */

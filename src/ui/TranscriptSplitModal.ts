@@ -24,7 +24,7 @@ import type {
 	ExtraButtonComponent,
 	TextComponent,
 } from 'obsidian';
-import type { TranscriptSelectionContext } from '../actions/PluginAction';
+import type { TranscriptSelectionContext } from '../actions/core/PluginAction';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
 import type { SpeakerPreviewRange } from '../speakers/speakerPreview';
 import {

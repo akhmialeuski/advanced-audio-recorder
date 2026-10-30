@@ -67,17 +67,20 @@ import {
 	updateRecorderRibbonTooltip,
 	updateRibbonIcon,
 } from './ui/RibbonIcon';
-import { ContextMenu, type MenuFamilies } from './ui/ContextMenu';
-import type { ActionServices, SessionServices } from './actions/PluginAction';
-import { ActionRegistry } from './actions/ActionRegistry';
-import { FILE_ACTIONS, fileActionFamily } from './actions/fileActions';
-import { sessionActionFamily } from './actions/sessionActions';
-import { transcriptActionFamily } from './actions/transcriptActions';
-import { playbackActionFamily } from './actions/playbackActions';
-import { positionActionFamily } from './actions/positionActions';
-import { folderActionFamily } from './actions/folderActions';
-import { searchActionFamily } from './actions/searchActions';
-import { helpActionFamily } from './actions/helpActions';
+import { ContextMenu, type MenuFamilies } from './actions/ContextMenu';
+import type {
+	ActionServices,
+	SessionServices,
+} from './actions/core/PluginAction';
+import { ActionRegistry } from './actions/core/ActionRegistry';
+import { FILE_ACTIONS, fileActionFamily } from './actions/file/fileActions';
+import { sessionActionFamily } from './actions/session/sessionActions';
+import { transcriptActionFamily } from './actions/transcript/transcriptActions';
+import { playbackActionFamily } from './actions/playback/playbackActions';
+import { positionActionFamily } from './actions/position/positionActions';
+import { folderActionFamily } from './actions/folder/folderActions';
+import { searchActionFamily } from './actions/search/searchActions';
+import { helpActionFamily } from './actions/help/helpActions';
 import { ActionTargetModal } from './ui/ActionTargetModal';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';

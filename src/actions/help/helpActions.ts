@@ -4,14 +4,18 @@
  * release notes are read while nothing is recording and nothing is playing,
  * and most often right after an update, when there is no recording to speak of
  * yet.
- * @module actions/helpActions
+ * @module actions/help/helpActions
  */
 
 import type { CliData } from 'obsidian';
-import { COMMAND_IDS } from '../constants';
-import { releaseNotesSince } from '../release/releaseNotes';
-import { cliText, valueParam } from '../obsidian/cliArgs';
-import type { ActionFamily, HelpAction, HelpServices } from './PluginAction';
+import { COMMAND_IDS } from '../../constants';
+import { releaseNotesSince } from '../../release/releaseNotes';
+import { cliText, valueParam } from '../../obsidian/cliArgs';
+import type {
+	ActionFamily,
+	HelpAction,
+	HelpServices,
+} from '../core/PluginAction';
 
 /** Needs nothing beyond the plugin being loaded. */
 const always = (): boolean => true;

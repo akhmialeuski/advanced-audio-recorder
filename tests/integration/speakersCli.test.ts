@@ -11,8 +11,11 @@
  */
 
 import type { CliData } from 'obsidian';
-import { parseSpeakerMap, speakersFromCli } from 'src/actions/speakersCli';
-import type { ActionServices, FileContext } from 'src/actions/PluginAction';
+import { parseSpeakerMap, speakersFromCli } from 'src/actions/file/speakersCli';
+import type {
+	ActionServices,
+	FileContext,
+} from 'src/actions/core/PluginAction';
 import {
 	emptyTranscriptSection,
 	type TranscriptSection,
