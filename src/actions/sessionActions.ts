@@ -19,6 +19,7 @@ import {
 	deviceOptionLabel,
 	getAudioInputDevices,
 } from '../recording/AudioStreamHandler';
+import { savesInProgress } from '../recording/RecordingSaveQueue';
 import { RecordingStatus } from '../types';
 import { describeRecordingStatus } from '../obsidian/cliCommands';
 import {
@@ -54,6 +55,7 @@ const recorderState = ({ recording, getSettings }: SessionServices): string =>
 	describeRecordingStatus(
 		recording.getStatus(),
 		getSettings().recordingFormat,
+		savesInProgress(recording.getSaveState()),
 	);
 
 /** Why no marker can be dropped, said where the palette hides the command. */

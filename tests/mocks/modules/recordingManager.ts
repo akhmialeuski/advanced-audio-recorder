@@ -20,6 +20,7 @@ export interface RecorderDouble {
 	cleanup: jest.Mock;
 	updateSettings: jest.Mock;
 	getStatus: jest.Mock;
+	getSaveState: jest.Mock;
 	canDropMarker: jest.Mock;
 	captureMarkerDraft: jest.Mock;
 	getElapsedMs: jest.Mock;
@@ -36,6 +37,11 @@ export const RecordingManager = jest.fn((): RecorderDouble => ({
 	cleanup: jest.fn(),
 	updateSettings: jest.fn(),
 	getStatus: jest.fn(() => RecordingStatus.Idle),
+	getSaveState: jest.fn(() => ({
+		status: RecordingStatus.Idle,
+		progress: undefined,
+		waiting: 0,
+	})),
 	canDropMarker: jest.fn(() => false),
 	captureMarkerDraft: jest.fn(() => null),
 	getElapsedMs: jest.fn(() => 0),

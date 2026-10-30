@@ -1357,6 +1357,31 @@ describe('TranscriptionModal running the job', () => {
 		expect(internals.minimized).toBe(false);
 	});
 
+	// A save that finishes while the next meeting records starts its
+	// transcription here, and a dialog over the live session took its focus
+	// and cancelled the run on the Escape meant to get it out of the way.
+	it('runs out of sight when asked to start minimized', () => {
+		jest.mocked(transcribeFile).mockReturnValue(new Promise(() => {}));
+		const show = jest.fn();
+
+		const { internals } = openRunnable(
+			{},
+			{
+				autoStart: true,
+				startMinimized: true,
+				backgroundProgress: { show, clear: jest.fn() },
+			},
+		);
+
+		expect(internals.busy).toBe(true);
+		expect(internals.minimized).toBe(true);
+		expect(show).toHaveBeenCalledWith(
+			{ percent: 0, description: 'Transcribing...' },
+			expect.any(Function),
+		);
+		expect(internals.cancellation.token.isCancelled()).toBe(false);
+	});
+
 	it('counts the elapsed time up while the run is in flight', () => {
 		// Driven by fake timers: on the real clock the counter only ticks in a
 		// test that happens to run longer than a second.

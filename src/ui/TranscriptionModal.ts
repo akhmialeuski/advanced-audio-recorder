@@ -92,6 +92,12 @@ export type TranscriptionBackgroundProgressCallbacks = {
  */
 export type TranscriptionModalOptions = {
 	autoStart?: boolean;
+	/**
+	 * Minimizes the dialog as soon as an automatic run has started, so it
+	 * reports through the background progress instead of opening over what
+	 * the user is doing. Only meaningful together with `autoStart`.
+	 */
+	startMinimized?: boolean;
 	notePath?: string | undefined;
 	backgroundProgress?: TranscriptionBackgroundProgressCallbacks;
 	/**
@@ -335,6 +341,11 @@ export class TranscriptionModal extends PluginModal {
 			// progress and offers cancel, so an automatic run stays visible and
 			// interruptible instead of being a silent background job.
 			void this.startRun();
+			// The run is busy from its first synchronous step, so the dialog
+			// closes in the same task it opened in and is never painted.
+			if (this.options.startMinimized) {
+				this.minimize();
+			}
 		}
 	}
 

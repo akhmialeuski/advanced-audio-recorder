@@ -22,6 +22,7 @@ import type { PlaybackControlsState } from '../player/playbackControls';
 import type { MarkerKind } from '../markers/markerModel';
 import type { MarkerHit } from '../markers/MarkerSearchIndex';
 import type { RecordingMarkerHandle } from '../recording/recordingMarkers';
+import type { RecordingSaveState } from '../recording/RecordingSaveQueue';
 import type { RecordingStatus } from '../types';
 import type { Refusable } from '../utils/refusal';
 
@@ -301,6 +302,8 @@ export interface RecordingSessionPort {
 	canDropMarker(): boolean;
 	/** What the recorder is doing. */
 	getStatus(): RecordingStatus;
+	/** What the background saves of stopped recordings are doing. */
+	getSaveState(): RecordingSaveState;
 	/**
 	 * Drops a marker at the live position and returns the handle that names
 	 * it, or null when no marker can be dropped now.

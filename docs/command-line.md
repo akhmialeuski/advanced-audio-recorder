@@ -94,6 +94,16 @@ An action added to the plugin appears in all three, so the three never drift apa
 
 Three commands exist only on the command line, because the palette already has a toggle for them: `advanced-audio-recorder` on its own reports what the recorder is doing and what is playing, `advanced-audio-recorder:record` starts a recording and `advanced-audio-recorder:stop` stops it.
 
+A recording is [saved in the background](recording.md#recording-again-while-the-last-one-saves), so `stop` answers as soon as the capture has ended and the save is queued, which is all a script that starts the next recording needs. With `wait` it answers once the file is written, or with why the save failed, which is what a script that goes on to read the file needs. The state line counts the saves still running, for example after a `stop` without `wait`:
+
+```text
+Idle. A recording started now is saved as WEBM. One stopped recording is still being saved.
+```
+
+```bash
+obsidian advanced-audio-recorder:stop wait
+```
+
 In the palette, an action on a recording acts on the active audio file, or on the recordings the active note embeds or links: the one under the cursor when the cursor is on its link, otherwise every recording of the note, in the order the note mentions them. When that is more than one, the palette asks which, in a picker you can type into, the way Obsidian's own **Move file to...** asks for a folder.
 
 ![The palette's picker for a meeting note that embeds three recordings, with the prompt Choose what to run the command on above the three recording paths, the first one selected](images/command-target-picker.png)

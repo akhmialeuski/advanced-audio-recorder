@@ -219,7 +219,7 @@ describe('RecordingManager', () => {
 			pcmChunkCallback()(pcmData);
 			await Promise.resolve();
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// No final file, no cleanup of the only remaining audio copy
 			expect(mockApp.vault.createBinary).not.toHaveBeenCalledWith(
@@ -292,7 +292,7 @@ describe('RecordingManager', () => {
 				at(targets, 1).fileBaseName,
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('keeps plain source names when they are unique', async () => {
@@ -322,7 +322,7 @@ describe('RecordingManager', () => {
 			expect(at(targets, 0).sourceName).toBe('DeviceA');
 			expect(at(targets, 1).sourceName).toBe('DeviceB');
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 	});
 
@@ -362,7 +362,7 @@ describe('RecordingManager', () => {
 			});
 
 			await Promise.resolve();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// Multi-track single output encodes to target format (webm) via offline encoding
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
@@ -422,7 +422,7 @@ describe('RecordingManager', () => {
 			});
 
 			await Promise.resolve();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/multitrack-.*\.webm$/),
@@ -496,7 +496,7 @@ describe('RecordingManager', () => {
 			});
 
 			await Promise.resolve();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// Must produce MP4 (properly mixed via OfflineAudioContext + offline encoding)
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
@@ -533,7 +533,7 @@ describe('RecordingManager', () => {
 			pcmChunkCallback()(pcmData);
 
 			await Promise.resolve();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/\.wav$/),
@@ -917,7 +917,7 @@ describe('RecordingManager', () => {
 			);
 
 			await manager.startRecording();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// Access private field to verify cleanup
 			const context = (

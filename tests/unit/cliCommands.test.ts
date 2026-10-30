@@ -25,6 +25,7 @@ function makeHost(overrides: Partial<CliHost> = {}): CliHost {
 		recordingStatus: jest.fn(() => RecordingStatus.Idle),
 		startRecording: jest.fn().mockResolvedValue(null),
 		stopRecording: jest.fn().mockResolvedValue(null),
+		recordingSaves: jest.fn(() => 0),
 		recordingFormat: jest.fn(() => 'webm'),
 		playback: jest.fn(() => null),
 		...overrides,
@@ -68,12 +69,12 @@ describe('the command set', () => {
 		}
 	});
 
-	it('takes no flags on any of them', () => {
-		expect(cliCommands(makeHost(), PLUGIN_ID).map((c) => c.flags)).toEqual([
-			null,
-			null,
-			null,
-		]);
+	it('takes flags on the stop command alone', () => {
+		expect(
+			cliCommands(makeHost(), PLUGIN_ID).map((c) =>
+				Object.keys(c.flags ?? {}),
+			),
+		).toEqual([[], [], ['wait']]);
 	});
 });
 
@@ -98,6 +99,20 @@ describe('the status command', () => {
 		await expect(run(host, '')).resolves.toBe(
 			'Idle. A recording started now is saved as MP3.',
 		);
+	});
+
+	// A save runs in the background after the capture ends, so the recorder
+	// can be idle or recording again while the files are still being written.
+	it.each([
+		[1, 'Recording. One stopped recording is still being saved.'],
+		[2, 'Recording. 2 stopped recordings are still being saved.'],
+	])('counts %i save(s) still running', async (saves, expected) => {
+		const host = makeHost({
+			recordingStatus: jest.fn(() => RecordingStatus.Recording),
+			recordingSaves: jest.fn(() => saves),
+		});
+
+		await expect(run(host, '')).resolves.toBe(expected);
 	});
 
 	/** A playback the host reports. */
@@ -136,7 +151,7 @@ describe('the status command', () => {
 
 describe('the recorder state in words', () => {
 	it('reads the same for the status command and the actions', () => {
-		expect(describeRecordingStatus(RecordingStatus.Paused, 'wav')).toBe(
+		expect(describeRecordingStatus(RecordingStatus.Paused, 'wav', 0)).toBe(
 			'Recording, paused.',
 		);
 	});
@@ -181,17 +196,37 @@ describe('the record command', () => {
 });
 
 describe('the stop command', () => {
-	it('stops the recording in progress', async () => {
+	// The recorder is free once the save is queued, which is all a script
+	// starting the next recording needs to know.
+	it('answers once the save of the recording in progress is queued', async () => {
 		const status = jest
 			.fn()
 			.mockReturnValueOnce(RecordingStatus.Recording)
-			.mockReturnValue(RecordingStatus.Saving);
-		const host = makeHost({ recordingStatus: status });
+			.mockReturnValue(RecordingStatus.Idle);
+		const host = makeHost({
+			recordingStatus: status,
+			recordingSaves: jest.fn(() => 1),
+		});
 
 		await expect(run(host, 'stop')).resolves.toBe(
-			'Saving the recording that just stopped.',
+			'Idle. A recording started now is saved as WEBM. ' +
+				'One stopped recording is still being saved.',
 		);
-		expect(host.stopRecording).toHaveBeenCalledTimes(1);
+		expect(host.stopRecording).toHaveBeenCalledWith(false);
+	});
+
+	it('waits for the file to be written when asked to', async () => {
+		const host = makeHost({
+			recordingStatus: jest
+				.fn()
+				.mockReturnValueOnce(RecordingStatus.Recording)
+				.mockReturnValue(RecordingStatus.Idle),
+		});
+
+		await expect(run(host, 'stop', { wait: 'true' })).resolves.toBe(
+			'Idle. A recording started now is saved as WEBM.',
+		);
+		expect(host.stopRecording).toHaveBeenCalledWith(true);
 	});
 
 	it('answers with the reason a stop failed', async () => {

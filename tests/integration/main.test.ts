@@ -140,6 +140,7 @@ jest.mock('src/ui/StatusBar', () => ({
 }));
 
 jest.mock('src/ui/RibbonIcon', () => ({
+	...jest.requireActual<object>('src/ui/RibbonIcon'),
 	updateRibbonIcon: jest.fn(),
 }));
 

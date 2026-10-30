@@ -68,6 +68,14 @@ describe('RecordingManager', () => {
 		}
 		let mockJournal: JournalMock;
 
+		/** The id the manager opened its journal session under. */
+		const startedSessionId = (): string =>
+			(
+				mockJournal.startSession.mock.calls[0] as [
+					{ sessionId: string },
+				]
+			)[0].sessionId;
+
 		const createManager = (): RecordingManager =>
 			new RecordingManager(
 				mockApp,
@@ -112,9 +120,11 @@ describe('RecordingManager', () => {
 				}),
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
-			expect(mockJournal.endSession).toHaveBeenCalled();
+			expect(mockJournal.endSession).toHaveBeenCalledWith(
+				startedSessionId(),
+			);
 			expect(mockJournal.flush).toHaveBeenCalled();
 		});
 
@@ -149,7 +159,7 @@ describe('RecordingManager', () => {
 				expect.objectContaining({ captureMode: 'rotation' }),
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockJournal.endSession).toHaveBeenCalled();
 		});
@@ -182,11 +192,12 @@ describe('RecordingManager', () => {
 			});
 
 			expect(mockJournal.addSegment).toHaveBeenCalledWith(
+				startedSessionId(),
 				expect.stringContaining('Track1'),
 				expect.stringMatching(/-part1\.webm\.tmp$/),
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('keeps the journal when saving fails', async () => {
@@ -205,7 +216,7 @@ describe('RecordingManager', () => {
 			} as BlobEvent);
 			await tick();
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockJournal.endSession).not.toHaveBeenCalled();
 		});

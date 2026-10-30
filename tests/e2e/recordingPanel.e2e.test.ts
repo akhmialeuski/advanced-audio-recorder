@@ -221,6 +221,33 @@ describe('the recording panel wired to the plugin', () => {
 		expect(panelButton(view, 'Stop recording').dataset.icon).toBe('square');
 	});
 
+	// The save of a stopped recording runs behind the capture and reports
+	// through its own callback, which the panel has to hear as well.
+	it('names a background save in its record button', async () => {
+		const { view, app } = await openPanel();
+		const recorder = at(jest.mocked(RecordingManager).mock.results, 0)
+			.value as RecorderDouble;
+		const onSaveChange = at(jest.mocked(RecordingManager).mock.calls, 0)[8];
+		asMockWorkspace(app.workspace).getLeavesOfType.mockReturnValue([
+			view.leaf,
+		]);
+		const saving = {
+			status: RecordingStatus.Saving,
+			progress: undefined,
+			waiting: 0,
+		};
+		recorder.getSaveState.mockReturnValue(saving);
+
+		onSaveChange?.(saving);
+
+		expect(
+			maybeEl(
+				view.contentEl,
+				RECORDING_PANEL.button('Start recording (1 recording saving)'),
+			),
+		).not.toBeNull();
+	});
+
 	it('opens the plugin settings from its header', async () => {
 		const { view, app } = await openPanel();
 		const settingsDialog = { open: jest.fn(), openTabById: jest.fn() };

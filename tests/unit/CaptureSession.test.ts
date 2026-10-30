@@ -33,6 +33,9 @@ import {
 	type InstalledMock,
 } from '../helpers/mediaMocks';
 
+/** The journal id every session of this suite is started under. */
+const SESSION_ID = '2026-01-01T00-00-00-000Z';
+
 /**
  * A single-track session request over the default settings.
  * @param overrides - The settings and formats under test
@@ -46,6 +49,7 @@ function requestWith(overrides: {
 	resolvedBitrate?: number;
 }): CaptureSessionRequest {
 	return {
+		sessionId: SESSION_ID,
 		settings: {
 			...DEFAULT_SETTINGS,
 			bitrate: overrides.bitrate,
@@ -254,6 +258,7 @@ describe('the width a session records at', () => {
 	/** A PCM session over settings that name one bit depth. */
 	function pcmSessionWith(recordingBitDepth: unknown): CaptureSession {
 		return createCaptureSession({
+			sessionId: SESSION_ID,
 			settings: {
 				...DEFAULT_SETTINGS,
 				recordingBitDepth,

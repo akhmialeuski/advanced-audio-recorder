@@ -192,7 +192,7 @@ On the command line the services report through a collecting notifier rather tha
 
 ## Recording pipeline
 
-A recording is driven by `RecordingManager`. When you start, it acquires the input streams first, then resolves the format and the bitrate against the audio those streams will really produce, and finally snapshots the session-scoped settings (format, mode, bitrate, auto-split config) and chooses one of two capture paths. When you stop, it drains buffers, finalizes the files, writes them, inserts the embed links, and fires the optional transcribe-on-save hook.
+A recording is driven by `RecordingManager`. When you start, it acquires the input streams first, then resolves the format and the bitrate against the audio those streams will really produce, and finally snapshots the session-scoped settings (format, mode, bitrate, auto-split config) and chooses one of two capture paths. When you stop, it drains and flushes the buffers, releases the capture devices, and hands an immutable snapshot of the session to `RecordingSaveQueue`, going back to idle at once. The queue runs one save at a time, first in, first out: it finalizes the files, writes them, inserts the embed links, persists the live markers, ends the session's journal entry, and fires the optional transcribe-on-save hook.
 
 The streams come before the format and bitrate checks because both are questions about a file, not about a codec. What the encoder accepts depends on the sample rate and the channel layout it is handed, and the layout is only settled once the tracks are open - a settings edit made while the microphone permission dialog was still up would otherwise describe a different session than the one being recorded. Both checks probe the real encoder, so a format or a bitrate that would only fail after the recording is over is replaced, with a notice, before the first sample is captured. See [Bitrate guidance](formats.md#bitrate-guidance) for what each check can substitute and why.
 
@@ -203,6 +203,7 @@ sequenceDiagram
     participant Stream as AudioStreamHandler
     participant Cap as Capture path
     participant WQ as TrackWriteQueue
+    participant SQ as RecordingSaveQueue
     participant Fin as RecordingFinalizer
     participant Vault as Vault
     participant Hook as onRecordingSaved
@@ -227,15 +228,17 @@ sequenceDiagram
 
     User->>RM: Start/stop recording (stop)
     RM->>Cap: stop recorders
-    RM->>WQ: drain buffers
-    RM->>Fin: saveRecording
+    RM->>WQ: drain and flush buffers
+    RM->>SQ: enqueue session snapshot
+    RM-->>User: idle, ready to record again
+    SQ->>Fin: saveRecording (one save at a time)
     alt Offline format
         Fin->>Fin: re-encode (copy packets if codec matches)
     end
     Fin->>Vault: write final file(s)
-    Fin-->>RM: save result (paths + note)
-    RM->>Vault: insert embed link(s)
-    RM->>Hook: onRecordingSaved (transcribe-on-save?)
+    Fin->>Vault: insert embed link(s)
+    Fin-->>SQ: save result (paths + note)
+    SQ->>Hook: onRecordingSaved (transcribe-on-save?)
 ```
 
 Key decisions in this pipeline:
@@ -244,6 +247,7 @@ Key decisions in this pipeline:
 - **Buffering and flushing.** The `TrackWriteQueue` serializes per-track writes. Chunks accumulate to a flush threshold and are written to `.tmp` segment files. These segments are what the crash-recovery journal tracks.
 - **Auto-split rotation.** When auto-split is on (desktop, and not for a merged multi-track session), `PartRotationController` finalizes a part at each boundary while recording continues. WAV parts are split sample-exactly. Compressed formats restart the recorder per boundary. See [Splitting](splitting.md).
 - **Finalization.** `RecordingFinalizer` produces the final files and reports the save-progress stages you see in the status bar (`Saving > Flushing buffers > Assembling audio > Writing file > Cleaning up > Saved`). Offline formats are re-encoded here. Packets are copied without re-encoding when the codec already matches.
+- **Background saves.** `RecordingSaveQueue` gives every save a `RecordingFinalizer` and a `TrackWriteQueue` of its own, started on the snapshot's session, so a session capturing meanwhile cannot change the format, the journal entry or the progress of a save that is still running. Saves run one at a time because decoding and mixing a long recording expands it to full PCM in memory. The buffers are flushed before the hand-over, so a save waiting in the queue has all of its audio on disk and in its journal entry, and on unload the waiting saves are dropped with their entries intact for the next launch to offer. The manager's status covers only the capture, and the queue reports its own state, which the status bar shows below a live recording and a quick note.
 - **Multi-track output.** In `Single file` mode the tracks are mixed into one file. In `Multiple files` mode each track is saved separately, with the source/device name (and the track number appended to disambiguate when tracks share a device). See [Multi-track recording](multi-track-recording.md).
 - **Transcribe-on-save.** When `Transcribe after recording` is enabled, the hook transcribes only the first saved file - a multi-track session records the same audio per track, and an auto-split session would otherwise fire one request per part. See [Transcription](transcription.md) and [Transcribe after recording](use-cases/transcribe-after-recording.md).
 
@@ -353,7 +357,7 @@ A length no reader could produce is `null`, not `0`. The distinction is load-bea
 
 ## Crash recovery
 
-While a recording is active on either platform, `SessionJournal` records what it has already put on disk in `recording-journal.json` inside the plugin folder. If Obsidian crashes, loses power, the plugin is unloaded mid-recording, or a mobile operating system closes the app in the background, the next launch collects the surviving sessions and offers a recovery choice through `RecoveryService` and a modal.
+While a recording is active or its save has not finished, on either platform, `SessionJournal` records what it has already put on disk in `recording-journal.json` inside the plugin folder. Several sessions can be open in it at once, the one capturing and every one still saving, and each write names the session it belongs to. If Obsidian crashes, loses power, the plugin is unloaded mid-recording, or a mobile operating system closes the app in the background, the next launch collects the surviving sessions and offers a recovery choice through `RecoveryService` and a modal.
 
 The journal entry carries a capture mode, because the two pipelines leave different things behind and the choice offered to the user differs with them. A `stream` session flushes raw mid-stream segments that only mean something together with the journal listing them, so recovery reassembles them and its part files are auto-split output it never touches. A `rotation` session, which is what a platform without `midStreamSegmentFlush` records, turns every flush into a whole part, so its part files are the interrupted recording itself: recovery hands them back as they are and a discard deletes them. The mode is decided once at session start, next to the boundary policy it belongs to.
 
@@ -484,7 +488,7 @@ The `src/` tree groups code by concern. The table below maps each area to its ke
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Entry point       | `main.ts`                                                                                                                          | Loads settings, builds managers, registers commands, ribbon, status bar, context menu, player, recovery                                                                                                                                                                                                                         |
 | Mixing            | `recording/` (`StreamingMixer`, `mixMath`)                                                                                         | Combines multi-track PCM into one WAV in bounded memory: measures the tracks, resamples them to the fastest rate present, applies each track's level and position, and scales the sum onto the output range                                                                                                                     |
-| Recording         | `recording/` (`RecordingManager`, `RecordingFinalizer`, `MemoryRecorder`)                                                          | Stream capture, PCM/MediaRecorder paths, write queue, auto-split rotation, finalization, the in-memory capture behind the test recording and quick notes                                                                                                                                                                        |
+| Recording         | `recording/` (`RecordingManager`, `RecordingSaveQueue`, `RecordingFinalizer`, `MemoryRecorder`)                                    | Stream capture, PCM/MediaRecorder paths, write queue, auto-split rotation, background saves one at a time, finalization, the in-memory capture behind the test recording and quick notes                                                                                                                                        |
 | Crash recovery    | `recording/` (`SessionJournal`, `RecoveryService`)                                                                                 | Journals what a session put on disk and offers recovery, discard, or decide-later on next launch                                                                                                                                                                                                                                |
 | Audio encoding    | `audio/` (`AudioEncoder`, `AudioFormatConverter`, `formatRegistry`)                                                                | Format registry, capability detection, PCM/WAV encoding, conversion, and the Web Worker encoding offload                                                                                                                                                                                                                        |
 | Actions           | `actions/` (`PluginAction`, `ActionRegistry`, the `*Actions` families, `actionCliCommands`, `recordingTargets`)                    | Every action defined once, as a palette command, a menu entry and a command-line command at the same time                                                                                                                                                                                                                       |

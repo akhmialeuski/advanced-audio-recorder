@@ -67,7 +67,9 @@ export class RecordingFinalizer {
 	 * @param settings - Plugin settings (live reference)
 	 * @param writeQueue - Write queue used to flush remaining buffers
 	 * @param debugLogger - Debug logger
-	 * @param onProgress - Receives deduplicated save-progress updates
+	 * @param onProgress - Receives deduplicated save-progress updates; left
+	 *   out where nothing waits on this finalizer, as for the parts a rotation
+	 *   writes while the session still records
 	 * @param journal - Crash-recovery journal tracking segment files
 	 */
 	constructor(
@@ -75,7 +77,8 @@ export class RecordingFinalizer {
 		private settings: AudioRecorderSettings,
 		private readonly writeQueue: TrackWriteQueue,
 		private readonly debugLogger: DebugLogger,
-		private readonly onProgress: (progress: SaveProgress) => void,
+		private readonly onProgress:
+			((progress: SaveProgress) => void) | undefined,
 		private readonly journal: SessionJournal = new SessionJournal(
 			null,
 			app,
@@ -132,7 +135,7 @@ export class RecordingFinalizer {
 		}
 		this.lastProgressPercent = wholePercent;
 		this.lastProgressDescription = description;
-		this.onProgress({ percent: wholePercent, description });
+		this.onProgress?.({ percent: wholePercent, description });
 	}
 
 	/**
@@ -559,6 +562,7 @@ export class RecordingFinalizer {
 	): Promise<void> {
 		const failedPaths = await remove();
 		this.journal.removeSegments(
+			this.requireSession().sessionId,
 			paths.filter((path) => !failedPaths.includes(path)),
 		);
 		if (failedPaths.length > 0) {

@@ -32,7 +32,11 @@ import {
 	PLUGIN_LOG_PREFIX,
 	RECORDING_PANEL_VIEW_TYPE,
 } from '../constants';
-import { ICON_MIC, ICON_SAVING } from '../ui/RibbonIcon';
+import { ICON_MIC, ICON_SAVING, withSavesInProgress } from '../ui/RibbonIcon';
+import {
+	savesInProgress,
+	type RecordingSaveState,
+} from '../recording/RecordingSaveQueue';
 import type {
 	ActionServices,
 	FileAction,
@@ -116,6 +120,8 @@ export interface RecordingPanelHost {
 		toggleRecording(): Promise<string | null>;
 		/** What the recorder is doing. */
 		getStatus(): RecordingStatus;
+		/** What the saves of stopped recordings, run behind it, are doing. */
+		getSaveState(): RecordingSaveState;
 	};
 	/** Reads a recording's length in seconds, or null when it cannot. */
 	readonly readDuration: (file: TFile) => Promise<number | null>;
@@ -349,14 +355,16 @@ export class RecordingPanelView extends ItemView {
 		}
 		const state = this.recorderState();
 		const { icon, label } = RECORD_BUTTON[state];
+		const saves = savesInProgress(this.host.recording.getSaveState());
 		this.recordButton
 			.setIcon(icon)
-			.setTooltip(label)
+			.setTooltip(withSavesInProgress(label, saves))
 			.setDisabled(state === 'saving');
 	}
 
 	/**
-	 * What the record button can do now. A session that is saving can be
+	 * What the record button can do now. A capture that lost its input is
+	 * being stopped and handed to its save, and until that is done it can be
 	 * neither started nor stopped, so the button says so and is disabled
 	 * instead of offering a start the recorder would answer with a refusal.
 	 */

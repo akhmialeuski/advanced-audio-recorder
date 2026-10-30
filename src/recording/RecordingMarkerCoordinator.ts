@@ -34,6 +34,25 @@ export interface MarkerPosition {
 }
 
 /**
+ * Default label for a new marker of the given kind, numbered after the other
+ * drafts of its session (excluding the given draft so it never counts itself).
+ * @param drafts - The session's drafts
+ * @param kind - Marker kind being labelled
+ * @param excludeId - Draft id to exclude from the count, or null
+ * @returns The label
+ */
+function nextLabel(
+	drafts: readonly RecordingMarkerDraft[],
+	kind: MarkerKind,
+	excludeId: string | null,
+): string {
+	return defaultMarkerLabel(
+		drafts.filter((entry) => entry.id !== excludeId),
+		kind,
+	);
+}
+
+/**
  * Buffers and persists the markers captured during one recording session.
  */
 export class RecordingMarkerCoordinator {
@@ -71,6 +90,19 @@ export class RecordingMarkerCoordinator {
 	}
 
 	/**
+	 * Hands the session's drafts over to its save and starts an empty buffer
+	 * for whatever records next. The list handed over is the one the drafts'
+	 * handles edit, so a name committed or a draft cancelled while the save
+	 * waits still reaches it.
+	 * @returns The session's drafts, in capture order
+	 */
+	takeDrafts(): RecordingMarkerDraft[] {
+		const drafts = this.buffer;
+		this.buffer = [];
+		return drafts;
+	}
+
+	/**
 	 * Captures a marker at the given position and adds it to the session
 	 * buffer immediately, so it survives even if the recording stops while
 	 * the naming modal is still open. Returns an editing handle for the
@@ -84,25 +116,29 @@ export class RecordingMarkerCoordinator {
 		preselectKind?: MarkerKind,
 	): RecordingMarkerHandle {
 		const kind = preselectKind ?? this.lastKind;
+		// The session's own list, held rather than read back from the field:
+		// a stop hands it to the save and the field moves on to the next
+		// session while this draft's modal may still be open.
+		const sessionDrafts = this.buffer;
 		const draft: RecordingMarkerDraft = {
 			id: generateMarkerId(),
 			partOrdinal: position.partOrdinal,
 			offsetSeconds: position.offsetSeconds,
 			kind,
-			label: this.nextLabel(kind, null),
+			label: nextLabel(sessionDrafts, kind, null),
 		};
-		this.buffer.push(draft);
+		sessionDrafts.push(draft);
 		return {
 			initialKind: draft.kind,
 			defaultLabelFor: (kind: MarkerKind) =>
-				this.nextLabel(kind, draft.id),
+				nextLabel(sessionDrafts, kind, draft.id),
 			commit: (label: string, kind: MarkerKind) => {
 				draft.kind = kind;
 				const trimmed = label.trim();
 				draft.label =
 					trimmed.length > 0
 						? trimmed
-						: this.nextLabel(kind, draft.id);
+						: nextLabel(sessionDrafts, kind, draft.id);
 				this.lastKind = kind;
 				// If the session finalized while the modal was open the draft
 				// was already persisted with its default label; push the edit
@@ -110,11 +146,11 @@ export class RecordingMarkerCoordinator {
 				void this.syncPersisted(draft);
 			},
 			cancel: () => {
-				const index = this.buffer.findIndex(
+				const index = sessionDrafts.findIndex(
 					(entry) => entry.id === draft.id,
 				);
 				if (index !== -1) {
-					this.buffer.splice(index, 1);
+					sessionDrafts.splice(index, 1);
 				}
 				// Same race: a draft persisted before the modal closed must be
 				// removed from its sidecar so cancelling truly discards it.
@@ -124,20 +160,24 @@ export class RecordingMarkerCoordinator {
 	}
 
 	/**
-	 * Writes the session's buffered markers into the sidecars of the final
-	 * files. Each marker resolves to its part's file per track and fans out
-	 * to every track (they share one timeline). Never throws: a marker write
-	 * failure must not break the stop sequence.
+	 * Writes a session's markers into the sidecars of its final files. Each
+	 * marker resolves to its part's file per track and fans out to every
+	 * track (they share one timeline). Never throws: a marker write failure
+	 * must not break the save.
+	 * @param drafts - The session's drafts, as {@link takeDrafts} handed them
 	 * @param result - The finalized save result with per-track file groups
 	 */
-	async persistMarkers(result: RecordingSaveResult): Promise<void> {
-		if (this.buffer.length === 0) {
+	async persistMarkers(
+		drafts: readonly RecordingMarkerDraft[],
+		result: RecordingSaveResult,
+	): Promise<void> {
+		if (drafts.length === 0) {
 			return;
 		}
 		const groups: TrackFileGroup[] = result.trackFiles ?? [
 			{ trackIndex: 0, files: result.audioPaths },
 		];
-		const writes = groupMarkersByFile(this.buffer, groups);
+		const writes = groupMarkersByFile(drafts, groups);
 		// Record where each draft landed before any await runs, so a modal
 		// still open can reach its persisted marker by id. Done in one
 		// synchronous pass: no commit/cancel can interleave mid-write.
@@ -173,18 +213,6 @@ export class RecordingMarkerCoordinator {
 					'file(s); see the developer console for details.',
 			);
 		}
-	}
-
-	/**
-	 * Default label for a new marker of the given kind, numbered after the
-	 * markers already buffered this session (excluding the given draft so it
-	 * never counts itself).
-	 * @param kind - Marker kind being labelled
-	 * @param excludeId - Draft id to exclude from the count, or null
-	 */
-	private nextLabel(kind: MarkerKind, excludeId: string | null): string {
-		const others = this.buffer.filter((entry) => entry.id !== excludeId);
-		return defaultMarkerLabel(others, kind);
 	}
 
 	/**

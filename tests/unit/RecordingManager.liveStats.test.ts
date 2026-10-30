@@ -107,7 +107,7 @@ describe('the input level the meter draws', () => {
 		await manager.startRecording();
 		const started = monitor();
 		started.getLevel.mockReturnValue(0.9);
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 
 		expect(started.stop).toHaveBeenCalledTimes(1);
 		expect(manager.getInputLevel()).toBe(0);
@@ -200,7 +200,7 @@ describe('the elapsed time the clock shows', () => {
 
 		await manager.startRecording();
 		jest.setSystemTime(30_000);
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 
 		expect(manager.getElapsedMs()).toBe(0);
 	});

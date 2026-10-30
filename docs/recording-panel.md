@@ -51,6 +51,6 @@ The row opens with the same actions the file menu offers for the recording: **Au
 
 The panel's own buttons close the row. Obsidian shows no view header in a sidebar, so they sit in the panel itself:
 
-- **Start recording** starts a recording and turns into **Stop recording** while one runs. While a stopped recording is being saved, it reads **Saving the recording** and is disabled until the save is done.
+- **Start recording** starts a recording and turns into **Stop recording** while one runs. A stopped recording is [saved in the background](recording.md#recording-again-while-the-last-one-saves), so the button is free again at once, and hovering it says how many recordings are still being saved, for example **Start recording (1 recording saving)**. Only while a recording whose input was lost is still stopping does it read **Saving the recording** and stay disabled.
 - **Show the transcription queue** opens the [transcription queue](transcription.md).
 - **Open settings** opens the plugin's settings tab.

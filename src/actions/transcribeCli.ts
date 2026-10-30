@@ -42,12 +42,10 @@ import {
 	cliText,
 	flagParam,
 	valueParam,
+	WAIT_FLAG,
 } from '../obsidian/cliArgs';
 import type { FileContext } from './PluginAction';
 import { isRefusal, type Refusable } from '../utils/refusal';
-
-/** Answers once the run is over instead of once it started. */
-export const WAIT_FLAG = 'wait';
 
 /** The settings a dropdown of the dialog sets for one run. */
 type ChoiceSetting =

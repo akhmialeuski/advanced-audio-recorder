@@ -54,7 +54,7 @@ describe('capturing markers during a session', () => {
 
 		coordinator.captureDraft({ partOrdinal: 1, offsetSeconds: 5 });
 		coordinator.captureDraft({ partOrdinal: 1, offsetSeconds: 9 });
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 
 		expect(read('Audio/rec.webm').map((marker) => marker.label)).toEqual([
 			'Marker 1',
@@ -107,7 +107,7 @@ describe('capturing markers during a session', () => {
 		coordinator
 			.captureDraft({ partOrdinal: 1, offsetSeconds: 5 })
 			.commit('   ', MARKER_KIND.bookmark);
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 
 		expect(at(read('Audio/rec.webm'), 0).label).toBe('Marker 1');
 	});
@@ -118,7 +118,7 @@ describe('capturing markers during a session', () => {
 		coordinator
 			.captureDraft({ partOrdinal: 1, offsetSeconds: 5 })
 			.commit('  The good bit  ', MARKER_KIND.bookmark);
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 
 		expect(at(read('Audio/rec.webm'), 0).label).toBe('The good bit');
 	});
@@ -127,7 +127,7 @@ describe('capturing markers during a session', () => {
 		const { coordinator, read } = createSut();
 
 		coordinator.captureDraft({ partOrdinal: 1, offsetSeconds: 5 }).cancel();
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 
 		expect(read('Audio/rec.webm')).toEqual([]);
 	});
@@ -137,9 +137,81 @@ describe('capturing markers during a session', () => {
 
 		coordinator.captureDraft({ partOrdinal: 1, offsetSeconds: 5 });
 		coordinator.beginSession();
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 
 		expect(read('Audio/rec.webm')).toEqual([]);
+	});
+});
+
+// A stop hands the drafts to a save that may wait behind another one, and the
+// next recording drops markers of its own meanwhile. The modal of a handed-over
+// draft can still be open, so its edits have to reach the list the save holds.
+describe('drafts handed over to a save that has not run yet', () => {
+	/**
+	 * One draft whose modal is still open, already handed to its save.
+	 * @returns The coordinator, the draft's handle, the list the save holds,
+	 *   and the read helper
+	 */
+	function handedOverDraft(): ReturnType<typeof createSut> & {
+		handle: ReturnType<RecordingMarkerCoordinator['captureDraft']>;
+		drafts: ReturnType<RecordingMarkerCoordinator['takeDrafts']>;
+	} {
+		const sut = createSut();
+		const handle = sut.coordinator.captureDraft({
+			partOrdinal: 1,
+			offsetSeconds: 5,
+		});
+		return { ...sut, handle, drafts: sut.coordinator.takeDrafts() };
+	}
+
+	it('writes the name typed after the hand-over', async () => {
+		const { coordinator, read, handle, drafts } = handedOverDraft();
+
+		handle.commit('Named while saving', MARKER_KIND.chapter);
+		await coordinator.persistMarkers(drafts, ONE_FILE);
+
+		expect(at(read('Audio/rec.webm'), 0)).toEqual(
+			expect.objectContaining({
+				label: 'Named while saving',
+				kind: MARKER_KIND.chapter,
+			}),
+		);
+	});
+
+	// A modal can close twice, by its button and by Escape, and the second
+	// cancel finds nothing left to drop.
+	it('takes a second cancel of the same draft as nothing to do', async () => {
+		const { coordinator, read, handle, drafts } = handedOverDraft();
+
+		handle.cancel();
+		handle.cancel();
+		await coordinator.persistMarkers(drafts, ONE_FILE);
+
+		expect(drafts).toEqual([]);
+		expect(read('Audio/rec.webm')).toEqual([]);
+	});
+
+	it('drops a draft cancelled after the hand-over', async () => {
+		const { coordinator, read, handle, drafts } = handedOverDraft();
+
+		handle.cancel();
+		await coordinator.persistMarkers(drafts, ONE_FILE);
+
+		expect(read('Audio/rec.webm')).toEqual([]);
+	});
+
+	it('numbers the next session from one while the last one waits', () => {
+		const { coordinator } = createSut();
+		coordinator.captureDraft({ partOrdinal: 1, offsetSeconds: 5 });
+		const waiting = coordinator.takeDrafts().map((draft) => draft.label);
+
+		const next = coordinator.captureDraft({
+			partOrdinal: 1,
+			offsetSeconds: 2,
+		});
+
+		expect(waiting).toEqual(['Marker 1']);
+		expect(next.defaultLabelFor(MARKER_KIND.bookmark)).toBe('Marker 1');
 	});
 });
 
@@ -147,7 +219,7 @@ describe('writing the session markers out at stop', () => {
 	it('writes nothing at all when no marker was dropped', async () => {
 		const { coordinator, store } = createSut();
 
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 
 		expect(store.writes).toEqual([]);
 	});
@@ -160,7 +232,7 @@ describe('writing the session markers out at stop', () => {
 		coordinator
 			.captureDraft({ partOrdinal: 1, offsetSeconds: 12 })
 			.commit('Decision', MARKER_KIND.chapter);
-		await coordinator.persistMarkers(TWO_TRACKS);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), TWO_TRACKS);
 
 		for (const path of TWO_TRACKS.audioPaths) {
 			expect(at(read(path), 0)).toEqual(
@@ -175,7 +247,7 @@ describe('writing the session markers out at stop', () => {
 		coordinator
 			.captureDraft({ partOrdinal: 1, offsetSeconds: 3 })
 			.commit('Note', MARKER_KIND.bookmark);
-		await coordinator.persistMarkers({
+		await coordinator.persistMarkers(coordinator.takeDrafts(), {
 			audioPaths: ['Audio/rec.webm'],
 			notePath: null,
 		});
@@ -197,7 +269,7 @@ describe('writing the session markers out at stop', () => {
 		coordinator
 			.captureDraft({ partOrdinal: 1, offsetSeconds: 3 })
 			.commit('Note', MARKER_KIND.bookmark);
-		await coordinator.persistMarkers(TWO_TRACKS);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), TWO_TRACKS);
 
 		expect(noticeMessages()).toContain(
 			'Markers of this recording could not be saved for 2 file(s); ' +
@@ -229,7 +301,7 @@ describe('a naming modal still open when the session ended', () => {
 			partOrdinal: 1,
 			offsetSeconds: 5,
 		});
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 		jest.mocked(store.store.updateMarkers).mockRejectedValue(
 			new Error('the vault is read-only'),
 		);
@@ -243,7 +315,7 @@ describe('a naming modal still open when the session ended', () => {
 			offsetSeconds: 5,
 		});
 
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 		handle.commit('Named after the fact', MARKER_KIND.chapter);
 		await Promise.resolve();
 
@@ -262,7 +334,7 @@ describe('a naming modal still open when the session ended', () => {
 			offsetSeconds: 5,
 		});
 
-		await coordinator.persistMarkers(TWO_TRACKS);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), TWO_TRACKS);
 		handle.commit('Late name', MARKER_KIND.bookmark);
 		await Promise.resolve();
 
@@ -278,7 +350,7 @@ describe('a naming modal still open when the session ended', () => {
 			offsetSeconds: 5,
 		});
 
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 		handle.cancel();
 		await Promise.resolve();
 
@@ -295,7 +367,7 @@ describe('a naming modal still open when the session ended', () => {
 			offsetSeconds: 5,
 		});
 
-		await coordinator.persistMarkers(ONE_FILE);
+		await coordinator.persistMarkers(coordinator.takeDrafts(), ONE_FILE);
 		handle.cancel();
 		await Promise.resolve();
 

@@ -82,7 +82,7 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await Promise.resolve();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		};
 
 		it('persists a marker dropped during recording to the sidecar at stop', async () => {
@@ -141,7 +141,7 @@ describe('RecordingManager', () => {
 				'Chapter',
 			);
 			handle?.cancel();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('numbers default marker labels sequentially within a session', async () => {
@@ -307,7 +307,7 @@ describe('RecordingManager', () => {
 			expect(manager.isSessionActive()).toBe(true);
 			expect(manager.canDropMarker()).toBe(false);
 			expect(manager.captureMarkerDraft()).toBeNull();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('still allows dropping a marker while paused', async () => {
@@ -324,7 +324,7 @@ describe('RecordingManager', () => {
 			expect(manager.isSessionActive()).toBe(true);
 			expect(manager.canDropMarker()).toBe(true);
 			expect(manager.captureMarkerDraft()).not.toBeNull();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 	});
 });

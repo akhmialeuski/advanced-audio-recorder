@@ -31,6 +31,11 @@ import {
 } from './settings/apiKeySecrets';
 import { ACCOUNTS, type AccountId } from './providers/providers';
 import { RecordingManager } from './recording/RecordingManager';
+import {
+	IDLE_SAVE_STATE,
+	savesInProgress,
+	type RecordingSaveState,
+} from './recording/RecordingSaveQueue';
 import { detectSilentChannel } from './recording/silentChannelDetector';
 import type { ChannelMode } from './audio/downmix';
 import { ConversionModal } from './ui/ConversionModal';
@@ -48,6 +53,7 @@ import {
 	updateRecordingLiveStats,
 	initializeStatusBar,
 	renderPlaybackStatusBar,
+	renderRecordingSaveStatusBar,
 	renderTranscriptionStatusBar,
 	renderQuickNoteStatusBar,
 } from './ui/StatusBar';
@@ -57,6 +63,8 @@ import {
 	ICON_QUICK_NOTE,
 	QUICK_NOTE_GLYPHS,
 	RIBBON_HIDDEN_CLASS,
+	recorderRibbonTooltip,
+	updateRecorderRibbonTooltip,
 	updateRibbonIcon,
 } from './ui/RibbonIcon';
 import { ContextMenu, type MenuFamilies } from './ui/ContextMenu';
@@ -201,7 +209,8 @@ export default class AudioRecorderPlugin extends Plugin {
 	private journal!: SessionJournal;
 	private encodingWorker: EncodingWorkerClient | null = null;
 	private recordingStatus: RecordingStatus = RecordingStatus.Idle;
-	private recordingSaveProgress: SaveProgress | undefined;
+	/** What the background saves of stopped recordings are doing. */
+	private recordingSaves: RecordingSaveState = IDLE_SAVE_STATE;
 	/** Active enhanced-player playback represented in the shared status bar. */
 	private playbackState: PlaybackControlsState | null = null;
 	/**
@@ -353,8 +362,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.recordingManager = new RecordingManager(
 			this.app,
 			this.settings,
-			(status: RecordingStatus, saveProgress?: SaveProgress) => {
-				this.handleStatusChange(status, saveProgress);
+			(status: RecordingStatus) => {
+				this.handleStatusChange(status);
 			},
 			this.sidecarStore,
 			this.journal,
@@ -368,6 +377,9 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.quickNotes.getStatus() === RecordingStatus.Recording
 					? 'Stop the quick note before starting a recording.'
 					: null,
+			(saves: RecordingSaveState) => {
+				this.handleSavesChange(saves);
+			},
 		);
 
 		// Every Markdown editor carries the field a dictation anchors its text
@@ -412,7 +424,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		// shows everywhere else.
 		this.ribbonIconEl = this.addRibbonIcon(
 			ICON_MIC,
-			`${this.manifest.name}: start/stop recording`,
+			recorderRibbonTooltip(this.manifest.name, 0),
 			() => {
 				void this.recordingManager.toggleRecording();
 			},
@@ -553,8 +565,10 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.recordingManager.getStatus(),
 			startRecording: (): Promise<string | null> =>
 				this.recordingManager.startRecording(),
-			stopRecording: (): Promise<string | null> =>
-				this.recordingManager.stopRecording(),
+			stopRecording: (untilSaved: boolean): Promise<string | null> =>
+				this.recordingManager.stopRecording({ untilSaved }),
+			recordingSaves: (): number =>
+				savesInProgress(this.recordingManager.getSaveState()),
 			recordingFormat: (): string => this.settings.recordingFormat,
 			playback: () => this.playerRegistrar.currentPlaybackState(),
 		};
@@ -1412,7 +1426,14 @@ export default class AudioRecorderPlugin extends Plugin {
 		if (!file) {
 			return;
 		}
-		this.openTranscription(file, result.notePath ?? undefined);
+		// A save runs in the background, so it can finish while the next
+		// recording captures. A dialog opened over that session would take its
+		// focus, and the Escape meant to clear it would cancel the run.
+		this.openTranscription(
+			file,
+			result.notePath ?? undefined,
+			this.recordingManager.isSessionActive(),
+		);
 	}
 
 	/**
@@ -1427,11 +1448,18 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * @param file - The audio file to transcribe
 	 * @param notePath - Note the transcript's links should resolve in, where
 	 *   the caller knows one; the dialog picks the active note otherwise
+	 * @param startMinimized - Runs minimized from the start, reporting in the
+	 *   status bar, while something else holds the user's attention
 	 */
-	private openTranscription(file: TFile, notePath?: string): void {
+	private openTranscription(
+		file: TFile,
+		notePath: string | undefined,
+		startMinimized: boolean,
+	): void {
 		new TranscriptionModal(this.app, file, () => this.settings, {
 			...this.createTranscriptionModalOptions(),
 			autoStart: true,
+			startMinimized,
 			notePath,
 		}).open();
 	}
@@ -1630,13 +1658,15 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Renders the shared status bar. Recording and saving take precedence,
-	 * followed by active playback and minimized transcription progress.
+	 * Renders the shared status bar. A live recording takes precedence, then
+	 * a quick note, then the background save of a stopped recording, then
+	 * active playback and minimized transcription progress.
 	 */
 	private renderStatusBar(): void {
 		const active = this.activeBackgroundTranscription();
 		// A dictation is what the user is doing right now, so it outranks a
-		// playback and a minimized transcription the way a recording does.
+		// save, a playback and a minimized transcription the way a recording
+		// does.
 		if (
 			this.recordingStatus === RecordingStatus.Idle &&
 			this.quickNoteStatus !== RecordingStatus.Idle
@@ -1652,6 +1682,16 @@ export default class AudioRecorderPlugin extends Plugin {
 					showStats: this.settings.showRecordingStats,
 					showMeter: this.settings.showInputLevelMeter,
 				},
+			);
+			return;
+		}
+		if (
+			this.recordingStatus === RecordingStatus.Idle &&
+			this.recordingSaves.status !== RecordingStatus.Idle
+		) {
+			renderRecordingSaveStatusBar(
+				this.statusBarItem,
+				this.recordingSaves,
 			);
 			return;
 		}
@@ -1674,7 +1714,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		updateStatusBar(
 			this.statusBarItem,
 			this.recordingStatus,
-			this.recordingSaveProgress,
+			undefined,
 			controls,
 			{
 				showStats: this.settings.showRecordingStats,
@@ -1785,25 +1825,41 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Renders the status bar and the mobile banner for a status change.
-	 * @param status - New recording status
-	 * @param saveProgress - Optional save progress for the saving state
+	 * Renders the background saves: in the status bar while nothing is being
+	 * recorded, and in the tooltips of the recorder's ribbon button and of the
+	 * record button of every recording panel, since their icons show only the
+	 * capture.
+	 * @param saves - What the saves are doing now
 	 */
-	private handleStatusChange(
-		status: RecordingStatus,
-		saveProgress?: SaveProgress,
-	): void {
+	private handleSavesChange(saves: RecordingSaveState): void {
+		if (this.unloaded) {
+			return;
+		}
+		this.recordingSaves = saves;
+		this.renderStatusBar();
+		updateRecorderRibbonTooltip(
+			this.ribbonIconEl,
+			this.manifest.name,
+			savesInProgress(saves),
+		);
+		this.forEachRecordingPanel((panel) => {
+			panel.refreshRecordingState();
+		});
+	}
+
+	/**
+	 * Renders the status bar and the mobile banner for a capture status
+	 * change.
+	 * @param status - New recording status
+	 */
+	private handleStatusChange(status: RecordingStatus): void {
 		if (this.unloaded) {
 			return;
 		}
 		this.recordingStatus = status;
-		// Whatever arrived with the status. The manager passes progress
-		// exactly when a save is in flight, so re-deriving that from the
-		// status could only disagree with it - which is what left an
-		// interrupted save rendering its bar at zero.
-		this.recordingSaveProgress = saveProgress;
-		// Route through renderStatusBar so minimized transcription progress
-		// keeps its precedence when recording returns to idle.
+		// Route through renderStatusBar so a background save and minimized
+		// transcription progress keep their precedence when recording returns
+		// to idle.
 		this.renderStatusBar();
 		updateRibbonIcon(this.ribbonIconEl, status);
 		this.renderRecordingBanner();

@@ -12,10 +12,13 @@ import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 
 const JOURNAL_PATH = '.obsidian/plugins/aar/recording-journal.json';
 
+/** The id of the session most cases journal. */
+const SESSION_ID = '2026-06-12T10-00-00-000Z';
+
 const createSession = (
 	overrides: Partial<JournalSession> = {},
 ): JournalSession => ({
-	sessionId: '2026-06-12T10-00-00-000Z',
+	sessionId: SESSION_ID,
 	startedAt: 1765533600000,
 	outputFormat: 'webm',
 	recorderFormat: 'webm',
@@ -70,10 +73,12 @@ describe('SessionJournal', () => {
 		it('tracks added and removed segments', async () => {
 			journal.startSession(createSession());
 			journal.addSegment(
+				SESSION_ID,
 				'recording-Track1-2026-06-12T10-00-00-000Z',
 				'rec-part1.webm.tmp',
 			);
 			journal.addSegment(
+				SESSION_ID,
 				'recording-Track1-2026-06-12T10-00-00-000Z',
 				'rec-part2.webm.tmp',
 			);
@@ -83,7 +88,7 @@ describe('SessionJournal', () => {
 				at(at(readStoredJournal().sessions, 0).tracks, 0).segmentPaths,
 			).toEqual(['rec-part1.webm.tmp', 'rec-part2.webm.tmp']);
 
-			journal.removeSegments(['rec-part1.webm.tmp']);
+			journal.removeSegments(SESSION_ID, ['rec-part1.webm.tmp']);
 			await journal.flush();
 
 			expect(
@@ -94,6 +99,7 @@ describe('SessionJournal', () => {
 		it('records part files', async () => {
 			journal.startSession(createSession());
 			journal.addPart(
+				SESSION_ID,
 				'recording-Track1-2026-06-12T10-00-00-000Z',
 				'rec-part1.webm',
 			);
@@ -107,6 +113,7 @@ describe('SessionJournal', () => {
 		it('records the length a part put safely on disk', async () => {
 			journal.startSession(createSession());
 			journal.addPart(
+				SESSION_ID,
 				'recording-Track1-2026-06-12T10-00-00-000Z',
 				'rec-part1.webm',
 				900_000,
@@ -123,6 +130,7 @@ describe('SessionJournal', () => {
 		it('leaves the length unset where the caller keeps no clock', async () => {
 			journal.startSession(createSession());
 			journal.addPart(
+				SESSION_ID,
 				'recording-Track1-2026-06-12T10-00-00-000Z',
 				'rec-part1.wav',
 			);
@@ -138,7 +146,7 @@ describe('SessionJournal', () => {
 			await journal.flush();
 			expect(files.has(JOURNAL_PATH)).toBe(true);
 
-			journal.endSession();
+			journal.endSession(SESSION_ID);
 			await journal.flush();
 
 			expect(files.has(JOURNAL_PATH)).toBe(false);
@@ -163,11 +171,146 @@ describe('SessionJournal', () => {
 			]);
 		});
 
-		it('ignores segment updates without an active session', async () => {
-			journal.addSegment('some-track', 'seg.tmp');
+		it('ignores segment updates for a session that is not open', async () => {
+			journal.addSegment(SESSION_ID, 'some-track', 'seg.tmp');
 			await journal.flush();
 
 			expect(files.has(JOURNAL_PATH)).toBe(false);
+		});
+	});
+
+	// A stop hands its session to the save queue and the next recording opens
+	// its own while the first is written, so two sessions are open at once.
+	describe('two sessions open at once', () => {
+		/** The session a stop handed to the save queue. */
+		const saving = (): JournalSession =>
+			createSession({
+				sessionId: 'saving-session',
+				tracks: [
+					{
+						fileBaseName: 'recording-Track1-saving',
+						isPcm: false,
+						pcmChannels: 1,
+						pcmSampleRate: 44100,
+						segmentPaths: [
+							'old-part1.webm.tmp',
+							'old-part2.webm.tmp',
+						],
+						partPaths: [],
+					},
+				],
+			});
+		/** The session recording meanwhile. */
+		const capturing = (): JournalSession =>
+			createSession({
+				sessionId: 'capturing-session',
+				tracks: [
+					{
+						fileBaseName: 'recording-Track1-capturing',
+						isPcm: false,
+						pcmChannels: 1,
+						pcmSampleRate: 44100,
+						segmentPaths: [],
+						partPaths: [],
+					},
+				],
+			});
+
+		/** The stored session of one id. */
+		const stored = (sessionId: string): JournalSession | undefined =>
+			readStoredJournal().sessions.find(
+				(session) => session.sessionId === sessionId,
+			);
+
+		beforeEach(() => {
+			journal.startSession(saving());
+			journal.startSession(capturing());
+		});
+
+		it('writes a segment to the session it is addressed to', async () => {
+			journal.addSegment(
+				'capturing-session',
+				'recording-Track1-capturing',
+				'new-part1.webm.tmp',
+			);
+			journal.addPart(
+				'capturing-session',
+				'recording-Track1-capturing',
+				'new-part1.webm',
+				60_000,
+			);
+			await journal.flush();
+
+			expect(
+				stored('capturing-session')?.tracks[0]?.segmentPaths,
+			).toEqual(['new-part1.webm.tmp']);
+			expect(stored('capturing-session')?.recordedMs).toBe(60_000);
+			expect(stored('saving-session')?.recordedMs).toBeUndefined();
+		});
+
+		it("strikes one session's segments without touching the other's", async () => {
+			journal.addSegment(
+				'capturing-session',
+				'recording-Track1-capturing',
+				'new-part1.webm.tmp',
+			);
+			journal.removeSegments('saving-session', [
+				'old-part1.webm.tmp',
+				'new-part1.webm.tmp',
+			]);
+			await journal.flush();
+
+			expect(stored('saving-session')?.tracks[0]?.segmentPaths).toEqual([
+				'old-part2.webm.tmp',
+			]);
+			expect(
+				stored('capturing-session')?.tracks[0]?.segmentPaths,
+			).toEqual(['new-part1.webm.tmp']);
+		});
+
+		it('ends one session and keeps the other open', async () => {
+			journal.endSession('saving-session');
+			journal.addSegment(
+				'saving-session',
+				'recording-Track1-saving',
+				'late.webm.tmp',
+			);
+			await journal.flush();
+
+			expect(
+				readStoredJournal().sessions.map((s) => s.sessionId),
+			).toEqual(['capturing-session']);
+		});
+
+		// The startup recovery deletes a journal it cannot parse, and a session
+		// started meanwhile loses its entry with it. Its later writes have
+		// nothing to land in and are dropped rather than recreating a stub.
+		it('drops a write for an open session whose entry was discarded', async () => {
+			await journal.flush();
+			await journal.discardJournalFile();
+
+			journal.addSegment(
+				'capturing-session',
+				'recording-Track1-capturing',
+				'new-part1.webm.tmp',
+			);
+			await journal.flush();
+
+			expect(files.has(JOURNAL_PATH)).toBe(false);
+		});
+
+		it('keeps every open session when recovery replaces the rest', async () => {
+			await journal.replaceSessions([
+				createSession({ sessionId: 'crashed-session' }),
+			]);
+
+			expect(
+				readStoredJournal().sessions.map((s) => s.sessionId),
+			).toEqual([
+				'crashed-session',
+				'saving-session',
+				'capturing-session',
+			]);
 		});
 	});
 
@@ -175,10 +318,12 @@ describe('SessionJournal', () => {
 		it('coalesces synchronous mutations into one write', async () => {
 			journal.startSession(createSession());
 			journal.addSegment(
+				SESSION_ID,
 				'recording-Track1-2026-06-12T10-00-00-000Z',
 				'a.tmp',
 			);
 			journal.addSegment(
+				SESSION_ID,
 				'recording-Track1-2026-06-12T10-00-00-000Z',
 				'b.tmp',
 			);
@@ -206,7 +351,7 @@ describe('SessionJournal', () => {
 			journal.startSession(createSession());
 			await journal.flush();
 
-			journal.endSession();
+			journal.endSession(SESSION_ID);
 			await journal.flush();
 
 			expect(readStoredJournal().sessions).toEqual([]);
@@ -451,8 +596,8 @@ describe('SessionJournal', () => {
 			const nullJournal = new SessionJournal(null, mockApp);
 
 			nullJournal.startSession(createSession());
-			nullJournal.addSegment('track', 'seg.tmp');
-			nullJournal.endSession();
+			nullJournal.addSegment(SESSION_ID, 'track', 'seg.tmp');
+			nullJournal.endSession(SESSION_ID);
 			await nullJournal.flush();
 
 			expect(writeMock).not.toHaveBeenCalled();

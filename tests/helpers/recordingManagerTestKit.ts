@@ -155,6 +155,66 @@ export const createRecordingMockApp = (): App =>
 		},
 	}) as unknown as App;
 
+/** The vault contents a suite writes through and reads back. */
+export interface VaultFiles {
+	text: Map<string, string>;
+	binary: Map<string, ArrayBuffer>;
+}
+
+/**
+ * An App whose adapter is two maps, so a file written by the recording
+ * pipeline is a file the journal, the recovery and the test can find again.
+ * @param files - Backing stores, shared with the test
+ * @returns The App double
+ */
+export function createVaultApp(files: VaultFiles): App {
+	return {
+		vault: {
+			adapter: {
+				exists: jest.fn((path: string) =>
+					Promise.resolve(
+						files.text.has(path) || files.binary.has(path),
+					),
+				),
+				read: jest.fn((path: string) => {
+					const content = files.text.get(path);
+					return content === undefined
+						? Promise.reject(new Error(`missing: ${path}`))
+						: Promise.resolve(content);
+				}),
+				write: jest.fn((path: string, data: string) => {
+					files.text.set(path, data);
+					return Promise.resolve();
+				}),
+				readBinary: jest.fn((path: string) => {
+					const content = files.binary.get(path);
+					return content === undefined
+						? Promise.reject(new Error(`missing: ${path}`))
+						: Promise.resolve(content);
+				}),
+				writeBinary: jest.fn((path: string, data: ArrayBuffer) => {
+					files.binary.set(path, data);
+					return Promise.resolve();
+				}),
+				remove: jest.fn((path: string) => {
+					files.text.delete(path);
+					files.binary.delete(path);
+					return Promise.resolve();
+				}),
+			},
+			createBinary: jest.fn((path: string, data: ArrayBuffer) => {
+				files.binary.set(path, data);
+				return Promise.resolve();
+			}),
+			createFolder: jest.fn().mockResolvedValue(undefined),
+		},
+		workspace: {
+			getActiveViewOfType: jest.fn().mockReturnValue(null),
+			getActiveFile: jest.fn().mockReturnValue(null),
+		},
+	} as unknown as App;
+}
+
 /** The MediaRecorder double returned by {@link createDesktopRecorder}. */
 export interface MockMediaRecorder {
 	start: jest.Mock;
@@ -386,6 +446,8 @@ export interface RecordingSut {
 	app: App;
 	settings: AudioRecorderSettings;
 	onStatusChange: jest.Mock;
+	/** Every state the background saves reported, in order. */
+	onSaveChange: jest.Mock;
 	markers: RecordingSidecarStore;
 	/** Everything written to the marker store, in order. */
 	markerWrites: MarkerWrite[];
@@ -422,6 +484,7 @@ export const createRecordingSut = (
 		...overrides.settings,
 	};
 	const onStatusChange = overrides.onStatusChange ?? jest.fn();
+	const onSaveChange = jest.fn();
 	const markerStore = overrides.markerStore ?? makeFakeMarkerStore();
 	return {
 		manager: new RecordingManager(
@@ -429,10 +492,16 @@ export const createRecordingSut = (
 			settings,
 			onStatusChange,
 			markerStore.store,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			onSaveChange,
 		),
 		app,
 		settings,
 		onStatusChange,
+		onSaveChange,
 		markers: markerStore.store,
 		markerWrites: markerStore.writes,
 		markerUpdate: markerStore.update,
@@ -538,7 +607,7 @@ export const recordOneChunk = async (
 	} as BlobEvent);
 	// The Blob read the write chain performs settles a microtask later.
 	await Promise.resolve();
-	await manager.stopRecording();
+	await manager.stopRecording({ untilSaved: true });
 };
 
 /**
