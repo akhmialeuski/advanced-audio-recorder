@@ -198,7 +198,7 @@ A `Saved 1 audio file(s)` notice says when the file is written.
 
 A new recording can start while the last one is still being saved, so back-to-back meetings are captured from the first second. Press the button or run the command as usual: the new recording starts at once, and the save of the previous one goes on behind it.
 
-Saves run one at a time, in the order the recordings were stopped, because assembling a long recording holds it in memory in full and two at once would double that. A recording stopped while another one is saving waits for its turn, and each save inserts its own links and runs its own [transcription after recording](transcription.md#three-ways-to-run-it) when that is on. Quick notes work while saves are waiting.
+Saves run one at a time, in the order the recordings were stopped, because assembling a long recording holds it in memory in full and two at once would double that. A recording stopped while another one is saving waits for its turn, and each save inserts its own links and runs its own [transcription after recording](transcription.md#three-ways-to-run-it) when that is on. Quick notes work while saves are waiting. The [recording panel](recording-panel.md#recordings-being-saved) lists the saves while they run: the one being saved with its stage and progress, then every one waiting behind it.
 
 A save that has not finished when Obsidian closes is not lost: its audio is already on disk, and the next launch offers it under [Crash recovery](#crash-recovery).
 

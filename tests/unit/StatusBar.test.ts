@@ -22,6 +22,7 @@ import { allEls, clickControl, control, el, maybeEl } from '../helpers/dom';
 import { OBSIDIAN, PLAYBACK, PLAYER, STATUS } from '../helpers/selectors';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { makePlaybackState } from '../helpers/playbackHarness';
+import { savingState } from '../helpers/saveStateFixtures';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { RecordingStatus } from 'src/types';
 import type { RecordingControls } from 'src/types';
@@ -280,11 +281,13 @@ describe('a save running in the background', () => {
 	])('$name', ({ waiting, text }) => {
 		const statusBarItem = createStatusBar();
 
-		renderRecordingSaveStatusBar(statusBarItem, {
-			status: RecordingStatus.Saving,
-			progress: { percent: 40, description: 'Assembling audio...' },
-			waiting,
-		});
+		renderRecordingSaveStatusBar(
+			statusBarItem,
+			savingState({
+				progress: { percent: 40, description: 'Assembling audio...' },
+				waiting,
+			}),
+		);
 
 		expect(el(statusBarItem, 'span').textContent).toBe(text);
 		expect(shownPercent(statusBarItem)).toBe('40');
@@ -293,11 +296,10 @@ describe('a save running in the background', () => {
 	it('says "Saving..." before the save reports its first stage', () => {
 		const statusBarItem = createStatusBar();
 
-		renderRecordingSaveStatusBar(statusBarItem, {
-			status: RecordingStatus.Saving,
-			progress: undefined,
-			waiting: 1,
-		});
+		renderRecordingSaveStatusBar(
+			statusBarItem,
+			savingState({ waiting: 1 }),
+		);
 
 		expect(el(statusBarItem, 'span').textContent).toBe('Saving...');
 	});

@@ -9,6 +9,7 @@
  */
 
 import { RecordingStatus } from 'src/types';
+import { IDLE_SAVE_STATE } from 'src/recording/RecordingSaveQueue';
 
 /** Every method the plugin calls on its recording manager, as a spy. */
 export interface RecorderDouble {
@@ -37,11 +38,7 @@ export const RecordingManager = jest.fn((): RecorderDouble => ({
 	cleanup: jest.fn(),
 	updateSettings: jest.fn(),
 	getStatus: jest.fn(() => RecordingStatus.Idle),
-	getSaveState: jest.fn(() => ({
-		status: RecordingStatus.Idle,
-		progress: undefined,
-		waiting: 0,
-	})),
+	getSaveState: jest.fn(() => IDLE_SAVE_STATE),
 	canDropMarker: jest.fn(() => false),
 	captureMarkerDraft: jest.fn(() => null),
 	getElapsedMs: jest.fn(() => 0),

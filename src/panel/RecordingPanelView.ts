@@ -33,6 +33,8 @@ import {
 	RECORDING_PANEL_VIEW_TYPE,
 } from '../constants';
 import { ICON_MIC, ICON_SAVING, withSavesInProgress } from '../ui/RibbonIcon';
+import { createProgressBar, type ProgressBar } from '../ui/progressBar';
+import { INTERRUPTED_REASON } from '../ui/StatusBar';
 import {
 	savesInProgress,
 	type RecordingSaveState,
@@ -52,6 +54,7 @@ import { formatByteSize } from '../utils/formatBytes';
 import { formatTimecode } from '../utils/TimeUtils';
 import {
 	formatPanelDate,
+	formatQueuedRecording,
 	summarizeRecording,
 	type RecordingPanelSummary,
 } from './recordingPanelModel';
@@ -90,8 +93,18 @@ const TOOLBAR_CLASS = 'aar-recording-panel-toolbar';
 /** The panel's own buttons, kept together at the end of the toolbar. */
 const TOOLS_CLASS = 'aar-recording-panel-tools';
 
+/** The stage line of the running save, under the recording it saves. */
+const SAVE_STAGE_CLASS = 'aar-recording-panel-save-stage';
+
+/** The bar the status bar shows a save's progress with, reused for the same save. */
+const SAVE_PROGRESS_CLASS = 'aar-save-progress';
+
+/** The stage of a save that has not reported one yet, as the status bar names it. */
+const SAVE_STARTING = 'Saving...';
+
 /** The sections of the panel, by the key their collapsed state is kept under. */
 const PanelSection = {
+	Saves: 'saves',
 	Recording: 'recording',
 	Participants: 'participants',
 } as const;
@@ -129,6 +142,16 @@ export interface RecordingPanelHost {
 	readonly openSettings: () => void;
 	/** Shows the transcription queue. */
 	readonly openTranscriptionQueue: () => void;
+}
+
+/** The list of saves as last drawn, so a progress report updates it in place. */
+interface ShownSaves {
+	/** The saves it lists, so a change to them redraws it. */
+	readonly key: string;
+	/** The running save's stage line, or null while none runs. */
+	readonly stage: HTMLElement | null;
+	/** The running save's progress bar, or null while none runs. */
+	readonly bar: ProgressBar | null;
 }
 
 /** The recordings the panel can show for the active file. */
@@ -186,6 +209,10 @@ export class RecordingPanelView extends ItemView {
 	private failedParts: number | null = null;
 	/** The start/stop button, redrawn when the recorder changes. */
 	private recordButton: ExtraButtonComponent | null = null;
+	/** Where the list of saves goes, under the buttons. */
+	private savesEl: HTMLElement | null = null;
+	/** The list of saves as last drawn into savesEl. */
+	private shownSaves: ShownSaves | null = null;
 
 	/**
 	 * @param leaf - The leaf Obsidian opened the view in
@@ -307,6 +334,8 @@ export class RecordingPanelView extends ItemView {
 	override onClose(): Promise<void> {
 		this.generation++;
 		this.recordButton = null;
+		this.savesEl = null;
+		this.shownSaves = null;
 		this.contentEl.empty();
 		return Promise.resolve();
 	}
@@ -345,17 +374,19 @@ export class RecordingPanelView extends ItemView {
 	}
 
 	/**
-	 * Redraws the start/stop button after the recorder changed state.
-	 * Cheap, so the plugin calls it on every status change rather than
-	 * redrawing the whole panel.
+	 * Redraws the start/stop button and the list of saves after the recorder
+	 * or its save queue changed. Cheap, so the plugin calls it on every such
+	 * change rather than redrawing the whole panel.
 	 */
 	refreshRecordingState(): void {
+		const saveState = this.host.recording.getSaveState();
+		this.renderSaves(saveState);
 		if (!this.recordButton) {
 			return;
 		}
 		const state = this.recorderState();
 		const { icon, label } = RECORD_BUTTON[state];
-		const saves = savesInProgress(this.host.recording.getSaveState());
+		const saves = savesInProgress(saveState);
 		this.recordButton
 			.setIcon(icon)
 			.setTooltip(withSavesInProgress(label, saves))
@@ -488,8 +519,8 @@ export class RecordingPanelView extends ItemView {
 	}
 
 	/**
-	 * Draws the whole panel: one row of buttons, the recording, then who took
-	 * part.
+	 * Draws the whole panel: one row of buttons, the saves of stopped
+	 * recordings, the recording, then who took part.
 	 * @param target - What the active file refers to
 	 * @param selected - The recording shown, or null for none
 	 * @param summary - What its sidecar holds, null with nothing selected
@@ -502,7 +533,13 @@ export class RecordingPanelView extends ItemView {
 		const root = this.contentEl;
 		root.empty();
 		root.addClass(PANEL_CLASS);
+		// Cleared first: building the toolbar refreshes the recorder state,
+		// which must not draw into the list the empty() above detached.
+		this.savesEl = null;
+		this.shownSaves = null;
 		this.renderToolbar(root, selected);
+		this.savesEl = root.createDiv();
+		this.renderSaves(this.host.recording.getSaveState());
 		if (!selected) {
 			root.createDiv({
 				cls: 'pane-empty',
@@ -555,6 +592,77 @@ export class RecordingPanelView extends ItemView {
 			this.selectedPath = path;
 			void this.refresh();
 		});
+	}
+
+	/**
+	 * Shows the saves of stopped recordings. A change to which recordings are
+	 * queued redraws the list, and a progress report only moves the running
+	 * save's stage and bar, so a save reporting many times a second does not
+	 * rebuild the section under a keyboard focus on its heading.
+	 * @param state - What the save queue is doing
+	 */
+	private renderSaves(state: RecordingSaveState): void {
+		if (!this.savesEl) {
+			return;
+		}
+		const key = JSON.stringify([state.status, state.saving, state.waiting]);
+		if (this.shownSaves?.key !== key) {
+			this.shownSaves = { key, ...this.drawSaves(this.savesEl, state) };
+		}
+		const { stage, bar } = this.shownSaves;
+		const description = state.progress?.description ?? SAVE_STARTING;
+		stage?.setText(
+			state.status === RecordingStatus.Interrupted
+				? `${INTERRUPTED_REASON}: ${description}`
+				: description,
+		);
+		bar?.setValue(state.progress?.percent);
+	}
+
+	/**
+	 * Draws the list of saves: the running one with a stage line and a bar,
+	 * then each waiting one in the order it will be saved. Draws nothing when
+	 * no save runs or waits, so the section is gone.
+	 * @param parent - Where the list goes
+	 * @param state - What the save queue is doing
+	 * @returns The running save's stage line and bar, for progress to update
+	 */
+	private drawSaves(
+		parent: HTMLElement,
+		state: RecordingSaveState,
+	): Omit<ShownSaves, 'key'> {
+		parent.empty();
+		const count = savesInProgress(state);
+		if (count === 0) {
+			return { stage: null, bar: null };
+		}
+		const list = this.section(
+			parent,
+			PanelSection.Saves,
+			`Saving · ${String(count)}`,
+		);
+		let running: Omit<ShownSaves, 'key'> = { stage: null, bar: null };
+		if (state.saving) {
+			const name = formatQueuedRecording(state.saving);
+			const value = this.property(list, ICON_SAVING, 'Saving', name);
+			running = {
+				stage: value.createDiv({ cls: SAVE_STAGE_CLASS }),
+				bar: createProgressBar(
+					value,
+					SAVE_PROGRESS_CLASS,
+					`Saving the recording from ${name}`,
+				),
+			};
+		}
+		for (const recording of state.waiting) {
+			this.property(
+				list,
+				'hourglass',
+				'Waiting',
+				formatQueuedRecording(recording),
+			);
+		}
+		return running;
 	}
 
 	/**

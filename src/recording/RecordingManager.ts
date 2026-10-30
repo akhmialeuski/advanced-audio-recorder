@@ -918,6 +918,7 @@ export class RecordingManager {
 				timestamp: this.recordingTimestamp,
 				insertionContext: this.insertionContext,
 				markerDrafts: this.markers.takeDrafts(),
+				startedAt: this.recordingStartTime,
 				durationSeconds,
 				interrupted,
 			};

@@ -16,6 +16,7 @@ import type { SaveProgress } from 'src/types';
 import { COMMAND_IDS } from 'src/constants';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { IDLE_SAVE_STATE } from 'src/recording/RecordingSaveQueue';
 import { RecordingMarkerModal } from 'src/ui/MarkerModal';
 import { RecordingBannerAnchor } from 'src/settings/settingsSchema';
 import { at } from '../helpers/assertions';
@@ -26,6 +27,7 @@ import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { BANNER, PLAYER, STATUS } from '../helpers/selectors';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { loadPlugin } from '../helpers/pluginHarness';
+import { savingState } from '../helpers/saveStateFixtures';
 import type { RecorderDouble } from '../mocks/modules/recordingManager';
 
 jest.mock('src/ui/MarkerModal', () => ({
@@ -71,9 +73,7 @@ function reportStatus(status: RecordingStatus): void {
 function reportSave(progress: SaveProgress | undefined, waiting = 0): void {
 	const onSaveChange = at(jest.mocked(RecordingManager).mock.calls, 0)[8];
 	onSaveChange?.(
-		progress
-			? { status: RecordingStatus.Saving, progress, waiting }
-			: { status: RecordingStatus.Idle, progress: undefined, waiting: 0 },
+		progress ? savingState({ progress, waiting }) : IDLE_SAVE_STATE,
 	);
 }
 
