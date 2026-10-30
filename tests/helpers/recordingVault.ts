@@ -11,6 +11,7 @@
 import { App, TFile } from 'obsidian';
 import type { ActionServices } from 'src/actions/core/actionServices';
 import type { FileContext } from 'src/actions/file/FileContext';
+import { RecordingOrigin } from 'src/actions/file/RecordingOrigin';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { asMockApp } from './obsidianMock';
@@ -191,7 +192,10 @@ export function recordingVault(
 		fileContext: (recording, note) => ({
 			file: file(recording),
 			services,
-			...(note === undefined ? {} : { note: file(note) }),
+			origin:
+				note === undefined
+					? RecordingOrigin.direct()
+					: RecordingOrigin.inNote(file(note)),
 		}),
 	};
 }

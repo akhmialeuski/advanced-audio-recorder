@@ -541,7 +541,8 @@ export async function cleanupFromCli(
 	context: FileContext,
 	args: CliData,
 ): Promise<string> {
-	const { file, services, note } = context;
+	const { file, services } = context;
+	const { note } = context.origin;
 	const config = cleanupConfig(context, args);
 	if (isRefusal(config)) {
 		return config.refusal;

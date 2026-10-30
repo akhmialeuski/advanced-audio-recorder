@@ -440,7 +440,7 @@ export async function transcribeFromCli(
 			{
 				...services.createTranscriptionModalOptions(),
 				autoStart: true,
-				notePath: context.note?.path ?? '',
+				notePath: context.origin.note?.path ?? '',
 				onRunSettled: resolve,
 			},
 		).open();

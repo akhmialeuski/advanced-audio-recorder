@@ -12,6 +12,10 @@
 import { Notice, TFile } from 'obsidian';
 import type { Editor } from 'obsidian';
 import { FILE_ACTIONS } from 'src/actions/file/fileActions';
+import {
+	RecordingOrigin,
+	type LinkLocation,
+} from 'src/actions/file/RecordingOrigin';
 import { describeRetryOutcome } from 'src/actions/file/recordingEdits';
 import type { ActionServices } from 'src/actions/core/actionServices';
 import { COMMAND_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
@@ -166,6 +170,9 @@ function nothingMissingServices(): ActionServices {
 
 const file = createFile('Recordings/take.webm');
 
+/** The recording reached on its own, as the file explorer reaches it. */
+const origin = RecordingOrigin.direct();
+
 describe('FILE_ACTIONS registry', () => {
 	it('registers every action exactly once', () => {
 		const ids = FILE_ACTIONS.map((entry) => entry.commandId);
@@ -196,45 +203,46 @@ describe('FILE_ACTIONS registry', () => {
 		}
 	});
 
+	const link: LinkLocation = {
+		editor: partial<Editor>({}),
+		subpath: '',
+		line: 0,
+		start: 0,
+		end: 9,
+	};
+	const standup = createFile('Meetings/standup.md');
+
 	it.each([
 		{
 			reached: 'on its own',
-			extra: {},
+			via: RecordingOrigin.direct(),
 			offered: COMMAND_IDS.deleteRecording,
 		},
 		{
 			reached: 'through a note',
-			extra: { note: createFile('Meetings/standup.md') },
+			via: RecordingOrigin.inNote(standup),
 			offered: COMMAND_IDS.deleteRecordingAndLink,
 		},
 		{
 			reached: 'through its link',
-			extra: {
-				link: {
-					editor: partial<Editor>({}),
-					subpath: '',
-					line: 0,
-					start: 0,
-					end: 9,
-				},
-			},
+			via: RecordingOrigin.atLink(null, link, false),
 			offered: COMMAND_IDS.deleteRecordingAndLink,
 		},
 		{
 			reached: 'through a link whose place is not known',
-			extra: { throughLink: true as const },
+			via: RecordingOrigin.throughLink(null, null, false),
 			offered: COMMAND_IDS.deleteRecordingAndLink,
 		},
 	])(
 		'offers one delete for a recording reached $reached',
-		({ extra, offered }) => {
+		({ via, offered }) => {
 			const { services } = createServices();
 			const deletes = FILE_ACTIONS.filter(
 				(entry) =>
 					(entry.commandId === COMMAND_IDS.deleteRecording ||
 						entry.commandId ===
 							COMMAND_IDS.deleteRecordingAndLink) &&
-					entry.isAvailable({ file, services, ...extra }),
+					entry.isAvailable({ file, services, origin: via }),
 			).map((entry) => entry.commandId);
 
 			expect(deletes).toEqual([offered]);
@@ -242,27 +250,25 @@ describe('FILE_ACTIONS registry', () => {
 	);
 
 	it.each([
-		{ reached: 'at a moment on its own', extra: {} },
+		{
+			reached: 'at a moment of a link in an editor that shows no note',
+			via: RecordingOrigin.atLink(null, link, true),
+		},
 		{
 			reached: 'at a moment through a note',
-			extra: { note: createFile('Meetings/standup.md') },
+			via: RecordingOrigin.atLink(standup, link, true),
 		},
 		{
 			reached: 'at a moment through a link',
-			extra: { throughLink: true as const },
+			via: RecordingOrigin.throughLink(null, null, true),
 		},
-	])('offers no delete for a recording reached $reached', ({ extra }) => {
+	])('offers no delete for a recording reached $reached', ({ via }) => {
 		const { services } = createServices();
 		const deletes = FILE_ACTIONS.filter(
 			(entry) =>
 				(entry.commandId === COMMAND_IDS.deleteRecording ||
 					entry.commandId === COMMAND_IDS.deleteRecordingAndLink) &&
-				entry.isAvailable({
-					file,
-					services,
-					atMoment: true,
-					...extra,
-				}),
+				entry.isAvailable({ file, services, origin: via }),
 		);
 
 		expect(deletes).toEqual([]);
@@ -296,12 +302,12 @@ describe('FILE_ACTIONS availability', () => {
 			const on = createServices({ [setting]: true }).services;
 			const off = createServices({ [setting]: false }).services;
 
-			expect(action(commandId).isAvailable({ file, services: on })).toBe(
-				true,
-			);
-			expect(action(commandId).isAvailable({ file, services: off })).toBe(
-				false,
-			);
+			expect(
+				action(commandId).isAvailable({ file, services: on, origin }),
+			).toBe(true);
+			expect(
+				action(commandId).isAvailable({ file, services: off, origin }),
+			).toBe(false);
 		},
 	);
 
@@ -314,7 +320,9 @@ describe('FILE_ACTIONS availability', () => {
 	])('always offers %s', (commandId) => {
 		const { services } = createServices();
 
-		expect(action(commandId).isAvailable({ file, services })).toBe(true);
+		expect(action(commandId).isAvailable({ file, services, origin })).toBe(
+			true,
+		);
 	});
 });
 
@@ -355,7 +363,7 @@ describe('FILE_ACTIONS dialogs', () => {
 		async ({ commandId, dialog }) => {
 			const { services } = createServices();
 
-			await action(commandId).run({ file, services });
+			await action(commandId).run({ file, services, origin });
 
 			expect(dialog).toHaveBeenCalledTimes(1);
 			const [openedApp, openedFile] =
@@ -370,7 +378,11 @@ describe('FILE_ACTIONS dialogs', () => {
 
 	it('primes the converted file so its embed becomes the enhanced player', async () => {
 		const { services, primeForEnhancement } = createServices();
-		await action(COMMAND_IDS.convertAudioFormat).run({ file, services });
+		await action(COMMAND_IDS.convertAudioFormat).run({
+			file,
+			services,
+			origin,
+		});
 		const options = jest.mocked(ConversionModal).mock.calls[0]?.[3] as {
 			onConverted: (path: string) => void;
 		};
@@ -384,7 +396,7 @@ describe('FILE_ACTIONS dialogs', () => {
 
 	it('links the cleaned-up file into the note and primes it', async () => {
 		const { services, primeForEnhancement } = createServices();
-		await action(COMMAND_IDS.cleanupAudio).run({ file, services });
+		await action(COMMAND_IDS.cleanupAudio).run({ file, services, origin });
 		const onDone = jest.mocked(AudioProcessingModal).mock
 			.calls[0]?.[3] as (result: {
 			outputPath: string;
@@ -412,7 +424,11 @@ describe('FILE_ACTIONS dialogs', () => {
 	it('links the cleaned-up file into the note it was reached through', async () => {
 		const { services } = createServices();
 		const note = createFile('Meetings/standup.md');
-		await action(COMMAND_IDS.cleanupAudio).run({ file, services, note });
+		await action(COMMAND_IDS.cleanupAudio).run({
+			file,
+			services,
+			origin: RecordingOrigin.inNote(note),
+		});
 		const onDone = at(jest.mocked(AudioProcessingModal).mock.calls, 0)[3];
 
 		await onDone?.({
@@ -434,7 +450,7 @@ describe('the audio file info action', () => {
 	it('opens the dialog with what the analyser read', async () => {
 		const { services } = createServices();
 
-		await action(COMMAND_IDS.audioFileInfo).run({ file, services });
+		await action(COMMAND_IDS.audioFileInfo).run({ file, services, origin });
 
 		expect(getAudioFileInfo).toHaveBeenCalledWith(services.app, file);
 		expect(AudioFileInfoModal).toHaveBeenCalledWith(services.app, {
@@ -446,7 +462,7 @@ describe('the audio file info action', () => {
 		jest.mocked(getAudioFileInfo).mockResolvedValueOnce(null);
 		const { services } = createServices();
 
-		await action(COMMAND_IDS.audioFileInfo).run({ file, services });
+		await action(COMMAND_IDS.audioFileInfo).run({ file, services, origin });
 
 		// The analyser has already told the user why; a dialog with no
 		// content would only say it twice.
@@ -458,7 +474,11 @@ describe('the delete action', () => {
 	it('trashes the recording and says so', async () => {
 		const { services } = createServices();
 
-		await action(COMMAND_IDS.deleteRecording).run({ file, services });
+		await action(COMMAND_IDS.deleteRecording).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(services.app.fileManager.trashFile).toHaveBeenCalledWith(file);
 		expect(noticeMessages()).toContain('Recording deleted');
@@ -473,7 +493,11 @@ describe('the delete action', () => {
 			new Error('locked'),
 		);
 
-		await action(COMMAND_IDS.deleteRecording).run({ file, services });
+		await action(COMMAND_IDS.deleteRecording).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(noticeMessages()).toContain('Failed to delete recording');
 		expect(noticeMessages()).not.toContain('Recording deleted');
@@ -487,7 +511,11 @@ describe('the delete action', () => {
 	it('raises exactly one notice per attempt', async () => {
 		const { services } = createServices();
 
-		await action(COMMAND_IDS.deleteRecording).run({ file, services });
+		await action(COMMAND_IDS.deleteRecording).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(jest.mocked(Notice)).toHaveBeenCalledTimes(1);
 	});
@@ -501,7 +529,11 @@ describe('the transcribe action', () => {
 			options as never,
 		);
 
-		await action(COMMAND_IDS.transcribeAudio).run({ file, services });
+		await action(COMMAND_IDS.transcribeAudio).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
 			...options,
@@ -513,7 +545,11 @@ describe('the transcribe action', () => {
 		const { services } = createServices();
 		const note = createFile('Meetings/standup.md');
 
-		await action(COMMAND_IDS.transcribeAudio).run({ file, services, note });
+		await action(COMMAND_IDS.transcribeAudio).run({
+			file,
+			services,
+			origin: RecordingOrigin.inNote(note),
+		});
 
 		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
 			notePath: 'Meetings/standup.md',
@@ -528,7 +564,7 @@ describe('a dialog opened for a recording the command line named', () => {
 		await action(COMMAND_IDS.transcribeAudio).run({
 			file,
 			services,
-			noteFixed: true,
+			origin: RecordingOrigin.named(null),
 		});
 
 		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
@@ -541,7 +577,7 @@ describe('a dialog opened for a recording the command line named', () => {
 		await action(COMMAND_IDS.cleanupAudio).run({
 			file,
 			services,
-			noteFixed: true,
+			origin: RecordingOrigin.named(null),
 		});
 		const onProcessed = defined(
 			at(jest.mocked(AudioProcessingModal).mock.calls, 0)[3],
@@ -567,12 +603,14 @@ describe('deleting a recording with its link', () => {
 		const { services } = createServices();
 		const remove = action(COMMAND_IDS.deleteRecordingAndLink);
 
-		expect(remove.isAvailable({ file, services })).toBe(false);
+		expect(remove.isAvailable({ file, services, origin })).toBe(false);
 		expect(
 			remove.isAvailable({
 				file,
 				services,
-				note: createFile('Meetings/standup.md'),
+				origin: RecordingOrigin.inNote(
+					createFile('Meetings/standup.md'),
+				),
 			}),
 		).toBe(true);
 	});
@@ -585,8 +623,11 @@ describe('deleting a recording with its link', () => {
 		await action(COMMAND_IDS.deleteRecordingAndLink).run({
 			file,
 			services,
-			note: createFile('Meetings/standup.md'),
-			link: { editor, subpath: '', line: 4, start: 2, end: 20 },
+			origin: RecordingOrigin.atLink(
+				createFile('Meetings/standup.md'),
+				{ editor, subpath: '', line: 4, start: 2, end: 20 },
+				false,
+			),
 		});
 
 		expect(services.app.fileManager.trashFile).toHaveBeenCalledWith(file);
@@ -608,7 +649,7 @@ describe('deleting a recording with its link', () => {
 		await action(COMMAND_IDS.deleteRecordingAndLink).run({
 			file,
 			services,
-			note: createFile('Meetings/standup.md'),
+			origin: RecordingOrigin.inNote(createFile('Meetings/standup.md')),
 		});
 
 		expect(noticeMessages()).toContain('Failed to delete recording');
@@ -628,7 +669,11 @@ describe('transcribing the parts that failed', () => {
 	it('says so when the recording has nothing missing', async () => {
 		const services = nothingMissingServices();
 
-		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+		await action(COMMAND_IDS.retryFailedParts).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(noticeMessages().join(' ')).toContain('Nothing is missing');
 	});
@@ -644,7 +689,11 @@ describe('transcribing the parts that failed', () => {
 			}),
 		);
 
-		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+		await action(COMMAND_IDS.retryFailedParts).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(noticeMessages().join(' ')).toContain('sidecar unreadable');
 		error.mockRestore();
@@ -661,7 +710,11 @@ describe('transcribing the parts that failed', () => {
 			}),
 		);
 
-		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+		await action(COMMAND_IDS.retryFailedParts).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(noticeMessages().join(' ')).toContain('the disk went away');
 		error.mockRestore();
@@ -704,7 +757,11 @@ describe('transcribing the parts that failed', () => {
 			sentSeconds: 300,
 		});
 
-		await action(COMMAND_IDS.retryFailedParts).run({ file, services });
+		await action(COMMAND_IDS.retryFailedParts).run({
+			file,
+			services,
+			origin,
+		});
 
 		// Priced against the audio the run sent. Adding up the stretches it
 		// asked for instead quoted ninety seconds for five minutes of engine
@@ -725,8 +782,12 @@ describe('transcribing the parts that failed', () => {
 		const off = createServices({ transcriptionEnabled: false });
 		const entry = action(COMMAND_IDS.retryFailedParts);
 
-		expect(entry.isAvailable({ file, services: on.services })).toBe(true);
-		expect(entry.isAvailable({ file, services: off.services })).toBe(false);
+		expect(entry.isAvailable({ file, services: on.services, origin })).toBe(
+			true,
+		);
+		expect(
+			entry.isAvailable({ file, services: off.services, origin }),
+		).toBe(false);
 	});
 });
 
@@ -803,7 +864,11 @@ describe('exporting chapters and markers', () => {
 			}),
 		);
 
-		await action(COMMAND_IDS.exportChapters).run({ file, services });
+		await action(COMMAND_IDS.exportChapters).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(noticeMessages().join(' ')).toContain('no chapters or markers');
 	});
@@ -820,7 +885,11 @@ describe('exporting chapters and markers', () => {
 			}),
 		);
 
-		await action(COMMAND_IDS.exportChapters).run({ file, services });
+		await action(COMMAND_IDS.exportChapters).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(ChapterExportModal).toHaveBeenCalledWith(
 			services.app,
@@ -848,7 +917,11 @@ describe('exporting chapters and markers', () => {
 			.spyOn(services.app.fileManager, 'generateMarkdownLink')
 			.mockReturnValue('[[take#t=9|0:09]]');
 
-		await action(COMMAND_IDS.exportChapters).run({ file, services });
+		await action(COMMAND_IDS.exportChapters).run({
+			file,
+			services,
+			origin,
+		});
 		const options = at(
 			(ChapterExportModal as jest.Mock).mock.calls,
 			0,
@@ -884,7 +957,7 @@ describe('exporting chapters and markers', () => {
 		await action(COMMAND_IDS.exportChapters).run({
 			file,
 			services,
-			noteFixed: true,
+			origin: RecordingOrigin.named(null),
 		});
 
 		expect(ChapterExportModal).toHaveBeenCalledWith(
@@ -909,7 +982,11 @@ describe('exporting chapters and markers', () => {
 			file,
 		);
 
-		await action(COMMAND_IDS.exportChapters).run({ file, services });
+		await action(COMMAND_IDS.exportChapters).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(ChapterExportModal).toHaveBeenCalledWith(
 			services.app,
@@ -928,7 +1005,11 @@ describe('exporting chapters and markers', () => {
 			}),
 		);
 
-		await action(COMMAND_IDS.exportChapters).run({ file, services });
+		await action(COMMAND_IDS.exportChapters).run({
+			file,
+			services,
+			origin,
+		});
 
 		expect(noticeMessages().join(' ')).toContain('Could not read');
 		error.mockRestore();
@@ -938,7 +1019,11 @@ describe('exporting chapters and markers', () => {
 		const { services } = createServices();
 
 		expect(
-			action(COMMAND_IDS.exportChapters).isAvailable({ file, services }),
+			action(COMMAND_IDS.exportChapters).isAvailable({
+				file,
+				services,
+				origin,
+			}),
 		).toBe(true);
 	});
 });
@@ -989,7 +1074,7 @@ describe('the file actions on the command line', () => {
 			action(commandId).cli.unavailable?.({
 				file,
 				services,
-				...(note ? { note } : {}),
+				origin: RecordingOrigin.named(note ?? null),
 			}),
 		).toBe(said);
 	});
@@ -1000,7 +1085,7 @@ describe('the file actions on the command line', () => {
 		await expect(
 			Promise.resolve(
 				action(COMMAND_IDS.deleteRecording).cli.execute(
-					{ file, services },
+					{ file, services, origin },
 					{},
 				),
 			),
@@ -1015,7 +1100,7 @@ describe('the file actions on the command line', () => {
 		await expect(
 			Promise.resolve(
 				action(COMMAND_IDS.retryFailedParts).cli.execute(
-					{ file, services },
+					{ file, services, origin },
 					{},
 				),
 			),

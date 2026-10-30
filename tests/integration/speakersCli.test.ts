@@ -14,6 +14,7 @@ import type { CliData } from 'obsidian';
 import { parseSpeakerMap, speakersFromCli } from 'src/actions/file/speakersCli';
 import type { ActionServices } from 'src/actions/core/actionServices';
 import type { FileContext } from 'src/actions/file/FileContext';
+import { RecordingOrigin } from 'src/actions/file/RecordingOrigin';
 import {
 	emptyTranscriptSection,
 	type TranscriptSection,
@@ -89,6 +90,7 @@ function createSut(
 			recordingSidecar:
 				partial<ActionServices['recordingSidecar']>(sidecar),
 		},
+		origin: RecordingOrigin.direct(),
 	};
 	const saveSettings = jest.spyOn(vault.services, 'saveSettings');
 	return {

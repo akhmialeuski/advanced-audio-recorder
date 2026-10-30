@@ -41,6 +41,7 @@ import {
 } from '../recording/RecordingSaveQueue';
 import type { ActionServices } from '../actions/core/actionServices';
 import type { FileAction, FileContext } from '../actions/file/FileContext';
+import { RecordingOrigin } from '../actions/file/RecordingOrigin';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
 import { renderActionsIntoMenu } from '../actions/core/renderActionsIntoMenu';
 import { recordingsInNote } from '../obsidian/noteRecordings';
@@ -365,7 +366,11 @@ export class RecordingPanelView extends ItemView {
 		renderActionsIntoMenu(
 			menu,
 			this.offeredActions(this.host.actions),
-			{ file: this.shownFile, services: this.host.services },
+			{
+				file: this.shownFile,
+				services: this.host.services,
+				origin: RecordingOrigin.direct(),
+			},
 			new Set(),
 		);
 	}
@@ -463,6 +468,7 @@ export class RecordingPanelView extends ItemView {
 			? this.availableActions({
 					file: selected,
 					services: this.host.services,
+					origin: RecordingOrigin.direct(),
 				}).map((action) => action.commandId)
 			: [];
 	}
@@ -673,7 +679,11 @@ export class RecordingPanelView extends ItemView {
 	private renderToolbar(root: HTMLElement, file: TFile | null): void {
 		const row = root.createDiv({ cls: TOOLBAR_CLASS });
 		if (file) {
-			const context: FileContext = { file, services: this.host.services };
+			const context: FileContext = {
+				file,
+				services: this.host.services,
+				origin: RecordingOrigin.direct(),
+			};
 			for (const action of this.availableActions(context)) {
 				new ExtraButtonComponent(row)
 					.setIcon(action.icon)

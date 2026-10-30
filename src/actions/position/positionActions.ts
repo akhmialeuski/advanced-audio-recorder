@@ -289,7 +289,7 @@ function namedPosition(
 				file: only.file,
 				seconds: at.value,
 				editable: true,
-				...(only.note ? { note: only.note } : {}),
+				...(only.origin.note ? { note: only.origin.note } : {}),
 				services,
 			},
 		],

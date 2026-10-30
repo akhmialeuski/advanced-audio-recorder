@@ -212,7 +212,7 @@ export async function exportChaptersFromCli(
 	context: FileContext,
 	args: CliData,
 ): Promise<string> {
-	const { file, services, note } = context;
+	const { file, services, origin } = context;
 	const view = cliChoice(args, 'format', EXPORT_VIEWS);
 	if (isRefusal(view)) {
 		return view.refusal;
@@ -224,7 +224,11 @@ export async function exportChaptersFromCli(
 	const source = {
 		file,
 		markers,
-		linkBuilder: timecodeLinkBuilder(services.app, file, note?.path ?? ''),
+		linkBuilder: timecodeLinkBuilder(
+			services.app,
+			file,
+			origin.note?.path ?? '',
+		),
 	};
 	const chosen = view.value ?? ChapterExportView.List;
 	if (chosen === ChapterExportView.Outline || cliFlag(args, PRINT_FLAG)) {
@@ -250,7 +254,8 @@ export async function exportChaptersFromCli(
 export async function deleteRecordingWithLink(
 	context: FileContext,
 ): Promise<string> {
-	const { file, services, note, link } = context;
+	const { file, services } = context;
+	const { note, link } = context.origin;
 	const { app } = services;
 	// The link the menu or the cursor was on goes with the recording when it
 	// links the whole recording. A link into a part of it is not "the link"

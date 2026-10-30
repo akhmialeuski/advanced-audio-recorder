@@ -140,7 +140,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Clean up audio',
 		icon: 'wand-2',
 		isAvailable: always,
-		run: ({ file, services, note, noteFixed }: FileContext): void => {
+		run: ({ file, services, origin }: FileContext): void => {
 			new AudioProcessingModal(
 				services.app,
 				file,
@@ -155,7 +155,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 						outputPath,
 						replaceSource,
 						// Undefined lets the inserter take the active note.
-						note ?? (noteFixed ? null : undefined),
+						origin.noteForDialog(),
 					);
 					services.primeForEnhancement([outputPath]);
 				},
@@ -175,11 +175,12 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Transcribe audio',
 		icon: 'captions',
 		isAvailable: whileTranscribing,
-		run: ({ file, services, note, noteFixed }: FileContext): void => {
+		run: ({ file, services, origin }: FileContext): void => {
+			const note = origin.noteForDialog();
 			new TranscriptionModal(services.app, file, services.getSettings, {
 				...services.createTranscriptionModalOptions(),
 				// Undefined lets the dialog take the active note.
-				notePath: note?.path ?? (noteFixed ? '' : undefined),
+				notePath: note === null ? '' : note?.path,
 			}).open();
 		},
 		cli: {
@@ -289,16 +290,8 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		// the palette in that note - has links there that a plain delete
 		// would leave broken, so the link-aware delete is offered instead.
 		// A moment of the recording offers neither delete.
-		isAvailable: ({
-			note,
-			link,
-			throughLink,
-			atMoment,
-		}: FileContext): boolean =>
-			note === undefined &&
-			link === undefined &&
-			!throughLink &&
-			!atMoment,
+		isAvailable: ({ origin }: FileContext): boolean =>
+			origin.offersPlainDelete(),
 		run: async ({ file, services }: FileContext): Promise<void> => {
 			try {
 				await services.app.fileManager.trashFile(file);
@@ -335,14 +328,8 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		// or a link whose place is not known. The file explorer reaches it
 		// through none of them. A moment of the recording, a timecode link or
 		// a player embedded at one, offers no delete at all.
-		isAvailable: ({
-			note,
-			link,
-			throughLink,
-			atMoment,
-		}: FileContext): boolean =>
-			!atMoment &&
-			(note !== undefined || link !== undefined || throughLink === true),
+		isAvailable: ({ origin }: FileContext): boolean =>
+			origin.offersLinkDelete(),
 		run: async (context: FileContext): Promise<void> => {
 			try {
 				new Notice(await deleteRecordingWithLink(context));
@@ -391,11 +378,11 @@ async function openChapterExport(context: FileContext): Promise<void> {
 		new Notice('This recording has no chapters or markers to export.');
 		return;
 	}
+	const note = context.origin.noteForDialog();
 	const notePath =
-		context.note?.path ??
-		(context.noteFixed
-			? ''
-			: (services.app.workspace.getActiveFile()?.path ?? ''));
+		note === undefined
+			? (services.app.workspace.getActiveFile()?.path ?? '')
+			: (note?.path ?? '');
 	new ChapterExportModal(services.app, {
 		file,
 		markers,
