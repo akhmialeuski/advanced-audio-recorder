@@ -27,11 +27,7 @@ import {
 	setIcon,
 } from 'obsidian';
 import type { Menu, TFile, ViewStateResult, WorkspaceLeaf } from 'obsidian';
-import {
-	COMMAND_IDS,
-	PLUGIN_LOG_PREFIX,
-	RECORDING_PANEL_VIEW_TYPE,
-} from '../constants';
+import { PLUGIN_LOG_PREFIX, RECORDING_PANEL_VIEW_TYPE } from '../constants';
 import { ICON_MIC, ICON_SAVING, withSavesInProgress } from '../ui/RibbonIcon';
 import { createProgressBar, type ProgressBar } from '../ui/progressBar';
 import { INTERRUPTED_REASON } from '../ui/StatusBar';
@@ -40,10 +36,13 @@ import {
 	type RecordingSaveState,
 } from '../recording/RecordingSaveQueue';
 import type { ActionServices } from '../actions/core/actionServices';
+import type {
+	ActionRegistry,
+	RegisteredFamily,
+} from '../actions/core/ActionRegistry';
 import type { FileAction, FileContext } from '../actions/file/FileContext';
 import { RecordingOrigin } from '../actions/file/RecordingOrigin';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
-import { renderActionsIntoMenu } from '../actions/core/renderActionsIntoMenu';
 import { recordingsInNote } from '../obsidian/noteRecordings';
 import { runReported } from '../actions/core/registerActionCommands';
 import { RecordingStatus } from '../types';
@@ -72,15 +71,6 @@ const RECORD_BUTTON = {
 	live: { icon: 'square', label: 'Stop recording' },
 	saving: { icon: ICON_SAVING, label: 'Saving the recording' },
 } as const;
-
-/**
- * Actions the panel leaves to the menus. Deleting a recording is one click in
- * a menu that closes; in a panel that stays open next to the note, it is one
- * mis-click away from the button the user meant.
- */
-const EXCLUDED_ACTIONS: ReadonlySet<string> = new Set([
-	COMMAND_IDS.deleteRecording,
-]);
 
 /** Root class of the panel's content, which its stylesheet rules hang on. */
 const PANEL_CLASS = 'aar-recording-panel';
@@ -120,8 +110,10 @@ export interface RecordingPanelHost {
 	readonly displayName: string;
 	/** The services every file action runs against. */
 	readonly services: ActionServices;
-	/** The file actions to offer, in the order the menus list them. */
-	readonly actions: readonly FileAction[];
+	/** The registry the file actions were registered with. */
+	readonly registry: ActionRegistry;
+	/** The file actions as the registry registered them, in menu order. */
+	readonly fileActions: RegisteredFamily<FileContext>;
 	/** The recorder, for the start/stop button. */
 	readonly recording: {
 		/**
@@ -363,14 +355,10 @@ export class RecordingPanelView extends ItemView {
 		if (!this.shownFile) {
 			return;
 		}
-		renderActionsIntoMenu(
+		this.host.registry.renderInto(
 			menu,
-			this.offeredActions(this.host.actions),
-			{
-				file: this.shownFile,
-				services: this.host.services,
-				origin: RecordingOrigin.direct(),
-			},
+			this.host.fileActions,
+			this.contextOf(this.shownFile, RecordingOrigin.direct()),
 			new Set(),
 		);
 	}
@@ -465,11 +453,9 @@ export class RecordingPanelView extends ItemView {
 	 */
 	private offeredActionIds(selected: TFile | null): string[] {
 		return selected
-			? this.availableActions({
-					file: selected,
-					services: this.host.services,
-					origin: RecordingOrigin.direct(),
-				}).map((action) => action.commandId)
+			? this.availableActions(
+					this.contextOf(selected, RecordingOrigin.besideNote()),
+				).map((action) => action.commandId)
 			: [];
 	}
 
@@ -679,11 +665,7 @@ export class RecordingPanelView extends ItemView {
 	private renderToolbar(root: HTMLElement, file: TFile | null): void {
 		const row = root.createDiv({ cls: TOOLBAR_CLASS });
 		if (file) {
-			const context: FileContext = {
-				file,
-				services: this.host.services,
-				origin: RecordingOrigin.direct(),
-			};
+			const context = this.contextOf(file, RecordingOrigin.besideNote());
 			for (const action of this.availableActions(context)) {
 				new ExtraButtonComponent(row)
 					.setIcon(action.icon)
@@ -883,32 +865,28 @@ export class RecordingPanelView extends ItemView {
 		}
 	}
 
-	/** The file actions the panel offers, in menu order. */
-	private panelActions(): FileAction[] {
-		return this.host.actions.filter(
-			(action) => !EXCLUDED_ACTIONS.has(action.commandId),
-		);
+	/**
+	 * What the panel acts on a recording with: how it reached it, and the
+	 * failed parts it has already read, so the actions' own gates decide
+	 * what is offered and the panel decides nothing of its own.
+	 * @param file - The recording shown
+	 * @param origin - Its buttons, which stay open beside the note, or its
+	 *   menu, which closes
+	 */
+	private contextOf(file: TFile, origin: RecordingOrigin): FileContext {
+		return {
+			file,
+			services: this.host.services,
+			origin,
+			...(this.failedParts === null
+				? {}
+				: { failedParts: this.failedParts }),
+		};
 	}
 
 	/** The file actions available for a recording, in menu order. */
 	private availableActions(context: FileContext): FileAction[] {
-		return this.offeredActions(this.panelActions()).filter((action) =>
-			action.isAvailable(context),
-		);
-	}
-
-	/**
-	 * Leaves out the top-up when the recording has no failed parts. The
-	 * menus offer it whatever the count, because their availability is
-	 * decided before anything is read; the panel has read it.
-	 * @param actions - Actions to filter
-	 */
-	private offeredActions(actions: readonly FileAction[]): FileAction[] {
-		return actions.filter(
-			(action) =>
-				action.commandId !== COMMAND_IDS.retryFailedParts ||
-				this.failedParts !== 0,
-		);
+		return this.host.registry.available(this.host.fileActions, context);
 	}
 
 	/**

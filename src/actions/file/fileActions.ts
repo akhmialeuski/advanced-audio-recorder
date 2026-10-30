@@ -198,7 +198,11 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.retryFailedParts,
 		title: 'Transcribe the parts that failed',
 		icon: 'refresh-cw',
-		isAvailable: whileTranscribing,
+		// Left out only where the surface has read that no part failed; a
+		// menu, which has read nothing, offers it and says when nothing is
+		// missing.
+		isAvailable: (context: FileContext): boolean =>
+			whileTranscribing(context) && context.failedParts !== 0,
 		run: async ({ file, services }: FileContext): Promise<void> => {
 			new Notice(await retryFailedParts(file, services));
 		},

@@ -142,3 +142,31 @@ describe('rendering a family into a menu', () => {
 		expect(asMockMenu(menu).items).toEqual([]);
 	});
 });
+
+describe('the actions a surface lays out itself', () => {
+	it.each([
+		{ target: 'it', offered: ['one'] },
+		{ target: 'wide', offered: ['one', 'wide-only'] },
+		{ target: 'none', offered: [] },
+	])(
+		'offers for "$target" what the gates of the actions allow, in order',
+		({ target, offered }) => {
+			const { registry } = createSut();
+			const added = registry.add(
+				family([
+					action('one'),
+					{
+						...action('wide-only'),
+						isAvailable: (aim) => aim === 'wide',
+					},
+				]),
+			);
+
+			expect(
+				registry
+					.available(added, target)
+					.map((entry) => entry.commandId),
+			).toEqual(offered);
+		},
+	);
+});

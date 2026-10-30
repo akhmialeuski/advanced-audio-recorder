@@ -22,6 +22,13 @@ export interface FileContext {
 	 * and which note a dialog opened for it writes into.
 	 */
 	readonly origin: RecordingOrigin;
+	/**
+	 * How many parts of the recording's transcript failed, where the surface
+	 * has already read its stored data, as the recording panel has. Absent
+	 * where nothing has: availability is decided synchronously, so a menu
+	 * cannot read it before it opens.
+	 */
+	readonly failedParts?: number;
 }
 
 /**

@@ -14,7 +14,7 @@
 import type { Menu, Plugin } from 'obsidian';
 import type { CliCommand } from '../../obsidian/cliCommands';
 import { actionCliCommands } from './actionCliCommands';
-import type { ActionFamily } from './PluginAction';
+import type { ActionFamily, PluginCommand } from './PluginAction';
 import {
 	registerActionCommands,
 	type TargetPicker,
@@ -101,6 +101,24 @@ export class ActionRegistry {
 	/** Every command-line command of the families added so far. */
 	cliCommands(): readonly CliCommand[] {
 		return [...this.commands];
+	}
+
+	/**
+	 * The actions of a registered family offered for a target, in their
+	 * order. A surface that lays out the actions itself, as the recording
+	 * panel draws them as buttons, takes them from here, so it offers what the
+	 * actions' own gates allow and decides nothing of its own.
+	 * @param registered - The family
+	 * @param context - The target the surface shows
+	 * @returns The actions available for it
+	 */
+	available<TContext>(
+		registered: RegisteredFamily<TContext>,
+		context: TContext,
+	): PluginCommand<TContext>[] {
+		return registered.family.actions.filter((action) =>
+			action.isAvailable(context),
+		);
 	}
 
 	/**

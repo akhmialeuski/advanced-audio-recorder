@@ -70,8 +70,12 @@ import {
 import { ContextMenu, type MenuFamilies } from './actions/ContextMenu';
 import type { ActionServices } from './actions/core/actionServices';
 import type { SessionServices } from './actions/session/sessionActions';
-import { ActionRegistry } from './actions/core/ActionRegistry';
-import { FILE_ACTIONS, fileActionFamily } from './actions/file/fileActions';
+import {
+	ActionRegistry,
+	type RegisteredFamily,
+} from './actions/core/ActionRegistry';
+import { fileActionFamily } from './actions/file/fileActions';
+import type { FileContext } from './actions/file/FileContext';
 import { sessionActionFamily } from './actions/session/sessionActions';
 import { transcriptActionFamily } from './actions/transcript/transcriptActions';
 import { playbackActionFamily } from './actions/playback/playbackActions';
@@ -449,7 +453,10 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.registerView(
 			RECORDING_PANEL_VIEW_TYPE,
 			(leaf) =>
-				new RecordingPanelView(leaf, this.createRecordingPanelHost()),
+				new RecordingPanelView(
+					leaf,
+					this.createRecordingPanelHost(registry, menuFamilies.file),
+				),
 		);
 
 		// The queue outlives a session, so it is built before anything can
@@ -1239,13 +1246,19 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * actions the menus use, the recorder for its start/stop button, and a
 	 * length reader that stays on the cheap readers and answers null instead
 	 * of raising a notice, since the panel reads a length nobody asked for.
+	 * @param registry - The registry the file actions were registered with
+	 * @param fileActions - The file actions as it registered them
 	 * @returns The host every panel instance shares
 	 */
-	private createRecordingPanelHost(): RecordingPanelHost {
+	private createRecordingPanelHost(
+		registry: ActionRegistry,
+		fileActions: RegisteredFamily<FileContext>,
+	): RecordingPanelHost {
 		return {
 			displayName: this.manifest.name,
 			services: this.createActionServices(),
-			actions: FILE_ACTIONS,
+			registry,
+			fileActions,
 			recording: this.recordingManager,
 			readDuration: (file) => probeDurationSeconds(this.app, file),
 			openSettings: () => {

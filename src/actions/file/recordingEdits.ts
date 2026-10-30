@@ -70,9 +70,9 @@ export function describeRetryOutcome(outcome: RetryOutcome): string {
  *
  * Whether anything is missing cannot be known without reading the sidecar,
  * and an action's availability is decided synchronously, so the action is
- * always offered and a recording with nothing missing is told so. Offering it
- * only after something warmed a cache would hide it exactly when it is
- * wanted.
+ * offered wherever the sidecar was not read, and a recording with nothing
+ * missing is told so. Offering it only after something warmed a cache would
+ * hide it exactly when it is wanted.
  * @param file - The recording to top up
  * @param services - Injected services
  * @returns What happened, in one sentence; never throws
