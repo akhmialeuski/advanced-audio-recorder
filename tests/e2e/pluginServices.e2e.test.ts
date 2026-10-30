@@ -16,7 +16,7 @@
 
 import type { TFile } from 'obsidian';
 import AudioRecorderPlugin from 'src/main';
-import type { ActionServices } from 'src/actions/core/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
 import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { AutoChapterService } from 'src/chapters/AutoChapterService';

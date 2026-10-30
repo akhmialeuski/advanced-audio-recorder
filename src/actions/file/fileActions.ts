@@ -20,12 +20,9 @@ import type { PlayerMarker } from '../../markers/markerModel';
 import { timecodeLinkBuilder } from '../../obsidian/timecodeRefs';
 import { AudioProcessingModal } from '../../cleanup/AudioProcessingModal';
 import { insertProcessedAudioEmbed } from '../../recording/NoteInserter';
-import type {
-	ActionFamily,
-	ActionServices,
-	FileAction,
-	FileContext,
-} from '../core/PluginAction';
+import type { ActionFamily } from '../core/PluginAction';
+import type { ActionServices } from '../core/actionServices';
+import type { FileAction, FileContext } from './FileContext';
 import {
 	activeRecordings,
 	describeRecording,

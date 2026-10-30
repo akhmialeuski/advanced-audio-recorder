@@ -11,7 +11,7 @@ import {
 	POSITION_ACTIONS,
 	positionActionFamily,
 } from 'src/actions/position/positionActions';
-import type { PositionContext } from 'src/actions/core/PluginAction';
+import type { PositionContext } from 'src/actions/position/positionActions';
 import { COMMAND_IDS } from 'src/constants';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { makeMarkerStore, makePlaybackState } from '../helpers/playbackHarness';

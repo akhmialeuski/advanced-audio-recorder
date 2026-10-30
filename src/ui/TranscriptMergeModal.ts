@@ -19,7 +19,7 @@
 
 import { Notice, Setting } from 'obsidian';
 import type { App, DropdownComponent, ExtraButtonComponent } from 'obsidian';
-import type { TranscriptSelectionContext } from '../actions/core/PluginAction';
+import type { TranscriptSelectionContext } from '../actions/transcript/transcriptContext';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
 import {
 	mergedLineText,

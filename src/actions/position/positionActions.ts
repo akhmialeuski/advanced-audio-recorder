@@ -8,7 +8,7 @@
  */
 
 import { MarkdownView, Notice } from 'obsidian';
-import type { CliData, CliFlags } from 'obsidian';
+import type { CliData, CliFlags, TFile } from 'obsidian';
 import { COMMAND_IDS, PLAYER_ICONS } from '../../constants';
 import { MARKER_KIND, type MarkerKind } from '../../markers/markerModel';
 import { addRecordingMarker } from '../../markers/addRecordingMarker';
@@ -20,12 +20,8 @@ import { formatTimecode } from '../../utils/TimeUtils';
 import { isAudioFile } from '../../utils/audioFile';
 import { cliText, cliTime, valueParam } from '../../obsidian/cliArgs';
 import type { PlaybackControlsState } from '../../player/playbackControls';
-import type {
-	ActionFamily,
-	ActionServices,
-	PositionAction,
-	PositionContext,
-} from '../core/PluginAction';
+import type { ActionFamily, PluginCommand } from '../core/PluginAction';
+import type { ActionServices } from '../core/actionServices';
 import {
 	FILE_PARAM,
 	PATH_PARAM,
@@ -35,6 +31,27 @@ import {
 	namedRecordings,
 } from '../file/recordingTargets';
 import { isRefusal, type Refusable } from '../../utils/refusal';
+
+/** A point in a recording an action targets. */
+export interface PositionContext {
+	/** The recording. */
+	readonly file: TFile;
+	/** Seconds from the start of the recording. */
+	readonly seconds: number;
+	/** Whether markers may be added here: false over a read-only player. */
+	readonly editable: boolean;
+	/** The note links to the position are written for, when there is one. */
+	readonly note?: TFile;
+	/** Injected services shared by every action. */
+	readonly services: ActionServices;
+}
+
+/**
+ * An action on a point in a recording. Rendered into the player menu at the
+ * point that was right-clicked, and registered as a palette command over the
+ * position of the playback that is running.
+ */
+export type PositionAction = PluginCommand<PositionContext>;
 
 /** Where in the recording, on the command line. */
 export const AT_PARAM = 'at';

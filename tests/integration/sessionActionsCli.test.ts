@@ -13,7 +13,7 @@ import {
 import type {
 	RecordingSessionPort,
 	SessionServices,
-} from 'src/actions/core/PluginAction';
+} from 'src/actions/session/sessionActions';
 import { COMMAND_IDS } from 'src/constants';
 import { RecordingStatus } from 'src/types';
 import type { RecordingMarkerHandle } from 'src/recording/recordingMarkers';

@@ -33,7 +33,7 @@ import {
 	flagParam,
 	valueParam,
 } from '../../obsidian/cliArgs';
-import type { FileContext } from '../core/PluginAction';
+import type { FileContext } from './FileContext';
 import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** Names the speakers: `label=name`, one pair per speaker, `;` between. */

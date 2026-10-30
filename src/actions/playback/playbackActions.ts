@@ -14,7 +14,14 @@ import {
 } from '../../constants';
 import { steppedPlaybackRate } from '../../player/playbackRate';
 import type { PlaybackControlsState } from '../../player/playbackControls';
-import type { ActionFamily, PlaybackAction } from '../core/PluginAction';
+import type { ActionFamily, PluginCommand } from '../core/PluginAction';
+
+/**
+ * An action on the audio that is playing right now. Registered as a
+ * palette command gated on the active playback snapshot, so it is absent
+ * from the palette (and inert as a hotkey) while nothing plays.
+ */
+export type PlaybackAction = PluginCommand<PlaybackControlsState>;
 
 /**
  * Needs nothing beyond an active playback, which the family already requires

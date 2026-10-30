@@ -45,12 +45,12 @@ import {
 	flagParam,
 	valueParam,
 } from '../../obsidian/cliArgs';
+import type { ActionFamily } from '../core/PluginAction';
+import type { ActionServices } from '../core/actionServices';
 import type {
-	ActionFamily,
-	ActionServices,
 	TranscriptAction,
 	TranscriptSelectionContext,
-} from '../core/PluginAction';
+} from './transcriptContext';
 import { FILE_TARGET_PARAMS, namedVaultFile } from '../file/recordingTargets';
 import { editorLines, noteLines } from './transcriptLines';
 import { findNoteView } from '../../utils/noteViews';

@@ -10,10 +10,8 @@ import {
 	TRANSCRIPT_ACTIONS,
 	transcriptSelectionIn,
 } from 'src/actions/transcript/transcriptActions';
-import type {
-	ActionServices,
-	TranscriptSelectionContext,
-} from 'src/actions/core/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
+import type { TranscriptSelectionContext } from 'src/actions/transcript/transcriptContext';
 import { TranscriptMergeModal } from 'src/ui/TranscriptMergeModal';
 import { TranscriptSplitModal } from 'src/ui/TranscriptSplitModal';
 import { at } from '../helpers/assertions';

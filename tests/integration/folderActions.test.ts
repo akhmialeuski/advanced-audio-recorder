@@ -10,7 +10,7 @@ import {
 	FOLDER_ACTIONS,
 	folderActionFamily,
 } from 'src/actions/folder/folderActions';
-import type { FolderContext } from 'src/actions/core/PluginAction';
+import type { FolderContext } from 'src/actions/folder/folderActions';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { recordingVault } from '../helpers/recordingVault';
 import { at } from '../helpers/assertions';

@@ -26,11 +26,8 @@ import {
 	flagParam,
 	valueParam,
 } from '../../obsidian/cliArgs';
-import type {
-	ActionServices,
-	FileContext,
-	LinkLocation,
-} from '../core/PluginAction';
+import type { ActionServices } from '../core/actionServices';
+import type { FileContext, LinkLocation } from './FileContext';
 import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** Names a recording or a note by how a wikilink resolves it. */

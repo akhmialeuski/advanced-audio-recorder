@@ -11,7 +11,7 @@ import {
 	exportChaptersFromCli,
 	generateChaptersFromCli,
 } from 'src/actions/file/recordingEdits';
-import type { FileContext } from 'src/actions/core/PluginAction';
+import type { FileContext } from 'src/actions/file/FileContext';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { ProfileKindId, createProfile } from 'src/settings/profiles';
 import { recordingVault } from '../helpers/recordingVault';

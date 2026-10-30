@@ -13,7 +13,7 @@ import {
 	namedVaultFile,
 } from 'src/actions/file/recordingTargets';
 import { recordingsInNote } from 'src/obsidian/noteRecordings';
-import type { FileContext } from 'src/actions/core/PluginAction';
+import type { FileContext } from 'src/actions/file/FileContext';
 import { recordingVault } from '../helpers/recordingVault';
 import { createMarkdownView } from '../helpers/createApp';
 import { asMockWorkspace } from '../helpers/obsidianMock';

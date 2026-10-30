@@ -56,7 +56,7 @@ import { registeredMenus } from '../helpers/menuFamilies';
 import { makePopoutWindow } from '../helpers/popoutHarness';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
-import type { ActionServices } from 'src/actions/core/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 const app = makePlayerApp();

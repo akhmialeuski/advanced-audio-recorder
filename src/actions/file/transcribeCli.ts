@@ -44,7 +44,7 @@ import {
 	valueParam,
 	WAIT_FLAG,
 } from '../../obsidian/cliArgs';
-import type { FileContext } from '../core/PluginAction';
+import type { FileContext } from './FileContext';
 import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** The settings a dropdown of the dialog sets for one run. */

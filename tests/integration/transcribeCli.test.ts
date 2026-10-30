@@ -15,7 +15,7 @@ import {
 	transcribeFromCli,
 	transcriptionRun,
 } from 'src/actions/file/transcribeCli';
-import type { FileContext } from 'src/actions/core/PluginAction';
+import type { FileContext } from 'src/actions/file/FileContext';
 import {
 	ProfileKindId,
 	selectedProfileId,

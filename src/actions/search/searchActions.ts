@@ -26,13 +26,34 @@ import {
 	flagParam,
 	valueParam,
 } from '../../obsidian/cliArgs';
+import type { ActionFamily, PluginCommand } from '../core/PluginAction';
 import type {
-	ActionFamily,
 	QueueStatusView,
-	SearchAction,
-	SearchServices,
-} from '../core/PluginAction';
+	TranscriptionQueuePort,
+} from '../core/actionServices';
 import { isRefusal } from '../../utils/refusal';
+
+/** What a vault-wide search action needs. */
+export interface SearchServices {
+	/**
+	 * Indexes the vault's markers if it has not been indexed yet and opens
+	 * the search over them.
+	 */
+	readonly openMarkerSearch: () => Promise<void>;
+	/** Every marker of every recording, from the same index the search reads. */
+	readonly markerHits: () => Promise<readonly MarkerHit[]>;
+	/** The transcription queue, which one of the actions shows and drives. */
+	readonly transcriptionQueue: TranscriptionQueuePort;
+	/** Opens the recording panel in the sidebar, creating it if closed. */
+	readonly openRecordingPanel: () => Promise<void>;
+}
+
+/**
+ * An action that searches the vault. Its context always resolves, because it
+ * is bound to no file and no playback: a marker can be looked for from any
+ * note, which is exactly why it is not a file action.
+ */
+export type SearchAction = PluginCommand<SearchServices>;
 
 /** Needs nothing beyond the plugin being loaded. */
 const always = (): boolean => true;

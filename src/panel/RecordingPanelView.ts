@@ -39,11 +39,8 @@ import {
 	savesInProgress,
 	type RecordingSaveState,
 } from '../recording/RecordingSaveQueue';
-import type {
-	ActionServices,
-	FileAction,
-	FileContext,
-} from '../actions/core/PluginAction';
+import type { ActionServices } from '../actions/core/actionServices';
+import type { FileAction, FileContext } from '../actions/file/FileContext';
 import { SIDECAR_SUFFIX } from '../sidecar/RecordingSidecarStore';
 import { renderActionsIntoMenu } from '../actions/core/renderActionsIntoMenu';
 import { recordingsInNote } from '../obsidian/noteRecordings';

@@ -68,10 +68,8 @@ import {
 	updateRibbonIcon,
 } from './ui/RibbonIcon';
 import { ContextMenu, type MenuFamilies } from './actions/ContextMenu';
-import type {
-	ActionServices,
-	SessionServices,
-} from './actions/core/PluginAction';
+import type { ActionServices } from './actions/core/actionServices';
+import type { SessionServices } from './actions/session/sessionActions';
 import { ActionRegistry } from './actions/core/ActionRegistry';
 import { FILE_ACTIONS, fileActionFamily } from './actions/file/fileActions';
 import { sessionActionFamily } from './actions/session/sessionActions';

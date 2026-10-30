@@ -39,7 +39,8 @@ import {
 	flagParam,
 	valueParam,
 } from '../../obsidian/cliArgs';
-import type { ActionServices, FileContext } from '../core/PluginAction';
+import type { ActionServices } from '../core/actionServices';
+import type { FileContext } from './FileContext';
 import type { TFile } from 'obsidian';
 import { isRefusal } from '../../utils/refusal';
 

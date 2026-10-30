@@ -13,7 +13,7 @@ import { Notice, TFile } from 'obsidian';
 import type { Editor } from 'obsidian';
 import { FILE_ACTIONS } from 'src/actions/file/fileActions';
 import { describeRetryOutcome } from 'src/actions/file/recordingEdits';
-import type { ActionServices } from 'src/actions/core/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
 import { COMMAND_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';

@@ -18,11 +18,11 @@ import { useMobilePlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { COMMAND_IDS } from 'src/constants';
 import { MARKER_KIND } from 'src/markers/markerModel';
+import type { ActionFamily } from 'src/actions/core/PluginAction';
 import type {
-	ActionFamily,
 	RecordingSessionPort,
 	SessionServices,
-} from 'src/actions/core/PluginAction';
+} from 'src/actions/session/sessionActions';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';

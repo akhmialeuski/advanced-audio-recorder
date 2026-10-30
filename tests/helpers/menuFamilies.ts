@@ -7,7 +7,7 @@
  */
 
 import { ActionRegistry } from 'src/actions/core/ActionRegistry';
-import type { ActionServices } from 'src/actions/core/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
 import { fileActionFamily } from 'src/actions/file/fileActions';
 import { folderActionFamily } from 'src/actions/folder/folderActions';
 import { positionActionFamily } from 'src/actions/position/positionActions';

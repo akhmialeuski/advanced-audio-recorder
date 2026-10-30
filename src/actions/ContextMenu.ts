@@ -28,14 +28,11 @@ import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { isAudioFile } from '../utils/audioFile';
 import { editorPositionOfNode } from '../obsidian/editorDomPosition';
 import { hasTimecodeSubpath } from '../player/timecodeLinks';
-import type {
-	ActionServices,
-	FileContext,
-	FolderContext,
-	LinkLocation,
-	PositionContext,
-	TranscriptSelectionContext,
-} from './core/PluginAction';
+import type { ActionServices } from './core/actionServices';
+import type { FileContext, LinkLocation } from './file/FileContext';
+import type { FolderContext } from './folder/folderActions';
+import type { PositionContext } from './position/positionActions';
+import type { TranscriptSelectionContext } from './transcript/transcriptContext';
 import type { ActionRegistry, RegisteredFamily } from './core/ActionRegistry';
 import { transcriptSelectionIn } from './transcript/transcriptActions';
 import { recordingsInNote } from '../obsidian/noteRecordings';

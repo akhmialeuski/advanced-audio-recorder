@@ -13,9 +13,9 @@ import {
 } from 'src/actions/search/searchActions';
 import type {
 	QueueStatusView,
-	SearchServices,
 	TranscriptionQueuePort,
-} from 'src/actions/core/PluginAction';
+} from 'src/actions/core/actionServices';
+import type { SearchServices } from 'src/actions/search/searchActions';
 import { COMMAND_IDS } from 'src/constants';
 import type { MarkerHit } from 'src/markers/MarkerSearchIndex';
 import { at } from '../helpers/assertions';

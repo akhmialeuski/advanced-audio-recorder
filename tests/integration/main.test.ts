@@ -37,7 +37,7 @@ import type { JournalSession } from 'src/recording/SessionJournal';
 import { QueueCoordinator } from 'src/transcription/QueueCoordinator';
 import { QueueRunner } from 'src/transcription/QueueRunner';
 import { ContextMenu } from 'src/actions/ContextMenu';
-import type { ActionServices } from 'src/actions/core/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
 import type { TFolder } from 'obsidian';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 

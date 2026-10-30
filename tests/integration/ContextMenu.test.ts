@@ -9,7 +9,7 @@
  */
 
 import { ContextMenu } from 'src/actions/ContextMenu';
-import type { ActionServices } from 'src/actions/core/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
 import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';

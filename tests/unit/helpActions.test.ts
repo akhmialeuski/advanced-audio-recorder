@@ -6,7 +6,7 @@
 
 import { HELP_ACTIONS, helpActionFamily } from 'src/actions/help/helpActions';
 import { releaseNotesSince } from 'src/release/releaseNotes';
-import type { HelpServices } from 'src/actions/core/PluginAction';
+import type { HelpServices } from 'src/actions/help/helpActions';
 import { at } from '../helpers/assertions';
 
 /** The help services, the dialog a spy. */

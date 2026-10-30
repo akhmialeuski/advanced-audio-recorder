@@ -17,13 +17,23 @@ import {
 	flagParam,
 	valueParam,
 } from '../../obsidian/cliArgs';
-import type {
-	ActionFamily,
-	ActionServices,
-	FolderAction,
-	FolderContext,
-} from '../core/PluginAction';
+import type { ActionFamily, PluginCommand } from '../core/PluginAction';
+import type { ActionServices } from '../core/actionServices';
 import type { Refusable } from '../../utils/refusal';
+
+/** A folder an action targets, with the services it runs against. */
+export interface FolderContext {
+	/** The folder. */
+	readonly folder: TFolder;
+	/** Injected services shared by every action. */
+	readonly services: ActionServices;
+}
+
+/**
+ * An action on a folder. Rendered into a folder's menu, and registered as a
+ * palette command that asks which folder.
+ */
+export type FolderAction = PluginCommand<FolderContext>;
 
 /** Names the folder on the command line. */
 export const FOLDER_PARAM = 'folder';

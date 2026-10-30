@@ -16,7 +16,7 @@ import {
 	infoFromCli,
 	splitFromCli,
 } from 'src/actions/file/audioJobsCli';
-import type { FileContext } from 'src/actions/core/PluginAction';
+import type { FileContext } from 'src/actions/file/FileContext';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { ConversionService } from 'src/recording/ConversionService';
 import { SplitService } from 'src/recording/SplitService';

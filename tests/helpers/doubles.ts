@@ -14,7 +14,7 @@
  * @module tests/helpers/doubles
  */
 
-import type { ActionServices } from 'src/actions/core/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
 
 /**
  * A deliberately partial stand-in, typed as the thing it stands in for.

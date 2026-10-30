@@ -13,11 +13,8 @@ import {
 } from 'src/panel/RecordingPanelView';
 import { COMMAND_IDS, RECORDING_PANEL_VIEW_TYPE } from 'src/constants';
 import { emptyTranscriptSection } from 'src/sidecar/recordingSidecarModel';
-import type {
-	ActionServices,
-	FileAction,
-	FileContext,
-} from 'src/actions/core/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
+import type { FileAction, FileContext } from 'src/actions/file/FileContext';
 import { FAILING_RUNS, internalsOf, partial } from '../helpers/doubles';
 import {
 	asMockApp,

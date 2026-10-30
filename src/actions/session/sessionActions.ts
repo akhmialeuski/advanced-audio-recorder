@@ -8,7 +8,10 @@
  * @module actions/session/sessionActions
  */
 
-import type { CliData } from 'obsidian';
+import type { App, CliData } from 'obsidian';
+import type { AudioRecorderSettings } from '../../settings/settingsSchema';
+import type { RecordingMarkerHandle } from '../../recording/recordingMarkers';
+import type { RecordingSaveState } from '../../recording/RecordingSaveQueue';
 import { COMMAND_IDS, PLAYER_ICONS } from '../../constants';
 import { MARKER_KIND, type MarkerKind } from '../../markers/markerModel';
 import { isDeviceSelectionSupported } from '../../platform/capabilities';
@@ -28,13 +31,74 @@ import {
 	cliText,
 	valueParam,
 } from '../../obsidian/cliArgs';
-import type {
-	ActionFamily,
-	SessionAction,
-	SessionServices,
-} from '../core/PluginAction';
+import type { ActionFamily, PluginCommand } from '../core/PluginAction';
 import { LABEL_PARAM, MARKER_LABEL_PARAMS } from '../position/positionActions';
 import { isRefusal } from '../../utils/refusal';
+
+/**
+ * The slice of the recording session the session actions drive. Declared
+ * as a port rather than the manager itself, so the action definitions
+ * stay independent of the recording subsystem.
+ */
+export interface RecordingSessionPort {
+	/**
+	 * Starts capture, or stops and saves a running session.
+	 * @returns The reason it did not complete, or null once it has
+	 */
+	toggleRecording(): Promise<string | null>;
+	/** Whether a session is live: capturing or paused mid-capture. */
+	isSessionActive(): boolean;
+	/** Pauses a running session or resumes a paused one. */
+	togglePauseResume(): void;
+	/** Whether a marker can be dropped at the live position right now. */
+	canDropMarker(): boolean;
+	/** What the recorder is doing. */
+	getStatus(): RecordingStatus;
+	/** What the background saves of stopped recordings are doing. */
+	getSaveState(): RecordingSaveState;
+	/**
+	 * Drops a marker at the live position and returns the handle that names
+	 * it, or null when no marker can be dropped now.
+	 * @param preselectKind - The kind the marker is created as
+	 */
+	captureMarkerDraft(
+		preselectKind?: MarkerKind,
+	): RecordingMarkerHandle | null;
+}
+
+/**
+ * The slice of quick notes the session actions drive, declared as a port for
+ * the same reason as {@link RecordingSessionPort}.
+ */
+export interface QuickNotePort {
+	/** Starts a dictation, or stops the running one and inserts its text. */
+	toggle(): Promise<void>;
+	/** What the dictation is doing. */
+	getStatus(): RecordingStatus;
+}
+
+/** Everything a recording-session action needs. */
+export interface SessionServices {
+	readonly app: App;
+	readonly getSettings: () => AudioRecorderSettings;
+	/** Persists the (mutated) settings, e.g. after choosing a device. */
+	readonly saveSettings: () => Promise<void>;
+	/** The live recording session the action drives. */
+	readonly recording: RecordingSessionPort;
+	/** Quick notes, which dictate into the note at the cursor. */
+	readonly quickNote: QuickNotePort;
+	/**
+	 * Freezes a marker draft of the given kind at the live position and
+	 * opens the naming modal. Without a kind the modal asks for one.
+	 */
+	readonly openMarkerModal: (kind?: MarkerKind) => void;
+}
+
+/**
+ * An action on the recording session. Registered as a palette command
+ * whose gate reads the live session, so each gets its own hotkey.
+ */
+export type SessionAction = PluginCommand<SessionServices>;
 
 /** Availability gate for the action that starts a session as well as ends it. */
 const always = (): boolean => true;
