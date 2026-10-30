@@ -898,7 +898,10 @@ export class RecordingManager {
 			};
 			// Persist live markers before the hook so they are on disk when a
 			// post-save action (e.g. opening the player) reads the sidecar
-			await this.markers.persistMarkers(saveResult);
+			await this.markers.persistMarkers(
+				this.markers.takeDrafts(),
+				saveResult,
+			);
 			if (saveResult.audioPaths.length > 0) {
 				// Fire-and-forget post-save hook (e.g. transcribe-on-save);
 				// failures must never break the stop sequence
