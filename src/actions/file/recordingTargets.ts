@@ -11,18 +11,25 @@
  * Naming follows the Obsidian command line: `file=` resolves a name the way a
  * wikilink does, `path=` takes the exact vault path, and with neither the
  * active file is used.
- * @module actions/recordingTargets
+ * @module actions/file/recordingTargets
  */
 
 import { getLinkpath, MarkdownView, normalizePath, TFile } from 'obsidian';
 import type { App, CliData, CliFlags, Editor, EditorPosition } from 'obsidian';
-import { isAudioFile } from '../utils/audioFile';
-import { linkAtColumn } from '../obsidian/sourceLinks';
-import { recordingsInNote } from '../obsidian/noteRecordings';
-import { hasTimecodeSubpath } from '../player/timecodeLinks';
-import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
-import type { ActionServices, FileContext, LinkLocation } from './PluginAction';
-import { isRefusal, type Refusable } from '../utils/refusal';
+import { isAudioFile } from '../../utils/audioFile';
+import { linkAtColumn } from '../../obsidian/sourceLinks';
+import { recordingsInNote } from '../../obsidian/noteRecordings';
+import { hasTimecodeSubpath } from '../../player/timecodeLinks';
+import {
+	cliFlag,
+	cliText,
+	flagParam,
+	valueParam,
+} from '../../obsidian/cliArgs';
+import type { ActionServices } from '../core/actionServices';
+import type { FileContext } from './FileContext';
+import { RecordingOrigin, type LinkLocation } from './RecordingOrigin';
+import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** Names a recording or a note by how a wikilink resolves it. */
 export const FILE_PARAM = 'file';
@@ -191,7 +198,7 @@ export function activeRecordings(services: ActionServices): FileContext[] {
 		return [];
 	}
 	if (isAudioFile(active)) {
-		return [{ file: active, services }];
+		return [{ file: active, services, origin: RecordingOrigin.direct() }];
 	}
 	if (active.extension !== 'md') {
 		return [];
@@ -207,12 +214,22 @@ export function activeRecordings(services: ActionServices): FileContext[] {
 				)
 			: null;
 	if (underCursor) {
-		return [{ ...underCursor, note: active, services }];
+		return [
+			{
+				file: underCursor.file,
+				services,
+				origin: RecordingOrigin.atLink(
+					active,
+					underCursor.link,
+					underCursor.atMoment === true,
+				),
+			},
+		];
 	}
 	return recordingsInNote(app, active).map((file) => ({
 		file,
-		note: active,
 		services,
+		origin: RecordingOrigin.inNote(active),
 	}));
 }
 
@@ -276,7 +293,11 @@ function recordingsOfNote(
 		return { refusal: `${note.path} links no recording.` };
 	}
 	const toContexts = (files: readonly TFile[]): Refusable<FileContext[]> => ({
-		value: files.map((file) => ({ file, note, services, noteFixed: true })),
+		value: files.map((file) => ({
+			file,
+			services,
+			origin: RecordingOrigin.named(note),
+		})),
 	});
 	const name = cliText(args, RECORDING_PARAM);
 	if (name !== null) {
@@ -345,14 +366,11 @@ export function namedRecordings(
 		}
 		return {
 			value: [
-				note.value
-					? {
-							file: target,
-							note: note.value,
-							services,
-							noteFixed: true,
-						}
-					: { file: target, services, noteFixed: true },
+				{
+					file: target,
+					services,
+					origin: RecordingOrigin.named(note.value),
+				},
 			],
 		};
 	}

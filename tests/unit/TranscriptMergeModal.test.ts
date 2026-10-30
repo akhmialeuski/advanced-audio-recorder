@@ -10,7 +10,7 @@
  */
 
 import type { TFile } from 'obsidian';
-import { TRANSCRIPT_ACTIONS } from 'src/actions/transcriptActions';
+import { TRANSCRIPT_ACTIONS } from 'src/actions/transcript/transcriptActions';
 import { TranscriptMergeModal } from 'src/ui/TranscriptMergeModal';
 import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import { silenceConsole } from '../helpers/doubles';

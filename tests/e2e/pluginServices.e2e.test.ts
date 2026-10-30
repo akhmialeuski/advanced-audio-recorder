@@ -16,11 +16,11 @@
 
 import type { TFile } from 'obsidian';
 import AudioRecorderPlugin from 'src/main';
-import type { ActionServices } from 'src/actions/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
 import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { AutoChapterService } from 'src/chapters/AutoChapterService';
-import { ContextMenu } from 'src/ui/ContextMenu';
+import { ContextMenu } from 'src/actions/ContextMenu';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { at, defined } from '../helpers/assertions';

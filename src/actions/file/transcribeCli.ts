@@ -11,29 +11,29 @@
  * The answer comes back at once by default, saying the run was started. With
  * `wait` the command answers once the run is over, with where the transcript
  * went - which is what a script that goes on to read the transcript needs.
- * @module actions/transcribeCli
+ * @module actions/file/transcribeCli
  */
 
 import type { CliData, CliFlags } from 'obsidian';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type { AudioRecorderSettings } from '../../settings/settingsSchema';
 import {
 	ProfileKindId,
 	profileIdNamed,
 	setSelectedProfileId,
-} from '../settings/profiles';
+} from '../../settings/profiles';
 import {
 	LLM_TASK_OPTIONS,
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
 	type LabeledOption,
-} from '../settings/labels';
-import { transcriptionRefusal } from '../settings/settingsAttention';
-import { TranscriptDestination } from '../transcription/api';
+} from '../../settings/labels';
+import { transcriptionRefusal } from '../../settings/settingsAttention';
+import { TranscriptDestination } from '../../transcription/api';
 import {
 	TranscriptionModal,
 	type TranscriptionRunOutcome,
-} from '../ui/TranscriptionModal';
+} from '../../ui/TranscriptionModal';
 import {
 	choiceParam,
 	cliChoice,
@@ -43,9 +43,9 @@ import {
 	flagParam,
 	valueParam,
 	WAIT_FLAG,
-} from '../obsidian/cliArgs';
-import type { FileContext } from './PluginAction';
-import { isRefusal, type Refusable } from '../utils/refusal';
+} from '../../obsidian/cliArgs';
+import type { FileContext } from './FileContext';
+import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** The settings a dropdown of the dialog sets for one run. */
 type ChoiceSetting =
@@ -440,7 +440,7 @@ export async function transcribeFromCli(
 			{
 				...services.createTranscriptionModalOptions(),
 				autoStart: true,
-				notePath: context.note?.path ?? '',
+				notePath: context.origin.note?.path ?? '',
 				onRunSettled: resolve,
 			},
 		).open();

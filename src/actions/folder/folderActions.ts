@@ -3,22 +3,37 @@
  * folder that was right-clicked, the palette asks which folder, and the
  * command line takes the folder the way Obsidian's own commands do, as
  * `folder=<path>`.
- * @module actions/folderActions
+ * @module actions/folder/folderActions
  */
 
 import { normalizePath, TFile, TFolder } from 'obsidian';
 import type { App, CliData } from 'obsidian';
-import { COMMAND_IDS } from '../constants';
-import { isAudioFile } from '../utils/audioFile';
-import { transcriptionRefusal } from '../settings/settingsAttention';
-import { cliFlag, cliText, flagParam, valueParam } from '../obsidian/cliArgs';
-import type {
-	ActionFamily,
-	ActionServices,
-	FolderAction,
-	FolderContext,
-} from './PluginAction';
-import type { Refusable } from '../utils/refusal';
+import { COMMAND_IDS } from '../../constants';
+import { isAudioFile } from '../../utils/audioFile';
+import { transcriptionRefusal } from '../../settings/settingsAttention';
+import {
+	cliFlag,
+	cliText,
+	flagParam,
+	valueParam,
+} from '../../obsidian/cliArgs';
+import type { ActionFamily, PluginCommand } from '../core/PluginAction';
+import type { ActionServices } from '../core/actionServices';
+import type { Refusable } from '../../utils/refusal';
+
+/** A folder an action targets, with the services it runs against. */
+export interface FolderContext {
+	/** The folder. */
+	readonly folder: TFolder;
+	/** Injected services shared by every action. */
+	readonly services: ActionServices;
+}
+
+/**
+ * An action on a folder. Rendered into a folder's menu, and registered as a
+ * palette command that asks which folder.
+ */
+export type FolderAction = PluginCommand<FolderContext>;
 
 /** Names the folder on the command line. */
 export const FOLDER_PARAM = 'folder';

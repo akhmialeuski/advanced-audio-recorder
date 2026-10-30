@@ -3,29 +3,26 @@
  * menus render this list, the palette registers it as commands, and the
  * command line answers it, so a feature added here appears in every surface
  * (and becomes hotkey-assignable) automatically.
- * @module actions/fileActions
+ * @module actions/file/fileActions
  */
 
 import { Notice } from 'obsidian';
-import { COMMAND_IDS, PLUGIN_LOG_PREFIX } from '../constants';
-import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
-import { AudioFileInfoModal } from '../ui/AudioFileInfoModal';
-import { ConversionModal } from '../ui/ConversionModal';
-import { SplitModal } from '../ui/SplitModal';
-import { TranscriptionModal } from '../ui/TranscriptionModal';
-import { SpeakerRenameModal } from '../ui/SpeakerRenameModal';
-import { ChapterGenerationModal } from '../ui/ChapterGenerationModal';
-import { ChapterExportModal } from '../ui/ChapterExportModal';
-import type { PlayerMarker } from '../markers/markerModel';
-import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
-import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
-import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
-import type {
-	ActionFamily,
-	ActionServices,
-	FileAction,
-	FileContext,
-} from './PluginAction';
+import { COMMAND_IDS, PLUGIN_LOG_PREFIX } from '../../constants';
+import { getAudioFileInfo } from '../../utils/AudioFileAnalyzer';
+import { AudioFileInfoModal } from '../../ui/AudioFileInfoModal';
+import { ConversionModal } from '../../ui/ConversionModal';
+import { SplitModal } from '../../ui/SplitModal';
+import { TranscriptionModal } from '../../ui/TranscriptionModal';
+import { SpeakerRenameModal } from '../../ui/SpeakerRenameModal';
+import { ChapterGenerationModal } from '../../ui/ChapterGenerationModal';
+import { ChapterExportModal } from '../../ui/ChapterExportModal';
+import type { PlayerMarker } from '../../markers/markerModel';
+import { timecodeLinkBuilder } from '../../obsidian/timecodeRefs';
+import { AudioProcessingModal } from '../../cleanup/AudioProcessingModal';
+import { insertProcessedAudioEmbed } from '../../recording/NoteInserter';
+import type { ActionFamily } from '../core/PluginAction';
+import type { ActionServices } from '../core/actionServices';
+import type { FileAction, FileContext } from './FileContext';
 import {
 	activeRecordings,
 	describeRecording,
@@ -43,7 +40,7 @@ import {
 	splitFromCli,
 } from './audioJobsCli';
 import { TRANSCRIBE_PARAMS, transcribeFromCli } from './transcribeCli';
-import { WAIT_FLAG } from '../obsidian/cliArgs';
+import { WAIT_FLAG } from '../../obsidian/cliArgs';
 import { SPEAKER_PARAMS, speakersFromCli } from './speakersCli';
 import {
 	CHAPTER_PARAMS,
@@ -143,7 +140,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Clean up audio',
 		icon: 'wand-2',
 		isAvailable: always,
-		run: ({ file, services, note, noteFixed }: FileContext): void => {
+		run: ({ file, services, origin }: FileContext): void => {
 			new AudioProcessingModal(
 				services.app,
 				file,
@@ -158,7 +155,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 						outputPath,
 						replaceSource,
 						// Undefined lets the inserter take the active note.
-						note ?? (noteFixed ? null : undefined),
+						origin.noteForDialog(),
 					);
 					services.primeForEnhancement([outputPath]);
 				},
@@ -178,11 +175,12 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Transcribe audio',
 		icon: 'captions',
 		isAvailable: whileTranscribing,
-		run: ({ file, services, note, noteFixed }: FileContext): void => {
+		run: ({ file, services, origin }: FileContext): void => {
+			const note = origin.noteForDialog();
 			new TranscriptionModal(services.app, file, services.getSettings, {
 				...services.createTranscriptionModalOptions(),
 				// Undefined lets the dialog take the active note.
-				notePath: note?.path ?? (noteFixed ? '' : undefined),
+				notePath: note === null ? '' : note?.path,
 			}).open();
 		},
 		cli: {
@@ -200,7 +198,11 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		commandId: COMMAND_IDS.retryFailedParts,
 		title: 'Transcribe the parts that failed',
 		icon: 'refresh-cw',
-		isAvailable: whileTranscribing,
+		// Left out only where the surface has read that no part failed; a
+		// menu, which has read nothing, offers it and says when nothing is
+		// missing.
+		isAvailable: (context: FileContext): boolean =>
+			whileTranscribing(context) && context.failedParts !== 0,
 		run: async ({ file, services }: FileContext): Promise<void> => {
 			new Notice(await retryFailedParts(file, services));
 		},
@@ -292,16 +294,8 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		// the palette in that note - has links there that a plain delete
 		// would leave broken, so the link-aware delete is offered instead.
 		// A moment of the recording offers neither delete.
-		isAvailable: ({
-			note,
-			link,
-			throughLink,
-			atMoment,
-		}: FileContext): boolean =>
-			note === undefined &&
-			link === undefined &&
-			!throughLink &&
-			!atMoment,
+		isAvailable: ({ origin }: FileContext): boolean =>
+			origin.offersPlainDelete(),
 		run: async ({ file, services }: FileContext): Promise<void> => {
 			try {
 				await services.app.fileManager.trashFile(file);
@@ -338,14 +332,8 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		// or a link whose place is not known. The file explorer reaches it
 		// through none of them. A moment of the recording, a timecode link or
 		// a player embedded at one, offers no delete at all.
-		isAvailable: ({
-			note,
-			link,
-			throughLink,
-			atMoment,
-		}: FileContext): boolean =>
-			!atMoment &&
-			(note !== undefined || link !== undefined || throughLink === true),
+		isAvailable: ({ origin }: FileContext): boolean =>
+			origin.offersLinkDelete(),
 		run: async (context: FileContext): Promise<void> => {
 			try {
 				new Notice(await deleteRecordingWithLink(context));
@@ -394,11 +382,11 @@ async function openChapterExport(context: FileContext): Promise<void> {
 		new Notice('This recording has no chapters or markers to export.');
 		return;
 	}
+	const note = context.origin.noteForDialog();
 	const notePath =
-		context.note?.path ??
-		(context.noteFixed
-			? ''
-			: (services.app.workspace.getActiveFile()?.path ?? ''));
+		note === undefined
+			? (services.app.workspace.getActiveFile()?.path ?? '')
+			: (note?.path ?? '');
 	new ChapterExportModal(services.app, {
 		file,
 		markers,

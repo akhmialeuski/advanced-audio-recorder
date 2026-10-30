@@ -8,21 +8,21 @@
  */
 
 import type { Plugin } from 'obsidian';
-import { registerActionCommands } from 'src/actions/registerActionCommands';
-import { FILE_ACTIONS, fileActionFamily } from 'src/actions/fileActions';
-import { sessionActionFamily } from 'src/actions/sessionActions';
-import { playbackActionFamily } from 'src/actions/playbackActions';
+import { registerActionCommands } from 'src/actions/core/registerActionCommands';
+import { FILE_ACTIONS, fileActionFamily } from 'src/actions/file/fileActions';
+import { sessionActionFamily } from 'src/actions/session/sessionActions';
+import { playbackActionFamily } from 'src/actions/playback/playbackActions';
 import { showDeviceSelectionModal } from 'src/ui/DeviceSelectionModal';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import { useMobilePlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { COMMAND_IDS } from 'src/constants';
 import { MARKER_KIND } from 'src/markers/markerModel';
+import type { ActionFamily } from 'src/actions/core/PluginAction';
 import type {
-	ActionFamily,
 	RecordingSessionPort,
 	SessionServices,
-} from 'src/actions/PluginAction';
+} from 'src/actions/session/sessionActions';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';

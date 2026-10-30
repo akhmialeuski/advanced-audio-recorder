@@ -10,7 +10,7 @@
  * Usage:
  * ```ts
  * jest.mock('src/recording/AudioStreamHandler', () =>
- *     require('./helpers/../../mocks/modules/audioStreamHandler'),
+ *     require('../mocks/modules/audioStreamHandler'),
  * );
  * ```
  * @module tests/mocks/modules/audioStreamHandler

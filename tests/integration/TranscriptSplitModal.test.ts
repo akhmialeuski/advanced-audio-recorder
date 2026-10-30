@@ -9,7 +9,7 @@
  */
 
 import type { TFile } from 'obsidian';
-import { transcriptSelectionIn } from 'src/actions/transcriptActions';
+import { transcriptSelectionIn } from 'src/actions/transcript/transcriptActions';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { TranscriptSplitModal } from 'src/ui/TranscriptSplitModal';
 import { formatLineTime } from 'src/speakers/transcriptRows';

@@ -8,7 +8,7 @@
 import {
 	PLAYBACK_ACTIONS,
 	playbackActionFamily,
-} from 'src/actions/playbackActions';
+} from 'src/actions/playback/playbackActions';
 import { COMMAND_IDS } from 'src/constants';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { makePlaybackState } from '../helpers/playbackHarness';

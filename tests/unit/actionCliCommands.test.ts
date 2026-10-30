@@ -11,12 +11,12 @@ import {
 	actionCliCommands,
 	actionCliParams,
 	DIALOG_FLAG,
-} from 'src/actions/actionCliCommands';
+} from 'src/actions/core/actionCliCommands';
 import type {
 	ActionCli,
 	ActionFamily,
 	PluginCommand,
-} from 'src/actions/PluginAction';
+} from 'src/actions/core/PluginAction';
 import { at } from '../helpers/assertions';
 import { silenceConsole } from '../helpers/doubles';
 

@@ -4,11 +4,11 @@
  * file, where the command line names the lines by number. Both refuse to
  * write over lines that no longer read as they did when the edit was
  * prepared, so an edit can never land on lines that moved under it.
- * @module actions/transcriptLines
+ * @module actions/transcript/transcriptLines
  */
 
 import type { App, Editor, TFile } from 'obsidian';
-import type { TranscriptLines } from './PluginAction';
+import type { TranscriptLines } from './transcriptContext';
 
 /**
  * The lines of an open editor. Written through the editor, so an edit made

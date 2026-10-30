@@ -6,13 +6,13 @@
  * @module tests/helpers/menuFamilies
  */
 
-import { ActionRegistry } from 'src/actions/ActionRegistry';
-import type { ActionServices } from 'src/actions/PluginAction';
-import { fileActionFamily } from 'src/actions/fileActions';
-import { folderActionFamily } from 'src/actions/folderActions';
-import { positionActionFamily } from 'src/actions/positionActions';
-import { transcriptActionFamily } from 'src/actions/transcriptActions';
-import type { MenuFamilies } from 'src/ui/ContextMenu';
+import { ActionRegistry } from 'src/actions/core/ActionRegistry';
+import type { ActionServices } from 'src/actions/core/actionServices';
+import { fileActionFamily } from 'src/actions/file/fileActions';
+import { folderActionFamily } from 'src/actions/folder/folderActions';
+import { positionActionFamily } from 'src/actions/position/positionActions';
+import { transcriptActionFamily } from 'src/actions/transcript/transcriptActions';
+import type { MenuFamilies } from 'src/actions/ContextMenu';
 import { mockPluginHost } from './obsidianMock';
 
 /** The registry, and the families the menus render. */

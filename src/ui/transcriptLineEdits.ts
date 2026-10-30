@@ -13,7 +13,7 @@
  */
 
 import type { App } from 'obsidian';
-import type { TranscriptSelectionContext } from '../actions/PluginAction';
+import type { TranscriptSelectionContext } from '../actions/transcript/transcriptContext';
 import { lineTimecodeRef, timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import {
 	applyTranscriptEdit,
