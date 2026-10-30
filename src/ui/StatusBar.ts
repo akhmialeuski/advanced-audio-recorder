@@ -574,8 +574,8 @@ export function renderRecordingSaveStatusBar(
 	statusBarItem: HTMLElement | null,
 	saves: RecordingSaveState,
 ): void {
-	const waiting =
-		saves.waiting > 0 ? ` (${String(saves.waiting)} more waiting)` : '';
+	const count = saves.waiting.length;
+	const waiting = count > 0 ? ` (${String(count)} more waiting)` : '';
 	updateStatusBar(
 		statusBarItem,
 		saves.status,

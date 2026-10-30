@@ -119,20 +119,41 @@ function createRig(): Rig {
 	};
 }
 
+/** When a session started and how long it ran, on the wall clock. */
+interface SessionClock {
+	readonly startedAt: number;
+	readonly seconds: number;
+}
+
 /**
  * Records one session of a single chunk and stops it, which hands its save
  * to the queue.
  * @param rig - The rig recording it
  * @param byte - The chunk's single byte, telling sessions apart
+ * @param clock - What the wall clock reads at the start and the stop. Held
+ *   only until the stop answers, because waitFor times out on that clock.
  * @returns What the stop answered once the save was queued
  */
-async function recordAndStop(rig: Rig, byte: number): Promise<string | null> {
+async function recordAndStop(
+	rig: Rig,
+	byte: number,
+	clock?: SessionClock,
+): Promise<string | null> {
+	const now =
+		clock && jest.spyOn(Date, 'now').mockReturnValue(clock.startedAt);
 	expect(await rig.manager.startRecording()).toBeNull();
 	rig.recorder.ondataavailable?.({
 		data: new Blob([new Uint8Array([byte])], { type: 'audio/webm' }),
 	} as BlobEvent);
 	await flushMicrotasks();
-	return rig.manager.stopRecording();
+	if (now && clock) {
+		now.mockReturnValue(clock.startedAt + clock.seconds * 1000);
+	}
+	try {
+		return await rig.manager.stopRecording();
+	} finally {
+		now?.mockRestore();
+	}
 }
 
 /**
@@ -215,16 +236,25 @@ describe('a recording saved in the background', () => {
 
 	it('saves two recordings stopped in a row one after the other', async () => {
 		const rig = createRig();
+		const first = { startedAt: Date.UTC(2026, 9, 30, 14, 5), seconds: 90 };
+		const second = {
+			startedAt: Date.UTC(2026, 9, 30, 14, 30),
+			seconds: 45,
+		};
 
-		await recordAndStop(rig, 1);
+		await recordAndStop(rig, 1, first);
 		await untilWrites(rig, 1);
-		await recordAndStop(rig, 2);
+		await recordAndStop(rig, 2, second);
 		await flushMicrotasks(20);
 
-		// The second save waits behind the first and says so, and has not
-		// started a write of its own.
+		// The second save waits behind the first and says which recording
+		// each one is, and has not started a write of its own.
 		expect(rig.writes).toHaveLength(1);
-		expect(rig.manager.getSaveState().waiting).toBe(1);
+		expect(rig.manager.getSaveState()).toMatchObject({
+			status: RecordingStatus.Saving,
+			saving: { startedAt: first.startedAt, durationSeconds: 90 },
+			waiting: [{ startedAt: second.startedAt, durationSeconds: 45 }],
+		});
 
 		rig.releaseWrite();
 		await untilWrites(rig, 2);
@@ -242,7 +272,9 @@ describe('a recording saved in the background', () => {
 		expect(rig.onSaveChange).toHaveBeenCalledWith(
 			expect.objectContaining({
 				status: RecordingStatus.Saving,
-				waiting: 1,
+				waiting: [
+					expect.objectContaining({ startedAt: second.startedAt }),
+				],
 			}),
 		);
 		expect(rig.manager.getSaveState().status).toBe(RecordingStatus.Idle);
@@ -302,7 +334,7 @@ describe('a recording saved in the background', () => {
 		} as BlobEvent);
 		await flushMicrotasks();
 		const waiting = rig.manager.stopRecording({ untilSaved: true });
-		await waitFor(() => rig.manager.getSaveState().waiting === 1, {
+		await waitFor(() => rig.manager.getSaveState().waiting.length === 1, {
 			message: 'the second save to be queued',
 		});
 

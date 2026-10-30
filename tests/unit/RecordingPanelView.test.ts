@@ -29,6 +29,7 @@ import { allEls, el, maybeEl } from '../helpers/dom';
 import { at } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
 import { RECORDING_PANEL } from '../helpers/selectors';
+import { IDLE_SAVE_STATE, savingState } from '../helpers/saveStateFixtures';
 
 /** A file action double that records the file it ran on. */
 function fileAction(
@@ -121,11 +122,10 @@ async function createSut(
 		recording: {
 			toggleRecording,
 			getStatus: () => options.status ?? 'idle',
-			getSaveState: () => ({
-				status: options.saves ? 'saving' : 'idle',
-				progress: undefined,
-				waiting: Math.max((options.saves ?? 0) - 1, 0),
-			}),
+			getSaveState: () =>
+				options.saves
+					? savingState({ waiting: options.saves - 1 })
+					: IDLE_SAVE_STATE,
 		},
 		readDuration: options.readDuration ?? jest.fn().mockResolvedValue(95),
 		openSettings: jest.fn(),

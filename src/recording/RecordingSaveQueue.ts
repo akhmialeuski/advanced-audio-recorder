@@ -44,10 +44,23 @@ export interface RecordingSnapshot {
 	readonly insertionContext: InsertionContext | null;
 	/** The markers dropped during the session. */
 	readonly markerDrafts: readonly RecordingMarkerDraft[];
+	/** When its capture started, in epoch milliseconds. */
+	readonly startedAt: number;
 	/** Active recorded time, paused spans excluded. */
 	readonly durationSeconds: number;
 	/** True when capture ended because its last input went away. */
 	readonly interrupted: boolean;
+}
+
+/**
+ * A stopped recording in the queue, by what tells it apart from the others
+ * before its file exists: the file is named only once its save runs.
+ */
+export interface QueuedRecording {
+	/** When its capture started, in epoch milliseconds. */
+	readonly startedAt: number;
+	/** Active recorded time, paused spans excluded. */
+	readonly durationSeconds: number;
 }
 
 /** What the save queue is doing, for the surfaces that show it. */
@@ -59,15 +72,18 @@ export interface RecordingSaveState {
 	readonly status: RecordingStatus;
 	/** Progress of the running save, once it has reported any. */
 	readonly progress: SaveProgress | undefined;
-	/** Saves waiting behind the running one. */
-	readonly waiting: number;
+	/** The recording being saved, while a save runs. */
+	readonly saving: QueuedRecording | undefined;
+	/** The recordings waiting behind it, in the order they will be saved. */
+	readonly waiting: readonly QueuedRecording[];
 }
 
 /** The state of a queue with nothing to save. */
 export const IDLE_SAVE_STATE: RecordingSaveState = Object.freeze({
 	status: RecordingStatus.Idle,
 	progress: undefined,
-	waiting: 0,
+	saving: undefined,
+	waiting: Object.freeze([]),
 });
 
 /**
@@ -76,7 +92,9 @@ export const IDLE_SAVE_STATE: RecordingSaveState = Object.freeze({
  * @returns The running save, if any, and every one waiting behind it
  */
 export function savesInProgress(state: RecordingSaveState): number {
-	return (state.status === RecordingStatus.Idle ? 0 : 1) + state.waiting;
+	return (
+		(state.status === RecordingStatus.Idle ? 0 : 1) + state.waiting.length
+	);
 }
 
 /** The answer of a save that never ran because the plugin was unloaded. */
@@ -88,6 +106,7 @@ export const ABANDONED_SAVE_MESSAGE =
 interface RunningSave {
 	readonly status: RecordingStatus;
 	readonly progress: SaveProgress | undefined;
+	readonly recording: QueuedRecording;
 }
 
 /** What one save is given, besides its snapshot. */
@@ -111,7 +130,8 @@ export interface RecordingSaveQueueDeps {
 export class RecordingSaveQueue {
 	/** The end of the chain every save waits behind. Never rejects. */
 	private tail: Promise<void> = Promise.resolve();
-	private waiting = 0;
+	/** The saves queued and not started, oldest first, as the chain runs them. */
+	private readonly waiting: QueuedRecording[] = [];
 	private running: RunningSave | null = null;
 	private abandoned = false;
 	private settings: AudioRecorderSettings;
@@ -134,12 +154,13 @@ export class RecordingSaveQueue {
 
 	/** What the queue is doing right now. */
 	getState(): RecordingSaveState {
-		return this.running === null && this.waiting === 0
+		return this.running === null && this.waiting.length === 0
 			? IDLE_SAVE_STATE
 			: {
 					status: this.running?.status ?? RecordingStatus.Idle,
 					progress: this.running?.progress,
-					waiting: this.waiting,
+					saving: this.running?.recording,
+					waiting: [...this.waiting],
 				};
 	}
 
@@ -150,9 +171,13 @@ export class RecordingSaveQueue {
 	 *   null once its files are written
 	 */
 	enqueue(snapshot: RecordingSnapshot): Promise<string | null> {
-		this.waiting += 1;
+		const recording: QueuedRecording = {
+			startedAt: snapshot.startedAt,
+			durationSeconds: snapshot.durationSeconds,
+		};
+		this.waiting.push(recording);
 		this.report();
-		const save = this.tail.then(() => this.run(snapshot));
+		const save = this.tail.then(() => this.run(snapshot, recording));
 		this.tail = save.then(() => undefined);
 		return save;
 	}
@@ -174,10 +199,14 @@ export class RecordingSaveQueue {
 	 * cannot change the format, the journal entry or the progress this save
 	 * reads.
 	 * @param snapshot - The session to save
+	 * @param recording - How the queue names it to the surfaces
 	 * @returns The reason it failed, or null once it is saved
 	 */
-	private async run(snapshot: RecordingSnapshot): Promise<string | null> {
-		this.waiting -= 1;
+	private async run(
+		snapshot: RecordingSnapshot,
+		recording: QueuedRecording,
+	): Promise<string | null> {
+		this.waiting.shift();
 		if (this.abandoned) {
 			return ABANDONED_SAVE_MESSAGE;
 		}
@@ -185,7 +214,7 @@ export class RecordingSaveQueue {
 		const status = snapshot.interrupted
 			? RecordingStatus.Interrupted
 			: RecordingStatus.Saving;
-		this.running = { status, progress: undefined };
+		this.running = { status, progress: undefined, recording };
 		const writeQueue = new TrackWriteQueue(app, this.settings, journal);
 		writeQueue.beginSession(snapshot.session);
 		const finalizer = new RecordingFinalizer(
@@ -194,7 +223,7 @@ export class RecordingSaveQueue {
 			writeQueue,
 			debugLogger,
 			(progress) => {
-				this.running = { status, progress };
+				this.running = { status, progress, recording };
 				this.report();
 			},
 			journal,

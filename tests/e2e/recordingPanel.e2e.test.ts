@@ -28,6 +28,7 @@ import { RecordingPanelView } from 'src/panel/RecordingPanelView';
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { RecordingStatus } from 'src/types';
 import { at } from '../helpers/assertions';
+import { savingState } from '../helpers/saveStateFixtures';
 import type { RecorderDouble } from '../mocks/modules/recordingManager';
 import { probeDurationSeconds } from 'src/utils/AudioFileAnalyzer';
 
@@ -231,11 +232,7 @@ describe('the recording panel wired to the plugin', () => {
 		asMockWorkspace(app.workspace).getLeavesOfType.mockReturnValue([
 			view.leaf,
 		]);
-		const saving = {
-			status: RecordingStatus.Saving,
-			progress: undefined,
-			waiting: 0,
-		};
+		const saving = savingState();
 		recorder.getSaveState.mockReturnValue(saving);
 
 		onSaveChange?.(saving);
