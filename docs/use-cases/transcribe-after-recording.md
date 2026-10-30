@@ -56,7 +56,7 @@ Turn on **Enable transcription**. This reveals the rest of the transcription set
 
 ### 2. Turn on "Transcribe after recording"
 
-Switch on **Transcribe after recording** (off by default). This is the toggle that arms the automatic workflow. With it on, the plugin opens the transcription dialog and starts a run the instant a recording is saved.
+Switch on **Transcribe after recording** (off by default). This is the toggle that arms the automatic workflow. With it on, the plugin opens the transcription dialog and starts a run the instant a recording is saved. A recording is [saved in the background](../recording.md#recording-again-while-the-last-one-saves), so its save can finish while the next recording is already running. The run then starts minimized instead, so no dialog opens over the live recording, and its progress shows in the status bar once nothing is being recorded or saved. Clicking the progress there opens the dialog, and a run that fails opens it on its own.
 
 ### 3. Set your defaults
 
@@ -163,7 +163,7 @@ Both open the same **Transcribe audio** dialog - the difference is that you pres
 
 ## Troubleshooting
 
-- **The dialog does not appear after recording.** Confirm both **Enable transcription** and **Transcribe after recording** are on under **Settings > Advanced Audio Recorder > Transcription**. Both are required; **Transcribe after recording** is off by default.
+- **The dialog does not appear after recording.** Confirm both **Enable transcription** and **Transcribe after recording** are on under **Settings > Advanced Audio Recorder > Transcription**. Both are required; **Transcribe after recording** is off by default. A save that finished while another recording was running starts its run minimized, and its progress shows in the status bar once nothing is being recorded or saved.
 - **`Transcription failed: …`** - the dialog shows the cause. The most common reasons are a missing or invalid API key, the wrong base URL, or a file larger than the engine's limit. Verify the engine works with a manual run, then re-check the relevant setup guide for your engine in the [Prerequisites](#prerequisites) table.
 - **Only one of several files got a transcript.** That is expected - see [Important: only the first saved file is transcribed](#important-only-the-first-saved-file-is-transcribed). Transcribe the rest manually.
 - **The transcript went to a file instead of the note.** The recording was saved while no editable Markdown note was active, so a note-only destination was downgraded to a sidecar file to avoid losing the transcript. Record with a note open, or set a destination that always writes a file.

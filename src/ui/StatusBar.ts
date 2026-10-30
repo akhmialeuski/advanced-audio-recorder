@@ -7,6 +7,7 @@ import { setIcon, setTooltip } from 'obsidian';
 import { PLAYER_ICONS, PLAYER_SKIP_SECONDS } from '../constants';
 import { MARKER_KIND } from '../markers/markerModel';
 import type { PlaybackControlsState } from '../player/playbackControls';
+import type { RecordingSaveState } from '../recording/RecordingSaveQueue';
 import { RecordingStatus } from '../types';
 import type { SaveProgress, RecordingControls } from '../types';
 import { formatTimecode } from '../utils/TimeUtils';
@@ -560,6 +561,29 @@ function updatePlaybackControls(
  */
 function renderSavingState(el: HTMLElement, saveProgress?: SaveProgress): void {
 	renderProgressState(el, saveProgress, 'is-saving', 'Saving...');
+}
+
+/**
+ * Renders the background save of a stopped recording: the progress an
+ * ordinary or interrupted save shows, and how many stopped recordings wait
+ * behind it.
+ * @param statusBarItem - The status bar HTML element
+ * @param saves - What the background saves are doing
+ */
+export function renderRecordingSaveStatusBar(
+	statusBarItem: HTMLElement | null,
+	saves: RecordingSaveState,
+): void {
+	const waiting =
+		saves.waiting > 0 ? ` (${String(saves.waiting)} more waiting)` : '';
+	updateStatusBar(
+		statusBarItem,
+		saves.status,
+		saves.progress && {
+			...saves.progress,
+			description: `${saves.progress.description}${waiting}`,
+		},
+	);
 }
 
 /**

@@ -446,6 +446,8 @@ export interface RecordingSut {
 	app: App;
 	settings: AudioRecorderSettings;
 	onStatusChange: jest.Mock;
+	/** Every state the background saves reported, in order. */
+	onSaveChange: jest.Mock;
 	markers: RecordingSidecarStore;
 	/** Everything written to the marker store, in order. */
 	markerWrites: MarkerWrite[];
@@ -482,6 +484,7 @@ export const createRecordingSut = (
 		...overrides.settings,
 	};
 	const onStatusChange = overrides.onStatusChange ?? jest.fn();
+	const onSaveChange = jest.fn();
 	const markerStore = overrides.markerStore ?? makeFakeMarkerStore();
 	return {
 		manager: new RecordingManager(
@@ -489,10 +492,16 @@ export const createRecordingSut = (
 			settings,
 			onStatusChange,
 			markerStore.store,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			onSaveChange,
 		),
 		app,
 		settings,
 		onStatusChange,
+		onSaveChange,
 		markers: markerStore.store,
 		markerWrites: markerStore.writes,
 		markerUpdate: markerStore.update,
@@ -598,7 +607,7 @@ export const recordOneChunk = async (
 	} as BlobEvent);
 	// The Blob read the write chain performs settles a microtask later.
 	await Promise.resolve();
-	await manager.stopRecording();
+	await manager.stopRecording({ untilSaved: true });
 };
 
 /**

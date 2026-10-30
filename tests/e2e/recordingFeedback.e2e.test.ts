@@ -56,10 +56,20 @@ async function loadRecording(): Promise<AudioRecorderPlugin> {
 }
 
 /** The status-change callback the plugin handed the recording manager. */
-function reportStatus(status: RecordingStatus, progress?: SaveProgress): void {
+function reportStatus(status: RecordingStatus): void {
 	const onStatusChange = at(jest.mocked(RecordingManager).mock.calls, 0)[2];
 	recorder().getStatus.mockReturnValue(status);
-	onStatusChange(status, progress);
+	onStatusChange(status);
+}
+
+/**
+ * The save-change callback the plugin handed the recording manager.
+ * @param progress - The running save's progress
+ * @param waiting - How many saves wait behind it
+ */
+function reportSave(progress: SaveProgress, waiting = 0): void {
+	const onSaveChange = at(jest.mocked(RecordingManager).mock.calls, 0)[8];
+	onSaveChange?.({ status: RecordingStatus.Saving, progress, waiting });
 }
 
 /** The status bar element the plugin renders into. */
@@ -192,15 +202,40 @@ describe('the status bar during a recording', () => {
 
 	it('shows the save progress once the recording stops', async () => {
 		const plugin = await loadRecording();
+		reportStatus(RecordingStatus.Recording);
 
-		reportStatus(RecordingStatus.Saving, {
-			percent: 40,
-			description: 'Assembling audio...',
-		});
+		reportStatus(RecordingStatus.Idle);
+		reportSave({ percent: 40, description: 'Assembling audio...' }, 1);
 
 		const bar = statusBar(plugin);
-		expect(bar.textContent).toContain('Assembling audio...');
+		expect(bar.textContent).toContain(
+			'Assembling audio... (1 more waiting)',
+		);
 		expect(maybeEl(bar, STATUS.saveProgress)).not.toBeNull();
+	});
+
+	// The save of the last meeting runs while the next one records, and the
+	// recording is what the user is doing now.
+	it('keeps the live recording in front of a save running behind it', async () => {
+		const plugin = await loadRecording();
+		reportStatus(RecordingStatus.Recording);
+
+		reportSave({ percent: 40, description: 'Assembling audio...' });
+
+		const bar = statusBar(plugin);
+		expect(bar.textContent).not.toContain('Assembling audio...');
+		expect(maybeEl(bar, STATUS.saveProgress)).toBeNull();
+	});
+
+	// The save already running is left to finish on unload, and its progress
+	// must not reach back into a status bar the plugin has torn down.
+	it('shows nothing of a save that reports after the plugin unloaded', async () => {
+		const plugin = await loadRecording();
+		plugin.onunload();
+
+		reportSave({ percent: 40, description: 'Assembling audio...' });
+
+		expect(maybeEl(statusBar(plugin), STATUS.saveProgress)).toBeNull();
 	});
 
 	it('clears itself when the recording is done', async () => {

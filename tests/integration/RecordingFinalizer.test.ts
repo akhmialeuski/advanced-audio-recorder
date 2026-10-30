@@ -144,6 +144,23 @@ describe('RecordingFinalizer', () => {
 
 			expect(onProgress).toHaveBeenCalledTimes(2);
 		});
+
+		// The parts a rotation writes while the session records are no save
+		// anybody waits on, so their finalizer is built with nobody to tell.
+		it('reports to nobody when built without a progress sink', () => {
+			const silent = new RecordingFinalizer(
+				mockApp,
+				mockSettings,
+				queue,
+				new DebugLogger(mockSettings),
+				undefined,
+			);
+
+			expect(() => {
+				silent.reportProgress(50, 'Encoding...');
+			}).not.toThrow();
+			expect(onProgress).toHaveBeenCalledTimes(0);
+		});
 	});
 
 	describe('finalizeSegmentsToFile', () => {

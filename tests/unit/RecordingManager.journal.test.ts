@@ -120,7 +120,7 @@ describe('RecordingManager', () => {
 				}),
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockJournal.endSession).toHaveBeenCalledWith(
 				startedSessionId(),
@@ -159,7 +159,7 @@ describe('RecordingManager', () => {
 				expect.objectContaining({ captureMode: 'rotation' }),
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockJournal.endSession).toHaveBeenCalled();
 		});
@@ -197,7 +197,7 @@ describe('RecordingManager', () => {
 				expect.stringMatching(/-part1\.webm\.tmp$/),
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('keeps the journal when saving fails', async () => {
@@ -216,7 +216,7 @@ describe('RecordingManager', () => {
 			} as BlobEvent);
 			await tick();
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockJournal.endSession).not.toHaveBeenCalled();
 		});

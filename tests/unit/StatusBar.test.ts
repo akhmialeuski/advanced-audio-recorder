@@ -12,6 +12,7 @@ import {
 	updateStatusBar,
 	initializeStatusBar,
 	renderPlaybackStatusBar,
+	renderRecordingSaveStatusBar,
 	renderTranscriptionStatusBar,
 	renderQuickNoteStatusBar,
 	updateRecordingLiveStats,
@@ -259,6 +260,46 @@ describe('saving progress', () => {
 		expect(maybeEl(statusBarItem, STATUS.saveProgress)).toBeNull();
 		expect(statusBarItem.classList.contains('is-saving')).toBe(false);
 		expect(statusBarItem.textContent).toContain(text);
+	});
+});
+
+// The save of a stopped recording runs in the background, and others can
+// wait behind it, so the stage it is at says how many.
+describe('a save running in the background', () => {
+	it.each([
+		{
+			name: 'counts the saves waiting behind it',
+			waiting: 2,
+			text: 'Assembling audio... (2 more waiting)',
+		},
+		{
+			name: 'shows the stage alone when nothing waits',
+			waiting: 0,
+			text: 'Assembling audio...',
+		},
+	])('$name', ({ waiting, text }) => {
+		const statusBarItem = createStatusBar();
+
+		renderRecordingSaveStatusBar(statusBarItem, {
+			status: RecordingStatus.Saving,
+			progress: { percent: 40, description: 'Assembling audio...' },
+			waiting,
+		});
+
+		expect(el(statusBarItem, 'span').textContent).toBe(text);
+		expect(shownPercent(statusBarItem)).toBe('40');
+	});
+
+	it('says "Saving..." before the save reports its first stage', () => {
+		const statusBarItem = createStatusBar();
+
+		renderRecordingSaveStatusBar(statusBarItem, {
+			status: RecordingStatus.Saving,
+			progress: undefined,
+			waiting: 1,
+		});
+
+		expect(el(statusBarItem, 'span').textContent).toBe('Saving...');
 	});
 });
 

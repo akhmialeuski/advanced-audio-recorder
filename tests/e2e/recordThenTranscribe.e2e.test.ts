@@ -20,6 +20,7 @@ import { asMockVault } from '../helpers/obsidianMock';
 import { noticeMessages } from '../mocks/obsidian';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import { RecordingManager } from 'src/recording/RecordingManager';
+import type { RecorderDouble } from '../mocks/modules/recordingManager';
 import { loadPlugin } from '../helpers/pluginHarness';
 
 jest.mock('src/ui/TranscriptionModal', () => ({
@@ -122,6 +123,32 @@ describe('a recording that should be transcribed', () => {
 			.value as { open: jest.Mock };
 		expect(dialog.open).toHaveBeenCalled();
 	});
+
+	// The save of the last meeting finishes while the next one records, and a
+	// dialog opened over that session would take its focus.
+	it.each([
+		{ capturing: true, minimized: true },
+		{ capturing: false, minimized: false },
+	])(
+		'starts the dialog minimized when a capture is live: $capturing',
+		async ({ capturing, minimized }) => {
+			await loadWithRecording(transcribingSettings());
+			const recorder = at(jest.mocked(RecordingManager).mock.results, 0)
+				.value as RecorderDouble;
+			recorder.isSessionActive.mockReturnValue(capturing);
+
+			reportSaved();
+
+			const options = at(
+				jest.mocked(TranscriptionModal).mock.calls,
+				0,
+			)[3];
+			expect(options).toMatchObject({
+				autoStart: true,
+				startMinimized: minimized,
+			});
+		},
+	);
 
 	it('transcribes the first file of a multi-track recording', async () => {
 		await loadWithRecording(transcribingSettings());

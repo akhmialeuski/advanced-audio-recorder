@@ -101,7 +101,7 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/-part1\.webm\.tmp$/),
@@ -158,7 +158,7 @@ describe('RecordingManager', () => {
 			expect(mockMediaRecorder.stop).toHaveBeenCalled();
 			expect(global.MediaRecorder).toHaveBeenCalledTimes(2);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('buffers multiple chunks into a single segment file and clean up after finalization', async () => {
@@ -185,7 +185,7 @@ describe('RecordingManager', () => {
 			}
 			await Promise.resolve();
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// 1 combined segment file + 1 final file (instead of 3 + 1 before buffering)
 			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
@@ -222,7 +222,7 @@ describe('RecordingManager', () => {
 			pcmChunkCallback()(pcmData);
 
 			await Promise.resolve();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// Should have created WAV file via mergeAudioTracks path
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
@@ -293,7 +293,7 @@ describe('RecordingManager', () => {
 				expect.any(ArrayBuffer),
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/\.webm$/),
@@ -338,7 +338,7 @@ describe('RecordingManager', () => {
 			await expect(target.pendingWrite).resolves.toBeUndefined();
 			expect(getWriteFailureNotices()).toHaveLength(2);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('contains PCM flush failures without dropping later chunks', async () => {
@@ -389,7 +389,7 @@ describe('RecordingManager', () => {
 				expect.any(ArrayBuffer),
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 	});
@@ -518,7 +518,7 @@ describe('RecordingManager', () => {
 			expect(target.partIndex).toBe(1);
 			expect(target.partPaths).toHaveLength(1);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// The 708,000-byte carry becomes the residual second part
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
@@ -708,7 +708,7 @@ describe('RecordingManager', () => {
 				expect.stringMatching(/-part1\.webm$/),
 				expect.anything(),
 			);
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('keeps the part file when segment cleanup fails', async () => {
@@ -757,7 +757,7 @@ describe('RecordingManager', () => {
 				...mockSettings,
 				filePrefix: 'changed',
 			});
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			const residualCall = (
 				mockApp.vault.createBinary as jest.Mock
@@ -801,7 +801,7 @@ describe('RecordingManager', () => {
 			jest.setSystemTime(70_000);
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/-part2\.webm$/),
@@ -931,7 +931,7 @@ describe('RecordingManager', () => {
 			(mockApp.vault.adapter.writeBinary as jest.Mock).mockResolvedValue(
 				undefined,
 			);
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/\.wav$/),
@@ -1128,8 +1128,8 @@ describe('RecordingManager', () => {
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			// Second concurrent call must return without a second save
-			const firstStop = manager.stopRecording();
-			const secondStop = manager.stopRecording();
+			const firstStop = manager.stopRecording({ untilSaved: true });
+			const secondStop = manager.stopRecording({ untilSaved: true });
 			await Promise.all([firstStop, secondStop]);
 
 			const stopNotices = (Notice as jest.Mock).mock.calls.filter(
@@ -1173,7 +1173,7 @@ describe('RecordingManager', () => {
 			// The rotation already stopped the recorders; the stop call
 			// in this window must not throw or stop them a second time
 			mockMediaRecorder.state = 'inactive';
-			const stopPromise = manager.stopRecording();
+			const stopPromise = manager.stopRecording({ untilSaved: true });
 			releaseFlush?.();
 			await stopPromise;
 

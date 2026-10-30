@@ -131,7 +131,7 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(0);
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 	});
 
 	it('bridges the stream and records the mono output in a mono mode', async () => {
@@ -149,7 +149,7 @@ describe('RecordingManager mono channel wiring', () => {
 		const recorderCtor = jest.mocked(global.MediaRecorder);
 		expect(at(at(recorderCtor.mock.calls, 0), 0)).toBe(bridge.monoStream);
 
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 		expect(bridge.release).toHaveBeenCalled();
 	});
 
@@ -206,7 +206,7 @@ describe('RecordingManager mono channel wiring', () => {
 		await starting;
 
 		expect(recorderCtor).toHaveBeenCalledTimes(2);
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 	});
 
 	it('applies each track its own channel mode in multi-track sessions', async () => {
@@ -218,7 +218,7 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(at(createdBridges, 1).stream).toBe(streamB);
 		expect(at(createdBridges, 1).mode).toBe('mono-mix');
 
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 		expect(at(createdBridges, 0).release).toHaveBeenCalledTimes(1);
 		expect(at(createdBridges, 1).release).toHaveBeenCalledTimes(1);
 	});
@@ -239,7 +239,7 @@ describe('RecordingManager mono channel wiring', () => {
 		// The session keeps recording what is still live, so the track that
 		// kept its input keeps its bridge.
 		expect(at(createdBridges, 0).release).toHaveBeenCalledTimes(0);
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 	});
 
 	it('does not reread a changed track mode after stream acquisition', async () => {
@@ -281,7 +281,7 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(createdBridges).toHaveLength(1);
 		expect(at(createdBridges, 0).stream).toBe(stream);
 		expect(at(createdBridges, 0).mode).toBe('mono-left');
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 	});
 
 	it('bridges only the mono tracks of a mixed multi-track session', async () => {
@@ -313,7 +313,7 @@ describe('RecordingManager mono channel wiring', () => {
 		);
 		expect(at(at(recorderCtor.mock.calls, 1), 0)).toBe(streamB);
 
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 	});
 
 	it('ignores the global channel setting for multi-track sessions', async () => {
@@ -333,7 +333,7 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(0);
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 	});
 
 	it('releases already-started bridges when a later bridge fails to start', async () => {
@@ -373,7 +373,7 @@ describe('RecordingManager mono channel wiring', () => {
 			'mono-left',
 		);
 
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 	});
 
 	it('passes per-track modes to the PCM recorders in multi-track WAV sessions', async () => {
@@ -402,7 +402,7 @@ describe('RecordingManager mono channel wiring', () => {
 			'source',
 		);
 
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 	});
 
 	it('normalizes an invalid stored channel mode to source', async () => {
@@ -413,6 +413,6 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(0);
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 	});
 });

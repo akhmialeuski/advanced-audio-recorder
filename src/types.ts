@@ -35,13 +35,11 @@ export const RecordingStatus = {
 	 * user did not initiate, and every surface that shows what the recorder
 	 * is doing has to say so rather than showing an ordinary save.
 	 *
-	 * It holds for the whole save that follows, not for the instant the input
-	 * went. The session is saving either way, and the reason is the only thing
-	 * separating this from a stop somebody pressed, so a {@link
-	 * RecordingStatus.Saving} does not displace it - which is what used to
-	 * happen on the finalizer's first progress line, leaving the reason
-	 * nowhere but a Notice already dismissed. The session leaves it for Idle
-	 * when the save is done.
+	 * The capture holds it from the instant the input went until the session
+	 * is handed to the save queue, and that save then reports it instead of
+	 * {@link RecordingStatus.Saving} for as long as it runs. The reason is the
+	 * only thing separating it from a stop somebody pressed, and shown only at
+	 * the start it survived in nothing but a Notice already dismissed.
 	 */
 	Interrupted: 'interrupted',
 	Saving: 'saving',

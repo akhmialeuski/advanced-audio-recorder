@@ -9,6 +9,10 @@ import { RecordingManager } from 'src/recording/RecordingManager';
 import { probeOfflineEncodingSupport } from 'src/audio/AudioEncoder';
 import { RecordingStatus } from 'src/types';
 import {
+	IDLE_SAVE_STATE,
+	type RecordingSaveState,
+} from 'src/recording/RecordingSaveQueue';
+import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
@@ -58,8 +62,8 @@ jest.mock('src/recording/PcmStreamRecorder', () =>
 
 installRecordingMediaStubs();
 
-/** What a stop pressed while another stop is still saving answers with. */
-const STILL_SAVING = 'The last recording is still being saved.';
+/** What a stop pressed while another stop is still under way answers with. */
+const STILL_STOPPING = 'The recording is still stopping.';
 
 /** Puts the environment where a WAV session captures PCM directly. */
 function pcmSession(): void {
@@ -99,6 +103,7 @@ describe('RecordingManager', () => {
 	let mockApp: App;
 	let mockSettings: AudioRecorderSettings;
 	let statusChangeCallback: jest.Mock;
+	let saveChangeCallback: jest.Mock;
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
@@ -108,6 +113,7 @@ describe('RecordingManager', () => {
 			app: mockApp,
 			settings: mockSettings,
 			onStatusChange: statusChangeCallback,
+			onSaveChange: saveChangeCallback,
 		} = createRecordingSut());
 	});
 
@@ -158,7 +164,6 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 			expect(statusChangeCallback).toHaveBeenCalledWith(
 				RecordingStatus.Recording,
-				undefined,
 			);
 		});
 
@@ -197,13 +202,16 @@ describe('RecordingManager', () => {
 			await expect(manager.toggleRecording()).resolves.toBeNull();
 		});
 
-		// A long save runs for minutes, and a press meanwhile asked for a
-		// second stop that was refused without a word: the button looked dead.
-		it('says the last recording is still being saved', async () => {
+		// A long save runs for minutes, and a press meanwhile used to be
+		// refused. The next meeting starts from that press instead.
+		it('starts a new recording while the last one is still being saved', async () => {
 			let pressDuringSave: Promise<string | null> | null = null;
-			statusChangeCallback.mockImplementation(
-				(status: RecordingStatus) => {
-					if (status === RecordingStatus.Saving && !pressDuringSave) {
+			saveChangeCallback.mockImplementation(
+				(saves: RecordingSaveState) => {
+					if (
+						saves.status === RecordingStatus.Saving &&
+						!pressDuringSave
+					) {
 						pressDuringSave = manager.toggleRecording();
 					}
 				},
@@ -212,24 +220,23 @@ describe('RecordingManager', () => {
 
 			await manager.toggleRecording();
 
-			await expect(pressDuringSave).resolves.toBe(STILL_SAVING);
-			expect(noticeMessages()).toContain(STILL_SAVING);
-			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+			await expect(pressDuringSave).resolves.toBeNull();
+			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 		});
 
-		// Until the save reports its first progress the status is still
-		// Recording, and a stop waiting on a part rotation that transcodes the
-		// finished part stays there for as long as that takes.
-		it('says so for a press before the save reports progress', async () => {
+		// Until the recorders have delivered their last data the status is
+		// still Recording, and a stop waiting on a part rotation that
+		// transcodes the finished part stays there for as long as that takes.
+		it('says the recording is still stopping for a press before it stopped', async () => {
 			await manager.toggleRecording();
-			const stopping = manager.stopRecording();
+			const stopping = manager.stopRecording({ untilSaved: true });
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 
 			const second = await manager.toggleRecording();
 			await stopping;
 
-			expect(second).toBe(STILL_SAVING);
-			expect(noticeMessages()).toContain(STILL_SAVING);
+			expect(second).toBe(STILL_STOPPING);
+			expect(noticeMessages()).toContain(STILL_STOPPING);
 		});
 	});
 
@@ -240,9 +247,9 @@ describe('RecordingManager', () => {
 		makeMediaRecorderDouble();
 		const streams = stubAudioStreams();
 		let releasedBeforeSave: boolean | null = null;
-		statusChangeCallback.mockImplementation((status: RecordingStatus) => {
+		saveChangeCallback.mockImplementation((saves: RecordingSaveState) => {
 			if (
-				status === RecordingStatus.Saving &&
+				saves.status === RecordingStatus.Saving &&
 				releasedBeforeSave === null
 			) {
 				releasedBeforeSave = jest
@@ -253,7 +260,7 @@ describe('RecordingManager', () => {
 		await manager.startRecording();
 		jest.mocked(stopAllStreams).mockClear();
 
-		await manager.stopRecording();
+		await manager.stopRecording({ untilSaved: true });
 
 		expect(releasedBeforeSave).toBe(true);
 		expect(manager.getStatus()).toBe(RecordingStatus.Idle);
@@ -284,7 +291,6 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Paused);
 			expect(statusChangeCallback).toHaveBeenCalledWith(
 				RecordingStatus.Paused,
-				undefined,
 			);
 		});
 
@@ -298,7 +304,6 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 			expect(statusChangeCallback).toHaveBeenCalledWith(
 				RecordingStatus.Recording,
-				undefined,
 			);
 		});
 
@@ -398,7 +403,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			jest.useFakeTimers();
-			const stopPromise = manager.stopRecording();
+			const stopPromise = manager.stopRecording({ untilSaved: true });
 			await jest.advanceTimersByTimeAsync(5000);
 			await stopPromise;
 
@@ -422,7 +427,7 @@ describe('RecordingManager', () => {
 			stubAudioStreams();
 
 			await manager.startRecording();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
@@ -597,13 +602,12 @@ describe('RecordingManager', () => {
 			);
 
 			// Stop recording - should recover
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// Status should be Idle despite error
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 			expect(statusChangeCallback).toHaveBeenLastCalledWith(
 				RecordingStatus.Idle,
-				undefined,
 			);
 		});
 
@@ -621,7 +625,7 @@ describe('RecordingManager', () => {
 			failNextPcmRecorderStop('the audio device went away');
 
 			await manager.startRecording();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			expect(noticeMessages()).toContain(
 				'Error stopping recording: the audio device went away',
@@ -637,7 +641,7 @@ describe('RecordingManager', () => {
 				new Error('Save failed'),
 			);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// Streams should still be stopped
 			expect(jest.mocked(stopAllStreams)).toHaveBeenCalled();
@@ -645,7 +649,7 @@ describe('RecordingManager', () => {
 
 		it('clears all arrays after stop', async () => {
 			await manager.startRecording();
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 
 			// Internal state should be cleared - verify by starting a new recording
 			// If arrays weren't cleared, this would have stale data
@@ -654,23 +658,25 @@ describe('RecordingManager', () => {
 
 		it('answers with nothing once a start and a stop have both gone through', async () => {
 			expect(await manager.startRecording()).toBeNull();
-			expect(await manager.stopRecording()).toBeNull();
+			expect(
+				await manager.stopRecording({ untilSaved: true }),
+			).toBeNull();
 		});
 
 		// The mobile banner and the status-bar Stop button call stopRecording
 		// directly and drop its answer, so the notice is all a press there shows.
-		it('tells the user a stop is already saving rather than stopping twice', async () => {
+		it('tells the user a stop is already under way rather than stopping twice', async () => {
 			await manager.startRecording();
 			const [first, second] = await Promise.all([
-				manager.stopRecording(),
-				manager.stopRecording(),
+				manager.stopRecording({ untilSaved: true }),
+				manager.stopRecording({ untilSaved: true }),
 			]);
 
 			// One of the two did the stop; the other found it in flight and
 			// says so instead of reporting a stop it did not make.
 			expect([first, second]).toContain(null);
-			expect([first, second]).toContain(STILL_SAVING);
-			expect(noticeMessages()).toContain(STILL_SAVING);
+			expect([first, second]).toContain(STILL_STOPPING);
+			expect(noticeMessages()).toContain(STILL_STOPPING);
 		});
 	});
 
@@ -721,7 +727,7 @@ describe('RecordingManager', () => {
 				expect.anything(),
 				expect.objectContaining({ mimeType: 'audio/mp4' }),
 			);
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('falls back to a recordable format when the configured one is unsupported', async () => {
@@ -749,7 +755,7 @@ describe('RecordingManager', () => {
 				),
 			).toBe(true);
 
-			await manager.stopRecording();
+			await manager.stopRecording({ untilSaved: true });
 		});
 
 		it('stays idle when no format can be recorded at all', async () => {
@@ -835,33 +841,26 @@ describe('RecordingManager', () => {
 			await manager.toggleRecording();
 			manager.togglePauseResume();
 			manager.togglePauseResume();
-			await manager.toggleRecording();
+			await manager.stopRecording({ untilSaved: true });
 
-			// Recording, Paused, Recording, Saving(0%), Saving(20%), Saving(100%), Idle
-			expect(statusChangeCallback).toHaveBeenNthCalledWith(
-				1,
+			// The capture goes idle at the hand-over, and its save reports its
+			// progress through the queue instead.
+			expect(
+				statusChangeCallback.mock.calls.map(([status]) => status),
+			).toEqual([
 				RecordingStatus.Recording,
-				undefined,
-			);
-			expect(statusChangeCallback).toHaveBeenNthCalledWith(
-				2,
 				RecordingStatus.Paused,
-				undefined,
-			);
-			expect(statusChangeCallback).toHaveBeenNthCalledWith(
-				3,
 				RecordingStatus.Recording,
-				undefined,
-			);
-			// Saving progress callbacks
-			expect(statusChangeCallback).toHaveBeenCalledWith(
-				RecordingStatus.Saving,
-				expect.objectContaining({ percent: 0 }),
-			);
-			// Final idle
-			expect(statusChangeCallback).toHaveBeenLastCalledWith(
 				RecordingStatus.Idle,
-				undefined,
+			]);
+			expect(saveChangeCallback).toHaveBeenCalledWith(
+				expect.objectContaining({
+					status: RecordingStatus.Saving,
+					progress: expect.objectContaining({ percent: 0 }),
+				}),
+			);
+			expect(saveChangeCallback).toHaveBeenLastCalledWith(
+				IDLE_SAVE_STATE,
 			);
 		});
 	});
@@ -936,11 +935,14 @@ describe('an input device that disappears mid-session', () => {
 	 * @param sut - The manager under test and its collaborators
 	 */
 	async function untilSaved(sut: {
-		manager: { getStatus: () => RecordingStatus };
+		manager: Pick<RecordingManager, 'getStatus' | 'getSaveState'>;
 	}): Promise<void> {
-		await waitFor(() => sut.manager.getStatus() === RecordingStatus.Idle, {
-			message: 'the interrupted session to finish saving',
-		});
+		await waitFor(
+			() =>
+				sut.manager.getStatus() === RecordingStatus.Idle &&
+				sut.manager.getSaveState() === IDLE_SAVE_STATE,
+			{ message: 'the interrupted session to finish saving' },
+		);
 	}
 
 	// Whether the session was capturing or paused when the input went, the
@@ -961,7 +963,6 @@ describe('an input device that disappears mid-session', () => {
 
 		expect(sut.onStatusChange).toHaveBeenCalledWith(
 			RecordingStatus.Interrupted,
-			undefined,
 		);
 		expect(noticeMessages().join(' ')).toContain('was disconnected');
 	});
@@ -976,13 +977,15 @@ describe('an input device that disappears mid-session', () => {
 		endStream(0);
 		await untilSaved(sut);
 
-		expect(sut.onStatusChange).not.toHaveBeenCalledWith(
-			RecordingStatus.Saving,
-			expect.anything(),
+		const reported = sut.onSaveChange.mock.calls.map(
+			([saves]) => (saves as RecordingSaveState).status,
 		);
-		expect(sut.onStatusChange).toHaveBeenCalledWith(
-			RecordingStatus.Interrupted,
-			expect.objectContaining({ percent: 100 }),
+		expect(reported).not.toContain(RecordingStatus.Saving);
+		expect(sut.onSaveChange).toHaveBeenCalledWith(
+			expect.objectContaining({
+				status: RecordingStatus.Interrupted,
+				progress: expect.objectContaining({ percent: 100 }),
+			}),
 		);
 	});
 
@@ -995,7 +998,7 @@ describe('an input device that disappears mid-session', () => {
 	it('says nothing about an input lost during a stop the user asked for', async () => {
 		const sut = await startedSession();
 
-		const stopped = sut.manager.stopRecording();
+		const stopped = sut.manager.stopRecording({ untilSaved: true });
 		endStream(0);
 		await stopped;
 
@@ -1041,7 +1044,6 @@ describe('an input device that disappears mid-session', () => {
 		// user asked for.
 		expect(sut.onStatusChange).toHaveBeenCalledWith(
 			RecordingStatus.Interrupted,
-			undefined,
 		);
 	});
 
@@ -1097,7 +1099,7 @@ describe('an input device that disappears mid-session', () => {
 	// interrupt, and a second Notice would report a thing that did not happen.
 	it('says nothing when a stream ends after the session already stopped', async () => {
 		const sut = await startedSession();
-		await sut.manager.stopRecording();
+		await sut.manager.stopRecording({ untilSaved: true });
 		const before = noticeMessages().length;
 
 		endStream(0);
@@ -1206,7 +1208,6 @@ describe('an input device that disappears mid-session', () => {
 
 		expect(sut.onStatusChange).toHaveBeenCalledWith(
 			RecordingStatus.Interrupted,
-			undefined,
 		);
 	});
 });

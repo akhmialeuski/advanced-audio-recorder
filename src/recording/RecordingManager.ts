@@ -10,7 +10,6 @@ import type {
 	InsertionContext,
 	RecordingSaveResult,
 	RecordingTarget,
-	SaveProgress,
 } from '../types';
 import { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import type { MarkerKind } from '../markers/markerModel';
@@ -54,6 +53,11 @@ import { WAV_PCM_WARNING_BYTES } from '../audio/WavEncoder';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { TrackWriteQueue } from './TrackWriteQueue';
 import { RecordingFinalizer } from './RecordingFinalizer';
+import {
+	RecordingSaveQueue,
+	type RecordingSaveState,
+	type RecordingSnapshot,
+} from './RecordingSaveQueue';
 import { mixLayout } from './StreamingMixer';
 import { PartRotationController } from './PartRotationController';
 import { SessionJournal } from './SessionJournal';
@@ -90,10 +94,7 @@ export class RecordingManager {
 	private streams: MediaStream[] = [];
 	private trackOrder: TrackAudioSource[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
-	private onStatusChange: (
-		status: RecordingStatus,
-		saveProgress?: SaveProgress,
-	) => void;
+	private onStatusChange: (status: RecordingStatus) => void;
 	private debugLogger: DebugLogger;
 	private recordingStartTime: number = 0;
 	private recordingTimestamp: string | null = null;
@@ -113,8 +114,13 @@ export class RecordingManager {
 	private session: CaptureSession = IDLE_CAPTURE_SESSION;
 	/** Serialized per-track write queue (buffering and flushes). */
 	private readonly writeQueue: TrackWriteQueue;
-	/** Finalization stage producing the final files at session stop. */
-	private readonly finalizer: RecordingFinalizer;
+	/**
+	 * Finalizes the auto-split parts of the session capturing now. It never
+	 * reports progress: a rotation is no save anybody waits on.
+	 */
+	private readonly partFinalizer: RecordingFinalizer;
+	/** Saves of stopped sessions, run in the background one at a time. */
+	private readonly saves: RecordingSaveQueue;
 	/** Auto-split part rotation (timing, reentry, part finalization). */
 	private readonly rotation: PartRotationController;
 	/** Marker drafts and their persistence for the current session. */
@@ -124,46 +130,51 @@ export class RecordingManager {
 	 * Creates a new RecordingManager.
 	 * @param app - The Obsidian App instance
 	 * @param settings - Plugin settings
-	 * @param onStatusChange - Callback for status changes
+	 * @param onStatusChange - Callback for capture status changes
 	 * @param markerStore - The plugin's single sidecar store, shared with the
 	 *   player and transcription so all writers serialize on one write chain
 	 * @param captureBusy - Why another capture holds the microphone right
 	 *   now, or null when none does. A session is refused while one does,
 	 *   since both would record the same speech.
+	 * @param onSaveChange - Callback for changes of the background saves
 	 */
 	constructor(
 		private app: App,
 		private settings: AudioRecorderSettings,
-		onStatusChange: (
-			status: RecordingStatus,
-			saveProgress?: SaveProgress,
-		) => void,
+		onStatusChange: (status: RecordingStatus) => void,
 		markerStore: RecordingSidecarStore,
 		private readonly journal: SessionJournal = new SessionJournal(
 			null,
 			app,
 		),
-		private readonly onRecordingSaved?: (
-			result: RecordingSaveResult,
-		) => void,
+		onRecordingSaved?: (result: RecordingSaveResult) => void,
 		// No default of its own: the finalizer, which is the only thing that
 		// asks for a worker, already falls back to "no worker" - a second
 		// default here would be a second answer to the same question.
 		getWorkerClient?: () => EncodingWorkerClient | null,
 		private readonly captureBusy?: () => string | null,
+		onSaveChange: (state: RecordingSaveState) => void = () => undefined,
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
 		this.markers = new RecordingMarkerCoordinator(markerStore);
 		this.writeQueue = new TrackWriteQueue(app, settings, journal);
-		this.finalizer = new RecordingFinalizer(
+		this.saves = new RecordingSaveQueue({
+			app,
+			settings,
+			journal,
+			markers: this.markers,
+			debugLogger: this.debugLogger,
+			onChange: onSaveChange,
+			onRecordingSaved,
+			getWorkerClient,
+		});
+		this.partFinalizer = new RecordingFinalizer(
 			app,
 			settings,
 			this.writeQueue,
 			this.debugLogger,
-			(progress: SaveProgress) => {
-				this.setStatus(RecordingStatus.Saving, progress);
-			},
+			undefined,
 			journal,
 			getWorkerClient,
 		);
@@ -171,7 +182,7 @@ export class RecordingManager {
 			app,
 			settings,
 			this.writeQueue,
-			this.finalizer,
+			this.partFinalizer,
 			this.debugLogger,
 			{
 				getTargets: () => this.chunkTargets,
@@ -298,8 +309,9 @@ export class RecordingManager {
 		this.settings = settings;
 		this.debugLogger.updateSettings(settings);
 		this.writeQueue.updateSettings(settings);
-		this.finalizer.updateSettings(settings);
+		this.partFinalizer.updateSettings(settings);
 		this.rotation.updateSettings(settings);
+		this.saves.updateSettings(settings);
 	}
 
 	/**
@@ -441,7 +453,7 @@ export class RecordingManager {
 			// finalizer and the rotation controller cannot disagree with the
 			// manager about what this session is.
 			this.writeQueue.beginSession(this.session);
-			this.finalizer.beginSession(this.session);
+			this.partFinalizer.beginSession(this.session);
 			this.rotation.beginSession(this.session);
 
 			this.recordingStartTime = Date.now();
@@ -837,21 +849,30 @@ export class RecordingManager {
 	}
 
 	/**
-	 * Stops the current recording and saves the files.
+	 * Ends the capture and queues the save of what it recorded.
+	 *
+	 * The recorder is idle again once the recorders have delivered their last
+	 * data and the session is handed to the save queue, so the next recording
+	 * can start while this one is still being written.
 	 *
 	 * Answers the way {@link RecordingManager.startRecording} does: a failure
 	 * is shown to the user and returned as the same sentence, so a caller with
 	 * nobody in front of it can report it.
-	 * @returns The reason the stop did not complete, or null once it has
+	 * @param options - `untilSaved` waits for the save as well, and answers
+	 *   with its outcome
+	 * @returns The reason the stop did not complete, or null once the save
+	 *   is queued (or, with `untilSaved`, written)
 	 */
-	async stopRecording(): Promise<string | null> {
+	async stopRecording(
+		options: { untilSaved?: boolean } = {},
+	): Promise<string | null> {
 		// Block new part rotations from starting while stopping; a
 		// false return means another stop is already in flight. Said as a
 		// Notice, because every button that lands here drops the answer, and
-		// the status reads Recording until the save reports progress, so a
+		// the status reads Recording until the recorders have stopped, so a
 		// press refused in silence looked like a dead button.
 		if (!this.rotation.requestStop()) {
-			const busy = 'The last recording is still being saved.';
+			const busy = 'The recording is still stopping.';
 			new Notice(busy);
 			return busy;
 		}
@@ -865,10 +886,12 @@ export class RecordingManager {
 		// Snapshot active audio time before recorder shutdown and saving add
 		// wall-clock latency. The post-save detector uses this to reject long
 		// sessions before reading or decoding their files.
-		const activeDurationSeconds =
+		const durationSeconds =
 			this.rotation.getSessionActiveMs(this.status) / 1000;
-		// Set by both arms below and read after the teardown in `finally`,
+		const interrupted = this.status === RecordingStatus.Interrupted;
+		// Set by the arms below and read after the teardown in `finally`,
 		// which runs whichever way the stop went.
+		let snapshot: RecordingSnapshot | null = null;
 		let stopFailure: string | null = null;
 
 		try {
@@ -881,47 +904,23 @@ export class RecordingManager {
 
 			await this.writeQueue.drain(this.chunkTargets);
 			this.releaseCapture('after the recorders stopped');
-
-			this.finalizer.reportProgress(0, 'Saving...');
+			// The save may wait behind another for minutes, and a tail left in
+			// memory meanwhile would be lost with the app. Written now, every
+			// byte of the session is on disk and in its journal entry.
+			await this.flushRemainingBuffers();
 
 			const durationMs = Date.now() - this.recordingStartTime;
 			this.debugLogger.logRecordingStats(durationMs, this.totalChunks);
 
-			const finalized = await this.finalizer.saveRecording(
-				this.chunkTargets,
-				this.recordingTimestamp,
-				this.insertionContext,
-			);
-			const saveResult: RecordingSaveResult = {
-				...finalized,
-				durationSeconds: activeDurationSeconds,
+			snapshot = {
+				session: this.session,
+				targets: this.chunkTargets,
+				timestamp: this.recordingTimestamp,
+				insertionContext: this.insertionContext,
+				markerDrafts: this.markers.takeDrafts(),
+				durationSeconds,
+				interrupted,
 			};
-			// Persist live markers before the hook so they are on disk when a
-			// post-save action (e.g. opening the player) reads the sidecar
-			await this.markers.persistMarkers(
-				this.markers.takeDrafts(),
-				saveResult,
-			);
-			if (saveResult.audioPaths.length > 0) {
-				// Fire-and-forget post-save hook (e.g. transcribe-on-save);
-				// failures must never break the stop sequence
-				try {
-					this.onRecordingSaved?.(saveResult);
-				} catch (hookError) {
-					console.error(
-						`${PLUGIN_LOG_PREFIX} Post-save hook failed:`,
-						hookError,
-					);
-				}
-			}
-			// The session finalized cleanly: leftovers already produced
-			// their own Notices, and keeping them journaled would raise
-			// misleading recovery prompts for audio that is in the final
-			// files
-			this.journal.endSession(this.session.sessionId);
-			await this.journal.flush();
-			this.finalizer.reportProgress(100, 'Saved');
-			new Notice('Recording stopped');
 		} catch (error) {
 			const message = errorMessage(error);
 			stopFailure = `Error stopping recording: ${message}`;
@@ -934,7 +933,29 @@ export class RecordingManager {
 			this.releaseSessionResources();
 			this.setStatus(RecordingStatus.Idle);
 		}
-		return stopFailure;
+		if (!snapshot) {
+			return stopFailure;
+		}
+		new Notice('Recording stopped');
+		const saved = this.saves.enqueue(snapshot);
+		return options.untilSaved ? saved : null;
+	}
+
+	/**
+	 * Writes every track's buffered audio to its segment files, through the
+	 * track's own write chain so it lands after every write already queued.
+	 * Never rejects: a flush that fails keeps its data buffered for the next
+	 * attempt, which the save makes before reading the segments.
+	 */
+	private async flushRemainingBuffers(): Promise<void> {
+		await Promise.all(
+			this.chunkTargets.map((target) =>
+				this.writeQueue.enqueue(target, async () => {
+					await this.writeQueue.flushChunkBuffer(target);
+					await this.writeQueue.flushPcmBuffer(target);
+				}),
+			),
+		);
 	}
 
 	/**
@@ -985,37 +1006,25 @@ export class RecordingManager {
 		// still try to finalize a part on a session that is going away.
 		this.session = IDLE_CAPTURE_SESSION;
 		this.stopRecordersNow('on unload');
-		for (const target of this.chunkTargets) {
-			void this.writeQueue.enqueue(target, async () => {
-				await this.writeQueue.flushChunkBuffer(target);
-				await this.writeQueue.flushPcmBuffer(target);
-			});
-		}
+		void this.flushRemainingBuffers();
 		this.releaseSessionResources();
+		this.saves.abandon();
 	}
 
 	/**
-	 * Moves the session to a status and reports it.
-	 *
-	 * A `Saving` does not displace an `Interrupted`. The session is saving
-	 * either way, and what separates the two is why - which holds for as long
-	 * as the save does, rather than for the instant it began. Reported as an
-	 * ordinary save, which the finalizer's first progress line used to do, the
-	 * reason survived only in a Notice the user had already dismissed.
-	 * @param status - The status the session is moving to
-	 * @param saveProgress - Progress of the save, when one is in flight
+	 * Moves the capture to a status and reports it. The save that follows a
+	 * stop reports through the save queue instead, carrying whether its
+	 * capture was interrupted for as long as it runs.
+	 * @param status - The status the capture is moving to
 	 */
-	private setStatus(
-		status: RecordingStatus,
-		saveProgress?: SaveProgress,
-	): void {
-		const effective =
-			status === RecordingStatus.Saving &&
-			this.status === RecordingStatus.Interrupted
-				? RecordingStatus.Interrupted
-				: status;
-		this.status = effective;
-		this.onStatusChange(effective, saveProgress);
+	private setStatus(status: RecordingStatus): void {
+		this.status = status;
+		this.onStatusChange(status);
+	}
+
+	/** What the background saves are doing. */
+	getSaveState(): RecordingSaveState {
+		return this.saves.getState();
 	}
 
 	private async handleChunk(index: number, data: Blob): Promise<void> {

@@ -180,16 +180,27 @@ Paused intervals do not count toward the elapsed time, and the recorded size sto
 
 ## Stopping and saving
 
-Click the ribbon icon again, run **Start/stop recording**, or click the **Stop** button in the status bar to end the session. The plugin then runs a fixed save sequence:
+Click the ribbon icon again, run **Start/stop recording**, or click the **Stop** button in the status bar to end the session. The plugin first ends the capture:
 
 1. **Stop the MediaRecorder** (or the PCM recorder for WAV) and wait for the final audio chunk.
 2. **Flush** any audio still buffered in memory to disk.
+
+A `Recording stopped` notice confirms that the capture has ended, and the recorder is free again from that moment. The rest runs in the background:
+
 3. **Assemble** the buffered segments into the final audio file.
 4. **Write** the file to the configured save location.
 5. **Insert an embed link** into the active note, written the way your vault writes links (see [How the link is written](#how-the-link-is-written)).
 6. **Clean up** the temporary segment files.
 
-A `Recording stopped` notice confirms completion.
+A `Saved 1 audio file(s)` notice says when the file is written.
+
+### Recording again while the last one saves
+
+A new recording can start while the last one is still being saved, so back-to-back meetings are captured from the first second. Press the button or run the command as usual: the new recording starts at once, and the save of the previous one goes on behind it.
+
+Saves run one at a time, in the order the recordings were stopped, because assembling a long recording holds it in memory in full and two at once would double that. A recording stopped while another one is saving waits for its turn, and each save inserts its own links and runs its own [transcription after recording](transcription.md#three-ways-to-run-it) when that is on. Quick notes work while saves are waiting.
+
+A save that has not finished when Obsidian closes is not lost: its audio is already on disk, and the next launch offers it under [Crash recovery](#crash-recovery).
 
 ### Save progress in the status bar
 
@@ -204,7 +215,9 @@ For longer recordings the save can take a noticeable moment. The status bar show
 | 80%      | `Cleaning up...`      |
 | 100%     | `Saved`               |
 
-While saving is in progress the ribbon icon switches to a **save** icon, then returns to the microphone, no longer red, once the file is written. The microphone itself is released as soon as step 1 is done, before the file is assembled, so the system's microphone indicator goes off while the save is still running. A new recording starts only once the save has finished: pressing the button, or running the command, while it is running shows `The last recording is still being saved.`
+The status bar shows a save only while nothing is being recorded: a recording that starts during the save takes the status bar, and the save's progress comes back once that recording stops. When more recordings wait behind the running save, the stage says how many, for example `Assembling audio... (1 more waiting)`.
+
+The ribbon icon shows only the capture. It stops being red as soon as the recording stops, because the microphone is released once step 1 is done, before the file is assembled, and the system's microphone indicator goes off at the same moment. A second press during the moment the recorders are still stopping shows `The recording is still stopping.`
 
 A recording that is slow to save is expected behaviour for long captures, not an error. For multi-part recordings, see [Automatic splitting](#automatic-splitting); for the full list of output formats and how each is encoded, see [Formats](formats.md).
 
@@ -216,7 +229,7 @@ An input can go away without anyone pressing stop: a USB interface is pulled out
 
 A single-track session, or a multi-track one that has just lost its last live input, stops and saves everything captured up to the disconnection, so the recording ends where the audio ended instead of being discarded. A multi-track session that still has a live input keeps recording on it and ends only the track whose device went, naming that track in a notice so it is clear which one is short.
 
-While the save that follows a disconnection runs, the status bar reads `Input lost` in front of every stage listed under [Save progress in the status bar](#save-progress-in-the-status-bar), where a stop you pressed shows the stage on its own. The reason holds for as long as the save does, so it stays in front of each stage rather than being replaced by the first one. The ribbon icon switches to the same save icon an ordinary stop uses, and the recorder returns to idle once the file is written.
+While the save that follows a disconnection runs, the status bar reads `Input lost` in front of every stage listed under [Save progress in the status bar](#save-progress-in-the-status-bar), where a stop you pressed shows the stage on its own. The reason holds for as long as the save does, so it stays in front of each stage rather than being replaced by the first one. The recorder itself is idle again as soon as the capture has ended, exactly as after a stop you pressed.
 
 An input pulled out while a stop you pressed is still writing its file is not treated as a disconnection: the capture had already ended, so the save runs to completion as an ordinary one.
 
