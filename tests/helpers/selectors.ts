@@ -212,6 +212,10 @@ export const RECORDING_PANEL = {
 	propertyLink: '.metadata-property-value .internal-link',
 	/** The hint shown in place of the sections. */
 	hint: '.pane-empty',
+	/** The stage line of the running save in the list of saves. */
+	saveStage: '.aar-recording-panel-save-stage',
+	/** The progress bar of the running save in the list of saves. */
+	saveProgress: '.aar-recording-panel .aar-save-progress',
 } as const;
 
 /** Modal bodies this plugin renders. */

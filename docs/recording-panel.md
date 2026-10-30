@@ -38,10 +38,19 @@ The panel is laid out like Obsidian's own **Properties** block: each section has
 
 | Section          | Rows                                                                                                                                                                                        |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Saving**       | The recording being saved, with the stage its save has reached and a progress bar, then each recording waiting behind it. Shown only while a stopped recording is being saved.              |
 | **Recording**    | The file (click its name to open it), its duration, size, format and creation time, and a **Transcribed** row with the engine, the language and when, for a recording that was transcribed. |
 | **Participants** | Each person on a row of their own, with the speaker label you gave their name, if any. The heading names the participants profile they came from. Shown only when someone is on record.     |
 
 The duration is read from the file and shows `unknown` when the file cannot be read. The participants are the names stored with the recording, usually from a participants profile, followed by any name you gave only to a speaker. A speaker nobody named is not listed. When the recording's stored data (its `.markers.json` file) exists but cannot be read, the panel says so in place of the sections it cannot fill.
+
+### Recordings being saved
+
+A stopped recording is [saved in the background](recording.md#recording-again-while-the-last-one-saves), so the next one can be capturing while earlier ones are still written. While that happens, a **Saving** section opens the panel right under its buttons, whatever file is open, and its heading counts the recordings in it. The one being saved comes first, on a **Saving** row with the stage it has reached and a progress bar. Each one waiting behind it follows on a **Waiting** row, in the order they will be saved.
+
+![The recording panel while a new recording runs and three stopped ones are saved: under the row of buttons, whose record button shows Stop, the Saving section headed Saving · 3 lists the recording started at 10:00 AM and 34:12 long at the Assembling audio stage with its progress bar, then two Waiting rows for the recordings started at 10:35 AM and 11:10 AM](images/recording-panel-saves.png)
+
+A recording is named by the time it started and its length, for example `10:35 AM, 31:40 long`, because its file gets its name only once its save runs. A save whose input was lost puts the reason in front of its stage, as in `Input lost: Assembling audio...`, the way the status bar does. The section disappears once the last save is done, and like the other sections it can be folded.
 
 ## Buttons and actions
 

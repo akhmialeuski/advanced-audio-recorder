@@ -66,10 +66,10 @@ export interface RecordingLiveStats {
 /**
  * Why a save nobody asked for is running, shown for as long as it runs.
  *
- * Written once because it appears twice: before the finalizer has reported
- * anything, and in front of every line it reports after that.
+ * Written once because it appears in front of every line the finalizer
+ * reports, here and in the recording panel's list of saves.
  */
-const INTERRUPTED_REASON = 'Input lost';
+export const INTERRUPTED_REASON = 'Input lost';
 
 /**
  * Options for an interactive background progress indicator.

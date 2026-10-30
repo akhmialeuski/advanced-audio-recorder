@@ -60,6 +60,8 @@ async function createSut(
 		status?: ReturnType<RecordingPanelHost['recording']['getStatus']>;
 		/** How many stopped recordings are being saved, none when not given. */
 		saves?: number;
+		/** What the save queue reports, in place of a count of saves. */
+		saveState?: ReturnType<RecordingPanelHost['recording']['getSaveState']>;
 		/** The failed-parts record, as the sidecar answers it. */
 		failedParts?: object | null;
 		/** Stored settings profiles. */
@@ -123,9 +125,10 @@ async function createSut(
 			toggleRecording,
 			getStatus: () => options.status ?? 'idle',
 			getSaveState: () =>
-				options.saves
+				options.saveState ??
+				(options.saves
 					? savingState({ waiting: options.saves - 1 })
-					: IDLE_SAVE_STATE,
+					: IDLE_SAVE_STATE),
 		},
 		readDuration: options.readDuration ?? jest.fn().mockResolvedValue(95),
 		openSettings: jest.fn(),
@@ -755,6 +758,166 @@ describe('the panel buttons', () => {
 		const { view } = await createSut();
 
 		expect(internalsOf<{ actions: unknown[] }>(view).actions).toEqual([]);
+	});
+});
+
+describe('the saves of stopped recordings', () => {
+	/** A save reporting its stage, with two more waiting behind it. */
+	const queue = savingState({
+		progress: { percent: 40, description: 'Assembling audio...' },
+		waiting: 2,
+	});
+
+	/** The keys and values of the rows in the list of saves, in order. */
+	function savesListed(view: RecordingPanelView): string[][] {
+		return allEls(section(view, 'Saving'), RECORDING_PANEL.property).map(
+			(row) => [
+				el<HTMLInputElement>(row, RECORDING_PANEL.propertyKey).value,
+				el(row, RECORDING_PANEL.propertyValue).textContent ?? '',
+			],
+		);
+	}
+
+	it('lists the running save first, then each waiting one in order', async () => {
+		const { view } = await createSut({ saveState: queue });
+
+		// The fixture's recordings last one, two and three minutes, in order.
+		expect(savesListed(view)).toEqual([
+			[
+				'Saving',
+				expect.stringMatching(/, 1:00 long(Assembling audio\.\.\.)$/),
+			],
+			['Waiting', expect.stringMatching(/, 2:00 long$/)],
+			['Waiting', expect.stringMatching(/, 3:00 long$/)],
+		]);
+	});
+
+	it('shows the running save at the progress it reported', async () => {
+		const { view } = await createSut({ saveState: queue });
+
+		expect(
+			el(view.contentEl, RECORDING_PANEL.saveProgress).getAttribute(
+				'aria-valuenow',
+			),
+		).toBe('40');
+	});
+
+	it('heads the list with how many saves are in it', async () => {
+		const { view } = await createSut({ saveState: queue });
+
+		expect(sectionTitles(view)).toEqual(['Saving · 3']);
+	});
+
+	it('sits above the recording shown', async () => {
+		const { view } = await createSut({
+			active: recording('sync.webm'),
+			saveState: savingState(),
+		});
+
+		expect(sectionTitles(view)).toEqual(['Saving · 1', 'Recording']);
+	});
+
+	it('shows no list while nothing is saved', async () => {
+		const { view } = await createSut({ active: recording('sync.webm') });
+
+		expect(sectionTitles(view)).toEqual(['Recording']);
+	});
+
+	it('says why a save nobody asked for is running', async () => {
+		const { view } = await createSut({
+			saveState: savingState({
+				status: 'interrupted',
+				progress: { percent: 10, description: 'Writing track 1' },
+			}),
+		});
+
+		expect(el(view.contentEl, RECORDING_PANEL.saveStage).textContent).toBe(
+			'Input lost: Writing track 1',
+		);
+	});
+
+	it('names the stage before the save reports one', async () => {
+		const { view } = await createSut({ saveState: savingState() });
+
+		expect(el(view.contentEl, RECORDING_PANEL.saveStage).textContent).toBe(
+			'Saving...',
+		);
+	});
+
+	it('drops the list once the last save is done', async () => {
+		const { view, host } = await createSut({ saveState: queue });
+		jest.spyOn(host.recording, 'getSaveState').mockReturnValue(
+			IDLE_SAVE_STATE,
+		);
+
+		view.refreshRecordingState();
+
+		expect(sectionTitles(view)).toEqual([]);
+	});
+
+	it('adds a recording stopped while another is saving', async () => {
+		const { view, host } = await createSut({ saveState: savingState() });
+		jest.spyOn(host.recording, 'getSaveState').mockReturnValue(
+			savingState({ waiting: 1 }),
+		);
+
+		view.refreshRecordingState();
+
+		expect(savesListed(view).map(([key]) => key)).toEqual([
+			'Saving',
+			'Waiting',
+		]);
+	});
+
+	// A stop is queued a moment before the queue starts its save, and the
+	// queue reports it then as waiting with nothing running yet.
+	it('lists a save the queue has not started as waiting only', async () => {
+		const { view } = await createSut({
+			saveState: {
+				...IDLE_SAVE_STATE,
+				waiting: savingState({ waiting: 1 }).waiting,
+			},
+		});
+
+		expect([
+			savesListed(view).map(([key]) => key),
+			maybeEl(view.contentEl, RECORDING_PANEL.saveStage),
+		]).toEqual([['Waiting'], null]);
+	});
+
+	// A save reports many times a second. Rebuilding the list each time would
+	// take a keyboard focus off its heading, so progress moves in place.
+	it('moves the stage and the bar in place as the save reports', async () => {
+		const { view, host } = await createSut({ saveState: queue });
+		const heading = el(view.contentEl, RECORDING_PANEL.sectionHeading);
+		jest.spyOn(host.recording, 'getSaveState').mockReturnValue({
+			...queue,
+			progress: { percent: 70, description: 'Writing the file...' },
+		});
+
+		view.refreshRecordingState();
+
+		expect([
+			el(view.contentEl, RECORDING_PANEL.sectionHeading) === heading,
+			el(view.contentEl, RECORDING_PANEL.saveStage).textContent,
+			el(view.contentEl, RECORDING_PANEL.saveProgress).getAttribute(
+				'aria-valuenow',
+			),
+		]).toEqual([true, 'Writing the file...', '70']);
+	});
+
+	it('keeps the list folded across a redraw', async () => {
+		const { view, host } = await createSut({ saveState: savingState() });
+		el(section(view, 'Saving'), RECORDING_PANEL.sectionHeading).click();
+		jest.spyOn(host.recording, 'getSaveState').mockReturnValue(
+			savingState({ waiting: 1 }),
+		);
+
+		view.refreshRecordingState();
+
+		expect(section(view, 'Saving').classList.contains('is-collapsed')).toBe(
+			true,
+		);
 	});
 });
 

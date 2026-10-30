@@ -10,7 +10,9 @@
  * @module panel/recordingPanelModel
  */
 
+import type { QueuedRecording } from '../recording/RecordingSaveQueue';
 import { findProfile, type Profile } from '../settings/profiles';
+import { formatTimecode } from '../utils/TimeUtils';
 import type {
 	FailedPartsSection,
 	TranscriptSection,
@@ -115,4 +117,19 @@ export function formatPanelDate(iso: string): string {
 				dateStyle: 'short',
 				timeStyle: 'short',
 			});
+}
+
+/**
+ * A stopped recording in the save queue, named the way a user tells it apart
+ * before its file exists: when it started and how long it is.
+ * @param recording - The queued recording
+ * @returns Its local start time to the minute and its length, such as
+ *   `14:05, 1:30 long`
+ */
+export function formatQueuedRecording(recording: QueuedRecording): string {
+	const started = new Date(recording.startedAt).toLocaleTimeString(
+		undefined,
+		{ timeStyle: 'short' },
+	);
+	return `${started}, ${formatTimecode(recording.durationSeconds)} long`;
 }

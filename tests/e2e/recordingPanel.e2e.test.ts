@@ -29,6 +29,10 @@ import { RecordingManager } from 'src/recording/RecordingManager';
 import { RecordingStatus } from 'src/types';
 import { at } from '../helpers/assertions';
 import { savingState } from '../helpers/saveStateFixtures';
+import {
+	IDLE_SAVE_STATE,
+	type RecordingSaveState,
+} from 'src/recording/RecordingSaveQueue';
 import type { RecorderDouble } from '../mocks/modules/recordingManager';
 import { probeDurationSeconds } from 'src/utils/AudioFileAnalyzer';
 
@@ -225,17 +229,9 @@ describe('the recording panel wired to the plugin', () => {
 	// The save of a stopped recording runs behind the capture and reports
 	// through its own callback, which the panel has to hear as well.
 	it('names a background save in its record button', async () => {
-		const { view, app } = await openPanel();
-		const recorder = at(jest.mocked(RecordingManager).mock.results, 0)
-			.value as RecorderDouble;
-		const onSaveChange = at(jest.mocked(RecordingManager).mock.calls, 0)[8];
-		asMockWorkspace(app.workspace).getLeavesOfType.mockReturnValue([
-			view.leaf,
-		]);
-		const saving = savingState();
-		recorder.getSaveState.mockReturnValue(saving);
+		const view = await panelHearingSaves();
 
-		onSaveChange?.(saving);
+		reportSaves(savingState());
 
 		expect(
 			maybeEl(
@@ -243,6 +239,21 @@ describe('the recording panel wired to the plugin', () => {
 				RECORDING_PANEL.button('Start recording (1 recording saving)'),
 			),
 		).not.toBeNull();
+	});
+
+	// The list of saves is drawn from the same callback, so a recording
+	// stopped while another saves shows up without the panel being reopened.
+	it('lists the saves the background queue reports, then drops them', async () => {
+		const view = await panelHearingSaves();
+
+		reportSaves(savingState({ waiting: 1 }));
+		const listed = savesListed(view);
+		reportSaves(IDLE_SAVE_STATE);
+
+		expect([listed, savesListed(view)]).toEqual([
+			['Saving', 'Waiting'],
+			[],
+		]);
 	});
 
 	it('opens the plugin settings from its header', async () => {
@@ -295,6 +306,44 @@ describe('the recording panel wired to the plugin', () => {
 		expect(() => onStatus(RecordingStatus.Recording)).not.toThrow();
 	});
 });
+
+/**
+ * The panel open and found by the plugin, so the save callback the plugin
+ * handed the recorder reaches it.
+ * @returns The view, drawn
+ */
+async function panelHearingSaves(): Promise<RecordingPanelView> {
+	const { view, app } = await openPanel();
+	asMockWorkspace(app.workspace).getLeavesOfType.mockReturnValue([view.leaf]);
+	return view;
+}
+
+/**
+ * Reports a state of the background saves the way the recorder does: the
+ * plugin's callback hears it, and the recorder answers it when asked.
+ * @param state - What the saves are doing
+ */
+function reportSaves(state: RecordingSaveState): void {
+	const recorder = at(jest.mocked(RecordingManager).mock.results, 0)
+		.value as RecorderDouble;
+	recorder.getSaveState.mockReturnValue(state);
+	at(jest.mocked(RecordingManager).mock.calls, 0)[8]?.(state);
+}
+
+/** The keys of the rows the panel's list of saves shows, in order. */
+function savesListed(view: RecordingPanelView): string[] {
+	const list = allEls(view.contentEl, RECORDING_PANEL.section).find(
+		(section) =>
+			el(section, RECORDING_PANEL.sectionTitle).textContent?.startsWith(
+				'Saving',
+			),
+	);
+	return list
+		? allEls<HTMLInputElement>(list, RECORDING_PANEL.propertyKey).map(
+				(key) => key.value,
+			)
+		: [];
+}
 
 /**
  * The panel open over a recording the vault holds.

@@ -6,6 +6,7 @@
 
 import {
 	formatPanelDate,
+	formatQueuedRecording,
 	summarizeRecording,
 	type RecordingPanelSources,
 } from 'src/panel/recordingPanelModel';
@@ -146,5 +147,25 @@ describe('summarizing a recording', () => {
 describe('printing a stored timestamp', () => {
 	it('keeps text that is not a date as it was written', () => {
 		expect(formatPanelDate('last Tuesday')).toBe('last Tuesday');
+	});
+});
+
+describe('naming a queued recording', () => {
+	const startedAt = Date.UTC(2026, 9, 30, 14, 5);
+
+	it('gives its local start time and its length', () => {
+		const time = new Date(startedAt).toLocaleTimeString(undefined, {
+			timeStyle: 'short',
+		});
+
+		expect(formatQueuedRecording({ startedAt, durationSeconds: 90 })).toBe(
+			`${time}, 1:30 long`,
+		);
+	});
+
+	it('gives the hours of a recording an hour long or more', () => {
+		expect(
+			formatQueuedRecording({ startedAt, durationSeconds: 3725 }),
+		).toMatch(/, 1:02:05 long$/);
 	});
 });

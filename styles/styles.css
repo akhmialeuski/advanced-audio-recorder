@@ -1919,6 +1919,12 @@ button.aar-notice-action:not(.clickable-icon):focus-visible {
     opacity: 1;
 }
 
+/* The running save's stage sits under the recording it saves, quieter than the name */
+.aar-recording-panel-save-stage {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+}
+
 /*
  * With reduced motion asked for, nothing pulses and nothing slides. Every
  * state still reads without the movement: the recording dot and the ribbon
