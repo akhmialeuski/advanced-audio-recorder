@@ -70,6 +70,15 @@ export const IDLE_SAVE_STATE: RecordingSaveState = Object.freeze({
 	waiting: 0,
 });
 
+/**
+ * How many stopped recordings are being saved or wait to be.
+ * @param state - What the save queue reported
+ * @returns The running save, if any, and every one waiting behind it
+ */
+export function savesInProgress(state: RecordingSaveState): number {
+	return (state.status === RecordingStatus.Idle ? 0 : 1) + state.waiting;
+}
+
 /** The answer of a save that never ran because the plugin was unloaded. */
 export const ABANDONED_SAVE_MESSAGE =
 	'The plugin was unloaded before the recording was saved. ' +

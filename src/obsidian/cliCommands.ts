@@ -25,6 +25,7 @@ import type { CliFlags, CliHandler, Plugin } from 'obsidian';
 import { RecordingStatus } from '../types';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
+import { cliFlag, flagParam, WAIT_FLAG } from './cliArgs';
 
 /** The playback the state command reports, when something plays. */
 export interface CliPlayback {
@@ -48,10 +49,14 @@ export interface CliHost {
 	 */
 	startRecording(): Promise<string | null>;
 	/**
-	 * Stops the session in progress.
-	 * @returns The reason the stop did not complete, or null once it has
+	 * Stops the session in progress and queues its save.
+	 * @param untilSaved - Waits for the file to be written as well
+	 * @returns The reason the stop, or with `untilSaved` the save, did not
+	 *   complete, or null once it has
 	 */
-	stopRecording(): Promise<string | null>;
+	stopRecording(untilSaved: boolean): Promise<string | null>;
+	/** How many stopped recordings are being saved or wait to be. */
+	recordingSaves(): number;
 	/** The format a session started now would be saved in. */
 	recordingFormat(): string;
 	/** The playback running in the app, or null while nothing plays. */
@@ -71,14 +76,32 @@ export interface CliCommand {
 }
 
 /**
- * What the recorder is doing, in one line.
+ * What the recorder is doing, in one line: the capture, then the saves of
+ * recordings stopped before it, which run in the background.
  * @param status - The recording state
  * @param format - The format a recording started now is saved in
+ * @param saves - How many stopped recordings are being saved or wait to be
  */
 export function describeRecordingStatus(
 	status: RecordingStatus,
 	format: string,
+	saves: number,
 ): string {
+	const capture = describeCapture(status, format);
+	if (saves === 0) {
+		return capture;
+	}
+	return saves === 1
+		? `${capture} One stopped recording is still being saved.`
+		: `${capture} ${String(saves)} stopped recordings are still being saved.`;
+}
+
+/**
+ * What the capture is doing, in one sentence.
+ * @param status - The recording state
+ * @param format - The format a recording started now is saved in
+ */
+function describeCapture(status: RecordingStatus, format: string): string {
 	switch (status) {
 		case RecordingStatus.Recording:
 			return 'Recording.';
@@ -101,6 +124,7 @@ function statusLine(host: CliHost): string {
 	return describeRecordingStatus(
 		host.recordingStatus(),
 		host.recordingFormat(),
+		host.recordingSaves(),
 	);
 }
 
@@ -153,13 +177,23 @@ export function cliCommands(host: CliHost, pluginId: string): CliCommand[] {
 		},
 		{
 			id: `${pluginId}:stop`,
-			description: 'Stop the recording in progress and save it.',
-			flags: null,
-			handler: async (): Promise<string> => {
+			description:
+				'Stop the recording in progress and save it in the background.',
+			flags: {
+				[WAIT_FLAG]: flagParam(
+					'Answer once the recording is saved, not once its save is queued.',
+				),
+			},
+			// Answers once the save is queued, because the recorder is free
+			// from that moment and a script starting the next recording needs
+			// nothing more. A script that goes on to read the file waits.
+			handler: async (args): Promise<string> => {
 				if (host.recordingStatus() === RecordingStatus.Idle) {
 					return 'Nothing is recording.';
 				}
-				const failure = await host.stopRecording();
+				const failure = await host.stopRecording(
+					cliFlag(args, WAIT_FLAG),
+				);
 				return failure ?? statusLine(host);
 			},
 		},

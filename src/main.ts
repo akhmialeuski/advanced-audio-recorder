@@ -33,6 +33,7 @@ import { ACCOUNTS, type AccountId } from './providers/providers';
 import { RecordingManager } from './recording/RecordingManager';
 import {
 	IDLE_SAVE_STATE,
+	savesInProgress,
 	type RecordingSaveState,
 } from './recording/RecordingSaveQueue';
 import { detectSilentChannel } from './recording/silentChannelDetector';
@@ -562,8 +563,10 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.recordingManager.getStatus(),
 			startRecording: (): Promise<string | null> =>
 				this.recordingManager.startRecording(),
-			stopRecording: (): Promise<string | null> =>
-				this.recordingManager.stopRecording(),
+			stopRecording: (untilSaved: boolean): Promise<string | null> =>
+				this.recordingManager.stopRecording({ untilSaved }),
+			recordingSaves: (): number =>
+				savesInProgress(this.recordingManager.getSaveState()),
 			recordingFormat: (): string => this.settings.recordingFormat,
 			playback: () => this.playerRegistrar.currentPlaybackState(),
 		};

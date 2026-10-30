@@ -17,6 +17,7 @@ import type {
 import { COMMAND_IDS } from 'src/constants';
 import { RecordingStatus } from 'src/types';
 import type { RecordingMarkerHandle } from 'src/recording/recordingMarkers';
+import { IDLE_SAVE_STATE } from 'src/recording/RecordingSaveQueue';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
@@ -58,6 +59,7 @@ function createSut(
 			getStatus: jest.fn(
 				() => options.status ?? RecordingStatus.Recording,
 			),
+			getSaveState: jest.fn(() => IDLE_SAVE_STATE),
 			captureMarkerDraft: jest.fn(() =>
 				options.handle === undefined ? makeHandle() : options.handle,
 			),
