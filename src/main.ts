@@ -63,6 +63,8 @@ import {
 	ICON_QUICK_NOTE,
 	QUICK_NOTE_GLYPHS,
 	RIBBON_HIDDEN_CLASS,
+	recorderRibbonTooltip,
+	updateRecorderRibbonTooltip,
 	updateRibbonIcon,
 } from './ui/RibbonIcon';
 import { ContextMenu, type MenuFamilies } from './ui/ContextMenu';
@@ -422,7 +424,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		// shows everywhere else.
 		this.ribbonIconEl = this.addRibbonIcon(
 			ICON_MIC,
-			`${this.manifest.name}: start/stop recording`,
+			recorderRibbonTooltip(this.manifest.name, 0),
 			() => {
 				void this.recordingManager.toggleRecording();
 			},
@@ -1823,8 +1825,10 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Renders the status bar while the background saves change. A save of a
-	 * stopped recording shows there only while nothing is being recorded.
+	 * Renders the background saves: in the status bar while nothing is being
+	 * recorded, and in the tooltips of the recorder's ribbon button and of the
+	 * record button of every recording panel, since their icons show only the
+	 * capture.
 	 * @param saves - What the saves are doing now
 	 */
 	private handleSavesChange(saves: RecordingSaveState): void {
@@ -1833,6 +1837,14 @@ export default class AudioRecorderPlugin extends Plugin {
 		}
 		this.recordingSaves = saves;
 		this.renderStatusBar();
+		updateRecorderRibbonTooltip(
+			this.ribbonIconEl,
+			this.manifest.name,
+			savesInProgress(saves),
+		);
+		this.forEachRecordingPanel((panel) => {
+			panel.refreshRecordingState();
+		});
 	}
 
 	/**

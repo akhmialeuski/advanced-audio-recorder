@@ -217,7 +217,7 @@ For longer recordings the save can take a noticeable moment. The status bar show
 
 The status bar shows a save only while nothing is being recorded: a recording that starts during the save takes the status bar, and the save's progress comes back once that recording stops. When more recordings wait behind the running save, the stage says how many, for example `Assembling audio... (1 more waiting)`.
 
-The ribbon icon shows only the capture. It stops being red as soon as the recording stops, because the microphone is released once step 1 is done, before the file is assembled, and the system's microphone indicator goes off at the same moment. A second press during the moment the recorders are still stopping shows `The recording is still stopping.`
+The ribbon icon shows only the capture. It stops being red as soon as the recording stops, because the microphone is released once step 1 is done, before the file is assembled, and the system's microphone indicator goes off at the same moment. Hovering the icon says how many recordings are still being saved, for example **Advanced Audio Recorder: start/stop recording (1 recording saving)**. A second press during the moment the recorders are still stopping shows `The recording is still stopping.`
 
 A recording that is slow to save is expected behaviour for long captures, not an error. For multi-part recordings, see [Automatic splitting](#automatic-splitting); for the full list of output formats and how each is encoded, see [Formats](formats.md).
 

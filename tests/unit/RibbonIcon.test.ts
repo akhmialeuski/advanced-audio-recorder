@@ -7,9 +7,39 @@
 import {
 	ICON_QUICK_NOTE,
 	QUICK_NOTE_GLYPHS,
+	recorderRibbonTooltip,
+	updateRecorderRibbonTooltip,
 	updateRibbonIcon,
 } from 'src/ui/RibbonIcon';
 import { RecordingStatus } from 'src/types';
+
+describe('recorderRibbonTooltip', () => {
+	it.each([
+		[0, 'Recorder: start/stop recording'],
+		[1, 'Recorder: start/stop recording (1 recording saving)'],
+		[3, 'Recorder: start/stop recording (3 recordings saving)'],
+	])('names %i save(s) running behind the capture', (saves, expected) => {
+		expect(recorderRibbonTooltip('Recorder', saves)).toBe(expected);
+	});
+});
+
+describe('updateRecorderRibbonTooltip', () => {
+	it('sets the tooltip on the recorder button', () => {
+		const button = document.createElement('div');
+
+		updateRecorderRibbonTooltip(button, 'Recorder', 1);
+
+		expect(button.getAttribute('aria-label')).toBe(
+			'Recorder: start/stop recording (1 recording saving)',
+		);
+	});
+
+	it('does nothing before the button exists', () => {
+		expect(() => {
+			updateRecorderRibbonTooltip(null, 'Recorder', 1);
+		}).not.toThrow();
+	});
+});
 
 describe('RibbonIcon', () => {
 	let ribbonElement: HTMLElement;

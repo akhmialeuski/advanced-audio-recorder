@@ -3,8 +3,56 @@
  * @module ui/RibbonIcon
  */
 
-import { setIcon } from 'obsidian';
+import { setIcon, setTooltip } from 'obsidian';
 import { RecordingStatus } from '../types';
+
+/**
+ * The recorder button's tooltip: what the button does, named after the
+ * plugin so it is told apart from the core Audio recorder's button, and how
+ * many stopped recordings are still being saved. The icon shows only the
+ * capture, so a save running behind it is said here.
+ * @param pluginName - The plugin's name from its manifest
+ * @param saves - How many stopped recordings are being saved or wait to be
+ * @returns The tooltip text
+ */
+export function recorderRibbonTooltip(
+	pluginName: string,
+	saves: number,
+): string {
+	return withSavesInProgress(`${pluginName}: start/stop recording`, saves);
+}
+
+/**
+ * A record button's label, followed by how many stopped recordings are still
+ * being saved, so every button that starts a recording says it the same way.
+ * @param label - What the button does
+ * @param saves - How many stopped recordings are being saved or wait to be
+ * @returns The label, with the saves named when there are any
+ */
+export function withSavesInProgress(label: string, saves: number): string {
+	if (saves === 0) {
+		return label;
+	}
+	const count = saves === 1 ? '1 recording' : `${String(saves)} recordings`;
+	return `${label} (${count} saving)`;
+}
+
+/**
+ * Sets the recorder button's tooltip to name the saves still running.
+ * @param ribbonIconEl - The recorder's ribbon button, or null before it exists
+ * @param pluginName - The plugin's name from its manifest
+ * @param saves - How many stopped recordings are being saved or wait to be
+ */
+export function updateRecorderRibbonTooltip(
+	ribbonIconEl: HTMLElement | null,
+	pluginName: string,
+	saves: number,
+): void {
+	if (!ribbonIconEl) {
+		return;
+	}
+	setTooltip(ribbonIconEl, recorderRibbonTooltip(pluginName, saves));
+}
 
 /**
  * Icon name for every state that shows the microphone.

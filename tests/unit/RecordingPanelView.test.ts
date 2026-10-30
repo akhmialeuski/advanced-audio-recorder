@@ -57,6 +57,8 @@ async function createSut(
 		actions?: FileAction[];
 		/** What the recorder reports, idle when not given. */
 		status?: ReturnType<RecordingPanelHost['recording']['getStatus']>;
+		/** How many stopped recordings are being saved, none when not given. */
+		saves?: number;
 		/** The failed-parts record, as the sidecar answers it. */
 		failedParts?: object | null;
 		/** Stored settings profiles. */
@@ -119,6 +121,11 @@ async function createSut(
 		recording: {
 			toggleRecording,
 			getStatus: () => options.status ?? 'idle',
+			getSaveState: () => ({
+				status: options.saves ? 'saving' : 'idle',
+				progress: undefined,
+				waiting: Math.max((options.saves ?? 0) - 1, 0),
+			}),
 		},
 		readDuration: options.readDuration ?? jest.fn().mockResolvedValue(95),
 		openSettings: jest.fn(),
@@ -664,6 +671,33 @@ describe('the panel buttons', () => {
 
 		expect(panelButton(view, 'Stop recording').dataset.icon).toBe('square');
 	});
+
+	// A stopped recording is saved behind the capture, so the record button
+	// is free again and names the saves still running, as the ribbon does.
+	it.each([
+		{
+			status: 'idle',
+			saves: 1,
+			label: 'Start recording (1 recording saving)',
+		},
+		{
+			status: 'recording',
+			saves: 2,
+			label: 'Stop recording (2 recordings saving)',
+		},
+	] as const)(
+		'names $saves save(s) running behind the $status recorder',
+		async ({ status, saves, label }) => {
+			const { view, toggleRecording } = await createSut({
+				status,
+				saves,
+			});
+
+			panelButton(view, label).click();
+
+			expect(toggleRecording).toHaveBeenCalledTimes(1);
+		},
+	);
 
 	it('labels the record button as saving while a recording is saved', async () => {
 		const { view } = await createSut({ status: 'saving' });

@@ -64,12 +64,17 @@ function reportStatus(status: RecordingStatus): void {
 
 /**
  * The save-change callback the plugin handed the recording manager.
- * @param progress - The running save's progress
+ * @param progress - The running save's progress, or nothing once the saves
+ *   are done
  * @param waiting - How many saves wait behind it
  */
-function reportSave(progress: SaveProgress, waiting = 0): void {
+function reportSave(progress: SaveProgress | undefined, waiting = 0): void {
 	const onSaveChange = at(jest.mocked(RecordingManager).mock.calls, 0)[8];
-	onSaveChange?.({ status: RecordingStatus.Saving, progress, waiting });
+	onSaveChange?.(
+		progress
+			? { status: RecordingStatus.Saving, progress, waiting }
+			: { status: RecordingStatus.Idle, progress: undefined, waiting: 0 },
+	);
 }
 
 /** The status bar element the plugin renders into. */
@@ -134,6 +139,24 @@ describe('the ribbon icon', () => {
 				'is-recording',
 			),
 		).toBe(active);
+	});
+
+	// The icon shows only the capture, so a save running behind a new
+	// recording is said in the button's tooltip, and goes once it is done.
+	it('names the saves still running in its tooltip', async () => {
+		const plugin = await loadRecording();
+		const button = at(asMockPlugin(plugin).ribbonIcons, 0).el;
+
+		reportSave({ percent: 40, description: 'Assembling audio...' }, 1);
+		const whileSaving = button.getAttribute('aria-label');
+		reportSave(undefined);
+
+		expect(whileSaving).toBe(
+			'Advanced Audio Recorder: start/stop recording (2 recordings saving)',
+		);
+		expect(button.getAttribute('aria-label')).toBe(
+			'Advanced Audio Recorder: start/stop recording',
+		);
 	});
 });
 
