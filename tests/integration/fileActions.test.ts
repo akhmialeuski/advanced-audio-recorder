@@ -39,6 +39,7 @@ import {
 	partial,
 	silenceConsole,
 	queueServicesDouble,
+	transcriberDouble,
 } from '../helpers/doubles';
 
 // Each dialog is a spy that records the arguments and exposes open(): what an
@@ -132,13 +133,16 @@ function createServices(
 			app,
 			getSettings: () => ({ ...DEFAULT_SETTINGS, ...settings }),
 			saveSettings: jest.fn().mockResolvedValue(undefined),
-			createTranscriptionModalOptions: jest.fn(() => ({})),
+			createTranscriptionModalOptions: jest.fn(() => ({
+				transcriber: transcriberDouble(),
+			})),
 			primeForEnhancement,
 			getWorkerClient: jest.fn(() => null),
 			autoChapters: {} as ActionServices['autoChapters'],
 			recordingSidecar: sidecar,
 			transcriptionQueue: queueServicesDouble(),
 			onMarkersChanged: jest.fn(),
+			transcriber: transcriberDouble(),
 			transcriptionCosts: { recordLlmCall: jest.fn(), recordRun },
 		},
 	};
@@ -551,7 +555,9 @@ describe('the transcribe action', () => {
 			origin: RecordingOrigin.inNote(note),
 		});
 
-		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
+		expect(
+			at(jest.mocked(TranscriptionModal).mock.calls, 0)[3],
+		).toMatchObject({
 			notePath: 'Meetings/standup.md',
 		});
 	});
@@ -567,7 +573,9 @@ describe('a dialog opened for a recording the command line named', () => {
 			origin: RecordingOrigin.named(null),
 		});
 
-		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toEqual({
+		expect(
+			at(jest.mocked(TranscriptionModal).mock.calls, 0)[3],
+		).toMatchObject({
 			notePath: '',
 		});
 	});

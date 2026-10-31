@@ -59,7 +59,7 @@ export interface TranscribeFileOptions {
 	/** Source note path used to generate relative timecode links. */
 	notePathForLinks: string;
 	/** Progress callback. */
-	onProgress?: (fraction: number, label: string) => void;
+	onProgress?: ((fraction: number, label: string) => void) | undefined;
 	/** Running-cost callback (cumulative, after each completed part). */
 	onCost?: (cost: TranscribeRunCost) => void;
 	/**
@@ -68,7 +68,7 @@ export interface TranscribeFileOptions {
 	 */
 	audioBytes?: ArrayBuffer | undefined;
 	/** Cancellation token. */
-	token?: CancellationToken;
+	token?: CancellationToken | undefined;
 	/**
 	 * Recording sidecar store: lets the run re-apply stored speaker names and
 	 * register the outputs it wrote. Without it, speaker names are neither

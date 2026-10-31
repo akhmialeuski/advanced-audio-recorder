@@ -28,7 +28,7 @@ import {
 	type EngineDescriptor,
 } from '../providers/providers';
 import { LOCAL_WHISPER_SETUP_MESSAGE } from '../constants';
-import { isProviderAvailableOnPlatform } from '../transcription/providers/capabilities';
+import { unavailableEngineRefusal } from '../transcription/providers/capabilities';
 import {
 	getOrderedTrackSources,
 	isMultiTrackSessionEnabled,
@@ -241,8 +241,11 @@ export function transcriptionRefusal(
 	if (!settings.transcriptionEnabled) {
 		return 'Transcription is switched off in settings.';
 	}
-	if (!isProviderAvailableOnPlatform(settings.transcriptionProvider)) {
-		return 'The selected transcription engine is not available on this device. Pick a cloud engine in settings.';
+	const unavailable = unavailableEngineRefusal(
+		settings.transcriptionProvider,
+	);
+	if (unavailable) {
+		return unavailable;
 	}
 	const engine = engineOfTranscription(settings.transcriptionProvider);
 	if (!engine) {

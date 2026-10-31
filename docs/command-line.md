@@ -248,7 +248,7 @@ Each of these takes the target parameters described [above](#which-recording-a-c
 obsidian advanced-audio-recorder:transcribe file=standup
 ```
 
-Transcription is a paid job that can run for minutes, so the command starts it in Obsidian's transcribe dialog, the way [transcribe on save](transcription.md#three-ways-to-run-it) does: the dialog shows the progress and can cancel the run. The command answers at once that the run was started. With `wait` it answers once the run is over, with where the transcript went, which is what a script that goes on to read the transcript needs.
+The command runs the same transcription the transcribe dialog runs, with the same choices, without opening the dialog. Transcription is a paid job that can run for minutes, and the terminal cannot interrupt a command, so while it runs the app shows its progress in a notice with a **Cancel**, as it does for a conversion or a split. The chapters the run is set to generate follow it, what it cost joins the session total, and the app says so in a notice, as it says when a run failed or was cancelled. The command answers at once that the run was started. With `wait` it answers once the run is over, with where the transcript went, which is what a script that goes on to read the transcript needs. With `dialog` it opens the transcribe dialog on the recording instead, so the choices are made in the app.
 
 | Parameter                                                                                      | What it sets for this run                                                           |
 | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -261,7 +261,7 @@ Transcription is a paid job that can run for minutes, so the command starts it i
 | `participants=<profile>`, `dictionary=<profile>`, `guidance=<profile>`                         | A profile by name, or `none`. Kept as the next default, as a pick in the dialog is. |
 | `wait`                                                                                         | Answer when the run is over.                                                        |
 
-The choices apply to this run only and leave the settings as they are, except a profile picked, which the dialog keeps as the default too. Before anything opens, the command checks the run could work: a missing API key or an engine this device cannot run is answered with the reason.
+The choices apply to this run only and leave the settings as they are, except a profile picked, which the dialog keeps as the default too. Before the run starts, the command checks it could work: a missing API key or an engine this device cannot run is answered with the reason.
 
 The transcript goes into the note the command named - `file=standup` names the note, or `note=` beside the recording - and into no other note. With no note named it is written as a file next to the recording. A run's answer says which: `Transcribed Recordings/standup.webm into Meetings/standup.md.`, and when the engine failed on parts of a long recording, how many, which `retry-failed` transcribes again.
 

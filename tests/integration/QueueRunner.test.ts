@@ -1,24 +1,40 @@
 /**
  * Tests for draining the transcription queue. One recording at a time, one
  * failure never stranding the rest, and every run counted into the session
- * total by the same rule a single run follows.
+ * total by the same rule a single run follows: the queue runs each recording
+ * through the same operation the dialog does, with only the pipeline under it
+ * stood in for.
  */
 
 import { TFile } from 'obsidian';
+import { QueueRunner } from 'src/transcription/QueueRunner';
 import {
-	QueueRunner,
-	type QueueTranscriber,
-} from 'src/transcription/QueueRunner';
+	RecordingTranscriber,
+	type RecordingTranscriberServices,
+} from 'src/transcription/RecordingTranscriber';
 import {
 	TranscriptionQueue,
 	TRANSCRIPTION_QUEUE_FILE,
 } from 'src/transcription/TranscriptionQueue';
 import type { TranscribeRunCost } from 'src/transcription/TranscriptionService';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { noticeMessages } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
+import { partial, silenceConsole } from '../helpers/doubles';
+import { useMobilePlatform } from '../helpers/platform';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+
+jest.mock('src/transcription/runTranscription', () => ({
+	transcribeFile: jest.fn(),
+}));
+
+import {
+	transcribeFile,
+	type TranscribeFileOptions,
+	type TranscriptOutputSidecar,
+} from 'src/transcription/runTranscription';
 
 /**
  * How long the queue assumes one recording to be. The queue never measures a
@@ -36,10 +52,10 @@ const QUEUE_PATH = `.obsidian/plugins/aar/${TRANSCRIPTION_QUEUE_FILE}`;
 const RUNAWAY_CALL_CAP = 5;
 
 /**
- * The cancellation a run is handed, taken from the runner's own contract so
- * the test records exactly the type it passes on.
+ * The cancellation a run is handed, taken from the pipeline's own contract so
+ * the test records exactly the type it is passed.
  */
-type RunToken = Parameters<QueueTranscriber>[1]['token'];
+type RunToken = TranscribeFileOptions['token'];
 
 /** A priced run, as the service reports one. */
 function cost(usd: number | null = 0.05): TranscribeRunCost {
@@ -82,9 +98,18 @@ function createSut(
 	options: {
 		paths?: string[];
 		missing?: string[];
-		answer?: (path: string) => Promise<{ cost: TranscribeRunCost }>;
+		/**
+		 * How the engine answers for one recording; `billed` reports a part
+		 * it charged for before the answer comes.
+		 */
+		answer?: (
+			path: string,
+			billed: (cost: TranscribeRunCost) => void,
+		) => Promise<{ cost: TranscribeRunCost }>;
 		/** A queue built by the case, for one read back from disk. */
 		queue?: TranscriptionQueue;
+		/** Settings the queue runs under, beyond the defaults. */
+		settings?: Partial<AudioRecorderSettings>;
 	} = {},
 ): Sut {
 	const paths = options.paths ?? ['a.webm', 'b.webm'];
@@ -107,27 +132,53 @@ function createSut(
 	if (!options.queue) {
 		queue.add(paths);
 	}
+	jest.mocked(transcribeFile).mockImplementation(
+		async (_app, _getSettings, file, runOptions) => {
+			transcribed.push(file.path);
+			tokens.push(runOptions.token);
+			const billed = (reported: TranscribeRunCost): void => {
+				runOptions.onCost?.(reported);
+			};
+			const { cost: reported } = await (options.answer?.(
+				file.path,
+				billed,
+			) ?? Promise.resolve({ cost: cost() }));
+			return {
+				transcript: { segments: [], speakers: [] },
+				markdown: '',
+				cost: reported,
+				missingParts: [],
+				sentSeconds: null,
+			};
+		},
+	);
 	const runner = new QueueRunner({
 		app,
 		queue,
-		getSettings: () => mergeSettings({}),
-		transcribe: (file, runOptions) => {
-			transcribed.push(file.path);
-			tokens.push(runOptions.token);
-			return (
-				options.answer?.(file.path) ?? Promise.resolve({ cost: cost() })
-			);
-		},
-		costSink: {
-			recordRun: (cost, _settings, durationSeconds) => {
-				recorded.push({
-					engineId: cost.engineId,
-					usd: cost.usd,
-					seconds: durationSeconds,
-				});
-				return cost.usd;
-			},
-		},
+		getSettings: () => mergeSettings(options.settings ?? {}),
+		transcriber: new RecordingTranscriber({
+			app,
+			// The pipeline that writes through it is stood in for.
+			sidecar: partial<TranscriptOutputSidecar>({}),
+			// A run's LLM steps report from inside the pipeline, which is
+			// stood in for, so only the engine's run reaches this.
+			costs: partial<RecordingTranscriberServices['costs']>({
+				totalUsd: () => 0,
+				recordRun: (
+					reported: TranscribeRunCost,
+					_settings: AudioRecorderSettings,
+					durationSeconds: number | null,
+				) => {
+					recorded.push({
+						engineId: reported.engineId,
+						usd: reported.usd,
+						seconds: durationSeconds,
+					});
+					return reported.usd;
+				},
+			}),
+			generateChapters: () => Promise.resolve(),
+		}),
 		assumedSecondsPerRecording: ASSUMED_SECONDS,
 	});
 	return { runner, queue, transcribed, recorded, tokens };
@@ -411,7 +462,7 @@ describe('what a queued run costs the session', () => {
 		]);
 	});
 
-	it('hands over nothing for a run that failed', async () => {
+	it('hands over nothing for a run the engine refused outright', async () => {
 		const { runner, recorded } = createSut({
 			paths: ['a.webm'],
 			answer: () => Promise.reject(new Error('refused')),
@@ -420,5 +471,53 @@ describe('what a queued run costs the session', () => {
 		await runner.drain();
 
 		expect(recorded).toEqual([]);
+	});
+
+	// The engine charged for the parts it finished, and a transcript the vault
+	// then refused to take does not refund them. The dialog always counted
+	// such a run; the queue dropped it from the total.
+	it('hands over what a failed run was billed for', async () => {
+		silenceConsole('warn');
+		const { runner, recorded, queue } = createSut({
+			paths: ['a.webm'],
+			answer: (_path, billed) => {
+				billed(cost(0.02));
+				return Promise.reject(new Error('Vault is read-only'));
+			},
+		});
+
+		await runner.drain();
+
+		expect(recorded).toEqual([
+			{
+				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				usd: 0.02,
+				seconds: ASSUMED_SECONDS,
+			},
+		]);
+		expect(at(queue.entries(), 0).state).toBe('failed');
+	});
+});
+
+describe('an engine this device cannot run', () => {
+	// A queue filled on the desktop can be resumed on a phone, where the local
+	// engine it was set up with does not exist.
+	it('fails each recording with the reason, without calling the engine', async () => {
+		useMobilePlatform();
+		const { runner, queue, transcribed } = createSut({
+			paths: ['a.webm'],
+			settings: {
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			},
+		});
+
+		await runner.drain();
+
+		expect(transcribed).toEqual([]);
+		expect(at(queue.entries(), 0)).toEqual({
+			path: 'a.webm',
+			state: 'failed',
+			error: 'The selected transcription engine is not available on this device. Pick a cloud engine in settings.',
+		});
 	});
 });

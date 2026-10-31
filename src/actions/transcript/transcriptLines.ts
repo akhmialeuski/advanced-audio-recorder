@@ -8,7 +8,7 @@
  */
 
 import type { App, Editor, TFile } from 'obsidian';
-import type { TranscriptLines } from './transcriptContext';
+import type { TranscriptLines } from '../../speakers/transcriptLineSelection';
 
 /**
  * The lines of an open editor. Written through the editor, so an edit made

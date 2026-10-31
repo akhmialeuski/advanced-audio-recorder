@@ -1,11 +1,12 @@
 /**
  * Tests for transcription started from the command line: the parameters set
- * what the dialog's controls would, each checked before anything opens; the
- * run opens in the dialog, writing into the note named and no other; and with
- * `wait` the answer says where the transcript went.
+ * what the dialog's controls would, each checked before anything starts; the
+ * run goes into the note named and no other, under a notice that shows its
+ * progress and can cancel it; and with `wait` the answer says where the
+ * transcript went.
  *
- * The dialog itself is stubbed: what it does with the settings it is handed
- * is its own suite's subject, what it is handed is this one's.
+ * The run itself is stubbed: what it does with the request it is handed is
+ * its own suite's subject, what it is handed is this one's.
  * @module tests/integration/transcribeCli.test
  */
 
@@ -22,17 +23,18 @@ import {
 	type Profile,
 } from 'src/settings/profiles';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
-import {
-	TranscriptionModal,
-	type TranscriptionRunOutcome,
-} from 'src/ui/TranscriptionModal';
+import type {
+	RecordingTranscriptionRequest,
+	TranscriptionRunOutcome,
+} from 'src/transcription/api';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { recordingVault } from '../helpers/recordingVault';
 import { valueOrThrow } from 'src/utils/refusal';
-
-jest.mock('src/ui/TranscriptionModal', () => ({
-	TranscriptionModal: jest.fn(() => ({ open: jest.fn() })),
-}));
+import { at } from '../helpers/assertions';
+import { tick } from '../helpers/async';
+import { el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
+import { noticeInstances, noticeMessages, noticeText } from '../mocks/obsidian';
 
 const TAKE = 'Recordings/take.webm';
 const MEETING = 'Meetings/standup.md';
@@ -82,23 +84,41 @@ function createSut(
 	};
 }
 
-/** What the dialog was opened with, the last time it was. */
-function dialogOpened(): {
-	settings: () => AudioRecorderSettings;
-	options: {
-		autoStart?: boolean;
-		notePath?: string;
-		onRunSettled?: (outcome: TranscriptionRunOutcome) => void;
-	};
-} {
-	const call = jest.mocked(TranscriptionModal).mock.lastCall;
-	if (!call) {
-		throw new Error('The dialog was not opened');
-	}
-	return {
-		settings: call[2],
-		options: call[3] as ReturnType<typeof dialogOpened>['options'],
-	};
+/** The run a command asked for, the only time it asked. */
+function runAskedFor(sut: {
+	services: { transcriber: { transcribe: unknown } };
+}): RecordingTranscriptionRequest {
+	const transcribe = jest.mocked(
+		sut.services.transcriber.transcribe as (
+			request: RecordingTranscriptionRequest,
+		) => Promise<TranscriptionRunOutcome>,
+	);
+	expect(transcribe).toHaveBeenCalledTimes(1);
+	return at(transcribe.mock.calls, 0)[0];
+}
+
+/**
+ * Ends every run the command starts the way a case says.
+ * @param sut - The vault whose run is scripted
+ * @param outcome - How the run ends, or how to end it from its request
+ */
+function runEnds(
+	sut: { services: { transcriber: { transcribe: unknown } } },
+	outcome:
+		| TranscriptionRunOutcome
+		| ((
+				request: RecordingTranscriptionRequest,
+		  ) => Promise<TranscriptionRunOutcome>),
+): void {
+	jest.mocked(
+		sut.services.transcriber.transcribe as (
+			request: RecordingTranscriptionRequest,
+		) => Promise<TranscriptionRunOutcome>,
+	).mockImplementation((request) =>
+		typeof outcome === 'function'
+			? outcome(request)
+			: Promise.resolve(outcome),
+	);
 }
 
 /**
@@ -251,44 +271,49 @@ describe('the choices a command line makes for one run', () => {
 });
 
 describe('starting a transcription from the command line', () => {
-	beforeEach(() => {
-		jest.mocked(TranscriptionModal).mockClear();
-	});
-
-	it('opens the dialog running at once, on the run typed', async () => {
+	it('starts the run typed in Obsidian, with no dialog', async () => {
 		const sut = createSut();
 
 		await expect(
 			transcribeFromCli(sut.context, { language: 'de' }),
 		).resolves.toBe(`Started transcribing ${TAKE} in Obsidian.`);
 
-		const { settings, options } = dialogOpened();
-		expect(jest.mocked(TranscriptionModal).mock.lastCall?.[1]).toBe(
-			sut.file(TAKE),
-		);
-		expect(options.autoStart).toBe(true);
-		expect(settings().transcriptionLanguage).toBe('de');
+		const request = runAskedFor(sut);
+		expect(request.file).toBe(sut.file(TAKE));
+		expect(request.settings.transcriptionLanguage).toBe('de');
+		// The chapters the settings ask for follow, as after a dialog's run.
+		expect(request.chapters).toBe(true);
+		// Nothing measured the recording, so nothing is guessed from it.
+		expect(request.durationSeconds()).toBeNull();
 	});
 
 	it('writes into the note the recording was reached through', async () => {
-		await transcribeFromCli(createSut({ throughNote: true }).context, {});
+		const sut = createSut({ throughNote: true });
 
-		expect(dialogOpened().options.notePath).toBe(MEETING);
+		await transcribeFromCli(sut.context, {});
+
+		expect(runAskedFor(sut).notePath).toBe(MEETING);
 	});
 
 	it('writes into no note when none was named', async () => {
-		await transcribeFromCli(createSut().context, {});
-
-		expect(dialogOpened().options.notePath).toBe('');
-	});
-
-	it('hands the dialog the settings as they stand when it reads them', async () => {
 		const sut = createSut();
+
 		await transcribeFromCli(sut.context, {});
 
-		sut.settings.whisperApiKey = 'sk-rotated';
+		expect(runAskedFor(sut).notePath).toBe('');
+	});
 
-		expect(dialogOpened().settings().whisperApiKey).toBe('sk-rotated');
+	it('runs with the profile it picked', async () => {
+		const sut = createSut();
+
+		await transcribeFromCli(sut.context, { participants: 'Team' });
+
+		expect(
+			selectedProfileId(
+				runAskedFor(sut).settings,
+				ProfileKindId.Participants,
+			),
+		).toBe(TEAM.id);
 	});
 
 	it('keeps a profile picked as the next default, as the dialog does', async () => {
@@ -310,7 +335,7 @@ describe('starting a transcription from the command line', () => {
 		expect(sut.saveSettings).not.toHaveBeenCalled();
 	});
 
-	it('opens nothing for a value typed wrong', async () => {
+	it('starts nothing for a value typed wrong', async () => {
 		const sut = createSut();
 
 		await expect(
@@ -319,58 +344,106 @@ describe('starting a transcription from the command line', () => {
 				words: 'some',
 			}),
 		).resolves.toBe('words=some is not on or off.');
-		expect(TranscriptionModal).not.toHaveBeenCalled();
+		expect(sut.services.transcriber.transcribe).toHaveBeenCalledTimes(0);
 		expect(sut.saveSettings).not.toHaveBeenCalled();
 	});
 
-	it('opens nothing for a run that would be refused, and says why', async () => {
-		await expect(
-			transcribeFromCli(
-				createSut({ settings: { whisperApiKey: '' } }).context,
-				{},
-			),
-		).resolves.toMatch(/API key/);
-		expect(TranscriptionModal).not.toHaveBeenCalled();
+	it('starts nothing for a run that would be refused, and says why', async () => {
+		const sut = createSut({ settings: { whisperApiKey: '' } });
+
+		await expect(transcribeFromCli(sut.context, {})).resolves.toMatch(
+			/API key/,
+		);
+		expect(sut.services.transcriber.transcribe).toHaveBeenCalledTimes(0);
 	});
 
 	it('is refused for a choice that makes the run impossible', async () => {
+		const sut = createSut();
+
 		await expect(
-			transcribeFromCli(createSut().context, {
+			transcribeFromCli(sut.context, {
 				engine: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			}),
 		).resolves.toMatch(/Deepgram/);
-		expect(TranscriptionModal).not.toHaveBeenCalled();
+		expect(sut.services.transcriber.transcribe).toHaveBeenCalledTimes(0);
 	});
 
 	it('answers once the run is over with wait', async () => {
-		const answer = transcribeFromCli(
-			createSut({ throughNote: true }).context,
-			{ wait: 'true' },
-		);
-		await Promise.resolve();
-
-		dialogOpened().options.onRunSettled?.({
+		const sut = createSut({ throughNote: true });
+		runEnds(sut, {
 			status: 'done',
 			destination: 'note',
 			notePath: MEETING,
 			missingParts: 0,
+			usd: null,
+			sessionTotalUsd: 0,
 		});
 
-		await expect(answer).resolves.toBe(
-			`Transcribed ${TAKE} into ${MEETING}.`,
-		);
+		await expect(
+			transcribeFromCli(sut.context, { wait: 'true' }),
+		).resolves.toBe(`Transcribed ${TAKE} into ${MEETING}.`);
 	});
 
-	it('answers that the run was cancelled with wait', async () => {
-		const answer = transcribeFromCli(createSut().context, { wait: 'true' });
-		await Promise.resolve();
+	// The terminal cannot interrupt a command, so the app is where a run is
+	// watched and stopped, as a conversion or a split started there is.
+	it('shows the run in a notice whose Cancel stops it', async () => {
+		const sut = createSut();
+		runEnds(sut, (request) => {
+			request.onProgress?.(0.4, 'Transcribing part 2 of 5...');
+			return new Promise((resolve) => {
+				request.token?.signal?.addEventListener('abort', () => {
+					resolve({ status: 'cancelled' });
+				});
+			});
+		});
+		const settled = transcribeFromCli(sut.context, { wait: 'true' });
+		await tick();
 
-		dialogOpened().options.onRunSettled?.({ status: 'cancelled' });
+		const notice = at(noticeInstances, 0);
+		expect(noticeText(notice)).toBe(
+			'Transcribing "take.webm": Transcribing part 2 of 5... 40% Cancel',
+		);
+		el(
+			notice.initialMessage as DocumentFragment,
+			MODAL.noticeAction,
+		).click();
 
-		await expect(answer).resolves.toBe(
+		await expect(settled).resolves.toBe(
 			`Transcription of ${TAKE} was cancelled in Obsidian.`,
 		);
+		expect(notice.hide).toHaveBeenCalledTimes(1);
+		expect(noticeMessages()).toContain('Transcription cancelled.');
 	});
+
+	it.each([
+		{
+			ending: 'what a finished run cost',
+			outcome: {
+				status: 'done',
+				destination: 'file',
+				notePath: '',
+				missingParts: 0,
+				usd: 0.05,
+				sessionTotalUsd: 0.2,
+			},
+			said: 'Transcription cost ~$0.05 (session total ~$0.20).',
+		},
+		{
+			ending: 'why a run failed',
+			outcome: { status: 'failed', message: 'quota exceeded' },
+			said: 'Transcription failed: quota exceeded',
+		},
+	] as const)(
+		'tells whoever watches the app $ending',
+		async ({ outcome, said }) => {
+			const sut = createSut();
+			runEnds(sut, outcome);
+
+			await transcribeFromCli(sut.context, { wait: 'true' });
+
+			expect(noticeMessages()).toContain(said);
+		},
+	);
 });
 
 describe('where a finished run says the transcript went', () => {
@@ -384,6 +457,8 @@ describe('where a finished run says the transcript went', () => {
 		destination,
 		notePath,
 		missingParts,
+		usd: null,
+		sessionTotalUsd: 0,
 	});
 
 	it.each([

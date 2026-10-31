@@ -6,7 +6,7 @@
  */
 
 import { CancellationSource, NEVER_CANCELLED } from 'src/utils/cancellation';
-import { SplitService } from 'src/recording/SplitService';
+import { SplitService, splitDefaults } from 'src/recording/SplitService';
 import type { SplitRequest } from 'src/recording/SplitService';
 import { App, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
@@ -709,5 +709,40 @@ describe('SplitService', () => {
 			expect(createdFiles).toEqual(['Audio/Intro.mp3']);
 			expect(slicedRanges()).toEqual([[0, 20 * RATE]]);
 		});
+	});
+});
+
+describe('what a split starts from', () => {
+	/** Settings holding what a split reads, with the part length and suffix given. */
+	const settings = (
+		splitChunkMinutes: number,
+		splitPartSuffix: string,
+	): Parameters<typeof splitDefaults>[0] =>
+		partial<Parameters<typeof splitDefaults>[0]>({
+			splitChunkMinutes,
+			splitPartSuffix,
+			bitrate: 96,
+			deleteSourceAfterConversion: false,
+			deleteSourceAfterSplit: true,
+			conversionLinkAction: 'after',
+		});
+
+	it('takes the part length, the suffix and the source handling from the settings', () => {
+		expect(splitDefaults(settings(20, '-part'))).toEqual({
+			partMinutes: 20,
+			suffix: '-part',
+			bitrate: 96,
+			deleteSource: true,
+			linkAction: 'after',
+		});
+	});
+
+	// A stored settings file is read without validation, so a value a split
+	// cannot take is brought into range before either surface offers it.
+	it('brings a stored length and suffix a split cannot take into range', () => {
+		const defaults = splitDefaults(settings(999, 'bad/suffix'));
+
+		expect(defaults.partMinutes).toBe(180);
+		expect(defaults.suffix).not.toBe('bad/suffix');
 	});
 });

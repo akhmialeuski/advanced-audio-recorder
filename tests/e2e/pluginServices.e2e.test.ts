@@ -4,7 +4,7 @@
  * main.ts wires its parts together with closures - the settings getter the
  * player registrar reads, the refresh the chapter service calls when it writes
  * markers, the encoder the file actions borrow, the options every transcription
- * run is opened with. Each is one or two lines, and every one of them was
+ * dialog is opened with, the services every transcription run writes into. Each is one or two lines, and every one of them was
  * unexecuted: the suites for the collaborators pass their own stubs in, so
  * nothing ever ran the closure the plugin actually supplies.
  *
@@ -19,6 +19,10 @@ import AudioRecorderPlugin from 'src/main';
 import type { ActionServices } from 'src/actions/core/actionServices';
 import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
+import {
+	RecordingTranscriber,
+	type RecordingTranscriberServices,
+} from 'src/transcription/RecordingTranscriber';
 import { AutoChapterService } from 'src/chapters/AutoChapterService';
 import { ContextMenu } from 'src/actions/ContextMenu';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
@@ -32,6 +36,12 @@ jest.mock('src/chapters/AutoChapterService', () => ({
 	})),
 }));
 
+jest.mock('src/transcription/RecordingTranscriber', () => ({
+	RecordingTranscriber: jest.fn().mockImplementation(() => ({
+		transcribe: jest.fn(),
+	})),
+}));
+
 /** The services the plugin built for its file actions. */
 function actionServices(): ActionServices {
 	return at(jest.mocked(ContextMenu).mock.calls, 0)[1];
@@ -42,6 +52,11 @@ function registrar(): { reloadMarkersFor: jest.Mock } {
 	return at(jest.mocked(EnhancedPlayerRegistrar).mock.results, 0).value as {
 		reloadMarkersFor: jest.Mock;
 	};
+}
+
+/** The services the plugin built its one transcription run with. */
+function transcriberServices(): RecordingTranscriberServices {
+	return at(jest.mocked(RecordingTranscriber).mock.calls, 0)[0];
 }
 
 /** The chapter-service double the plugin built. */
@@ -199,11 +214,11 @@ describe('the options a transcription run is opened with', () => {
 	it('generates chapters from the transcript the run just produced', async () => {
 		// Working from the in-memory transcript is what lets chapters appear
 		// without a second read of the note that was only just written.
-		const { modalOptions } = await options();
+		await options();
 		const file = { path: 'Recordings/take.webm' } as TFile;
 		const transcript: Transcript = { segments: [], speakers: [] };
 
-		await modalOptions.generateChapters?.(file, transcript);
+		await transcriberServices().generateChapters(file, transcript);
 
 		expect(chapterService().generate).toHaveBeenCalledWith(
 			file,
@@ -213,18 +228,31 @@ describe('the options a transcription run is opened with', () => {
 
 	it('reports its cost to the one session counter', async () => {
 		const { plugin, modalOptions } = await options();
+		const tracker = (
+			plugin as unknown as { transcriptionCostTracker: unknown }
+		).transcriptionCostTracker;
 
-		expect(modalOptions.costTracker).toBe(
-			(plugin as unknown as { transcriptionCostTracker: unknown })
-				.transcriptionCostTracker,
-		);
+		expect(modalOptions.costTracker).toBe(tracker);
+		expect(transcriberServices().costs).toBe(tracker);
 	});
 
 	it('writes its outputs into the shared sidecar', async () => {
-		const { plugin, modalOptions } = await options();
+		const { plugin } = await options();
 
-		expect(modalOptions.sidecar).toBe(
+		expect(transcriberServices().sidecar).toBe(
 			(plugin as unknown as { sidecarStore: unknown }).sidecarStore,
+		);
+	});
+
+	// The queue once ran without the sidecar store the dialog had, so its
+	// transcripts survived no rename. One run, built once, leaves nothing for
+	// a surface to wire differently.
+	it('runs on the one transcription run the plugin built', async () => {
+		const { modalOptions } = await options();
+
+		expect(RecordingTranscriber).toHaveBeenCalledTimes(1);
+		expect(modalOptions.transcriber).toBe(
+			at(jest.mocked(RecordingTranscriber).mock.results, 0).value,
 		);
 	});
 });
@@ -241,13 +269,12 @@ describe('a collaborator that fails under the plugin', () => {
 		// that knows a dialog is open and can report it. Swallowing it here
 		// would leave the run claiming chapters it never wrote.
 		const { plugin } = await loadPlugin();
-		const modalOptions = actionServices().createTranscriptionModalOptions();
 		chapterService().generate.mockRejectedValue(
 			new Error('note is read-only'),
 		);
 
 		await expect(
-			modalOptions.generateChapters?.(
+			transcriberServices().generateChapters(
 				{ path: 'Recordings/take.webm' } as TFile,
 				{ segments: [], speakers: [] },
 			),
