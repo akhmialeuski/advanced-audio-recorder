@@ -127,7 +127,6 @@ export class QueueRunner {
 			// fallback estimate is sized by the same assumed length the dialog
 			// priced the queue with.
 			durationSeconds: () => this.deps.assumedSecondsPerRecording,
-			chapters: true,
 			// So the request in flight ends with the drain rather than
 			// outliving the plugin that started it.
 			token: this.cancellation.token,

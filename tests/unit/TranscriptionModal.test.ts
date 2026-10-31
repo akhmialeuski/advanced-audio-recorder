@@ -1215,7 +1215,6 @@ describe('TranscriptionModal running the job', () => {
 		// A snapshot, so a control changed mid-run cannot change the run.
 		expect(request.settings).not.toBe(settings);
 		expect(request.notePath).toBe('Notes/meeting.md');
-		expect(request.chapters).toBe(true);
 		// The length the dialog probed, null until the probe answers; it
 		// only ever sizes a fallback estimate.
 		expect(request.durationSeconds()).toBeNull();

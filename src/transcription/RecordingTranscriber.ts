@@ -76,8 +76,6 @@ export interface RecordingTranscriptionRequest {
 	 * recording when the run begins.
 	 */
 	readonly durationSeconds: () => number | null;
-	/** Whether the chapters the settings ask for after a run are generated. */
-	readonly chapters: boolean;
 	/** The recording's bytes, when the caller has already read them. */
 	readonly audioBytes?: ArrayBuffer | undefined;
 	readonly token?: CancellationToken | undefined;
@@ -193,7 +191,7 @@ export class RecordingTranscriber {
 			return { status: 'failed', message: errorMessage(error) };
 		}
 		const usd = this.record(result.cost, request);
-		if (request.chapters && autoChaptersAfterTranscribe(settings)) {
+		if (autoChaptersAfterTranscribe(settings)) {
 			// Fire-and-forget on the fresh in-memory transcript: the chapters
 			// report their own progress and errors through notices, and the
 			// surface that started the run is done with it.

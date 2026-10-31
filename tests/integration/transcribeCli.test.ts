@@ -281,8 +281,6 @@ describe('starting a transcription from the command line', () => {
 		const request = runAskedFor(sut);
 		expect(request.file).toBe(sut.file(TAKE));
 		expect(request.settings.transcriptionLanguage).toBe('de');
-		// The chapters the settings ask for follow, as after a dialog's run.
-		expect(request.chapters).toBe(true);
 		// Nothing measured the recording, so nothing is guessed from it.
 		expect(request.durationSeconds()).toBeNull();
 	});
