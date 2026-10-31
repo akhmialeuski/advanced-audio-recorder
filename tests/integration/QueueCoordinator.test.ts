@@ -17,6 +17,17 @@ import { ConfirmModal } from 'src/ui/ConfirmModal';
 import { TranscriptionQueueModal } from 'src/ui/TranscriptionQueueModal';
 import { at } from '../helpers/assertions';
 import { FINISHED_RUN } from '../helpers/doubles';
+import { el } from '../helpers/dom';
+import { QUEUE } from '../helpers/selectors';
+import {
+	RunCostStepId,
+	estimateStepCost,
+	formatUsd,
+} from 'src/transcription/costs';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+
+/** How long the coordinator assumes one queued recording to be, in seconds. */
+const ASSUMED_SECONDS = 600;
 
 /** A folder tree of the given paths, as the vault reports one. */
 function folderOf(name: string, paths: readonly string[]): TFolder {
@@ -43,9 +54,13 @@ interface Sut {
 /**
  * A coordinator over an empty in-memory queue.
  * @param stored - Entries a previous session left, if any
+ * @param settings - Settings the queue runs under, beyond the defaults
  * @returns The coordinator, its queue, and what it transcribed
  */
-function createSut(stored: { path: string; state: string }[] = []): Sut {
+function createSut(
+	stored: { path: string; state: string }[] = [],
+	settings: Partial<AudioRecorderSettings> = {},
+): Sut {
 	const transcribed: string[] = [];
 	const app = createMockApp({
 		vault: {
@@ -65,7 +80,7 @@ function createSut(stored: { path: string; state: string }[] = []): Sut {
 		);
 	}
 	const getSettings = (): ReturnType<typeof mergeSettings> =>
-		mergeSettings({ transcriptionEnabled: true });
+		mergeSettings({ transcriptionEnabled: true, ...settings });
 	return {
 		coordinator: new QueueCoordinator({
 			app,
@@ -80,10 +95,10 @@ function createSut(stored: { path: string; state: string }[] = []): Sut {
 						return Promise.resolve(FINISHED_RUN);
 					},
 				},
-				assumedSecondsPerRecording: 600,
+				assumedSecondsPerRecording: ASSUMED_SECONDS,
 			}),
 			getSettings,
-			assumedSecondsPerRecording: 600,
+			assumedSecondsPerRecording: ASSUMED_SECONDS,
 		}),
 		queue,
 		transcribed,
@@ -134,6 +149,53 @@ describe('queueing a folder', () => {
 
 		expect(queue.entries()).toHaveLength(1);
 		expect(noticeMessages().join(' ')).toContain('already in the queue');
+	});
+});
+
+describe('what the queue is quoted at', () => {
+	// Every queued recording gets the chapters that follow a run, so the
+	// price of one has to carry them, and has to drop them once chapters no
+	// longer follow a run.
+	it.each([
+		{
+			name: 'the chapters each recording gets after its run',
+			settings: {
+				transcriptionAutoChaptersEnabled: true,
+				transcriptionAutoChaptersOnTranscribe: true,
+			},
+			steps: [RunCostStepId.Transcription, RunCostStepId.AutoChapters],
+		},
+		{
+			name: 'the run alone when chapters do not follow it',
+			settings: {
+				transcriptionAutoChaptersEnabled: true,
+				transcriptionAutoChaptersOnTranscribe: false,
+			},
+			steps: [RunCostStepId.Transcription],
+		},
+	])('prices $name', ({ settings, steps }) => {
+		const { coordinator } = createSut(
+			[{ path: 'a.webm', state: 'waiting' }],
+			settings,
+		);
+		const priced = mergeSettings({
+			transcriptionEnabled: true,
+			...settings,
+		});
+		const usd = steps.reduce(
+			(sum, step) =>
+				sum +
+				(estimateStepCost(step, priced, ASSUMED_SECONDS).usd ?? 0),
+			0,
+		);
+
+		coordinator.open();
+
+		const dialog = at(modalInstances, modalInstances.length - 1);
+		expect(dialog).toBeInstanceOf(TranscriptionQueueModal);
+		expect(el(dialog.contentEl, QUEUE.cost).textContent).toBe(
+			`1 recording, about ${formatUsd(usd)}.`,
+		);
 	});
 });
 
