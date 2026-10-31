@@ -55,7 +55,7 @@ import {
 	runOutcomeNotice,
 	type SessionCostTracker,
 	TranscriptDestination,
-	TranscriptFileFormat,
+	type TranscriptFileFormat,
 	type TranscriptionRunOutcome,
 } from '../transcription/api';
 import { CancellationSource } from '../utils/cancellation';
