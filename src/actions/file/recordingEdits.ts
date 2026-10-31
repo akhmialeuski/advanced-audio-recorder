@@ -107,6 +107,22 @@ export async function retryFailedParts(
 				outcome.sentSeconds,
 			);
 		}
+		// Generated chapters were cut from the transcript with the gap, so a
+		// top-up that filled any of it generates them again. Whether the run
+		// made chapters is read from the recording rather than the stored
+		// setting, because the dialog and the command line decide that per run
+		// without storing it. A top-up that brought nothing back changed no
+		// text and would pay the LLM for the same chapters. Left to finish in
+		// the background, as after a run from the dialog: the generator reports
+		// itself through notices and replaces only generated chapters.
+		if (
+			outcome.transcript &&
+			outcome.recovered > 0 &&
+			services.getSettings().transcriptionAutoChaptersEnabled &&
+			(await services.autoChapters.hasExistingChapters(file))
+		) {
+			void services.autoChapters.generate(file, outcome.transcript);
+		}
 		return describeRetryOutcome(outcome);
 	} catch (error) {
 		console.error(
