@@ -35,15 +35,14 @@ import { offlineEncodeSampleRate } from '../../audio/AudioFormatConverter';
 import { ChannelMode } from '../../audio/downmix';
 import {
 	ConversionService,
+	conversionDefaults,
 	conversionTargets,
 } from '../../recording/ConversionService';
-import {
-	clampSplitMinutes,
-	sanitizePartSuffix,
-} from '../../recording/AudioSplitter';
+import { clampSplitMinutes } from '../../recording/AudioSplitter';
 import {
 	chapterCutsOf,
 	SplitService,
+	splitDefaults,
 	type ChapterCut,
 } from '../../recording/SplitService';
 import {
@@ -208,7 +207,7 @@ export async function convertFromCli(
 	args: CliData,
 ): Promise<string> {
 	const { file, services } = context;
-	const settings = services.getSettings();
+	const defaults = conversionDefaults(services.getSettings());
 	const channels = cliChoice(args, 'channels', CHANNEL_MODES);
 	if (isRefusal(channels)) {
 		return channels.refusal;
@@ -222,18 +221,15 @@ export async function convertFromCli(
 	if (to === null || !targets.includes(to)) {
 		return `${to === null ? 'Name the format with to=<format>.' : `${file.path} cannot be converted to ${to} here.`} Formats offered: ${targets.join(', ')}.`;
 	}
-	const bitrate = readBitrate(args, to, settings.bitrate);
+	const bitrate = readBitrate(args, to, defaults.bitrate);
 	if (isRefusal(bitrate)) {
 		return bitrate.refusal;
 	}
-	const deleteSource = readDeleteSource(
-		args,
-		settings.deleteSourceAfterConversion,
-	);
+	const deleteSource = readDeleteSource(args, defaults.deleteSource);
 	if (isRefusal(deleteSource)) {
 		return deleteSource.refusal;
 	}
-	const linkAction = readLinkAction(args, settings.conversionLinkAction);
+	const linkAction = readLinkAction(args, defaults.linkAction);
 	if (isRefusal(linkAction)) {
 		return linkAction.refusal;
 	}
@@ -320,7 +316,7 @@ export async function splitFromCli(
 	args: CliData,
 ): Promise<string> {
 	const { file, services } = context;
-	const settings = services.getSettings();
+	const defaults = splitDefaults(services.getSettings());
 	const by = cliChoice(args, 'by', ['duration', 'chapters'] as const);
 	if (isRefusal(by)) {
 		return by.refusal;
@@ -333,19 +329,15 @@ export async function splitFromCli(
 	if (isRefusal(minutes)) {
 		return minutes.refusal;
 	}
-	const deleteSource = readDeleteSource(
-		args,
-		settings.deleteSourceAfterSplit,
-	);
+	const deleteSource = readDeleteSource(args, defaults.deleteSource);
 	if (isRefusal(deleteSource)) {
 		return deleteSource.refusal;
 	}
-	const linkAction = readLinkAction(args, settings.conversionLinkAction);
+	const linkAction = readLinkAction(args, defaults.linkAction);
 	if (isRefusal(linkAction)) {
 		return linkAction.refusal;
 	}
-	const suffix =
-		cliText(args, 'suffix') ?? sanitizePartSuffix(settings.splitPartSuffix);
+	const suffix = cliText(args, 'suffix') ?? defaults.suffix;
 	if (!SPLIT_PART_SUFFIX_PATTERN.test(suffix)) {
 		return SPLIT_PART_SUFFIX_RULE_TEXT;
 	}
@@ -354,7 +346,7 @@ export async function splitFromCli(
 	const bitrate = readBitrate(
 		args,
 		service.getTargetExtension(file),
-		settings.bitrate,
+		defaults.bitrate,
 	);
 	if (isRefusal(bitrate)) {
 		return bitrate.refusal;
@@ -374,9 +366,10 @@ export async function splitFromCli(
 				{
 					sourceFile: file,
 					partSeconds:
-						clampSplitMinutes(
-							minutes.value ?? settings.splitChunkMinutes,
-						) * SECONDS_PER_MINUTE,
+						(minutes.value === null
+							? defaults.partMinutes
+							: clampSplitMinutes(minutes.value)) *
+						SECONDS_PER_MINUTE,
 					suffix,
 					bitrate: bitrate.value,
 					deleteSource: deleteSource.value,

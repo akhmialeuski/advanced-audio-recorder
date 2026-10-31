@@ -6,7 +6,10 @@
  */
 
 import { CancellationSource, NEVER_CANCELLED } from 'src/utils/cancellation';
-import { ConversionService } from 'src/recording/ConversionService';
+import {
+	ConversionService,
+	conversionDefaults,
+} from 'src/recording/ConversionService';
 import type {
 	ConversionOutcome,
 	ConversionRequest,
@@ -520,5 +523,20 @@ describe('ConversionService', () => {
 			);
 			expect(getNotices()).toEqual([]);
 		});
+	});
+});
+
+describe('what a conversion starts from', () => {
+	it('takes the bitrate, the source deletion and the link rewrite from the settings', () => {
+		expect(
+			conversionDefaults(
+				partial<Parameters<typeof conversionDefaults>[0]>({
+					bitrate: 96,
+					deleteSourceAfterConversion: true,
+					deleteSourceAfterSplit: false,
+					conversionLinkAction: 'after',
+				}),
+			),
+		).toEqual({ bitrate: 96, deleteSource: true, linkAction: 'after' });
 	});
 });
