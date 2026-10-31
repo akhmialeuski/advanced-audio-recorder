@@ -15,6 +15,13 @@
  */
 
 import type { ActionServices } from 'src/actions/core/actionServices';
+// Types only: memoryCapture imports this module from the after-env setup, so
+// a value imported here would be loaded before any suite could mock it.
+import type {
+	RecordingTranscriber,
+	TranscriptionRunOutcome,
+} from 'src/transcription/api';
+import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
 
 /**
  * A deliberately partial stand-in, typed as the thing it stands in for.
@@ -101,6 +108,30 @@ export function queueServicesDouble(): ActionServices['transcriptionQueue'] & {
 	};
 }
 
+/** A run that wrote its transcript beside the recording, whole and free. */
+export const FINISHED_RUN: TranscriptionRunOutcome = {
+	status: 'done',
+	destination: 'file',
+	notePath: '',
+	missingParts: 0,
+	usd: null,
+};
+
+/**
+ * A transcription run that ends every run the way a case says, finished by
+ * default. Its `transcribe` is a mock, so a case reads the request the
+ * surface under test built.
+ * @param outcome - How every run ends
+ * @returns The double
+ */
+export function transcriberDouble(
+	outcome: TranscriptionRunOutcome = FINISHED_RUN,
+): Pick<RecordingTranscriber, 'transcribe'> & {
+	transcribe: jest.MockedFunction<RecordingTranscriber['transcribe']>;
+} {
+	return { transcribe: jest.fn().mockResolvedValue(outcome) };
+}
+
 /**
  * The parts of an action-services double no harness varies: the settings
  * writer, the dialog options, the enhancement primer, the worker accessor,
@@ -113,7 +144,7 @@ export function queueServicesDouble(): ActionServices['transcriptionQueue'] & {
  */
 export function commonActionServices(): {
 	saveSettings: () => Promise<void>;
-	createTranscriptionModalOptions: () => Record<string, never>;
+	createTranscriptionModalOptions: () => TranscriptionModalOptions;
 	primeForEnhancement: () => void;
 	getWorkerClient: () => null;
 	autoChapters: ActionServices['autoChapters'];
@@ -123,7 +154,9 @@ export function commonActionServices(): {
 } {
 	return {
 		saveSettings: () => Promise.resolve(),
-		createTranscriptionModalOptions: () => ({}),
+		createTranscriptionModalOptions: () => ({
+			transcriber: transcriberDouble(),
+		}),
 		primeForEnhancement: () => undefined,
 		getWorkerClient: () => null,
 		autoChapters: partial<ActionServices['autoChapters']>({

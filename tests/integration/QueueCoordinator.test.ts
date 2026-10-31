@@ -16,7 +16,7 @@ import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import { ConfirmModal } from 'src/ui/ConfirmModal';
 import { TranscriptionQueueModal } from 'src/ui/TranscriptionQueueModal';
 import { at } from '../helpers/assertions';
-import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { FINISHED_RUN } from '../helpers/doubles';
 
 /** A folder tree of the given paths, as the vault reports one. */
 function folderOf(name: string, paths: readonly string[]): TFolder {
@@ -74,15 +74,11 @@ function createSut(stored: { path: string; state: string }[] = []): Sut {
 				app,
 				queue,
 				getSettings,
-				transcribe: (file) => {
-					transcribed.push(file.path);
-					return Promise.resolve({
-						cost: {
-							engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-							usd: 0,
-							usage: {},
-						},
-					});
+				transcriber: {
+					transcribe: ({ file }) => {
+						transcribed.push(file.path);
+						return Promise.resolve(FINISHED_RUN);
+					},
 				},
 				assumedSecondsPerRecording: 600,
 			}),

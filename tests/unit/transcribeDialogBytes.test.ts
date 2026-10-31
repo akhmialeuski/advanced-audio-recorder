@@ -26,13 +26,6 @@ import {
 	type ObjectUrlDouble,
 } from '../helpers/mediaMocks';
 
-// Only the run itself is stood in for; the metadata reader under test is the
-// real one, which is the whole point of this suite.
-jest.mock('src/transcription/api', () => {
-	const actual = jest.requireActual('src/transcription/api');
-	return { __esModule: true, ...actual, transcribeFile: jest.fn() };
-});
-
 // The container will not parse, which is the one case that reaches the decode.
 jest.mock('mediabunny', () => ({
 	ALL_FORMATS: [],
@@ -46,11 +39,9 @@ jest.mock('mediabunny', () => ({
 	})),
 }));
 
-import { transcribeFile } from 'src/transcription/api';
 import { waitFor } from '../helpers/async';
-import { internalsOf } from '../helpers/doubles';
-
-const transcribeMock = transcribeFile as jest.Mock;
+import { at } from '../helpers/assertions';
+import { internalsOf, transcriberDouble } from '../helpers/doubles';
 
 /** The file's bytes, distinctive enough that an empty buffer cannot pass. */
 const FILE_BYTES = [0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81];
@@ -98,16 +89,6 @@ async function settle(internals: ModalInternals): Promise<void> {
 beforeEach(() => {
 	decoded = [];
 	mockDecodeAudioData.mockClear();
-	transcribeMock.mockReset();
-	transcribeMock.mockResolvedValue({
-		transcript: { segments: [], speakers: [] },
-		markdown: '',
-		cost: {
-			engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-			usd: null,
-			usage: {},
-		},
-	});
 	jest.mocked(Notice).mockClear();
 	urlMock = installObjectUrlMock();
 	// The browser cannot read a length either, so the read goes all the way to
@@ -135,6 +116,7 @@ function createModal(readBinary?: () => Promise<ArrayBuffer>): {
 	modal: TranscriptionModal;
 	internals: ModalInternals;
 	bytes: ArrayBuffer;
+	transcriber: ReturnType<typeof transcriberDouble>;
 } {
 	const settings = {
 		...DEFAULT_SETTINGS,
@@ -150,21 +132,29 @@ function createModal(readBinary?: () => Promise<ArrayBuffer>): {
 	};
 	const file = createFile('Audio/meeting.webm');
 	Object.defineProperty(file, 'name', { value: 'meeting.webm' });
-	const modal = new TranscriptionModal(app, file, () => settings, {});
-	return { modal, internals: internalsOf<ModalInternals>(modal), bytes };
+	// Only the run itself is stood in for; the metadata reader under test is
+	// the real one, which is the whole point of this suite.
+	const transcriber = transcriberDouble();
+	const modal = new TranscriptionModal(app, file, () => settings, {
+		transcriber,
+	});
+	return {
+		modal,
+		internals: internalsOf<ModalInternals>(modal),
+		bytes,
+		transcriber,
+	};
 }
 
 describe('the bytes the transcribe dialog shares with its run', () => {
 	it('hands the run the file, not what the metadata read left behind', async () => {
-		const { modal, internals, bytes } = createModal();
+		const { modal, internals, bytes, transcriber } = createModal();
 		modal.onOpen();
 		await settle(internals);
 
 		await internals.startRun();
 
-		const passed = transcribeMock.mock.calls[0]?.[3] as {
-			audioBytes?: ArrayBuffer;
-		};
+		const passed = at(transcriber.transcribe.mock.calls, 0)[0];
 		// The very buffer the dialog read, still holding the file. A detached
 		// one is the same object reading as zero bytes, which is exactly what
 		// the engine rejected as corrupt audio.
@@ -179,15 +169,13 @@ describe('the bytes the transcribe dialog shares with its run', () => {
 		// it can reproduce that in jsdom - an ArrayBuffer cannot be detached
 		// here. So the rule is asserted directly instead: whatever the decoder
 		// is handed, it is not the object the run is handed.
-		const { modal, internals } = createModal();
+		const { modal, internals, transcriber } = createModal();
 		modal.onOpen();
 		await settle(internals);
 
 		await internals.startRun();
 
-		const passed = transcribeMock.mock.calls[0]?.[3] as {
-			audioBytes?: ArrayBuffer;
-		};
+		const passed = at(transcriber.transcribe.mock.calls, 0)[0];
 		expect(decoded).toHaveLength(1);
 		expect(decoded[0]).not.toBe(passed.audioBytes);
 		// And it was a copy of the file rather than something else entirely,
@@ -216,7 +204,7 @@ describe('a probe the vault cannot serve', () => {
 	});
 
 	it('still runs, reading the file itself rather than reusing probe bytes', async () => {
-		const { modal, internals } = createModal(() =>
+		const { modal, internals, transcriber } = createModal(() =>
 			Promise.reject(new Error('vault read failed')),
 		);
 		modal.onOpen();
@@ -226,9 +214,7 @@ describe('a probe the vault cannot serve', () => {
 
 		// No probed bytes to hand over, so the run passes the file and lets the
 		// engine read it.
-		const passed = transcribeMock.mock.calls[0]?.[3] as {
-			audioBytes?: ArrayBuffer;
-		};
+		const passed = at(transcriber.transcribe.mock.calls, 0)[0];
 		expect(passed.audioBytes).toBeUndefined();
 	});
 });

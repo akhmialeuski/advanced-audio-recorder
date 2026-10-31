@@ -22,10 +22,8 @@ import {
 	type Profile,
 } from 'src/settings/profiles';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
-import {
-	TranscriptionModal,
-	type TranscriptionRunOutcome,
-} from 'src/ui/TranscriptionModal';
+import { TranscriptionModal } from 'src/ui/TranscriptionModal';
+import type { TranscriptionRunOutcome } from 'src/transcription/api';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { recordingVault } from '../helpers/recordingVault';
 import { valueOrThrow } from 'src/utils/refusal';
@@ -354,6 +352,7 @@ describe('starting a transcription from the command line', () => {
 			destination: 'note',
 			notePath: MEETING,
 			missingParts: 0,
+			usd: null,
 		});
 
 		await expect(answer).resolves.toBe(
@@ -384,6 +383,7 @@ describe('where a finished run says the transcript went', () => {
 		destination,
 		notePath,
 		missingParts,
+		usd: null,
 	});
 
 	it.each([
