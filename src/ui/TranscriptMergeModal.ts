@@ -19,30 +19,33 @@
 
 import { Notice, Setting } from 'obsidian';
 import type { App, DropdownComponent, ExtraButtonComponent } from 'obsidian';
-import type { TranscriptSelectionContext } from '../actions/transcript/transcriptContext';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
 import {
 	mergedLineText,
 	mergeConfirmationMessage,
 	mergeNeedsConfirmation,
 } from '../speakers/transcriptMerge';
-import { formatLineTime, type RowTiming } from '../speakers/transcriptRows';
-import { confirmAction } from './ConfirmModal';
-import { PluginModal } from './PluginModal';
 import {
-	fillSpeakerDropdown,
-	keptFilesReason,
+	formatLineTime,
 	pickedChoice,
-	quote,
 	speakerValue,
-	type TranscriptEditModalOptions,
-} from './transcriptLineDialog';
+	type RowTiming,
+} from '../speakers/transcriptRows';
+import type { TranscriptLineSelection } from '../speakers/transcriptLineSelection';
+import type { TranscriptEditServices } from '../speakers/transcriptLineSource';
 import {
 	mergeSpeakerOptions,
 	performMerge,
 	prepareMerge,
 	type PreparedMerge,
-} from './transcriptLineEdits';
+} from '../speakers/transcriptLineEdits';
+import { confirmAction } from './ConfirmModal';
+import { PluginModal } from './PluginModal';
+import {
+	fillSpeakerDropdown,
+	keptFilesReason,
+	quote,
+} from './transcriptLineDialog';
 import { isRefusal } from '../utils/refusal';
 
 /** Preview id of the merged passage (the player plays one excerpt at a time). */
@@ -63,8 +66,8 @@ export class TranscriptMergeModal extends PluginModal {
 
 	constructor(
 		app: App,
-		private readonly context: TranscriptSelectionContext,
-		private readonly options: TranscriptEditModalOptions,
+		private readonly context: TranscriptLineSelection,
+		private readonly options: TranscriptEditServices,
 	) {
 		super(app);
 	}

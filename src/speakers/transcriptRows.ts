@@ -347,6 +347,43 @@ export function lineSpeakerOptions(
 	];
 }
 
+/** The dropdown entry that leaves a line without a speaker. */
+export const NO_SPEAKER_OPTION: LineSpeakerOption = {
+	value: 'none',
+	title: 'No speaker',
+	choice: { kind: 'none' },
+};
+
+/**
+ * The dropdown value a speaker shown by a line is picked by, or that of no
+ * speaker.
+ * @param speaker - The speaker, if any
+ */
+export function speakerValue(speaker: string | undefined): string {
+	return speaker === undefined
+		? NO_SPEAKER_OPTION.value
+		: `existing:${speaker}`;
+}
+
+/**
+ * The choice a speaker dropdown value stands for (the values are the ones
+ * {@link lineSpeakerOptions} gives, plus "none" for no speaker).
+ * @param value - The dropdown's value
+ */
+export function pickedChoice(value: string): LineSpeakerChoice {
+	if (value === 'new') {
+		return { kind: 'new' };
+	}
+	if (value === NO_SPEAKER_OPTION.value) {
+		return { kind: 'none' };
+	}
+	const separator = value.indexOf(':');
+	const name = value.slice(separator + 1);
+	return value.startsWith('participant:')
+		? { kind: 'participant', name }
+		: { kind: 'existing', name };
+}
+
 /** One part of the line and the speaker picked for it. */
 export interface LineSpeakerRequest {
 	/** The speaker picked. */

@@ -14,11 +14,7 @@ import { COMMAND_IDS } from '../../constants';
 import { lineTimecodeRef } from '../../obsidian/timecodeRefs';
 import { TranscriptMergeModal } from '../../ui/TranscriptMergeModal';
 import { TranscriptSplitModal } from '../../ui/TranscriptSplitModal';
-import {
-	pickedChoice,
-	speakerValue,
-	type TranscriptEditModalOptions,
-} from '../../ui/transcriptLineDialog';
+import type { TranscriptEditServices } from '../../speakers/transcriptLineSource';
 import {
 	mergeSpeakerOptions,
 	performMerge,
@@ -26,13 +22,15 @@ import {
 	prepareMerge,
 	prepareSplit,
 	splitDefaults,
-} from '../../ui/transcriptLineEdits';
+} from '../../speakers/transcriptLineEdits';
 import {
 	mergeConfirmationMessage,
 	mergeNeedsConfirmation,
 } from '../../speakers/transcriptMerge';
 import {
 	formatLineTime,
+	pickedChoice,
+	speakerValue,
 	type LineSpeakerChoice,
 	type LineSpeakerOption,
 } from '../../speakers/transcriptRows';
@@ -180,13 +178,13 @@ export function activeTranscriptSelection(
 }
 
 /**
- * The collaborators the edits share, taken from the services every action is
- * given.
+ * What the edits read beside the selection, taken from the services every
+ * action is given.
  * @param context - The selection an action runs on
  */
-function dialogOptions(
+function editServices(
 	context: TranscriptSelectionContext,
-): TranscriptEditModalOptions {
+): TranscriptEditServices {
 	return {
 		getSettings: context.services.getSettings,
 		sidecar: context.services.recordingSidecar,
@@ -275,7 +273,7 @@ async function splitFromCli(
 	args: CliData,
 ): Promise<string> {
 	const { app } = context.services;
-	const options = dialogOptions(context);
+	const options = editServices(context);
 	const prepared = await prepareSplit(app, options, context);
 	if (isRefusal(prepared)) {
 		return prepared.refusal;
@@ -325,7 +323,7 @@ async function mergeFromCli(
 	args: CliData,
 ): Promise<string> {
 	const { app } = context.services;
-	const options = dialogOptions(context);
+	const options = editServices(context);
 	const prepared = await prepareMerge(app, options, context);
 	if (isRefusal(prepared)) {
 		return prepared.refusal;
@@ -362,7 +360,7 @@ export const TRANSCRIPT_ACTIONS: readonly TranscriptAction[] = [
 			new TranscriptSplitModal(
 				context.services.app,
 				context,
-				dialogOptions(context),
+				editServices(context),
 			).open();
 		},
 		cli: {
@@ -413,7 +411,7 @@ export const TRANSCRIPT_ACTIONS: readonly TranscriptAction[] = [
 			new TranscriptMergeModal(
 				context.services.app,
 				context,
-				dialogOptions(context),
+				editServices(context),
 			).open();
 		},
 		cli: {

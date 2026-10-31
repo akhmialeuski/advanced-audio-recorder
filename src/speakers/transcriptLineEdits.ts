@@ -9,36 +9,37 @@
  * The note is written through the selection's {@link TranscriptLines}: the
  * open editor for the dialogs, so the edit is undone like any other, and the
  * note file for the command line, which has no editor to go through.
- * @module ui/transcriptLineEdits
+ * @module speakers/transcriptLineEdits
  */
 
 import type { App } from 'obsidian';
-import type { TranscriptSelectionContext } from '../actions/transcript/transcriptContext';
 import { lineTimecodeRef, timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import {
 	applyTranscriptEdit,
 	describeTranscriptMerge,
 	describeTranscriptSplit,
-} from '../speakers/applyTranscriptEdit';
+} from './applyTranscriptEdit';
 import {
 	buildMergedSegment,
 	locateMergedSegments,
 	mergedSpan,
 	mergeSelectionProblem,
 	type SelectedLineKind,
-} from '../speakers/transcriptMerge';
+} from './transcriptMerge';
 import {
 	lineSpeakerOptions,
 	locateRowSegments,
+	NO_SPEAKER_OPTION,
 	resolveLineSpeakers,
 	rowTiming,
+	speakerValue,
 	type LineSpeakerChoice,
 	type LineSpeakerOption,
 	type LineSpeakerRequest,
 	type LineSpeakerSources,
 	type RowSpan,
 	type RowTiming,
-} from '../speakers/transcriptRows';
+} from './transcriptRows';
 import {
 	afterSelection,
 	buildSplitPieces,
@@ -46,7 +47,8 @@ import {
 	readSplitTimes,
 	splitLineText,
 	type SplitTexts,
-} from '../speakers/transcriptSplit';
+} from './transcriptSplit';
+import type { TranscriptLineSelection } from './transcriptLineSelection';
 import type { TranscriptSegment } from '../transcription/TranscriptTypes';
 import {
 	formatTranscriptMarkdown,
@@ -54,16 +56,14 @@ import {
 } from '../transcription/transcriptFormat';
 import {
 	nextLineSeconds,
-	NO_SPEAKER_OPTION,
 	readTranscriptLine,
 	readTranscriptSource,
 	recordingDuration,
 	speakerSources,
-	speakerValue,
 	type ReadLine,
-	type TranscriptEditModalOptions,
+	type TranscriptEditServices,
 	type TranscriptSource,
-} from './transcriptLineDialog';
+} from './transcriptLineSource';
 import { isRefusal, valueOrThrow, type Refusable } from '../utils/refusal';
 
 /** Everything read and worked out before a split can be offered. */
@@ -93,8 +93,8 @@ export interface PreparedSplit {
  */
 export async function prepareSplit(
 	app: App,
-	options: TranscriptEditModalOptions,
-	context: TranscriptSelectionContext,
+	options: TranscriptEditServices,
+	context: TranscriptLineSelection,
 ): Promise<Refusable<PreparedSplit>> {
 	const { lines, note, audio, line, lineText, from, to, seconds } = context;
 	const read = await readTranscriptSource(app, options, note, audio);
@@ -211,7 +211,7 @@ export interface SplitChoices {
  */
 function renderLines(
 	app: App,
-	context: TranscriptSelectionContext,
+	context: TranscriptLineSelection,
 	source: TranscriptSource,
 	segments: TranscriptSegment[],
 ): string {
@@ -238,8 +238,8 @@ function renderLines(
  */
 export async function performSplit(
 	app: App,
-	options: TranscriptEditModalOptions,
-	context: TranscriptSelectionContext,
+	options: TranscriptEditServices,
+	context: TranscriptLineSelection,
 	choices: SplitChoices,
 	changed: string,
 ): Promise<string> {
@@ -318,8 +318,8 @@ export interface PreparedMerge {
  */
 export async function prepareMerge(
 	app: App,
-	options: TranscriptEditModalOptions,
-	context: TranscriptSelectionContext,
+	options: TranscriptEditServices,
+	context: TranscriptLineSelection,
 ): Promise<Refusable<PreparedMerge>> {
 	const { lines, note, audio, lastLine, lineTexts } = context;
 	const read = await readTranscriptSource(app, options, note, audio);
@@ -417,8 +417,8 @@ export function mergeSpeakerOptions(
  */
 export async function performMerge(
 	app: App,
-	options: TranscriptEditModalOptions,
-	context: TranscriptSelectionContext,
+	options: TranscriptEditServices,
+	context: TranscriptLineSelection,
 	choice: LineSpeakerChoice,
 	changed: string,
 ): Promise<string> {

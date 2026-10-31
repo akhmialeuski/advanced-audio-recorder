@@ -24,13 +24,22 @@ import type {
 	ExtraButtonComponent,
 	TextComponent,
 } from 'obsidian';
-import type { TranscriptSelectionContext } from '../actions/transcript/transcriptContext';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
 import type { SpeakerPreviewRange } from '../speakers/speakerPreview';
 import {
 	formatLineTime,
+	NO_SPEAKER_OPTION,
+	pickedChoice,
 	type LineSpeakerOption,
 } from '../speakers/transcriptRows';
+import type { TranscriptLineSelection } from '../speakers/transcriptLineSelection';
+import type { TranscriptEditServices } from '../speakers/transcriptLineSource';
+import {
+	performSplit,
+	prepareSplit,
+	splitDefaults,
+	type PreparedSplit,
+} from '../speakers/transcriptLineEdits';
 import { parseTimecode } from '../utils/TimeUtils';
 import { isRefusal } from '../utils/refusal';
 import { PluginModal } from './PluginModal';
@@ -38,17 +47,8 @@ import { TimeSpanSlider } from './TimeSpanSlider';
 import {
 	fillSpeakerDropdown,
 	keptFilesReason,
-	NO_SPEAKER_OPTION,
-	pickedChoice,
 	quote,
-	type TranscriptEditModalOptions,
 } from './transcriptLineDialog';
-import {
-	performSplit,
-	prepareSplit,
-	splitDefaults,
-	type PreparedSplit,
-} from './transcriptLineEdits';
 
 /** Preview id of the selection (the player plays one excerpt at a time). */
 const SELECTION_PREVIEW_ID = 'selection';
@@ -78,8 +78,8 @@ export class TranscriptSplitModal extends PluginModal {
 
 	constructor(
 		app: App,
-		private readonly context: TranscriptSelectionContext,
-		private readonly options: TranscriptEditModalOptions,
+		private readonly context: TranscriptLineSelection,
+		private readonly options: TranscriptEditServices,
 	) {
 		super(app);
 	}
