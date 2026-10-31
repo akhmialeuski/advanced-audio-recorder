@@ -35,7 +35,11 @@ import { updateStatusBar } from 'src/ui/StatusBar';
 import { ConversionModal } from 'src/ui/ConversionModal';
 import type { JournalSession } from 'src/recording/SessionJournal';
 import { QueueCoordinator } from 'src/transcription/QueueCoordinator';
-import { QueueRunner } from 'src/transcription/QueueRunner';
+import {
+	QueueRunner,
+	type QueueRunnerDeps,
+} from 'src/transcription/QueueRunner';
+import type { RecordingTranscriptionRequest } from 'src/transcription/RecordingTranscriber';
 import { ContextMenu } from 'src/actions/ContextMenu';
 import type { ActionServices } from 'src/actions/core/actionServices';
 import type { TFolder } from 'obsidian';
@@ -1529,41 +1533,58 @@ describe('AudioRecorderPlugin transcription queue', () => {
 		expect(coordinator().open).toHaveBeenCalledTimes(1);
 	});
 
-	it('gives the runner the live settings and the transcribe entry point', async () => {
+	/** A finished pipeline run, as the mocked pipeline answers. */
+	const finishedRun = {
+		transcript: { segments: [], speakers: [] },
+		missingParts: [],
+		cost: {
+			engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			usd: 0,
+			usage: {},
+		},
+	};
+
+	/** What the plugin handed the queue runner it built. */
+	function runnerDeps(): QueueRunnerDeps {
+		return at(
+			(QueueRunner as jest.Mock).mock.calls,
+			0,
+		)[0] as QueueRunnerDeps;
+	}
+
+	/** One queued run of a.webm, as the runner asks for it. */
+	function queuedRun(deps: QueueRunnerDeps): RecordingTranscriptionRequest {
+		return {
+			file: partial<TFile>({ path: 'a.webm' }),
+			settings: deps.getSettings(),
+			notePath: 'a.webm',
+			durationSeconds: () => null,
+			chapters: false,
+		};
+	}
+
+	it('gives the runner the live settings and the plugin transcription run', async () => {
 		const { transcribeFile } = jest.requireMock<{
 			transcribeFile: jest.Mock;
 		}>('src/transcription/runTranscription');
 		let settingsFromRun: unknown = null;
 		transcribeFile.mockImplementation(
 			(_app: unknown, getSettings: () => AudioRecorderSettings) => {
-				// The run reads the settings when it runs, not when it was
-				// wired, so a change during a long queue reaches it
 				settingsFromRun = getSettings();
-				return Promise.resolve({
-					cost: {
-						engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-						usd: 0,
-						usage: {},
-					},
-				});
+				return Promise.resolve(finishedRun);
 			},
 		);
 		const { plugin } = createPlugin([null]);
 		await onloadWithTimers(plugin);
-		const deps = at((QueueRunner as jest.Mock).mock.calls, 0)[0] as {
-			getSettings: () => AudioRecorderSettings;
-			transcribe: (file: TFile, options: unknown) => Promise<unknown>;
-		};
+		const deps = runnerDeps();
 
 		// Read live rather than captured, so a settings change during a long
 		// queue reaches the recordings still to run
 		expect(deps.getSettings()).toBe(plugin.settings);
-		await deps.transcribe(partial<TFile>({ path: 'a.webm' }), {
-			notePathForLinks: 'a.webm',
-		});
+		await deps.transcriber.transcribe(queuedRun(deps));
 
 		expect(transcribeFile).toHaveBeenCalledTimes(1);
-		expect(settingsFromRun).toBe(plugin.settings);
+		expect(settingsFromRun).toEqual(plugin.settings);
 	});
 
 	// A queued run was the only run wired without the sidecar store, so it
@@ -1575,23 +1596,13 @@ describe('AudioRecorderPlugin transcription queue', () => {
 		const { transcribeFile } = jest.requireMock<{
 			transcribeFile: jest.Mock;
 		}>('src/transcription/runTranscription');
-		transcribeFile.mockResolvedValue({
-			cost: {
-				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				usd: 0,
-				usage: {},
-			},
-		});
+		transcribeFile.mockResolvedValue(finishedRun);
 		const { plugin } = createPlugin([null]);
 		await onloadWithTimers(plugin);
-		const deps = at((QueueRunner as jest.Mock).mock.calls, 0)[0] as {
-			transcribe: (file: TFile, options: unknown) => Promise<unknown>;
-		};
+		const deps = runnerDeps();
 		const services = menuServices();
 
-		await deps.transcribe(partial<TFile>({ path: 'a.webm' }), {
-			notePathForLinks: 'a.webm',
-		});
+		await deps.transcriber.transcribe(queuedRun(deps));
 
 		// The same store, not merely a store: every writer of a recording's
 		// sidecar has to serialize on one write chain.

@@ -105,6 +105,7 @@ import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
 import {
 	isProviderAvailableOnPlatform,
+	RecordingTranscriber,
 	SessionCostTracker,
 } from './transcription/api';
 import type { MarkerKind } from './markers/markerModel';
@@ -117,7 +118,6 @@ import {
 	TRANSCRIPTION_QUEUE_FILE,
 } from './transcription/TranscriptionQueue';
 import { QUEUE_ASSUMED_RECORDING_SECONDS } from './constants';
-import { transcribeFile } from './transcription/runTranscription';
 import { releaseNotesSince } from './release/releaseNotes';
 import { ReleaseNotesModal } from './ui/ReleaseNotesModal';
 import {
@@ -211,6 +211,8 @@ export default class AudioRecorderPlugin extends Plugin {
 	private autoChapterService!: AutoChapterService;
 	/** Shared per-recording sidecar store (markers + transcript data). */
 	private sidecarStore!: RecordingSidecarStore;
+	/** Runs a recording's transcription for the dialog and the queue alike. */
+	private recordingTranscriber!: RecordingTranscriber;
 	private journal!: SessionJournal;
 	private encodingWorker: EncodingWorkerClient | null = null;
 	private recordingStatus: RecordingStatus = RecordingStatus.Idle;
@@ -350,6 +352,14 @@ export default class AudioRecorderPlugin extends Plugin {
 			// joins the same session counter the transcription runs report to.
 			{ costSink: this.transcriptionCostTracker },
 		);
+		this.recordingTranscriber = new RecordingTranscriber({
+			app: this.app,
+			sidecar: this.sidecarStore,
+			costs: this.transcriptionCostTracker,
+			generateChapters: async (file, transcript) => {
+				await this.autoChapterService.generate(file, transcript);
+			},
+		});
 		this.recordingBanner = new RecordingBanner({
 			onStop: () => {
 				void this.recordingManager.stopRecording();
@@ -472,23 +482,7 @@ export default class AudioRecorderPlugin extends Plugin {
 				app: this.app,
 				queue,
 				getSettings: () => this.settings,
-				transcribe: (file, options) =>
-					transcribeFile(
-						this.app,
-						() => this.settings,
-						file,
-						// A queued run registers what it wrote and what it
-						// lost exactly as one started from the dialog does.
-						// Without the store its outputs survive no rename, its
-						// speakers keep the engine's own labels, and the parts
-						// it failed on are never offered for a top-up: the
-						// action reports the transcript as complete instead.
-						{ ...options, sidecar: this.sidecarStore },
-						{
-							costSink: this.transcriptionCostTracker,
-						},
-					),
-				costSink: this.transcriptionCostTracker,
+				transcriber: this.recordingTranscriber,
 				// The same assumed length the dialog prices the queue with, so
 				// what a finished run is recorded at cannot contradict what
 				// the user was quoted for it.
@@ -1627,15 +1621,8 @@ export default class AudioRecorderPlugin extends Plugin {
 				setSelectedProfileId(this.settings, kind, profileId);
 				await this.saveSettings();
 			},
+			transcriber: this.recordingTranscriber,
 			costTracker: this.transcriptionCostTracker,
-			// Speaker-name continuity: the run re-applies stored names and
-			// registers the outputs it writes in the recording's sidecar.
-			sidecar: this.sidecarStore,
-			// After-transcription auto chapters: runs on the fresh in-memory
-			// transcript, reporting through its own Notices.
-			generateChapters: async (file, transcript) => {
-				await this.autoChapterService.generate(file, transcript);
-			},
 			backgroundProgress: {
 				show: (progress: SaveProgress, restore: () => void) => {
 					// Re-insert so the most recently updated job sorts last and

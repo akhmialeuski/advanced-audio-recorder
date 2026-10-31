@@ -548,3 +548,18 @@ export function isProviderAvailableOnPlatform(
 	}
 	return true;
 }
+
+/**
+ * Why a run on the engine is refused on this platform, or null when it can
+ * run here. One sentence for every place that refuses such a run before it
+ * starts, because each sends the user to the same setting to fix it.
+ * @param id - Transcription engine id
+ * @returns The refusal, or null when the engine runs here
+ */
+export function unavailableEngineRefusal(
+	id: TranscriptionProviderId,
+): string | null {
+	return isProviderAvailableOnPlatform(id)
+		? null
+		: 'The selected transcription engine is not available on this device. Pick a cloud engine in settings.';
+}

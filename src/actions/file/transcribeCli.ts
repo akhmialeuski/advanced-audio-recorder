@@ -29,11 +29,11 @@ import {
 	type LabeledOption,
 } from '../../settings/labels';
 import { transcriptionRefusal } from '../../settings/settingsAttention';
-import { TranscriptDestination } from '../../transcription/api';
 import {
-	TranscriptionModal,
+	TranscriptDestination,
 	type TranscriptionRunOutcome,
-} from '../../ui/TranscriptionModal';
+} from '../../transcription/api';
+import { TranscriptionModal } from '../../ui/TranscriptionModal';
 import {
 	choiceParam,
 	cliChoice,

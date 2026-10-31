@@ -19,7 +19,6 @@ import type {
 	AudioRecorderSettings,
 	TranscriptionProviderId,
 } from '../settings/settingsSchema';
-import { autoChaptersAfterTranscribe } from '../settings/settingsSchema';
 import {
 	LLM_TASK_OPTIONS,
 	TRANSCRIPT_DESTINATION_OPTIONS,
@@ -48,19 +47,15 @@ import {
 	wordTimestampsNote,
 	wordTimestampsSelectable,
 	providerSupportsDictionary,
-	transcribeFile,
-	TranscriptionCancelledError,
-	type CancellationToken,
 	CostEstimateUnpricedReason,
 	type CostEstimate,
 	type CostEstimateLine,
 	type LlmTask,
+	type RecordingTranscriber,
 	type SessionCostTracker,
-	type TranscribeRunCost,
 	TranscriptDestination,
 	TranscriptFileFormat,
-	type Transcript,
-	type TranscriptOutputSidecar,
+	type TranscriptionRunOutcome,
 } from '../transcription/api';
 import { CancellationSource } from '../utils/cancellation';
 import {
@@ -71,7 +66,6 @@ import {
 	ProfileKindId,
 } from '../settings/profiles';
 import type { SaveProgress } from '../types';
-import { errorMessage } from '../errors';
 import { createProgressBar, type ProgressBar } from './progressBar';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
@@ -109,53 +103,22 @@ export type TranscriptionModalOptions = {
 	 */
 	onProfileSelected?: (kind: ProfileKindId, id: string) => Promise<void>;
 	/**
-	 * Session-wide per-engine cost accumulator owned by the plugin, so the
-	 * dialog can add this run's cost and show the running session total.
+	 * Runs the transcription with the plugin's services: the sidecar store,
+	 * the session total and the chapters that follow a run. The dialog only
+	 * shows what the run does.
+	 */
+	transcriber: Pick<RecordingTranscriber, 'transcribe'>;
+	/**
+	 * The session total the run reports to, read here to show the spending
+	 * so far beside the estimate.
 	 */
 	costTracker?: SessionCostTracker | undefined;
-	/**
-	 * Generates auto chapters from a finished run's transcript. Invoked
-	 * fire-and-forget when the run's auto-chapters toggle is on; the
-	 * implementation reports its own progress and errors via Notices.
-	 */
-	generateChapters?: (file: TFile, transcript: Transcript) => Promise<void>;
-	/**
-	 * Recording sidecar store, passed through to the run so stored speaker
-	 * names are re-applied and the written outputs are registered.
-	 */
-	sidecar?: TranscriptOutputSidecar;
 	/**
 	 * Told how each run ended, for a caller that waits on the dialog it
 	 * opened - the command line, which answers only once the run is over.
 	 */
 	onRunSettled?: (outcome: TranscriptionRunOutcome) => void;
 };
-
-/** How one run of the dialog ended. */
-export type TranscriptionRunOutcome =
-	| {
-			/** The transcript was written. */
-			readonly status: 'done';
-			/**
-			 * The destination the run was given. With no note to write into,
-			 * a run writes every destination as a file beside the recording.
-			 */
-			readonly destination: TranscriptDestination;
-			/** The note it went into or links resolve in, '' for none. */
-			readonly notePath: string;
-			/** How many parts the engine failed on and left out. */
-			readonly missingParts: number;
-	  }
-	| {
-			/** The user cancelled the run. */
-			readonly status: 'cancelled';
-	  }
-	| {
-			/** The run could not start or failed. */
-			readonly status: 'failed';
-			/** What went wrong, as the dialog reported it. */
-			readonly message: string;
-	  };
 
 /**
  * Formats the cost value of one estimate line: the amount for a priced
@@ -235,7 +198,7 @@ export class TranscriptionModal extends PluginModal {
 		app: App,
 		private readonly file: TFile,
 		getSettings: () => AudioRecorderSettings,
-		private readonly options: TranscriptionModalOptions = {},
+		private readonly options: TranscriptionModalOptions,
 	) {
 		super(app);
 		// Shallow copy is enough: every option edited here is a primitive.
@@ -907,40 +870,6 @@ export class TranscriptionModal extends PluginModal {
 	}
 
 	/**
-	 * Adds a finished run's cost to the session tracker and returns the
-	 * amount recorded. Prefers the provider-reported actuals; when the run
-	 * could not be priced from usage, falls back to the duration-based
-	 * transcription estimate so the session counter does not silently
-	 * under-count. The free local engine is never recorded.
-	 *
-	 * This accounts the transcription only. The run's LLM steps report
-	 * themselves through the cost sink as they happen (see runLlmStep), so the
-	 * session total already carries their estimated share by the time this
-	 * runs - adding them here would double-count. The caller decides whether to
-	 * surface a notice and calls this exactly once per run.
-	 * @param settings - The run's settings snapshot
-	 * @param cost - Cost summary reported for the run
-	 * @returns The USD recorded, or null when the run could not be priced
-	 */
-	private accountRunCost(
-		settings: AudioRecorderSettings,
-		cost: TranscribeRunCost,
-	): number | null {
-		// Actual multi-pass billing flows through the summed usage in cost.usd;
-		// the shared rule only estimates when the provider reported no usage to
-		// price from, and leaves out the runs that are not counted at all.
-		const usd =
-			this.options.costTracker?.recordRun(
-				cost,
-				settings,
-				this.durationSeconds,
-			) ?? null;
-		// Refresh the session line so a follow-up run sees the new total.
-		this.updateCostEstimate();
-		return usd;
-	}
-
-	/**
 	 * Whether the engine selected for this run can execute on this
 	 * platform. A stored engine synced from another platform (local
 	 * whisper.cpp on mobile) stays visible but cannot transcribe here.
@@ -986,72 +915,67 @@ export class TranscriptionModal extends PluginModal {
 		// Snapshot the options so a control toggled mid-run cannot change an
 		// in-flight job; edits only affect the next attempt after a failure.
 		const settings = { ...this.runSettings };
-		// Lets abort-capable providers stop an in-flight request at once, and
-		// requestUrl-only endpoints still finish or time out on their own.
-		const token: CancellationToken = this.cancellation.token;
 		this.runningCostEl?.setText('');
-		// The last cumulative cost the run reported, kept so an already-billed
-		// run is still counted when the transcript write fails after the
-		// provider call succeeded (a read-only or full vault).
-		let lastCost: TranscribeRunCost | null = null;
-		let accounted = false;
 		try {
-			const result = await transcribeFile(
-				this.app,
-				() => settings,
-				this.file,
-				{
-					notePathForLinks: this.notePath,
-					token,
-					sidecar: this.options.sidecar,
-					// Reuse the bytes read for the estimate probe so a manual run
-					// does not read the whole file twice (undefined on an auto-run,
-					// which never probes).
-					audioBytes: this.probedBytes ?? undefined,
-					onProgress: (fraction, label) => {
-						this.updateProgress(fraction, label);
-					},
-					onCost: (cost) => {
-						lastCost = cost;
-						// Live spending line: only when the parts completed so
-						// far actually priced to something.
-						if (
-							settings.transcriptionShowCostEstimates &&
-							cost.usd !== null &&
-							cost.usd > 0
-						) {
-							this.runningCostEl?.setText(
-								`Cost so far: ~${formatUsd(cost.usd)}`,
-							);
-						}
-					},
-				},
-				// The run's LLM steps (context agents, post-processing) bill the
-				// LLM provider, which reports no usage; they report their
-				// estimated cost to the same session counter.
-				{ costSink: this.options.costTracker },
-			);
-			const usd = this.accountRunCost(settings, result.cost);
-			accounted = true;
-			this.options.onRunSettled?.({
-				status: 'done',
-				destination: settings.transcriptDestination,
+			const outcome = await this.options.transcriber.transcribe({
+				file: this.file,
+				settings,
 				notePath: this.notePath,
-				missingParts: result.missingParts.length,
+				durationSeconds: () => this.durationSeconds,
+				chapters: true,
+				// Reuse the bytes read for the estimate probe so a manual run
+				// does not read the whole file twice (undefined on an auto-run,
+				// which never probes).
+				audioBytes: this.probedBytes ?? undefined,
+				// Lets abort-capable providers stop an in-flight request at
+				// once; requestUrl-only endpoints finish or time out on their own.
+				token: this.cancellation.token,
+				onProgress: (fraction, label) => {
+					this.updateProgress(fraction, label);
+				},
+				onCost: (cost) => {
+					// Live spending line: only when the parts completed so
+					// far actually priced to something.
+					if (
+						settings.transcriptionShowCostEstimates &&
+						cost.usd !== null &&
+						cost.usd > 0
+					) {
+						this.runningCostEl?.setText(
+							`Cost so far: ~${formatUsd(cost.usd)}`,
+						);
+					}
+				},
 			});
-			if (autoChaptersAfterTranscribe(settings)) {
-				// Fire-and-forget on the fresh in-memory transcript: the
-				// dialog closes normally while chapters generate in the
-				// background, reporting through their own Notices.
-				void this.options.generateChapters?.(
-					this.file,
-					result.transcript,
-				);
+			// Whatever the run recorded, a failed one included, is in the
+			// session line before a follow-up run is priced.
+			this.updateCostEstimate();
+			this.options.onRunSettled?.(outcome);
+			this.showOutcome(outcome);
+		} finally {
+			if (this.busy) {
+				this.setRunning(false);
 			}
-			if (usd !== null) {
+			this.clearBackgroundProgress();
+			// The run consumed the probe bytes (or failed); drop the reference so
+			// a large recording is not held after the run. A retry re-reads.
+			this.probedBytes = null;
+		}
+	}
+
+	/**
+	 * Tells the user how the run ended, and closes the dialog after one that
+	 * finished. A minimized run that did not finish comes back into view,
+	 * because a notice alone would leave it unexplained behind a status bar
+	 * the user has stopped watching.
+	 * @param outcome - How the run ended
+	 */
+	private showOutcome(outcome: TranscriptionRunOutcome): void {
+		if (outcome.status === 'done') {
+			if (outcome.usd !== null) {
 				const total = this.options.costTracker?.totalUsd();
 				new Notice(
-					`Transcription cost ~${formatUsd(usd)}` +
+					`Transcription cost ~${formatUsd(outcome.usd)}` +
 						(total !== undefined
 							? ` (session total ~${formatUsd(total)})`
 							: '') +
@@ -1067,36 +991,17 @@ export class TranscriptionModal extends PluginModal {
 			} else {
 				this.close();
 			}
-		} catch (error) {
-			// The provider was billed even if writing the transcript failed
-			// afterwards (or the user cancelled after some parts completed),
-			// so count what the run reported before surfacing the error, and
-			// only once.
-			if (!accounted && lastCost) {
-				this.accountRunCost(settings, lastCost);
-				accounted = true;
-			}
-			if (error instanceof TranscriptionCancelledError) {
-				new Notice('Transcription cancelled.');
-				this.statusEl?.setText('Cancelled.');
-				this.options.onRunSettled?.({ status: 'cancelled' });
-			} else {
-				const message = errorMessage(error);
-				new Notice(`Transcription failed: ${message}`);
-				this.statusEl?.setText(`Failed: ${message}`);
-				this.options.onRunSettled?.({ status: 'failed', message });
-			}
-			if (this.minimized) {
-				this.restore();
-			}
-		} finally {
-			if (this.busy) {
-				this.setRunning(false);
-			}
-			this.clearBackgroundProgress();
-			// The run consumed the probe bytes (or failed); drop the reference so
-			// a large recording is not held after the run. A retry re-reads.
-			this.probedBytes = null;
+			return;
+		}
+		if (outcome.status === 'cancelled') {
+			new Notice('Transcription cancelled.');
+			this.statusEl?.setText('Cancelled.');
+		} else {
+			new Notice(`Transcription failed: ${outcome.message}`);
+			this.statusEl?.setText(`Failed: ${outcome.message}`);
+		}
+		if (this.minimized) {
+			this.restore();
 		}
 	}
 

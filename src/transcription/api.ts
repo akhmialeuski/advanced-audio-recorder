@@ -6,8 +6,11 @@
  * @module transcription/api
  */
 
-export { transcribeFile } from './runTranscription';
-export type { TranscriptOutputSidecar } from './runTranscription';
+export { RecordingTranscriber } from './RecordingTranscriber';
+export type {
+	RecordingTranscriptionRequest,
+	TranscriptionRunOutcome,
+} from './RecordingTranscriber';
 export {
 	effectiveDiarize,
 	effectiveWordTimestamps,

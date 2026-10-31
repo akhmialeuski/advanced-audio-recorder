@@ -12,10 +12,6 @@ import {
 	TranscriptionModal,
 	type TranscriptionModalOptions,
 } from 'src/ui/TranscriptionModal';
-import {
-	transcribeFile,
-	TranscriptionCancelledError,
-} from 'src/transcription/api';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createFile } from '../helpers/createApp';
 import { allEls, control, el, maybeEl } from '../helpers/dom';
@@ -32,17 +28,20 @@ import {
 } from '../helpers/settingRows';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
-import { internalsOf } from '../helpers/doubles';
+import { at } from '../helpers/assertions';
+import { internalsOf, transcriberDouble } from '../helpers/doubles';
 import { asMockVault } from '../helpers/obsidianMock';
 import { MODAL } from '../helpers/selectors';
 
-// The run itself has its own suites (runTranscription, the providers); what
-// this dialog owes is what it does with the outcome, so the run is recorded
-// and its result scripted per test.
-jest.mock('src/transcription/api', () => ({
-	...jest.requireActual('src/transcription/api'),
-	transcribeFile: jest.fn(),
-}));
+// The run itself has its own suites (RecordingTranscriber, runTranscription,
+// the providers); what this dialog owes is the run it asks for and what it
+// shows of the outcome, so every dialog here runs on a double whose outcome
+// each case scripts.
+let transcriber: ReturnType<typeof transcriberDouble>;
+
+beforeEach(() => {
+	transcriber = transcriberDouble();
+});
 
 type TranscriptionModalInternals = {
 	setRunning: (running: boolean) => void;
@@ -70,6 +69,7 @@ function createModal(callbacks: {
 	clear: jest.Mock;
 }): TranscriptionModal {
 	return new TranscriptionModal(new App(), createAudioFile(), getSettings, {
+		transcriber,
 		backgroundProgress: callbacks,
 	});
 }
@@ -223,6 +223,7 @@ describe('TranscriptionModal platform gating', () => {
 				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 			}),
 			{
+				transcriber,
 				backgroundProgress: { show: jest.fn(), clear: jest.fn() },
 				...options,
 			},
@@ -350,7 +351,7 @@ describe('TranscriptionModal dictionary profile selection', () => {
 			new App(),
 			createAudioFile(),
 			() => settings,
-			{ onProfileSelected },
+			{ transcriber, onProfileSelected },
 		);
 		modal.onOpen();
 
@@ -408,7 +409,7 @@ describe('TranscriptionModal participant profile selection', () => {
 			new App(),
 			createAudioFile(),
 			() => withoutDiarize,
-			{},
+			{ transcriber },
 		);
 		modal.onOpen();
 		expect(selectByName(modal, 'Participant profile')).toBeNull();
@@ -421,7 +422,7 @@ describe('TranscriptionModal participant profile selection', () => {
 			new App(),
 			createAudioFile(),
 			() => nonDiarizing,
-			{},
+			{ transcriber },
 		);
 		other.onOpen();
 		expect(selectByName(other, 'Participant profile')).toBeNull();
@@ -434,7 +435,7 @@ describe('TranscriptionModal participant profile selection', () => {
 			new App(),
 			createAudioFile(),
 			() => settings,
-			{ onProfileSelected },
+			{ transcriber, onProfileSelected },
 		);
 		modal.onOpen();
 
@@ -478,7 +479,7 @@ describe('TranscriptionModal participant profile selection', () => {
 			app,
 			createAudioFile(),
 			() => settings,
-			{},
+			{ transcriber },
 		);
 		modal.onOpen();
 		const description = (): string =>
@@ -508,7 +509,7 @@ describe('TranscriptionModal participant profile selection', () => {
 			new App(),
 			createAudioFile(),
 			() => stored,
-			{},
+			{ transcriber },
 		);
 		selected.onOpen();
 		expect(selectByName(selected, 'Participant profile')?.value).toBe('s1');
@@ -523,7 +524,7 @@ describe('TranscriptionModal participant profile selection', () => {
 			new App(),
 			createAudioFile(),
 			() => stale,
-			{},
+			{ transcriber },
 		);
 		modal.onOpen();
 		expect(selectByName(modal, 'Participant profile')?.value).toBe('');
@@ -579,7 +580,7 @@ describe('TranscriptionModal chapter profile selection', () => {
 			new App(),
 			createAudioFile(),
 			() => off,
-			{},
+			{ transcriber },
 		);
 		modal.onOpen();
 		expect(chapterProfileSelect(modal)).toBeNull();
@@ -611,7 +612,7 @@ describe('TranscriptionModal chapter profile selection', () => {
 			new App(),
 			createAudioFile(),
 			() => settings,
-			{ onProfileSelected },
+			{ transcriber, onProfileSelected },
 		);
 		modal.onOpen();
 
@@ -664,7 +665,7 @@ function openedOver(settings: AudioRecorderSettings): TranscriptionModal {
 		new App(),
 		createAudioFile(),
 		() => settings,
-		{},
+		{ transcriber },
 	);
 	modal.onOpen();
 	return modal;
@@ -781,7 +782,7 @@ describe('TranscriptionModal per-run options', () => {
 			() => settings,
 			// A note to write into, so an in-note destination is not
 			// downgraded to a file before anything is rendered.
-			{ notePath: 'Notes/meeting.md' },
+			{ transcriber, notePath: 'Notes/meeting.md' },
 		);
 		modal.onOpen();
 		return {
@@ -876,7 +877,7 @@ describe('TranscriptionModal per-run options', () => {
 			new App(),
 			createAudioFile(),
 			() => settings,
-			{},
+			{ transcriber },
 		);
 
 		modal.onOpen();
@@ -1149,29 +1150,15 @@ describe('TranscriptionModal per-run options', () => {
 	});
 });
 
-/** What a finished transcription run resolves to. */
-type RunResult = Awaited<ReturnType<typeof transcribeFile>>;
-
 describe('TranscriptionModal running the job', () => {
-	/** A finished run, with whatever the test needs to differ. */
-	function runResult(overrides: Partial<RunResult> = {}): RunResult {
-		return {
-			transcript: { segments: [], speakers: [] },
-			markdown: '# Transcript',
-			cost: { engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: 0.12 },
-			...overrides,
-		} as RunResult;
-	}
-
-	/** A dialog ready to run, with the cost tracker and chapter hook spied. */
+	/** A dialog ready to run, reading a session counter for its total. */
 	function openRunnable(
 		overrides: Partial<AudioRecorderSettings> = {},
-		options: Record<string, unknown> = {},
+		options: Partial<TranscriptionModalOptions> = {},
 	): {
 		modal: TranscriptionModal;
 		internals: TranscriptionModalInternals;
-		recordRun: jest.Mock;
-		generateChapters: jest.Mock;
+		settings: AudioRecorderSettings;
 	} {
 		const settings: AudioRecorderSettings = {
 			...DEFAULT_SETTINGS,
@@ -1179,28 +1166,22 @@ describe('TranscriptionModal running the job', () => {
 			transcriptionShowCostEstimates: true,
 			...overrides,
 		};
-		const recordRun = jest.fn().mockReturnValue(0.12);
-		// The dialog also reads the tracker to draw the session total line, so
-		// the double answers the whole surface it uses, not only the run it
-		// records. What a run is priced at is the counter's own rule, so the
-		// double answers with a figure rather than working one out.
+		// The dialog reads the tracker to draw the session total line and the
+		// total in its cost notice; what a run adds to it is the run's own rule.
 		const costTracker = {
-			recordRun,
 			hasEntries: (): boolean => false,
 			unpricedRuns: (): number => 0,
+			estimatedRuns: (): number => 0,
 			totalUsd: (): number => 0.12,
-			total: (): number => 0,
-			entries: (): unknown[] => [],
 		};
-		const generateChapters = jest.fn().mockResolvedValue(undefined);
 		const modal = new TranscriptionModal(
 			new App(),
 			createAudioFile(),
 			() => settings,
 			{
+				transcriber,
 				notePath: 'Notes/meeting.md',
 				costTracker: costTracker as never,
-				generateChapters,
 				...options,
 			},
 		);
@@ -1208,14 +1189,9 @@ describe('TranscriptionModal running the job', () => {
 		return {
 			modal,
 			internals: internalsOf<TranscriptionModalInternals>(modal),
-			recordRun,
-			generateChapters,
+			settings,
 		};
 	}
-
-	beforeEach(() => {
-		jest.mocked(transcribeFile).mockResolvedValue(runResult());
-	});
 
 	it('closes itself when the run finishes', async () => {
 		const { modal, internals } = openRunnable();
@@ -1223,55 +1199,47 @@ describe('TranscriptionModal running the job', () => {
 
 		await internals.startRun();
 
-		expect(transcribeFile).toHaveBeenCalled();
-		expect(close).toHaveBeenCalled();
+		expect(transcriber.transcribe).toHaveBeenCalledTimes(1);
+		expect(close).toHaveBeenCalledTimes(1);
 	});
 
-	// What the dialog owes is handing the finished run to the session counter
-	// with the length it probed. Which runs are counted and at what figure is
-	// the counter's own rule, shared with the queue and the top-up so the same
-	// recording cannot reach the total differently depending on what started it.
-	it('hands the finished run to the session counter', async () => {
-		const { internals, recordRun } = openRunnable();
+	// Which runs reach the session total, and the chapters after one, are the
+	// run's own rules; the dialog owes them the run as the user set it up.
+	it('asks for the run the user set up, into the note it was opened on', async () => {
+		const { internals, settings } = openRunnable();
 
 		await internals.startRun();
 
-		// The third figure is the duration the dialog probed, which is null
-		// until the probe answers; it only ever sizes a fallback estimate
-		expect(recordRun).toHaveBeenCalledWith(
-			expect.objectContaining({
-				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-			}),
-			expect.anything(),
-			null,
+		const request = at(transcriber.transcribe.mock.calls, 0)[0];
+		expect(request.settings).toEqual(settings);
+		// A snapshot, so a control changed mid-run cannot change the run.
+		expect(request.settings).not.toBe(settings);
+		expect(request.notePath).toBe('Notes/meeting.md');
+		expect(request.chapters).toBe(true);
+		// The length the dialog probed, null until the probe answers; it
+		// only ever sizes a fallback estimate.
+		expect(request.durationSeconds()).toBeNull();
+	});
+
+	it('says what the run cost and what the session has spent', async () => {
+		transcriber.transcribe.mockResolvedValue({
+			status: 'done',
+			destination: 'file',
+			notePath: 'Notes/meeting.md',
+			missingParts: 0,
+			usd: 0.05,
+		});
+		const { internals } = openRunnable();
+
+		await internals.startRun();
+
+		expect(noticeMessages()).toContain(
+			'Transcription cost ~$0.05 (session total ~$0.12).',
 		);
-	});
-
-	it('generates chapters from the transcript it just produced', async () => {
-		const { internals, generateChapters } = openRunnable({
-			transcriptionAutoChaptersEnabled: true,
-			transcriptionAutoChaptersOnTranscribe: true,
-		});
-
-		await internals.startRun();
-
-		expect(generateChapters).toHaveBeenCalled();
-	});
-
-	it('generates no chapters when the run was not asked to', async () => {
-		const { internals, generateChapters } = openRunnable({
-			transcriptionAutoChaptersOnTranscribe: false,
-		});
-
-		await internals.startRun();
-
-		expect(generateChapters).not.toHaveBeenCalled();
 	});
 
 	it('says the run was cancelled rather than that it failed', async () => {
-		jest.mocked(transcribeFile).mockRejectedValue(
-			new TranscriptionCancelledError(),
-		);
+		transcriber.transcribe.mockResolvedValue({ status: 'cancelled' });
 		const { internals } = openRunnable();
 
 		await internals.startRun();
@@ -1281,57 +1249,16 @@ describe('TranscriptionModal running the job', () => {
 	});
 
 	it('names what went wrong when the run fails', async () => {
-		jest.mocked(transcribeFile).mockRejectedValue(
-			new Error('the endpoint refused the key'),
-		);
+		transcriber.transcribe.mockResolvedValue({
+			status: 'failed',
+			message: 'the endpoint refused the key',
+		});
 		const { internals } = openRunnable();
 
 		await internals.startRun();
 
-		expect(
-			noticeMessages().some((message) =>
-				message.includes('the endpoint refused the key'),
-			),
-		).toBe(true);
-	});
-
-	it('reports a failure that was not thrown as an Error', async () => {
-		jest.mocked(transcribeFile).mockRejectedValue('upstream exploded');
-		const { internals } = openRunnable();
-
-		await internals.startRun();
-
-		expect(
-			noticeMessages().some((message) =>
-				message.includes('upstream exploded'),
-			),
-		).toBe(true);
-	});
-
-	it('still counts a run that was billed before the write failed', async () => {
-		// The provider charged for the audio; a read-only vault losing the
-		// transcript afterwards does not refund it.
-		let reportCost: ((cost: unknown) => void) | undefined;
-		jest.mocked(transcribeFile).mockImplementation(
-			async (_app, _settings, _file, runOptions) => {
-				reportCost = (
-					runOptions as unknown as { onCost: (cost: unknown) => void }
-				).onCost;
-				reportCost({
-					engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-					usd: 0.5,
-				});
-				throw new Error('vault is read-only');
-			},
-		);
-		const { internals, recordRun } = openRunnable();
-
-		await internals.startRun();
-
-		expect(recordRun).toHaveBeenCalledWith(
-			{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, usd: 0.5 },
-			expect.anything(),
-			null,
+		expect(noticeMessages()).toContain(
+			'Transcription failed: the endpoint refused the key',
 		);
 	});
 
@@ -1342,13 +1269,16 @@ describe('TranscriptionModal running the job', () => {
 
 		await Promise.all([internals.startRun(), internals.startRun()]);
 
-		expect(transcribeFile).toHaveBeenCalledTimes(1);
+		expect(transcriber.transcribe).toHaveBeenCalledTimes(1);
 	});
 
 	it('comes back into view when a minimized run fails', async () => {
 		// A notice alone would leave the failure unexplained behind a status
 		// bar the user has stopped watching.
-		jest.mocked(transcribeFile).mockRejectedValue(new Error('no network'));
+		transcriber.transcribe.mockResolvedValue({
+			status: 'failed',
+			message: 'no network',
+		});
 		const { internals } = openRunnable();
 		internals.minimize();
 
@@ -1361,7 +1291,7 @@ describe('TranscriptionModal running the job', () => {
 	// transcription here, and a dialog over the live session took its focus
 	// and cancelled the run on the Escape meant to get it out of the way.
 	it('runs out of sight when asked to start minimized', () => {
-		jest.mocked(transcribeFile).mockReturnValue(new Promise(() => {}));
+		transcriber.transcribe.mockReturnValue(new Promise(() => {}));
 		const show = jest.fn();
 
 		const { internals } = openRunnable(
@@ -1387,7 +1317,7 @@ describe('TranscriptionModal running the job', () => {
 		// test that happens to run longer than a second.
 		jest.useFakeTimers();
 		try {
-			jest.mocked(transcribeFile).mockReturnValue(new Promise(() => {}));
+			transcriber.transcribe.mockReturnValue(new Promise(() => {}));
 			const { modal } = openRunnable();
 			const elapsed = (): string | null | undefined =>
 				maybeEl(modal.contentEl, MODAL.transcribeElapsed)?.textContent;
@@ -1417,7 +1347,7 @@ describe('TranscriptionModal buttons', () => {
 			new App(),
 			createAudioFile(),
 			() => settings,
-			{ notePath: 'Notes/meeting.md' },
+			{ transcriber, notePath: 'Notes/meeting.md' },
 		);
 		modal.onOpen();
 		return {
@@ -1443,7 +1373,7 @@ describe('TranscriptionModal buttons', () => {
 	}
 
 	beforeEach(() => {
-		jest.mocked(transcribeFile).mockImplementation(
+		transcriber.transcribe.mockImplementation(
 			() => new Promise(() => undefined),
 		);
 	});
@@ -1453,7 +1383,7 @@ describe('TranscriptionModal buttons', () => {
 
 		button(modal, 'Transcribe').click();
 
-		expect(transcribeFile).toHaveBeenCalled();
+		expect(transcriber.transcribe).toHaveBeenCalledTimes(1);
 	});
 
 	it('offers no Minimize until there is a run to minimize', () => {
