@@ -8,14 +8,15 @@
 
 import { TFile } from 'obsidian';
 import { QueueRunner } from 'src/transcription/QueueRunner';
-import { RecordingTranscriber } from 'src/transcription/RecordingTranscriber';
+import {
+	RecordingTranscriber,
+	type RecordingTranscriberServices,
+} from 'src/transcription/RecordingTranscriber';
 import {
 	TranscriptionQueue,
 	TRANSCRIPTION_QUEUE_FILE,
 } from 'src/transcription/TranscriptionQueue';
 import type { TranscribeRunCost } from 'src/transcription/TranscriptionService';
-import type { RunCostSink } from 'src/transcription/SessionCostTracker';
-import type { LlmCostSink } from 'src/transcription/llm/llmStep';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
@@ -161,7 +162,8 @@ function createSut(
 			sidecar: partial<TranscriptOutputSidecar>({}),
 			// A run's LLM steps report from inside the pipeline, which is
 			// stood in for, so only the engine's run reaches this.
-			costs: partial<RunCostSink & LlmCostSink>({
+			costs: partial<RecordingTranscriberServices['costs']>({
+				totalUsd: () => 0,
 				recordRun: (
 					reported: TranscribeRunCost,
 					_settings: AudioRecorderSettings,

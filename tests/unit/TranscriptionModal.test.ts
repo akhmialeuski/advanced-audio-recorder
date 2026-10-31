@@ -1166,13 +1166,13 @@ describe('TranscriptionModal running the job', () => {
 			transcriptionShowCostEstimates: true,
 			...overrides,
 		};
-		// The dialog reads the tracker to draw the session total line and the
-		// total in its cost notice; what a run adds to it is the run's own rule.
+		// The dialog reads the tracker to draw the session total line; what a
+		// run adds to it is the run's own rule.
 		const costTracker = {
 			hasEntries: (): boolean => false,
 			unpricedRuns: (): number => 0,
 			estimatedRuns: (): number => 0,
-			totalUsd: (): number => 0.12,
+			totalUsd: (): number => 0,
 		};
 		const modal = new TranscriptionModal(
 			new App(),
@@ -1228,6 +1228,7 @@ describe('TranscriptionModal running the job', () => {
 			notePath: 'Notes/meeting.md',
 			missingParts: 0,
 			usd: 0.05,
+			sessionTotalUsd: 0.12,
 		});
 		const { internals } = openRunnable();
 

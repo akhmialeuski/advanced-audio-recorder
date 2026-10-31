@@ -9,6 +9,7 @@
 import { App } from 'obsidian';
 import {
 	RecordingTranscriber,
+	runOutcomeNotice,
 	type RecordingTranscriptionRequest,
 } from 'src/transcription/RecordingTranscriber';
 import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
@@ -150,6 +151,7 @@ describe('what a finished run reports', () => {
 			notePath: NOTE,
 			missingParts: 1,
 			usd: 0.05,
+			sessionTotalUsd: 0.05,
 		});
 	});
 
@@ -420,5 +422,38 @@ describe('the chapters that follow a run', () => {
 		);
 
 		expect(generateChapters).toHaveBeenCalledTimes(0);
+	});
+});
+
+describe('what the user is told about how a run ended', () => {
+	it('says what a finished run cost and what the session has spent', async () => {
+		const { transcriber, tracker } = createSut();
+		tracker.recordRun(deepgram(0.1), request().settings, 600);
+
+		const outcome = await transcriber.transcribe(request());
+
+		expect(runOutcomeNotice(outcome)).toBe(
+			'Transcription cost ~$0.05 (session total ~$0.15).',
+		);
+	});
+
+	it('says nothing of the cost of a run the session total did not count', async () => {
+		const { transcriber } = createSut();
+
+		const outcome = await transcriber.transcribe(
+			request({ transcriptionShowCostEstimates: false }),
+		);
+
+		expect(runOutcomeNotice(outcome)).toBeNull();
+	});
+
+	it.each([
+		{ outcome: { status: 'cancelled' }, said: 'Transcription cancelled.' },
+		{
+			outcome: { status: 'failed', message: 'quota exceeded' },
+			said: 'Transcription failed: quota exceeded',
+		},
+	] as const)('says $said', ({ outcome, said }) => {
+		expect(runOutcomeNotice(outcome)).toBe(said);
 	});
 });

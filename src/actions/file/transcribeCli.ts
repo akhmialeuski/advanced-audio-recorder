@@ -1,12 +1,13 @@
 /**
  * Transcription started from the command line.
  *
- * A transcription is a paid job that can run for minutes, so the command line
- * starts it where every other automatic run is started: in the transcribe
- * dialog, which shows its progress and can cancel it. What the dialog lets the
- * user change for one run, the command line takes as parameters; they set the
- * dialog's controls, so the run is the one the dialog would have made with the
- * same choices.
+ * The command runs the same transcription the dialog and the queue run, with
+ * no dialog: a transcription is a paid job that can run for minutes, so it
+ * shows its progress in a notice with a Cancel, as a conversion or a split
+ * started from the command line does. What the dialog lets the user change for
+ * one run, the command line takes as parameters, so the run is the one the
+ * dialog would have made with the same choices; the `dialog` flag opens the
+ * dialog instead, for choices made in the app.
  *
  * The answer comes back at once by default, saying the run was started. With
  * `wait` the command answers once the run is over, with where the transcript
@@ -29,11 +30,13 @@ import {
 	type LabeledOption,
 } from '../../settings/labels';
 import { transcriptionRefusal } from '../../settings/settingsAttention';
+import { Notice } from 'obsidian';
 import {
+	runOutcomeNotice,
 	TranscriptDestination,
 	type TranscriptionRunOutcome,
 } from '../../transcription/api';
-import { TranscriptionModal } from '../../ui/TranscriptionModal';
+import { JobProgressNotice } from '../../ui/JobProgressNotice';
 import {
 	choiceParam,
 	cliChoice,
@@ -432,19 +435,33 @@ export async function transcribeFromCli(
 		}
 		await services.saveSettings();
 	}
-	const settled = new Promise<TranscriptionRunOutcome>((resolve) => {
-		new TranscriptionModal(
-			services.app,
-			file,
-			() => run.apply(services.getSettings()),
-			{
-				...services.createTranscriptionModalOptions(),
-				autoStart: true,
+	const settled = JobProgressNotice.around(
+		`Transcribing "${file.name}"`,
+		async (onProgress, token) => {
+			const outcome = await services.transcriber.transcribe({
+				file,
+				settings: run.apply(services.getSettings()),
 				notePath: context.origin.note?.path ?? '',
-				onRunSettled: resolve,
-			},
-		).open();
-	});
+				// Nothing measured the recording first, so an engine that
+				// reports no usage leaves the run unpriced rather than guessed.
+				durationSeconds: () => null,
+				chapters: true,
+				token,
+				onProgress: (fraction, label) => {
+					onProgress(
+						`${label} ${String(Math.round(fraction * 100))}%`,
+					);
+				},
+			});
+			// Whoever watches the app is told how it ended, as the dialog
+			// tells them; the answer on the terminal comes only with wait.
+			const notice = runOutcomeNotice(outcome);
+			if (notice !== null) {
+				new Notice(notice);
+			}
+			return outcome;
+		},
+	);
 	if (!cliFlag(args, WAIT_FLAG)) {
 		return `Started transcribing ${file.path} in Obsidian.`;
 	}
