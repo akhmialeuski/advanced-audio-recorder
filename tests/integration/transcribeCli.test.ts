@@ -375,6 +375,7 @@ describe('starting a transcription from the command line', () => {
 			missingParts: 0,
 			usd: null,
 			sessionTotalUsd: 0,
+			chapters: null,
 		});
 
 		await expect(
@@ -423,6 +424,7 @@ describe('starting a transcription from the command line', () => {
 				missingParts: 0,
 				usd: 0.05,
 				sessionTotalUsd: 0.2,
+				chapters: null,
 			},
 			said: 'Transcription cost ~$0.05 (session total ~$0.20).',
 		},
@@ -457,6 +459,7 @@ describe('where a finished run says the transcript went', () => {
 		missingParts,
 		usd: null,
 		sessionTotalUsd: 0,
+		chapters: null,
 	});
 
 	it.each([

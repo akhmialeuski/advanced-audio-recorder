@@ -528,6 +528,7 @@ describe('TranscriptionModal telling the one that started a run how it ended', (
 			missingParts: 1,
 			usd: null,
 			sessionTotalUsd: 0,
+			chapters: null,
 		});
 	});
 

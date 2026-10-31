@@ -151,6 +151,7 @@ describe('what a finished run reports', () => {
 			missingParts: 1,
 			usd: 0.05,
 			sessionTotalUsd: 0.05,
+			chapters: null,
 		});
 	});
 
@@ -385,11 +386,17 @@ describe('the chapters that follow a run', () => {
 		};
 		pipeline.mockResolvedValue(finished({ transcript }));
 		const { transcriber, generateChapters } = createSut();
-		const run = request(asksForChapters);
+		const { token } = new CancellationSource();
+		const run = request(asksForChapters, { token });
 
 		await transcriber.transcribe(run);
 
-		expect(generateChapters).toHaveBeenCalledWith(run.file, transcript);
+		// Under the run's cancellation, so the queue's stop reaches the call.
+		expect(generateChapters).toHaveBeenCalledWith(
+			run.file,
+			transcript,
+			token.signal,
+		);
 	});
 
 	it('generates none for settings that do not ask for them', async () => {

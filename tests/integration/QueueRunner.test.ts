@@ -23,6 +23,7 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { noticeMessages } from '../mocks/obsidian';
 import { at } from '../helpers/assertions';
+import { tick } from '../helpers/async';
 import { partial, silenceConsole } from '../helpers/doubles';
 import { useMobilePlatform } from '../helpers/platform';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
@@ -51,6 +52,12 @@ const QUEUE_PATH = `.obsidian/plugins/aar/${TRANSCRIPTION_QUEUE_FILE}`;
  * guards against one fails on its assertion instead of never returning.
  */
 const RUNAWAY_CALL_CAP = 5;
+
+/** Settings under which chapters follow every finished run. */
+const CHAPTERS_AFTER_RUN: Partial<AudioRecorderSettings> = {
+	transcriptionAutoChaptersEnabled: true,
+	transcriptionAutoChaptersOnTranscribe: true,
+};
 
 /**
  * The cancellation a run is handed, taken from the pipeline's own contract so
@@ -113,6 +120,11 @@ function createSut(
 		queue?: TranscriptionQueue;
 		/** Settings the queue runs under, beyond the defaults. */
 		settings?: Partial<AudioRecorderSettings>;
+		/**
+		 * How chapter generation answers for one recording, handed the
+		 * cancellation it runs under.
+		 */
+		chapters?: (path: string, signal?: AbortSignal) => Promise<void>;
 	} = {},
 ): Sut {
 	const paths = options.paths ?? ['a.webm', 'b.webm'];
@@ -187,9 +199,11 @@ function createSut(
 					return reported.usd;
 				},
 			}),
-			generateChapters: (file, transcript) => {
+			generateChapters: (file, transcript, signal?: AbortSignal) => {
 				chaptered.push({ path: file.path, transcript });
-				return Promise.resolve();
+				return (
+					options.chapters?.(file.path, signal) ?? Promise.resolve()
+				);
 			},
 		}),
 		assumedSecondsPerRecording: ASSUMED_SECONDS,
@@ -519,10 +533,7 @@ describe('the chapters that follow a queued run', () => {
 	it('generates the chapters the settings ask for from the fresh transcript', async () => {
 		const { runner, chaptered } = createSut({
 			paths: ['a.webm'],
-			settings: {
-				transcriptionAutoChaptersEnabled: true,
-				transcriptionAutoChaptersOnTranscribe: true,
-			},
+			settings: CHAPTERS_AFTER_RUN,
 		});
 
 		await runner.drain();
@@ -551,6 +562,54 @@ describe('the chapters that follow a queued run', () => {
 		await runner.drain();
 
 		expect(chaptered).toEqual([]);
+	});
+
+	it('takes the next recording only once the chapters of the one before are done', async () => {
+		// Chapters are a paid LLM call, and the queue runs its paid calls one
+		// at a time so a folder's worth of them never reaches a rate-limited
+		// provider at once.
+		let release = (): void => undefined;
+		const { runner, queue, transcribed } = createSut({
+			settings: CHAPTERS_AFTER_RUN,
+			chapters: (path) =>
+				path === 'a.webm'
+					? new Promise<void>((resolve) => {
+							release = resolve;
+						})
+					: Promise.resolve(),
+		});
+
+		const drained = runner.drain();
+		await tick();
+
+		expect(transcribed).toEqual(['a.webm']);
+		expect(at(queue.entries(), 0).state).toBe('running');
+
+		release();
+		await drained;
+
+		expect(transcribed).toEqual(['a.webm', 'b.webm']);
+	});
+
+	it('hands the chapters a cancellation that the stop aborts', async () => {
+		// Unloading the plugin stops the drain, and the chapter call it has in
+		// flight would otherwise go on billing and write into a vault the
+		// plugin has left.
+		const signals: (AbortSignal | undefined)[] = [];
+		const { runner } = createSut({
+			paths: ['a.webm'],
+			settings: CHAPTERS_AFTER_RUN,
+			chapters: (_path, signal) => {
+				signals.push(signal);
+				runner.stop();
+				return Promise.resolve();
+			},
+		});
+
+		await runner.drain();
+
+		expect(signals).toHaveLength(1);
+		expect(at(signals, 0)?.aborted).toBe(true);
 	});
 });
 

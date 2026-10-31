@@ -1228,6 +1228,7 @@ describe('TranscriptionModal running the job', () => {
 			missingParts: 0,
 			usd: 0.05,
 			sessionTotalUsd: 0.12,
+			chapters: null,
 		});
 		const { internals } = openRunnable();
 

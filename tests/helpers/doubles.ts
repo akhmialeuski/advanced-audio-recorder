@@ -116,6 +116,7 @@ export const FINISHED_RUN: TranscriptionRunOutcome = {
 	missingParts: 0,
 	usd: null,
 	sessionTotalUsd: 0,
+	chapters: null,
 };
 
 /**

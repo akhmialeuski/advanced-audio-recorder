@@ -132,6 +132,10 @@ export class QueueRunner {
 			token: this.cancellation.token,
 		});
 		if (outcome.status === 'done') {
+			// The chapters are the recording's last paid call, so the next
+			// recording waits for them; failed chapters leave the transcript
+			// written and the recording done.
+			await outcome.chapters;
 			this.deps.queue.setState(path, QueueEntryState.Done);
 			return;
 		}
