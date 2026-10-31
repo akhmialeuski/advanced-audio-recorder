@@ -52,10 +52,15 @@ export interface RecordingTranscriberServices {
 	readonly costs: RunCostSink &
 		LlmCostSink &
 		Pick<SessionCostTracker, 'totalUsd'>;
-	/** Generates chapters from a finished run's transcript. */
+	/**
+	 * Generates chapters from a finished run's transcript, ending the paid
+	 * call when the signal aborts. Never rejects: every outcome is told to
+	 * the user through notices.
+	 */
 	readonly generateChapters: (
 		file: TFile,
 		transcript: Transcript,
+		signal?: AbortSignal,
 	) => Promise<void>;
 }
 
@@ -76,8 +81,6 @@ export interface RecordingTranscriptionRequest {
 	 * recording when the run begins.
 	 */
 	readonly durationSeconds: () => number | null;
-	/** Whether the chapters the settings ask for after a run are generated. */
-	readonly chapters: boolean;
 	/** The recording's bytes, when the caller has already read them. */
 	readonly audioBytes?: ArrayBuffer | undefined;
 	readonly token?: CancellationToken | undefined;
@@ -105,6 +108,14 @@ export type TranscriptionRunOutcome =
 			readonly usd: number | null;
 			/** What the session has spent, this run included. */
 			readonly sessionTotalUsd: number;
+			/**
+			 * The chapters generated after the run, settled once they are
+			 * written or have failed, null when the settings ask for none. A
+			 * surface the user waits on leaves them to finish in the
+			 * background; the queue waits for them, so its paid calls stay
+			 * one at a time.
+			 */
+			readonly chapters: Promise<void> | null;
 	  }
 	| {
 			/** The run was cancelled. */
@@ -193,12 +204,18 @@ export class RecordingTranscriber {
 			return { status: 'failed', message: errorMessage(error) };
 		}
 		const usd = this.record(result.cost, request);
-		if (request.chapters && autoChaptersAfterTranscribe(settings)) {
-			// Fire-and-forget on the fresh in-memory transcript: the chapters
-			// report their own progress and errors through notices, and the
-			// surface that started the run is done with it.
-			void this.services.generateChapters(file, result.transcript);
-		}
+		// Started on the fresh in-memory transcript and handed back rather
+		// than awaited: the chapters report their own progress and errors
+		// through notices, and the run's cancellation still reaches the paid
+		// call, because a surface cancels it only while the run is in flight
+		// or when the plugin unloads.
+		const chapters = autoChaptersAfterTranscribe(settings)
+			? this.services.generateChapters(
+					file,
+					result.transcript,
+					request.token?.signal,
+				)
+			: null;
 		return {
 			status: 'done',
 			destination: settings.transcriptDestination,
@@ -206,6 +223,7 @@ export class RecordingTranscriber {
 			missingParts: result.missingParts.length,
 			usd,
 			sessionTotalUsd: this.services.costs.totalUsd(),
+			chapters,
 		};
 	}
 

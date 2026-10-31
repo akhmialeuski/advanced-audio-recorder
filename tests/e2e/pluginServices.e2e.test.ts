@@ -217,12 +217,17 @@ describe('the options a transcription run is opened with', () => {
 		await options();
 		const file = { path: 'Recordings/take.webm' } as TFile;
 		const transcript: Transcript = { segments: [], speakers: [] };
+		const { signal } = new AbortController();
 
-		await transcriberServices().generateChapters(file, transcript);
+		await transcriberServices().generateChapters(file, transcript, signal);
 
+		// The run's cancellation reaches the paid call, so a stopped queue
+		// ends the chapters it has in flight.
 		expect(chapterService().generate).toHaveBeenCalledWith(
 			file,
 			transcript,
+			undefined,
+			signal,
 		);
 	});
 

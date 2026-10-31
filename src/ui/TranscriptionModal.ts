@@ -923,7 +923,6 @@ export class TranscriptionModal extends PluginModal {
 				settings,
 				notePath: this.notePath,
 				durationSeconds: () => this.durationSeconds,
-				chapters: true,
 				// Reuse the bytes read for the estimate probe so a manual run
 				// does not read the whole file twice (undefined on an auto-run,
 				// which never probes).

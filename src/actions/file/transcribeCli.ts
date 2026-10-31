@@ -445,7 +445,6 @@ export async function transcribeFromCli(
 				// Nothing measured the recording first, so an engine that
 				// reports no usage leaves the run unpriced rather than guessed.
 				durationSeconds: () => null,
-				chapters: true,
 				token,
 				onProgress: (fraction, label) => {
 					onProgress(

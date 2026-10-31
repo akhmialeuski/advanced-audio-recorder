@@ -1559,7 +1559,6 @@ describe('AudioRecorderPlugin transcription queue', () => {
 			settings: deps.getSettings(),
 			notePath: 'a.webm',
 			durationSeconds: () => null,
-			chapters: false,
 		};
 	}
 

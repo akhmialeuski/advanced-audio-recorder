@@ -127,12 +127,15 @@ export class QueueRunner {
 			// fallback estimate is sized by the same assumed length the dialog
 			// priced the queue with.
 			durationSeconds: () => this.deps.assumedSecondsPerRecording,
-			chapters: false,
 			// So the request in flight ends with the drain rather than
 			// outliving the plugin that started it.
 			token: this.cancellation.token,
 		});
 		if (outcome.status === 'done') {
+			// The chapters are the recording's last paid call, so the next
+			// recording waits for them; failed chapters leave the transcript
+			// written and the recording done.
+			await outcome.chapters;
 			this.deps.queue.setState(path, QueueEntryState.Done);
 			return;
 		}

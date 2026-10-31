@@ -117,7 +117,6 @@ function request(
 		},
 		notePath: NOTE,
 		durationSeconds: () => 600,
-		chapters: false,
 		...run,
 	};
 }
@@ -152,6 +151,7 @@ describe('what a finished run reports', () => {
 			missingParts: 1,
 			usd: 0.05,
 			sessionTotalUsd: 0.05,
+			chapters: null,
 		});
 	});
 
@@ -386,28 +386,25 @@ describe('the chapters that follow a run', () => {
 		};
 		pipeline.mockResolvedValue(finished({ transcript }));
 		const { transcriber, generateChapters } = createSut();
-		const run = request(asksForChapters, { chapters: true });
+		const { token } = new CancellationSource();
+		const run = request(asksForChapters, { token });
 
 		await transcriber.transcribe(run);
 
-		expect(generateChapters).toHaveBeenCalledWith(run.file, transcript);
+		// Under the run's cancellation, so the queue's stop reaches the call.
+		expect(generateChapters).toHaveBeenCalledWith(
+			run.file,
+			transcript,
+			token.signal,
+		);
 	});
 
-	it.each([
-		{
-			name: 'a run that was not asked for them',
-			settings: asksForChapters,
-			chapters: false,
-		},
-		{
-			name: 'settings that do not ask for them',
-			settings: { transcriptionAutoChaptersOnTranscribe: false },
-			chapters: true,
-		},
-	])('generates none for $name', async ({ settings, chapters }) => {
+	it('generates none for settings that do not ask for them', async () => {
 		const { transcriber, generateChapters } = createSut();
 
-		await transcriber.transcribe(request(settings, { chapters }));
+		await transcriber.transcribe(
+			request({ transcriptionAutoChaptersOnTranscribe: false }),
+		);
 
 		expect(generateChapters).toHaveBeenCalledTimes(0);
 	});
@@ -417,9 +414,7 @@ describe('the chapters that follow a run', () => {
 		pipeline.mockRejectedValue(new Error('no network'));
 		const { transcriber, generateChapters } = createSut();
 
-		await transcriber.transcribe(
-			request(asksForChapters, { chapters: true }),
-		);
+		await transcriber.transcribe(request(asksForChapters));
 
 		expect(generateChapters).toHaveBeenCalledTimes(0);
 	});
