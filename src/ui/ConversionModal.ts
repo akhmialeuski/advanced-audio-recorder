@@ -19,7 +19,11 @@ import {
 	addLinkActionSetting,
 } from '../settings/settingControls';
 import { getEncoderDescription } from './formatDescriptions';
-import { ConversionService, conversionTargets } from '../recording/api';
+import {
+	ConversionService,
+	conversionDefaults,
+	conversionTargets,
+} from '../recording/api';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type {
 	AudioRecorderSettings,
@@ -69,11 +73,11 @@ export class ConversionModal extends CancellableJobModal {
 		options: ConversionModalOptions = {},
 	) {
 		super(app);
-		const settings = getSettings();
+		const defaults = conversionDefaults(getSettings());
 		this.sourceFile = sourceFile;
-		this.bitrate = settings.bitrate;
-		this.deleteSource = settings.deleteSourceAfterConversion;
-		this.linkAction = settings.conversionLinkAction;
+		this.bitrate = defaults.bitrate;
+		this.deleteSource = defaults.deleteSource;
+		this.linkAction = defaults.linkAction;
 		this.channelMode = normalizeChannelMode(options.initialChannelMode);
 		this.onConverted = options.onConverted;
 		this.conversionService = new ConversionService(

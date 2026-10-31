@@ -10,7 +10,10 @@ import { ChannelMode, isMonoChannelMode } from '../audio/downmix';
 import { convertBlobToFormatBuffer } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { isReadableSize, tooLargeMessage } from '../platform/capabilities';
-import type { ConversionLinkAction } from '../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	ConversionLinkAction,
+} from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
 import { SourceReplacer } from './SourceReplacer';
 import { showNotice, type Notify } from '../utils/notify';
@@ -64,6 +67,23 @@ export interface ConversionRequest {
 	deleteSource: boolean;
 	/** How to rewrite links to the source file. */
 	linkAction: ConversionLinkAction;
+}
+
+/**
+ * What a conversion starts from before anything is chosen for it, read from
+ * the settings in one place so the dialog and the command line cannot start
+ * from different values.
+ * @param settings - Plugin settings
+ * @returns The request's fields the settings answer
+ */
+export function conversionDefaults(
+	settings: AudioRecorderSettings,
+): Pick<ConversionRequest, 'bitrate' | 'deleteSource' | 'linkAction'> {
+	return {
+		bitrate: settings.bitrate,
+		deleteSource: settings.deleteSourceAfterConversion,
+		linkAction: settings.conversionLinkAction,
+	};
 }
 
 /**

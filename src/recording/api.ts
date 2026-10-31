@@ -6,10 +6,14 @@
  * @module recording/api
  */
 
-export { ConversionService, conversionTargets } from './ConversionService';
+export {
+	ConversionService,
+	conversionDefaults,
+	conversionTargets,
+} from './ConversionService';
 export type { ConversionOutcome, ConversionRequest } from './ConversionService';
-export { chapterCutsOf, SplitService } from './SplitService';
+export { chapterCutsOf, SplitService, splitDefaults } from './SplitService';
 export type { ChapterCut, SplitOutcome, SplitRequest } from './SplitService';
-export { clampSplitMinutes, sanitizePartSuffix } from './AudioSplitter';
+export { clampSplitMinutes } from './AudioSplitter';
 export type { RecordingMarkerHandle } from './recordingMarkers';
 export type { JournalSession } from './SessionJournal';
