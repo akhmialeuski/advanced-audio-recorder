@@ -25,8 +25,8 @@ import {
 import {
 	chapterCutsOf,
 	clampSplitMinutes,
-	sanitizePartSuffix,
 	SplitService,
+	splitDefaults,
 	type ChapterCut,
 } from '../recording/api';
 import type {
@@ -69,14 +69,14 @@ export class SplitModal extends CancellableJobModal {
 		},
 	) {
 		super(app);
-		const settings = getSettings();
+		const defaults = splitDefaults(getSettings());
 		this.splitService = new SplitService(app);
 		this.sourceFile = sourceFile;
-		this.partMinutes = clampSplitMinutes(settings.splitChunkMinutes);
-		this.partSuffix = sanitizePartSuffix(settings.splitPartSuffix);
-		this.bitrate = settings.bitrate;
-		this.deleteSource = settings.deleteSourceAfterSplit;
-		this.linkAction = settings.conversionLinkAction;
+		this.partMinutes = defaults.partMinutes;
+		this.partSuffix = defaults.suffix;
+		this.bitrate = defaults.bitrate;
+		this.deleteSource = defaults.deleteSource;
+		this.linkAction = defaults.linkAction;
 	}
 
 	override onOpen(): void {

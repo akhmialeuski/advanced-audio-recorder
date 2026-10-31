@@ -24,7 +24,7 @@ import {
 	formatTranscriptMarkdown,
 } from 'src/transcription/transcriptFormat';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
-import type { TranscriptEditModalOptions } from 'src/ui/transcriptLineDialog';
+import type { TranscriptEditServices } from 'src/speakers/transcriptLineSource';
 import { flushMicrotasks } from './async';
 import { partial } from './doubles';
 import { asMockApp } from './obsidianMock';
@@ -357,7 +357,7 @@ export function pick(
 type LineDialog<M> = new (
 	app: App,
 	context: TranscriptSelectionContext,
-	options: TranscriptEditModalOptions,
+	options: TranscriptEditServices,
 ) => M;
 
 /**

@@ -10,31 +10,19 @@
  */
 
 import { Notice } from 'obsidian';
-import type { TFile } from 'obsidian';
 import type { App } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
 import { CancellationSource } from '../utils/cancellation';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
-import type { RunCostSink } from './SessionCostTracker';
+import type { RecordingTranscriber } from './RecordingTranscriber';
 import { QueueEntryState, type TranscriptionQueue } from './TranscriptionQueue';
-import type { TranscribeFileOptions } from './runTranscription';
-import type { TranscribeRunCost } from './TranscriptionService';
-import { errorMessage } from '../errors';
-
-/** Transcribes one recording; the run entry point, narrowed to what is used. */
-export type QueueTranscriber = (
-	file: TFile,
-	options: TranscribeFileOptions,
-) => Promise<{ cost: TranscribeRunCost }>;
 
 /** What the runner needs to drain a queue. */
 export interface QueueRunnerDeps {
 	app: App;
 	queue: TranscriptionQueue;
 	getSettings: () => AudioRecorderSettings;
-	transcribe: QueueTranscriber;
-	/** Absent when the user turned cost estimates off. */
-	costSink?: RunCostSink | undefined;
+	/** Runs one recording, as the dialog runs it. */
+	transcriber: Pick<RecordingTranscriber, 'transcribe'>;
 	/**
 	 * How long one queued recording is assumed to be, in seconds, for the
 	 * estimate a run falls back to when its provider reported no usage. The
@@ -128,41 +116,38 @@ export class QueueRunner {
 			return;
 		}
 		this.deps.queue.setState(path, QueueEntryState.Running);
-		try {
-			const { cost } = await this.deps.transcribe(file, {
-				// A queued run has no note to write links against, so the
-				// recording stands in for one: the transcript is written to
-				// its own file, which is what a batch is for.
-				notePathForLinks: file.path,
-				// So the request in flight ends with the drain rather than
-				// outliving the plugin that started it.
-				token: this.cancellation.token,
-			});
-			// The queue does not measure a recording before sending it, so
-			// the fallback estimate is sized by the same assumed length the
-			// dialog priced the queue with.
-			this.deps.costSink?.recordRun(
-				cost,
-				this.deps.getSettings(),
-				this.deps.assumedSecondsPerRecording,
-			);
+		const outcome = await this.deps.transcriber.transcribe({
+			file,
+			settings: this.deps.getSettings(),
+			// A queued run has no note to write links against, so the
+			// recording stands in for one: the transcript is written to its
+			// own file, which is what a batch is for.
+			notePath: file.path,
+			// The queue does not measure a recording before sending it, so a
+			// fallback estimate is sized by the same assumed length the dialog
+			// priced the queue with.
+			durationSeconds: () => this.deps.assumedSecondsPerRecording,
+			chapters: false,
+			// So the request in flight ends with the drain rather than
+			// outliving the plugin that started it.
+			token: this.cancellation.token,
+		});
+		if (outcome.status === 'done') {
 			this.deps.queue.setState(path, QueueEntryState.Done);
-		} catch (error) {
-			if (this.cancellation.token.isCancelled()) {
-				// Stopped rather than refused, so the recording goes back in
-				// the queue: it never had its chance, and recording it as a
-				// failure would leave the user clearing by hand something the
-				// engine never even answered about.
-				this.deps.queue.setState(path, QueueEntryState.Waiting);
-				return;
-			}
-			const message = errorMessage(error);
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Queued transcription of ${path} failed:`,
-				error,
-			);
-			new Notice(`Could not transcribe ${file.name}: ${message}`);
-			this.deps.queue.setState(path, QueueEntryState.Failed, message);
+			return;
 		}
+		if (
+			outcome.status === 'cancelled' ||
+			this.cancellation.token.isCancelled()
+		) {
+			// Stopped rather than refused, so the recording goes back in the
+			// queue: it never had its chance, and recording it as a failure
+			// would leave the user clearing by hand something the engine never
+			// even answered about.
+			this.deps.queue.setState(path, QueueEntryState.Waiting);
+			return;
+		}
+		new Notice(`Could not transcribe ${file.name}: ${outcome.message}`);
+		this.deps.queue.setState(path, QueueEntryState.Failed, outcome.message);
 	}
 }

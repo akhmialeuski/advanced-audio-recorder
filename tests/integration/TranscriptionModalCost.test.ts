@@ -2,9 +2,11 @@
  * Unit tests for the transcribe dialog's cost surface: the combined
  * pre-run estimate breakdown, the pricing links, the session-total line,
  * the duration-probe gating (never read the whole file when the estimate
- * cannot use it), the re-pricing a control change has to trigger, how a
- * finished (or output-failed) run is recorded in the session tracker, and
- * what the one that started the run is told about how it ended.
+ * cannot use it), the re-pricing a control change has to trigger, what the
+ * user is told a finished (or output-failed) run cost, and what the one that
+ * started the run is told about how it ended. The run goes through the real
+ * operation into a real session tracker, so the figures are the ones a user
+ * would see.
  */
 
 import { App, Notice, TFile } from 'obsidian';
@@ -20,29 +22,28 @@ jest.mock('src/utils/AudioFileAnalyzer', () => ({
 	readAudioMetadata: jest.fn(),
 }));
 
-// Mock only transcribeFile so a run can be driven without a real provider;
-// every other export (buildCostEstimate, formatUsd, ...) stays real.
-jest.mock('src/transcription/api', () => {
-	const actual = jest.requireActual('src/transcription/api');
-	return { __esModule: true, ...actual, transcribeFile: jest.fn() };
-});
+// Mock only the pipeline so a run can be driven without a real provider; the
+// operation around it and every pricing rule stay real.
+jest.mock('src/transcription/runTranscription', () => ({
+	transcribeFile: jest.fn(),
+}));
 
 import { readAudioMetadata } from 'src/utils/AudioFileAnalyzer';
 import {
 	transcribeFile,
+	type TranscriptOutputSidecar,
+} from 'src/transcription/runTranscription';
+import {
+	RecordingTranscriber,
 	TranscriptionCancelledError,
 } from 'src/transcription/api';
 import { createFile } from '../helpers/createApp';
 import { tick } from '../helpers/async';
-import { internalsOf } from '../helpers/doubles';
+import { internalsOf, partial, silenceConsole } from '../helpers/doubles';
 import { rowSelect, rowToggle, settingRow } from '../helpers/settingRows';
 
 type ModalInternals = {
 	updateCostEstimate: () => void;
-	accountRunCost: (
-		settings: AudioRecorderSettings,
-		cost: TranscribeRunCost,
-	) => number | null;
 	startRun: () => Promise<void>;
 	costEstimateEl: HTMLElement | null;
 	durationSeconds: number | null;
@@ -80,6 +81,13 @@ function createModal(
 		createAudioFile(),
 		() => settings,
 		{
+			transcriber: new RecordingTranscriber({
+				app,
+				// The pipeline that writes through it is mocked.
+				sidecar: partial<TranscriptOutputSidecar>({}),
+				costs: tracker ?? new SessionCostTracker(),
+				generateChapters: () => Promise.resolve(),
+			}),
 			costTracker: tracker,
 			...modalOptions,
 		},
@@ -115,6 +123,7 @@ beforeEach(() => {
 	transcribeMock.mockResolvedValue({
 		transcript: { segments: [], speakers: [] },
 		markdown: '',
+		missingParts: [],
 		cost: {
 			engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			usd: null,
@@ -426,104 +435,6 @@ describe('TranscriptionModal cost reactivity', () => {
 	});
 });
 
-describe('TranscriptionModal accountRunCost', () => {
-	const settings = (
-		overrides: Partial<AudioRecorderSettings>,
-	): AudioRecorderSettings => ({ ...DEFAULT_SETTINGS, ...overrides });
-
-	it('records the provider-reported cost and returns it', () => {
-		const tracker = new SessionCostTracker();
-		const { internals } = createModal({}, tracker);
-		const usd = internals.accountRunCost(
-			settings({
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-			}),
-			{
-				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				usd: 0.05,
-				usage: { audioSeconds: 700 },
-			},
-		);
-
-		expect(usd).toBeCloseTo(0.05, 10);
-		expect(tracker.totalUsd()).toBeCloseTo(0.05, 10);
-	});
-
-	it('falls back to the duration estimate when the run was not priced', () => {
-		const tracker = new SessionCostTracker();
-		const { internals } = createModal({}, tracker);
-		internals.durationSeconds = 600;
-		const usd = internals.accountRunCost(
-			settings({
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				deepgramModel: 'nova-3',
-			}),
-			{
-				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				usd: null,
-				usage: {},
-			},
-		);
-
-		expect(usd).toBeCloseTo(0.043, 10);
-		expect(tracker.totalUsd()).toBeCloseTo(0.043, 10);
-	});
-
-	it('records an unpriced run when neither actuals nor estimate exist', () => {
-		const tracker = new SessionCostTracker();
-		const { internals } = createModal({}, tracker);
-		internals.durationSeconds = null;
-		internals.accountRunCost(
-			settings({
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-			}),
-			{
-				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				usd: null,
-				usage: {},
-			},
-		);
-
-		expect(tracker.totalUsd()).toBe(0);
-		expect(tracker.unpricedRuns()).toBe(1);
-	});
-
-	it('never records the free local engine', () => {
-		const tracker = new SessionCostTracker();
-		const { internals } = createModal({}, tracker);
-		internals.accountRunCost(
-			settings({
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
-			}),
-			{
-				engineId: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
-				usd: 0,
-				usage: {},
-			},
-		);
-
-		expect(tracker.hasEntries()).toBe(false);
-	});
-
-	it('records nothing when cost estimates are disabled', () => {
-		const tracker = new SessionCostTracker();
-		const { internals } = createModal({}, tracker);
-		internals.accountRunCost(
-			settings({
-				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				transcriptionShowCostEstimates: false,
-			}),
-			{
-				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				usd: 0.05,
-				usage: {},
-			},
-		);
-
-		expect(tracker.hasEntries()).toBe(false);
-	});
-});
-
 describe('TranscriptionModal run accounting', () => {
 	it('shows the cost notice after a successful run', async () => {
 		const tracker = new SessionCostTracker();
@@ -531,6 +442,7 @@ describe('TranscriptionModal run accounting', () => {
 		transcribeMock.mockResolvedValue({
 			transcript: { segments: [], speakers: [] },
 			markdown: '',
+			missingParts: [],
 			cost: {
 				engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 				usd: 0.05,
@@ -566,6 +478,7 @@ describe('TranscriptionModal run accounting', () => {
 				throw new Error('Vault is read-only');
 			},
 		);
+		silenceConsole('warn');
 		modal.onOpen();
 		await internals.startRun();
 
@@ -613,6 +526,8 @@ describe('TranscriptionModal telling the one that started a run how it ended', (
 			destination: 'both',
 			notePath: 'Meetings/standup.md',
 			missingParts: 1,
+			usd: null,
+			sessionTotalUsd: 0,
 		});
 	});
 
@@ -632,6 +547,7 @@ describe('TranscriptionModal telling the one that started a run how it ended', (
 		},
 		{ thrown: 'quota exceeded', message: 'quota exceeded' },
 	])('says why it failed: $message', async ({ thrown, message }) => {
+		silenceConsole('warn');
 		transcribeMock.mockRejectedValue(thrown);
 		const { internals, onRunSettled } = createReportingModal();
 

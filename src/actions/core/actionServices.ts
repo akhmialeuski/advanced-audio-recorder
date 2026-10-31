@@ -14,6 +14,7 @@ import type { EncodingWorkerClient } from '../../audio/EncodingWorkerClient';
 import type { AutoChapterService } from '../../chapters/AutoChapterService';
 import type { RecordingSidecarStore } from '../../sidecar/RecordingSidecarStore';
 import type { LlmCostSink } from '../../transcription/llm/llmStep';
+import type { RecordingTranscriber } from '../../transcription/RecordingTranscriber';
 import type { RunCostSink } from '../../transcription/SessionCostTracker';
 
 /**
@@ -51,6 +52,11 @@ export interface ActionServices {
 	 * action wrote them outside any player.
 	 */
 	readonly onMarkersChanged: (path: string) => void;
+	/**
+	 * Runs a recording's transcription the way the dialog and the queue run
+	 * it, for an action that runs one without either.
+	 */
+	readonly transcriber: Pick<RecordingTranscriber, 'transcribe'>;
 	/**
 	 * Where an action's own transcription run reports what it cost: the
 	 * engine call through {@link RunCostSink}, its LLM steps through

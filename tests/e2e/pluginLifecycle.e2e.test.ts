@@ -27,6 +27,7 @@ import { RecordingStatus } from 'src/types';
 import type { RecordingSaveResult } from 'src/types';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
+import { transcribeFile } from 'src/transcription/runTranscription';
 import { asMockVault } from '../helpers/obsidianMock';
 // The double itself is the one every e2e suite is mocked with; its shape is
 // declared there rather than restated per suite.
@@ -36,6 +37,11 @@ jest.mock('src/ui/TranscriptionModal', () => ({
 	TranscriptionModal: jest
 		.fn()
 		.mockImplementation(() => ({ open: jest.fn() })),
+}));
+// The engine is never reached: a run started from the command line goes on
+// after the command answers, and what the pipeline does is its own suites'.
+jest.mock('src/transcription/runTranscription', () => ({
+	transcribeFile: jest.fn(() => new Promise(() => undefined)),
 }));
 jest.mock('src/recording/silentChannelDetector', () => ({
 	detectSilentChannel: jest.fn().mockResolvedValue(null),
@@ -261,17 +267,15 @@ describe('the command line', () => {
 		const { answer, plugin } = await transcribeFromCli(transcribable);
 
 		expect(answer).toBe(`Started transcribing ${RECORDING} in Obsidian.`);
-		expect(jest.mocked(TranscriptionModal)).toHaveBeenCalledTimes(1);
-		// The dialog is handed a reader of the live settings rather than a
-		// copy of them, so a run started here sees an edit made while it waits.
-		const [, file, getSettings] = at(
-			jest.mocked(TranscriptionModal).mock.calls,
+		// The run is under way with no dialog, on the settings of the vault.
+		expect(jest.mocked(TranscriptionModal)).toHaveBeenCalledTimes(0);
+		expect(jest.mocked(transcribeFile)).toHaveBeenCalledTimes(1);
+		const [, getSettings, file] = at(
+			jest.mocked(transcribeFile).mock.calls,
 			0,
 		);
 		expect(file.path).toBe(RECORDING);
-		expect(getSettings().whisperApiKey).toBe('sk-test');
-		plugin.settings.whisperApiKey = 'sk-edited';
-		expect(getSettings().whisperApiKey).toBe('sk-edited');
+		expect(getSettings().whisperApiKey).toBe(plugin.settings.whisperApiKey);
 	});
 
 	it('refuses a path the vault holds no audio file at', async () => {
@@ -281,19 +285,19 @@ describe('the command line', () => {
 		);
 
 		expect(answer).toBe('No file named "notes/agenda.md" in this vault.');
-		expect(jest.mocked(TranscriptionModal)).not.toHaveBeenCalled();
+		expect(jest.mocked(transcribeFile)).toHaveBeenCalledTimes(0);
 	});
 
 	it('refuses to transcribe on settings a run would be refused on', async () => {
 		// Transcription off in this vault: the palette hides the action, and
-		// the command line says why instead of opening a dialog that would
+		// the command line says why instead of starting a run that would
 		// bill an engine it cannot reach.
 		const { answer } = await transcribeFromCli({
 			transcriptionEnabled: false,
 		});
 
 		expect(answer).toBe('Transcription is switched off in settings.');
-		expect(jest.mocked(TranscriptionModal)).not.toHaveBeenCalled();
+		expect(jest.mocked(transcribeFile)).toHaveBeenCalledTimes(0);
 	});
 
 	it('refuses to transcribe on an engine with no key', async () => {
@@ -303,7 +307,7 @@ describe('the command line', () => {
 		});
 
 		expect(answer).toContain('API key');
-		expect(jest.mocked(TranscriptionModal)).not.toHaveBeenCalled();
+		expect(jest.mocked(transcribeFile)).toHaveBeenCalledTimes(0);
 	});
 });
 

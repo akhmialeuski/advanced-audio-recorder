@@ -36,11 +36,16 @@ import {
 	wavFrameOffset,
 	computePartCount,
 	buildPartFileName,
+	clampSplitMinutes,
+	sanitizePartSuffix,
 	type WavLayout,
 } from './AudioSplitter';
 import { toFileNameSegment, uniqueName } from '../utils/fileNames';
 import { delay } from '../utils/TimeUtils';
-import type { ConversionLinkAction } from '../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	ConversionLinkAction,
+} from '../settings/settingsSchema';
 import { errorMessage } from '../errors';
 import { SourceReplacer } from './SourceReplacer';
 import { showNotice, type Notify } from '../utils/notify';
@@ -110,6 +115,30 @@ export interface SplitRequest {
 	deleteSource: boolean;
 	/** How to rewrite links to the source file. */
 	linkAction: ConversionLinkAction;
+}
+
+/**
+ * What a split starts from before anything is chosen for it, read from the
+ * settings in one place so the dialog and the command line cannot start from
+ * different values. The part length and suffix come back already brought into
+ * range, as a split takes them.
+ * @param settings - Plugin settings
+ * @returns The part length in minutes and the request's fields the settings
+ *   answer
+ */
+export function splitDefaults(settings: AudioRecorderSettings): Pick<
+	SplitRequest,
+	'suffix' | 'bitrate' | 'deleteSource' | 'linkAction'
+> & {
+	partMinutes: number;
+} {
+	return {
+		partMinutes: clampSplitMinutes(settings.splitChunkMinutes),
+		suffix: sanitizePartSuffix(settings.splitPartSuffix),
+		bitrate: settings.bitrate,
+		deleteSource: settings.deleteSourceAfterSplit,
+		linkAction: settings.conversionLinkAction,
+	};
 }
 
 /**
