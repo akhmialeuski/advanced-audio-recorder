@@ -115,6 +115,7 @@ export const FINISHED_RUN: TranscriptionRunOutcome = {
 	notePath: '',
 	missingParts: 0,
 	usd: null,
+	sessionTotalUsd: 0,
 };
 
 /**
@@ -151,6 +152,7 @@ export function commonActionServices(): {
 	transcriptionQueue: ReturnType<typeof queueServicesDouble>;
 	recordingSidecar: ActionServices['recordingSidecar'];
 	onMarkersChanged: jest.Mock;
+	transcriber: ReturnType<typeof transcriberDouble>;
 } {
 	return {
 		saveSettings: () => Promise.resolve(),
@@ -171,6 +173,7 @@ export function commonActionServices(): {
 			getTranscript: jest.fn().mockResolvedValue(null),
 		}),
 		onMarkersChanged: jest.fn(),
+		transcriber: transcriberDouble(),
 	};
 }
 

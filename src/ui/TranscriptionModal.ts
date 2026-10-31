@@ -52,6 +52,7 @@ import {
 	type CostEstimateLine,
 	type LlmTask,
 	type RecordingTranscriber,
+	runOutcomeNotice,
 	type SessionCostTracker,
 	TranscriptDestination,
 	TranscriptFileFormat,
@@ -971,17 +972,11 @@ export class TranscriptionModal extends PluginModal {
 	 * @param outcome - How the run ended
 	 */
 	private showOutcome(outcome: TranscriptionRunOutcome): void {
+		const notice = runOutcomeNotice(outcome);
+		if (notice !== null) {
+			new Notice(notice);
+		}
 		if (outcome.status === 'done') {
-			if (outcome.usd !== null) {
-				const total = this.options.costTracker?.totalUsd();
-				new Notice(
-					`Transcription cost ~${formatUsd(outcome.usd)}` +
-						(total !== undefined
-							? ` (session total ~${formatUsd(total)})`
-							: '') +
-						'.',
-				);
-			}
 			this.setRunning(false);
 			this.clearBackgroundProgress();
 			if (this.minimized) {
@@ -993,13 +988,11 @@ export class TranscriptionModal extends PluginModal {
 			}
 			return;
 		}
-		if (outcome.status === 'cancelled') {
-			new Notice('Transcription cancelled.');
-			this.statusEl?.setText('Cancelled.');
-		} else {
-			new Notice(`Transcription failed: ${outcome.message}`);
-			this.statusEl?.setText(`Failed: ${outcome.message}`);
-		}
+		this.statusEl?.setText(
+			outcome.status === 'cancelled'
+				? 'Cancelled.'
+				: `Failed: ${outcome.message}`,
+		);
 		if (this.minimized) {
 			this.restore();
 		}

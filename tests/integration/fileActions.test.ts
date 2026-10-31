@@ -142,6 +142,7 @@ function createServices(
 			recordingSidecar: sidecar,
 			transcriptionQueue: queueServicesDouble(),
 			onMarkersChanged: jest.fn(),
+			transcriber: transcriberDouble(),
 			transcriptionCosts: { recordLlmCall: jest.fn(), recordRun },
 		},
 	};

@@ -1135,6 +1135,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			},
 			autoChapters: this.autoChapterService,
 			recordingSidecar: this.sidecarStore,
+			transcriber: this.recordingTranscriber,
 			transcriptionCosts: this.transcriptionCostTracker,
 		};
 	}

@@ -23,7 +23,8 @@ import {
 	transcribeFile,
 	type TranscriptOutputSidecar,
 } from './runTranscription';
-import type { RunCostSink } from './SessionCostTracker';
+import { formatUsd } from './costs';
+import type { RunCostSink, SessionCostTracker } from './SessionCostTracker';
 import {
 	TranscriptionCancelledError,
 	type CancellationToken,
@@ -43,8 +44,13 @@ export interface RecordingTranscriberServices {
 	readonly app: App;
 	/** Re-applies stored speaker names and registers what a run wrote. */
 	readonly sidecar: TranscriptOutputSidecar;
-	/** The session total: the engine's run and the run's LLM steps alike. */
-	readonly costs: RunCostSink & LlmCostSink;
+	/**
+	 * The session total: the engine's run and the run's LLM steps alike are
+	 * recorded into it, and a finished run reports what it has come to.
+	 */
+	readonly costs: RunCostSink &
+		LlmCostSink &
+		Pick<SessionCostTracker, 'totalUsd'>;
 	/** Generates chapters from a finished run's transcript. */
 	readonly generateChapters: (
 		file: TFile,
@@ -96,6 +102,8 @@ export type TranscriptionRunOutcome =
 			readonly missingParts: number;
 			/** What the session total recorded for the run, null for nothing. */
 			readonly usd: number | null;
+			/** What the session has spent, this run included. */
+			readonly sessionTotalUsd: number;
 	  }
 	| {
 			/** The run was cancelled. */
@@ -186,6 +194,7 @@ export class RecordingTranscriber {
 			notePath: request.notePath,
 			missingParts: result.missingParts.length,
 			usd,
+			sessionTotalUsd: this.services.costs.totalUsd(),
 		};
 	}
 
@@ -207,5 +216,29 @@ export class RecordingTranscriber {
 			request.settings,
 			request.durationSeconds(),
 		);
+	}
+}
+
+/**
+ * What the user is told in the app about how a run ended, the same from every
+ * surface that runs one where the user waits on it: what a finished run cost,
+ * or that it was cancelled or failed. A finished run the session total did not
+ * count says nothing here, because the transcript notice already said where it
+ * went.
+ * @param outcome - How the run ended
+ * @returns The notice, or null for none
+ */
+export function runOutcomeNotice(
+	outcome: TranscriptionRunOutcome,
+): string | null {
+	switch (outcome.status) {
+		case 'done':
+			return outcome.usd === null
+				? null
+				: `Transcription cost ~${formatUsd(outcome.usd)} (session total ~${formatUsd(outcome.sessionTotalUsd)}).`;
+		case 'cancelled':
+			return 'Transcription cancelled.';
+		default:
+			return `Transcription failed: ${outcome.message}`;
 	}
 }

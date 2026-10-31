@@ -6,7 +6,7 @@
  * @module transcription/api
  */
 
-export { RecordingTranscriber } from './RecordingTranscriber';
+export { RecordingTranscriber, runOutcomeNotice } from './RecordingTranscriber';
 export type {
 	RecordingTranscriptionRequest,
 	TranscriptionRunOutcome,
