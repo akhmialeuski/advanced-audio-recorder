@@ -5,20 +5,20 @@
  * the editor menu renders it for the selection it was opened on, the palette
  * registers it over the active editor's selection, and the command line takes
  * the lines by number and the selected words as text.
- * @module actions/transcriptActions
+ * @module actions/transcript/transcriptActions
  */
 
 import { MarkdownView, TFile } from 'obsidian';
 import type { CliData, Editor } from 'obsidian';
-import { COMMAND_IDS } from '../constants';
-import { lineTimecodeRef } from '../obsidian/timecodeRefs';
-import { TranscriptMergeModal } from '../ui/TranscriptMergeModal';
-import { TranscriptSplitModal } from '../ui/TranscriptSplitModal';
+import { COMMAND_IDS } from '../../constants';
+import { lineTimecodeRef } from '../../obsidian/timecodeRefs';
+import { TranscriptMergeModal } from '../../ui/TranscriptMergeModal';
+import { TranscriptSplitModal } from '../../ui/TranscriptSplitModal';
 import {
 	pickedChoice,
 	speakerValue,
 	type TranscriptEditModalOptions,
-} from '../ui/transcriptLineDialog';
+} from '../../ui/transcriptLineDialog';
 import {
 	mergeSpeakerOptions,
 	performMerge,
@@ -26,35 +26,35 @@ import {
 	prepareMerge,
 	prepareSplit,
 	splitDefaults,
-} from '../ui/transcriptLineEdits';
+} from '../../ui/transcriptLineEdits';
 import {
 	mergeConfirmationMessage,
 	mergeNeedsConfirmation,
-} from '../speakers/transcriptMerge';
+} from '../../speakers/transcriptMerge';
 import {
 	formatLineTime,
 	type LineSpeakerChoice,
 	type LineSpeakerOption,
-} from '../speakers/transcriptRows';
-import { isAudioFile } from '../utils/audioFile';
-import { probeMediaDurationSeconds } from '../utils/mediaDuration';
+} from '../../speakers/transcriptRows';
+import { isAudioFile } from '../../utils/audioFile';
+import { probeMediaDurationSeconds } from '../../utils/mediaDuration';
 import {
 	cliFlag,
 	cliNumber,
 	cliText,
 	flagParam,
 	valueParam,
-} from '../obsidian/cliArgs';
+} from '../../obsidian/cliArgs';
+import type { ActionFamily } from '../core/PluginAction';
+import type { ActionServices } from '../core/actionServices';
 import type {
-	ActionFamily,
-	ActionServices,
 	TranscriptAction,
 	TranscriptSelectionContext,
-} from './PluginAction';
-import { FILE_TARGET_PARAMS, namedVaultFile } from './recordingTargets';
+} from './transcriptContext';
+import { FILE_TARGET_PARAMS, namedVaultFile } from '../file/recordingTargets';
 import { editorLines, noteLines } from './transcriptLines';
-import { findNoteView } from '../utils/noteViews';
-import { isRefusal, type Refusable } from '../utils/refusal';
+import { findNoteView } from '../../utils/noteViews';
+import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** The lines a selection holds text on, and where it starts and ends. */
 interface SelectedLines {

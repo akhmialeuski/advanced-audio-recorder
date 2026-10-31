@@ -18,7 +18,9 @@
 jest.mock('src/recording/RecordingManager', () =>
 	require('./mocks/modules/recordingManager'),
 );
-jest.mock('src/ui/ContextMenu', () => require('./mocks/modules/contextMenu'));
+jest.mock('src/actions/ContextMenu', () =>
+	require('./mocks/modules/contextMenu'),
+);
 jest.mock('src/player/EnhancedPlayerRegistrar', () =>
 	require('./mocks/modules/enhancedPlayerRegistrar'),
 );

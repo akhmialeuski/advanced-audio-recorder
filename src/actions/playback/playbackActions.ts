@@ -4,17 +4,24 @@
  * from a script. Every action delegates to the active playback snapshot
  * published by `AudioPlayerRegistry`, which is the same surface the status-bar
  * controls use, so no transport logic is duplicated here.
- * @module actions/playbackActions
+ * @module actions/playback/playbackActions
  */
 
 import {
 	COMMAND_IDS,
 	PLAYER_ICONS,
 	PLAYER_PLAYBACK_RATE_PRESETS,
-} from '../constants';
-import { steppedPlaybackRate } from '../player/playbackRate';
-import type { PlaybackControlsState } from '../player/playbackControls';
-import type { ActionFamily, PlaybackAction } from './PluginAction';
+} from '../../constants';
+import { steppedPlaybackRate } from '../../player/playbackRate';
+import type { PlaybackControlsState } from '../../player/playbackControls';
+import type { ActionFamily, PluginCommand } from '../core/PluginAction';
+
+/**
+ * An action on the audio that is playing right now. Registered as a
+ * palette command gated on the active playback snapshot, so it is absent
+ * from the palette (and inert as a hotkey) while nothing plays.
+ */
+export type PlaybackAction = PluginCommand<PlaybackControlsState>;
 
 /**
  * Needs nothing beyond an active playback, which the family already requires

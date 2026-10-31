@@ -11,8 +11,8 @@
  */
 
 import type { App, TFile } from 'obsidian';
-import { ContextMenu } from 'src/ui/ContextMenu';
-import type { ActionServices } from 'src/actions/PluginAction';
+import { ContextMenu } from 'src/actions/ContextMenu';
+import type { ActionServices } from 'src/actions/core/actionServices';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { registeredMenus } from '../helpers/menuFamilies';
 import { menuInstances } from '../mocks/obsidian';

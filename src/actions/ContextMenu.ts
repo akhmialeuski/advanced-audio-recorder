@@ -6,7 +6,7 @@
  * every entry is also a palette command and a command-line command. What this
  * class adds is only what a menu knows and nothing else does: which file,
  * folder, link, selection or point of the player it was opened on.
- * @module ui/ContextMenu
+ * @module actions/ContextMenu
  */
 
 import {
@@ -28,26 +28,16 @@ import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { isAudioFile } from '../utils/audioFile';
 import { editorPositionOfNode } from '../obsidian/editorDomPosition';
 import { hasTimecodeSubpath } from '../player/timecodeLinks';
-import type {
-	ActionServices,
-	FileContext,
-	FolderContext,
-	LinkLocation,
-	PositionContext,
-	TranscriptSelectionContext,
-} from '../actions/PluginAction';
-import type {
-	ActionRegistry,
-	RegisteredFamily,
-} from '../actions/ActionRegistry';
-import { transcriptSelectionIn } from '../actions/transcriptActions';
+import type { ActionServices } from './core/actionServices';
+import type { FileContext } from './file/FileContext';
+import { RecordingOrigin, type LinkLocation } from './file/RecordingOrigin';
+import type { FolderContext } from './folder/folderActions';
+import type { PositionContext } from './position/positionActions';
+import type { TranscriptSelectionContext } from './transcript/transcriptContext';
+import type { ActionRegistry, RegisteredFamily } from './core/ActionRegistry';
+import { transcriptSelectionIn } from './transcript/transcriptActions';
 import { recordingsInNote } from '../obsidian/noteRecordings';
-import {
-	recordingLinkAt,
-	type RecordingLink,
-} from '../actions/recordingTargets';
-
-export type { EnhancementPrimer } from '../actions/PluginAction';
+import { recordingLinkAt, type RecordingLink } from './file/recordingTargets';
 
 /** The element Obsidian draws a note transcluded into another one in. */
 const TRANSCLUSION = '.internal-embed.markdown-embed[src]';
@@ -58,7 +48,7 @@ const PLAYER_MENU_SOURCE = 'audio-recorder-player-context-menu';
 /** The source Obsidian raises file-menu with for a link right-clicked in a note. */
 const LINK_MENU_SOURCE = 'link-context-menu';
 
-/** What a menu learns about how a recording was reached, filled in by each handler. */
+/** A menu's context of a recording, whose origin each handler adds to. */
 type MutableFileContext = {
 	-readonly [K in keyof FileContext]: FileContext[K];
 };
@@ -141,48 +131,27 @@ export class ContextMenu {
 	 * added to what the handlers before it found.
 	 * @param menu - The menu
 	 * @param file - The recording
-	 * @param known - What this handler knows of how it was reached
+	 * @param known - How this handler found the recording reached
 	 * @returns The one context the menu's file actions share
 	 */
 	private fileContextFor(
 		menu: Menu,
 		file: TFile,
-		known: {
-			note?: TFile | null;
-			link?: LinkLocation | null;
-			throughLink?: boolean;
-			atMoment?: boolean;
-		},
+		known: RecordingOrigin,
 	): FileContext {
-		// Every menu that knows a link knows the note it is in, or that there
-		// is none to tell: a dialog it opens must not guess the active one.
-		const fixed = known.throughLink === true || known.link !== undefined;
 		let contexts = this.fileContexts.get(menu);
 		if (!contexts) {
 			contexts = new Map();
 			this.fileContexts.set(menu, contexts);
 		}
-		let context = contexts.get(file.path);
-		if (!context) {
-			context = { file, services: this.services };
-			contexts.set(file.path, context);
+		const context = contexts.get(file.path);
+		if (context) {
+			context.origin = context.origin.merge(known);
+			return context;
 		}
-		if (known.note && !context.note) {
-			context.note = known.note;
-		}
-		if (known.link && !context.link) {
-			context.link = known.link;
-		}
-		if (known.throughLink) {
-			context.throughLink = true;
-		}
-		if (known.atMoment) {
-			context.atMoment = true;
-		}
-		if (fixed) {
-			context.noteFixed = true;
-		}
-		return context;
+		const created = { file, services: this.services, origin: known };
+		contexts.set(file.path, created);
+		return created;
 	}
 
 	/**
@@ -343,14 +312,17 @@ export class ContextMenu {
 				this.registry.renderInto(
 					menu,
 					this.families.file,
-					this.fileContextFor(menu, file, {
-						note: playerNote,
-						link,
-						throughLink: true,
-						// A player that starts at a timestamp stands for that
-						// moment, as a timestamp link does.
-						atMoment: hasTimecodeSubpath(subpath),
-					}),
+					this.fileContextFor(
+						menu,
+						file,
+						RecordingOrigin.throughLink(
+							playerNote,
+							link,
+							// A player that starts at a timestamp stands for
+							// that moment, as a timestamp link does.
+							hasTimecodeSubpath(subpath),
+						),
+					),
 					rendered,
 				);
 
@@ -506,17 +478,20 @@ export class ContextMenu {
 						this.registry.renderInto(
 							menu,
 							this.families.file,
-							this.fileContextFor(menu, file, {
-								note: this.noteLinking(
-									view?.file ?? null,
-									file,
-								),
-								throughLink,
-								...(clicked?.link
-									? { link: clicked.link }
-									: {}),
-								atMoment: clicked?.atMoment === true,
-							}),
+							this.fileContextFor(
+								menu,
+								file,
+								throughLink
+									? RecordingOrigin.throughLink(
+											this.noteLinking(
+												view?.file ?? null,
+												file,
+											),
+											clicked?.link ?? null,
+											clicked?.atMoment === true,
+										)
+									: RecordingOrigin.direct(),
+							),
 							this.renderedSetFor(menu),
 						);
 						return;
@@ -585,11 +560,15 @@ export class ContextMenu {
 		this.registry.renderInto(
 			menu,
 			this.families.file,
-			this.fileContextFor(menu, found.file, {
-				note: view.file,
-				link: found.link,
-				atMoment: found.atMoment === true,
-			}),
+			this.fileContextFor(
+				menu,
+				found.file,
+				RecordingOrigin.atLink(
+					view.file,
+					found.link,
+					found.atMoment === true,
+				),
+			),
 			this.renderedSetFor(menu),
 		);
 	}

@@ -3,7 +3,7 @@
  * audio file or a path on the command line, or through a note that embeds
  * them - every one of them, the one under the cursor, or the one the command
  * line picks - and what it says when it finds none.
- * @module tests/unit/recordingTargets.test
+ * @module tests/integration/recordingTargets.test
  */
 
 import {
@@ -11,9 +11,10 @@ import {
 	describeRecording,
 	namedRecordings,
 	namedVaultFile,
-} from 'src/actions/recordingTargets';
+} from 'src/actions/file/recordingTargets';
 import { recordingsInNote } from 'src/obsidian/noteRecordings';
-import type { FileContext } from 'src/actions/PluginAction';
+import type { FileContext } from 'src/actions/file/FileContext';
+import { RecordingOrigin } from 'src/actions/file/RecordingOrigin';
 import { recordingVault } from '../helpers/recordingVault';
 import { createMarkdownView } from '../helpers/createApp';
 import { asMockWorkspace } from '../helpers/obsidianMock';
@@ -39,7 +40,7 @@ function createSut(
 
 /** The recordings of the targets, by path, with the note each came through. */
 const paths = (targets: readonly FileContext[]): unknown =>
-	targets.map((target) => [target.file.path, target.note?.path]);
+	targets.map((target) => [target.file.path, target.origin.note?.path]);
 
 describe('the recordings a note links', () => {
 	it('lists them in the order the note does', () => {
@@ -203,7 +204,7 @@ describe('the recordings the palette acts on', () => {
 		const [target] = activeRecordings(sut.services);
 
 		expect(target?.file.path).toBe(RETRO);
-		expect(target?.link).toEqual({
+		expect(target?.origin.link).toEqual({
 			editor: view.editor,
 			subpath: '',
 			line: 4,
@@ -226,7 +227,7 @@ describe('the recordings the palette acts on', () => {
 		const [target] = activeRecordings(sut.services);
 
 		expect(target?.file.path).toBe(RETRO);
-		expect(target?.link).toEqual(
+		expect(target?.origin.link).toEqual(
 			expect.objectContaining({
 				subpath: '#t=90',
 				line: 4,
@@ -235,7 +236,7 @@ describe('the recordings the palette acts on', () => {
 			}),
 		);
 		// A moment of the recording, which no delete is offered for.
-		expect(target?.atMoment).toBe(true);
+		expect(target?.origin.atMoment).toBe(true);
 	});
 
 	it('falls back to the whole note when the cursor is on a link to no recording', () => {
@@ -436,6 +437,7 @@ describe('naming a recording target', () => {
 			describeRecording({
 				file: sut.file(STANDUP),
 				services: sut.services,
+				origin: RecordingOrigin.direct(),
 			}),
 		).toBe(STANDUP);
 	});

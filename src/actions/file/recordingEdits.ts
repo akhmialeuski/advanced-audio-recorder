@@ -7,30 +7,30 @@
  * palette tell the user in a notice, the command line answers with the same
  * sentence. Where a dialog stands between the user and the job (chapters,
  * export), the command line takes the dialog's choices as parameters.
- * @module actions/recordingEdits
+ * @module actions/file/recordingEdits
  */
 
 import type { CliData, CliFlags } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
-import { errorMessage } from '../errors';
-import { TranscriptionService } from '../transcription/TranscriptionService';
+import { PLUGIN_LOG_PREFIX } from '../../constants';
+import { errorMessage } from '../../errors';
+import { TranscriptionService } from '../../transcription/TranscriptionService';
 import {
 	FailedPartRetry,
 	serviceRunner,
 	type RetryOutcome,
-} from '../transcription/retryFailedParts';
+} from '../../transcription/retryFailedParts';
 import {
 	applyChapterRunChoices,
 	commitChapterRunSettings,
-} from '../chapters/chapterRunSettings';
+} from '../../chapters/chapterRunSettings';
 import {
 	chapterExportText,
 	ChapterExportView,
 	writeChapterExportFile,
-} from '../chapters/chapterExportFiles';
-import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
-import { removeReferences, wholeFileReferences } from '../utils/LinkUpdater';
-import { collectingNotify } from '../utils/notify';
+} from '../../chapters/chapterExportFiles';
+import { timecodeLinkBuilder } from '../../obsidian/timecodeRefs';
+import { removeReferences, wholeFileReferences } from '../../utils/LinkUpdater';
+import { collectingNotify } from '../../utils/notify';
 import {
 	choiceParam,
 	cliChoice,
@@ -38,10 +38,11 @@ import {
 	cliText,
 	flagParam,
 	valueParam,
-} from '../obsidian/cliArgs';
-import type { ActionServices, FileContext } from './PluginAction';
+} from '../../obsidian/cliArgs';
+import type { ActionServices } from '../core/actionServices';
+import type { FileContext } from './FileContext';
 import type { TFile } from 'obsidian';
-import { isRefusal } from '../utils/refusal';
+import { isRefusal } from '../../utils/refusal';
 
 /**
  * One sentence saying what the top-up did.
@@ -69,9 +70,9 @@ export function describeRetryOutcome(outcome: RetryOutcome): string {
  *
  * Whether anything is missing cannot be known without reading the sidecar,
  * and an action's availability is decided synchronously, so the action is
- * always offered and a recording with nothing missing is told so. Offering it
- * only after something warmed a cache would hide it exactly when it is
- * wanted.
+ * offered wherever the sidecar was not read, and a recording with nothing
+ * missing is told so. Offering it only after something warmed a cache would
+ * hide it exactly when it is wanted.
  * @param file - The recording to top up
  * @param services - Injected services
  * @returns What happened, in one sentence; never throws
@@ -211,7 +212,7 @@ export async function exportChaptersFromCli(
 	context: FileContext,
 	args: CliData,
 ): Promise<string> {
-	const { file, services, note } = context;
+	const { file, services, origin } = context;
 	const view = cliChoice(args, 'format', EXPORT_VIEWS);
 	if (isRefusal(view)) {
 		return view.refusal;
@@ -223,7 +224,11 @@ export async function exportChaptersFromCli(
 	const source = {
 		file,
 		markers,
-		linkBuilder: timecodeLinkBuilder(services.app, file, note?.path ?? ''),
+		linkBuilder: timecodeLinkBuilder(
+			services.app,
+			file,
+			origin.note?.path ?? '',
+		),
 	};
 	const chosen = view.value ?? ChapterExportView.List;
 	if (chosen === ChapterExportView.Outline || cliFlag(args, PRINT_FLAG)) {
@@ -249,7 +254,8 @@ export async function exportChaptersFromCli(
 export async function deleteRecordingWithLink(
 	context: FileContext,
 ): Promise<string> {
-	const { file, services, note, link } = context;
+	const { file, services } = context;
+	const { note, link } = context.origin;
 	const { app } = services;
 	// The link the menu or the cursor was on goes with the recording when it
 	// links the whole recording. A link into a part of it is not "the link"

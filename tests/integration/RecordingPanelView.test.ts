@@ -13,20 +13,20 @@ import {
 } from 'src/panel/RecordingPanelView';
 import { COMMAND_IDS, RECORDING_PANEL_VIEW_TYPE } from 'src/constants';
 import { emptyTranscriptSection } from 'src/sidecar/recordingSidecarModel';
-import type {
-	ActionServices,
-	FileAction,
-	FileContext,
-} from 'src/actions/PluginAction';
+import type { ActionServices } from 'src/actions/core/actionServices';
+import { ActionRegistry } from 'src/actions/core/ActionRegistry';
+import type { FileAction, FileContext } from 'src/actions/file/FileContext';
+import { FILE_ACTIONS, fileActionFamily } from 'src/actions/file/fileActions';
 import { FAILING_RUNS, internalsOf, partial } from '../helpers/doubles';
 import {
 	asMockApp,
 	asMockMenu,
 	fileAt,
 	leafOver,
+	mockPluginHost,
 } from '../helpers/obsidianMock';
 import { allEls, el, maybeEl } from '../helpers/dom';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
 import { RECORDING_PANEL } from '../helpers/selectors';
 import { IDLE_SAVE_STATE, savingState } from '../helpers/saveStateFixtures';
@@ -46,6 +46,18 @@ function fileAction(
 		run: jest.fn(),
 		cli: { name: commandId, description: title, execute: () => '' },
 	};
+}
+
+/**
+ * A file action as the plugin defines it, gate included, for the tests of
+ * what the panel leaves out: the panel decides nothing of its own.
+ * @param commandId - Its command id
+ */
+function pluginAction(commandId: string): FileAction {
+	return defined(
+		FILE_ACTIONS.find((action) => action.commandId === commandId),
+		commandId,
+	);
 }
 
 /** The panel over an app whose active file and sidecar a test chooses. */
@@ -103,24 +115,32 @@ async function createSut(
 		transcriptionEnabled: true,
 	};
 	const toggleRecording = jest.fn().mockResolvedValue(undefined);
+	const services = partial<ActionServices>({
+		app,
+		getSettings: () => settings,
+		recordingSidecar: {
+			getTranscript,
+			getFailedParts: jest
+				.fn()
+				.mockResolvedValue(options.failedParts ?? null),
+			isSidecarCorrupt: () => options.sidecarCorrupt ?? false,
+			onChange: (listener: (path: string) => void) => {
+				listeners.push(listener);
+				return () => undefined;
+			},
+		},
+	});
+	// Registered as the plugin registers the file actions, with the ones the
+	// test chose, so the panel offers what their own gates allow.
+	const registry = new ActionRegistry(mockPluginHost(app), jest.fn());
 	const host: RecordingPanelHost = {
 		displayName: 'Advanced Audio Recorder',
-		services: partial<ActionServices>({
-			app,
-			getSettings: () => settings,
-			recordingSidecar: {
-				getTranscript,
-				getFailedParts: jest
-					.fn()
-					.mockResolvedValue(options.failedParts ?? null),
-				isSidecarCorrupt: () => options.sidecarCorrupt ?? false,
-				onChange: (listener: (path: string) => void) => {
-					listeners.push(listener);
-					return () => undefined;
-				},
-			},
+		services,
+		registry,
+		fileActions: registry.add({
+			...fileActionFamily(services),
+			actions: options.actions ?? [],
 		}),
-		actions: options.actions ?? [],
 		recording: {
 			toggleRecording,
 			getStatus: () => options.status ?? 'idle',
@@ -488,7 +508,7 @@ describe('the actions the panel offers', () => {
 			active: recording('sync.webm'),
 			actions: [
 				fileAction(COMMAND_IDS.transcribeAudio, 'Transcribe audio'),
-				fileAction(COMMAND_IDS.deleteRecording, 'Delete recording'),
+				pluginAction(COMMAND_IDS.deleteRecording),
 			],
 		});
 
@@ -534,11 +554,7 @@ describe('the actions the panel offers', () => {
 		);
 	});
 
-	const retry = (): FileAction =>
-		fileAction(
-			COMMAND_IDS.retryFailedParts,
-			'Transcribe the parts that failed',
-		);
+	const retry = (): FileAction => pluginAction(COMMAND_IDS.retryFailedParts);
 
 	it('offers no top-up for a recording with no failed parts', async () => {
 		const { view } = await createSut({
@@ -608,7 +624,7 @@ describe('the menus of the panel', () => {
 			active: recording('sync.webm'),
 			actions: [
 				fileAction(COMMAND_IDS.audioFileInfo, 'Audio file info'),
-				fileAction(COMMAND_IDS.deleteRecording, 'Delete recording'),
+				pluginAction(COMMAND_IDS.deleteRecording),
 			],
 		});
 		const menu = new Menu();

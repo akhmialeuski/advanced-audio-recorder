@@ -36,8 +36,8 @@ import { ConversionModal } from 'src/ui/ConversionModal';
 import type { JournalSession } from 'src/recording/SessionJournal';
 import { QueueCoordinator } from 'src/transcription/QueueCoordinator';
 import { QueueRunner } from 'src/transcription/QueueRunner';
-import { ContextMenu } from 'src/ui/ContextMenu';
-import type { ActionServices } from 'src/actions/PluginAction';
+import { ContextMenu } from 'src/actions/ContextMenu';
+import type { ActionServices } from 'src/actions/core/actionServices';
 import type { TFolder } from 'obsidian';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
@@ -85,7 +85,7 @@ jest.mock('src/recording/RecordingManager', () => ({
 	})),
 }));
 
-jest.mock('src/ui/ContextMenu', () => ({
+jest.mock('src/actions/ContextMenu', () => ({
 	ContextMenu: jest.fn().mockImplementation(() => ({
 		register: jest.fn(),
 	})),

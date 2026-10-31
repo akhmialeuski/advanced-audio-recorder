@@ -10,8 +10,11 @@ import type { Plugin } from 'obsidian';
 import {
 	registerActionCommands,
 	runReported,
-} from 'src/actions/registerActionCommands';
-import type { ActionFamily, PluginCommand } from 'src/actions/PluginAction';
+} from 'src/actions/core/registerActionCommands';
+import type {
+	ActionFamily,
+	PluginCommand,
+} from 'src/actions/core/PluginAction';
 import { asMockPlugin, mockPluginHost } from '../helpers/obsidianMock';
 import { createMockApp } from '../helpers/createApp';
 import { tick } from '../helpers/async';

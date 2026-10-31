@@ -9,11 +9,11 @@ import type { CliData } from 'obsidian';
 import {
 	SESSION_ACTIONS,
 	sessionActionFamily,
-} from 'src/actions/sessionActions';
+} from 'src/actions/session/sessionActions';
 import type {
 	RecordingSessionPort,
 	SessionServices,
-} from 'src/actions/PluginAction';
+} from 'src/actions/session/sessionActions';
 import { COMMAND_IDS } from 'src/constants';
 import { RecordingStatus } from 'src/types';
 import type { RecordingMarkerHandle } from 'src/recording/recordingMarkers';

@@ -4,14 +4,26 @@
  * release notes are read while nothing is recording and nothing is playing,
  * and most often right after an update, when there is no recording to speak of
  * yet.
- * @module actions/helpActions
+ * @module actions/help/helpActions
  */
 
 import type { CliData } from 'obsidian';
-import { COMMAND_IDS } from '../constants';
-import { releaseNotesSince } from '../release/releaseNotes';
-import { cliText, valueParam } from '../obsidian/cliArgs';
-import type { ActionFamily, HelpAction, HelpServices } from './PluginAction';
+import { COMMAND_IDS } from '../../constants';
+import { releaseNotesSince } from '../../release/releaseNotes';
+import { cliText, valueParam } from '../../obsidian/cliArgs';
+import type { ActionFamily, PluginCommand } from '../core/PluginAction';
+
+/** What an action about the plugin itself needs. */
+export interface HelpServices {
+	/** Shows every release the bundle carries notes for. */
+	readonly showReleaseNotes: () => void;
+}
+
+/**
+ * An action that explains the plugin rather than acting on audio. Its context
+ * always resolves, since it is bound to nothing in the vault at all.
+ */
+export type HelpAction = PluginCommand<HelpServices>;
 
 /** Needs nothing beyond the plugin being loaded. */
 const always = (): boolean => true;

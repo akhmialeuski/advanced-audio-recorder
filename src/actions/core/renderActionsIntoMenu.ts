@@ -4,11 +4,11 @@
  * fire both editor-menu and file-menu for the same Menu instance, and the
  * player menu re-triggers file-menu, so every add goes through the same
  * dedup.
- * @module actions/renderActionsIntoMenu
+ * @module actions/core/renderActionsIntoMenu
  */
 
 import type { Menu, MenuItem } from 'obsidian';
-import { AAR_MENU_SECTION } from '../constants';
+import { AAR_MENU_SECTION } from '../../constants';
 import type { PluginCommand } from './PluginAction';
 import { runReported } from './registerActionCommands';
 

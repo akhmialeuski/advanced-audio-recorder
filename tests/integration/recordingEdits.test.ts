@@ -10,8 +10,12 @@ import {
 	deleteRecordingWithLink,
 	exportChaptersFromCli,
 	generateChaptersFromCli,
-} from 'src/actions/recordingEdits';
-import type { FileContext } from 'src/actions/PluginAction';
+} from 'src/actions/file/recordingEdits';
+import type { FileContext } from 'src/actions/file/FileContext';
+import {
+	RecordingOrigin,
+	type LinkLocation,
+} from 'src/actions/file/RecordingOrigin';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { ProfileKindId, createProfile } from 'src/settings/profiles';
 import { recordingVault } from '../helpers/recordingVault';
@@ -30,6 +34,11 @@ function createSut(meeting = '![[standup.webm]]'): ReturnType<
 	typeof recordingVault
 > & {
 	context: FileContext;
+	/**
+	 * The same recording reached through a link of the meeting note.
+	 * @param link - Where the link is
+	 */
+	atLink: (link: LinkLocation) => FileContext;
 	read: () => Promise<string>;
 } {
 	const vault = recordingVault({
@@ -37,9 +46,19 @@ function createSut(meeting = '![[standup.webm]]'): ReturnType<
 		notes: { [MEETING]: meeting },
 	});
 	const note = vault.file(MEETING);
+	const file = vault.file(STANDUP);
 	return {
 		...vault,
-		context: { file: vault.file(STANDUP), note, services: vault.services },
+		context: {
+			file,
+			services: vault.services,
+			origin: RecordingOrigin.inNote(note),
+		},
+		atLink: (link) => ({
+			file,
+			services: vault.services,
+			origin: RecordingOrigin.atLink(note, link, false),
+		}),
 		read: () => vault.app.vault.read(note),
 	};
 }
@@ -49,16 +68,15 @@ describe('deleting a recording with its links', () => {
 		const sut = createSut();
 		const replaceRange = jest.fn();
 
-		const answer = await deleteRecordingWithLink({
-			...sut.context,
-			link: {
+		const answer = await deleteRecordingWithLink(
+			sut.atLink({
 				editor: partial<Editor>({ replaceRange }),
 				subpath: '',
 				line: 0,
 				start: 0,
 				end: 17,
-			},
-		});
+			}),
+		);
 
 		expect(answer).toBe('Recording and link deleted');
 		expect(replaceRange).toHaveBeenCalledWith(
@@ -75,16 +93,15 @@ describe('deleting a recording with its links', () => {
 		);
 		const replaceRange = jest.fn();
 
-		const answer = await deleteRecordingWithLink({
-			...sut.context,
-			link: {
+		const answer = await deleteRecordingWithLink(
+			sut.atLink({
 				editor: partial<Editor>({ replaceRange }),
 				subpath: '#t=90',
 				line: 1,
 				start: 0,
 				end: 26,
-			},
-		});
+			}),
+		);
 
 		expect(replaceRange).not.toHaveBeenCalled();
 		expect(answer).toBe(
@@ -148,6 +165,7 @@ describe('deleting a recording with its links', () => {
 			deleteRecordingWithLink({
 				file: sut.file(STANDUP),
 				services: sut.services,
+				origin: RecordingOrigin.direct(),
 			}),
 		).resolves.toBe('Recording deleted');
 		await expect(sut.read()).resolves.toBe('![[standup.webm]]');
@@ -314,7 +332,7 @@ describe('exporting chapters from the command line', () => {
 				sut.app.fileManager,
 				'generateMarkdownLink',
 			);
-			const { note: _note, ...direct } = sut.context;
+			const direct = { ...sut.context, origin: RecordingOrigin.direct() };
 
 			await exportChaptersFromCli(throughNote ? sut.context : direct, {
 				format: 'outline',
@@ -337,7 +355,11 @@ describe('exporting chapters from the command line', () => {
 
 		await expect(
 			exportChaptersFromCli(
-				{ file: vault.file('standup.webm'), services: vault.services },
+				{
+					file: vault.file('standup.webm'),
+					services: vault.services,
+					origin: RecordingOrigin.direct(),
+				},
 				{},
 			),
 		).resolves.toBe('Markers written to standup.chapters.txt.');

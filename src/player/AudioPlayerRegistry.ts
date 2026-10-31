@@ -15,7 +15,7 @@ import {
 	SHARED_AUDIO_GRACE_MS,
 } from '../constants';
 import type { MarkerKind } from '../markers/markerModel';
-import type { ResolvedPlayerSettings } from '../player/playerSettings';
+import type { ResolvedPlayerSettings } from './playerSettings';
 import type { VoiceBoostStages } from '../cleanup/audioDsp';
 import {
 	isLiveVoiceBoostSupported,
