@@ -49,6 +49,12 @@ export interface RetryOutcome {
 	/** Transcript files rewritten with the completed transcript. */
 	rewritten: number;
 	/**
+	 * The transcript with what came back spliced in, so whatever follows a
+	 * finished run, such as its chapters, works from the completed text
+	 * without reading the files back. Absent when nothing was attempted.
+	 */
+	transcript?: Transcript;
+	/**
 	 * Seconds of audio the top-up sent, which is what it was billed for and
 	 * what sizes the estimate when the engine reports no usage. Reported by
 	 * the run rather than added up from the stretches asked for, because a
@@ -289,6 +295,7 @@ export class FailedPartRetry {
 				completed.transcript,
 				source.outputs,
 			),
+			transcript: completed.transcript,
 			sentSeconds,
 			cost,
 		};
