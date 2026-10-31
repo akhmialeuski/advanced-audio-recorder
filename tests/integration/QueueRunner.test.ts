@@ -17,6 +17,7 @@ import {
 	TRANSCRIPTION_QUEUE_FILE,
 } from 'src/transcription/TranscriptionQueue';
 import type { TranscribeRunCost } from 'src/transcription/TranscriptionService';
+import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
@@ -87,6 +88,8 @@ interface Sut {
 	recorded: RecordedRun[];
 	/** The cancellation each run was handed, in the order they ran. */
 	tokens: RunToken[];
+	/** Each recording chapters were asked for, with the transcript handed over. */
+	chaptered: { path: string; transcript: Transcript }[];
 }
 
 /**
@@ -117,6 +120,7 @@ function createSut(
 	const transcribed: string[] = [];
 	const recorded: RecordedRun[] = [];
 	const tokens: RunToken[] = [];
+	const chaptered: Sut['chaptered'] = [];
 	const app = createMockApp({
 		vault: {
 			getFileByPath: (path: string) =>
@@ -144,7 +148,13 @@ function createSut(
 				billed,
 			) ?? Promise.resolve({ cost: cost() }));
 			return {
-				transcript: { segments: [], speakers: [] },
+				// Named after its recording, so what chapters were handed can
+				// be told apart from another run's transcript.
+				transcript: {
+					segments: [],
+					speakers: [],
+					sourcePath: file.path,
+				},
 				markdown: '',
 				cost: reported,
 				missingParts: [],
@@ -177,11 +187,14 @@ function createSut(
 					return reported.usd;
 				},
 			}),
-			generateChapters: () => Promise.resolve(),
+			generateChapters: (file, transcript) => {
+				chaptered.push({ path: file.path, transcript });
+				return Promise.resolve();
+			},
 		}),
 		assumedSecondsPerRecording: ASSUMED_SECONDS,
 	});
-	return { runner, queue, transcribed, recorded, tokens };
+	return { runner, queue, transcribed, recorded, tokens, chaptered };
 }
 
 describe('draining the queue', () => {
@@ -496,6 +509,48 @@ describe('what a queued run costs the session', () => {
 			},
 		]);
 		expect(at(queue.entries(), 0).state).toBe('failed');
+	});
+});
+
+describe('the chapters that follow a queued run', () => {
+	// The queue ran each recording with chapters switched off, so a folder
+	// queued in the expectation of chapters came back with transcripts alone
+	// while the same recording run from the dialog was chaptered.
+	it('generates the chapters the settings ask for from the fresh transcript', async () => {
+		const { runner, chaptered } = createSut({
+			paths: ['a.webm'],
+			settings: {
+				transcriptionAutoChaptersEnabled: true,
+				transcriptionAutoChaptersOnTranscribe: true,
+			},
+		});
+
+		await runner.drain();
+
+		expect(chaptered).toEqual([
+			{
+				path: 'a.webm',
+				transcript: {
+					segments: [],
+					speakers: [],
+					sourcePath: 'a.webm',
+				},
+			},
+		]);
+	});
+
+	it('generates none when the settings do not ask for them after a run', async () => {
+		const { runner, chaptered } = createSut({
+			paths: ['a.webm'],
+			settings: {
+				transcriptionAutoChaptersEnabled: true,
+				transcriptionAutoChaptersOnTranscribe: false,
+			},
+		});
+
+		await runner.drain();
+
+		expect(chaptered).toEqual([]);
 	});
 });
 

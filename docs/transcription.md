@@ -527,6 +527,8 @@ The queue is kept **in the plugin folder**, not in your settings, so it survives
 
 Every queued run counts into the **"Spent this session"** total by the same rules a single run follows: what the provider reported, or the estimate when it reported nothing, marked as an estimate either way. The estimate the dialog shows beforehand is coarser: it prices a typical recording rather than measuring each one, since reading a folder of recordings to price them would cost more than the number is worth.
 
+With [**Generate after transcription**](#auto-chapters) on, each queued recording gets its chapters once its transcript is written, in the background as after a single run, and the estimate the queue dialog shows includes the chapters for every recording.
+
 ---
 
 ## Transcribing the parts that failed
