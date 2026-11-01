@@ -1,0 +1,7 @@
+# Opts this project into the crap-gate-edit hook and sets the limits it enforces after every agent edit.
+# The same numbers sit in eslint.config.mjs and scripts/crap-gate.sh, so the hook and the gate agree.
+[limits]
+complexity = 8
+max_args = 5
+function_lines = 50
+file_lines = 500
