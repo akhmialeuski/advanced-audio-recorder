@@ -81,7 +81,7 @@ export interface LlmStepRequest {
 	/** Optional generation options (temperature). */
 	options?: LlmCompleteOptions;
 	/**
-	 * Aborts the call when the run it belongs to is cancelled.
+	 * Releases the call when the run it belongs to is cancelled.
 	 *
 	 * Carried on the request rather than inside {@link LlmStepRequest.options}
 	 * so a caller cannot forget it: cancellation used to reach the

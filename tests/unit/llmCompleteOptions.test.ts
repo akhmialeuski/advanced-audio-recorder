@@ -178,99 +178,29 @@ describe('LlmProvider.complete temperature option', () => {
 	});
 });
 
-// Temperature reaches the body; the signal has to reach the transport, which
-// is a different journey and the one that was missing. `requestUrl` cannot
-// abort, so a request carrying a signal goes through `fetch` instead, and that
-// is what this watches: a Cancel that does not release the socket leaves the
-// provider to run the call and bill for it.
+// Temperature reaches the body; the signal has to reach the request, which is
+// a different journey and the one that was missing. Without it a Cancel
+// pressed while the model is still writing left the run waiting out the
+// five-minute timeout.
 describe('LlmProvider.complete cancellation', () => {
-	/** Answers one fetch and records the init it was called with. */
-	function captureFetch(responseText: string): () => RequestInit {
-		let seen: RequestInit | undefined;
-		(globalThis as { fetch?: unknown }).fetch = jest.fn(
-			(_url: string, init: RequestInit) => {
-				seen = init;
-				return Promise.resolve({
-					status: 200,
-					headers: new Headers(),
-					text: () => Promise.resolve(responseText),
-				});
-			},
-		);
-		return () => {
-			if (!seen) {
-				throw new Error('no request was sent through fetch');
-			}
-			return seen;
-		};
-	}
-
-	afterEach(() => {
-		delete (globalThis as { fetch?: unknown }).fetch;
-	});
-
 	it.each(VENDORS)(
-		'sends the $name request on an abortable transport',
-		async ({ build, response }) => {
-			const init = captureFetch(response);
+		'releases the $name request the moment the caller cancels',
+		async ({ build }) => {
+			withRequestUrl(() => new Promise(() => undefined));
+			const controller = new AbortController();
 
-			await build().complete(PROMPT, 256, {
-				signal: new AbortController().signal,
+			const settled = outcomeOf(
+				build().complete(PROMPT, 256, { signal: controller.signal }),
+			);
+			controller.abort();
+
+			expect(await settled).toEqual({
+				error: expect.objectContaining({
+					message: expect.stringContaining('cancelled'),
+				}),
 			});
-
-			// `requestUrl` cannot abort anything, so the only way a Cancel can
-			// release the socket is for the request to go out through fetch with
-			// a signal on it. That it did is the whole fix.
-			expect(init().signal).toBeDefined();
 		},
 	);
-
-	// The point of the signal: a Cancel while the model is still writing ends
-	// the request instead of leaving it to run to its own timeout and be
-	// billed in full.
-	it('ends an in-flight request when the caller cancels', async () => {
-		// A signal that is already aborted when the request is made rejects
-		// straight away, the way a real fetch does. Waiting for an abort event
-		// that has been and gone would hang here, and the client asks about
-		// this origin before it sends the prompt, so the cancel can land
-		// before either request is made.
-		(globalThis as { fetch?: unknown }).fetch = jest.fn(
-			(_url: string, init: RequestInit) =>
-				init.signal?.aborted
-					? Promise.reject(new Error('The user aborted a request.'))
-					: new Promise((_resolve, reject) => {
-							init.signal?.addEventListener('abort', () => {
-								reject(
-									new Error('The user aborted a request.'),
-								);
-							});
-						}),
-		);
-		const controller = new AbortController();
-		const provider = openAiProvider();
-
-		const settled = outcomeOf(
-			provider.complete(PROMPT, 256, { signal: controller.signal }),
-		);
-		controller.abort();
-
-		expect(await settled).toEqual({
-			error: expect.objectContaining({
-				message: expect.stringContaining('cancelled'),
-			}),
-		});
-	});
-
-	// Nothing to cancel with means nothing to gain from fetch, and requestUrl
-	// is the transport that is exempt from CORS, so it stays the default.
-	it('keeps the CORS-exempt transport when there is nothing to cancel with', async () => {
-		captureFetch(OPENAI_RESPONSE);
-		capture(OPENAI_RESPONSE);
-
-		await openAiProvider().complete(PROMPT, 256);
-
-		expect(globalThis.fetch).not.toHaveBeenCalled();
-	});
 });
 
 // A completed step is billed at what the vendor says it cost, so what each

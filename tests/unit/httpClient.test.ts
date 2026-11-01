@@ -23,8 +23,8 @@ import {
 	VOXTRAL_TRANSCRIBE_MIN_TIMEOUT_MS,
 } from 'src/constants';
 import { captureRequests, withRequestUrl } from '../helpers/network';
-import { flushMicrotasks } from '../helpers/async';
 import { defined } from '../helpers/assertions';
+import { flushMicrotasks } from '../helpers/async';
 
 /**
  * Sends one request against a scripted answer and returns the failure it
@@ -346,468 +346,49 @@ describe('inferenceTimeoutMs', () => {
 	);
 });
 
-describe('requestRaw abort support', () => {
+describe("the run's cancel", () => {
 	afterEach(() => {
-		delete (globalThis as { fetch?: unknown }).fetch;
-		// Restored here rather than at the end of the one test that installs
-		// fake timers: a failing assertion there would otherwise leave them
-		// running for every test after it in this block.
 		jest.useRealTimers();
 	});
 
-	/** What a real fetch rejects with once its signal aborts. */
-	function abortError(): DOMException {
-		return new DOMException('The operation was aborted.', 'AbortError');
+	/** A requestUrl that never answers, as a long upload looks from inside. */
+	function endpointStillWorking(): void {
+		withRequestUrl(() => new Promise(() => undefined));
 	}
 
-	/**
-	 * Installs a fetch double that answers with `impl` and, like the real
-	 * thing, rejects the moment its signal aborts, whatever the endpoint is
-	 * doing. A double that only resolves would leave the caller waiting on a
-	 * request the browser has already dropped, which is the one behaviour the
-	 * abortable transport exists for.
-	 * @param impl - What the endpoint answers with
-	 * @returns The double, for counting what it was asked to send
-	 */
-	function mockFetch(impl: (typeof globalThis)['fetch']): jest.Mock {
-		const mock = jest.fn(((url, init) => {
-			const signal = init?.signal;
-			if (signal?.aborted) {
-				return Promise.reject(abortError());
-			}
-			const answer = impl(url, init);
-			if (!signal) {
-				return answer;
-			}
-			return Promise.race([
-				answer,
-				new Promise<never>((_resolve, reject) => {
-					signal.addEventListener('abort', () => {
-						reject(abortError());
-					});
-				}),
-			]);
-		}) as (typeof globalThis)['fetch']);
-		(globalThis as { fetch?: unknown }).fetch = mock;
-		return mock;
-	}
+	// requestUrl cannot be aborted, so what the cancel can do is stop the run
+	// waiting for it. Waiting out the request's own deadline instead held the
+	// dialog for up to an hour after the user pressed Cancel.
+	it('releases the caller the moment the run is cancelled', async () => {
+		endpointStillWorking();
+		const controller = new AbortController();
 
-	/** A minimal Response stand-in (jsdom ships no Response constructor). */
-	function fakeResponse(
-		status: number,
-		body: string,
-		headers: Record<string, string> = {},
-	): Response {
-		return {
-			status,
-			text: () => Promise.resolve(body),
-			headers: new Map(Object.entries(headers)),
-		} as unknown as Response;
-	}
+		const pending = requestRaw({
+			url: 'https://api.example.com/v1/transcribe?key=secret',
+			method: 'POST',
+			body: 'the audio',
+			signal: controller.signal,
+		});
+		controller.abort();
 
-	/** The calls a fetch double was asked to make that carried a body. */
-	function bodiesSentByFetch(fetchMock: jest.Mock): unknown[] {
-		return fetchMock.mock.calls.filter(
-			(call) => (call[1] as { body?: unknown } | undefined)?.body,
-		);
-	}
-
-	/**
-	 * Puts the CORS-exempt transport behind the endpoint, answering with a
-	 * body that names itself. Which transport carried a request is the whole
-	 * question in this block, so every case that has a fallback to reach needs
-	 * the same double and tells it apart by that name.
-	 */
-	function fallbackAnswers(): void {
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: '{"via":"requestUrl"}',
-		}));
-	}
-
-	// Each of these owns its host name: what an origin does with a browser
-	// request is learned once and remembered for the session, so two tests
-	// sharing a host would be reading each other's answer.
-	it('sends the request through fetch when a signal is provided', async () => {
-		const fetchMock = mockFetch(() =>
-			Promise.resolve(
-				fakeResponse(200, '{"ok":true}', { 'x-test': 'yes' }),
+		await expect(pending).rejects.toThrow(
+			new HttpError(
+				0,
+				'Request to https://api.example.com/v1/transcribe was cancelled.',
 			),
 		);
-
-		const response = await requestRaw({
-			url: 'https://takes-fetch.example.com/v1/transcribe',
-			method: 'POST',
-			body: 'payload',
-			signal: new AbortController().signal,
-		});
-
-		expect(bodiesSentByFetch(fetchMock)).toHaveLength(1);
-		expect(response.status).toBe(200);
-		expect(response.text).toBe('{"ok":true}');
-		expect(response.headers['x-test']).toBe('yes');
 	});
 
-	// A query can name something the endpoint does not: a Gemini upload
-	// session answers a HEAD with CORS headers the rest of the API does not
-	// send, and trusting it sent the upload through fetch, whose unreadable
-	// response was then sent again by requestUrl as "Upload has already been
-	// terminated".
-	it('asks the request path without its query, which may name a session', async () => {
-		const fetchMock = mockFetch(() =>
-			Promise.resolve(fakeResponse(200, '{}')),
-		);
-
-		await requestRaw({
-			url: 'https://session-host.example.com/upload/v1beta/files?upload_id=abc&upload_protocol=resumable',
-			method: 'POST',
-			body: 'payload',
-			signal: new AbortController().signal,
-		});
-
-		expect(fetchMock.mock.calls[0]?.[0]).toBe(
-			'https://session-host.example.com/upload/v1beta/files',
-		);
-		expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'HEAD' });
-	});
-
-	// The root of an API host is often another handler than its endpoints:
-	// api.openai.com and api.mistral.ai answer a HEAD at the root without CORS
-	// headers and at their endpoints with them. Asking the root would leave
-	// such an engine on requestUrl, where a Cancel cannot stop the upload.
-	it('keeps fetch for an endpoint that answers when its origin root does not', async () => {
-		const fetchMock = mockFetch((input, init) =>
-			init?.method === 'HEAD' &&
-			input === 'https://root-refuses.example.com/'
-				? Promise.reject(new TypeError('Failed to fetch'))
-				: Promise.resolve(fakeResponse(200, '{"via":"fetch"}')),
-		);
-		fallbackAnswers();
-
-		const response = await requestRaw({
-			url: 'https://root-refuses.example.com/v1/audio/transcriptions',
-			method: 'POST',
-			body: 'payload',
-			signal: new AbortController().signal,
-		});
-
-		expect(response.text).toBe('{"via":"fetch"}');
-		expect(bodiesSentByFetch(fetchMock)).toHaveLength(1);
-	});
-
-	// The probe is what keeps the discovery off the request: it asks the
-	// origin with no body, so a refusal costs a round trip instead of an upload.
-	it('asks an unknown origin with a bodyless request first', async () => {
-		const fetchMock = mockFetch(() =>
-			Promise.resolve(fakeResponse(200, '{}')),
-		);
-
-		await requestRaw({
-			url: 'https://asked-first.example.com/v1/transcribe',
-			method: 'POST',
-			body: 'payload',
-			signal: new AbortController().signal,
-		});
-
-		expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'HEAD' });
-		expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty('body');
-	});
-
-	it('rejects with a cancellation HttpError when the signal aborts mid-flight', async () => {
-		const controller = new AbortController();
-		(globalThis as { fetch?: unknown }).fetch = fetchThatOnlyAborts();
-
-		const pending = requestRaw({
-			url: 'https://cancels-midflight.example.com/v1/transcribe',
-			method: 'POST',
-			signal: controller.signal,
-		});
-		// The probe runs before the request does, and aborting during it is a
-		// different case (covered below). Letting it settle first puts the
-		// cancel where this test says it is: on the request in flight.
-		await flushMicrotasks();
-		controller.abort();
-
-		await expect(pending).rejects.toThrow(HttpError);
-		await expect(pending).rejects.toThrow(/was cancelled/);
-	});
-
-	// The fallback transport cannot be aborted, so a run that reaches it after
-	// the user pressed Cancel would upload audio nobody is waiting for. The
-	// cancel is therefore answered between the probe and the request.
-	it('rejects when the signal aborts while the origin is being probed', async () => {
-		const controller = new AbortController();
-		const fetchMock = mockFetch(() =>
-			Promise.reject(new TypeError('Failed to fetch')),
-		);
-		const sent = captureRequests({ status: 200, text: '{}' });
-
-		const pending = requestRaw({
-			url: 'https://cancels-during-probe.example.com/v1/transcribe',
-			method: 'POST',
-			body: 'the audio',
-			signal: controller.signal,
-		});
-		controller.abort();
-
-		await expect(pending).rejects.toThrow(/was cancelled/);
-		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
-		expect(sent).toHaveLength(0);
-	});
-
-	/**
-	 * An endpoint that refuses fetch the way a CORS-less server does, with
-	 * requestUrl answering behind it.
-	 * @returns The fetch double, for counting how often it was asked
-	 */
-	function corsRefusingEndpoint(): jest.Mock {
-		const fetchMock = mockFetch(() =>
-			Promise.reject(new TypeError('Failed to fetch')),
-		);
-		fallbackAnswers();
-		return fetchMock;
-	}
-
-	/**
-	 * An endpoint that answers the bodyless probe and then refuses the request
-	 * behind it, which is what an Authorization header's preflight meets.
-	 * @returns The fetch double, for counting how often it was asked
-	 */
-	function probePassingEndpoint(): jest.Mock {
-		const fetchMock = mockFetch((_url: unknown, init?: RequestInit) =>
-			init?.method === 'HEAD'
-				? Promise.resolve(fakeResponse(200, ''))
-				: Promise.reject(new TypeError('Failed to fetch')),
-		);
-		fallbackAnswers();
-		return fetchMock;
-	}
-
-	/**
-	 * Sends one abortable request to the given endpoint.
-	 * @param url - Where to send it
-	 * @returns The response body
-	 */
-	async function sendAbortable(url: string): Promise<string> {
-		const response = await requestRaw({
-			url,
-			method: 'POST',
-			signal: new AbortController().signal,
-		});
-		return response.text;
-	}
-
-	// The whole point of the probe. A CORS refusal reaches the browser only
-	// after the server has taken the upload, decoded it and billed it, so
-	// discovering the refusal with the request itself paid for the audio
-	// twice. The probe carries no body, so it cannot.
-	it('sends the body once to an endpoint that refuses browser requests', async () => {
-		const fetchMock = mockFetch(() =>
-			Promise.reject(new TypeError('Failed to fetch')),
-		);
-		const sent = captureRequests({ status: 200, text: '{}' });
-
-		await requestRaw({
-			url: 'https://billed-twice.example.com/v1/transcribe',
-			method: 'POST',
-			body: 'the audio',
-			signal: new AbortController().signal,
-		});
-
-		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
-		expect(
-			sent.filter((request) => request.body === 'the audio'),
-		).toHaveLength(1);
-	});
-
-	// A probe that passed does not promise the request will: the real one
-	// carries an Authorization header and so a preflight of its own, which the
-	// endpoint may refuse. That refusal costs nothing, because the body is not
-	// sent, but the run still has to reach the transport that works.
-	it('falls back when the request is refused after the probe passed', async () => {
-		const fetchMock = probePassingEndpoint();
-
-		const body = await sendAbortable(
-			'https://preflight-refused.example.com/v1/transcribe',
-		);
-
-		expect(body).toBe('{"via":"requestUrl"}');
-		// The probe and the request it cleared: both were tried, and the
-		// fallback is what answered.
-		expect(fetchMock).toHaveBeenCalledTimes(2);
-	});
-
-	// A probe that could not be read is not a refusal. fetch reports a CORS
-	// refusal and a dropped link as the same opaque TypeError, so a failed
-	// probe says only that the question went unanswered, and requestUrl
-	// answering afterwards speaks to reachability rather than to CORS. Writing
-	// a refusal from the two together cost the origin its abortable transport
-	// for the session, so Cancel stopped releasing anything - over a link that
-	// was back by the very next request.
-	it('asks again after a probe that could not be read', async () => {
-		let probes = 0;
-		const fetchMock = mockFetch((_url: unknown, init?: RequestInit) => {
-			if (init?.method !== 'HEAD') {
-				return Promise.resolve(fakeResponse(200, '{"via":"fetch"}'));
-			}
-			probes += 1;
-			// Unreachable for the first probe, answering by the second.
-			return probes === 1
-				? Promise.reject(new TypeError('Failed to fetch'))
-				: Promise.resolve(fakeResponse(200, ''));
-		});
-		fallbackAnswers();
-		const url = 'https://probe-blipped.example.com/v1/transcribe';
-
-		const first = await sendAbortable(url);
-		const second = await sendAbortable(url);
-
-		// The first request keeps its body off a transport that might refuse
-		// it; the second finds the origin still unanswered, asks again, and
-		// gets the abortable transport back.
-		expect(first).toBe('{"via":"requestUrl"}');
-		expect(second).toBe('{"via":"fetch"}');
-		expect(probes).toBe(2);
-		expect(fetchMock).toHaveBeenCalledTimes(3);
-	});
-
-	// The probe answers on its own deadline rather than the request's, which
-	// can be an hour: a host that cannot say hello in ten seconds is answered
-	// through requestUrl, which is where an unknown host was headed anyway.
-	it('gives up on a probe that never answers and uses the fallback', async () => {
-		jest.useFakeTimers();
-		const fetchMock = mockFetch(() => new Promise(() => undefined));
-		fallbackAnswers();
-
-		const settled = sendAbortable(
-			'https://silent-probe.example.com/v1/transcribe',
-		);
-		await jest.advanceTimersByTimeAsync(10_000);
-
-		expect(await settled).toBe('{"via":"requestUrl"}');
-		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
-	});
-
-	// The one probe failure that is worth remembering. A refusal and a dropped
-	// link cost a round trip to re-ask and might genuinely have changed, but a
-	// host that takes the connection and says nothing has neither property:
-	// asking again buys the same silence for the whole deadline, and a
-	// recording split into a dozen parts paid it a dozen times over, on top of
-	// each request's own limit.
-	it('asks a host that never answers the probe twice, then stops', async () => {
-		jest.useFakeTimers();
-		const fetchMock = mockFetch(() => new Promise(() => undefined));
-		fallbackAnswers();
-		const url = 'https://always-silent.example.com/v1/transcribe';
-
-		const first = sendAbortable(url);
-		await jest.advanceTimersByTimeAsync(10_000);
-		expect(await first).toBe('{"via":"requestUrl"}');
-		const second = sendAbortable(url);
-		await jest.advanceTimersByTimeAsync(10_000);
-		expect(await second).toBe('{"via":"requestUrl"}');
-		const third = sendAbortable(url);
-		await flushMicrotasks();
-		// Counted before the clock moves, where a third probe would still be
-		// in flight. Asserting after would report the extra probe as a hung
-		// request rather than as the extra probe it is.
-		const probesBeforeTheClockMoved = fetchMock.mock.calls.length;
-		await jest.advanceTimersByTimeAsync(10_000);
-
-		expect(await third).toBe('{"via":"requestUrl"}');
-		expect(probesBeforeTheClockMoved).toBe(2);
-	});
-
-	// One unanswered probe describes a moment, not an endpoint: a serverless
-	// endpoint waking up, a local server loading a model, a link that
-	// hiccupped. Read as a verdict it cost the origin its abortable transport
-	// for the whole session, so Cancel stopped releasing the socket - the same
-	// loss that remembering a one-off refusal used to cause.
-	it('gives a host that was silent once another chance', async () => {
-		jest.useFakeTimers();
-		let probes = 0;
-		mockFetch((_url: unknown, init?: RequestInit) => {
-			if (init?.method !== 'HEAD') {
-				return Promise.resolve(fakeResponse(200, '{"via":"fetch"}'));
-			}
-			probes += 1;
-			// Too slow for the deadline once, ready by the next request.
-			return probes === 1
-				? new Promise<Response>(() => undefined)
-				: Promise.resolve(fakeResponse(200, ''));
-		});
-		fallbackAnswers();
-		const url = 'https://slow-to-wake.example.com/v1/transcribe';
-
-		const first = sendAbortable(url);
-		await jest.advanceTimersByTimeAsync(10_000);
-		expect(await first).toBe('{"via":"requestUrl"}');
-
-		expect(await sendAbortable(url)).toBe('{"via":"fetch"}');
-	});
-
-	// The repeat is worth paying a bounded number of times and no more. Left
-	// unbounded it could never converge: an unanswered origin skips fetch
-	// altogether, so the real request never gets to earn the refusal that
-	// would settle the question, and every call to a CORS-refusing endpoint
-	// spent a probe that could not teach it anything for the rest of the
-	// session.
-	it('stops probing an origin whose probe is never readable', async () => {
-		let probes = 0;
-		mockFetch((_url: unknown, init?: RequestInit) => {
-			if (init?.method === 'HEAD') {
-				probes += 1;
-			}
-			return Promise.reject(new TypeError('Failed to fetch'));
-		});
-		fallbackAnswers();
-		const url = 'https://unreadable-forever.example.com/v1/transcribe';
-
-		await sendAbortable(url);
-		await sendAbortable(url);
-		await sendAbortable(url);
-
-		expect(probes).toBe(2);
-	});
-
-	// Nothing goes out at all for a run the user has already cancelled, on
-	// either transport: the probe is entered with the cancel in hand, and the
-	// fallback is refused before it is reached.
+	// A run cancelled before the request went out sends nothing, because the
+	// request could not be taken back once it had.
 	it('sends nothing when the signal was already aborted', async () => {
-		const fetchMock = mockFetch(() =>
-			Promise.resolve(fakeResponse(200, '{}')),
-		);
 		const sent = captureRequests({ status: 200, text: '{}' });
 		const controller = new AbortController();
 		controller.abort();
 
 		await expect(
 			requestRaw({
-				url: 'https://already-cancelled.example.com/v1/transcribe',
-				method: 'POST',
-				body: 'the audio',
-				signal: controller.signal,
-			}),
-		).rejects.toThrow(/was cancelled/);
-
-		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
-		expect(sent).toHaveLength(0);
-	});
-
-	// Same on an origin already known to take fetch, where the request goes
-	// straight to the abortable transport and that transport answers it.
-	it('sends nothing on a known origin when the signal was already aborted', async () => {
-		mockFetch(() => Promise.resolve(fakeResponse(200, '{}')));
-		const url = 'https://known-good.example.com/v1/transcribe';
-		await sendAbortable(url);
-		const sent = captureRequests({ status: 200, text: '{}' });
-		const controller = new AbortController();
-		controller.abort();
-
-		await expect(
-			requestRaw({
-				url,
+				url: 'https://api.example.com/v1/transcribe',
 				method: 'POST',
 				body: 'the audio',
 				signal: controller.signal,
@@ -817,150 +398,129 @@ describe('requestRaw abort support', () => {
 		expect(sent).toHaveLength(0);
 	});
 
-	// On its own origin, because an answer is remembered: the cases after
-	// this one expect fetch to be tried, and would find it already ruled out
-	// for a host this test had refused.
-	it('falls back to requestUrl when fetch fails at the network layer (CORS)', async () => {
-		const fetchMock = corsRefusingEndpoint();
+	it('reports a hanging request as a timeout rather than a cancellation', async () => {
+		jest.useFakeTimers();
+		endpointStillWorking();
 
-		const body = await sendAbortable(
-			'https://cors-refusing.example.com/v1/transcribe',
-		);
-
-		expect(body).toBe('{"via":"requestUrl"}');
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-	});
-
-	// The discovery costs a whole request body, which on an LLM step is a
-	// transcript. Paying it per call meant every request to such a server went
-	// out twice for the rest of the run. A refusal the real request earned is
-	// what settles the question, so it is remembered and the call after it
-	// spends neither a probe nor a body on asking again.
-	it('asks an origin that refused the request itself only once', async () => {
-		const fetchMock = probePassingEndpoint();
-		const url = 'https://remembered.example.com/v1/transcribe';
-
-		await sendAbortable(url);
-		await sendAbortable(url);
-
-		// The probe and the request that earned the refusal, both from the
-		// first call. The second went straight to the fallback.
-		expect(fetchMock).toHaveBeenCalledTimes(2);
-	});
-
-	// What the memory above exists to protect, held whatever the memory does:
-	// an origin whose probe never reads keeps being asked, and no call to it
-	// ever puts the body on the transport that could be made to send it twice.
-	it('keeps the body off fetch on every call to a refusing origin', async () => {
-		const fetchMock = corsRefusingEndpoint();
-		const sent = captureRequests({ status: 200, text: '{}' });
-		const url = 'https://never-readable.example.com/v1/transcribe';
-		const send = (): Promise<unknown> =>
-			requestRaw({
-				url,
-				method: 'POST',
-				body: 'the audio',
-				signal: new AbortController().signal,
-			});
-
-		await send();
-		await send();
-
-		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
-		expect(
-			sent.filter((request) => request.body === 'the audio'),
-		).toHaveLength(2);
-	});
-
-	// A CORS refusal and an unreachable network reach fetch as the same
-	// opaque TypeError, so the refusal on its own proves nothing about which
-	// it was. Remembering it anyway cost the origin its abortable transport
-	// for the whole session - and with it every Cancel pressed against that
-	// provider - over one dropped link. What tells them apart is whether the
-	// fallback answered where fetch could not.
-	it('keeps asking an origin whose fallback failed too', async () => {
-		const fetchMock = corsRefusingEndpoint();
-		withRequestUrl(() => Promise.reject(new Error('network is down')));
-		const url = 'https://briefly-offline.example.com/v1/transcribe';
-
-		await expect(sendAbortable(url)).rejects.toThrow(/network is down/);
-
-		// The link came back, and the origin is owed its fetch: nothing was
-		// ever learned about whether it takes one.
-		fallbackAnswers();
-		await sendAbortable(url);
-
-		expect(fetchMock).toHaveBeenCalledTimes(2);
-	});
-
-	// A URL with no origin to remember is simply attempted, rather than
-	// tripping the memory over on a value it cannot key.
-	it('attempts a URL it cannot read an origin from', async () => {
-		const fetchMock = mockFetch(() =>
-			Promise.resolve(fakeResponse(200, '{}')),
-		);
-
-		await requestRaw({
-			url: '/relative/transcribe',
+		const settled = requestRaw({
+			url: 'https://api.example.com/v1/transcribe',
 			method: 'POST',
+			timeoutMs: 5_000,
 			signal: new AbortController().signal,
-		});
+		}).catch((error: unknown) => error);
+		await jest.advanceTimersByTimeAsync(5_000);
 
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(await settled).toHaveProperty(
+			'message',
+			expect.stringMatching(/timed out after 5000 ms/),
+		);
 	});
 
-	it('does not touch fetch when no signal is provided', async () => {
-		const fetchMock = mockFetch(() =>
-			Promise.resolve(fakeResponse(200, '')),
-		);
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: 'ok',
-		}));
+	// One run hands the same signal to every request it makes, a dozen parts
+	// and their LLM steps, so a listener left behind by each answered request
+	// would keep all of them reachable until the run ends.
+	it('stops listening to the cancel once the request has answered', async () => {
+		captureRequests({ status: 200, text: '{}' });
+		const controller = new AbortController();
+		const removed = jest.spyOn(controller.signal, 'removeEventListener');
 
 		await requestRaw({
 			url: 'https://api.example.com/v1/transcribe',
-			method: 'GET',
+			method: 'POST',
+			signal: controller.signal,
 		});
 
-		expect(fetchMock).not.toHaveBeenCalled();
+		expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
 	});
+
+	// A request that creates something on the server names it only in its
+	// answer, and an answer that arrives after the run stopped waiting is the
+	// one chance left to clean it up. An answer the caller still read, or a
+	// failure that created nothing, is not handed over.
+	it.each([
+		{ release: 'cancel', status: 200, listening: true, handedOver: 1 },
+		{ release: 'deadline', status: 200, listening: true, handedOver: 1 },
+		{ release: 'cancel', status: 500, listening: true, handedOver: 0 },
+		{ release: 'nothing', status: 200, listening: true, handedOver: 0 },
+		{ release: 'cancel', status: 200, listening: false, handedOver: 0 },
+	])(
+		'hands a $status answer after $release to onAbandoned $handedOver times (listening: $listening)',
+		async ({ release, status, listening, handedOver }) => {
+			jest.useFakeTimers();
+			let answer = (): void => undefined;
+			withRequestUrl(
+				() =>
+					new Promise((resolve) => {
+						answer = () => {
+							resolve({ status, headers: {}, text: 'late' });
+						};
+					}),
+			);
+			const controller = new AbortController();
+			const abandoned: string[] = [];
+
+			const settled = requestRaw({
+				url: 'https://api.example.com/v1/files',
+				method: 'POST',
+				timeoutMs: 5_000,
+				signal: controller.signal,
+				...(listening
+					? { onAbandoned: (late) => abandoned.push(late.text) }
+					: {}),
+			}).catch(() => undefined);
+			if (release === 'cancel') {
+				controller.abort();
+			}
+			if (release === 'deadline') {
+				await jest.advanceTimersByTimeAsync(5_000);
+			}
+			answer();
+			await settled;
+			await flushMicrotasks();
+
+			expect(abandoned).toHaveLength(handedOver);
+		},
+	);
 });
 
-/**
- * A fetch that never settles until its signal aborts, then rejects.
- *
- * The bodyless probe is answered straight away: it is a different question
- * from the one this double exists to hang on, and leaving it unanswered would
- * park the client on the probe's own deadline instead of the request.
- */
-function fetchThatOnlyAborts(): jest.Mock {
-	return jest.fn(
-		(_url: unknown, init?: { method?: string; signal?: AbortSignal }) =>
-			init?.method === 'HEAD'
-				? Promise.resolve({
-						status: 200,
-						text: () => Promise.resolve(''),
-						headers: new Map<string, string>(),
-					} as unknown as Response)
-				: new Promise((_resolve, reject) => {
-						init?.signal?.addEventListener('abort', () => {
-							reject(
-								new DOMException(
-									'The operation was aborted.',
-									'AbortError',
-								),
-							);
-						});
-					}),
-	);
-}
+describe('a request body goes out once', () => {
+	afterEach(() => {
+		delete (globalThis as { fetch?: unknown }).fetch;
+	});
+
+	// An endpoint that allows the preflight, takes the body, and answers
+	// without CORS headers. The browser reports that as the same TypeError as a
+	// refused preflight, so nothing the client sees says whether the body
+	// arrived, and a resend on another transport was the same transcription or
+	// LLM call billed a second time.
+	it('never resends a body the endpoint may already have taken', async () => {
+		const bodiesSeenByFetch: unknown[] = [];
+		(globalThis as { fetch?: unknown }).fetch = jest.fn(
+			(_url: unknown, init?: RequestInit) => {
+				bodiesSeenByFetch.push(init?.body);
+				return Promise.reject(new TypeError('Failed to fetch'));
+			},
+		);
+		const sentByRequestUrl = captureRequests({ status: 200, text: '{}' });
+
+		await requestRaw({
+			url: 'https://answers-without-cors.example.com/v1/listen',
+			method: 'POST',
+			body: 'the audio',
+			signal: new AbortController().signal,
+		}).catch(() => undefined);
+
+		const bodies = [
+			...bodiesSeenByFetch,
+			...sentByRequestUrl.map((request) => request.body),
+		].filter((body) => body === 'the audio');
+		expect(bodies).toHaveLength(1);
+	});
+});
 
 describe('requests that never come back', () => {
 	afterEach(() => {
 		jest.useRealTimers();
-		delete (globalThis as { fetch?: unknown }).fetch;
 	});
 
 	// requestUrl cannot be aborted, so the request itself keeps running; the
@@ -986,71 +546,39 @@ describe('requests that never come back', () => {
 			'Request to https://api.example.com/v1/transcribe timed out after 5000 ms.',
 		);
 	});
-
-	it('reports a hanging fetch as a timeout rather than a cancellation', async () => {
-		jest.useFakeTimers();
-		(globalThis as { fetch?: unknown }).fetch = fetchThatOnlyAborts();
-
-		const settled = requestRaw({
-			url: 'https://api.example.com/v1/transcribe',
-			method: 'POST',
-			timeoutMs: 5_000,
-			signal: new AbortController().signal,
-		}).catch((error: unknown) => error);
-		await jest.advanceTimersByTimeAsync(5_000);
-
-		expect(await settled).toHaveProperty(
-			'message',
-			expect.stringMatching(/timed out after 5000 ms/),
-		);
-	});
-
-	// A run cancelled before the request went out must not reach the network
-	// at all; the abort is applied to the new controller straight away.
-	it('never waits on a request whose signal was already aborted', async () => {
-		const controller = new AbortController();
-		controller.abort();
-		(globalThis as { fetch?: unknown }).fetch = jest.fn(
-			(_url: unknown, init?: { signal?: AbortSignal }) =>
-				init?.signal?.aborted
-					? Promise.reject(new DOMException('Aborted', 'AbortError'))
-					: Promise.resolve({
-							status: 200,
-							text: () => Promise.resolve('{}'),
-							headers: new Map(),
-						} as unknown as Response),
-		);
-
-		await expect(
-			requestRaw({
-				url: 'https://api.example.com/v1/transcribe',
-				method: 'POST',
-				signal: controller.signal,
-			}),
-		).rejects.toThrow(/was cancelled/);
-	});
 });
 
 describe('a transport that fails for a reason of its own', () => {
-	afterEach(() => {
-		delete (globalThis as { fetch?: unknown }).fetch;
-	});
+	// The transport can refuse before it has a promise to hand back, or reject
+	// the promise later, and the run reads both the same way.
+	it.each([
+		{
+			when: 'before the request starts',
+			fail: (): never => {
+				throw new Error('net::ERR_NAME_NOT_RESOLVED');
+			},
+		},
+		{
+			when: 'while the request is in flight',
+			fail: (): Promise<never> =>
+				Promise.reject(new Error('net::ERR_NAME_NOT_RESOLVED')),
+		},
+	])(
+		'wraps a transport failure $when as an HttpError naming the endpoint',
+		async ({ fail }) => {
+			withRequestUrl(fail);
 
-	it('wraps a transport failure as an HttpError naming the endpoint', async () => {
-		withRequestUrl(() => {
-			throw new Error('net::ERR_NAME_NOT_RESOLVED');
-		});
+			const failing = requestRaw({
+				url: 'https://api.example.com/v1/transcribe?key=secret',
+				method: 'POST',
+			});
 
-		const failing = requestRaw({
-			url: 'https://api.example.com/v1/transcribe?key=secret',
-			method: 'POST',
-		});
-
-		await expect(failing).rejects.toThrow(HttpError);
-		await expect(failing).rejects.toThrow(
-			'Request to https://api.example.com/v1/transcribe failed: net::ERR_NAME_NOT_RESOLVED',
-		);
-	});
+			await expect(failing).rejects.toThrow(HttpError);
+			await expect(failing).rejects.toThrow(
+				'Request to https://api.example.com/v1/transcribe failed: net::ERR_NAME_NOT_RESOLVED',
+			);
+		},
+	);
 
 	it('names a transport that rejected with something other than an Error', async () => {
 		withRequestUrl(() => Promise.reject('the socket closed'));
@@ -1061,33 +589,6 @@ describe('a transport that fails for a reason of its own', () => {
 				method: 'POST',
 			}),
 		).rejects.toThrow(/failed: the socket closed/);
-	});
-
-	it('sends the content type the caller named through fetch', async () => {
-		const fetchMock = jest.fn(() =>
-			Promise.resolve({
-				status: 200,
-				text: () => Promise.resolve('{}'),
-				headers: new Map(),
-			} as unknown as Response),
-		);
-		(globalThis as { fetch?: unknown }).fetch = fetchMock;
-
-		await requestRaw({
-			url: 'https://api.example.com/v1/transcribe',
-			method: 'POST',
-			contentType: 'audio/wav',
-			signal: new AbortController().signal,
-		});
-
-		expect(fetchMock).toHaveBeenCalledWith(
-			'https://api.example.com/v1/transcribe',
-			expect.objectContaining({
-				headers: expect.objectContaining({
-					'Content-Type': 'audio/wav',
-				}),
-			}),
-		);
 	});
 });
 

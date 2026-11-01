@@ -20,9 +20,8 @@ import { cancellationReason } from './cancellation';
  * A wait the caller can be released from takes a signal: the retry pause
  * between provider attempts and the interval between Gemini file-status polls
  * are both waits a Cancel has to end at once rather than after they run out.
- * The rejection carries `signal.reason`, which is what the platform hands an
- * aborted `fetch`, so a caller sees one shape of cancellation whether it was
- * waiting or requesting.
+ * The rejection carries `signal.reason`, the reason the run was cancelled
+ * with.
  * @param ms - Delay duration in milliseconds
  * @param signal - Optional abort signal; firing it rejects the wait
  * @returns Promise resolved after the delay

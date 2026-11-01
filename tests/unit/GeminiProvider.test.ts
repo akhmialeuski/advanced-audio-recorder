@@ -19,6 +19,7 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { withRequestUrl } from '../helpers/network';
+import { outcomeOf, tick, waitFor } from '../helpers/async';
 
 const BASE_URL = 'https://gemini.example';
 
@@ -87,6 +88,10 @@ function transcriptBody(structured: unknown, finishReason = 'STOP'): string {
 	});
 }
 
+/** What the scripted endpoint answers a request with, now or later. */
+type RequestUrlAnswer =
+	MockRequestUrlResponse | Promise<MockRequestUrlResponse>;
+
 interface ScriptedFlow {
 	calls: MockRequestUrlParam[];
 	generateBody: () => GenerateBody;
@@ -95,10 +100,16 @@ interface ScriptedFlow {
 /**
  * Installs a handler that walks the whole upload/poll/generate/delete flow and
  * records every call; the generateContent step returns `generateText`.
+ * @param generateText - The generateContent response body
+ * @param uploadAnswered - Holds back the answer to the byte transfer until it
+ *   settles, for a run cancelled while its bytes are still on their way
  */
-function scriptFlow(generateText: string): ScriptedFlow {
+function scriptFlow(
+	generateText: string,
+	uploadAnswered: Promise<void> = Promise.resolve(),
+): ScriptedFlow {
 	const calls: MockRequestUrlParam[] = [];
-	withRequestUrl((param): MockRequestUrlResponse => {
+	withRequestUrl((param): RequestUrlAnswer => {
 		calls.push(param);
 		const url = param.url;
 		const method = param.method ?? 'GET';
@@ -110,7 +121,7 @@ function scriptFlow(generateText: string): ScriptedFlow {
 			};
 		}
 		if (url === `${BASE_URL}/session`) {
-			return {
+			return uploadAnswered.then((): MockRequestUrlResponse => ({
 				status: 200,
 				headers: {},
 				text: JSON.stringify({
@@ -120,7 +131,7 @@ function scriptFlow(generateText: string): ScriptedFlow {
 						state: 'ACTIVE',
 					},
 				}),
-			};
+			}));
 		}
 		if (method === 'GET' && url === `${BASE_URL}/v1beta/files/abc`) {
 			return {
@@ -512,5 +523,42 @@ describe('GeminiProvider.transcribe', () => {
 				wordTimestamps: false,
 			}),
 		).rejects.toThrow(/shorter recording/i);
+	});
+});
+
+describe('GeminiProvider.transcribe cancelled during the upload', () => {
+	// A Cancel releases the run while the bytes are still on their way, and
+	// Google still creates the file they make up. Left undeleted, the recording
+	// the user cancelled stays in the project's File API storage for 48 hours.
+	it('deletes the file the cancelled upload still created', async () => {
+		let answerUpload = (): void => undefined;
+		const flow = scriptFlow(
+			transcriptBody({ segments: [] }),
+			new Promise<void>((resolve) => {
+				answerUpload = resolve;
+			}),
+		);
+		const controller = new AbortController();
+
+		const run = outcomeOf(
+			provider().transcribe(payload('audio/wav', FILE_API_BYTES), {
+				diarize: false,
+				wordTimestamps: false,
+				signal: controller.signal,
+			}),
+		);
+		await waitFor(() => flow.calls.length === 2);
+		controller.abort();
+		await run;
+		answerUpload();
+		await tick();
+
+		expect(
+			flow.calls.map((call) => `${call.method ?? 'GET'} ${call.url}`),
+		).toEqual([
+			`POST ${BASE_URL}/upload/v1beta/files`,
+			`POST ${BASE_URL}/session`,
+			`DELETE ${BASE_URL}/v1beta/files/abc`,
+		]);
 	});
 });

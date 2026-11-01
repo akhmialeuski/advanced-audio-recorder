@@ -106,10 +106,10 @@ function parseFile(body: unknown): GeminiFile {
  * @param mimeType - MIME type of the bytes
  * @param displayName - Human-readable name stored with the file
  * @param maxTimeoutMs - Per-request timeout cap for the byte-upload step
- * @param signal - Ends the upload when the run is cancelled. Reaches both the
- *   resumable-session start and the byte transfer, which on a long recording
- *   is the largest request the run makes and the one a Cancel most needs to
- *   let go of
+ * @param signal - Releases the upload when the run is cancelled. Reaches both
+ *   the resumable-session start and the byte transfer, which on a long
+ *   recording is the largest request the run makes and the one a Cancel most
+ *   needs to stop waiting for
  */
 export async function uploadFile(
 	baseUrl: string,
@@ -123,7 +123,7 @@ export async function uploadFile(
 	const base = trimTrailingSlash(baseUrl);
 	const numBytes = String(data.byteLength);
 	// Step 1: start a resumable session; the upload URL is returned in a
-	// response header, so call requestUrl directly to read it.
+	// response header, so call requestRaw to read it.
 	const start = await requestRaw({
 		url: `${base}/upload/v1beta/files`,
 		method: 'POST',
@@ -145,7 +145,9 @@ export async function uploadFile(
 			'Gemini upload did not return an upload URL.',
 		);
 	}
-	// Step 2: send the bytes and finalize in one request.
+	// Step 2: send the bytes and finalize in one request. A Cancel or the
+	// deadline can release the run while Google is still taking the bytes, and
+	// the file they make up is deleted once its late answer names it.
 	const finalized = await requestJson<unknown>({
 		url: uploadUrl,
 		method: 'POST',
@@ -156,8 +158,31 @@ export async function uploadFile(
 		body: data,
 		timeoutMs: uploadTimeoutMs(data.byteLength, maxTimeoutMs),
 		signal,
+		onAbandoned: (late) => {
+			void discardLateUpload(base, apiKey, late.text);
+		},
 	});
 	return parseFile(finalized);
+}
+
+/**
+ * Deletes the file an upload created after the run had stopped waiting for it.
+ * @param baseUrl - Gemini base URL (no version segment)
+ * @param apiKey - Gemini API key
+ * @param body - The text of the finalize answer that arrived too late
+ */
+async function discardLateUpload(
+	baseUrl: string,
+	apiKey: string,
+	body: string,
+): Promise<void> {
+	try {
+		const parsed: unknown = JSON.parse(body);
+		await deleteFile(baseUrl, apiKey, parseFile(parsed).name);
+	} catch {
+		// The run that asked for this upload has ended, so nobody is left to
+		// tell, and a file that survives expires on Google's side.
+	}
 }
 
 /**

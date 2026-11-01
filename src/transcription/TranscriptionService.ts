@@ -1176,8 +1176,8 @@ export class TranscriptionService {
 					settings.transcriptionProvider,
 					wanted.translateToEnglish,
 				),
-				// Providers on abortable transports stop the in-flight request
-				// the moment the user cancels, not at the next chunk boundary.
+				// Releases the request in flight the moment the user cancels,
+				// not at the next chunk boundary.
 				signal: token.signal,
 			},
 		};
