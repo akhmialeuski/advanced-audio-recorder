@@ -133,9 +133,10 @@ export async function retryFailedParts(
 		// without storing it. A top-up that brought nothing back changed no
 		// text and would pay the LLM for the same chapters. Left to finish in
 		// the background, as after a run from the dialog: the generator reports
-		// itself through notices and replaces only generated chapters.
+		// itself through notices and replaces only generated chapters. A
+		// top-up that completed only a note hands over no transcript, and the
+		// generator then reads the note's lines, the recovered ones included.
 		if (
-			outcome.transcript &&
 			outcome.recovered > 0 &&
 			services.getSettings().transcriptionAutoChaptersEnabled &&
 			(await services.autoChapters.hasExistingChapters(file))

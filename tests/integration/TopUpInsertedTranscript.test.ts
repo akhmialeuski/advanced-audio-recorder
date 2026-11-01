@@ -13,13 +13,20 @@
  */
 
 import type { App, TFile } from 'obsidian';
-import { describeRetryOutcome } from 'src/actions/file/recordingEdits';
+import type { ActionServices } from 'src/actions/core/actionServices';
+import {
+	describeRetryOutcome,
+	retryFailedParts,
+} from 'src/actions/file/recordingEdits';
+import type { AutoChapterService } from 'src/chapters/AutoChapterService';
+import { loadTranscriptLines } from 'src/chapters/transcriptSources';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { EngineLabel } from 'src/providers/providers';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import { prepareAudio } from 'src/transcription/audioPrep';
+import { createTranscriptionProvider } from 'src/transcription/factories';
 import { MISSING_PARTS_CALLOUT_HEAD } from 'src/transcription/partFailure';
 import {
 	FailedPartRetry,
@@ -29,6 +36,7 @@ import {
 import { transcribeFile } from 'src/transcription/runTranscription';
 import { TranscriptionService } from 'src/transcription/TranscriptionService';
 import { LlmTask } from 'src/transcription/llmPostProcess';
+import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import {
 	TranscriptDestination,
 	TranscriptFileFormat,
@@ -40,12 +48,21 @@ import {
 	createMockApp,
 	fakeVaultFiles,
 } from '../helpers/createApp';
+import { partial } from '../helpers/doubles';
 import { completed } from '../helpers/llmDoubles';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
+import { FakeEditor } from '../helpers/transcriptEditHarness';
 
 jest.mock('src/transcription/audioPrep', () =>
 	require('../mocks/modules/audioPrep'),
 );
+
+// The action every menu calls builds its own service, so the engine it
+// creates is the one stood in for here.
+jest.mock('src/transcription/factories', () => ({
+	...jest.requireActual<object>('src/transcription/factories'),
+	createTranscriptionProvider: jest.fn(),
+}));
 
 const NOTE_PATH = 'meetings/standup.md';
 const AUDIO_PATH = 'audio/standup.webm';
@@ -77,6 +94,7 @@ interface World {
 	store: RecordingSidecarStore;
 	settings: AudioRecorderSettings;
 	asked: number;
+	engine(answers: readonly PartAnswer[]): TranscriptionProvider;
 	topUp(answers: PartAnswer[]): Promise<RetryOutcome>;
 }
 
@@ -119,6 +137,8 @@ async function transcribed(
 		metadataCache: {
 			getFirstLinkpathDest: (path: string) =>
 				path === audio.name ? audio : null,
+			getFileCache: (file: TFile) =>
+				new FakeEditor(files.get(file.path) ?? '').linkCache(),
 		},
 		workspace: { getLeavesOfType: () => [{ view }] },
 	});
@@ -138,6 +158,7 @@ async function transcribed(
 		store,
 		settings,
 		asked: 0,
+		engine: (planned) => engine(planned),
 		topUp: async (topUpAnswers) => {
 			world.asked = 0;
 			const provider = engine(topUpAnswers);
@@ -355,6 +376,7 @@ describe('topping up a transcript inserted into a note', () => {
 		expect(outcome.blocked).toContain('Neither is left for this recording');
 		expect(world.asked).toBe(0);
 	});
+
 	it('keeps a note the vault refuses to write as it was', async () => {
 		const world = await transcribed(LOST_MIDDLE);
 		const before = world.files.get(NOTE_PATH);
@@ -475,5 +497,41 @@ describe('topping up a transcript inserted into a note', () => {
 
 		expect(translationSection(world)).toBe(translation);
 		expect(translation).toContain(fragment);
+	});
+
+	it('generates chapters again from the note it filled in', async () => {
+		const world = await transcribed(LOST_MIDDLE, {
+			transcriptionAutoChaptersEnabled: true,
+		});
+		jest.mocked(createTranscriptionProvider).mockReturnValue(
+			world.engine([said('the middle')]),
+		);
+		const generate = jest.fn(() => Promise.resolve(true));
+		const services = partial<ActionServices>({
+			app: world.app,
+			getSettings: () => world.settings,
+			recordingSidecar: world.store,
+			autoChapters: partial<AutoChapterService>({
+				hasExistingChapters: () => Promise.resolve(true),
+				generate,
+			}),
+		});
+
+		const notice = await retryFailedParts(world.audio, services);
+
+		expect(notice).toBe('Recovered 1 segment and updated 1 note.');
+		// No transcript is handed over, so the chapters are cut from the
+		// lines the note holds now, the recovered one among them.
+		expect(generate).toHaveBeenCalledWith(world.audio, undefined);
+		const source = await loadTranscriptLines(
+			world.app,
+			world.audio,
+			world.store,
+		);
+		expect(source?.lines.map((line) => line.text)).toEqual([
+			'0:05 the opening',
+			'1:05 the middle',
+			'2:05 the closing',
+		]);
 	});
 });
