@@ -13,29 +13,41 @@
  * sent is therefore what the session total is estimated from, rather than the
  * length of the stretches that were asked for.
  *
- * The transcript is read back from the run's own JSON output, which is a
- * serialized transcript and therefore the one lossless source. A recording
- * whose outputs are only subtitles or plain text cannot be spliced into
- * without inventing the segment ends and speakers those formats drop, so the
- * retry says so instead of silently degrading the transcript it was asked to
- * complete.
+ * The transcript is completed wherever the run left it. Its own JSON output
+ * is a serialized transcript and therefore the one lossless source, and every
+ * transcript file is rewritten from it. A note the run inserted the transcript
+ * into is filled in line by line, placed by the timecode links its lines open
+ * with, so the user's edits around the gap survive. A recording whose outputs
+ * are only subtitles or plain text cannot be spliced into without inventing
+ * the segment ends and speakers those formats drop, so the retry says so
+ * instead of silently degrading the transcript it was asked to complete.
  * @module transcription/retryFailedParts
  */
 
 import type { App, TFile } from 'obsidian';
-import type { PartFailure, RecordingRange } from './partFailure';
+import {
+	missingPartsWarning,
+	overlapsRange,
+	type PartFailure,
+	type RecordingRange,
+} from './partFailure';
 import type { Transcript, TranscriptSegment } from './TranscriptTypes';
+import {
+	TranscriptNoteTopUp,
+	type NoteTopUpAnswer,
+	type RunNotes,
+} from './noteTopUp';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { dominantSegmentLanguage } from './transcriptModel';
 import {
 	readRecordedTranscript,
 	rewriteRecordedTranscriptFiles,
-	type RecordedTranscript,
 } from './recordedTranscript';
 import type {
 	TranscribeRunCost,
 	TranscriptionSidecarAccess,
 } from './TranscriptionService';
-import type { FileOutput } from '../sidecar/recordingSidecarModel';
+import type { FileOutput, NoteOutput } from '../sidecar/recordingSidecarModel';
 
 /** What the retry did, in the terms the user is told it in. */
 export interface RetryOutcome {
@@ -48,10 +60,19 @@ export interface RetryOutcome {
 	stillMissing: PartFailure[];
 	/** Transcript files rewritten with the completed transcript. */
 	rewritten: number;
+	/** Notes of the run filled in with what came back. */
+	updatedNotes: number;
+	/**
+	 * Notes of the run left as they were, because no line in them carries a
+	 * timecode into the recording any more to place what came back by.
+	 */
+	keptNotes: number;
 	/**
 	 * The transcript with what came back spliced in, so whatever follows a
 	 * finished run, such as its chapters, works from the completed text
-	 * without reading the files back. Absent when nothing was attempted.
+	 * without reading the files back. Absent when nothing was attempted, and
+	 * when the run left no JSON transcript to complete, as a note holds the
+	 * text without the segment timings a transcript is made of.
 	 */
 	transcript?: Transcript;
 	/**
@@ -81,8 +102,12 @@ export interface RetrySidecar {
 	): Promise<{ parts: PartFailure[]; recordedAt: string } | null>;
 	/** Records what still could not be transcribed. */
 	setFailedParts(path: string, parts: readonly PartFailure[]): Promise<void>;
-	/** The transcript files the last run wrote. */
-	getTranscript(path: string): Promise<{ fileOutputs: FileOutput[] }>;
+	/** The transcript files and the notes the runs wrote. */
+	getTranscript(
+		path: string,
+	): Promise<{ fileOutputs: FileOutput[]; noteOutputs: NoteOutput[] }>;
+	/** Refreshes the record of a note the top-up wrote into. */
+	recordNoteOutput(path: string, output: NoteOutput): Promise<void>;
 }
 
 /** What one top-up run of the engine answers with. */
@@ -194,11 +219,7 @@ export function spliceSegments(
 	const overlaps =
 		(stretches: readonly RecordingRange[]) =>
 		(segment: TranscriptSegment): boolean =>
-			stretches.some(
-				(range) =>
-					segment.start < range.endSeconds &&
-					segment.end > range.startSeconds,
-			);
+			stretches.some((range) => overlapsRange(segment, range));
 	const inside = overlaps(ranges);
 	const taken = recovered.filter(inside);
 	const leftAsItWas = overlaps(
@@ -233,39 +254,55 @@ export class FailedPartRetry {
 	 * @param file - The recording to top up
 	 * @param sidecar - Where the failed parts and the outputs are recorded
 	 * @param run - Transcribes the given stretches of the recording
+	 * @param settings - Plugin settings, for rendering lines into a note
 	 */
 	constructor(
 		private readonly app: App,
 		private readonly file: TFile,
 		private readonly sidecar: RetrySidecar,
 		private readonly run: RetryRunner,
+		private readonly settings: AudioRecorderSettings,
 	) {}
 
 	/**
-	 * Sends the recorded failed parts again and writes the completed
-	 * transcript back over the files the earlier run wrote.
+	 * Sends the recorded failed parts again and completes the transcript in
+	 * the files and the notes the earlier run wrote.
 	 * @returns What was recovered, what still is not, and what was rewritten
 	 */
 	async retry(): Promise<RetryOutcome> {
 		const record = await this.sidecar.getFailedParts(this.file.path);
 		const { ranges, unsent } = partitionParts(record?.parts ?? []);
-		if (ranges.length === 0) {
+		if (!record || ranges.length === 0) {
 			return this.blocked(
 				record
 					? 'The parts that failed carry no measured end, so they cannot be asked for on their own. Transcribe the recording again instead.'
 					: 'Nothing is missing from this transcript.',
 			);
 		}
-		const source = await this.readTranscript();
-		if (!source) {
-			// The destination is named before the format, because that is the
-			// setting that decides whether a transcript file exists at all. A
-			// run that inserts into the note writes none, and on that
-			// destination the format row is not even shown, so naming the
-			// format alone sent the user looking for a control they could not
-			// see - while the format it told them to choose was already JSON.
+		const section = await this.sidecar.getTranscript(this.file.path);
+		// Only the recording's own transcript, never a translation: a
+		// translation is a second document and topping it up would need the
+		// translation pass, not the engine.
+		const source = await readRecordedTranscript(
+			this.app,
+			section.fileOutputs,
+		);
+		const noteTopUp = new TranscriptNoteTopUp(
+			this.app,
+			this.file,
+			this.settings,
+		);
+		const notes = await noteTopUp.notesOfRun(
+			section.noteOutputs,
+			record.recordedAt,
+		);
+		// Checked before the engine is called, so a top-up that has nowhere
+		// to put its answer is never paid for.
+		if (!source && notes.placeable.length === 0) {
 			return this.blocked(
-				'Topping up needs a JSON transcript file, which is the only output that keeps the segment timings. A transcript inserted into a note leaves no such file behind, so set Transcript output > Destination to one that saves a file, with File format set to JSON, and transcribe again.',
+				notes.unplaceable.length > 0
+					? 'The note this transcript was inserted into carries no timecode links into the recording any more, so the recovered lines would have no place in it. Turn on Transcript output > Include timestamps and Timestamps as player links, and transcribe again.'
+					: 'Topping up needs the transcript the run wrote: its JSON transcript file, the only file format that keeps the segment timings, or the note it was inserted into. Neither is left for this recording, so set Transcript output > File format to JSON or Destination to Insert into note, and transcribe again.',
 			);
 		}
 		const {
@@ -274,44 +311,81 @@ export class FailedPartRetry {
 			cost,
 			sentSeconds,
 		} = await this.run(this.file, ranges);
-		const completed = spliceSegments(
-			source.transcript,
-			recovered.segments,
-			ranges,
-			partitionParts(missingParts).ranges,
-		);
+		const failedAgain = partitionParts(missingParts).ranges;
+		const completed = source
+			? spliceSegments(
+					source.transcript,
+					recovered.segments,
+					ranges,
+					failedAgain,
+				)
+			: null;
 		// A part this top-up had no bounds for was never sent, so it is still
 		// missing and stays on the record. Writing only what came back would
 		// erase it, and an absent record means "nothing is missing".
 		const stillMissing = [...unsent, ...missingParts];
 		await this.sidecar.setFailedParts(this.file.path, stillMissing);
+		const updatedNotes = await this.writeNotes(noteTopUp, notes, {
+			recovered,
+			ranges,
+			failedAgain,
+			callout: missingPartsWarning(stillMissing)?.callout ?? null,
+		});
 		return {
-			recovered: completed.spliced,
+			recovered:
+				completed?.spliced ??
+				recovered.segments.filter((segment) =>
+					ranges.some((range) => overlapsRange(segment, range)),
+				).length,
 			stillMissing,
 			// Rewritten rather than added to, so a top-up leaves the same
 			// outputs it found instead of a second set beside them.
-			rewritten: await rewriteRecordedTranscriptFiles(
-				this.app,
-				completed.transcript,
-				source.outputs,
-			),
-			transcript: completed.transcript,
+			rewritten:
+				source && completed
+					? await rewriteRecordedTranscriptFiles(
+							this.app,
+							completed.transcript,
+							source.outputs,
+						)
+					: 0,
+			updatedNotes,
+			keptNotes: notes.unplaceable.length,
+			...(completed ? { transcript: completed.transcript } : {}),
 			sentSeconds,
 			cost,
 		};
 	}
 
 	/**
-	 * Reads the transcript back from the recorded JSON output.
-	 * @returns The transcript and every output recorded for it, or null when
-	 *   no readable JSON output was recorded
+	 * Fills in the run's notes and records every note of the run as written
+	 * now, the ones left unchanged included. The failed parts were recorded
+	 * again a moment ago, and a note older than that record reads as another
+	 * run's, so without the refresh a second top-up of what failed again
+	 * would pass the run's own notes by.
+	 * @param noteTopUp - Writes into the notes
+	 * @param notes - The run's notes
+	 * @param answer - What the top-up brought back
+	 * @returns How many notes changed
 	 */
-	private async readTranscript(): Promise<RecordedTranscript | null> {
-		const section = await this.sidecar.getTranscript(this.file.path);
-		// Only the recording's own transcript, never a translation: a
-		// translation is a second document and topping it up would need the
-		// translation pass, not the engine.
-		return readRecordedTranscript(this.app, section.fileOutputs);
+	private async writeNotes(
+		noteTopUp: TranscriptNoteTopUp,
+		notes: RunNotes,
+		answer: NoteTopUpAnswer,
+	): Promise<number> {
+		let updated = 0;
+		for (const note of notes.placeable) {
+			if (await noteTopUp.write(note, answer)) {
+				updated++;
+			}
+		}
+		const writtenAt = new Date().toISOString();
+		for (const note of [...notes.placeable, ...notes.unplaceable]) {
+			await this.sidecar.recordNoteOutput(this.file.path, {
+				...note.output,
+				writtenAt,
+			});
+		}
+		return updated;
 	}
 
 	/**
@@ -324,6 +398,8 @@ export class FailedPartRetry {
 			recovered: 0,
 			stillMissing: [],
 			rewritten: 0,
+			updatedNotes: 0,
+			keptNotes: 0,
 			sentSeconds: 0,
 			blocked: reason,
 		};

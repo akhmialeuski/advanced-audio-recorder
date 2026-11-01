@@ -312,6 +312,7 @@ export interface FakeVaultFiles {
 		cachedRead: jest.Mock;
 		read: jest.Mock;
 		modify: jest.Mock;
+		process: jest.Mock;
 		create: jest.Mock;
 		rename: jest.Mock;
 		delete: jest.Mock;
@@ -327,7 +328,8 @@ export interface FakeVaultFiles {
  * Four suites hand-rolled the same Map behind the same five adapter calls.
  * Sharing it is not only about the lines: the doubles refuse what Obsidian
  * refuses, so code that gets a call wrong fails here rather than in a vault.
- * `adapter.read`, `read` and `cachedRead` reject a path that is not there;
+ * `adapter.read`, `read`, `cachedRead` and `process` reject a path that is
+ * not there;
  * `create` rejects a path that is taken (on disk, whether or not the index
  * lists it, the stricter of the two answers a vault can give); `rename`
  * rejects a destination that is taken. `getFileByPath` hands out one TFile
@@ -395,6 +397,11 @@ export function fakeVaultFiles(
 		modify: jest.fn((file: TFile, data: string) => {
 			files.set(file.path, data);
 			return Promise.resolve();
+		}),
+		process: jest.fn(async (file: TFile, fn: (data: string) => string) => {
+			const next = fn(await readText(file.path));
+			files.set(file.path, next);
+			return next;
 		}),
 		create: jest.fn((path: string, data: string) => {
 			if (files.has(path)) {

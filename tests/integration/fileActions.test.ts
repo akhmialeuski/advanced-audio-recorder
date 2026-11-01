@@ -17,6 +17,7 @@ import {
 	type LinkLocation,
 } from 'src/actions/file/RecordingOrigin';
 import { describeRetryOutcome } from 'src/actions/file/recordingEdits';
+import type { RetryOutcome } from 'src/transcription/retryFailedParts';
 import type { ActionServices } from 'src/actions/core/actionServices';
 import { COMMAND_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
@@ -748,6 +749,7 @@ describe('transcribing the parts that failed', () => {
 					fileOutputs: [
 						{ path: 'take.json', format: 'json', writtenAt: '' },
 					],
+					noteOutputs: [],
 				}),
 			}),
 			{ 'take.json': JSON.stringify({ segments: [], language: 'en' }) },
@@ -799,63 +801,105 @@ describe('transcribing the parts that failed', () => {
 	});
 });
 
+/**
+ * A top-up outcome that wrote nothing, changed by what a case varies.
+ * @param overrides - The fields the case sets
+ */
+function outcomeOf(overrides: Partial<RetryOutcome>): RetryOutcome {
+	return {
+		recovered: 0,
+		stillMissing: [],
+		rewritten: 0,
+		updatedNotes: 0,
+		keptNotes: 0,
+		sentSeconds: 90,
+		...overrides,
+	};
+}
+
 describe('what the user is told a top-up did', () => {
 	it('names what came back and what was rewritten', () => {
 		expect(
-			describeRetryOutcome({
-				recovered: 3,
-				stillMissing: [],
-				rewritten: 2,
-				sentSeconds: 90,
-			}),
+			describeRetryOutcome(outcomeOf({ recovered: 3, rewritten: 2 })),
 		).toBe('Recovered 3 segments and rewrote 2 transcript files.');
 	});
 
 	it('counts one of each in the singular', () => {
 		expect(
-			describeRetryOutcome({
-				recovered: 1,
-				stillMissing: [],
-				rewritten: 1,
-				sentSeconds: 90,
-			}),
+			describeRetryOutcome(outcomeOf({ recovered: 1, rewritten: 1 })),
 		).toBe('Recovered 1 segment and rewrote 1 transcript file.');
 	});
 
+	it('names the notes it filled in instead of files it never had', () => {
+		expect(
+			describeRetryOutcome(outcomeOf({ recovered: 2, updatedNotes: 1 })),
+		).toBe('Recovered 2 segments and updated 1 note.');
+	});
+
+	it('names both the files and the notes it completed', () => {
+		expect(
+			describeRetryOutcome(
+				outcomeOf({ recovered: 2, rewritten: 1, updatedNotes: 2 }),
+			),
+		).toBe(
+			'Recovered 2 segments and rewrote 1 transcript file and updated 2 notes.',
+		);
+	});
+
+	it.each([
+		{ keptNotes: 1, said: '1 note kept as before: no line in it carries' },
+		{
+			keptNotes: 2,
+			said: '2 notes kept as before: no line in them carries',
+		},
+	])(
+		'says which notes it had to leave as they were, and why ($keptNotes)',
+		({ keptNotes, said }) => {
+			expect(
+				describeRetryOutcome(
+					outcomeOf({ recovered: 1, rewritten: 1, keptNotes }),
+				),
+			).toContain(said);
+		},
+	);
+
 	it('says how many parts failed again', () => {
 		expect(
-			describeRetryOutcome({
-				recovered: 1,
-				stillMissing: [{ label: 'x', message: 'y', startSeconds: 0 }],
-				rewritten: 1,
-				sentSeconds: 90,
-			}),
+			describeRetryOutcome(
+				outcomeOf({
+					recovered: 1,
+					rewritten: 1,
+					stillMissing: [
+						{ label: 'x', message: 'y', startSeconds: 0 },
+					],
+				}),
+			),
 		).toContain('1 part failed again');
 	});
 
 	it('counts more than one part that failed again in the plural', () => {
 		expect(
-			describeRetryOutcome({
-				recovered: 2,
-				stillMissing: [
-					{ label: 'a', message: 'x', startSeconds: 0 },
-					{ label: 'b', message: 'y', startSeconds: 60 },
-				],
-				rewritten: 1,
-				sentSeconds: 90,
-			}),
+			describeRetryOutcome(
+				outcomeOf({
+					recovered: 2,
+					rewritten: 1,
+					stillMissing: [
+						{ label: 'a', message: 'x', startSeconds: 0 },
+						{ label: 'b', message: 'y', startSeconds: 60 },
+					],
+				}),
+			),
 		).toContain('2 parts failed again');
 	});
 
 	it('gives the reason nothing was attempted, when nothing was', () => {
 		expect(
-			describeRetryOutcome({
-				recovered: 0,
-				stillMissing: [],
-				rewritten: 0,
-				sentSeconds: 0,
-				blocked: 'Nothing is missing from this transcript.',
-			}),
+			describeRetryOutcome(
+				outcomeOf({
+					sentSeconds: 0,
+					blocked: 'Nothing is missing from this transcript.',
+				}),
+			),
 		).toBe('Nothing is missing from this transcript.');
 	});
 });

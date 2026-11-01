@@ -548,13 +548,41 @@ What it does with the result:
 
 - The stretches that were sent are **replaced wholesale** by what came back for them, and everything outside those stretches is left untouched. The decision is made by stretch rather than by comparing segment starts, because a chunk size or an engine changed since the first run moves the part boundaries: the parts that already succeeded would then come back a few tenths of a second off, and a proximity test would read them as new segments and write the same speech into the transcript twice. Anything you edited by hand inside a retried stretch is overwritten along with the rest of it. A stretch that fails again and brings nothing back keeps what it held, so the lines a part kept when its timecodes did not fit are not lost to a second failure.
 - Every transcript file the run wrote is **rewritten** with the completed transcript, each in the format it was written in. No second set of files appears beside the first.
+- The note the run **inserted the transcript into** is filled in place, whatever the destination: **Insert into note** and **Note and file** alike. The recovered lines are rendered with the line, speaker and timestamp formats the note was written with, and each one lands between the lines around the gap by the timecode link it opens with. Only the transcript's own section is read, from the heading it was inserted under, or from its callout when there is no heading, to the next heading, so a timestamp link you copied into your own text elsewhere in the note and the translation below the transcript are never taken for its lines. Only the lines whose timecode lies inside a retried stretch are replaced, so a line you reworded or a remark you added anywhere else stays as you left it, and the incomplete-transcription callout is rewritten with what is still missing or removed once nothing is. A line in the very second a part starts or ends in is kept, because it may belong to the neighbouring part, and a line doubled at that seam is easier to remove by hand than a deleted one is to restore. Only the notes of the run that lost the parts are touched: a note an earlier run wrote holds other text in those stretches.
 - What still fails is recorded again, so the action can be run once more later; a run that comes back whole clears the record.
 - The speaker names you assigned are **re-applied** to the recovered segments, exactly as a full re-run applies them, so a topped-up transcript does not call the same person both by name and by the engine's own label.
 - No **cleanup, custom, or translation pass** runs over the top-up. It reads segments and writes them back, so what you pay for is the engine time on the missing minutes and nothing else.
-- When the recording has generated chapters and [**Auto chapters**](#auto-chapters) is enabled, a top-up that recovered at least one segment **generates the chapters again** from the completed transcript, in the background as after any run, so the stretch it filled is chaptered too. It goes by the chapters the recording holds rather than by **Generate after transcription**, so chapters a run made because the Transcribe dialog turned them on for that run are corrected as well, and a recording without generated chapters gets none. Bookmarks and chapters you placed by hand are kept, as on every regeneration. A top-up that brought nothing back leaves the chapters as they are and makes no LLM request, since the transcript did not change.
+- When the recording has generated chapters and [**Auto chapters**](#auto-chapters) is enabled, a top-up that recovered at least one segment **generates the chapters again** from the completed transcript, or from the lines of the note it filled in when the run wrote only a note, in the background as after any run, so the stretch it filled is chaptered too. It goes by the chapters the recording holds rather than by **Generate after transcription**, so chapters a run made because the Transcribe dialog turned them on for that run are corrected as well, and a recording without generated chapters gets none. Bookmarks and chapters you placed by hand are kept, as on every regeneration. A top-up that brought nothing back leaves the chapters as they are and makes no LLM request, since the transcript did not change.
 - A translation is left alone: it is a second document, and completing it is the [translation task's](llm-post-processing.md) job rather than the engine's.
 
-Two limits are worth knowing. The top-up reads the transcript back from a **JSON transcript file**, which is the only output that keeps the segment timings, and whether such a file exists is decided by **Transcript output > Destination** rather than by the format alone. On the default destination, **Insert into note**, the transcript goes into the note and no file is written at all, so the top-up has nothing to read and says so. Choose a destination that saves a file (**Save to file**, **Note and file**, or **Save to file and link it in the note**) and set **File format** to JSON, and every run from then on leaves behind what a top-up needs. With only subtitles or plain text on disk it likewise says so rather than guessing at the timings those formats drop. And a recording small enough to go in **one request** has no smaller unit to re-send, so a failure there is reported as one to transcribe again in full.
+A run that lost the minute from 1:00 to 2:00 and inserted its transcript into a note, edited by hand since, reads:
+
+```markdown
+> [!warning] Transcription incomplete: the 1:00-2:00 segment is missing from the transcript below, in whole or in part.
+> - The 1:00-2:00 segment: rate limited
+
+[[standup.webm#t=5|0:05]] The opening, reworded by hand.
+
+My own remark.
+
+[[standup.webm#t=125|2:05]] the closing
+```
+
+After a top-up that brought that minute back, the callout is gone, the remark is still under the line it was written under, and the recovered line sits in time order:
+
+```markdown
+[[standup.webm#t=5|0:05]] The opening, reworded by hand.
+
+My own remark.
+
+[[standup.webm#t=65|1:05]] the middle
+
+[[standup.webm#t=125|2:05]] the closing
+```
+
+The notice then reads "Recovered 1 segment and updated 1 note."
+
+Three limits are worth knowing. The top-up places what came back by the **timecode links** the note's lines open with, so a note written with **Include timestamps** or **Timestamps as player links** off, or one whose links an LLM pass or an edit removed, has nothing to place by. With no JSON file to complete either, the top-up says so before it sends anything, and you are not billed. When a JSON file is there, the file is completed, the note is left as it was, and the notice says which note was kept and why. A run that wrote **only subtitles or plain text** to disk and no note leaves nothing a top-up can complete, because those formats drop the timings and the speakers: it says so, and setting **File format** to JSON or **Destination** to **Insert into note** makes every later run leave behind what a top-up needs. And a recording small enough to go in **one request** has no smaller unit to re-send, so a failure there is reported as one to transcribe again in full.
 
 The action is offered on every recording, because whether anything is missing cannot be known without reading the sidecar: a recording with nothing missing is simply told so.
 

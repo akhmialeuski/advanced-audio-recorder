@@ -173,7 +173,7 @@ Learn more: [Transcription](transcription.md)
 
 ## Transcribing the parts that failed
 
-A long recording is transcribed in parts, and a part can fail on its own. The run keeps what came back and records what it lost, with the time bounds of each missing part. **Transcribe the parts that failed** sends exactly those again and splices the result into the transcript already written, rewriting the files it finds rather than adding a second set beside them, so you are billed for the missing minutes instead of the whole recording.
+A long recording is transcribed in parts, and a part can fail on its own. The run keeps what came back and records what it lost, with the time bounds of each missing part. **Transcribe the parts that failed** sends exactly those again and splices the result into the transcript already written, rewriting the files it finds rather than adding a second set beside them and filling in the note the transcript was inserted into by the timecodes of its lines, so your edits around the gap stay, and you are billed for the missing minutes instead of the whole recording.
 
 Learn more: [Transcription](transcription.md)
 

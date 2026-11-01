@@ -27,6 +27,19 @@ export interface RecordingRange {
 }
 
 /**
+ * Whether a timed span reaches into a stretch, which is how a top-up decides
+ * what came back for the stretch and what the stretch held before.
+ * @param span - Start and end of the span, in seconds
+ * @param range - The stretch
+ */
+export function overlapsRange(
+	span: { start: number; end: number },
+	range: RecordingRange,
+): boolean {
+	return span.start < range.endSeconds && span.end > range.startSeconds;
+}
+
+/**
  * A part the run could not transcribe, named the way the user sees it and
  * carrying the reason the engine gave.
  */
@@ -52,6 +65,14 @@ export interface MissingPartsWarning {
 	/** Notice raised once, naming the parts and the first reason. */
 	notice: string;
 }
+
+/**
+ * How the incomplete-transcription callout opens. A top-up finds the callout
+ * in a note by it, so the warning it writes and the one it replaces can never
+ * drift apart.
+ */
+export const MISSING_PARTS_CALLOUT_HEAD =
+	'> [!warning] Transcription incomplete:';
 
 /** Said for a part whose engine gave no reason at all. */
 const NO_REASON = 'The engine gave no reason.';
@@ -93,7 +114,7 @@ export function missingPartsWarning(
 		callout:
 			// "In whole or in part", because a part whose answer left its
 			// bounds keeps the lines that fit and is listed here as well.
-			`> [!warning] Transcription incomplete: ${labels} ${verb} ` +
+			`${MISSING_PARTS_CALLOUT_HEAD} ${labels} ${verb} ` +
 			'missing from the transcript below, in whole or in part.\n' +
 			missingParts.map(reasonLine).join('') +
 			'\n',
