@@ -31,10 +31,10 @@ export interface TranscribeOptions {
 	 */
 	wordTimestamps: boolean;
 	/**
-	 * Optional abort signal for the provider's HTTP requests. Providers on
-	 * CORS-capable endpoints pass it through so a cancel aborts the upload
-	 * mid-flight; providers that cannot abort (requestUrl-only endpoints,
-	 * the local CLI) ignore it and remain cancel-between-chunks only.
+	 * The run's cancel, which every provider passes to its requests. A cancel
+	 * releases the run from the request in flight at once, though the request
+	 * itself runs on, since Obsidian's request channel cannot abort. The local
+	 * CLI passes it to the process, which it does kill.
 	 */
 	signal?: AbortSignal | undefined;
 	/**

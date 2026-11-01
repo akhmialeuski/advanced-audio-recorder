@@ -927,8 +927,7 @@ export class TranscriptionModal extends PluginModal {
 				// does not read the whole file twice (undefined on an auto-run,
 				// which never probes).
 				audioBytes: this.probedBytes ?? undefined,
-				// Lets abort-capable providers stop an in-flight request at
-				// once; requestUrl-only endpoints finish or time out on their own.
+				// Releases the run from the request in flight at once.
 				token: this.cancellation.token,
 				onProgress: (fraction, label) => {
 					this.updateProgress(fraction, label);

@@ -49,7 +49,7 @@ export interface TranslationRequest {
 	maxTokens: number;
 	/** Where to report the cost of each call. */
 	costSink?: LlmCostSink | undefined;
-	/** Aborts the calls when the run is cancelled. */
+	/** Releases the calls when the run is cancelled. */
 	signal?: AbortSignal | undefined;
 }
 

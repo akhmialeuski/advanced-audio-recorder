@@ -26,20 +26,9 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { queueResponses, withRequestUrl } from '../helpers/network';
-import { outcomeOf } from '../helpers/async';
+import { outcomeOf, tick, waitFor } from '../helpers/async';
 
 const BASE_URL = 'https://gemini.example';
-
-/**
- * A second endpoint, for the one case that has to go out through `fetch`.
- *
- * The polls elsewhere in this file run with a signal and no fetch double
- * installed, which is what a CORS refusal looks like from inside the client -
- * and the client remembers a refusing origin for the rest of the session
- * rather than paying for the discovery on every request. A fresh origin is
- * therefore a fresh answer.
- */
-const ABORTABLE_BASE_URL = 'https://gemini-cors.example';
 const API_KEY = 'gm-test';
 
 /** One status response reporting the given processing state. */
@@ -60,17 +49,29 @@ function statusResponse(state: string): MockRequestUrlResponse {
  * finalize step hands back whatever this test wants the file to be.
  * @param finalized - Body the finalize step answers with
  */
-function scriptUpload(finalized: unknown): void {
-	withRequestUrl((param): MockRequestUrlResponse => {
-		if (param.url.includes('/upload/')) {
-			return {
+function scriptUpload(
+	finalized: unknown,
+	finalizeAnswered: Promise<void> = Promise.resolve(),
+): MockRequestUrlParam[] {
+	const calls: MockRequestUrlParam[] = [];
+	withRequestUrl(
+		(param): MockRequestUrlResponse | Promise<MockRequestUrlResponse> => {
+			calls.push(param);
+			if (param.url.includes('/upload/')) {
+				return {
+					status: 200,
+					headers: { 'x-goog-upload-url': 'https://up.example' },
+					text: '',
+				};
+			}
+			return finalizeAnswered.then(() => ({
 				status: 200,
-				headers: { 'x-goog-upload-url': 'https://up.example' },
-				text: '',
-			};
-		}
-		return { status: 200, headers: {}, text: JSON.stringify(finalized) };
-	});
+				headers: {},
+				text: JSON.stringify(finalized),
+			}));
+		},
+	);
+	return calls;
 }
 
 describe('uploadFile', () => {
@@ -185,6 +186,39 @@ describe('uploadFile', () => {
 		await expect(
 			uploadFile(BASE_URL, API_KEY, new ArrayBuffer(1), 'audio/wav', 'a'),
 		).rejects.toThrow(/unexpected file response/i);
+	});
+
+	// The late answer is read only to find the file to delete. One that names
+	// no file leaves nothing to clean up, and the run it belonged to has ended,
+	// so there is nobody to report it to either.
+	it('sends no delete when the answer after a cancel names no file', async () => {
+		let answerFinalize = (): void => undefined;
+		const calls = scriptUpload(
+			{},
+			new Promise<void>((resolve) => {
+				answerFinalize = resolve;
+			}),
+		);
+		const controller = new AbortController();
+
+		const upload = outcomeOf(
+			uploadFile(
+				BASE_URL,
+				API_KEY,
+				new ArrayBuffer(1),
+				'audio/wav',
+				'a',
+				undefined,
+				controller.signal,
+			),
+		);
+		await waitFor(() => calls.length === 2);
+		controller.abort();
+		await upload;
+		answerFinalize();
+		await tick();
+
+		expect(calls.map((call) => call.method)).toEqual(['POST', 'POST']);
 	});
 });
 
@@ -302,39 +336,28 @@ describe('waitUntilActive', () => {
 			expect(sent).toHaveLength(2);
 		});
 
-		// Not only between polls: the poll request goes out on the abortable
-		// transport too, so an abort inside one is not waited out either.
-		it('sends the poll on a transport that can abort', async () => {
-			let init: RequestInit | undefined;
-			(globalThis as { fetch?: unknown }).fetch = jest.fn(
-				(_url: string, sent: RequestInit) => {
-					init = sent;
-					return Promise.resolve({
-						status: 200,
-						headers: new Headers(),
-						text: () =>
-							Promise.resolve(
-								JSON.stringify({
-									name: 'files/x',
-									uri: 'u',
-									state: 'ACTIVE',
-								}),
-							),
-					});
-				},
-			);
+		// Not only between polls: the poll request carries the cancel too, so
+		// a poll the endpoint has not answered yet is not waited out either.
+		it('ends the wait when the run is cancelled during a poll', async () => {
+			withRequestUrl(() => new Promise(() => undefined));
 			const controller = new AbortController();
 
-			await waitUntilActive(
-				ABORTABLE_BASE_URL,
-				API_KEY,
-				'files/x',
-				undefined,
-				controller.signal,
+			const settled = outcomeOf(
+				waitUntilActive(
+					BASE_URL,
+					API_KEY,
+					'files/x',
+					undefined,
+					controller.signal,
+				),
 			);
-			delete (globalThis as { fetch?: unknown }).fetch;
+			controller.abort();
 
-			expect(init?.signal).toBeDefined();
+			expect(await settled).toEqual({
+				error: expect.objectContaining({
+					message: expect.stringContaining('was cancelled'),
+				}),
+			});
 		});
 	});
 

@@ -49,10 +49,9 @@ export interface LlmCompleteOptions {
 	 */
 	temperature?: number;
 	/**
-	 * Aborts the request when the run is cancelled. Without it a Cancel
-	 * pressed during an LLM step released nothing: the request ran to its own
-	 * timeout and the provider billed for it, which is the opposite of what
-	 * the user pressed the button for.
+	 * Releases the request when the run is cancelled. Without it a Cancel
+	 * pressed during an LLM step released nothing, and the run waited out the
+	 * request's own five-minute timeout before it stopped.
 	 */
 	signal?: AbortSignal | undefined;
 }
@@ -277,7 +276,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 	 * @param prompt - System + user prompt
 	 * @param headers - Authorization headers, when a key is configured
 	 * @param generation - The generation fields this attempt carries
-	 * @param signal - Aborts the request when the run is cancelled
+	 * @param signal - Releases the request when the run is cancelled
 	 * @returns The parsed response body
 	 */
 	private request(
