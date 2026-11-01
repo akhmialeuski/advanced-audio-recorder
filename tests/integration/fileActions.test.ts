@@ -846,15 +846,22 @@ describe('what the user is told a top-up did', () => {
 		);
 	});
 
-	it('says which notes it had to leave as they were, and why', () => {
-		expect(
-			describeRetryOutcome(
-				outcomeOf({ recovered: 1, rewritten: 1, keptNotes: 1 }),
-			),
-		).toContain(
-			'1 note kept as before: no line in it carries a timecode link into the recording',
-		);
-	});
+	it.each([
+		{ keptNotes: 1, said: '1 note kept as before: no line in it carries' },
+		{
+			keptNotes: 2,
+			said: '2 notes kept as before: no line in them carries',
+		},
+	])(
+		'says which notes it had to leave as they were, and why ($keptNotes)',
+		({ keptNotes, said }) => {
+			expect(
+				describeRetryOutcome(
+					outcomeOf({ recovered: 1, rewritten: 1, keptNotes }),
+				),
+			).toContain(said);
+		},
+	);
 
 	it('says how many parts failed again', () => {
 		expect(
