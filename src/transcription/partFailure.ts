@@ -53,6 +53,14 @@ export interface MissingPartsWarning {
 	notice: string;
 }
 
+/**
+ * How the incomplete-transcription callout opens. A top-up finds the callout
+ * in a note by it, so the warning it writes and the one it replaces can never
+ * drift apart.
+ */
+export const MISSING_PARTS_CALLOUT_HEAD =
+	'> [!warning] Transcription incomplete:';
+
 /** Said for a part whose engine gave no reason at all. */
 const NO_REASON = 'The engine gave no reason.';
 
@@ -93,7 +101,7 @@ export function missingPartsWarning(
 		callout:
 			// "In whole or in part", because a part whose answer left its
 			// bounds keeps the lines that fit and is listed here as well.
-			`> [!warning] Transcription incomplete: ${labels} ${verb} ` +
+			`${MISSING_PARTS_CALLOUT_HEAD} ${labels} ${verb} ` +
 			'missing from the transcript below, in whole or in part.\n' +
 			missingParts.map(reasonLine).join('') +
 			'\n',
