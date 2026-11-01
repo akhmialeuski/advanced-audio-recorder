@@ -282,6 +282,16 @@ describe('topping up a transcript', () => {
 		expect(rewrittenTexts(written)).toEqual(COMPLETED);
 	});
 
+	it('hands back the transcript it completed, for what follows a run', async () => {
+		const { retry } = createSut();
+
+		const outcome = await retry.retry();
+
+		expect(outcome.transcript?.segments.map((s) => s.text)).toEqual(
+			COMPLETED,
+		);
+	});
+
 	it('rewrites every recorded output, each in its own format', async () => {
 		const { retry, written } = createSut({
 			outputs: [
@@ -472,6 +482,7 @@ describe('a top-up that cannot be attempted', () => {
 
 		expect(outcome.blocked).toContain('Nothing is missing');
 		expect(asked).toHaveLength(0);
+		expect(outcome.transcript).toBeUndefined();
 	});
 
 	it('says so when the parts that failed carry no measured end', async () => {
