@@ -53,16 +53,34 @@ export function describeRetryOutcome(outcome: RetryOutcome): string {
 	if (outcome.blocked) {
 		return outcome.blocked;
 	}
-	const recovered = `Recovered ${String(outcome.recovered)} segment${
-		outcome.recovered === 1 ? '' : 's'
-	} and rewrote ${String(outcome.rewritten)} transcript file${
-		outcome.rewritten === 1 ? '' : 's'
-	}.`;
-	return outcome.stillMissing.length === 0
-		? recovered
-		: `${recovered} ${String(outcome.stillMissing.length)} part${
-				outcome.stillMissing.length === 1 ? '' : 's'
-			} failed again.`;
+	const plural = (count: number, noun: string): string =>
+		`${String(count)} ${noun}${count === 1 ? '' : 's'}`;
+	// Files are named whenever no note was written, so a top-up that wrote
+	// nothing still says so rather than ending on "Recovered 0 segments".
+	const written = [
+		...(outcome.rewritten > 0 || outcome.updatedNotes === 0
+			? [`rewrote ${plural(outcome.rewritten, 'transcript file')}`]
+			: []),
+		...(outcome.updatedNotes > 0
+			? [`updated ${plural(outcome.updatedNotes, 'note')}`]
+			: []),
+	].join(' and ');
+	const sentences = [
+		`Recovered ${plural(outcome.recovered, 'segment')} and ${written}.`,
+	];
+	if (outcome.keptNotes > 0) {
+		sentences.push(
+			`${plural(outcome.keptNotes, 'note')} kept as before: no line in ${
+				outcome.keptNotes === 1 ? 'it' : 'them'
+			} carries a timecode link into the recording to place the recovered lines by.`,
+		);
+	}
+	if (outcome.stillMissing.length > 0) {
+		sentences.push(
+			`${plural(outcome.stillMissing.length, 'part')} failed again.`,
+		);
+	}
+	return sentences.join(' ');
 }
 
 /**
@@ -94,6 +112,7 @@ export async function retryFailedParts(
 			// assigned rather than the engine's own labels.
 			services.recordingSidecar,
 		),
+		services.getSettings(),
 	);
 	try {
 		const outcome = await retry.retry();

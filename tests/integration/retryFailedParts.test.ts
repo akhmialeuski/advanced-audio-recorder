@@ -22,6 +22,7 @@ import { createMockApp } from '../helpers/createApp';
 import { partial } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 /** A transcript of the given segments. */
 function transcriptOf(segments: TranscriptSegment[]): Transcript {
@@ -142,7 +143,9 @@ function createSut(
 						{ path: 'rec.transcript.json', format: 'json' },
 					]
 				).map((o) => ({ ...o, writtenAt: '' })),
+				noteOutputs: [],
 			} as Awaited<ReturnType<RetrySidecar['getTranscript']>>),
+		recordNoteOutput: () => Promise.resolve(),
 	});
 	const retry = new FailedPartRetry(
 		app,
@@ -166,6 +169,7 @@ function createSut(
 						: options.sentSeconds,
 			});
 		},
+		mergeSettings({}),
 	);
 	return { retry, written, asked, recorded };
 }
@@ -539,11 +543,9 @@ describe('a top-up that cannot be attempted', () => {
 		warn.mockRestore();
 	});
 
-	// Whether a transcript file exists at all is decided by the destination
-	// and not by the format. On the default destination the transcript goes
-	// into the note, no file is written, and the format row is not even
-	// shown, so naming the format alone sent the user looking for a control
-	// they could not see, to set a value it already held.
+	// A top-up completes either a JSON file or the note the transcript went
+	// into, so a run that left neither is told both ways out: the format that
+	// keeps the timings, and the destination whose note is filled in place.
 	it('names the destination that decides whether a file was written', async () => {
 		const { retry } = createSut({
 			outputs: [{ path: 'rec.srt', format: 'srt' }],

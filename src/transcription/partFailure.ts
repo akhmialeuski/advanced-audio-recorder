@@ -27,6 +27,19 @@ export interface RecordingRange {
 }
 
 /**
+ * Whether a timed span reaches into a stretch, which is how a top-up decides
+ * what came back for the stretch and what the stretch held before.
+ * @param span - Start and end of the span, in seconds
+ * @param range - The stretch
+ */
+export function overlapsRange(
+	span: { start: number; end: number },
+	range: RecordingRange,
+): boolean {
+	return span.start < range.endSeconds && span.end > range.startSeconds;
+}
+
+/**
  * A part the run could not transcribe, named the way the user sees it and
  * carrying the reason the engine gave.
  */
