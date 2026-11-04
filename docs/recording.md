@@ -251,6 +251,41 @@ This setting works together with the [file storage options](file-operations.md) 
 
 ---
 
+## Naming recordings
+
+A recording is named from the **File name template** under **Settings > Advanced Audio Recorder > File storage**. The default, `{{prefix}}-{{source}}-{{timestamp}}`, gives every recording the name it had before the template existed, so nothing is renamed when you update. The one exception is a **File prefix** that is empty, starts with a space or a dash, ends with a dash or holds two dashes in a row, because dashes fold as described below. The template is read when a recording starts, so a change applies from the next one.
+
+| Variable        | What it becomes                                                                                                                                                 | Example                    |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `{{prefix}}`    | The **File prefix** setting.                                                                                                                                    | `recording`                |
+| `{{notename}}`  | The name of the note that was active when the recording started, without its extension. Empty outside a note.                                                   | `Chorus idea`              |
+| `{{source}}`    | The source name of a track, which is its input device with non-alphanumeric characters removed, or `multitrack` for the merged file of a multi-track recording. | `BuiltinMicrophone`        |
+| `{{track}}`     | The track number. Empty for the merged file.                                                                                                                    | `2`                        |
+| `{{timestamp}}` | The moment the recording started, in the form the default name has always used.                                                                                 | `2026-11-04T09-05-07-000Z` |
+| `{{date}}`      | The day the recording started. A [Moment format](https://momentjs.com/docs/#/displaying/format/) after a colon sets it.                                         | `2026-11-04`               |
+| `{{time}}`      | The time the recording started. A Moment format after a colon sets it.                                                                                          | `09-05-07`                 |
+
+A template is plain text with variables in double braces, and nothing in it is run as code. A date or time takes its format after a colon, as in `{{date:YYYYMMDD}}` or `{{time:HH-mm}}`, and without one `{{date}}` reads `YYYY-MM-DD` and `{{time}}` reads `HH-mm-ss`. A variable the plugin does not know is refused in the settings with a message naming it, and that includes a near miss such as `{{Date}}` or `{{note_name}}`, because the names are exact.
+
+| Template                                        | File name                                 |
+| ----------------------------------------------- | ----------------------------------------- |
+| `{{notename}} {{date}}`                         | `Chorus idea 2026-11-04.webm`             |
+| `{{notename}}-{{date:YYYYMMDD}}-{{time:HH-mm}}` | `Chorus idea-20261104-09-05.webm`         |
+| `{{prefix}}-{{timestamp}}`                      | `recording-2026-11-04T09-05-07-000Z.webm` |
+
+The finished name is cleaned up so it is always a valid vault path:
+
+- A variable with nothing to show disappears and the dashes around it fold into one, so with `{{prefix}}-{{notename}}-{{timestamp}}` a recording started outside a note is named `recording-<timestamp>`, with a single dash between the two.
+- Two dashes in a row become one, and no dash or space is left at either end of the name.
+- Characters a path cannot hold (`\ / : * ? " < > |`) become dashes everywhere in the name. Dots become dashes in the note name only, because a dot there would read as the start of an extension, so a dot in the **File prefix** or in the template text stays.
+- A very long note name is cut at its end, and only as much as needed for the whole name to stay within 220 bytes. File systems allow 255 bytes in a file name, and the plugin keeps the rest for the endings it adds to temporary and part files. A letter outside the Latin alphabet takes two or more bytes, so a Cyrillic title is cut sooner than a Latin one of the same length, and any title is cut sooner when the prefix or the source name is long.
+- A name with nothing left falls back to the timestamp.
+- Tracks of one recording that would get the same name are numbered (`-2`, `-3`), so a template without `{{source}}` or `{{track}}` never makes one track overwrite another.
+
+An [auto-split](splitting.md) part and a converted file are named after the recording's own file name, so they carry whatever the template produced. The date and time are the machine's local time.
+
+---
+
 ## Crash recovery
 
 Recordings are crash-resilient on both desktop and mobile. While a session is active the plugin journals what it has already put on disk in `recording-journal.json` (in the plugin folder) and flushes audio as it goes. If Obsidian crashes, the machine loses power, the plugin is disabled mid-recording, or a phone's operating system closes the app in the background, the next launch detects the interrupted session and opens a recovery dialog.
@@ -330,6 +365,7 @@ These settings shape the recording workflow. See the [settings reference](settin
 | **Save folder**                      | The vault folder recordings are written to (default vault root).                                        | [File storage](settings-reference.md#file-storage)                              |
 | **Save recordings near active file** | Writes the file beside the active note instead; takes priority over Save folder.                        | [File storage](settings-reference.md#file-storage)                              |
 | **File prefix**                      | The filename prefix for new recordings (default `recording`).                                           | [File storage](settings-reference.md#file-storage)                              |
+| **File name template**               | How new recordings are named, from variables such as `{{notename}}` and `{{date}}`.                     | [Naming recordings](#naming-recordings)                                         |
 | **Insert at original position**      | Places the embed link where recording started rather than at the cursor on stop (default Off).          | [File storage](settings-reference.md#file-storage)                              |
 | **Split recordings automatically**   | Saves a long recording as fixed-duration part files (default Off).                                      | [Audio splitting](settings-reference.md#audio-splitting)                        |
 | **Part duration**                    | The length of each auto-split part in minutes (default 15, range 1-180).                                | [Audio splitting](settings-reference.md#audio-splitting)                        |

@@ -69,7 +69,7 @@ The **Output mode** dropdown decides what happens when you stop the session.
 
 ### Single file (mixed)
 
-Every track is combined into a single mixed file at your configured [format](formats.md) and bitrate. The merged file names no device, since it holds them all, and is written as `<file prefix>-multitrack-<timestamp>.<ext>`, for example `recording-multitrack-2026-09-18T09-12-44-031Z.webm`. Mono inputs are duplicated into both channels; the output is mono only when every input is mono, and stereo otherwise. Tracks reduced to mono by their **Track N channels** setting count as mono inputs here - give every track a mono mode and the merged file is mono too. The mix runs **after** you stop recording, so a longer session takes a moment to assemble (the status bar shows the [save progress](recording.md#save-progress-in-the-status-bar)). One embed link is inserted into your note.
+Every track is combined into a single mixed file at your configured [format](formats.md) and bitrate. The merged file names no device, since it holds them all, and with the default [file name template](recording.md#naming-recordings) is written as `<file prefix>-multitrack-<timestamp>.<ext>`, for example `recording-multitrack-2026-09-18T09-12-44-031Z.webm`. Mono inputs are duplicated into both channels; the output is mono only when every input is mono, and stereo otherwise. Tracks reduced to mono by their **Track N channels** setting count as mono inputs here - give every track a mono mode and the merged file is mono too. The mix runs **after** you stop recording, so a longer session takes a moment to assemble (the status bar shows the [save progress](recording.md#save-progress-in-the-status-bar)). One embed link is inserted into your note.
 
 Because the tracks are mixed only once at stop, **merged output cannot be auto-split** - see [Interaction with automatic splitting](#interaction-with-automatic-splitting). For very long mixed sessions, mind the [memory notes](#memory-notes-for-merged-output) below.
 
@@ -95,7 +95,7 @@ Each track is saved as its **own separate file** - no mixing happens. You get on
 
 ### File naming in Multiple files mode
 
-In **Multiple files** mode, each track's file is named from the **source device name** by default, so you can tell the tracks apart at a glance. The name is built as:
+In **Multiple files** mode, each track's file is named from the **source device name** by default, so you can tell the tracks apart at a glance. With the default [file name template](recording.md#naming-recordings) the name is built as:
 
 ```text
 <file prefix>-<source name>-<timestamp>.<ext>
@@ -106,7 +106,7 @@ In **Multiple files** mode, each track's file is named from the **source device 
 - **`<timestamp>`** is the session timestamp shared by every track in the recording.
 - **`<ext>`** is the recording format's extension.
 
-When **two tracks use the same device**, their source names would be identical and the files would collide. To prevent that, the plugin **appends the track number** to disambiguate them - for example `recording-BuiltinMicrophone-1-...` and `recording-BuiltinMicrophone-2-...`. The suffix is only added to the tracks that actually clash; uniquely named tracks keep their plain source name.
+When **two tracks use the same device**, their source names would be identical and the files would collide. To prevent that, the plugin **appends the track number** to disambiguate them - for example `recording-BuiltinMicrophone-1-...` and `recording-BuiltinMicrophone-2-...`. The suffix is only added to the tracks that actually clash; uniquely named tracks keep their plain source name. A custom template that leaves out both `{{source}}` and `{{track}}` names every track alike, and the plugin numbers the later ones the same way.
 
 > **There is no toggle for this.** Using the source/device name (with the track number appended to disambiguate) is the **default and only** behavior in the current version. You do not need to enable anything, and there is no "use source names" setting in the UI.
 
