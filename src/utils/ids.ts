@@ -10,10 +10,10 @@
 /**
  * A filename-safe ISO timestamp (colons and dots replaced with hyphens),
  * used to name recording sessions and their files.
- * @param date - The moment to stamp (defaults to now)
+ * @param date - The moment to stamp
  * @returns Timestamp like 2026-07-03T12-34-56-789Z
  */
-export function sessionTimestamp(date: Date = new Date()): string {
+export function sessionTimestamp(date: Date): string {
 	return date.toISOString().replace(/[:.]/g, '-');
 }
 

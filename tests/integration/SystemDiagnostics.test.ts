@@ -119,6 +119,9 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 		expect(result.saveNearActiveFile).toBe(false);
 		expect(result.activeFileSubfolder).toBe('');
 		expect(result.filePrefix).toBe('recording');
+		expect(result.fileNameTemplate).toBe(
+			'{{prefix}}-{{source}}-{{timestamp}}',
+		);
 		expect(result.enableMultiTrack).toBe(false);
 		expect(result.maxTracks).toBe(2);
 		expect(result.outputMode).toBe('single');

@@ -33,12 +33,73 @@ export function sanitizeFileNameSegment(text: string): string {
  * @returns A segment safe to put in a file name
  */
 export function toFileNameSegment(text: string, fallback: string): string {
-	const cleaned = sanitizeFileNameSegment(text)
-		.replace(/\./g, '-')
+	return foldSeparators(
+		sanitizeFileNameSegment(text).replace(/\./g, '-'),
+		fallback,
+	);
+}
+
+/**
+ * Collapses a run of dashes into one and trims the dashes and spaces off both
+ * ends, so a name built from parts that may be empty never shows the seam.
+ * @param text - Text whose separators to fold
+ * @param fallback - What to use when nothing is left
+ * @returns The folded text
+ */
+export function foldSeparators(text: string, fallback: string): string {
+	const folded = text
 		.replace(/-+/g, '-')
 		.replace(/^[\s-]+|[\s-]+$/g, '')
 		.trim();
-	return cleaned || fallback;
+	return folded || fallback;
+}
+
+/**
+ * Size of a text as UTF-8 bytes, which is what a file system that counts
+ * bytes limits a name by. Counted by code point, so it needs no `TextEncoder`,
+ * which a test environment may not provide.
+ * @param text - Any text
+ * @returns Its length in bytes
+ */
+export function utf8ByteLength(text: string): number {
+	let bytes = 0;
+	for (const character of text) {
+		// A character of two UTF-16 units is a surrogate pair, which is four
+		// bytes. A lone surrogate counts as three, the size of its replacement.
+		if (character.length === 2) {
+			bytes += 4;
+			continue;
+		}
+		const code = character.charCodeAt(0);
+		if (code < 0x80) {
+			bytes += 1;
+		} else if (code < 0x800) {
+			bytes += 2;
+		} else {
+			bytes += 3;
+		}
+	}
+	return bytes;
+}
+
+/**
+ * Cuts a text to at most the given number of UTF-8 bytes, never in the middle
+ * of a character.
+ * @param text - Text to cut
+ * @param maxBytes - The most bytes the result may take
+ * @returns The longest start of the text that fits
+ */
+export function truncateToBytes(text: string, maxBytes: number): string {
+	let bytes = 0;
+	let result = '';
+	for (const character of text) {
+		bytes += utf8ByteLength(character);
+		if (bytes > maxBytes) {
+			break;
+		}
+		result += character;
+	}
+	return result;
 }
 
 /**

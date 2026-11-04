@@ -362,7 +362,7 @@ describe('RecordingFinalizer', () => {
 				}),
 			];
 
-			await finalizer.saveRecording(targets, 'stamp', null);
+			await finalizer.saveRecording(targets, null);
 
 			expect(jest.mocked(insertFileLinks)).toHaveBeenCalledWith(
 				[expect.any(String), expect.any(String)],
@@ -379,7 +379,7 @@ describe('RecordingFinalizer', () => {
 		it('reports when no audio data was recorded', async () => {
 			buildFinalizer(createSession({ outputMode: 'multiple' }));
 
-			await finalizer.saveRecording([createTarget()], 'stamp', null);
+			await finalizer.saveRecording([createTarget()], null);
 
 			expect(getNotices()).toContain('No audio data recorded');
 		});
@@ -393,11 +393,7 @@ describe('RecordingFinalizer', () => {
 				createTarget({ segmentPaths: ['a-part1.webm.tmp'] }),
 			];
 
-			const result = await finalizer.saveRecording(
-				targets,
-				'stamp',
-				null,
-			);
+			const result = await finalizer.saveRecording(targets, null);
 
 			expect(result.audioPaths.length).toBeGreaterThan(0);
 			expect(result.notePath).toBe('notes/daily.md');
@@ -408,7 +404,6 @@ describe('RecordingFinalizer', () => {
 
 			const result = await finalizer.saveRecording(
 				[createTarget()],
-				'stamp',
 				null,
 			);
 
@@ -432,11 +427,7 @@ describe('RecordingFinalizer', () => {
 				}),
 			];
 
-			const result = await finalizer.saveRecording(
-				targets,
-				'stamp',
-				null,
-			);
+			const result = await finalizer.saveRecording(targets, null);
 
 			expect(result.trackFiles).toHaveLength(2);
 			expect(result.trackFiles?.map((group) => group.trackIndex)).toEqual(
@@ -457,11 +448,7 @@ describe('RecordingFinalizer', () => {
 				segmentPaths: ['rec-part2.webm.tmp'],
 			});
 
-			const result = await finalizer.saveRecording(
-				[target],
-				'stamp',
-				null,
-			);
+			const result = await finalizer.saveRecording([target], null);
 
 			expect(result.trackFiles).toHaveLength(1);
 			expect(at(defined(result.trackFiles), 0).trackIndex).toBe(0);
@@ -483,11 +470,7 @@ describe('RecordingFinalizer', () => {
 				}),
 			];
 
-			const result = await finalizer.saveRecording(
-				targets,
-				'stamp',
-				null,
-			);
+			const result = await finalizer.saveRecording(targets, null);
 
 			expect(result.trackFiles).toHaveLength(1);
 			expect(at(defined(result.trackFiles), 0).trackIndex).toBe(0);
@@ -502,7 +485,6 @@ describe('RecordingFinalizer', () => {
 
 			const result = await finalizer.saveRecording(
 				[createTarget()],
-				'stamp',
 				null,
 			);
 
@@ -531,7 +513,7 @@ describe('RecordingFinalizer', () => {
 				}),
 			];
 
-			await finalizer.saveRecording(targets, 'stamp', null);
+			await finalizer.saveRecording(targets, null);
 
 			expect(jest.mocked(mergeAudioTracks)).not.toHaveBeenCalled();
 			expect(jest.mocked(insertFileLinks)).toHaveBeenCalledWith(
@@ -553,7 +535,7 @@ describe('RecordingFinalizer', () => {
 				createTarget({ segmentPaths: ['b.tmp'] }),
 			];
 
-			await finalizer.saveRecording(targets, 'stamp', null);
+			await finalizer.saveRecording(targets, null);
 
 			expect(
 				getNotices().some((message) =>
@@ -561,7 +543,37 @@ describe('RecordingFinalizer', () => {
 				),
 			).toBe(true);
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-				expect.stringMatching(/multitrack-stamp\.wav$/),
+				expect.stringMatching(
+					/recording-multitrack-2026-01-01T00-00-00-000Z\.wav$/,
+				),
+				expect.any(ArrayBuffer),
+			);
+		});
+
+		it('names the merged file from the session template, note and start date', async () => {
+			buildFinalizer(
+				createSession({
+					outputMode: 'single',
+					outputFormat: 'unsupported-format',
+					fileName: {
+						template: '{{notename}} {{date:YYYY-MM-DD}} {{source}}',
+						prefix: 'recording',
+						noteName: 'Chorus idea',
+						startedAt: new Date(2026, 5, 7, 10).getTime(),
+					},
+				}),
+			);
+			const targets = [
+				createTarget({ segmentPaths: ['a.tmp'] }),
+				createTarget({ segmentPaths: ['b.tmp'] }),
+			];
+
+			await finalizer.saveRecording(targets, null);
+
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(
+					/Chorus idea 2026-06-07 multitrack\.wav$/,
+				),
 				expect.any(ArrayBuffer),
 			);
 		});
@@ -585,7 +597,7 @@ describe('RecordingFinalizer', () => {
 				}),
 			];
 
-			await finalizer.saveRecording(targets, 'stamp', null);
+			await finalizer.saveRecording(targets, null);
 
 			expect(jest.mocked(canStreamMix)).toHaveBeenCalled();
 			expect(jest.mocked(mixPcmTracksToWav)).toHaveBeenCalledWith(
@@ -604,7 +616,9 @@ describe('RecordingFinalizer', () => {
 			);
 			expect(jest.mocked(mergeAudioTracks)).not.toHaveBeenCalled();
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-				expect.stringMatching(/multitrack-stamp\.wav$/),
+				expect.stringMatching(
+					/recording-multitrack-2026-01-01T00-00-00-000Z\.wav$/,
+				),
 				expect.any(ArrayBuffer),
 			);
 		});
@@ -623,7 +637,7 @@ describe('RecordingFinalizer', () => {
 				createTarget({ segmentPaths: ['b-pcm.tmp'] }),
 			];
 
-			await finalizer.saveRecording(targets, 'stamp', null);
+			await finalizer.saveRecording(targets, null);
 
 			expect(jest.mocked(mixPcmTracksToWav)).not.toHaveBeenCalled();
 			// The resolved target format and the session bitrate are
@@ -661,7 +675,6 @@ describe('RecordingFinalizer', () => {
 					createTarget({ segmentPaths: ['a.tmp'] }),
 					createTarget({ segmentPaths: ['b.tmp'] }),
 				],
-				'stamp',
 				null,
 			);
 			return at(jest.mocked(mergeAudioTracks).mock.calls, 0)[7];
@@ -731,7 +744,7 @@ describe('RecordingFinalizer', () => {
 			];
 
 			await expect(
-				finalizer.saveRecording(targets, 'stamp', null),
+				finalizer.saveRecording(targets, null),
 			).rejects.toThrow(/cannot exceed 4 GB/);
 
 			expect(jest.mocked(mergeAudioTracks)).not.toHaveBeenCalled();
@@ -751,7 +764,7 @@ describe('RecordingFinalizer', () => {
 				createTarget({ segmentPaths: ['b-pcm.tmp'] }),
 			];
 
-			await finalizer.saveRecording(targets, 'stamp', null);
+			await finalizer.saveRecording(targets, null);
 
 			expect(jest.mocked(mixPcmTracksToWav)).not.toHaveBeenCalled();
 			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalled();
@@ -768,7 +781,7 @@ describe('RecordingFinalizer', () => {
 				createTarget({ segmentPaths: ['b.tmp'] }),
 			];
 
-			await finalizer.saveRecording(targets, 'stamp', null);
+			await finalizer.saveRecording(targets, null);
 
 			// The merged file is the only complete copy of the audio of
 			// segments removed by a partial cleanup: it must never be
@@ -830,11 +843,7 @@ describe('RecordingFinalizer', () => {
 		it('saves the tracks under the ceiling when one track is past it', async () => {
 			const targets = twoTracksFirstPastTheCeiling();
 
-			const result = await finalizer.saveRecording(
-				targets,
-				'stamp',
-				null,
-			);
+			const result = await finalizer.saveRecording(targets, null);
 
 			expect(result.audioPaths).toEqual([
 				expect.stringMatching(/recording-Mono-stamp\.wav$/),
@@ -849,7 +858,7 @@ describe('RecordingFinalizer', () => {
 		it('names the refused track and leaves its segments on disk', async () => {
 			const targets = twoTracksFirstPastTheCeiling();
 
-			await finalizer.saveRecording(targets, 'stamp', null);
+			await finalizer.saveRecording(targets, null);
 
 			expect(
 				getNotices().some(

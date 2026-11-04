@@ -9,6 +9,7 @@ import {
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
 	DEFAULT_SPLIT_CHUNK_MINUTES,
+	DEFAULT_FILE_NAME_TEMPLATE,
 	DEFAULT_SPLIT_PART_SUFFIX,
 	DEFAULT_TRANSCRIBE_CHUNK_MB,
 	DEFAULT_OPENAI_BASE_URL,
@@ -361,8 +362,10 @@ export interface AudioRecorderSettings {
 	saveNearActiveFile: boolean;
 	/** Optional subfolder (relative to active file directory) */
 	activeFileSubfolder: string;
-	/** Prefix for recorded file names */
+	/** Prefix for recorded file names, the `{{prefix}}` template variable */
 	filePrefix: string;
+	/** Template the recorded file names are rendered from */
+	fileNameTemplate: string;
 	/** Hotkey for start/stop recording */
 	startStopHotkey: string;
 	/** Hotkey for pause */
@@ -989,6 +992,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	saveNearActiveFile: false,
 	activeFileSubfolder: '',
 	filePrefix: 'recording',
+	fileNameTemplate: DEFAULT_FILE_NAME_TEMPLATE,
 	startStopHotkey: '',
 	pauseHotkey: '',
 	resumeHotkey: '',

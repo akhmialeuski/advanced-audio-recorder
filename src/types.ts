@@ -200,8 +200,26 @@ export interface RecordingSessionConfig {
 	 * keeps every track exactly as it was captured.
 	 */
 	trackMix: readonly TrackMix[];
+	/** What the file name template is filled from, fixed at the start. */
+	fileName: RecordingNameContext;
 	/** Whether the merge brings the tracks to a common level first. */
 	alignTrackLevels: boolean;
+}
+
+/**
+ * The values a session's file names are rendered from. They are read once at
+ * the start, so a settings edit or a note switch during a long recording
+ * cannot give the tracks and the merged file different names.
+ */
+export interface RecordingNameContext {
+	/** The template saved in the settings when the session started. */
+	readonly template: string;
+	/** The File prefix setting, the `{{prefix}}` variable. */
+	readonly prefix: string;
+	/** Name of the note the recording started in, empty when there is none. */
+	readonly noteName: string;
+	/** When the session started, in epoch milliseconds. */
+	readonly startedAt: number;
 }
 
 /**

@@ -41,6 +41,10 @@ describe('Settings', () => {
 			{ key: 'saveNearActiveFile', value: false },
 			{ key: 'activeFileSubfolder', value: '' },
 			{ key: 'filePrefix', value: 'recording' },
+			{
+				key: 'fileNameTemplate',
+				value: '{{prefix}}-{{source}}-{{timestamp}}',
+			},
 			{ key: 'startStopHotkey', value: '' },
 			{ key: 'pauseHotkey', value: '' },
 			{ key: 'resumeHotkey', value: '' },
@@ -81,6 +85,7 @@ describe('Settings', () => {
 				'saveNearActiveFile',
 				'activeFileSubfolder',
 				'filePrefix',
+				'fileNameTemplate',
 				'startStopHotkey',
 				'pauseHotkey',
 				'resumeHotkey',

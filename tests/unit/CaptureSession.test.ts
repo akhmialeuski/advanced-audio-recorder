@@ -50,6 +50,8 @@ function requestWith(overrides: {
 }): CaptureSessionRequest {
 	return {
 		sessionId: SESSION_ID,
+		noteName: '',
+		startedAt: 0,
 		settings: {
 			...DEFAULT_SETTINGS,
 			bitrate: overrides.bitrate,
@@ -259,6 +261,8 @@ describe('the width a session records at', () => {
 	function pcmSessionWith(recordingBitDepth: unknown): CaptureSession {
 		return createCaptureSession({
 			sessionId: SESSION_ID,
+			noteName: '',
+			startedAt: 0,
 			settings: {
 				...DEFAULT_SETTINGS,
 				recordingBitDepth,

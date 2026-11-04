@@ -47,6 +47,13 @@
    each event name separately; the mock only has to accept any handler. */
 
 import { StateField } from '@codemirror/state';
+import momentLib from 'moment';
+
+/**
+ * Obsidian's `moment` is the moment package itself, so the real one stands in:
+ * a test of a date format then checks Moment's output, not a double's.
+ */
+export const moment = momentLib;
 
 /** A subscriber registered through {@link Events.on}. */
 export type EventCallback = (...args: any[]) => void;

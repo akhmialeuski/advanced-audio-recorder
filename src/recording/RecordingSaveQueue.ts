@@ -38,8 +38,6 @@ export interface RecordingSnapshot {
 	readonly session: RecordingSessionConfig;
 	/** The session's tracks, with their segment and part paths. */
 	readonly targets: RecordingTarget[];
-	/** Session timestamp the merged file is named after. */
-	readonly timestamp: string | null;
 	/** Where the file links go. */
 	readonly insertionContext: InsertionContext | null;
 	/** The markers dropped during the session. */
@@ -234,7 +232,6 @@ export class RecordingSaveQueue {
 			finalizer.reportProgress(0, 'Saving...');
 			const finalized = await finalizer.saveRecording(
 				snapshot.targets,
-				snapshot.timestamp,
 				snapshot.insertionContext,
 			);
 			const result: RecordingSaveResult = {

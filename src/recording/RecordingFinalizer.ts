@@ -8,7 +8,7 @@
 
 import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
-import { sessionTimestamp } from '../utils/ids';
+import { renderRecordingFileName } from './recordingFileName';
 import type {
 	InsertionContext,
 	RecordingSaveResult,
@@ -19,7 +19,11 @@ import type {
 } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { OutputMode } from '../types';
-import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
+import {
+	PLUGIN_LOG_PREFIX,
+	FORMAT_WAV,
+	MERGED_FILE_SOURCE_NAME,
+} from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
 	assembleWavFromPcmSegmentFiles,
@@ -143,17 +147,14 @@ export class RecordingFinalizer {
 	 * produces the final file(s) - per track or mixed - and inserts the
 	 * note links.
 	 * @param targets - Recording targets of the session
-	 * @param timestamp - Session timestamp for the merged file name
 	 * @param insertionContext - Where to insert the file links
 	 * @returns The written audio paths and the note the links landed in
 	 */
 	async saveRecording(
 		targets: RecordingTarget[],
-		timestamp: string | null,
 		insertionContext: InsertionContext | null,
 	): Promise<RecordingSaveResult> {
 		const session = this.requireSession();
-		const effectiveTimestamp = timestamp ?? sessionTimestamp();
 		const fileLinks: string[] = [];
 		const trackFiles: TrackFileGroup[] = [];
 
@@ -225,7 +226,9 @@ export class RecordingFinalizer {
 					this.mergePlacement(),
 				);
 				this.reportProgress(60, 'Writing file...');
-				const fileName = `${this.settings.filePrefix}-multitrack-${effectiveTimestamp}.${targetFormat}`;
+				const fileName = `${renderRecordingFileName(session, {
+					source: MERGED_FILE_SOURCE_NAME,
+				})}.${targetFormat}`;
 				const filePath = await saveAudioFile(
 					mergedAudio,
 					fileName,

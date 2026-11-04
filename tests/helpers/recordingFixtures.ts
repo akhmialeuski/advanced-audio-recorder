@@ -67,6 +67,12 @@ export function createSession(
 		partMinutes: 15,
 		partSuffix: 'part',
 		trackMix: [],
+		fileName: {
+			template: '{{prefix}}-{{source}}-{{timestamp}}',
+			prefix: 'recording',
+			noteName: '',
+			startedAt: Date.UTC(2026, 0, 1),
+		},
 		alignTrackLevels: false,
 		...overrides,
 	};

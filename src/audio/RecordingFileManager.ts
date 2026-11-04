@@ -27,6 +27,19 @@ export function getActiveFileDirectory(app: App): string {
 }
 
 /**
+ * Returns the name of the currently active Markdown note.
+ * @param app - Obsidian App instance
+ * @returns The note's name without extension, or an empty string when no
+ * Markdown note is active
+ */
+export function getActiveNoteName(app: App): string {
+	const activeFile = app.workspace.getActiveFile();
+	return activeFile?.extension.toLowerCase() === 'md'
+		? activeFile.basename
+		: '';
+}
+
+/**
  * Resolves the base save directory based on plugin settings.
  * @param settings - Plugin settings
  * @param app - Obsidian App instance
