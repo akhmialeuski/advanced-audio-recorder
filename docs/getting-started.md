@@ -146,6 +146,8 @@ When **Save recordings near active file** is on, an optional **Active file subfo
 
 You can also turn on **Insert at original position** so the embed link lands at the cursor position where recording started, even if you navigate to another note while recording.
 
+To put the note's name or the date into the file name, change **File name template** - see [Naming recordings](recording.md#naming-recordings).
+
 Configure all of this under **Settings > Advanced Audio Recorder > File storage** - see [File storage](settings-reference.md#file-storage) for every field.
 
 ---

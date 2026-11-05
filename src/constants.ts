@@ -201,6 +201,15 @@ export const MIN_SPLIT_CHUNK_MINUTES = 1;
 /** Maximum allowed split part duration in minutes. */
 export const MAX_SPLIT_CHUNK_MINUTES = 180;
 
+/**
+ * Default file name template. It spells out the name every recording carried
+ * before names became a template, so an upgrade renames nothing.
+ */
+export const DEFAULT_FILE_NAME_TEMPLATE = '{{prefix}}-{{source}}-{{timestamp}}';
+
+/** Source name the merged file of a multi-track session is named after. */
+export const MERGED_FILE_SOURCE_NAME = 'multitrack';
+
 /** Default filename suffix for split parts (e.g. "-part1", "-part2"). */
 export const DEFAULT_SPLIT_PART_SUFFIX = 'part';
 

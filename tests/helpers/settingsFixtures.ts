@@ -94,6 +94,7 @@ export function fullyPopulatedSettings(): Omit<
 		saveNearActiveFile: true,
 		activeFileSubfolder: 'Audio',
 		filePrefix: 'audio',
+		fileNameTemplate: '{{prefix}}-{{source}}-{{timestamp}}',
 		startStopHotkey: 'Ctrl+R',
 		pauseHotkey: 'Ctrl+P',
 		resumeHotkey: 'Ctrl+E',

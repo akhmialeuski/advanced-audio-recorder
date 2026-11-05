@@ -324,6 +324,69 @@ describe('RecordingManager', () => {
 
 			await manager.stopRecording({ untilSaved: true });
 		});
+
+		it('names each track from the file name template and the active note', async () => {
+			jest.mocked(getAudioSourceName)
+				.mockResolvedValueOnce('DeviceA')
+				.mockResolvedValueOnce('DeviceB');
+
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				enableMultiTrack: true,
+				useSourceNamesForTracks: true,
+				outputMode: 'multiple',
+				fileNameTemplate: '{{notename}}-{{source}}-{{track}}',
+			};
+			manager = recordingManagerOver(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
+				fileInFolder('Songs/Chorus idea.md'),
+			);
+			setupTwoTrackRecording([
+				{ trackNumber: 1, deviceId: 'device-a', channelMode: 'source' },
+				{ trackNumber: 2, deviceId: 'device-b', channelMode: 'source' },
+			]);
+
+			await manager.startRecording();
+
+			expect(getTargets().map((target) => target.fileBaseName)).toEqual([
+				'Chorus idea-DeviceA-1',
+				'Chorus idea-DeviceB-2',
+			]);
+
+			await manager.stopRecording({ untilSaved: true });
+		});
+
+		it('numbers tracks that a template names alike', async () => {
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				enableMultiTrack: true,
+				useSourceNamesForTracks: true,
+				outputMode: 'multiple',
+				fileNameTemplate: '{{prefix}}',
+			};
+			manager = recordingManagerOver(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+			setupTwoTrackRecording([
+				{ trackNumber: 1, deviceId: 'device-a', channelMode: 'source' },
+				{ trackNumber: 2, deviceId: 'device-b', channelMode: 'source' },
+			]);
+
+			await manager.startRecording();
+
+			expect(getTargets().map((target) => target.fileBaseName)).toEqual([
+				'recording',
+				'recording-2',
+			]);
+
+			await manager.stopRecording({ untilSaved: true });
+		});
 	});
 
 	describe('single mode output format handling', () => {

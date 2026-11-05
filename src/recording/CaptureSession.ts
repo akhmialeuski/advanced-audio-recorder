@@ -16,6 +16,7 @@
  */
 
 import {
+	DEFAULT_FILE_NAME_TEMPLATE,
 	DEFAULT_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
 	FORMAT_WEBM,
@@ -68,6 +69,10 @@ export interface CaptureSessionPlan {
 export interface CaptureSessionRequest {
 	/** The session's journal id, its start timestamp. */
 	readonly sessionId: string;
+	/** Name of the note the recording started in, empty when there is none. */
+	readonly noteName: string;
+	/** When the session started, in epoch milliseconds. */
+	readonly startedAt: number;
 	/** Live settings, read once here and never again for this session. */
 	readonly settings: AudioRecorderSettings;
 	/** Number of acquired audio streams. */
@@ -176,6 +181,12 @@ export function createCaptureSession(
 		partSuffix: sanitizePartSuffix(settings.splitPartSuffix),
 		channelModes: Object.freeze(channelModes),
 		trackMix,
+		fileName: Object.freeze({
+			template: settings.fileNameTemplate,
+			prefix: settings.filePrefix,
+			noteName: request.noteName,
+			startedAt: request.startedAt,
+		}),
 		alignTrackLevels: merging && alignTrackLevels,
 	});
 	return { session, autoSplitSkipped };
@@ -199,5 +210,11 @@ export const IDLE_CAPTURE_SESSION: CaptureSession = Object.freeze({
 	partSuffix: DEFAULT_SPLIT_PART_SUFFIX,
 	channelModes: Object.freeze([]),
 	trackMix: Object.freeze([]),
+	fileName: Object.freeze({
+		template: DEFAULT_FILE_NAME_TEMPLATE,
+		prefix: '',
+		noteName: '',
+		startedAt: 0,
+	}),
 	alignTrackLevels: false,
 });

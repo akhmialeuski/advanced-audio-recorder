@@ -63,6 +63,9 @@ import { PartRotationController } from './PartRotationController';
 import { SessionJournal } from './SessionJournal';
 import { computePcmPartLimitBytes } from './AudioSplitter';
 import { captureInsertionContext } from './NoteInserter';
+import { getActiveNoteName } from '../audio/RecordingFileManager';
+import { renderRecordingFileName } from './recordingFileName';
+import { uniqueName } from '../utils/fileNames';
 import { sessionTimestamp } from '../utils/ids';
 import {
 	createCaptureSession,
@@ -97,7 +100,6 @@ export class RecordingManager {
 	private onStatusChange: (status: RecordingStatus) => void;
 	private debugLogger: DebugLogger;
 	private recordingStartTime: number = 0;
-	private recordingTimestamp: string | null = null;
 	private totalChunks: number = 0;
 	/** Total bytes of audio data observed this session (live size). */
 	private recordedBytes: number = 0;
@@ -421,9 +423,11 @@ export class RecordingManager {
 				});
 			}
 
-			this.recordingTimestamp = sessionTimestamp();
+			const startedAt = new Date();
 			const plan = createCaptureSession({
-				sessionId: this.recordingTimestamp,
+				sessionId: sessionTimestamp(startedAt),
+				noteName: getActiveNoteName(this.app),
+				startedAt: startedAt.getTime(),
 				settings: this.settings,
 				streamCount: streams.length,
 				trackOrder,
@@ -571,7 +575,6 @@ export class RecordingManager {
 		this.releaseCapture('while releasing the session');
 		this.chunkTargets = [];
 		this.trackOrder = [];
-		this.recordingTimestamp = null;
 		this.totalChunks = 0;
 		this.recordedBytes = 0;
 		this.insertionContext = null;
@@ -650,8 +653,17 @@ export class RecordingManager {
 				? `${name}-${String(trackInfos[index]?.trackNumber ?? index + 1)}`
 				: name,
 		);
-		return uniqueNames.map((sourceName) => ({
-			fileBaseName: `${this.settings.filePrefix}-${sourceName}-${this.recordingTimestamp}`,
+		// A template without {{source}} or {{track}} names every track alike,
+		// and targets with one base name overwrite each other's audio.
+		const takenBaseNames = new Set<string>();
+		return uniqueNames.map((sourceName, index) => ({
+			fileBaseName: uniqueName(
+				renderRecordingFileName(this.session, {
+					source: sourceName,
+					track: trackInfos[index]?.trackNumber ?? index + 1,
+				}),
+				takenBaseNames,
+			),
 			sourceName,
 			bufferedChunks: [],
 			bufferedBytes: 0,
@@ -915,7 +927,6 @@ export class RecordingManager {
 			snapshot = {
 				session: this.session,
 				targets: this.chunkTargets,
-				timestamp: this.recordingTimestamp,
 				insertionContext: this.insertionContext,
 				markerDrafts: this.markers.takeDrafts(),
 				startedAt: this.recordingStartTime,

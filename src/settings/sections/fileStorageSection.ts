@@ -3,6 +3,7 @@
  * @module settings/sections/fileStorageSection
  */
 
+import { templateProblem } from '../../recording/recordingFileName';
 import type { AudioRecorderSettings } from '../settingsSchema';
 import { SETTINGS_SECTION_CLASS } from './context';
 import type { SettingDefinitionItem } from 'obsidian';
@@ -45,9 +46,19 @@ export function fileStorageGroup(
 			},
 			{
 				name: 'File prefix',
-				aliases: ['file name', 'filename', 'naming'],
-				desc: 'Filename prefix used for exported recordings.',
+				aliases: ['prefix'],
+				desc: 'The {{prefix}} variable of the file name template.',
 				control: { type: 'text', key: 'filePrefix' },
+			},
+			{
+				name: 'File name template',
+				aliases: ['file name', 'filename', 'naming', 'template'],
+				desc: 'Name of a new recording, by default {{prefix}}-{{source}}-{{timestamp}}. Other variables: {{notename}}, {{track}}, {{date}} and {{time}}. A date or time takes a Moment format, for example {{date:YYYY-MM-DD}}.',
+				control: {
+					type: 'text',
+					key: 'fileNameTemplate',
+					validate: templateProblem,
+				},
 			},
 			{
 				name: 'Insert at original position',
