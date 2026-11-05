@@ -34,6 +34,69 @@ export const MAX_SHOWN_VERSIONS = 10;
  * version cannot be titled one thing here and another there.
  */
 export const RELEASE_NOTES: Readonly<Record<string, string>> = {
+	'2.5.0': `
+This release names recordings from a template, saves them in the background, and tops up a transcript that was inserted into a note. A new **File name template** setting puts the name of the note or the date into a recording's file name. A stopped recording is now written in the background, so the next one can start the moment the last one stops. **Transcribe the parts that failed** now fills the gaps of a transcript that lives in a note. A quick note dictated with Google Gemini costs one request instead of two, and a Gemini transcript of a long recording keeps its timecodes inside the recording. Every cloud request is now sent once, through Obsidian's \`requestUrl\`, so no endpoint bills one transcription twice.
+
+## New: Naming recordings from a template
+
+The **File name template** row under **File storage** takes \`{{prefix}}\`, \`{{notename}}\`, \`{{source}}\`, \`{{track}}\`, \`{{timestamp}}\`, \`{{date}}\` and \`{{time}}\`, in the notation of Obsidian's core Templates plugin. A date or time takes a Moment format after a colon, as in \`{{date:YYYYMMDD}}\` ([#161](https://github.com/akhmialeuski/advanced-audio-recorder/issues/161)).
+
+- \`{{notename}}\` is the note that was active when the recording started, so \`{{notename}}-{{date}}\` gives \`Chorus idea-2026-11-04.webm\`. A variable with nothing to show drops out together with the dash beside it.
+- The default, \`{{prefix}}-{{source}}-{{timestamp}}\`, spells out the name every recording had before, so an update renames nothing for an ordinary **File prefix**. The exception is a prefix that is empty, starts with a space or a dash, ends with a dash or holds two dashes in a row, whose dashes now fold.
+- A template that leaves out both \`{{source}}\` and \`{{track}}\` numbers the tracks of one recording, so none overwrites another. A variable the plugin does not know, a near miss such as \`{{Date}}\` included, is refused in the settings with a message naming it.
+- Characters a path cannot hold become dashes, and dots become dashes in the note name only. A very long note name is cut at its end so the whole name stays within 220 bytes, which a title in Cyrillic reaches sooner than one in Latin letters.
+- The template is read once when a recording starts, so the merged file of a multi-track session is named from the same values as its tracks.
+
+## New: Saving in the background
+
+A stopped recording is now saved in the background ([#151](https://github.com/akhmialeuski/advanced-audio-recorder/pull/151)). The next recording can start the moment the last one stops, so back-to-back meetings are captured from the first second, where earlier versions made the next recording wait for the save of a long one.
+
+- Saves run one at a time in the order the recordings stopped, and the status bar shows the running save and how many wait.
+- The recording panel opens with a **Saving** section whenever a save runs or waits, whatever file is open. It shows the recording being saved with its stage and progress bar, then every recording waiting behind it, each named by its start time and length ([#153](https://github.com/akhmialeuski/advanced-audio-recorder/pull/153)).
+- The command line's \`stop\` answers once the save is queued. With \`wait\` it answers once the file is written, or with the reason the save failed.
+- The microphone is released as soon as the recorders have delivered their last data, so the system's microphone indicator goes off when **Stop** is pressed and not when the file is written ([#150](https://github.com/akhmialeuski/advanced-audio-recorder/pull/150)).
+
+## New: Topping up a transcript inside a note
+
+**Transcribe the parts that failed** could only complete the transcript file, so a run with **Transcript output > Destination** set to **Insert into note** could never be topped up, and a run with **Note and file** left its gap in the note. The recovered lines are now rendered with the templates the note was written with and placed between the lines around the gap by their timecode links ([#158](https://github.com/akhmialeuski/advanced-audio-recorder/pull/158)). Only the lines inside a retried stretch are replaced, the incomplete-transcription callout is rewritten or removed, and the edits made anywhere else in the note stay. Notes written by earlier releases can be topped up too.
+
+A top-up that recovers at least one segment also generates the recording's chapters again from the completed transcript, replacing only generated chapters, so bookmarks and chapters placed by hand stay ([#157](https://github.com/akhmialeuski/advanced-audio-recorder/pull/157)).
+
+## New: Quick notes in one Gemini request
+
+With Google Gemini on both quick note engine rows, a quick note with a profile selected is heard and rewritten in one request instead of two ([#146](https://github.com/akhmialeuski/advanced-audio-recorder/pull/146)). No setting is added or removed.
+
+A quick note dictated with Gemini no longer fails on the first upload after Obsidian starts with "Upload has already been terminated", and its text lands where the cursor stood when the dictation began, even after edits above that spot. A dictation finished while another note is active still lands in the note it was started in, and a notice names that note ([#145](https://github.com/akhmialeuski/advanced-audio-recorder/pull/145)).
+
+## New: Transcription from the command line without a dialog
+
+The command line's \`transcribe\` now runs the same transcription the dialog runs, without opening it. The app shows the run's progress in a notice with a **Cancel**, as it does for \`convert\` and \`split\`, and the chapters the run is set to generate follow it. The dialog, the transcription queue and the command line start a run through one operation, so a queued run that the engine billed before it failed now counts in the session total, and an engine this device cannot run is refused before the file is read ([#155](https://github.com/akhmialeuski/advanced-audio-recorder/pull/155)).
+
+## Fixed
+
+- A cloud request is never sent twice. A request carrying the run's cancel used to go out through \`fetch\` and was sent again through \`requestUrl\` when \`fetch\` failed, so an endpoint that took the body and answered without CORS headers billed one transcription or completion twice. Every engine now uses \`requestUrl\`, on desktop and mobile alike ([#159](https://github.com/akhmialeuski/advanced-audio-recorder/pull/159)).
+- Transcribing a long recording with Google Gemini gave different transcripts on repeated runs and could place lines past the end of the recording, 26:06 in a recording of 24:13. The request now asks for \`MM:SS\` timecodes, which fitted all 10 parts of that recording where seconds drifted in 7 of 10, and every answer is checked against the part it was sent for. An answer that leaves the part or stops more than a minute short is sent once more, and a part that still does not fit keeps the lines inside it and is reported in the note with its reason ([#147](https://github.com/akhmialeuski/advanced-audio-recorder/pull/147)).
+- A recording transcribed from a folder queue with auto chapters set to follow every transcription now gets its chapters, as one transcribed from the dialog already did. The queue waits for each recording's chapters before it starts the next, so it still sends one paid request at a time ([#156](https://github.com/akhmialeuski/advanced-audio-recorder/pull/156)).
+- A quick note started while a long recording was being saved could break that save, which then left its segment files behind and made the next launch offer to recover them ([#150](https://github.com/akhmialeuski/advanced-audio-recorder/pull/150)).
+
+## Changed
+
+- The audio engine, mediabunny, starts on its first conversion, encode or probe instead of at plugin load, and \`main.js\` carries one copy of it instead of two. The bundle shrinks from 3274035 to 1998000 bytes, and the plugin's load up to its constructor drops from 41.16 to 26.63 ms ([#142](https://github.com/akhmialeuski/advanced-audio-recorder/pull/142), [#144](https://github.com/akhmialeuski/advanced-audio-recorder/pull/144)).
+
+## Internal
+
+- Converting and splitting a recording share the steps that finish them, so a source goes to the trash by one rule ([#143](https://github.com/akhmialeuski/advanced-audio-recorder/pull/143)).
+- The palette, the context menus, the command line and the recording panel ask each action's own gate whether it is offered, and every action family has a folder of its own ([#154](https://github.com/akhmialeuski/advanced-audio-recorder/pull/154)).
+- Both type-only import cycles in \`src\` are gone, and CI fails on a new one ([#148](https://github.com/akhmialeuski/advanced-audio-recorder/pull/148)).
+- \`@types/node\` moves to 24.19.2, the Node that Obsidian's Electron bundles ([#160](https://github.com/akhmialeuski/advanced-audio-recorder/pull/160)).
+- The suite is 8069 tests across 337 suites.
+
+## Compatibility
+
+Requires Obsidian 1.14.4+, unchanged. Existing recordings, stored settings, the recorder, and the players are unaffected. Settings written by an earlier version carry no file name template and read as the default, so nothing migrates.
+
+**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.4.1...2.5.0
+`,
 	'2.4.1': `
 This release records the other side of a call on a Mac without extra software, and fixes transcription retries that failed on a WebM recording. **Include system audio** and a **System audio (this computer)** track now capture this computer's own output on **macOS 14.2 or later**, in an Obsidian installer built on Electron 39.6 or later, so BlackHole and a Multi-Output device are no longer needed. A Google Gemini or Mistral Voxtral run that waited out a temporary refusal no longer ends with **"Cannot decode detached ArrayBuffer"**. Files the plugin removes on its own now go where **Settings > Files and links > Deleted files** sends them.
 
@@ -245,64 +308,6 @@ Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existi
 The **What's new** dialog appears from the next update on. A vault that updates into this release records the version without showing the dialog, so these notes are opened with the **Show what's new** command.
 
 **Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.2...2.3.3
-`,
-	'2.3.2': `
-This release moves the text a run applies out of the settings and into the vault, records a call from one switch, and widens a WAV sample. Every profile - a glossary, a participant roster, chapter guidance, a post-processing prompt - can now **keep its body in an ordinary note**, edited in the editor, synced and versioned like anything else, and read again as a transcription starts. **Include system audio** pairs the microphone with this computer's output into a single mixed file without configuring a track. WAV recording gains a **Bit depth** row with twenty-four bit integer and thirty-two bit float. Two diarized speakers can be **merged under one name**, the ribbon button is told apart from Obsidian's own, and a fresh vault opens the enhanced player straight away. Existing recordings, stored settings, and the recorder are unaffected.
-
-## New: Profile bodies from vault notes
-
-- Every profile page carries a **Source** row with **Typed text** and **Note**. Once a note is picked, the profile reads its text from there, so a glossary of a hundred terms lives in the editor: synced, versioned, linked to its project, and editable from a phone.
-- A transcription, a chapter generation, and the **Rename speakers** dialog read the notes they apply as they start, so an edit made a moment before a run reaches it. A note open in the editor is read from the editor, every other note from the vault.
-- Picking a note for a profile that holds typed text asks first, because that text exists nowhere else once the note is read. An empty note is offered the typed text, and any other note is confirmed.
-- A note that is missing, and a note that cannot be read, both leave the profile on the text last read from it, and every screen says so: \`Uses the text last read from Glossaries/Standup.md, which is missing.\` A catalogue entry names the origin beside what it holds, such as \`In use, note, 12 names\`.
-- Terms and names are read the way Markdown renders the note. Headings, tables, fenced code, comments, and callout titles are skipped; bullets, quote markers, numbers, and checkboxes are stripped; a link yields its label and a wikilink its alias. Prompts are read verbatim.
-- Names applied in the **Rename speakers** dialog are appended to a roster note, continuing the list style of its last line and leaving the rest of the note untouched.
-
-## New: Recording a call from one switch
-
-**Include system audio** under **Audio input** pairs the microphone with the computer's own output and mixes both into one file, so the remote participants of a Zoom, Teams, or Meet call reach the recording without a virtual cable and without setting up tracks. The pairing writes a single mixed file whatever the stored output mode says, and it stands down while multi-track recording is on, because a track already states what it records and one session captures the system output once. The switch needs a desktop build that can open two captures at once, and the row says so where it cannot.
-
-## New: WAV at 24-bit and 32-bit float
-
-**Bit depth** under **Output format** offers sixteen bit integer, the width every WAV recording had until now, twenty-four bit integer, and thirty-two bit float. Sixteen bits are enough for speech at a level set carefully in advance, which is the one thing a meeting does not allow; twenty-four leave room under a speaker quieter than expected; thirty-two floating point keep a sample that ran past full scale, so an overloaded take is recovered by normalizing the finished file. A wider sample costs file size in proportion.
-
-The width travels with the audio through every link that used to treat sixteen bits as a fact: the capture worklet, the write queue, the segment assembly, the streaming mixer, and the byte-level split. A float recording carries the IEEE format tag with the \`fact\` chunk the WAVE specification requires, the recovery journal records the width per track so a segment survives a crash and a settings change, and the row is offered only on devices that record WAV as raw PCM.
-
-## New: Merging two diarized speakers
-
-Diarization routinely splits one person across two labels. Assigning the same name to both now merges them, after a confirmation that says the merge cannot be walked back. A name equal to another speaker's engine label is still refused, an existing merge is not confirmed again, and a merge that is later split leaves the already-rewritten text reported as ambiguous rather than rewritten a second time.
-
-## Settings and the ribbon
-
-- The ribbon button draws \`mic-vocal\` and names itself **Advanced Audio Recorder: start/stop recording** from the manifest, so it is told apart from the core **Audio recorder**, whose button carries the same glyph and the same tooltip. The README and the getting-started guide open by recommending that the core plugin be switched off or its button hidden.
-- The enhanced player is enabled in a fresh vault. A vault whose \`data.json\` already stores the value keeps what it stores.
-- The **Audio bitrate** and **Recording format** rows rebuild when the channel layout moves, so the rates and formats they offer are the ones this device's encoder accepts for the capture that will run.
-
-## Fixed
-
-- A Whisper-compatible endpoint may omit a word's end time, and the word mapper read that as a zero, which pointed the word's interval backwards: duration came out negative, a sort by end time scrambled the order, and mapping a playback position onto a word landed at the start of the file. A word with no end time now ends at its own start.
-- A Deepgram model id typed as \`Nova-3\` was biased as an older generation, and a \`Whisper-Medium\` was biased although it accepts no bias at all, because the generation was read from the id literally. The family is now read from a lower-cased copy, which reaches the request itself, the dictionary plan and its notice, and the warning before an advanced two-pass run.
-- Moving **Recording channels** from mono to stereo left the bitrate row offering the mono list, with values the encoder refuses, until the settings tab was opened afresh. All seven settings that move the channel count now rebuild the rows that read it.
-
-## Documentation
-
-The documentation was audited against the source, which found about a hundred claims that had drifted since the September releases: the player's control row, the timecode link format, the decode ceiling, the file actions, the format dropdown's behaviour, and the transcription pages that still described a flat Transcription section although every engine has its own page. Twenty-five figures were re-rendered from the current code, the multi-track figures now show the per-track source, channel, and processing rows, and the settings sections each carry a current figure. The ninety-four figure captions are dropped, because GitHub renders a caption line beside its image rather than under it and the alt text already carried the description.
-
-## Internal
-
-- Twenty-two closed value sets - channel modes, profile kinds, marker colours, queue states, transcript formats, and the rest - state their members as named constants instead of bare unions and loose strings. Every stored string is byte-identical, so nothing written by an earlier version reads differently.
-- The LICENSE names the actual author.
-- The suite is 6007 tests across 242 suites.
-
-## Compatibility
-
-Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existing recordings, stored settings, the recorder, and the players are unaffected. Settings written by an earlier version carry no profile note, no system-audio pairing, and no bit depth, and they are read as typed text, the switch off, and sixteen bit, so nothing migrates.
-
-Two behaviours change for a vault that already holds data. A glossary or roster typed into the settings is now read the way Markdown renders it, so a term written \`3. Liga\` yields \`Liga\` and \`__init__\` yields \`init\`; terms typed as plain words are unaffected. The enhanced player's default reaches fresh installs only.
-
-The system-audio pairing needs a desktop build that can grant a loopback capture, which is Windows today, and a session holding it starts from the ribbon icon, the command palette, or a hotkey rather than from the command line. The wider WAV sample needs a device that records WAV as raw PCM.
-
-**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.1...2.3.2
 `,
 };
 
