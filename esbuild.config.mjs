@@ -2,6 +2,7 @@ import esbuild from "esbuild";
 import process from "process";
 import { builtinModules as builtins } from "node:module";
 import fs from "fs";
+import { pluginBundle } from "./scripts/bundleOptions.mjs";
 
 const banner =
 	`/*
@@ -90,72 +91,71 @@ const engineFromGlobal = {
 // First passes: the engine and the encoding worker, both inlined into the
 // main bundle as source text. In watch mode they are captured once at
 // startup; restart the dev build after editing the worker or the engine.
-const engineBuild = await esbuild.build({
-	entryPoints: ["src/audio/mediabunnyRuntime.ts"],
-	bundle: true,
-	format: "iife",
-	globalName: ENGINE_GLOBAL,
-	target: "es2022",
-	minify: prod,
-	write: false,
-});
+const engineBuild = await esbuild.build(
+	pluginBundle({
+		entryPoints: ["src/audio/mediabunnyRuntime.ts"],
+		format: "iife",
+		globalName: ENGINE_GLOBAL,
+		minify: prod,
+		write: false,
+	}),
+);
 const audioEngineSource = engineBuild.outputFiles[0].text;
 
-const workerBuild = await esbuild.build({
-	entryPoints: ["src/audio/encodingWorker.ts"],
-	bundle: true,
-	format: "iife",
-	target: "es2022",
-	minify: prod,
-	write: false,
-	metafile: true,
-	define: {
-		__AUDIO_ENGINE_SOURCE__: "undefined",
-	},
-	plugins: [engineFromGlobal, refuseEngineCopy],
-});
+const workerBuild = await esbuild.build(
+	pluginBundle({
+		entryPoints: ["src/audio/encodingWorker.ts"],
+		format: "iife",
+		minify: prod,
+		write: false,
+		metafile: true,
+		define: {
+			__AUDIO_ENGINE_SOURCE__: "undefined",
+		},
+		plugins: [engineFromGlobal, refuseEngineCopy],
+	}),
+);
 const encodingWorkerSource = workerBuild.outputFiles[0].text;
 
-const context = await esbuild.context({
-	banner: {
-		js: banner,
-	},
-	entryPoints: ["src/main.ts"],
-	bundle: true,
-	define: {
-		__AUDIO_ENGINE_SOURCE__: JSON.stringify(audioEngineSource),
-		__AUDIO_ENGINE_GLOBAL__: JSON.stringify(ENGINE_GLOBAL),
-		__ENCODING_WORKER_SOURCE__: JSON.stringify(encodingWorkerSource),
-	},
-	metafile: true,
-	external: [
-		"obsidian",
-		"electron",
-		"@codemirror/autocomplete",
-		"@codemirror/collab",
-		"@codemirror/commands",
-		"@codemirror/language",
-		"@codemirror/lint",
-		"@codemirror/search",
-		"@codemirror/state",
-		"@codemirror/view",
-		"@lezer/common",
-		"@lezer/highlight",
-		"@lezer/lr",
-		...builtins],
-	format: "cjs",
-	// Obsidian desktop runs on a current Electron/Chromium; es2022
-	// avoids transpiling class fields and top-level await helpers
-	target: "es2022",
-	logLevel: "info",
-	sourcemap: prod ? false : "inline",
-	treeShaking: true,
-	// Minified production bundle loads faster; the source stays
-	// readable in this repository
-	minify: prod,
-	outfile: "dist/main.js",
-	plugins: [copyStaticFiles, refuseEngineCopy],
-});
+const context = await esbuild.context(
+	pluginBundle({
+		banner: {
+			js: banner,
+		},
+		entryPoints: ["src/main.ts"],
+		define: {
+			__AUDIO_ENGINE_SOURCE__: JSON.stringify(audioEngineSource),
+			__AUDIO_ENGINE_GLOBAL__: JSON.stringify(ENGINE_GLOBAL),
+			__ENCODING_WORKER_SOURCE__: JSON.stringify(encodingWorkerSource),
+		},
+		metafile: true,
+		external: [
+			"obsidian",
+			"electron",
+			"@codemirror/autocomplete",
+			"@codemirror/collab",
+			"@codemirror/commands",
+			"@codemirror/language",
+			"@codemirror/lint",
+			"@codemirror/search",
+			"@codemirror/state",
+			"@codemirror/view",
+			"@lezer/common",
+			"@lezer/highlight",
+			"@lezer/lr",
+			...builtins,
+		],
+		format: "cjs",
+		logLevel: "info",
+		sourcemap: prod ? false : "inline",
+		treeShaking: true,
+		// Minified production bundle loads faster; the source stays
+		// readable in this repository
+		minify: prod,
+		outfile: "dist/main.js",
+		plugins: [copyStaticFiles, refuseEngineCopy],
+	}),
+);
 
 if (prod) {
 	await context.rebuild();

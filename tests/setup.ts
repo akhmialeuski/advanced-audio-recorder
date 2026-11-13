@@ -5,25 +5,15 @@
 
 import { TextDecoder, TextEncoder } from 'util';
 
-import { addObsidianDomExtensions } from './mocks/obsidian';
+// Jest's realm lacks Symbol.dispose and Symbol.asyncDispose, as the oldest
+// Electron Obsidian runs on does. Every bundle the plugin ships provides them
+// from this module, injected ahead of its other modules; the suite takes the
+// same module first, rather than a copy that could pass where it fails.
+// tests/integration/legacyDisposeRuntime.test.ts checks the bundles
+// themselves, in realms without them.
+import 'src/platform/disposeSymbols';
 
-// Explicit resource management (`using`/`await using`) lowers through
-// tslib helpers that require the well-known dispose symbols; jest's
-// sandboxed global may lack them.
-const symbolWithDispose = Symbol as {
-	dispose?: symbol;
-	asyncDispose?: symbol;
-};
-if (typeof symbolWithDispose.dispose === 'undefined') {
-	Object.defineProperty(Symbol, 'dispose', {
-		value: Symbol.for('Symbol.dispose'),
-	});
-}
-if (typeof symbolWithDispose.asyncDispose === 'undefined') {
-	Object.defineProperty(Symbol, 'asyncDispose', {
-		value: Symbol.for('Symbol.asyncDispose'),
-	});
-}
+import { addObsidianDomExtensions } from './mocks/obsidian';
 
 if (typeof globalThis.TextDecoder === 'undefined') {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis type augmentation requires any
