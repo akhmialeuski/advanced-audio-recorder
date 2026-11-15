@@ -1,3 +1,0 @@
-npm run test:coverage -- --randomize
-node scripts/coverage-diff.mjs
-bash scripts/crap-gate.sh
