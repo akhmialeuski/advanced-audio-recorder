@@ -91,7 +91,7 @@ The **Model** row on the Anthropic page is a dropdown over the saved ids, seeded
 | `claude-opus-5-5`   | **Default.** The recommended flagship; best for nuanced cleanup and quality summaries.  |
 | `claude-sonnet-5-5` | Balanced quality and cost at half the Opus price; a strong everyday choice for cleanup. |
 | `claude-haiku-5-5`  | Fastest and cheapest; good for short transcripts and bulk processing.                   |
-| `claude-fable-5-1`  | The most capable current model, priced above Opus; for the hardest material.            |
+| `claude-fable-5-2`  | The most capable current model, priced above Opus, for the hardest material.            |
 
 - **Catalogue:** the authoritative, current Claude model list is at `https://platform.claude.com/docs/en/about-claude/models/overview`.
 - Model ids change over time. If a seeded id is retired, add the new one exactly as Anthropic publishes it.
@@ -131,7 +131,7 @@ For a deeper explanation of the tasks and prompts, see [LLM post-processing](../
 | **Post-processing engine**     | `Anthropic (Claude)`                                                                        |
 | **Base URL** (Engines page)    | `https://api.anthropic.com/v1` (shipped default)                                            |
 | **Anthropic API key**          | Your `sk-ant-…` key (Anthropic's own field; not shared)                                     |
-| **Model**                      | `claude-opus-5-5` (default) / `claude-sonnet-5-5` / `claude-haiku-5-5` / `claude-fable-5-1` |
+| **Model**                      | `claude-opus-5-5` (default) / `claude-sonnet-5-5` / `claude-haiku-5-5` / `claude-fable-5-2` |
 | **Task**                       | `Clean up` (default) / `Summarize` / `Translate` / `Custom`                                 |
 | **Max output tokens**          | `4096` default; range `512`-`200000`                                                        |
 

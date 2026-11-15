@@ -135,11 +135,11 @@ Google's multimodal `generateContent` API. Audio up to 14 MB travels inline in t
 
 Settings to fill:
 
-| Setting                   | Description                                                                                                                    | Default                                     |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| **Base URL**              | Gemini API base (no version segment).                                                                                          | `https://generativelanguage.googleapis.com` |
-| **Google Gemini API key** | Your Gemini key. Kept in Obsidian's keychain on this device.                                                                   | -                                           |
-| **Model**                 | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `gemini-3.8-flash`, `gemini-4-argon`). | `gemini-3.8-flash`                          |
+| Setting                   | Description                                                                                                                       | Default                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| **Base URL**              | Gemini API base (no version segment).                                                                                             | `https://generativelanguage.googleapis.com` |
+| **Google Gemini API key** | Your Gemini key. Kept in Obsidian's keychain on this device.                                                                      | -                                           |
+| **Model**                 | Model id in use, picked from the ids the **Model catalogue** entry below it holds (e.g. `gemini-4-hydrogen`, `gemini-3.8-flash`). | `gemini-4-hydrogen`                         |
 
 Behavior and limits:
 
@@ -604,9 +604,9 @@ Below the breakdown, a **Check current pricing** line links straight to the pric
 
 After transcription, you can optionally pass the transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, **translate** it into another language, or apply a **custom instruction**. Five providers are available, each with its own default model, and OpenAI is the one selected out of the box:
 
-- OpenAI runs `gpt-6.1-sol` by default.
+- OpenAI runs `gpt-6.1-terra` by default.
 - Anthropic runs `claude-opus-5-5` by default.
-- Google Gemini runs `gemini-3.8-flash` by default.
+- Google Gemini runs `gemini-4-hydrogen` by default.
 - Mistral runs `mistral-medium-latest` by default.
 - DeepSeek runs `deepseek-flash` by default.
 

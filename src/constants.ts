@@ -455,7 +455,7 @@ export const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
  * gains ids worth offering, which tops up the saved lists once: a list stays
  * the user's to edit, so an id deleted after that stays deleted.
  */
-export const MODEL_SEED_GENERATION = 3;
+export const MODEL_SEED_GENERATION = 4;
 
 /**
  * Seed model ids for the OpenAI-compatible Whisper API. They populate the
@@ -591,7 +591,15 @@ export const DEFAULT_VOXTRAL_MODEL = 'voxtral-mini-latest';
  * Seed Voxtral model ids for the model picker on first run; the list is
  * user-editable. Only the batch transcription catalogue is seeded: the
  * realtime model takes a streaming connection and refuses `diarize`, so it
- * belongs to live transcription rather than to this engine. See
+ * belongs to live transcription rather than to this engine.
+ *
+ * The Voxtral 3 family (`voxtral-mini-transcribe-3-0`,
+ * `voxtral-small-transcribe-3-0`, October 20, 2026) is left out as of November
+ * 2026: it is in Public Preview, and Mistral's own pages disagree on the id
+ * (`voxtral-mini-transcribe-3` in the sample code), so a seed could name an id
+ * the endpoint refuses. Voxtral Mini Transcribe 2 is deprecated since October
+ * 31, 2026 and retires April 30, 2027, and the changelog has not moved
+ * `voxtral-mini-latest` off it, so the alias stays the seed until it does. See
  * {@link VOXTRAL_MODELS_DOC_URL} for the authoritative, current list.
  */
 export const VOXTRAL_MODEL_SUGGESTIONS = ['voxtral-mini-latest'];
@@ -683,24 +691,28 @@ export const DEFAULT_GEMINI_BASE_URL =
 	'https://generativelanguage.googleapis.com';
 
 /**
- * Default Gemini transcription model id. Moved from `gemini-3.5-flash`, which
- * Google deprecated on October 8, 2026 and now redirects to 3.6 Flash, to
- * `gemini-3.8-flash` (GA September 2026): the newest Flash, accepts audio, the
- * model Google's own audio guide uses, and priced the same as 3.6 Flash.
+ * Default Gemini transcription model id. Moved from `gemini-3.8-flash`, which
+ * Google's catalogue now calls the previous-generation Flash, to
+ * `gemini-4-hydrogen` (GA November 12, 2026): the everyday model of the
+ * current generation, accepts audio, and takes the `low` thinking level every
+ * Gemini request sends. At $1.50 / $7.50 it costs what 3.8 Flash costs once
+ * that model's promotional price ends on January 1, 2027.
  */
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen';
 
 /**
  * Seed Gemini model ids for the model picker on first run; the list is
- * user-editable. Every seed is GA and accepts audio. Flash models are cheaper
- * and fast enough for transcription and lead the list; `gemini-4-argon`
- * (October 2026) is the flagship reasoning model for those who want it.
+ * user-editable. Every seed is GA and accepts audio. `gemini-4-hydrogen` leads
+ * as the everyday pick, the Flash models follow as the cheaper ones, and
+ * `gemini-4-argon` and `gemini-4-carbon` (November 10, 2026, the strongest
+ * reasoning model) close the list for those who want a flagship.
  *
- * Left out as of October 2026, each for a reason a request would meet:
+ * Left out as of November 2026, each for a reason a request would meet:
  * `gemini-3.5-flash` and `gemini-3.7-flash` (deprecated, redirected to a newer
  * Flash), `gemini-2.0-flash` (shut down June 1, 2026), the 2.5 generation
- * (closed to new projects since September 18, 2026, so a fresh key is refused;
- * ids a user saved stay theirs), `gemini-3.5-pro` (still no API id),
+ * (closed to new projects since September 18, 2026, so a fresh key is refused,
+ * and redirected to 3.8 Flash and 3.5 Flash-Lite from December 1, 2026; ids a
+ * user saved stay theirs), `gemini-3.5-pro` (still no API id),
  * `gemini-3.1-pro-preview` (preview), the Live and TTS models (live dialog and
  * speech synthesis, not file transcription), and `gemini-3.5-transcribe`,
  * which takes its own `audioTranscriptionConfig` request and answers in a
@@ -708,10 +720,12 @@ export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
  * authoritative, current list.
  */
 export const GEMINI_MODEL_SUGGESTIONS = [
+	'gemini-4-hydrogen',
 	'gemini-3.8-flash',
 	'gemini-3.6-flash',
 	'gemini-3.5-flash-lite',
 	'gemini-4-argon',
+	'gemini-4-carbon',
 ];
 
 /** Authoritative, current list of Gemini models. */
@@ -875,11 +889,12 @@ export const LLM_PROVIDER_IDS = {
 
 /**
  * Default OpenAI-compatible chat model for LLM post-processing. Moved from
- * `gpt-5.6-sol` to `gpt-6.1-sol` (September 2026), which OpenAI describes as
- * close to the `gpt-6-astra` flagship at a fifth of its price; cleanup and
- * summaries do not need the flagship, which stays in the seed list.
+ * `gpt-6.1-sol` to `gpt-6.1-terra` (October 26, 2026), which OpenAI prices at
+ * $1 / $5, half of Sol, and describes as on par with the `gpt-6-astra`
+ * flagship; cleanup and summaries gain nothing from paying more, and Sol and
+ * Astra stay in the seed list.
  */
-export const DEFAULT_LLM_OPENAI_MODEL = 'gpt-6.1-sol';
+export const DEFAULT_LLM_OPENAI_MODEL = 'gpt-6.1-terra';
 
 /** Default endpoint of the Anthropic account. */
 export const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
@@ -904,7 +919,7 @@ export const ANTHROPIC_LOW_EFFORT = 'low';
  * `claude-opus-4-8`, now a legacy model, to `claude-opus-5-5` (September
  * 2026): the provider's recommended starting point and cheaper than the Opus
  * it replaces. It cannot turn thinking off, which is why every request asks
- * for {@link ANTHROPIC_LOW_EFFORT}; `claude-fable-5-1` above it is priced for
+ * for {@link ANTHROPIC_LOW_EFFORT}; `claude-fable-5-2` above it is priced for
  * the most demanding work rather than everyday cleanup.
  */
 export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-5-5';
@@ -977,14 +992,16 @@ export const LLM_MAX_TOKENS_STEP = 1;
 /**
  * Seed OpenAI chat model ids for the LLM model picker on first run; the list
  * is user-editable. The GPT-6 generation (September 2026) is the current
- * catalog: `gpt-6.1-sol` is the everyday pick, `gpt-6-astra` the flagship for
- * the hardest prompts, and `gpt-6-luna` the cheapest for high volume.
- * `gpt-6-sol` is left out because `gpt-6.1-sol` supersedes it, and the GPT-5.6
- * family no longer leads the catalog, though it is not deprecated and ids a
- * user saved keep working. See {@link OPENAI_MODELS_DOC_URL} for the current
- * list.
+ * catalog: `gpt-6.1-terra` (October 2026) is the everyday pick, `gpt-6.1-sol`
+ * the step above it, `gpt-6-astra` the flagship for the hardest prompts, and
+ * `gpt-6-luna` the cheapest for high volume. The Cyber models are left out as
+ * security-specialised, and `gpt-6-sol` because `gpt-6.1-sol` supersedes it.
+ * The GPT-5.6 family no longer leads the catalog, though it is not deprecated
+ * and ids a user saved keep working. See {@link OPENAI_MODELS_DOC_URL} for the
+ * current list.
  */
 export const LLM_OPENAI_MODEL_SUGGESTIONS = [
+	'gpt-6.1-terra',
 	'gpt-6.1-sol',
 	'gpt-6-astra',
 	'gpt-6-luna',
@@ -994,23 +1011,30 @@ export const LLM_OPENAI_MODEL_SUGGESTIONS = [
  * Seed Anthropic model ids for the LLM model picker on first run; the list is
  * user-editable. The 5.5 generation (September and October 2026) replaces
  * Opus 4.8, Sonnet 5 and Haiku 4.5, which the catalog moved to the legacy
- * tier; `claude-fable-5-1` is the most capable current model but is priced
- * above the Opus tier, so it is listed after the everyday picks. The Mythos
- * models are left out because only verified organisations can call them. See
+ * tier; `claude-fable-5-2` is the most capable current model but is priced
+ * above the Opus tier, so it is listed after the everyday picks. It replaces
+ * `claude-fable-5-1`, which costs more ($10 / $50 against $8 / $40) and stays
+ * served for lists that saved it. The Mythos models are left out because only
+ * verified organisations can call them. See
  * {@link ANTHROPIC_MODELS_DOC_URL} for the current list.
  */
 export const LLM_ANTHROPIC_MODEL_SUGGESTIONS = [
 	'claude-opus-5-5',
 	'claude-sonnet-5-5',
 	'claude-haiku-5-5',
-	'claude-fable-5-1',
+	'claude-fable-5-2',
 ];
 
 /**
  * Seed Mistral chat model ids for the LLM model picker on first run; the list
  * is user-editable. The three `-latest` aliases track the current generation
  * of each tier, so a catalog refresh at the vendor reaches the user without a
- * plugin release. See {@link MISTRAL_MODELS_DOC_URL} for the current list.
+ * plugin release. `mistral-large-4` (October 2026) is not seeded on its own
+ * because it is still in Public Preview. Mistral Medium 3.5 is deprecated
+ * since October 31, 2026 and retires April 30, 2027, and the changelog has not
+ * yet moved `mistral-medium-latest` to a successor, so the default is to be
+ * revisited before that date. See {@link MISTRAL_MODELS_DOC_URL} for the
+ * current list.
  */
 export const LLM_MISTRAL_MODEL_SUGGESTIONS = [
 	'mistral-medium-latest',

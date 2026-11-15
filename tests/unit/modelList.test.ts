@@ -170,4 +170,24 @@ describe('model list settings defaults', () => {
 		expect(merged.llmAnthropicModel).toBe('claude-opus-4-8');
 		expect(merged.geminiModel).toBe('gemini-3.5-flash');
 	});
+
+	it('offers the November 2026 models to a list saved on the October seeds, keeping its choice', () => {
+		const october = {
+			modelSeedGeneration: 3,
+			llmOpenAiModels: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna'],
+			llmOpenAiModel: 'gpt-6.1-sol',
+			geminiModels: ['gemini-3.8-flash', 'gemini-4-argon'],
+			geminiModel: 'gemini-3.8-flash',
+		};
+
+		const merged = mergeSettings(october);
+
+		expect(merged.llmOpenAiModels).toContain('gpt-6.1-terra');
+		expect(merged.geminiModels).toEqual(
+			expect.arrayContaining(['gemini-4-hydrogen', 'gemini-4-carbon']),
+		);
+		expect(merged.llmAnthropicModels).toContain('claude-fable-5-2');
+		expect(merged.llmOpenAiModel).toBe(october.llmOpenAiModel);
+		expect(merged.geminiModel).toBe(october.geminiModel);
+	});
 });

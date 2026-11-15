@@ -386,7 +386,8 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			models: (s) => s.llmOpenAiModels,
 			setModels: (s, ids) => (s.llmOpenAiModels = ids),
 			pickerName: 'Model',
-			pickerDesc: 'Pick an OpenAI model (e.g. gpt-6.1-sol, gpt-6-luna).',
+			pickerDesc:
+				'Pick an OpenAI model (e.g. gpt-6.1-terra, gpt-6-luna).',
 			docLabel: 'OpenAI models',
 			docUrl: OPENAI_MODELS_DOC_URL,
 		},
@@ -440,7 +441,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			setModels: (s, ids) => (s.geminiModels = ids),
 			pickerName: 'Model',
 			pickerDesc:
-				'Pick a Gemini model (e.g. gemini-3.8-flash, gemini-4-argon). Used for transcription and for the post-processing prompts alike; a recording is uploaded via the File API for consistent speaker labels.',
+				'Pick a Gemini model (e.g. gemini-4-hydrogen, gemini-3.8-flash). Used for transcription and for the post-processing prompts alike; a recording is uploaded via the File API for consistent speaker labels.',
 			docLabel: 'Gemini model list',
 			docUrl: GEMINI_MODELS_DOC_URL,
 		},
