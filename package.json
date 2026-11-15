@@ -15,8 +15,9 @@
 		"test:conventions": "node scripts/test-conventions.mjs",
 		"test:clones": "node scripts/clone-check.mjs",
 		"test:crap": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/crap-gate.mjs",
-		"lint": "eslint .",
-		"lint:fix": "eslint . --fix",
+		"lint": "eslint . --suppressions-location .config/eslint-suppressions.json",
+		"lint:fix": "eslint . --fix --suppressions-location .config/eslint-suppressions.json",
+		"lint:scan": "node scripts/review-scan.mjs",
 		"lint:cycles": "madge --circular --warning --extensions ts --ts-config tsconfig.json src",
 		"release:status": "node scripts/release.mjs status",
 		"release:preflight": "node scripts/release.mjs preflight",
@@ -110,7 +111,7 @@
 		}
 	},
 	"nano-staged": {
-		"*.ts": "eslint --fix",
+		"*.ts": "eslint --fix --suppressions-location .config/eslint-suppressions.json",
 		"*.json": "prettier --write"
 	},
 	"dependencies": {

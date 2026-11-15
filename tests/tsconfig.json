@@ -1,0 +1,6 @@
+{
+	// Type-aware linting that discovers the nearest tsconfig.json, as the Obsidian
+	// community review and editors do, finds the suites here. The program is the
+	// one `npm run typecheck` checks, with Jest's globals in scope.
+	"extends": "../tsconfig.eslint.json"
+}

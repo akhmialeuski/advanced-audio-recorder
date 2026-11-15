@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		"rootDir": "./src",
+		"rootDir": ".",
 		"outDir": "./dist",
 		"paths": {
 			"src/*": ["./src/*"]
@@ -27,8 +27,10 @@
 		"isolatedModules": true,
 		"inlineSourceMap": true,
 		"inlineSources": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		"allowJs": true,
+		"checkJs": false
 	},
-	"include": ["src/**/*.ts"],
+	"include": ["src/**/*.ts", "esbuild.config.mjs", "jest.config.mjs"],
 	"exclude": ["node_modules", "tests", "dist"]
 }

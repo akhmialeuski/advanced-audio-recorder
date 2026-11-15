@@ -33,6 +33,9 @@ jobs:
             - name: Lint
               run: npm run lint
 
+            - name: The Obsidian community review can lint the repository
+              run: npm run lint:scan
+
             # madge counts `import type` edges, which ESLint import/no-cycle skips.
             # package.json overrides its typescript peer (^5.4.4) with the project's
             # 6.x until https://github.com/pahen/madge/issues/462 is fixed.

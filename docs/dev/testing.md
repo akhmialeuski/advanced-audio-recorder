@@ -325,7 +325,7 @@ lines, and every function to a CRAP score of 8, which combines its complexity
 with its coverage. `eslint.config.mjs` sets the size limits and enforces them on
 every lint and commit, and `CRAP_THRESHOLD` in `scripts/crap-gate.ts` sets the
 CRAP limit. Debt older than the gate is
-recorded and may only shrink: `eslint-suppressions.json` counts the size
+recorded and may only shrink: `.config/eslint-suppressions.json` counts the size
 violations per file, and `crap-baseline.json` lists the functions over the CRAP
 limit. `scripts/crap-gate.mjs` takes each function's complexity from the ESLint
 Node API, which ignores those suppressions, and its coverage from
@@ -343,9 +343,25 @@ function brought under the CRAP limit stays listed until the baseline is
 rewritten. Both are recorded with the change that earned them:
 
 ```bash
-npx eslint src --prune-suppressions
+npx eslint src --prune-suppressions --suppressions-location .config/eslint-suppressions.json
 npm run test:crap -- --update-baseline
 ```
 
 Neither file is edited to admit new debt. A function over a limit is split or
 tested instead.
+
+**The Obsidian community review** lints every release from the repository root
+with the recommended config of `eslint-plugin-obsidianmd` and its own parser
+options, and never reads `eslint.config.mjs`. Two things make that review abort
+with "The source code review encountered a fatal error". The first is a file
+that no `tsconfig.json` holds, which its type-aware parser cannot place in a
+project. The second is a suppressions file at the root, which ESLint loads by
+default, where the review's rules leave every recorded suppression unused and
+ESLint exits with 2. So `tests/` and `scripts/` each keep a `tsconfig.json`,
+the root one includes the build and Jest configs, and the suppressions live
+under `.config/`. `scripts/review-scan.mjs` runs the review's lint and fails on
+either cause, and CI runs it after the lint:
+
+```bash
+npm run lint:scan
+```

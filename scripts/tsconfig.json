@@ -1,0 +1,13 @@
+{
+	// The project the build, release and CI scripts belong to, so type-aware
+	// linting that discovers the nearest tsconfig.json, as the Obsidian community
+	// review does, can parse them. The JavaScript is parsed and not type-checked.
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "..",
+		"noEmit": true,
+		"allowJs": true,
+		"checkJs": false
+	},
+	"include": ["./*.mjs", "./*.cjs", "./*.ts"]
+}
