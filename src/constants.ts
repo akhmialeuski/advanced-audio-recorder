@@ -562,6 +562,21 @@ export const DEEPGRAM_MODELS_DOC_URL =
 export const DEEPGRAM_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
 
 /**
+ * Diarizer a diarized Deepgram request asks for, through `diarize_model`.
+ *
+ * The boolean `diarize=true` is deprecated and always routes to the v1
+ * diarizer, while batch requests have a v2 one. The official client (Deepgram
+ * SDK 5.20.0, `ListenV1RequestUrl`) declares `diarize_model` as
+ * `'latest' | 'v1' | 'v2'` and says `latest` is currently v2 for batch, and the
+ * endpoint rejects a request that sets both parameters. `latest` follows
+ * Deepgram's own recommendation for new integrations, so a newer GA diarizer
+ * reaches users without a plugin release. The response shape is unchanged: a
+ * speaker index on every word and utterance.
+ * See https://developers.deepgram.com/docs/diarization
+ */
+export const DEEPGRAM_DIARIZE_MODEL = 'latest';
+
+/**
  * Default Mistral API base URL. One account serves both jobs: the Voxtral
  * speech models behind `/audio/transcriptions` and the Mistral chat models
  * behind `/chat/completions`, which is why the version segment is part of the

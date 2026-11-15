@@ -249,7 +249,7 @@ describe('DeepgramProvider per-run switches', () => {
 		});
 	}
 
-	it('asks Deepgram to diarize when the run does', async () => {
+	it('asks for the latest diarizer, never through the deprecated diarize flag', async () => {
 		const calls = capture();
 
 		await nova3().transcribe(payload(), {
@@ -257,7 +257,10 @@ describe('DeepgramProvider per-run switches', () => {
 			wordTimestamps: false,
 		});
 
-		expect(queryOf(calls).get('diarize')).toBe('true');
+		const query = queryOf(calls);
+		expect(query.get('diarize_model')).toBe('latest');
+		// Deepgram rejects a request that sets both parameters.
+		expect(query.has('diarize')).toBe(false);
 	});
 
 	it('leaves diarization out when the run does not', async () => {
@@ -268,7 +271,9 @@ describe('DeepgramProvider per-run switches', () => {
 			wordTimestamps: false,
 		});
 
-		expect(queryOf(calls).has('diarize')).toBe(false);
+		const query = queryOf(calls);
+		expect(query.has('diarize_model')).toBe(false);
+		expect(query.has('diarize')).toBe(false);
 	});
 
 	it('pins the language the run declared', async () => {
