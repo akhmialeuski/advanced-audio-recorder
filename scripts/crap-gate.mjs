@@ -21,7 +21,7 @@ if (!existsSync(COVERAGE)) {
 }
 
 // complexity at 0 makes ESLint report every function with its score. Suppressions stay off, so the size-limit
-// debt recorded in eslint-suppressions.json hides no function.
+// debt recorded in .config/eslint-suppressions.json hides no function.
 const eslint = new ESLint({
 	applySuppressions: false,
 	overrideConfig: { rules: { complexity: ['error', 0] } },

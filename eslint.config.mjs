@@ -222,7 +222,7 @@ export default tseslint.config(
     {
         // The size limits of src/, the only place these numbers are set. Code
         // lines only, so JSDoc never pushes a function or a file over. Debt
-        // that predates the gate is recorded in eslint-suppressions.json and
+        // that predates the gate is recorded in .config/eslint-suppressions.json and
         // may shrink but not grow.
         files: ['src/**/*.ts'],
         rules: {
