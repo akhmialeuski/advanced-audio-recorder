@@ -34,6 +34,32 @@ export const MAX_SHOWN_VERSIONS = 10;
  * version cannot be titled one thing here and another there.
  */
 export const RELEASE_NOTES: Readonly<Record<string, string>> = {
+	'2.5.1': `
+This release fixes transcription on older Obsidian installers and brings the model lists up to the November 2026 provider catalogues. Transcribing a recording no longer fails with **"Object not disposable"** on an Obsidian installer built on an older Electron, such as Electron 25. New users start on cheaper current models, **gpt-6.1-terra** for OpenAI post-processing and **gemini-4-hydrogen** for Gemini, and saved model lists gain the new models once while keeping the model already chosen. Diarized Deepgram transcription moves to Deepgram's current diarizer.
+
+## Fixed
+
+- Transcription failed with "TypeError: Object not disposable" on runtimes that lack \`Symbol.dispose\` and \`Symbol.asyncDispose\`, such as the Electron 25 of older Obsidian installers ([#164](https://github.com/akhmialeuski/advanced-audio-recorder/issues/164)). The plugin, its encoding worker and its audio engine now provide both symbols before any other code runs, so a resource is released under the same key it was registered with ([#165](https://github.com/akhmialeuski/advanced-audio-recorder/pull/165)).
+
+## Changed
+
+- The model lists follow the provider catalogues of November 2026 ([#167](https://github.com/akhmialeuski/advanced-audio-recorder/pull/167)). OpenAI post-processing suggests \`gpt-6.1-terra\`, Gemini suggests \`gemini-4-hydrogen\` and \`gemini-4-carbon\`, and Anthropic offers \`claude-fable-5-2\` in place of \`claude-fable-5-1\`.
+- A new user starts on \`gpt-6.1-terra\` for OpenAI post-processing, half the price of \`gpt-6.1-sol\`, and on \`gemini-4-hydrogen\` for Gemini, which replaces \`gemini-3.8-flash\`, now Google's previous-generation Flash. A model list saved by an earlier version gains the new models once, and the model selected in it stays selected.
+- The cost estimate prices every new model, and \`claude-fable-5-2\` is no longer estimated at the dearer Fable 5.1 rate. \`gemini-4-argon\` and \`gemini-4-carbon\` are priced at the rate Google charges from December 1, 2026, so until November 30 their estimate is twice the bill and stays an upper bound.
+- Diarized Deepgram transcription asks for Deepgram's current diarizer, the v2 batch diarizer today, instead of the deprecated switch that always used v1. Speaker boundaries can differ from an earlier transcript of the same recording.
+
+## Internal
+
+- Every function in \`src\` is held to a cyclomatic complexity of 8, five parameters and 50 code lines, every file to 500 code lines, and every function to a CRAP score of 8 that combines complexity with coverage. Code older than the gate is recorded and may only shrink, and CI runs the check after the coverage run ([#134](https://github.com/akhmialeuski/advanced-audio-recorder/pull/134)).
+- The repository no longer carries a Claude Code hook that only repeated documentation rules held elsewhere ([#166](https://github.com/akhmialeuski/advanced-audio-recorder/pull/166)).
+- The suite is 8110 tests across 340 suites.
+
+## Compatibility
+
+Requires Obsidian 1.14.4+, unchanged. Existing recordings, stored settings, the recorder, and the players are unaffected. A saved model selection is kept, and only a new user starts on the new OpenAI and Gemini defaults.
+
+**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.5.0...2.5.1
+`,
 	'2.5.0': `
 This release names recordings from a template, saves them in the background, and tops up a transcript that was inserted into a note. A new **File name template** setting puts the name of the note or the date into a recording's file name. A stopped recording is now written in the background, so the next one can start the moment the last one stops. **Transcribe the parts that failed** now fills the gaps of a transcript that lives in a note. A quick note dictated with Google Gemini costs one request instead of two, and a Gemini transcript of a long recording keeps its timecodes inside the recording. Every cloud request is now sent once, through Obsidian's \`requestUrl\`, so no endpoint bills one transcription twice.
 
@@ -265,49 +291,6 @@ The dialog had grown tall enough that **Transcribe** needed a scroll to reach. L
 Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existing recordings, stored settings, the recorder, and the players are unaffected. Settings written by an earlier version carry no quick note transcription engine, which then starts on the engine recordings use, so a dictation is transcribed exactly as before until the row is changed. A transcript written by an earlier version has no stored timestamp template, and its lines are read with the current setting.
 
 **Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.3...2.3.4
-`,
-	'2.3.3': `
-This release lets you dictate straight into the note you are writing, clean up a recording while it plays, and pick DeepSeek for post-processing. A **quick note** records a dictation into memory, transcribes it, and inserts the text at the cursor, optionally rewritten by an LLM profile first. The player's control row gains a **Voice boost** switch that runs the audio cleanup stages on the playing audio without writing a file. **DeepSeek** joins the LLM engines, and a **What's new** dialog now greets each update with its notes. Existing recordings, stored settings, and the recorder are unaffected.
-
-## New: Quick notes
-
-- With transcription on, turn on **Enable quick notes** under **Settings > Advanced Audio Recorder > Quick notes**, and a ribbon button with a waveform icon and the **Start/stop quick note** command appear at once. The first press starts a dictation, the second stops it, and the recognized text is inserted at the cursor of the note the dictation was started in.
-- The audio is held in memory only and dropped as soon as the text is ready, whether the dictation succeeded, failed, or was cancelled, so nothing reaches the vault or a sync service.
-- The dictation is transcribed by the engine set up under **Transcription**, in the language it was spoken in: no speaker labels, no word timings, no translation into English.
-- A **quick note profile** rewrites the text with an LLM before it is inserted, for example to tidy it up, turn it into a bulleted list, or format it as a task. Profiles live in their own catalogue, and the rewrite runs on its own **Quick note engine**. With **None**, the default, the text goes in as it was recognized, and a failed rewrite inserts the text as dictated.
-- While a dictation records, the status bar shows it the way it shows a recording, with a stop button, the elapsed time, the size, and the input meter, and then follows each processing stage with a progress bar. On mobile a notice follows the same stages.
-- A dictation is refused before the microphone opens when the engine it needs is not set up, and a dictation and a recording never hold the microphone together. When no note is open to take the text, it is copied to the clipboard.
-
-## New: Voice boost in the player
-
-The player's control row carries a **Voice boost** toggle between the volume slider and **Loop**. It runs the same three stages the **Clean up audio** dialog writes into a \`...-processed.wav\` - the high-pass filter, the noise gate, and loudness leveling - on the audio as it plays, with the values the cleanup settings hold. Nothing is decoded ahead and nothing is written, so one quiet passage is made intelligible without processing the whole recording. The switch applies to every playing recording at once and is offered where the runtime provides the Web Audio nodes it needs. A press with every cleanup stage switched off says where to turn one on instead of lighting the button over unchanged audio.
-
-## New: DeepSeek for post-processing
-
-DeepSeek is a fifth LLM engine, with an endpoint, a key, and a model list of its own on its page under **Transcription > Engines**, and it can be chosen for post-processing, chapter titles, and the advanced context agents. It seeds \`deepseek-flash\`, the default, and \`deepseek-v4-pro\`. DeepSeek offers no audio endpoint, so it is not a transcription engine. The cost estimate prices it at the weekday peak rate, and an off-peak run costs about half. Until now DeepSeek was reachable only by pointing the OpenAI base URL at it, which also moved Whisper API transcription onto an endpoint with no audio support.
-
-## New: What's new after an update
-
-The first run of a new version opens a **What's new** dialog with the notes of every release since the one you were on, newest first. The notes ship inside the plugin, so the dialog answers the same offline, and the **Show what's new** command opens every release on record at any time. **Release notes** under **Settings > Advanced Audio Recorder** switches the dialog off.
-
-## Fixed
-
-- The transcribe dialog put the estimate for the run directly above the session's accumulated spending, and neither figure said what it covered, so a run priced at a few cents beside a session at a few dollars read as a broken calculation. The two figures are now labelled **Estimated total for this run** and **Session spending**.
-- The estimate did not change when the **LLM task** or the advanced two-pass switch changed, although both change what the run costs. Every control of the dialog now re-prices it.
-- A dialog longer than the window scrolled its own title and **Close** button out of view. The title and the button now stay in place and the content scrolls between them.
-
-## Internal
-
-- The suite is 6247 tests across 252 suites, and it now fails a test that changes the shared default settings in place, which is what made coverage depend on the order the tests ran in.
-- A release is cut by \`scripts/release.mjs\`, which refuses a version whose notes the plugin does not carry.
-
-## Compatibility
-
-Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existing recordings, stored settings, the recorder, and the players are unaffected. Quick notes and voice boost are off until switched on, and settings written by an earlier version carry no quick note engine, which then starts on the engine post-processing already uses.
-
-The **What's new** dialog appears from the next update on. A vault that updates into this release records the version without showing the dialog, so these notes are opened with the **Show what's new** command.
-
-**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.2...2.3.3
 `,
 };
 
