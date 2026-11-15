@@ -8,7 +8,10 @@
  * @module transcription/providers/DeepgramProvider
  */
 
-import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
+import {
+	DEEPGRAM_DIARIZE_MODEL,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from '../../constants';
 import { EngineLabel } from '../../providers/providers';
 import {
 	DEEPGRAM_KEYWORDS_LIMIT,
@@ -65,7 +68,7 @@ export class DeepgramProvider implements TranscriptionProvider {
 		// diarizing) that map directly onto the transcript model.
 		params.set('utterances', 'true');
 		if (options.diarize) {
-			params.set('diarize', 'true');
+			params.set('diarize_model', DEEPGRAM_DIARIZE_MODEL);
 		}
 		if (options.language) {
 			params.set('language', options.language);

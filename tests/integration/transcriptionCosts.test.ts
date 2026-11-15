@@ -38,6 +38,14 @@ const CURRENT_FLASH_PRICING = {
 	usdPerMillionOutput: 3.75,
 };
 
+/** The rate Gemini 4 Argon and Carbon share once their introductory price ends. */
+const GEMINI_4_REASONING_PRICING = {
+	kind: 'perToken',
+	usdPerMillionAudioInput: 4,
+	usdPerMillionTextInput: 4,
+	usdPerMillionOutput: 20,
+};
+
 describe('resolveEnginePricing', () => {
 	it.each([
 		{
@@ -109,14 +117,26 @@ describe('resolveEnginePricing', () => {
 			expected: CURRENT_FLASH_PRICING,
 		},
 		{
-			name: 'gemini-4-argon, the flagship',
+			name: 'gemini-4-argon at the rate that follows its introductory price',
 			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 			model: 'gemini-4-argon',
+			expected: GEMINI_4_REASONING_PRICING,
+		},
+		{
+			name: 'gemini-4-carbon, the strongest reasoning model',
+			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			model: 'gemini-4-carbon',
+			expected: GEMINI_4_REASONING_PRICING,
+		},
+		{
+			name: 'gemini-4-hydrogen, the everyday Gemini 4 model',
+			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			model: 'gemini-4-hydrogen',
 			expected: {
 				kind: 'perToken',
-				usdPerMillionAudioInput: 2,
-				usdPerMillionTextInput: 2,
-				usdPerMillionOutput: 10,
+				usdPerMillionAudioInput: 1.5,
+				usdPerMillionTextInput: 1.5,
+				usdPerMillionOutput: 7.5,
 			},
 		},
 		{
@@ -192,6 +212,7 @@ describe('resolveLlmPricing', () => {
 
 	it.each([
 		{ model: 'gpt-6.1-sol', input: 2, output: 10 },
+		{ model: 'gpt-6.1-terra', input: 1, output: 5 },
 		{ model: 'gpt-6-astra', input: 10, output: 50 },
 		{ model: 'gpt-6-luna', input: 0.1, output: 0.5 },
 		// The previous generation, still served for saved lists.
@@ -214,6 +235,8 @@ describe('resolveLlmPricing', () => {
 		{ model: 'claude-opus-5', input: 5, output: 25 },
 		{ model: 'claude-sonnet-5-5', input: 2, output: 10 },
 		{ model: 'claude-haiku-5-5', input: 0.1, output: 0.5 },
+		// The shorter claude-fable-5 fragment must not swallow the cheaper 5.2.
+		{ model: 'claude-fable-5-2', input: 8, output: 40 },
 		{ model: 'claude-fable-5-1', input: 10, output: 50 },
 	])('prices the Claude model $model', ({ model, input, output }) => {
 		expect(resolveLlmPricing(LLM_PROVIDER_IDS.ANTHROPIC, model)).toEqual({

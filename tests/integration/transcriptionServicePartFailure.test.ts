@@ -345,10 +345,10 @@ describe('TranscriptionService multi-part salvage', () => {
 			audioInputTokens: 120000,
 			outputTokens: 2100,
 		});
-		// Priced at the default gemini-3.8-flash: 120k audio input at $0.75/M
-		// plus 2.1k output at $3.75/M.
+		// Priced at the default gemini-4-hydrogen: 120k audio input at $1.50/M
+		// plus 2.1k output at $7.50/M.
 		expect(result.cost.usd).toBeCloseTo(
-			0.09 + (2100 * 3.75) / 1_000_000,
+			0.18 + (2100 * 7.5) / 1_000_000,
 			10,
 		);
 	});
