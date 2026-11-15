@@ -318,3 +318,34 @@ Work out which of these it is:
 
 Never lower a threshold to make a run pass. Lowering one is a deliberate act
 with an explanation attached.
+
+**Size and CRAP limits** hold every function in `src/` to a cyclomatic
+complexity of 8, five parameters and 50 code lines, every file to 500 code
+lines, and every function to a CRAP score of 8, which combines its complexity
+with its coverage. `eslint.config.mjs` sets the size limits and enforces them on
+every lint and commit, and `CRAP_THRESHOLD` in `scripts/crap-gate.ts` sets the
+CRAP limit. Debt older than the gate is
+recorded and may only shrink: `eslint-suppressions.json` counts the size
+violations per file, and `crap-baseline.json` lists the functions over the CRAP
+limit. `scripts/crap-gate.mjs` takes each function's complexity from the ESLint
+Node API, which ignores those suppressions, and its coverage from
+`coverage/coverage-final.json`. CI runs it after the coverage run, and before
+a pull request it runs by hand:
+
+```bash
+npm run test:coverage
+npm run test:crap
+```
+
+A commit that fixes a recorded size violation fails with "There are
+suppressions left that do not occur anymore" until the count is lowered, and a
+function brought under the CRAP limit stays listed until the baseline is
+rewritten. Both are recorded with the change that earned them:
+
+```bash
+npx eslint src --prune-suppressions
+npm run test:crap -- --update-baseline
+```
+
+Neither file is edited to admit new debt. A function over a limit is split or
+tested instead.
