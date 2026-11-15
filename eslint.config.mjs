@@ -220,10 +220,10 @@ export default tseslint.config(
         },
     },
     {
-        // The crap-gate size limits, the same numbers as crap-gate.toml so the
-        // agent edit hook and the commit agree. Code lines only, so JSDoc never
-        // pushes a function or a file over. Debt that predates the gate is
-        // recorded in eslint-suppressions.json and may shrink but not grow.
+        // The size limits of src/, the only place these numbers are set. Code
+        // lines only, so JSDoc never pushes a function or a file over. Debt
+        // that predates the gate is recorded in eslint-suppressions.json and
+        // may shrink but not grow.
         files: ['src/**/*.ts'],
         rules: {
             complexity: ['error', 8],

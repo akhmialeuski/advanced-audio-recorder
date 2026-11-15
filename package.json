@@ -14,6 +14,7 @@
 		"test:layers": "node scripts/layer-check.mjs",
 		"test:conventions": "node scripts/test-conventions.mjs",
 		"test:clones": "node scripts/clone-check.mjs",
+		"test:crap": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/crap-gate.mjs",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"lint:cycles": "madge --circular --warning --extensions ts --ts-config tsconfig.json src",

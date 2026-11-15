@@ -57,7 +57,7 @@ export default {
 	],
 	reporters: ['default', '<rootDir>/scripts/jest-suite-stats-reporter.cjs'],
 	collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts'],
-	// json writes coverage-final.json, the per-function report scripts/crap-gate.sh scores.
+	// json writes coverage-final.json, the per-function report scripts/crap-gate.mjs scores.
 	coverageReporters: ['text', 'json-summary', 'lcov', 'json'],
 	coverageThreshold: {
 		// Pinned just under the current actuals, so a drop is a failed build
