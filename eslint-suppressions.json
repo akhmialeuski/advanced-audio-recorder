@@ -1,5 +1,13 @@
 {
-	"src/actions/audioJobsCli.ts": {
+	"src/actions/ContextMenu.ts": {
+		"complexity": {
+			"count": 3
+		},
+		"max-lines-per-function": {
+			"count": 4
+		}
+	},
+	"src/actions/file/audioJobsCli.ts": {
 		"complexity": {
 			"count": 3
 		},
@@ -7,20 +15,12 @@
 			"count": 3
 		}
 	},
-	"src/actions/fileActions.ts": {
+	"src/actions/file/fileActions.ts": {
 		"complexity": {
 			"count": 1
 		}
 	},
-	"src/actions/positionActions.ts": {
-		"complexity": {
-			"count": 1
-		},
-		"max-lines-per-function": {
-			"count": 1
-		}
-	},
-	"src/actions/recordingTargets.ts": {
+	"src/actions/file/recordingTargets.ts": {
 		"complexity": {
 			"count": 1
 		},
@@ -28,7 +28,7 @@
 			"count": 1
 		}
 	},
-	"src/actions/speakersCli.ts": {
+	"src/actions/file/speakersCli.ts": {
 		"complexity": {
 			"count": 1
 		},
@@ -36,7 +36,7 @@
 			"count": 1
 		}
 	},
-	"src/actions/transcribeCli.ts": {
+	"src/actions/file/transcribeCli.ts": {
 		"complexity": {
 			"count": 1
 		},
@@ -44,7 +44,15 @@
 			"count": 1
 		}
 	},
-	"src/actions/transcriptActions.ts": {
+	"src/actions/position/positionActions.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/actions/transcript/transcriptActions.ts": {
 		"complexity": {
 			"count": 1
 		},
@@ -160,13 +168,13 @@
 	},
 	"src/main.ts": {
 		"complexity": {
-			"count": 3
+			"count": 4
 		},
 		"max-lines": {
 			"count": 1
 		},
 		"max-lines-per-function": {
-			"count": 3
+			"count": 4
 		}
 	},
 	"src/markers/markerModel.ts": {
@@ -181,7 +189,7 @@
 	},
 	"src/panel/RecordingPanelView.ts": {
 		"complexity": {
-			"count": 1
+			"count": 2
 		},
 		"max-lines": {
 			"count": 1
@@ -264,7 +272,15 @@
 		}
 	},
 	"src/quicknotes/QuickNoteController.ts": {
+		"complexity": {
+			"count": 1
+		},
 		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/quicknotes/dictationAnchor.ts": {
+		"complexity": {
 			"count": 1
 		}
 	},
@@ -291,7 +307,7 @@
 			"count": 1
 		},
 		"max-lines-per-function": {
-			"count": 2
+			"count": 1
 		}
 	},
 	"src/recording/MemoryRecorder.ts": {
@@ -342,7 +358,7 @@
 			"count": 1
 		},
 		"max-lines-per-function": {
-			"count": 5
+			"count": 4
 		},
 		"max-params": {
 			"count": 1
@@ -353,10 +369,20 @@
 			"count": 1
 		}
 	},
+	"src/recording/RecordingSaveQueue.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
 	"src/recording/RecoveryService.ts": {
 		"complexity": {
 			"count": 2
 		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/recording/SourceReplacer.ts": {
 		"max-lines-per-function": {
 			"count": 1
 		}
@@ -369,7 +395,7 @@
 			"count": 1
 		},
 		"max-lines-per-function": {
-			"count": 4
+			"count": 3
 		},
 		"max-params": {
 			"count": 2
@@ -393,6 +419,11 @@
 			"count": 2
 		},
 		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/recording/systemAudioSupport.ts": {
+		"complexity": {
 			"count": 1
 		}
 	},
@@ -433,6 +464,11 @@
 		}
 	},
 	"src/settings/sections/enginesSection.ts": {
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
+	"src/settings/sections/fileStorageSection.ts": {
 		"max-lines-per-function": {
 			"count": 1
 		}
@@ -561,6 +597,14 @@
 			"count": 3
 		}
 	},
+	"src/speakers/transcriptLineEdits.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 2
+		}
+	},
 	"src/speakers/transcriptRows.ts": {
 		"complexity": {
 			"count": 1
@@ -568,6 +612,11 @@
 	},
 	"src/speakers/transcriptSplit.ts": {
 		"complexity": {
+			"count": 1
+		}
+	},
+	"src/transcription/RecordingTranscriber.ts": {
+		"max-lines-per-function": {
 			"count": 1
 		}
 	},
@@ -582,7 +631,7 @@
 			"count": 4
 		},
 		"max-params": {
-			"count": 2
+			"count": 3
 		}
 	},
 	"src/transcription/advanced/AdvancedTwoPassRunner.ts": {
@@ -621,7 +670,7 @@
 	},
 	"src/transcription/httpClient.ts": {
 		"complexity": {
-			"count": 3
+			"count": 2
 		},
 		"max-lines-per-function": {
 			"count": 1
@@ -632,13 +681,21 @@
 			"count": 1
 		}
 	},
+	"src/transcription/noteTopUp.ts": {
+		"complexity": {
+			"count": 2
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
 	"src/transcription/providers/DeepgramProvider.ts": {
 		"complexity": {
 			"count": 1
 		}
 	},
 	"src/transcription/providers/GeminiProvider.ts": {
-		"max-lines-per-function": {
+		"complexity": {
 			"count": 1
 		}
 	},
@@ -686,6 +743,14 @@
 			"count": 1
 		}
 	},
+	"src/transcription/retryFailedParts.ts": {
+		"complexity": {
+			"count": 1
+		},
+		"max-lines-per-function": {
+			"count": 1
+		}
+	},
 	"src/transcription/runTranscription.ts": {
 		"complexity": {
 			"count": 1
@@ -699,23 +764,17 @@
 			"count": 1
 		}
 	},
+	"src/transcription/transcriptModel.ts": {
+		"complexity": {
+			"count": 1
+		}
+	},
 	"src/transcription/transcriptOutput.ts": {
 		"complexity": {
 			"count": 1
 		}
 	},
-	"src/ui/ContextMenu.ts": {
-		"complexity": {
-			"count": 4
-		},
-		"max-lines-per-function": {
-			"count": 3
-		}
-	},
 	"src/ui/ConversionModal.ts": {
-		"complexity": {
-			"count": 1
-		},
 		"max-lines-per-function": {
 			"count": 1
 		}
@@ -734,11 +793,8 @@
 		}
 	},
 	"src/ui/SplitModal.ts": {
-		"complexity": {
-			"count": 1
-		},
 		"max-lines-per-function": {
-			"count": 2
+			"count": 1
 		}
 	},
 	"src/ui/StatusBar.ts": {
@@ -767,17 +823,9 @@
 	},
 	"src/ui/TranscriptionModal.ts": {
 		"complexity": {
-			"count": 2
-		},
-		"max-lines": {
 			"count": 1
 		},
-		"max-lines-per-function": {
-			"count": 3
-		}
-	},
-	"src/ui/transcriptLineEdits.ts": {
-		"complexity": {
+		"max-lines": {
 			"count": 1
 		},
 		"max-lines-per-function": {
