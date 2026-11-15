@@ -34,6 +34,21 @@ export const MAX_SHOWN_VERSIONS = 10;
  * version cannot be titled one thing here and another there.
  */
 export const RELEASE_NOTES: Readonly<Record<string, string>> = {
+	'2.5.2': `
+This release changes nothing in the plugin you run. It lets the automated source review of the Obsidian community directory finish, which stopped on 2.5.1 with **"The source code review encountered a fatal error"** before it could list a single finding.
+
+## Internal
+
+- The review lints a release from the repository root with its own ESLint configuration. A file of recorded lint exceptions at the root left ESLint with nothing to apply them to, so it stopped, and 422 test, script and build files sat outside every TypeScript project the review looks for. The exceptions now live under \`.config\`, and the tests, the scripts and the build configs each belong to a project ([#169](https://github.com/akhmialeuski/advanced-audio-recorder/pull/169)).
+- CI runs the review's lint on every change and fails when it would stop again.
+- The suite is 8110 tests across 340 suites.
+
+## Compatibility
+
+Requires Obsidian 1.14.4+, unchanged. The plugin's code is the same as in 2.5.1, so recordings, settings, the recorder, and the players are unaffected.
+
+**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.5.1...2.5.2
+`,
 	'2.5.1': `
 This release fixes transcription on older Obsidian installers and brings the model lists up to the November 2026 provider catalogues. Transcribing a recording no longer fails with **"Object not disposable"** on an Obsidian installer built on an older Electron, such as Electron 25. New users start on cheaper current models, **gpt-6.1-terra** for OpenAI post-processing and **gemini-4-hydrogen** for Gemini, and saved model lists gain the new models once while keeping the model already chosen. Diarized Deepgram transcription moves to Deepgram's current diarizer.
 
@@ -253,44 +268,6 @@ When the banner covers part of the note or a toolbar you need, drag it with a fi
 Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existing recordings, stored settings, the recorder, and the players are unaffected. The banner switch keeps the value stored by an earlier version, and settings written by an earlier version carry no banner position, which then starts at **Top center**.
 
 **Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.4...2.3.5
-`,
-	'2.3.4': `
-This release lets you repair a diarized transcript line by line, right in the note. **Split selection into another speaker** hands the selected words of one line to another speaker, and **Merge selected lines into one** joins consecutive lines of one turn back together. Both edits rewrite the note and every transcript file of the recording from the same segments. The **Transcribe audio** dialog now fits on one screen, with its secondary options in a collapsed **More options** block, and a quick note can be transcribed by an engine of its own. Existing recordings, stored settings, and the recorder are unaffected.
-
-## New: Splitting a transcript line between speakers
-
-When two people talk over each other, or the engine guesses wrong, one transcript line holds words from both of them. Select those words inside the line, right-click, and choose **Split selection into another speaker**, which is also a palette command.
-
-- **Spoken by** picks who the selection belongs to: any speaker the transcript shows, a participant of the recording nobody is named after yet, or a new \`Speaker N\`.
-- **Time span** starts from the word timings when the recording's JSON transcript has them. A bar under the fields covers the line with a handle at each end of the selection, so the boundary is dragged or typed, and the play button plays the span with a playhead running along the bar.
-- A selection in the middle of a line splits it in three, and **Rest of the line spoken by** picks the speaker of the words after it.
-- The note line is replaced through the editor, so **Ctrl/Cmd+Z** undoes it. The JSON transcript's segments are cut at the entered times, each part keeping its word timings, and the JSON, SRT, WebVTT, and TXT files the run wrote are rewritten from them. A new speaker joins the recording's roster, so **Rename speakers** plays and names it.
-
-## New: Merging lines into one
-
-Diarization also cuts one person's turn into several lines when it hears a pause as a change of speaker. Select the consecutive lines and choose **Merge selected lines into one** from the editor menu or the palette. The dialog shows the merged text, starts **Spoken by** on the first line's speaker, and plays the whole passage, so you can check it really is one voice. Two lines are merged at once, and three or more are confirmed first. The note line and the transcript files are written the same way as for a split.
-
-Without a JSON transcript, or when its segments do not match the lines (after a hand edit, for example), both edits change only the note, and the dialog says so before anything is written.
-
-## New: More options in the Transcribe audio dialog
-
-The dialog had grown tall enough that **Transcribe** needed a scroll to reach. Language, the participant profile, and the destination stay up front beside the cost estimate, and every other option moves into a collapsed **More options** block. The block stays open while you change options, and it opens by itself when the stored engine cannot run on this device, so the reason **Transcribe** is disabled is in view.
-
-## Fixed
-
-- A quick note was always transcribed by the engine recordings use, because the only engine row on the **Quick notes** page picked the LLM that rewrites the text, and its name read as the engine for the whole dictation. The page now has a **Quick note transcription engine** row, and the dictation, its size limits, and its recorded cost all follow it. The old row is renamed **Quick note rewrite engine**.
-
-## Internal
-
-- The note outputs a transcription writes now record their timestamp template in the recording's sidecar, so a line is read back with the templates it was written with even after the settings change.
-- The line model the split and the merge share lives in its own module, and the two dialogs share one harness in the integration suite.
-- The suite is 6483 tests across 261 suites.
-
-## Compatibility
-
-Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existing recordings, stored settings, the recorder, and the players are unaffected. Settings written by an earlier version carry no quick note transcription engine, which then starts on the engine recordings use, so a dictation is transcribed exactly as before until the row is changed. A transcript written by an earlier version has no stored timestamp template, and its lines are read with the current setting.
-
-**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.3...2.3.4
 `,
 };
 
