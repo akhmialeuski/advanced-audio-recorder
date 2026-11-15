@@ -35,14 +35,18 @@ export interface TextTokenRate {
  * Pro tier and the whole 3.x and 4 generations bill every input modality at
  * one rate.
  *
- * The rates are the ones Google charges today, and three of them are
- * promotional: 3.6 and 3.8 Flash double to $1.50 / $7.50 on January 1, 2027,
- * and 4 Argon to $4 / $20 on December 1, 2026. The cost model has no clock, so
- * the rows are to be raised when those dates pass. A `gemini-3.5-flash` id is
- * served by 3.6 Flash since its deprecation and is priced as that model.
+ * 4 Argon and 4 Carbon are stored at the $4 / $20 Google charges from December
+ * 1, 2026, above their $2 / $10 introductory price until then, so an estimate
+ * made before that date is an upper bound rather than half the bill. 3.6 and
+ * 3.8 Flash are still at their promotional rate and double to $1.50 / $7.50 on
+ * January 1, 2027; the cost model has no clock, so those rows are to be raised
+ * when that date passes. A `gemini-3.5-flash` id is served by 3.6 Flash since
+ * its deprecation and is priced as that model.
  */
 export const GEMINI_TOKEN_RATES: readonly [string, TokenRate][] = [
-	['gemini-4-argon', { audioInput: 2, textInput: 2, output: 10 }],
+	['gemini-4-carbon', { audioInput: 4, textInput: 4, output: 20 }],
+	['gemini-4-argon', { audioInput: 4, textInput: 4, output: 20 }],
+	['gemini-4-hydrogen', { audioInput: 1.5, textInput: 1.5, output: 7.5 }],
 	['gemini-3.8-flash', { audioInput: 0.75, textInput: 0.75, output: 3.75 }],
 	['gemini-3.6-flash', { audioInput: 0.75, textInput: 0.75, output: 3.75 }],
 	['gemini-3.5-flash', { audioInput: 0.75, textInput: 0.75, output: 3.75 }],

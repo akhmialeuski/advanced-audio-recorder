@@ -111,6 +111,7 @@ export interface LlmVendorDescriptor {
 const OPENAI_RATES: readonly [string, LlmRate][] = [
 	['gpt-6-astra', { input: 10, output: 50 }],
 	['gpt-6.1-sol', { input: 2, output: 10 }],
+	['gpt-6.1-terra', { input: 1, output: 5 }],
 	['gpt-6-sol', { input: 2, output: 10 }],
 	['gpt-6-luna', { input: 0.1, output: 0.5 }],
 	['gpt-5.6-sol', { input: 4, output: 20 }],
@@ -128,13 +129,15 @@ const OPENAI_RATES: readonly [string, LlmRate][] = [
  * `claude-opus-4` fragment prices the $5/$25 Opus 4.5-4.8 tier; the longer
  * `claude-opus-4-1`/`claude-opus-4-0` fragments win the longest-match rule for
  * the legacy $15/$75 models so they do not inherit the cheaper rate. The same
- * rule lets `claude-opus-5-5` win over the $5/$25 `claude-opus-5`, while
- * `claude-fable-5` and `claude-sonnet-5` price their 5.1 and 5.5 successors,
- * which cost the same. Haiku 5.5 is billed five times higher once a prompt
+ * rule lets `claude-opus-5-5` win over the $5/$25 `claude-opus-5` and
+ * `claude-fable-5-2` over the $10/$50 `claude-fable-5`, which still prices
+ * Fable 5 and 5.1, while `claude-sonnet-5` prices its 5.5 successor, which
+ * costs the same. Haiku 5.5 is billed five times higher once a prompt
  * passes 100K tokens; a transcript that long is rare, so the lower tier is
  * stored and such a run costs more than the estimate.
  */
 const ANTHROPIC_RATES: readonly [string, LlmRate][] = [
+	['claude-fable-5-2', { input: 8, output: 40 }],
 	['claude-fable-5', { input: 10, output: 50 }],
 	['claude-opus-5-5', { input: 4, output: 20 }],
 	['claude-opus-5', { input: 5, output: 25 }],
