@@ -34,6 +34,39 @@ export const MAX_SHOWN_VERSIONS = 10;
  * version cannot be titled one thing here and another there.
  */
 export const RELEASE_NOTES: Readonly<Record<string, string>> = {
+	'2.6.0': `
+This release adds AssemblyAI as a sixth transcription engine and brings back the merged file of a multi-track recording that Obsidian lost mid-session. **AssemblyAI** transcribes a meeting of up to ten hours as one job, so speaker labels keep one numbering from the first minute to the last, and the recording is uploaded in its own container with nothing decoded first. A crashed microphone and system audio session set to **Single file** is now recovered with the merged \`multitrack\` file a normal stop would have written, instead of two files that each hold one side of the conversation.
+
+## New: The AssemblyAI engine
+
+AssemblyAI can be chosen under **Transcription engine**, with its own page under **Engines** holding the **Base URL**, the **AssemblyAI API key** kept in Obsidian's keychain, and the **Model** ([#173](https://github.com/akhmialeuski/advanced-audio-recorder/pull/173), [#171](https://github.com/akhmialeuski/advanced-audio-recorder/issues/171)).
+
+- A recording of up to ten hours and 2.2 GB goes in one job, the default \`webm\` included. The plugin uploads it, queues the transcript and reads the job's status every three seconds until it completes, within **Request timeout**, so raise that setting above its 10-minute default before transcribing a recording of several hours.
+- **Speaker diarization** is supported. AssemblyAI's lettered speakers appear as \`Speaker 1\`, \`Speaker 2\`, and each sentence of the answer becomes one transcript line with its own timecode.
+- Per-word timing comes back on every run, so **Word-level timestamps** is shown disabled in the on position and the JSON file output always carries the words.
+- The dictionary is sent as keyterms, at most 6 words per phrase and 1000 words in total on \`assemblyai-stt-3-7\`, or 200 on \`universal-2\`. Terms that do not fit are named in a notice.
+- The cost estimate prices \`assemblyai-stt-3-7\` at about $0.21 and \`universal-2\` at about $0.15 per audio hour, and adds about $0.02 for speaker labels and $0.05 for keyterms when the run asks for them. A finished run is recorded at the audio duration AssemblyAI reports billing for.
+- A status read that fails in passing, on a server error, a rate limit or a dropped connection, is repeated on the same job, so a recording is uploaded and billed once.
+- With **Language** empty, the job detects the language on the selected model alone. The flagship covers 32 languages, so name the language or pick \`universal-2\` for a recording in another one.
+
+A new guide, [AssemblyAI API key](https://github.com/akhmialeuski/advanced-audio-recorder/blob/2.6.0/docs/use-cases/assemblyai-api-key.md), walks through getting a key.
+
+## Fixed
+
+- A multi-track recording that Obsidian lost mid-session is recovered the way a normal stop would have saved it ([#172](https://github.com/akhmialeuski/advanced-audio-recorder/pull/172)). With **Single file** selected, recovery writes the merged \`multitrack\` file with the session's output format and track levels and positions, and keeps the raw \`-recovered\` tracks beside it. Earlier versions recovered two separate files and said nothing about the missing mix, so transcribing the embedded track gave a transcript with one speaker. When the mix fails, or a track could not be recovered, a notice says so and each track stays its own file. A mobile session recorded in parts is still recovered as one set of parts per track.
+
+## Internal
+
+- The dictionary of a run is planned against the model of the selected engine. It used the Deepgram model for every engine, which only Deepgram read, so no earlier run was affected.
+- An engine's price can depend on what the run asks for, so the estimate and the session total add AssemblyAI's extras from one rule, and the Whisper, Deepgram and AssemblyAI mappers share one reader of the billed audio duration.
+- The suite is 8169 tests across 342 suites.
+
+## Compatibility
+
+Requires Obsidian 1.14.4+, unchanged. Existing recordings, stored settings, the recorder, and the players are unaffected, and the other five engines are priced as before. A recovery journal written by an earlier version carries no merge, so a session lost under it is recovered one file per track as before.
+
+**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.5.2...2.6.0
+`,
 	'2.5.2': `
 This release changes nothing in the plugin you run. It lets the automated source review of the Obsidian community directory finish, which stopped on 2.5.1 with **"The source code review encountered a fatal error"** before it could list a single finding.
 
@@ -238,36 +271,6 @@ The **Convert audio format** and **Split audio into parts** dialogs show a **Can
 Requires Obsidian 1.14.4+, raised from 1.6.6, and an older Obsidian keeps receiving 2.3.5. Existing recordings, stored settings, the recorder, and the players are unaffected. API keys move into the keychain on the first start, so a plugin version older than this one, installed afterwards, finds no keys in \`data.json\`. Every existing install receives the **Language lesson** cleanup profile once and unselected, and a profile you delete stays deleted.
 
 **Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.5...2.4.0
-`,
-	'2.3.5': `
-This release makes the mobile recording banner reachable and movable. The banner no longer sits at the very top of the screen, where a touch opens the system's notification shade, and it can now be dragged to one of six places on the screen and stays there for later recordings. Both banner settings move to a new **Mobile** settings page. Existing recordings, stored settings, and the recorder are unaffected.
-
-## New: Dragging the mobile recording banner
-
-When the banner covers part of the note or a toolbar you need, drag it with a finger. On release it snaps to the nearest of six places: the top or the bottom edge, at the left, in the centre or at the right. The banner keeps that place for every later recording and after the screen rotates, and a vault synced to another phone or a tablet brings it along.
-
-- The drag can start anywhere on the banner, the stop button included, and a drag never stops the recording. Only a tap on the stop button does.
-- A bottom place stays above the navigation bar, docked or floating, and above the editing toolbar while the keyboard is open.
-- **Banner position** offers the same six places as a dropdown, and **Top center** puts a dragged banner back where it started.
-
-## New: The Mobile settings page
-
-**Show recording banner** and **Banner position** move off **Audio processing & feedback**, where the banner switch sat among the microphone filters, onto a page of their own under **Settings > Advanced Audio Recorder > Mobile**. The page entry shows **Off** or the place in use, and **Banner position** is shown only while the banner is on. Both settings now apply to a recording in progress: switching the banner off hides it at once instead of at the next pause or resume.
-
-## Fixed
-
-- The banner sat at the very top of a phone screen, inside the area where a touch pulls down the system's notification shade, so in portrait its stop button could not be pressed ([#118](https://github.com/akhmialeuski/advanced-audio-recorder/issues/118)). It now floats just below the note header on a phone, and below the tab strip on a tablet.
-
-## Internal
-
-- The release workflows run on the Node 24 versions of the GitHub actions and build the plugin on Node 22.
-- The suite is 6532 tests across 262 suites.
-
-## Compatibility
-
-Requires Obsidian 1.6.6+, unchanged. This release is backward compatible: existing recordings, stored settings, the recorder, and the players are unaffected. The banner switch keeps the value stored by an earlier version, and settings written by an earlier version carry no banner position, which then starts at **Top center**.
-
-**Full Changelog**: https://github.com/akhmialeuski/advanced-audio-recorder/compare/2.3.4...2.3.5
 `,
 };
 
