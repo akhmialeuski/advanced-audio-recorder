@@ -28,7 +28,7 @@ Pick the local engine when privacy, cost, or connectivity matter more than raw s
 - **Desktop only.** The engine shells out to a native binary through Node, which the mobile app cannot do, so it runs only in the Obsidian **desktop** app. The rest of the plugin - including cloud transcription - works on mobile too; see [Mobile support](../mobile-support.md).
 - **It uses your hardware.** Transcription runs on your CPU (or GPU, if you built/downloaded a build with acceleration). A large model on a laptop CPU can be several times slower than real time.
 - **Accuracy scales with model size.** Bigger models are more accurate but slower and use more memory. Smaller models are fast but make more mistakes.
-- **No speaker labels.** Local `whisper.cpp` does not do diarization, so it produces no "who said what" labels. If you need speaker labels, use Deepgram, Gemini, or Mistral Voxtral instead - see [Speakers and diarization](../transcription.md#speakers-and-diarization).
+- **No speaker labels.** Local `whisper.cpp` does not do diarization, so it produces no "who said what" labels. If you need speaker labels, use Deepgram, Gemini, Mistral Voxtral, or AssemblyAI instead - see [Speakers and diarization](../transcription.md#speakers-and-diarization).
 
 ---
 
@@ -192,7 +192,7 @@ Arguments are space-separated. Leave the field empty unless you have a specific 
 - **Wrong model path / "failed to load model"** - Verify the **Model path** points to a valid GGML `.bin` file you downloaded from the Hugging Face repository, that the file finished downloading, and that it is not corrupted. Re-download if in doubt.
 - **"Local whisper.cpp produced invalid JSON output."** - The binary ran but its output could not be parsed. This usually means a non-standard or very old build, or an extra argument that changed the output format. Remove your extra arguments and try a clean prebuilt release.
 - **Transcription is very slow / freezes for a while** - A large model on a CPU is slow. Switch to a smaller model (`base` or `small`), add `-t <n>` threads in Extra arguments, or use a GPU-accelerated build. A long recording can take minutes; the progress dialog stays responsive and can be minimized to the status bar while it runs.
-- **The transcript has no speaker labels** - This is expected. Local `whisper.cpp` does not do diarization, so it cannot label speakers. The **Speaker diarization** toggle is greyed out for this engine. Use Deepgram, Gemini, or Mistral Voxtral for speaker labels - see [Speakers and diarization](../transcription.md#speakers-and-diarization).
+- **The transcript has no speaker labels** - This is expected. Local `whisper.cpp` does not do diarization, so it cannot label speakers. The **Speaker diarization** toggle is greyed out for this engine. Use Deepgram, Gemini, Mistral Voxtral, or AssemblyAI for speaker labels - see [Speakers and diarization](../transcription.md#speakers-and-diarization).
 - **Wrong language detected** - Set **Language** to the correct ISO code (e.g. `en`, `ru`, `es`) instead of leaving it on `auto`, and consider a multilingual model (a `.en` model only handles English).
 
 ---

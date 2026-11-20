@@ -43,11 +43,13 @@ import {
 	DEEPGRAM_KEYWORDS_LIMIT,
 	deepgramBiasMechanism,
 	DeepgramBiasMechanism,
+	termsWithinAssemblyAiKeyterms,
 	termsWithinDeepgramKeyterm,
 	termsWithinVoxtralContextBias,
 	termsWithinWhisperPrompt,
 	type DictionaryBiasPlan,
 } from '../dictionaryBias';
+import { AssemblyAiProvider } from './AssemblyAiProvider';
 import { DeepgramProvider } from './DeepgramProvider';
 import { GeminiProvider } from './GeminiProvider';
 import { LocalWhisperProvider } from './LocalWhisperProvider';
@@ -213,6 +215,30 @@ const VOXTRAL_RATES: readonly [string, number][] = [
 	['voxtral-mini-transcribe-realtime', 0.006],
 	['voxtral-mini', 0.003],
 ];
+
+/**
+ * AssemblyAI pre-recorded rates, USD per audio minute, published per hour
+ * ($0.21 and $0.15) and converted here. The deprecated Universal-3 ids are
+ * billed at the flagship's rate, which is also the model they route to once
+ * retired.
+ */
+const ASSEMBLYAI_RATES: readonly [string, number][] = [
+	['assemblyai-stt-3-7', 0.21 / 60],
+	['universal-3', 0.21 / 60],
+	['universal-2', 0.15 / 60],
+];
+
+/**
+ * What AssemblyAI adds per audio minute for speaker labels, published as
+ * $0.02 per hour on both seeded models.
+ */
+const ASSEMBLYAI_DIARIZATION_USD_PER_MINUTE = 0.02 / 60;
+
+/**
+ * What AssemblyAI adds per audio minute for keyterms prompting, published as
+ * $0.05 per hour on both seeded models.
+ */
+const ASSEMBLYAI_KEYTERMS_USD_PER_MINUTE = 0.05 / 60;
 
 /**
  * Finds the rate whose model-id fragment appears in the (normalized) model id,
@@ -395,6 +421,48 @@ export const TRANSCRIPTION_ENGINES: Record<
 		create: cloudEngineFactory(
 			ENGINE_IDS.VOXTRAL,
 			(config) => new VoxtralProvider(config),
+		),
+	},
+	[TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI]: {
+		id: TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
+		label: EngineLabel.AssemblyAi,
+		pricingUrl: 'https://www.assemblyai.com/pricing',
+		model: (s) => s.assemblyAiModel,
+		// The one engine that bills what the run asks for on top of the model:
+		// speaker labels and keyterms are each an extra per audio hour.
+		pricing: (model, run) => {
+			const rate = matchRate(ASSEMBLYAI_RATES, model);
+			return perMinutePricing(
+				rate === undefined
+					? undefined
+					: rate +
+							(run?.diarize
+								? ASSEMBLYAI_DIARIZATION_USD_PER_MINUTE
+								: 0) +
+							(run?.biased
+								? ASSEMBLYAI_KEYTERMS_USD_PER_MINUTE
+								: 0),
+			);
+		},
+		// A word budget that depends on the model, and a phrase length that
+		// does not. An over-long phrase is passed over rather than ending the
+		// list, so the omitted terms are whatever was not applied, not a tail.
+		planDictionary: (model, terms) => {
+			const applied = termsWithinAssemblyAiKeyterms(model, terms);
+			if (applied.length < terms.length) {
+				const sent = new Set(applied);
+				return {
+					applied,
+					omitted: terms.filter((term) => !sent.has(term)),
+					reason: 'keyterms-prompt-limit',
+				};
+			}
+			return { applied, omitted: [] };
+		},
+		biasUnsupportedReason: () => null,
+		create: cloudEngineFactory(
+			ENGINE_IDS.ASSEMBLYAI,
+			(config) => new AssemblyAiProvider(config),
 		),
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: {

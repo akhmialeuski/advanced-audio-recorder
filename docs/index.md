@@ -1,6 +1,6 @@
 # Advanced Audio Recorder - Documentation
 
-**Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with five engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, Mistral Voxtral, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.14.4 or newer**, and a few features are desktop-only (see [Mobile support](mobile-support.md)).
+**Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with six engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, Mistral Voxtral, AssemblyAI, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.14.4 or newer**, and a few features are desktop-only (see [Mobile support](mobile-support.md)).
 
 ![The enhanced audio player embedded in a note, showing the waveform seek bar, transport controls, and a marker list](images/player-overview.png)
 
@@ -24,7 +24,7 @@ What it does:
 - **Converts and splits** existing audio files from the right-click context menu.
 - **Plays recordings back** in an enhanced waveform player with playback-speed control, skip buttons, volume, loop, timecode links, and per-file markers and chapters.
 - **Cleans up audio on demand** - high-pass filter, noise gate, and loudness leveling - writing a processed copy and never touching the original.
-- **Transcribes speech to text** with five engines: a Whisper API (OpenAI-compatible, e.g. Groq), Deepgram, Google Gemini, Mistral Voxtral, or a local whisper.cpp binary that runs fully offline.
+- **Transcribes speech to text** with six engines: a Whisper API (OpenAI-compatible, e.g. Groq), Deepgram, Google Gemini, Mistral Voxtral, AssemblyAI, or a local whisper.cpp binary that runs fully offline.
 - **Post-processes transcripts with an LLM** to clean up punctuation, summarize into key points and action items, or apply a custom instruction.
 - **Ships diagnostics** - a test recording, a system-info report, and a debug mode - for troubleshooting devices, codecs, and the runtime environment.
 
@@ -41,7 +41,7 @@ It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.14
 - **Convert, split, and manage files** - transcode, divide into parts, and update note links from the context menu. See [File operations](file-operations.md) and [Splitting](splitting.md).
 - **Enhanced waveform player** - waveform seek bar, speed presets, a configurable skip step (10 seconds by default), volume, loop, voice boost (the cleanup chain applied to playback), timecode links, and per-file markers and chapters. See [Audio player](audio-player.md).
 - **On-demand audio cleanup** - remove rumble and hiss and even out loudness with a single right-click. See [Audio cleanup](audio-cleanup.md).
-- **Speech-to-text with five engines** - Whisper API, Deepgram, Gemini, Mistral Voxtral, or offline local whisper.cpp, with speaker diarization on Deepgram, Gemini, and Voxtral. See [Transcription](transcription.md).
+- **Speech-to-text with six engines** - Whisper API, Deepgram, Gemini, Mistral Voxtral, AssemblyAI, or offline local whisper.cpp, with speaker diarization on Deepgram, Gemini, Voxtral, and AssemblyAI. See [Transcription](transcription.md).
 - **LLM post-processing** - clean up, summarize, or run a custom instruction over the transcript. See [LLM post-processing](llm-post-processing.md).
 - **Crash recovery and settings backup** - interrupted recordings can be recovered, and settings are auto-restored from a backup. See [Recording](recording.md) and [Settings reference](settings-reference.md).
 - **Desktop and mobile** - record, play back in the enhanced player, convert, split, and transcribe with a cloud engine on iOS and Android, with a few features desktop-only. See [Mobile support](mobile-support.md).
@@ -90,7 +90,7 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 
 | Page                                          | What it covers                                                                                                             |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| [Transcription](transcription.md)             | Speech-to-text with five engines, diarization, output destinations and formats, and the progress flow.                     |
+| [Transcription](transcription.md)             | Speech-to-text with six engines, diarization, output destinations and formats, and the progress flow.                      |
 | [LLM post-processing](llm-post-processing.md) | Clean up, summarize, or run a custom instruction over the transcript with OpenAI, Anthropic, Gemini, Mistral, or DeepSeek. |
 | [Quick notes](quick-notes.md)                 | Dictate into the note at the cursor, with the audio never saved and an optional LLM rewrite from a profile.                |
 | [Use cases](use-cases/index.md)               | Step-by-step guides for API keys and end-to-end workflows (see Use cases below).                                           |
@@ -114,6 +114,7 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 | [Deepgram API key](use-cases/deepgram-api-key.md)                               | Sign up for Deepgram and enable diarization.                                |
 | [Gemini API key](use-cases/gemini-api-key.md)                                   | Get a Google AI Studio key for the Gemini engine.                           |
 | [Mistral API key](use-cases/mistral-api-key.md)                                 | Get a Mistral key for the Voxtral engine and Mistral post-processing.       |
+| [AssemblyAI API key](use-cases/assemblyai-api-key.md)                           | Get an AssemblyAI key for the AssemblyAI engine.                            |
 | [Anthropic API key](use-cases/anthropic-api-key.md)                             | Get a Claude key for LLM post-processing.                                   |
 | [Local whisper.cpp](use-cases/local-whisper-cpp.md)                             | Run transcription fully offline with a local whisper.cpp binary and model.  |
 | [Transcribe after recording](use-cases/transcribe-after-recording.md)           | Transcribe every recording automatically as soon as it stops.               |

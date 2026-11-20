@@ -17,16 +17,16 @@ The **Whisper API (OpenAI-compatible)** engine sends your recordings to OpenAI's
 
 The plugin's **Whisper API** engine is the OpenAI-compatible speech-to-text path. With an OpenAI key it talks to OpenAI's hosted Whisper model and returns timed text. The same engine also works with other OpenAI-compatible hosts (such as Groq) by changing the base URL - but this guide covers the OpenAI path.
 
-| Item                 | Value                                               |
-| -------------------- | --------------------------------------------------- |
-| **Transcription engine** | `Whisper API (OpenAI-compatible)`               |
-| **Default base URL** | `https://api.openai.com/v1`                         |
-| **Default model**    | `whisper-1`                                         |
-| **Diarization**      | Not supported (no speaker labels)                   |
-| **Per-request cap**  | 25 MB (larger files are resampled and auto-chunked) |
-| **Cost**             | Paid, billed per minute of audio                    |
+| Item                     | Value                                               |
+| ------------------------ | --------------------------------------------------- |
+| **Transcription engine** | `Whisper API (OpenAI-compatible)`                   |
+| **Default base URL**     | `https://api.openai.com/v1`                         |
+| **Default model**        | `whisper-1`                                         |
+| **Diarization**          | Not supported (no speaker labels)                   |
+| **Per-request cap**      | 25 MB (larger files are resampled and auto-chunked) |
+| **Cost**                 | Paid, billed per minute of audio                    |
 
-Whisper API is the best choice when you want accurate single-speaker transcription - voice notes, dictation, and lectures. It does **not** label who is speaking, so if you need that, use the [Deepgram](deepgram-api-key.md), [Gemini](gemini-api-key.md), or [Mistral Voxtral](mistral-api-key.md) engines instead, which support [speaker diarization](../transcription.md#speakers-and-diarization).
+Whisper API is the best choice when you want accurate single-speaker transcription - voice notes, dictation, and lectures. It does **not** label who is speaking, so if you need that, use the [Deepgram](deepgram-api-key.md), [Gemini](gemini-api-key.md), [Mistral Voxtral](mistral-api-key.md), or [AssemblyAI](assemblyai-api-key.md) engines instead, which support [speaker diarization](../transcription.md#speakers-and-diarization).
 
 ---
 
@@ -121,15 +121,15 @@ The **Whisper API models** link at the end of the **Model** row's description po
 
 ## Troubleshooting
 
-| Symptom                                          | Likely cause and fix                                                                                                                                              |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **401 / invalid key**                            | The key is wrong, truncated, revoked, or pasted with extra spaces. Re-copy it from <https://platform.openai.com/api-keys> or create a new one.                    |
-| **Quota / insufficient balance / billing error** | No credit on the account. Add a payment method and credit at <https://platform.openai.com/settings/organization/billing>.                                         |
-| **File too large / 413**                         | A single chunk exceeded 25 MB. Lower **Upload chunk size** below its default of 24 MB, since the plugin already auto-chunks over the limit.                       |
-| **Request timed out**                            | The network stalled or the file is very long. Raise **Request timeout** (up to 60 minutes) and check your connection.                                             |
-| **Wrong language detected**                      | Set **Language** to the explicit ISO code instead of `auto`.                                                                                                      |
-| **No speaker labels**                            | Expected - Whisper API has no diarization. Switch to [Deepgram](deepgram-api-key.md), [Gemini](gemini-api-key.md), or [Voxtral](mistral-api-key.md) for speakers. |
-| **"Model not found" or empty result**            | The model id is wrong or unsupported. Reselect `whisper-1`, or pick a model that supports `verbose_json` with timestamps.                                         |
+| Symptom                                          | Likely cause and fix                                                                                                                                                                                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **401 / invalid key**                            | The key is wrong, truncated, revoked, or pasted with extra spaces. Re-copy it from <https://platform.openai.com/api-keys> or create a new one.                                                         |
+| **Quota / insufficient balance / billing error** | No credit on the account. Add a payment method and credit at <https://platform.openai.com/settings/organization/billing>.                                                                              |
+| **File too large / 413**                         | A single chunk exceeded 25 MB. Lower **Upload chunk size** below its default of 24 MB, since the plugin already auto-chunks over the limit.                                                            |
+| **Request timed out**                            | The network stalled or the file is very long. Raise **Request timeout** (up to 60 minutes) and check your connection.                                                                                  |
+| **Wrong language detected**                      | Set **Language** to the explicit ISO code instead of `auto`.                                                                                                                                           |
+| **No speaker labels**                            | Expected - Whisper API has no diarization. Switch to [Deepgram](deepgram-api-key.md), [Gemini](gemini-api-key.md), [Voxtral](mistral-api-key.md), or [AssemblyAI](assemblyai-api-key.md) for speakers. |
+| **"Model not found" or empty result**            | The model id is wrong or unsupported. Reselect `whisper-1`, or pick a model that supports `verbose_json` with timestamps.                                                                              |
 
 For broader diagnostics, see the [Troubleshooting guide](../troubleshooting.md).
 

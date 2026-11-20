@@ -60,19 +60,20 @@ You only do this part once. All of it lives under **Settings > Advanced Audio Re
 
 Diarization (splitting the transcript by speaker) is what makes a meeting transcript readable. Three engines support it:
 
-| Engine              | Diarization | Max file | Cost                        | Best for                                                | Set-up guide                       |
-| ------------------- | ----------- | -------- | --------------------------- | ------------------------------------------------------- | ---------------------------------- |
-| **Deepgram**        | Yes         | 2 GB     | Free credit, then pay-as-go | Consistent speaker labels across the whole file         | [Deepgram](deepgram-api-key.md)    |
-| **Google Gemini**   | Yes         | 2 GB     | Free tier, then paid        | Long recordings and reuse for LLM summarization         | [Google Gemini](gemini-api-key.md) |
-| **Mistral Voxtral** | Yes         | 1 GB     | Paid, about $0.003 a minute | Up to three hours in one request, one speaker numbering | [Mistral](mistral-api-key.md)      |
+| Engine              | Diarization | Max file | Cost                        | Best for                                                | Set-up guide                        |
+| ------------------- | ----------- | -------- | --------------------------- | ------------------------------------------------------- | ----------------------------------- |
+| **Deepgram**        | Yes         | 2 GB     | Free credit, then pay-as-go | Consistent speaker labels across the whole file         | [Deepgram](deepgram-api-key.md)     |
+| **Google Gemini**   | Yes         | 2 GB     | Free tier, then paid        | Long recordings and reuse for LLM summarization         | [Google Gemini](gemini-api-key.md)  |
+| **Mistral Voxtral** | Yes         | 1 GB     | Paid, about $0.003 a minute | Up to three hours in one request, one speaker numbering | [Mistral](mistral-api-key.md)       |
+| **AssemblyAI**      | Yes         | 2.2 GB   | Paid, about $0.21 an hour   | Up to ten hours in one job, one speaker numbering       | [AssemblyAI](assemblyai-api-key.md) |
 
 The **Whisper API** engine (OpenAI / Groq) and **local whisper.cpp** do **not** diarize - the **Speaker diarization** toggle is greyed out for them. Use them only if you do not need speaker labels.
 
-For a multi-hour meeting, Deepgram sends the whole file in one request, so speaker numbering stays consistent end to end. Gemini also accepts up to 2 GB, but a recording longer than **15 minutes** is split into parts and stitched back together, and a diarized split **resets speaker numbering** at each part boundary, which the plugin surfaces as a warning. Mistral Voxtral also sends the recording whole, up to three hours or 1 GB, so its speaker numbering holds end to end as Deepgram's does. If consistent labels across a very long meeting matter most, prefer Deepgram or Voxtral. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for the full behavior.
+For a multi-hour meeting, Deepgram sends the whole file in one request, so speaker numbering stays consistent end to end. Gemini also accepts up to 2 GB, but a recording longer than **15 minutes** is split into parts and stitched back together, and a diarized split **resets speaker numbering** at each part boundary, which the plugin surfaces as a warning. Mistral Voxtral also sends the recording whole, up to three hours or 1 GB, so its speaker numbering holds end to end as Deepgram's does. If consistent labels across a very long meeting matter most, prefer Deepgram, Voxtral, or AssemblyAI. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for the full behavior.
 
-1. Set **Transcription engine** to **Deepgram**, **Google Gemini**, or **Mistral Voxtral**.
+1. Set **Transcription engine** to **Deepgram**, **Google Gemini**, **Mistral Voxtral**, or **AssemblyAI**.
 2. Open **Engines**, then that engine's page, and link the **API key** for it with **Link...**, which stores it in Obsidian's keychain (follow the linked guide above).
-3. Leave **Model** on its default (`nova-3` for Deepgram, `gemini-4-hydrogen` for Gemini, `voxtral-mini-latest` for Voxtral) unless you have a reason to change it.
+3. Leave **Model** on its default (`nova-3` for Deepgram, `gemini-4-hydrogen` for Gemini, `voxtral-mini-latest` for Voxtral, `assemblyai-stt-3-7` for AssemblyAI) unless you have a reason to change it.
 
 ### 2. Enable speaker diarization
 
@@ -102,7 +103,7 @@ A meeting note benefits from having both the readable transcript **in the note**
 
 For meetings, **Note and file** is the most useful: you read the transcript inline, and you keep a structured sidecar (default **JSON**, which preserves speaker labels and the segment timings) for search or later reuse. Choose **Save to file and link it in the note** instead if you want to keep the note short and link out to the transcript.
 
-When the destination is anything other than note-only, a **File format** option appears: **JSON** (default - full data including speakers and timings), **SubRip .srt**, **WebVTT .vtt**, or **Plain text .txt**. Keep **JSON** for meetings so nothing is lost. Per-word timings reach that file only where the engine returns them: Deepgram does on every run, the Whisper API does when **Word-level timestamps** is on, and Gemini, Mistral Voxtral, and local whisper.cpp never do.
+When the destination is anything other than note-only, a **File format** option appears: **JSON** (default - full data including speakers and timings), **SubRip .srt**, **WebVTT .vtt**, or **Plain text .txt**. Keep **JSON** for meetings so nothing is lost. Per-word timings reach that file only where the engine returns them: Deepgram and AssemblyAI do on every run, the Whisper API does when **Word-level timestamps** is on, and Gemini, Mistral Voxtral, and local whisper.cpp never do.
 
 The in-note formatting defaults are already tuned for meetings:
 
@@ -251,7 +252,7 @@ Use this once to confirm your setup, then just record.
 **One-time setup**
 
 1. Settings > Transcription > **Enable transcription** = On.
-2. **Transcription engine** = Deepgram, Google Gemini, or Mistral Voxtral, with a valid **API key** on its page under **Engines**.
+2. **Transcription engine** = Deepgram, Google Gemini, Mistral Voxtral, or AssemblyAI, with a valid **API key** on its page under **Engines**.
 3. **Speaker diarization** = On.
 4. **Transcript output > Destination** = **Note and file** (File format **JSON**).
 5. **LLM post-processing** = On, **Task** = **Summarize**, its **Post-processing engine** chosen, and that engine's **API key** confirmed under **Engines**.
@@ -276,7 +277,7 @@ Use this once to confirm your setup, then just record.
 
 ## Troubleshooting
 
-- **The Speaker diarization toggle is greyed out** - the selected engine cannot diarize. Switch **Transcription engine** to **Deepgram**, **Google Gemini**, or **Mistral Voxtral**.
+- **The Speaker diarization toggle is greyed out** - the selected engine cannot diarize. Switch **Transcription engine** to **Deepgram**, **Google Gemini**, **Mistral Voxtral**, or **AssemblyAI**.
 - **Speaker numbers reset partway through a long Gemini transcript** - Gemini splits recordings longer than 15 minutes into parts, and diarized splits restart speaker numbering at each boundary (surfaced as a warning). Use **Deepgram** for consistent labels across a long meeting.
 - **One person came back as two speakers** - diarization split them across labels (a changed microphone position, a long pause, a phone joining). In **Rename speakers**, type the same name into both rows and confirm the merge: their lines become one speaker everywhere. Do it before anyone edits the note, since merged lines read identically afterwards and only a new transcription can separate them again.
 - **The play buttons in Rename speakers are greyed out** - that recording's roster predates speaker samples. Transcribe it once more with **Speaker diarization** on and the samples appear.

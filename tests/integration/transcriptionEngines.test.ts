@@ -17,6 +17,7 @@ import {
 } from 'src/transcription/providers/engines';
 import { ProviderConfigError } from 'src/transcription/providerConfigError';
 import {
+	ASSEMBLYAI_MODEL_SUGGESTIONS,
 	DEEPGRAM_MODEL_SUGGESTIONS,
 	DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	GEMINI_MODEL_SUGGESTIONS,
@@ -63,6 +64,7 @@ const CLOUD_ENGINES: EngineId[] = [
 	ENGINE_IDS.DEEPGRAM,
 	ENGINE_IDS.GEMINI,
 	ENGINE_IDS.VOXTRAL,
+	ENGINE_IDS.ASSEMBLYAI,
 ];
 
 /**
@@ -86,6 +88,7 @@ const EVERY_ENGINE_ID: TranscriptionProviderId[] = [
 	TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 	TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 	TRANSCRIPTION_PROVIDER_IDS.VOXTRAL,
+	TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
 	TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 ];
 
@@ -399,6 +402,7 @@ describe('every seeded model has a built-in rate', () => {
 		[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, DEEPGRAM_MODEL_SUGGESTIONS],
 		[TRANSCRIPTION_PROVIDER_IDS.GEMINI, GEMINI_MODEL_SUGGESTIONS],
 		[TRANSCRIPTION_PROVIDER_IDS.VOXTRAL, VOXTRAL_MODEL_SUGGESTIONS],
+		[TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI, ASSEMBLYAI_MODEL_SUGGESTIONS],
 	];
 	it.each(cases)('prices every seeded %s model', (id, models) => {
 		for (const model of models) {
@@ -450,6 +454,51 @@ describe('matchRate', () => {
 
 	it('returns undefined when nothing matches', () => {
 		expect(matchRate([['nova-3', 7]], 'mystery')).toBeUndefined();
+	});
+});
+
+describe('the AssemblyAI rate, which the run adds to', () => {
+	const pricing = transcriptionEngine(
+		TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
+	).pricing;
+
+	/** USD per audio hour, the unit AssemblyAI publishes its prices in. */
+	const perHour = (
+		model: string,
+		run?: Parameters<typeof pricing>[1],
+	): number => {
+		const resolved = defined(pricing(model, run));
+		return resolved.kind === 'perMinute' ? resolved.usdPerMinute * 60 : NaN;
+	};
+
+	it('quotes the bare model rate when nothing extra is asked', () => {
+		expect(perHour('assemblyai-stt-3-7')).toBeCloseTo(0.21, 10);
+		expect(perHour('universal-2')).toBeCloseTo(0.15, 10);
+		expect(
+			perHour('universal-2', { diarize: false, biased: false }),
+		).toBeCloseTo(0.15, 10);
+	});
+
+	it('adds each extra the run asks for', () => {
+		expect(
+			perHour('universal-2', { diarize: true, biased: false }),
+		).toBeCloseTo(0.17, 10);
+		expect(
+			perHour('universal-2', { diarize: false, biased: true }),
+		).toBeCloseTo(0.2, 10);
+		expect(
+			perHour('assemblyai-stt-3-7', { diarize: true, biased: true }),
+		).toBeCloseTo(0.28, 10);
+	});
+
+	it('bills a deprecated Universal-3 id at the flagship rate', () => {
+		expect(perHour('universal-3-5-pro')).toBeCloseTo(0.21, 10);
+	});
+
+	it('quotes nothing for a model it has no rate for, whatever is asked', () => {
+		expect(
+			pricing('made-up-model', { diarize: true, biased: true }),
+		).toBeNull();
 	});
 });
 

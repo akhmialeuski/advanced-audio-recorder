@@ -70,7 +70,7 @@ The JSON transcript file additionally records the language of every segment, as 
 
 ## Limits
 
-- **Only Google Gemini reads the list.** Whisper API, Deepgram and local whisper.cpp transcribe the whole lesson in the first language listed, and Mistral Voxtral detects one language for the whole recording.
+- **Only Google Gemini reads the list.** Whisper API, Deepgram, AssemblyAI and local whisper.cpp transcribe the whole lesson in the first language listed, and Mistral Voxtral detects one language for the whole recording.
 - **A lesson longer than 15 minutes is sent in parts.** Each part is transcribed with the same languages, but speaker numbering can restart between parts, which renaming the speakers fixes.
 - **A language you did not list is tagged with the closest listed one.** Its text is still written in its own script, so list every language the lesson regularly uses.
 - **Cleanup cannot recover what recognition lost.** A passage the engine heard in the wrong language is garbled before the model sees it, and the cleanup leaves it as it is rather than guessing what was said.

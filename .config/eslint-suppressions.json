@@ -663,11 +663,6 @@
 			"count": 2
 		}
 	},
-	"src/transcription/dictionaryBias.ts": {
-		"complexity": {
-			"count": 1
-		}
-	},
 	"src/transcription/httpClient.ts": {
 		"complexity": {
 			"count": 2

@@ -1,6 +1,6 @@
 # Get a Google Gemini API key
 
-Google Gemini is a multimodal model that transcribes audio directly. In Advanced Audio Recorder it is one of the five [transcription](../transcription.md) engines, and the **same key** also powers the [Gemini LLM post-processing](../llm-post-processing.md) provider - set it once and both features work. Gemini takes the whole recording in one piece (inline in the request up to 14 MB, uploaded through the File API up to 2 GB), supports speaker [diarization](../transcription.md#speakers-and-diarization), and Google's [AI Studio](https://aistudio.google.com/apikey) hands out a key with a free tier in a couple of clicks. This guide walks you from a blank settings tab to a working transcript.
+Google Gemini is a multimodal model that transcribes audio directly. In Advanced Audio Recorder it is one of the six [transcription](../transcription.md) engines, and the **same key** also powers the [Gemini LLM post-processing](../llm-post-processing.md) provider - set it once and both features work. Gemini takes the whole recording in one piece (inline in the request up to 14 MB, uploaded through the File API up to 2 GB), supports speaker [diarization](../transcription.md#speakers-and-diarization), and Google's [AI Studio](https://aistudio.google.com/apikey) hands out a key with a free tier in a couple of clicks. This guide walks you from a blank settings tab to a working transcript.
 
 - [Why Gemini](#why-gemini)
 - [Step 1: Create the API key in Google AI Studio](#step-1-create-the-api-key-in-google-ai-studio)
@@ -16,7 +16,7 @@ Google Gemini is a multimodal model that transcribes audio directly. In Advanced
 Gemini reads the audio itself rather than running a dedicated speech model, which makes it a strong all-rounder for the plugin:
 
 - **Whole-file requests.** Audio up to **14 MB**, which covers a quick note and about seven minutes of decoded WAV, travels inline in the transcription request itself, with no upload. Larger recordings up to **2 GB** are uploaded in one piece through Google's File API. Either way speaker numbering stays consistent across the file (subject to the splitting rule below).
-- **Speaker diarization.** Gemini can label distinct speakers (`Speaker 1`, `Speaker 2`, and real names when clearly stated) - useful for meetings and interviews. Diarization is off by default and is only available on Gemini, Deepgram, and Mistral Voxtral.
+- **Speaker diarization.** Gemini can label distinct speakers (`Speaker 1`, `Speaker 2`, and real names when clearly stated) - useful for meetings and interviews. Diarization is off by default and is only available on Gemini, Deepgram, Mistral Voxtral, and AssemblyAI.
 - **Free tier.** Google AI Studio includes a free quota to get started; heavier use moves to paid billing.
 - **One key, two features.** The same Gemini key transcribes audio **and** drives Gemini-based [LLM post-processing](../llm-post-processing.md) (clean up, summarize, translate, or a custom instruction).
 - **Sensible default model.** The plugin ships with **`gemini-4-hydrogen`** selected - the everyday model of the current generation, fast and cheap enough for transcription, with `gemini-4-argon` and `gemini-4-carbon` available for difficult audio.
@@ -59,7 +59,7 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 5. On the **Google Gemini API key** row, click **Link...**. In Obsidian's secret picker choose **Add secret...** (it opens straight away while the keychain is empty), enter an ID such as `gemini-api-key`, paste your key as the secret, and save. The key is kept in Obsidian's keychain on this device; the plugin stores only the ID.
 6. Under **Model**, pick `gemini-4-hydrogen` (default) or `gemini-4-argon` for harder audio. Open the **Model catalogue** entry below it to add any other model id with the **+** button beside the filter, to drop one with the **×** button on its row, or follow the **Gemini model list** link at the end of the **Model** row's description to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
 7. (Optional) Back under **Transcription**, set **Language** to `auto` (default) or an ISO code such as `en`, `ru`, or `es`. Gemini transcribes each segment in the language actually spoken regardless, but a hint can help.
-8. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is only enabled for Gemini, Deepgram, and Mistral Voxtral.
+8. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is only enabled for Gemini, Deepgram, Mistral Voxtral, and AssemblyAI.
 9. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
 
 ![The Model catalogue page of the Google Gemini engine: the Filter models box with the add button beside it, above the six seeded model ids, each with a delete button, and In use under gemini-4-hydrogen](../images/settings-gemini-model-picker.png)

@@ -116,7 +116,7 @@ If the transcript looks right, Groq is configured. For output formatting, destin
 Groq runs through the plugin's **Whisper API** engine, so it inherits that engine's behavior:
 
 - **Per-request limit: 25 MB.** Files at or under 25 MB are uploaded in their original container. Larger recordings are automatically resampled to 16 kHz mono and split into upload-sized WAV chunks, transcribed separately, and stitched onto one timeline - you do not split them by hand.
-- **No diarization.** The Whisper API does not label speakers, so **Speaker diarization** is disabled and greyed out for this engine. For speaker labels in meetings and interviews, use [Deepgram](deepgram-api-key.md), [Google Gemini](gemini-api-key.md), or [Mistral Voxtral](mistral-api-key.md) instead.
+- **No diarization.** The Whisper API does not label speakers, so **Speaker diarization** is disabled and greyed out for this engine. For speaker labels in meetings and interviews, use [Deepgram](deepgram-api-key.md), [Google Gemini](gemini-api-key.md), [Mistral Voxtral](mistral-api-key.md), or [AssemblyAI](assemblyai-api-key.md) instead.
 - **Word-level timestamps** can be enabled, and they are recorded in the JSON sidecar output only. This is the only engine whose request reads that switch.
 - **Translate speech to English** is offered here and nowhere else. It uses the endpoint's second operation, which writes the recording down in English whatever was spoken, and it drops the **Language** hint and the word timings from the request because that operation takes neither.
 - **Dictionary terms travel in the prompt.** A [dictionary profile](../transcription.md#biasing-recognition-toward-your-own-terms) applied to a run is sent as the OpenAI `prompt` field, which holds only about 224 tokens, so a long glossary is trimmed to the terms that fit and a notice says so.
@@ -136,15 +136,15 @@ Groq runs through the plugin's **Whisper API** engine, so it inherits that engin
 
 ## Troubleshooting
 
-| Symptom                                                | Likely cause and fix                                                                                                                                            |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `401` / "Invalid API key" / "Unauthorized"             | The key is wrong, has extra spaces, or was revoked. Re-copy it from <https://console.groq.com/keys> and paste it again, or create a new key.                    |
-| `404` / "model not found" / wrong base URL             | Check the **Base URL** is exactly `https://api.groq.com/openai/v1` (note `/openai/v1`), and that the **model** id matches a current Groq model.                 |
-| "model does not support verbose_json" or empty timings | The selected model cannot return timed segments. Switch to `whisper-large-v3` or `whisper-large-v3-turbo`.                                                      |
-| `429` / "rate limit" / "Too Many Requests"             | Groq's free tier has per-minute request and token limits. Wait and retry, transcribe fewer files at once, or upgrade your Groq plan.                            |
-| Transcript is in the wrong language                    | Set **Language** to the correct ISO code (`en`, `ru`, `es`, …) instead of `auto`.                                                                               |
-| Request times out on a long file                       | Raise **Request timeout** (up to 60 minutes). The plugin already chunks files over 25 MB, so each request stays small.                                          |
-| Speaker labels are missing                             | Expected - the Whisper API has no diarization. Use [Deepgram](deepgram-api-key.md), [Gemini](gemini-api-key.md), or [Voxtral](mistral-api-key.md) for speakers. |
+| Symptom                                                | Likely cause and fix                                                                                                                                                                                 |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `401` / "Invalid API key" / "Unauthorized"             | The key is wrong, has extra spaces, or was revoked. Re-copy it from <https://console.groq.com/keys> and paste it again, or create a new key.                                                         |
+| `404` / "model not found" / wrong base URL             | Check the **Base URL** is exactly `https://api.groq.com/openai/v1` (note `/openai/v1`), and that the **model** id matches a current Groq model.                                                      |
+| "model does not support verbose_json" or empty timings | The selected model cannot return timed segments. Switch to `whisper-large-v3` or `whisper-large-v3-turbo`.                                                                                           |
+| `429` / "rate limit" / "Too Many Requests"             | Groq's free tier has per-minute request and token limits. Wait and retry, transcribe fewer files at once, or upgrade your Groq plan.                                                                 |
+| Transcript is in the wrong language                    | Set **Language** to the correct ISO code (`en`, `ru`, `es`, …) instead of `auto`.                                                                                                                    |
+| Request times out on a long file                       | Raise **Request timeout** (up to 60 minutes). The plugin already chunks files over 25 MB, so each request stays small.                                                                               |
+| Speaker labels are missing                             | Expected - the Whisper API has no diarization. Use [Deepgram](deepgram-api-key.md), [Gemini](gemini-api-key.md), [Voxtral](mistral-api-key.md), or [AssemblyAI](assemblyai-api-key.md) for speakers. |
 
 If a problem persists, see the [Troubleshooting](../troubleshooting.md) guide and the [Bug reporting guide](../BUG_REPORTING_GUIDE.md). Include the **System info** report - it never contains your API key.
 

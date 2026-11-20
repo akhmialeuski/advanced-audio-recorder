@@ -4,6 +4,7 @@
  * engine and model, surfaced live through onCost and in the run result.
  */
 
+import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { TranscriptionService } from 'src/transcription/TranscriptionService';
 import type { TranscribeRunCost } from 'src/transcription/TranscriptionService';
@@ -210,5 +211,87 @@ describe('TranscriptionService run cost', () => {
 		expect(updates.length).toBeGreaterThan(0);
 		const last = updates[updates.length - 1];
 		expect(last?.usd).toBeCloseTo(0.0043, 10);
+	});
+});
+
+describe('an engine that bills what the run asks for', () => {
+	/**
+	 * Settings selecting AssemblyAI with a dictionary of the given terms.
+	 * @param terms - The dictionary, one term per line
+	 * @param overrides - What this case varies beyond that
+	 * @returns The overrides a run is started with
+	 */
+	const assemblyAiWith = (
+		terms: string[],
+		overrides: Partial<AudioRecorderSettings> = {},
+	): Partial<AudioRecorderSettings> => ({
+		transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
+		assemblyAiModel: 'assemblyai-stt-3-7',
+		transcriptionAdvancedSettingsEnabled: true,
+		profiles: [
+			{
+				id: 'd1',
+				kind: 'dictionary',
+				name: 'Team',
+				body: terms.join('\n'),
+			},
+		],
+		selectedProfileIds: {
+			...mergeSettings({}).selectedProfileIds,
+			dictionary: 'd1',
+		},
+		...overrides,
+	});
+
+	/** One hour of audio, so a cost reads as the hourly rate. */
+	const ONE_HOUR = { segments, usage: { audioSeconds: 3600 } };
+
+	it('bills the bare AssemblyAI rate for a plain run', async () => {
+		const cost = await runWith(
+			ONE_HOUR,
+			assemblyAiWith([], { transcriptionDiarize: false }),
+		);
+
+		expect(cost.usd).toBeCloseTo(0.21, 10);
+	});
+
+	it('adds speaker labels and keyterms to the AssemblyAI rate', async () => {
+		const cost = await runWith(
+			ONE_HOUR,
+			assemblyAiWith(['Obsidian'], { transcriptionDiarize: true }),
+		);
+
+		// 0.21 for the model, 0.02 for speakers, 0.05 for keyterms
+		expect(cost.usd).toBeCloseTo(0.28, 10);
+	});
+
+	it("plans the dictionary against the selected engine's own model", async () => {
+		// Universal-2 carries 200 keyterm words where the flagship carries
+		// 1000. A plan made against the Deepgram model id, which is what the
+		// service passed for every engine, would have sent all 201.
+		const terms = Array.from(
+			{ length: 201 },
+			(_value, index) => `term${String(index)}`,
+		);
+		const provider = fakeProvider({ transcribe: ONE_HOUR });
+		const service = new TranscriptionService(
+			makeApp(),
+			() =>
+				mergeSettings(
+					assemblyAiWith(terms, {
+						assemblyAiModel: 'universal-2',
+						deepgramModel: 'nova-3',
+					}),
+				),
+			{ createProvider: () => provider },
+		);
+
+		await service.run(audioFile, { notePathForLinks: 'note.md' });
+
+		const [, options] = provider.transcribe.mock.calls[0] ?? [];
+		expect(options?.dictionary).toHaveLength(200);
+		expect(jest.mocked(Notice)).toHaveBeenCalledWith(
+			expect.stringContaining('only 200 of 201 terms were sent'),
+		);
 	});
 });
