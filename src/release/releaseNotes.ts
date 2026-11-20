@@ -59,7 +59,7 @@ A new guide, [AssemblyAI API key](https://github.com/akhmialeuski/advanced-audio
 
 - The dictionary of a run is planned against the model of the selected engine. It used the Deepgram model for every engine, which only Deepgram read, so no earlier run was affected.
 - An engine's price can depend on what the run asks for, so the estimate and the session total add AssemblyAI's extras from one rule, and the Whisper, Deepgram and AssemblyAI mappers share one reader of the billed audio duration.
-- The suite is 8169 tests across 342 suites.
+- The suite is 8184 tests across 343 suites.
 
 ## Compatibility
 
