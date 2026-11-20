@@ -48,6 +48,7 @@ describe('the id types', () => {
 			| 'voxtral'
 			| 'mistral-llm'
 			| 'deepseek'
+			| 'assemblyai'
 			| 'local-whisper'
 		>();
 		expectTypeOf<AccountId>().toEqualTypeOf<
@@ -57,10 +58,11 @@ describe('the id types', () => {
 			| 'anthropic'
 			| 'mistral'
 			| 'deepseek'
+			| 'assemblyai'
 		>();
 
-		expect(Object.values(ENGINE_IDS)).toHaveLength(9);
-		expect(Object.values(ACCOUNT_IDS)).toHaveLength(6);
+		expect(Object.values(ENGINE_IDS)).toHaveLength(10);
+		expect(Object.values(ACCOUNT_IDS)).toHaveLength(7);
 	});
 
 	it('key the registries exhaustively, so no engine can be half-added', () => {

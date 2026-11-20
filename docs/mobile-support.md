@@ -25,7 +25,7 @@ Most of the plugin works the same on a phone or tablet as on the desktop:
 - **Automatic splitting.** A live recording is saved as fixed-duration part files, which on a phone is also what bounds the loss when the operating system closes the app. See [Splitting](splitting.md#automatic-splitting-during-recording).
 - **Crash recovery.** A session the operating system interrupted is offered back on the next launch, with the part files it already wrote. See [Crash recovery on mobile](#crash-recovery-on-mobile).
 - **On-demand audio cleanup.** Run the high-pass filter, noise gate, and loudness leveling on an existing file, with tighter size and length limits than the desktop so the app stays within its memory budget. See [Audio cleanup](audio-cleanup.md).
-- **Cloud transcription.** Transcribe recordings with the Whisper API, Deepgram, Google Gemini, or Mistral Voxtral, with optional LLM post-processing. See [Transcription on mobile](#transcription-on-mobile) below.
+- **Cloud transcription.** Transcribe recordings with the Whisper API, Deepgram, Google Gemini, Mistral Voxtral, or AssemblyAI, with optional LLM post-processing. See [Transcription on mobile](#transcription-on-mobile) below.
 - **File actions.** Audio file info, delete, and delete-and-link all work from the context menu. See [File operations](file-operations.md).
 
 ## Platform-specific limitations
@@ -70,6 +70,7 @@ Transcription works on mobile with the **cloud engines**:
 - **Deepgram** (with speaker diarization)
 - **Google Gemini** (with speaker diarization)
 - **Mistral Voxtral** (with speaker diarization)
+- **AssemblyAI** (with speaker diarization)
 
 Optional [LLM post-processing](llm-post-processing.md) - clean up, summarize, or run a custom instruction over the transcript - also works, because it too calls a cloud provider.
 
@@ -97,5 +98,5 @@ Device-bound settings (the input device and channel layouts) are stored **per pl
 - [Recording on mobile](recording.md#recording-on-mobile) - the recording section's mobile notes in full.
 - [Record a voice memo or lecture on your phone](use-cases/record-on-mobile.md) - an end-to-end mobile walkthrough.
 - [Audio player](audio-player.md) - the enhanced waveform player, markers, chapters, and timecode links.
-- [Transcription](transcription.md) - the five engines, diarization, and output formats.
+- [Transcription](transcription.md) - the six engines, diarization, and output formats.
 - [Getting started](getting-started.md) - install the plugin and make your first recording.

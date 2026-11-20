@@ -9,6 +9,9 @@
  */
 
 import {
+	ASSEMBLYAI_KEYTERM_PHRASE_WORDS,
+	ASSEMBLYAI_KEYTERM_WORD_LIMIT,
+	ASSEMBLYAI_UNIVERSAL_2_KEYTERM_WORD_LIMIT,
 	DEEPGRAM_KEYTERM_LIMIT,
 	DEEPGRAM_KEYTERM_TOKEN_LIMIT,
 	DEEPGRAM_KEYWORDS_LIMIT,
@@ -16,6 +19,7 @@ import {
 	WHISPER_PROMPT_TOKEN_LIMIT,
 	deepgramBiasMechanism,
 	describeDictionaryOmission,
+	termsWithinAssemblyAiKeyterms,
 	termsWithinWhisperPrompt,
 	tokenUpperBound,
 	termsWithinVoxtralContextBias,
@@ -424,7 +428,97 @@ describe('termsWithinVoxtralContextBias', () => {
 	});
 });
 
+describe('termsWithinAssemblyAiKeyterms', () => {
+	const FLAGSHIP = 'assemblyai-stt-3-7';
+
+	it('counts every word of a phrase toward the budget', () => {
+		// 500 two-word phrases spend the 1000 words exactly, and one more
+		// single word does not fit
+		const phrases = Array.from(
+			{ length: ASSEMBLYAI_KEYTERM_WORD_LIMIT / 2 },
+			(_value, index) => `data lake${String(index)}`,
+		);
+
+		expect(
+			termsWithinAssemblyAiKeyterms(FLAGSHIP, [...phrases, 'gRPC']),
+		).toEqual(phrases);
+	});
+
+	it('gives Universal-2 its own, smaller budget', () => {
+		const input = shortTerms(ASSEMBLYAI_UNIVERSAL_2_KEYTERM_WORD_LIMIT + 3);
+
+		expect(
+			termsWithinAssemblyAiKeyterms(' Universal-2 ', input),
+		).toHaveLength(ASSEMBLYAI_UNIVERSAL_2_KEYTERM_WORD_LIMIT);
+		expect(termsWithinAssemblyAiKeyterms(FLAGSHIP, input)).toEqual(input);
+	});
+
+	it('passes over a phrase too long to send and keeps the terms after it', () => {
+		const tooLong = Array.from(
+			{ length: ASSEMBLYAI_KEYTERM_PHRASE_WORDS + 1 },
+			(_value, index) => `w${String(index)}`,
+		).join(' ');
+
+		expect(
+			termsWithinAssemblyAiKeyterms(FLAGSHIP, ['gRPC', tooLong, 'etcd']),
+		).toEqual(['gRPC', 'etcd']);
+	});
+
+	it('stays unchanged when applied to its own result', () => {
+		const once = termsWithinAssemblyAiKeyterms(
+			'universal-2',
+			shortTerms(ASSEMBLYAI_UNIVERSAL_2_KEYTERM_WORD_LIMIT + 9),
+		);
+
+		expect(termsWithinAssemblyAiKeyterms('universal-2', once)).toEqual(
+			once,
+		);
+	});
+
+	it('reports what it left out by name, not as a tail of the list', () => {
+		const tooLong = 'one two three four five six seven';
+
+		const plan = planDictionaryBias(
+			TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
+			FLAGSHIP,
+			['gRPC', tooLong, 'etcd'],
+		);
+
+		expect(plan).toEqual({
+			applied: ['gRPC', 'etcd'],
+			omitted: [tooLong],
+			reason: 'keyterms-prompt-limit',
+		});
+	});
+
+	it('reports nothing left out for a dictionary that fits', () => {
+		expect(
+			planDictionaryBias(
+				TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
+				FLAGSHIP,
+				['gRPC'],
+			),
+		).toEqual({ applied: ['gRPC'], omitted: [] });
+	});
+});
+
 describe('describeDictionaryOmission', () => {
+	it('names both AssemblyAI limits, since either may have dropped a term', () => {
+		const message = describeDictionaryOmission({
+			applied: ['gRPC', 'etcd'],
+			omitted: ['one two three four five six seven'],
+			reason: 'keyterms-prompt-limit',
+		});
+
+		expect(message).toContain('only 2 of 3 terms were sent');
+		expect(message).toContain('AssemblyAI');
+		expect(message).toContain(String(ASSEMBLYAI_KEYTERM_PHRASE_WORDS));
+		expect(message).toContain(String(ASSEMBLYAI_KEYTERM_WORD_LIMIT));
+		expect(message).toContain(
+			String(ASSEMBLYAI_UNIVERSAL_2_KEYTERM_WORD_LIMIT),
+		);
+	});
+
 	it('is null when nothing was dropped', () => {
 		expect(
 			describeDictionaryOmission({ applied: ['a'], omitted: [] }),

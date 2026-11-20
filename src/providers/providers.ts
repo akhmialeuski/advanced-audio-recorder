@@ -21,9 +21,11 @@
 
 import {
 	ANTHROPIC_MODELS_DOC_URL,
+	ASSEMBLYAI_MODELS_DOC_URL,
 	DEEPGRAM_MODELS_DOC_URL,
 	DEEPSEEK_MODELS_DOC_URL,
 	DEFAULT_ANTHROPIC_BASE_URL,
+	DEFAULT_ASSEMBLYAI_BASE_URL,
 	DEFAULT_DEEPGRAM_BASE_URL,
 	DEFAULT_DEEPSEEK_BASE_URL,
 	DEFAULT_GEMINI_BASE_URL,
@@ -52,6 +54,7 @@ export const ACCOUNT_IDS = {
 	ANTHROPIC: 'anthropic',
 	MISTRAL: 'mistral',
 	DEEPSEEK: 'deepseek',
+	ASSEMBLYAI: 'assemblyai',
 } as const;
 
 /** One account id. */
@@ -69,6 +72,7 @@ export const ENGINE_IDS = {
 	/** Chat catalogue: the mistral-* ids reached through the same account. */
 	MISTRAL_LLM: 'mistral-llm',
 	DEEPSEEK: 'deepseek',
+	ASSEMBLYAI: 'assemblyai',
 	LOCAL_WHISPER: 'local-whisper',
 } as const;
 
@@ -90,6 +94,7 @@ export const EngineLabel = {
 	Voxtral: 'Mistral Voxtral',
 	Mistral: 'Mistral',
 	DeepSeek: 'DeepSeek',
+	AssemblyAi: 'AssemblyAI',
 	LocalWhisper: 'Local whisper.cpp (desktop)',
 } as const;
 
@@ -332,6 +337,23 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 		keyFieldDesc: STORED_LOCALLY_DESC,
 		missingKeyMessage: 'Set the DeepSeek API key in settings.',
 	},
+	[ACCOUNT_IDS.ASSEMBLYAI]: {
+		baseUrlKey: 'assemblyAiBaseUrl',
+		defaultBaseUrl: DEFAULT_ASSEMBLYAI_BASE_URL,
+		apiKeyKey: 'assemblyAiApiKey',
+		apiKeySecretKey: 'assemblyAiApiKeySecret',
+		baseUrl: (s) => s.assemblyAiBaseUrl,
+		setBaseUrl: (s, url) => (s.assemblyAiBaseUrl = url),
+		apiKey: (s) => s.assemblyAiApiKey,
+		setApiKey: (s, key) => (s.assemblyAiApiKey = key),
+		apiKeySecret: (s) => s.assemblyAiApiKeySecret,
+		setApiKeySecret: (s, id) => (s.assemblyAiApiKeySecret = id),
+		baseUrlFieldDesc:
+			'AssemblyAI API base (default https://api.assemblyai.com, or https://api.eu.assemblyai.com for the EU region).',
+		keyFieldName: 'AssemblyAI API key',
+		keyFieldDesc: STORED_LOCALLY_DESC,
+		missingKeyMessage: 'Set the AssemblyAI API key in settings.',
+	},
 };
 
 /**
@@ -562,6 +584,30 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			get: (settings) => settings.llmDeepSeekMaxTokens,
 			set: (settings, value) => (settings.llmDeepSeekMaxTokens = value),
 		},
+	},
+	[ENGINE_IDS.ASSEMBLYAI]: {
+		id: ENGINE_IDS.ASSEMBLYAI,
+		label: EngineLabel.AssemblyAi,
+		pricingUrl: 'https://www.assemblyai.com/pricing',
+		account: ACCOUNT_IDS.ASSEMBLYAI,
+		transcriptionId: TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
+		llmId: null,
+		uploadLimitMb: 0,
+		uploadChunk: null,
+		models: {
+			modelKey: 'assemblyAiModel',
+			modelsKey: 'assemblyAiModels',
+			model: (s) => s.assemblyAiModel,
+			setModel: (s, id) => (s.assemblyAiModel = id),
+			models: (s) => s.assemblyAiModels,
+			setModels: (s, ids) => (s.assemblyAiModels = ids),
+			pickerName: 'Model',
+			pickerDesc:
+				'Pick an AssemblyAI model (e.g. assemblyai-stt-3-7, universal-2). A recording of up to ten hours is sent whole for consistent speaker labels.',
+			docLabel: 'AssemblyAI model list',
+			docUrl: ASSEMBLYAI_MODELS_DOC_URL,
+		},
+		maxTokens: null,
 	},
 	[ENGINE_IDS.LOCAL_WHISPER]: {
 		id: ENGINE_IDS.LOCAL_WHISPER,

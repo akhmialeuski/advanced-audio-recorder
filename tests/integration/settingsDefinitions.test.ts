@@ -1598,6 +1598,7 @@ describe('settings definitions', () => {
 				EngineLabel.Voxtral,
 				EngineLabel.Mistral,
 				EngineLabel.DeepSeek,
+				EngineLabel.AssemblyAi,
 				EngineLabel.LocalWhisper,
 			]);
 			// A provider that both transcribes and answers prompts keeps one

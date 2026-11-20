@@ -36,6 +36,7 @@ const EVERY_ACCOUNT_ID: AccountId[] = [
 	ACCOUNT_IDS.ANTHROPIC,
 	ACCOUNT_IDS.MISTRAL,
 	ACCOUNT_IDS.DEEPSEEK,
+	ACCOUNT_IDS.ASSEMBLYAI,
 ];
 
 /** Reads a settings field by the key a descriptor names. */

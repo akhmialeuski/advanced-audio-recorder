@@ -36,13 +36,14 @@ Before automatic transcription can do anything useful, you need a transcription 
 | Deepgram                      | [Deepgram API key](deepgram-api-key.md)               | Yes          | Yes         |
 | Google Gemini                 | [Gemini API key](gemini-api-key.md)                   | Yes          | Yes         |
 | Mistral Voxtral               | [Mistral API key](mistral-api-key.md)                 | Yes          | Yes         |
+| AssemblyAI                    | [AssemblyAI API key](assemblyai-api-key.md)           | Yes          | Yes         |
 | Local `whisper.cpp` (offline) | [Local whisper.cpp](local-whisper-cpp.md)             | No           | No          |
 
 2. **Confirm it works once, manually.** Open any audio file, run **Transcribe audio** from the command palette (or from the right-click menu), and make sure a transcript comes back. Automatic transcription uses the exact same configuration, so if a manual run succeeds, the automatic one will too.
 
 3. (Optional) **Decide on output formatting.** Destination, file format, diarization, and the in-note template all come from your settings. Set them now so the automatic transcript looks the way you want - see [Transcription](../transcription.md) for the full output options and [LLM post-processing](../llm-post-processing.md) if you also want an automatic clean-up or summary.
 
-> If you have not chosen an engine yet, read [Transcription](../transcription.md) first - it compares all five engines (cost, file-size limits, diarization, offline) so you can pick the right one for voice notes, meetings, or long lectures.
+> If you have not chosen an engine yet, read [Transcription](../transcription.md) first - it compares all six engines (cost, file-size limits, diarization, offline) so you can pick the right one for voice notes, meetings, or long lectures.
 
 ---
 
@@ -62,16 +63,16 @@ Switch on **Transcribe after recording** (off by default). This is the toggle th
 
 Automatic runs use your saved settings with no prompt, so set them before you record:
 
-| Setting                  | Where                                  | Notes                                                                                                                      |
-| ------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **Transcription engine** | Transcription section                  | Whisper API, Deepgram, Google Gemini, Mistral Voxtral, or local `whisper.cpp`. Default: Whisper API.                       |
-| **Language**             | Transcription section                  | `auto` to detect, or an ISO code such as `en`, `ru`, `es`. Default: `auto`.                                                |
-| **Speaker diarization**  | Transcription section                  | Speaker labels, available on Deepgram, Gemini, and Mistral Voxtral and greyed out for Whisper API and local `whisper.cpp`. |
-| **Destination**          | Transcript output                      | Insert into note, Save to file, Note and file, or Save to file and link it. Default: Insert into note.                     |
-| **File format**          | Transcript output (when not note-only) | JSON, SubRip `.srt`, WebVTT `.vtt`, or Plain text `.txt`. Default: JSON.                                                   |
-| **Note heading**         | Transcript output                      | The heading the transcript is inserted under. Default: `## Transcript`.                                                    |
-| **Include timestamps**   | Transcript output                      | Renders a timecode at the start of each line. **Timestamps as player links** is what makes it clickable. Default: On.      |
-| **LLM post-processing**  | LLM post-processing                    | Optional automatic clean-up, summary, translation, or custom instruction. Default: Off. See below.                         |
+| Setting                  | Where                                  | Notes                                                                                                                                  |
+| ------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Transcription engine** | Transcription section                  | Whisper API, Deepgram, Google Gemini, Mistral Voxtral, AssemblyAI, or local `whisper.cpp`. Default: Whisper API.                       |
+| **Language**             | Transcription section                  | `auto` to detect, or an ISO code such as `en`, `ru`, `es`. Default: `auto`.                                                            |
+| **Speaker diarization**  | Transcription section                  | Speaker labels, available on Deepgram, Gemini, Mistral Voxtral, and AssemblyAI and greyed out for Whisper API and local `whisper.cpp`. |
+| **Destination**          | Transcript output                      | Insert into note, Save to file, Note and file, or Save to file and link it. Default: Insert into note.                                 |
+| **File format**          | Transcript output (when not note-only) | JSON, SubRip `.srt`, WebVTT `.vtt`, or Plain text `.txt`. Default: JSON.                                                               |
+| **Note heading**         | Transcript output                      | The heading the transcript is inserted under. Default: `## Transcript`.                                                                |
+| **Include timestamps**   | Transcript output                      | Renders a timecode at the start of each line. **Timestamps as player links** is what makes it clickable. Default: On.                  |
+| **LLM post-processing**  | LLM post-processing                    | Optional automatic clean-up, summary, translation, or custom instruction. Default: Off. See below.                                     |
 
 For the full list of output options (timestamp/speaker/line templates, the note vs. file destinations, and word-level timestamps), see [Transcription](../transcription.md). To have every automatic transcript cleaned up or summarized by an LLM in the same pass, enable it under [LLM post-processing](../llm-post-processing.md) - it runs as part of the same automatic job.
 

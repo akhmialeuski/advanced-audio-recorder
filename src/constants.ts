@@ -412,6 +412,7 @@ export const TRANSCRIPTION_PROVIDER_IDS = {
 	DEEPGRAM: 'deepgram',
 	GEMINI: 'gemini',
 	VOXTRAL: 'voxtral',
+	ASSEMBLYAI: 'assemblyai',
 } as const;
 
 /**
@@ -575,6 +576,55 @@ export const DEEPGRAM_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
  * See https://developers.deepgram.com/docs/diarization
  */
 export const DEEPGRAM_DIARIZE_MODEL = 'latest';
+
+/**
+ * Default AssemblyAI API base URL, the US region. The EU region is served from
+ * `https://api.eu.assemblyai.com`. The version segment is part of each path
+ * rather than of this value, because that is how AssemblyAI's own generated
+ * client (`assemblyai` 4.43.4) addresses `/v2/upload` and `/v2/transcript`.
+ */
+export const DEFAULT_ASSEMBLYAI_BASE_URL = 'https://api.assemblyai.com';
+
+/** Default AssemblyAI pre-recorded speech model id. */
+export const DEFAULT_ASSEMBLYAI_MODEL = 'assemblyai-stt-3-7';
+
+/**
+ * Seed AssemblyAI model ids for the model picker on first run; the list is
+ * user-editable. As of November 2026 these are the two pre-recorded models
+ * the `speech_models` field is documented with: the flagship, and the
+ * multilingual model it falls back to for a language it does not cover.
+ * `universal-3-5-pro` and `universal-3-pro` are deprecated and route to the
+ * flagship once retired, so neither is seeded. See
+ * {@link ASSEMBLYAI_MODELS_DOC_URL} for the authoritative, current list.
+ */
+export const ASSEMBLYAI_MODEL_SUGGESTIONS = [
+	'assemblyai-stt-3-7',
+	'universal-2',
+];
+
+/** Where the current AssemblyAI pre-recorded models are listed. */
+export const ASSEMBLYAI_MODELS_DOC_URL =
+	'https://www.assemblyai.com/docs/pre-recorded-audio/select-the-speech-model';
+
+/**
+ * Hard per-request upload ceiling for AssemblyAI, in bytes: 2.2 GB, the size
+ * its FAQ documents for a local file sent to `/v2/upload`.
+ * See https://www.assemblyai.com/docs/faq/what-are-the-limits-on-file-size-and-duration
+ */
+export const ASSEMBLYAI_MAX_REQUEST_BYTES = 2.2 * 1024 * 1024 * 1024;
+
+/**
+ * Longest recording AssemblyAI transcribes in one job, in seconds: ten hours,
+ * from the same FAQ. A recording sent in its own container is left to the
+ * endpoint to hold to it, for the reason given on `VOXTRAL_CAPABILITIES`.
+ */
+export const ASSEMBLYAI_MAX_REQUEST_SECONDS = 10 * 60 * 60;
+
+/**
+ * How long to wait between two reads of an AssemblyAI job's status, in
+ * milliseconds. The interval AssemblyAI's own client polls at.
+ */
+export const ASSEMBLYAI_POLL_INTERVAL_MS = 3000;
 
 /**
  * Default Mistral API base URL. One account serves both jobs: the Voxtral

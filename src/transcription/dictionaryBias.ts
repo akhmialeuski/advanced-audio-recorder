@@ -45,6 +45,21 @@ export const DEEPGRAM_KEYWORDS_LIMIT = 100;
  */
 export const VOXTRAL_CONTEXT_BIAS_LIMIT = 100;
 
+/**
+ * How many words AssemblyAI's `keyterms_prompt` carries in one request on its
+ * flagship model. Every word of a phrase counts toward it.
+ */
+export const ASSEMBLYAI_KEYTERM_WORD_LIMIT = 1000;
+
+/** The same budget on Universal-2, which carries a fifth of it. */
+export const ASSEMBLYAI_UNIVERSAL_2_KEYTERM_WORD_LIMIT = 200;
+
+/** The longest phrase `keyterms_prompt` takes, in words. */
+export const ASSEMBLYAI_KEYTERM_PHRASE_WORDS = 6;
+
+/** Model-id fragment naming the AssemblyAI model with the smaller budget. */
+const ASSEMBLYAI_UNIVERSAL_2 = 'universal-2';
+
 /** An encoded entry left with nothing but the separators it was made of. */
 const ONLY_UNDERSCORES = /^_+$/;
 
@@ -93,6 +108,7 @@ export type DictionaryOmissionReason =
 	| 'keywords-limit'
 	| 'keyterm-token-budget'
 	| 'context-bias-limit'
+	| 'keyterms-prompt-limit'
 	| 'prompt-window';
 
 /** The terms actually applied for a run and any that were left out. */
@@ -337,6 +353,79 @@ export function termsWithinVoxtralContextBias(terms: string[]): string[] {
 }
 
 /**
+ * The dictionary terms AssemblyAI's `keyterms_prompt` can carry on a model, in
+ * priority order.
+ *
+ * Two limits apply and they drop terms differently. A phrase longer than
+ * {@link ASSEMBLYAI_KEYTERM_PHRASE_WORDS} words can never be sent, so it is
+ * passed over and the terms after it are still considered. The word budget is
+ * spent in order, so the first term that does not fit ends the list: sending a
+ * shorter, lower-priority term in its place would reorder the user's list.
+ *
+ * Idempotent, so the provider re-applies it to an already bounded list
+ * without changing it.
+ * @param model - The selected AssemblyAI model id
+ * @param terms - Parsed dictionary terms, in priority order
+ * @returns The terms to send, within both limits
+ */
+export function termsWithinAssemblyAiKeyterms(
+	model: string,
+	terms: string[],
+): string[] {
+	const budget = model.trim().toLowerCase().includes(ASSEMBLYAI_UNIVERSAL_2)
+		? ASSEMBLYAI_UNIVERSAL_2_KEYTERM_WORD_LIMIT
+		: ASSEMBLYAI_KEYTERM_WORD_LIMIT;
+	const applied: string[] = [];
+	let words = 0;
+	for (const term of terms) {
+		const length = term.trim().split(/\s+/).length;
+		if (length > ASSEMBLYAI_KEYTERM_PHRASE_WORDS) {
+			continue;
+		}
+		if (words + length > budget) {
+			break;
+		}
+		words += length;
+		applied.push(term);
+	}
+	return applied;
+}
+
+/**
+ * The sentence shown for each reason terms were dropped, given how many were
+ * sent and how many there were. A table keyed by the reason rather than a
+ * branch per reason, so a new reason cannot be added without its sentence.
+ */
+const OMISSION_MESSAGES: Record<
+	DictionaryOmissionReason,
+	(sent: number, total: number) => string
+> = {
+	'model-unsupported': () =>
+		'Custom dictionary was not applied: the selected Deepgram model ' +
+		'does not support biasing. Choose a Nova model to bias recognition.',
+	'keyterm-limit': (sent, total) =>
+		`Custom dictionary: only the first ${sent} of ${total} ` +
+		`terms were sent (Deepgram accepts at most ${DEEPGRAM_KEYTERM_LIMIT} keyterms per request).`,
+	'keywords-limit': (sent, total) =>
+		`Custom dictionary: only the first ${sent} of ${total} ` +
+		`terms were sent (this Deepgram model accepts at most ${DEEPGRAM_KEYWORDS_LIMIT} keywords per request).`,
+	'keyterm-token-budget': (sent, total) =>
+		`Custom dictionary: only the first ${sent} of ${total} ` +
+		`terms were sent (Deepgram limits keyterms to ${DEEPGRAM_KEYTERM_TOKEN_LIMIT} tokens in total). ` +
+		'Shorten or remove long multi-word terms.',
+	'context-bias-limit': (sent, total) =>
+		`Custom dictionary: only the first ${sent} of ${total} ` +
+		`terms were sent (Voxtral accepts at most ${VOXTRAL_CONTEXT_BIAS_LIMIT} context bias terms per request).`,
+	'keyterms-prompt-limit': (sent, total) =>
+		`Custom dictionary: only ${sent} of ${total} terms were sent ` +
+		`(AssemblyAI takes phrases of at most ${ASSEMBLYAI_KEYTERM_PHRASE_WORDS} words, and ` +
+		`${ASSEMBLYAI_KEYTERM_WORD_LIMIT} words in total, or ${ASSEMBLYAI_UNIVERSAL_2_KEYTERM_WORD_LIMIT} on Universal-2).`,
+	'prompt-window': (sent, total) =>
+		`Custom dictionary: only ${sent} of ${total} terms fit ` +
+		'the transcription prompt; the rest were left out. Shorten the dictionary.',
+};
+
+/**
  * A user-facing explanation of the dropped terms, or null when every term was
  * applied. Kept next to the plan so the message and the cap can never diverge.
  * @param plan - The biasing plan produced by {@link planDictionaryBias}
@@ -348,38 +437,8 @@ export function describeDictionaryOmission(
 	if (!plan.omitted.length || !plan.reason) {
 		return null;
 	}
-	const total = plan.applied.length + plan.omitted.length;
-	switch (plan.reason) {
-		case 'model-unsupported':
-			return (
-				'Custom dictionary was not applied: the selected Deepgram model ' +
-				'does not support biasing. Choose a Nova model to bias recognition.'
-			);
-		case 'keyterm-limit':
-			return (
-				`Custom dictionary: only the first ${plan.applied.length} of ${total} ` +
-				`terms were sent (Deepgram accepts at most ${DEEPGRAM_KEYTERM_LIMIT} keyterms per request).`
-			);
-		case 'keywords-limit':
-			return (
-				`Custom dictionary: only the first ${plan.applied.length} of ${total} ` +
-				`terms were sent (this Deepgram model accepts at most ${DEEPGRAM_KEYWORDS_LIMIT} keywords per request).`
-			);
-		case 'keyterm-token-budget':
-			return (
-				`Custom dictionary: only the first ${plan.applied.length} of ${total} ` +
-				`terms were sent (Deepgram limits keyterms to ${DEEPGRAM_KEYTERM_TOKEN_LIMIT} tokens in total). ` +
-				'Shorten or remove long multi-word terms.'
-			);
-		case 'context-bias-limit':
-			return (
-				`Custom dictionary: only the first ${plan.applied.length} of ${total} ` +
-				`terms were sent (Voxtral accepts at most ${VOXTRAL_CONTEXT_BIAS_LIMIT} context bias terms per request).`
-			);
-		case 'prompt-window':
-			return (
-				`Custom dictionary: only ${plan.applied.length} of ${total} terms fit ` +
-				'the transcription prompt; the rest were left out. Shorten the dictionary.'
-			);
-	}
+	return OMISSION_MESSAGES[plan.reason](
+		plan.applied.length,
+		plan.applied.length + plan.omitted.length,
+	);
 }

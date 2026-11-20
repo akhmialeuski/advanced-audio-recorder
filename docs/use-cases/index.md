@@ -23,14 +23,15 @@ This is the hub for the step-by-step guides. The reference docs describe _what_ 
 
 Cloud transcription engines (and the LLM post-processing providers) authenticate with an **API key** you generate on the provider's website. Each guide walks you through creating an account, generating the key, and linking it on the key row of that service's own page under **Settings > Advanced Audio Recorder > Transcription > Engines**. Keys are kept in Obsidian's keychain on this device, never in the plugin's `data.json`, and are never written to diagnostics.
 
-| Guide                                             | Provider                 | Use it for                                                  |
-| ------------------------------------------------- | ------------------------ | ----------------------------------------------------------- |
-| [OpenAI / Whisper API](openai-whisper-api-key.md) | OpenAI                   | The default **Whisper API** engine, paid per minute.        |
-| [Groq (free tier)](groq-whisper-setup.md)         | Groq (OpenAI-compatible) | The **Whisper API** engine via Groq's fast, free host.      |
-| [Deepgram](deepgram-api-key.md)                   | Deepgram                 | The **Deepgram** engine with diarization, free credit.      |
-| [Google Gemini](gemini-api-key.md)                | Google AI Studio         | The **Gemini** engine for long files and LLM reuse.         |
-| [Mistral](mistral-api-key.md)                     | Mistral                  | The **Mistral Voxtral** engine and Mistral post-processing. |
-| [Anthropic / Claude](anthropic-api-key.md)        | Anthropic                | **LLM post-processing** with Claude (clean up/summarize).   |
+| Guide                                             | Provider                 | Use it for                                                         |
+| ------------------------------------------------- | ------------------------ | ------------------------------------------------------------------ |
+| [OpenAI / Whisper API](openai-whisper-api-key.md) | OpenAI                   | The default **Whisper API** engine, paid per minute.               |
+| [Groq (free tier)](groq-whisper-setup.md)         | Groq (OpenAI-compatible) | The **Whisper API** engine via Groq's fast, free host.             |
+| [Deepgram](deepgram-api-key.md)                   | Deepgram                 | The **Deepgram** engine with diarization, free credit.             |
+| [Google Gemini](gemini-api-key.md)                | Google AI Studio         | The **Gemini** engine for long files and LLM reuse.                |
+| [Mistral](mistral-api-key.md)                     | Mistral                  | The **Mistral Voxtral** engine and Mistral post-processing.        |
+| [AssemblyAI](assemblyai-api-key.md)               | AssemblyAI               | The **AssemblyAI** engine with diarization, up to ten hours a job. |
+| [Anthropic / Claude](anthropic-api-key.md)        | Anthropic                | **LLM post-processing** with Claude (clean up/summarize).          |
 
 Every API-key guide follows the same shape: generate the key on the provider's site, then link it on the matching row of that engine's page under **Transcription > Engines**, which stores it in Obsidian's keychain.
 
@@ -71,20 +72,21 @@ The meeting-notes workflow produces a single note with the recording, a diarized
 
 Pick a transcription engine before you sign up anywhere - the choice decides which API-key guide you need. The table below summarizes the trade-offs, and the [Transcription](../transcription.md) reference covers each engine in full, including [speakers and diarization](../transcription.md#speakers-and-diarization).
 
-| Engine                        | Cost                        | Diarization | Max file | Offline | Best for                                |
-| ----------------------------- | --------------------------- | ----------- | -------- | ------- | --------------------------------------- |
-| **Whisper API** (OpenAI/Groq) | Paid (Groq has a free tier) | No          | 25 MB\*  | No      | Accurate single-speaker transcription   |
-| **Deepgram**                  | Free credit, then pay-as-go | Yes         | 2 GB     | No      | Meetings and interviews with speakers   |
-| **Google Gemini**             | Free tier, then paid        | Yes         | 2 GB     | No      | Long recordings and reuse for LLM tasks |
-| **Mistral Voxtral**           | Paid, about $0.003 a minute | Yes         | 1 GB     | No      | Long meetings in one whole-file request |
-| **Local whisper.cpp**         | Free                        | No          | -        | Yes     | Private, offline transcription          |
+| Engine                        | Cost                        | Diarization | Max file | Offline | Best for                                   |
+| ----------------------------- | --------------------------- | ----------- | -------- | ------- | ------------------------------------------ |
+| **Whisper API** (OpenAI/Groq) | Paid (Groq has a free tier) | No          | 25 MB\*  | No      | Accurate single-speaker transcription      |
+| **Deepgram**                  | Free credit, then pay-as-go | Yes         | 2 GB     | No      | Meetings and interviews with speakers      |
+| **Google Gemini**             | Free tier, then paid        | Yes         | 2 GB     | No      | Long recordings and reuse for LLM tasks    |
+| **Mistral Voxtral**           | Paid, about $0.003 a minute | Yes         | 1 GB     | No      | Long meetings in one whole-file request    |
+| **AssemblyAI**                | Paid, about $0.21 an hour   | Yes         | 2.2 GB   | No      | Meetings of many speakers, up to ten hours |
+| **Local whisper.cpp**         | Free                        | No          | -        | Yes     | Private, offline transcription             |
 
 \* Files over 25 MB are automatically resampled to 16 kHz mono and split into upload-sized chunks, then stitched onto one timeline. See [Transcription](../transcription.md) for the full mechanics.
 
 Quick rules of thumb:
 
 - **One speaker, want it accurate** > Whisper API (use [Groq](groq-whisper-setup.md) for a free tier, or [OpenAI](openai-whisper-api-key.md)).
-- **Multiple speakers / meetings** > [Deepgram](deepgram-api-key.md), [Google Gemini](gemini-api-key.md), or [Mistral Voxtral](mistral-api-key.md) - all three support speaker diarization.
+- **Multiple speakers / meetings** > [Deepgram](deepgram-api-key.md), [Google Gemini](gemini-api-key.md), [Mistral Voxtral](mistral-api-key.md), or [AssemblyAI](assemblyai-api-key.md) - all four support speaker diarization.
 - **Long recordings, or you also want LLM summaries** > [Google Gemini](gemini-api-key.md).
 - **Must stay offline / no API key** > [Local whisper.cpp](local-whisper-cpp.md).
 

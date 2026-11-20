@@ -11,7 +11,7 @@ import type {
 	TranscriptWord,
 	TranscriptionUsage,
 } from '../TranscriptTypes';
-import { isRecord, num } from './responseUtils';
+import { billedSeconds, isRecord, num } from './responseUtils';
 
 /** Parsed result of one transcription request. */
 export interface WhisperResult {
@@ -24,16 +24,6 @@ export interface WhisperResult {
 	 * with, line breaks kept. Absent from every other request.
 	 */
 	rewritten?: string;
-}
-
-/**
- * Reads a billed audio duration a response carries, when present and finite.
- */
-function billedSeconds(value: unknown): TranscriptionUsage | undefined {
-	if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-		return undefined;
-	}
-	return { audioSeconds: value };
 }
 
 /**

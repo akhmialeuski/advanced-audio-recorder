@@ -43,11 +43,13 @@ import {
 	DEEPGRAM_KEYWORDS_LIMIT,
 	deepgramBiasMechanism,
 	DeepgramBiasMechanism,
+	termsWithinAssemblyAiKeyterms,
 	termsWithinDeepgramKeyterm,
 	termsWithinVoxtralContextBias,
 	termsWithinWhisperPrompt,
 	type DictionaryBiasPlan,
 } from '../dictionaryBias';
+import { AssemblyAiProvider } from './AssemblyAiProvider';
 import { DeepgramProvider } from './DeepgramProvider';
 import { GeminiProvider } from './GeminiProvider';
 import { LocalWhisperProvider } from './LocalWhisperProvider';
@@ -56,6 +58,7 @@ import { WhisperApiProvider } from './WhisperApiProvider';
 import { GEMINI_TOKEN_RATES, type TokenRate } from './geminiRates';
 import type { TranscriptionProvider } from './TranscriptionProvider';
 import {
+	effectiveDiarize,
 	effectiveDictionary,
 	isProviderAvailableOnPlatform,
 } from './capabilities';
@@ -74,6 +77,17 @@ export type EnginePricing =
 			usdPerMillionTextInput: number;
 			usdPerMillionOutput: number;
 	  };
+
+/**
+ * What a run asks of the engine that its price can depend on. An engine that
+ * bills one rate whatever is asked ignores it.
+ */
+export interface BilledRunFeatures {
+	/** Speaker labels are requested. */
+	diarize: boolean;
+	/** Biasing terms travel with the request. */
+	biased: boolean;
+}
 
 /** What a cloud engine's client is built from, once its settings check out. */
 interface CloudEngineConfig {
@@ -135,8 +149,12 @@ export interface TranscriptionEngineDescriptor {
 	 * engine, which has no billed model.
 	 */
 	model(settings: AudioRecorderSettings): string;
-	/** Resolves the rate for a model id, or null when none is built in. */
-	pricing(model: string): EnginePricing | null;
+	/**
+	 * Resolves the rate for a model id, or null when none is built in. An
+	 * engine that bills extras on top of the model's rate adds the ones the
+	 * run asks for, and quotes the bare rate when no run is given.
+	 */
+	pricing(model: string, run?: BilledRunFeatures): EnginePricing | null;
 	/**
 	 * Plans how the user's dictionary terms are applied within this engine's
 	 * mechanism and request limits. The per-engine rules live with the engine
@@ -197,6 +215,30 @@ const VOXTRAL_RATES: readonly [string, number][] = [
 	['voxtral-mini-transcribe-realtime', 0.006],
 	['voxtral-mini', 0.003],
 ];
+
+/**
+ * AssemblyAI pre-recorded rates, USD per audio minute, published per hour
+ * ($0.21 and $0.15) and converted here. The deprecated Universal-3 ids are
+ * billed at the flagship's rate, which is also the model they route to once
+ * retired.
+ */
+const ASSEMBLYAI_RATES: readonly [string, number][] = [
+	['assemblyai-stt-3-7', 0.21 / 60],
+	['universal-3', 0.21 / 60],
+	['universal-2', 0.15 / 60],
+];
+
+/**
+ * What AssemblyAI adds per audio minute for speaker labels, published as
+ * $0.02 per hour on both seeded models.
+ */
+const ASSEMBLYAI_DIARIZATION_USD_PER_MINUTE = 0.02 / 60;
+
+/**
+ * What AssemblyAI adds per audio minute for keyterms prompting, published as
+ * $0.05 per hour on both seeded models.
+ */
+const ASSEMBLYAI_KEYTERMS_USD_PER_MINUTE = 0.05 / 60;
 
 /**
  * Finds the rate whose model-id fragment appears in the (normalized) model id,
@@ -360,12 +402,10 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricing: (model) => perMinutePricing(matchRate(VOXTRAL_RATES, model)),
 		// One flat cap on the number of context_bias entries, the same shape
 		// Deepgram's keyterm mechanism has, and the same for every model in the
-		// catalogue - so the model argument is deliberately unread: the service
-		// passes the configured Deepgram model id into it, which is only ever
-		// the right answer for Deepgram. The cap counts entries on the wire
-		// rather than terms in the list, because the encoding decides how many
-		// entries a list becomes, and a notice built on any other count reports
-		// a number the request never carried.
+		// catalogue, so the model argument is unread. The cap counts entries on
+		// the wire rather than terms in the list, because the encoding decides
+		// how many entries a list becomes, and a notice built on any other
+		// count reports a number the request never carried.
 		planDictionary: (_model, terms) => {
 			const applied = termsWithinVoxtralContextBias(terms);
 			if (applied.length < terms.length) {
@@ -381,6 +421,48 @@ export const TRANSCRIPTION_ENGINES: Record<
 		create: cloudEngineFactory(
 			ENGINE_IDS.VOXTRAL,
 			(config) => new VoxtralProvider(config),
+		),
+	},
+	[TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI]: {
+		id: TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
+		label: EngineLabel.AssemblyAi,
+		pricingUrl: 'https://www.assemblyai.com/pricing',
+		model: (s) => s.assemblyAiModel,
+		// The one engine that bills what the run asks for on top of the model:
+		// speaker labels and keyterms are each an extra per audio hour.
+		pricing: (model, run) => {
+			const rate = matchRate(ASSEMBLYAI_RATES, model);
+			return perMinutePricing(
+				rate === undefined
+					? undefined
+					: rate +
+							(run?.diarize
+								? ASSEMBLYAI_DIARIZATION_USD_PER_MINUTE
+								: 0) +
+							(run?.biased
+								? ASSEMBLYAI_KEYTERMS_USD_PER_MINUTE
+								: 0),
+			);
+		},
+		// A word budget that depends on the model, and a phrase length that
+		// does not. An over-long phrase is passed over rather than ending the
+		// list, so the omitted terms are whatever was not applied, not a tail.
+		planDictionary: (model, terms) => {
+			const applied = termsWithinAssemblyAiKeyterms(model, terms);
+			if (applied.length < terms.length) {
+				const sent = new Set(applied);
+				return {
+					applied,
+					omitted: terms.filter((term) => !sent.has(term)),
+					reason: 'keyterms-prompt-limit',
+				};
+			}
+			return { applied, omitted: [] };
+		},
+		biasUnsupportedReason: () => null,
+		create: cloudEngineFactory(
+			ENGINE_IDS.ASSEMBLYAI,
+			(config) => new AssemblyAiProvider(config),
 		),
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: {
@@ -491,6 +573,36 @@ export function planDictionaryBias(
 	// The mechanism and its limits are engine facts, so the descriptor plans
 	// them; only the model-independent capability gate above is shared.
 	return transcriptionEngine(engineId).planDictionary(model, gated);
+}
+
+/**
+ * What a run asks of the selected engine that its price can depend on. The
+ * estimate shown before a run and the cost recorded after it both read this,
+ * so an extra is never quoted and then left unbilled, or the reverse.
+ *
+ * A two-pass run counts as biased throughout, though its first pass carries
+ * only the dictionary: the usage of both passes is priced as one sum, and the
+ * second pass always sends the generated terms.
+ * @param settings - The run's settings snapshot
+ * @param run - Whether the run wants speaker labels and makes a second pass,
+ *   and the dictionary terms it resolved
+ * @returns The features the engine's price is resolved with
+ */
+export function billedRunFeatures(
+	settings: AudioRecorderSettings,
+	run: { diarize: boolean; twoPass: boolean; dictionaryTerms: string[] },
+): BilledRunFeatures {
+	const engine = selectedTranscriptionEngine(settings);
+	return {
+		diarize: effectiveDiarize(engine.id, run.diarize),
+		biased:
+			run.twoPass ||
+			planDictionaryBias(
+				engine.id,
+				engine.model(settings),
+				run.dictionaryTerms,
+			).applied.length > 0,
+	};
 }
 
 /**

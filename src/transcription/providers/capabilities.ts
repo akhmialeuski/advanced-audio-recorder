@@ -9,6 +9,8 @@
  */
 
 import {
+	ASSEMBLYAI_MAX_REQUEST_BYTES,
+	ASSEMBLYAI_MAX_REQUEST_SECONDS,
 	DEEPGRAM_MAX_REQUEST_BYTES,
 	GEMINI_AUDIO_MIME_TYPES,
 	GEMINI_MAX_REQUEST_BYTES,
@@ -226,6 +228,45 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	estimatesTimecodes: false,
 };
 
+/**
+ * AssemblyAI pre-recorded transcription: the recording is uploaded, a job is
+ * queued for it and its status is read until it completes, so one job covers
+ * up to ten hours and speaker numbering stays consistent across all of it.
+ *
+ * The ten-hour cap is left to the endpoint for a recording sent in its own
+ * container, for the reason given on {@link VOXTRAL_CAPABILITIES}: proving it
+ * through the byte size would decode nearly every recording first.
+ */
+export const ASSEMBLYAI_CAPABILITIES: ProviderCapabilities = {
+	maxRequestBytes: ASSEMBLYAI_MAX_REQUEST_BYTES,
+	maxRequestSeconds: ASSEMBLYAI_MAX_REQUEST_SECONDS,
+	durationCapCheck: DurationCapCheck.LeftToEndpoint,
+	originalContainers: ANY_CONTAINER,
+	// `speaker_labels` on the job, answered as a `speaker` on every sentence.
+	supportsDiarization: true,
+	// `keyterms_prompt`, a flat list of words and phrases.
+	supportsDictionary: true,
+	// Every sentence of the answer carries its words, asked for or not. From
+	// AssemblyAI's generated client (`assemblyai` 4.43.4, openapi.generated):
+	//
+	//     export type TranscriptSentence = {
+	//         end: number; speaker: string | null; start: number;
+	//         text: string; words: TranscriptWord[];
+	//     };
+	wordTimestamps: WordTimestampSupport.Always,
+	biasChannel: AdvancedBiasChannel.Keyterm,
+	// A translation exists only as a separate speech-understanding step with
+	// its own billing, which is not the operation this capability names.
+	supportsSpeechTranslation: false,
+	readsLanguageHint: true,
+	// `language_code` takes one code. Code switching is a detection option
+	// rather than a list of languages the caller names.
+	readsLanguageList: false,
+	rewritesInRequest: false,
+	// Start and end are measured on the audio, in milliseconds.
+	estimatesTimecodes: false,
+};
+
 /** Capabilities for every engine, keyed by its settings id. */
 export const TRANSCRIPTION_PROVIDER_CAPABILITIES: Record<
 	TranscriptionProviderId,
@@ -236,6 +277,7 @@ export const TRANSCRIPTION_PROVIDER_CAPABILITIES: Record<
 	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: DEEPGRAM_CAPABILITIES,
 	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]: GEMINI_CAPABILITIES,
 	[TRANSCRIPTION_PROVIDER_IDS.VOXTRAL]: VOXTRAL_CAPABILITIES,
+	[TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI]: ASSEMBLYAI_CAPABILITIES,
 };
 
 /**

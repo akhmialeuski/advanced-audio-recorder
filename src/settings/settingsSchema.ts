@@ -25,6 +25,9 @@ import {
 	DEFAULT_DEEPSEEK_BASE_URL,
 	DEFAULT_VOXTRAL_MODEL,
 	VOXTRAL_MODEL_SUGGESTIONS,
+	ASSEMBLYAI_MODEL_SUGGESTIONS,
+	DEFAULT_ASSEMBLYAI_BASE_URL,
+	DEFAULT_ASSEMBLYAI_MODEL,
 	DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -630,6 +633,15 @@ export interface AudioRecorderSettings {
 	voxtralModel: string;
 	/** Known Voxtral model ids offered in the picker (user-editable) */
 	voxtralModels: string[];
+	/** AssemblyAI endpoint and key, read by its one speech catalogue. */
+	assemblyAiBaseUrl: string;
+	assemblyAiApiKey: string;
+	/** ID of the keychain secret holding the AssemblyAI key, or '' */
+	assemblyAiApiKeySecret: string;
+	/** AssemblyAI transcription model id (the selected one) */
+	assemblyAiModel: string;
+	/** Known AssemblyAI model ids offered in the picker (user-editable) */
+	assemblyAiModels: string[];
 	/** Path to the local whisper.cpp binary */
 	localWhisperBinaryPath: string;
 	/** Path to the local whisper model file */
@@ -1065,6 +1077,11 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	deepSeekApiKeySecret: '',
 	voxtralModel: DEFAULT_VOXTRAL_MODEL,
 	voxtralModels: [...VOXTRAL_MODEL_SUGGESTIONS],
+	assemblyAiBaseUrl: DEFAULT_ASSEMBLYAI_BASE_URL,
+	assemblyAiApiKey: '',
+	assemblyAiApiKeySecret: '',
+	assemblyAiModel: DEFAULT_ASSEMBLYAI_MODEL,
+	assemblyAiModels: [...ASSEMBLYAI_MODEL_SUGGESTIONS],
 	localWhisperBinaryPath: '',
 	localWhisperModelPath: '',
 	localWhisperExtraArgs: '',

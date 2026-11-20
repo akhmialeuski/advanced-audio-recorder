@@ -253,7 +253,7 @@ The command runs the same transcription the transcribe dialog runs, with the sam
 | Parameter                                                                                      | What it sets for this run                                                           |
 | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `language=<codes>`                                                                             | The language, `auto`, or several codes separated by commas, such as `pl,uk`.        |
-| `engine=whisper-api\|deepgram\|gemini\|voxtral\|local-whisper`                                 | The transcription engine.                                                           |
+| `engine=whisper-api\|deepgram\|gemini\|voxtral\|assemblyai\|local-whisper`                     | The transcription engine.                                                           |
 | `destination=note\|file\|both\|link`                                                           | Where the transcript goes.                                                          |
 | `format=json\|srt\|vtt\|txt`                                                                   | The format of the transcript file.                                                  |
 | `task=cleanup\|summary\|custom\|translate`                                                     | The LLM post-processing task.                                                       |

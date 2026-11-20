@@ -41,7 +41,7 @@ With quick notes on and transcription off, the entry reads **Needs transcription
 
 A quick note passes through two engines, and the Quick notes page picks each of them on its own row:
 
-- The **Quick note transcription engine** turns the dictation into text. It offers the same engines as the **Transcription engine** row of the Transcription page (Whisper API, Deepgram, Google Gemini, Mistral Voxtral, and the local whisper.cpp on desktop), and it can differ from the one recordings are transcribed with.
+- The **Quick note transcription engine** turns the dictation into text. It offers the same engines as the **Transcription engine** row of the Transcription page (Whisper API, Deepgram, Google Gemini, Mistral Voxtral, AssemblyAI, and the local whisper.cpp on desktop), and it can differ from the one recordings are transcribed with.
 - The **Quick note rewrite engine** rewrites the recognized text when a quick note profile is selected. It offers the LLM services (OpenAI, Anthropic (Claude), Google Gemini, Mistral, and DeepSeek), and plain dictation never calls it.
 
 Both engines are set up once, with their endpoint, key and model, on their pages under **Transcription > Engines**. For example, with **Transcription engine** set to `Whisper API`, **Quick note transcription engine** set to `Deepgram` and **Quick note rewrite engine** set to `DeepSeek`, a recording is sent to Whisper API, a dictation is sent to Deepgram, and a dictation with a profile selected is then rewritten by DeepSeek. The session total in the Transcribe dialog counts the dictation under Deepgram.
@@ -125,14 +125,14 @@ There is no limit on how long a dictation can be. A typical quick note lasts und
 
 All controls live under **Settings > Advanced Audio Recorder > Quick notes**.
 
-| Setting                             | What it does                                                                                                                                        | Default                    |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| **Enable quick notes**              | Adds the quick note button to the ribbon and the **Start/stop quick note** command. Reveals the rows below.                                         | Off                        |
-| **Transcription is off**            | Shown instead of the button when quick notes are on and transcription is off. Turn transcription on.                                                | -                          |
-| **Quick note transcription engine** | `Whisper API (OpenAI-compatible)`, `Deepgram`, `Google Gemini`, `Mistral Voxtral`, or `Local whisper.cpp (desktop)`. Turns the dictation into text. | The transcription engine   |
-| **Quick note rewrite engine**       | `OpenAI`, `Anthropic (Claude)`, `Google Gemini`, `Mistral`, or `DeepSeek`. Called only when a profile is used.                                      | The post-processing engine |
-| **Quick note profile**              | The instruction the dictation is rewritten with. **None** inserts the text as it was recognized.                                                    | None                       |
-| **Quick note profiles**             | Named instructions, each a page with its instruction or the note it is read from, rename, and delete.                                               | No profiles                |
+| Setting                             | What it does                                                                                                                                                      | Default                    |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| **Enable quick notes**              | Adds the quick note button to the ribbon and the **Start/stop quick note** command. Reveals the rows below.                                                       | Off                        |
+| **Transcription is off**            | Shown instead of the button when quick notes are on and transcription is off. Turn transcription on.                                                              | -                          |
+| **Quick note transcription engine** | `Whisper API (OpenAI-compatible)`, `Deepgram`, `Google Gemini`, `Mistral Voxtral`, `AssemblyAI`, or `Local whisper.cpp (desktop)`. Turns the dictation into text. | The transcription engine   |
+| **Quick note rewrite engine**       | `OpenAI`, `Anthropic (Claude)`, `Google Gemini`, `Mistral`, or `DeepSeek`. Called only when a profile is used.                                                    | The post-processing engine |
+| **Quick note profile**              | The instruction the dictation is rewritten with. **None** inserts the text as it was recognized.                                                                  | None                       |
+| **Quick note profiles**             | Named instructions, each a page with its instruction or the note it is read from, rename, and delete.                                                             | No profiles                |
 
 The transcription follows the Transcription page for **Language** and for the **Dictionary profile** when the advanced settings are on, and the recording follows the microphone settings under **Audio input**. The engine is the one this page names.
 

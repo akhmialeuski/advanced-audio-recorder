@@ -22,7 +22,7 @@ Record audio on a phone or tablet, have the file saved into your vault with an e
 
 1. **Install and enable the plugin** in the Obsidian mobile app. Open **Settings > Community plugins**, turn off **Restricted mode** if it is on, tap **Browse**, search for **Advanced Audio Recorder**, then **Install** and **Enable**. See [Getting started](../getting-started.md#from-community-plugins).
 2. **Allow microphone access.** The first time you record, the operating system asks to let Obsidian use the microphone - choose **Allow**. If capture stays silent, enable microphone access for Obsidian in your phone's system settings.
-3. **(Only for transcription) Pick a cloud engine and add its key.** Local `whisper.cpp` is desktop-only, so on mobile use the **Whisper API**, **Deepgram**, **Google Gemini**, or **Mistral Voxtral** engine. Each has a setup guide: [OpenAI / Whisper API key](openai-whisper-api-key.md), [Groq (free tier)](groq-whisper-setup.md), [Deepgram API key](deepgram-api-key.md), [Gemini API key](gemini-api-key.md), or [Mistral API key](mistral-api-key.md).
+3. **(Only for transcription) Pick a cloud engine and add its key.** Local `whisper.cpp` is desktop-only, so on mobile use the **Whisper API**, **Deepgram**, **Google Gemini**, **Mistral Voxtral**, or **AssemblyAI** engine. Each has a setup guide: [OpenAI / Whisper API key](openai-whisper-api-key.md), [Groq (free tier)](groq-whisper-setup.md), [Deepgram API key](deepgram-api-key.md), [Gemini API key](gemini-api-key.md), or [Mistral API key](mistral-api-key.md).
 
 > If you only want to record and play back, you can skip prerequisite 3 entirely - transcription is optional.
 
@@ -59,7 +59,7 @@ The inserted embed plays your recording in the note. Turn on the **Enhanced audi
 To turn the recording into text on the phone:
 
 1. Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable transcription**.
-2. Choose a **cloud** engine - **Whisper API**, **Deepgram**, **Google Gemini**, or **Mistral Voxtral** - and confirm its API key is set. Deepgram, Gemini, and Voxtral also add speaker diarization for meetings and interviews.
+2. Choose a **cloud** engine - **Whisper API**, **Deepgram**, **Google Gemini**, **Mistral Voxtral**, or **AssemblyAI** - and confirm its API key is set. Deepgram, Gemini, Voxtral, and AssemblyAI also add speaker diarization for meetings and interviews.
 3. Long-press the recording (in the File Explorer, on its embed link, or on the player) and choose **Transcribe audio**, or run the **Transcribe audio** command with the audio file active. The transcription dialog opens, runs, and writes the transcript to your configured destination.
 
 To have every recording transcribed automatically the moment it is saved, turn on **Transcribe after recording** as well - see [Transcribe automatically after every recording](transcribe-after-recording.md). Make sure a cloud engine is selected, because a synced desktop configuration that selects the local engine is skipped on mobile with a notice.
@@ -90,5 +90,5 @@ For the full list, see [Mobile support](../mobile-support.md) and [Recording on 
 - **No `Start/stop recording` in the palette.** Confirm the plugin is enabled under **Settings > Community plugins**. On mobile there is no ribbon icon, so the command palette (or a toolbar button) is how you start a recording.
 - **Recording is silent.** Grant microphone access to Obsidian in the phone's system settings, and make sure no other app is holding the microphone.
 - **The file saved in a different format than I set.** The device could not record the configured format, so the plugin fell back to the platform's best recordable format and showed a notice. See [Recording formats and automatic fallback](../mobile-support.md#recording-formats-and-automatic-fallback).
-- **Transcription is skipped or blocked.** The **Local whisper.cpp** engine is desktop-only. Select **Whisper API**, **Deepgram**, **Google Gemini**, or **Mistral Voxtral** under **Settings > Advanced Audio Recorder > Transcription**. See [Transcription on mobile](../mobile-support.md#transcription-on-mobile).
+- **Transcription is skipped or blocked.** The **Local whisper.cpp** engine is desktop-only. Select **Whisper API**, **Deepgram**, **Google Gemini**, **Mistral Voxtral**, or **AssemblyAI** under **Settings > Advanced Audio Recorder > Transcription**. See [Transcription on mobile](../mobile-support.md#transcription-on-mobile).
 - **The recording stopped when I switched apps.** The mobile operating system suspended Obsidian in the background. Keep the app in the foreground and the screen on for long recordings; parts already saved to disk are kept.

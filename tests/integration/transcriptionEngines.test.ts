@@ -8,6 +8,7 @@
 import {
 	TRANSCRIPTION_ENGINE_IDS,
 	TRANSCRIPTION_ENGINES,
+	billedRunFeatures,
 	createTranscriptionProvider,
 	localWhisperTimeoutMs,
 	matchRate,
@@ -16,6 +17,7 @@ import {
 } from 'src/transcription/providers/engines';
 import { ProviderConfigError } from 'src/transcription/providerConfigError';
 import {
+	ASSEMBLYAI_MODEL_SUGGESTIONS,
 	DEEPGRAM_MODEL_SUGGESTIONS,
 	DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	GEMINI_MODEL_SUGGESTIONS,
@@ -54,6 +56,7 @@ import type {
 	TranscriptionProviderId,
 } from 'src/settings/settingsSchema';
 import { defined } from '../helpers/assertions';
+import { defaultSettings } from '../helpers/settingsFixtures';
 
 /** The engines a transcription run reaches over an account. */
 const CLOUD_ENGINES: EngineId[] = [
@@ -61,6 +64,7 @@ const CLOUD_ENGINES: EngineId[] = [
 	ENGINE_IDS.DEEPGRAM,
 	ENGINE_IDS.GEMINI,
 	ENGINE_IDS.VOXTRAL,
+	ENGINE_IDS.ASSEMBLYAI,
 ];
 
 /**
@@ -84,6 +88,7 @@ const EVERY_ENGINE_ID: TranscriptionProviderId[] = [
 	TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 	TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 	TRANSCRIPTION_PROVIDER_IDS.VOXTRAL,
+	TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
 	TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 ];
 
@@ -397,6 +402,7 @@ describe('every seeded model has a built-in rate', () => {
 		[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, DEEPGRAM_MODEL_SUGGESTIONS],
 		[TRANSCRIPTION_PROVIDER_IDS.GEMINI, GEMINI_MODEL_SUGGESTIONS],
 		[TRANSCRIPTION_PROVIDER_IDS.VOXTRAL, VOXTRAL_MODEL_SUGGESTIONS],
+		[TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI, ASSEMBLYAI_MODEL_SUGGESTIONS],
 	];
 	it.each(cases)('prices every seeded %s model', (id, models) => {
 		for (const model of models) {
@@ -448,5 +454,119 @@ describe('matchRate', () => {
 
 	it('returns undefined when nothing matches', () => {
 		expect(matchRate([['nova-3', 7]], 'mystery')).toBeUndefined();
+	});
+});
+
+describe('the AssemblyAI rate, which the run adds to', () => {
+	const pricing = transcriptionEngine(
+		TRANSCRIPTION_PROVIDER_IDS.ASSEMBLYAI,
+	).pricing;
+
+	/** USD per audio hour, the unit AssemblyAI publishes its prices in. */
+	const perHour = (
+		model: string,
+		run?: Parameters<typeof pricing>[1],
+	): number => {
+		const resolved = defined(pricing(model, run));
+		return resolved.kind === 'perMinute' ? resolved.usdPerMinute * 60 : NaN;
+	};
+
+	it('quotes the bare model rate when nothing extra is asked', () => {
+		expect(perHour('assemblyai-stt-3-7')).toBeCloseTo(0.21, 10);
+		expect(perHour('universal-2')).toBeCloseTo(0.15, 10);
+		expect(
+			perHour('universal-2', { diarize: false, biased: false }),
+		).toBeCloseTo(0.15, 10);
+	});
+
+	it('adds each extra the run asks for', () => {
+		expect(
+			perHour('universal-2', { diarize: true, biased: false }),
+		).toBeCloseTo(0.17, 10);
+		expect(
+			perHour('universal-2', { diarize: false, biased: true }),
+		).toBeCloseTo(0.2, 10);
+		expect(
+			perHour('assemblyai-stt-3-7', { diarize: true, biased: true }),
+		).toBeCloseTo(0.28, 10);
+	});
+
+	it('bills a deprecated Universal-3 id at the flagship rate', () => {
+		expect(perHour('universal-3-5-pro')).toBeCloseTo(0.21, 10);
+	});
+
+	it('quotes nothing for a model it has no rate for, whatever is asked', () => {
+		expect(
+			pricing('made-up-model', { diarize: true, biased: true }),
+		).toBeNull();
+	});
+});
+
+describe('what a run asks of the engine that its price can depend on', () => {
+	/**
+	 * The features of a run on an engine and model, with one dictionary term
+	 * unless the case names another list.
+	 * @param overrides - The engine and model the case selects
+	 * @param run - What the case varies about the run
+	 * @returns The features the price is resolved with
+	 */
+	const featuresOf = (
+		overrides: Partial<AudioRecorderSettings>,
+		run: Partial<Parameters<typeof billedRunFeatures>[1]> = {},
+	): ReturnType<typeof billedRunFeatures> =>
+		billedRunFeatures(
+			{ ...defaultSettings(), ...overrides },
+			{
+				diarize: true,
+				twoPass: false,
+				dictionaryTerms: ['Obsidian'],
+				...run,
+			},
+		);
+
+	it('counts speakers and terms on an engine that takes both', () => {
+		expect(
+			featuresOf({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+			}),
+		).toEqual({ diarize: true, biased: true });
+	});
+
+	it('drops the speakers an engine cannot label', () => {
+		expect(
+			featuresOf({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			}).diarize,
+		).toBe(false);
+	});
+
+	it('drops the terms a model cannot carry', () => {
+		// A stored dictionary never reaches a Deepgram-hosted Whisper model,
+		// so nothing biased is sent and nothing biased is billed
+		expect(
+			featuresOf({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'whisper-large',
+			}).biased,
+		).toBe(false);
+	});
+
+	it('is unbiased with no terms and one pass', () => {
+		expect(
+			featuresOf(
+				{ transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM },
+				{ dictionaryTerms: [] },
+			).biased,
+		).toBe(false);
+	});
+
+	it('counts a second pass as biased even with no dictionary', () => {
+		expect(
+			featuresOf(
+				{ transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM },
+				{ dictionaryTerms: [], twoPass: true },
+			).biased,
+		).toBe(true);
 	});
 });

@@ -16,14 +16,14 @@
 
 ## Why Deepgram
 
-Deepgram is one of five transcription engines in the plugin (alongside the [Whisper API](../use-cases/openai-whisper-api-key.md), [Google Gemini](../use-cases/gemini-api-key.md), [Mistral Voxtral](../use-cases/mistral-api-key.md), and offline [local whisper.cpp](../use-cases/local-whisper-cpp.md)). It stands out for multi-speaker audio:
+Deepgram is one of six transcription engines in the plugin (alongside the [Whisper API](../use-cases/openai-whisper-api-key.md), [Google Gemini](../use-cases/gemini-api-key.md), [Mistral Voxtral](../use-cases/mistral-api-key.md), [AssemblyAI](../use-cases/assemblyai-api-key.md), and offline [local whisper.cpp](../use-cases/local-whisper-cpp.md)). It stands out for multi-speaker audio:
 
 - **Whole-file requests up to 2 GB.** Deepgram accepts the original audio container and sends it in **one piece**, with no chunking. The 2 GB ceiling comfortably covers hours of recording.
 - **Consistent speaker diarization.** Because the whole file is transcribed in a single request, speaker numbering stays **stable across the entire recording** - speaker 1 in the first minute is still speaker 1 in the last. This is the property that makes Deepgram a strong choice for meetings and interviews.
 - **Free starter credit, then pay-as-you-go.** A new Deepgram account includes a starter credit so you can transcribe right away; after that you pay only for what you use.
 - **Default model `nova-3`.** The plugin ships pointing at Deepgram's current general model, with a model picker for named variants and older families.
 
-If you only ever record a single speaker and want a fully free, offline option, [local whisper.cpp](../use-cases/local-whisper-cpp.md) may suit you better - but it cannot diarize. For diarized speaker labels, use Deepgram, Gemini, or Mistral Voxtral. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for how speaker labels flow into the transcript.
+If you only ever record a single speaker and want a fully free, offline option, [local whisper.cpp](../use-cases/local-whisper-cpp.md) may suit you better - but it cannot diarize. For diarized speaker labels, use Deepgram, Gemini, Mistral Voxtral, or AssemblyAI. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for how speaker labels flow into the transcript.
 
 ## Step 1: Sign up for Deepgram
 
@@ -72,7 +72,7 @@ Diarization is what separates each voice into a labelled speaker. It is **off by
 1. Still in the **Transcription** section, find **Speaker diarization**.
 2. Turn it **on**.
 
-**Speaker diarization** is enabled only for engines that support it - **Deepgram**, **Google Gemini**, and **Mistral Voxtral**. With the Whisper API or local whisper.cpp selected, the toggle is greyed out, and in the **Transcribe audio** dialog it reads _"Not supported by the selected engine. Use Deepgram for speaker labels."_ Because you selected Deepgram in Step 3, the toggle is active.
+**Speaker diarization** is enabled only for engines that support it - **Deepgram**, **Google Gemini**, **Mistral Voxtral**, and **AssemblyAI**. With the Whisper API or local whisper.cpp selected, the toggle is greyed out, and in the **Transcribe audio** dialog it reads _"Not supported by the selected engine. Use Deepgram for speaker labels."_ Because you selected Deepgram in Step 3, the toggle is active.
 
 ![Speaker diarization toggle turned on in the Transcription settings](../images/settings-transcription-diarization.png)
 
