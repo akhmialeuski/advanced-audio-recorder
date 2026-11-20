@@ -40,6 +40,7 @@ import { detectSilentChannel } from './recording/silentChannelDetector';
 import type { ChannelMode } from './audio/downmix';
 import { ConversionModal } from './ui/ConversionModal';
 import { SessionJournal, JOURNAL_FILE_NAME } from './recording/SessionJournal';
+import type { JournalSession } from './recording/SessionJournal';
 import {
 	collectRecoverableSessions,
 	recoverSession,
@@ -582,6 +583,28 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
+	 * Says that a recovery is mixing tracks, for as long as it runs. The mix
+	 * decodes and encodes the whole session while the recovery dialog shows
+	 * nothing, and before it existed a recovery only moved files. Sessions
+	 * that merge nothing are recovered without a word, as before.
+	 * @param sessions - The sessions about to be recovered
+	 * @returns The notice to hide once the recovery ends, or null
+	 */
+	private announceRecoveryMix(
+		sessions: readonly JournalSession[],
+	): Notice | null {
+		const mixes = sessions.some(
+			(session) => session.mergedFileBaseName !== undefined,
+		);
+		return mixes
+			? new Notice(
+					'Recovering audio and mixing the tracks into one file. A long recording can take a few minutes.',
+					0,
+				)
+			: null;
+	}
+
+	/**
 	 * Offers recovery for recording sessions that died mid-recording
 	 * (crash, power loss, plugin unload). Sessions whose temporary
 	 * files vanished self-clear silently; everything else opens the
@@ -600,6 +623,8 @@ export default class AudioRecorderPlugin extends Plugin {
 				onRecover: async () => {
 					const recovered: string[] = [];
 					const failed: string[] = [];
+					let mergeFailed = false;
+					const mixing = this.announceRecoveryMix(sessions);
 					for (const session of sessions) {
 						// Per session, not per run: recoverSession writes the
 						// journal back when it is done, and that write can
@@ -614,6 +639,7 @@ export default class AudioRecorderPlugin extends Plugin {
 							);
 							recovered.push(...result.recoveredPaths);
 							failed.push(...result.failedTracks);
+							mergeFailed ||= result.mergeFailed;
 						} catch (error) {
 							console.error(
 								`${PLUGIN_LOG_PREFIX} Failed to recover session:`,
@@ -627,6 +653,7 @@ export default class AudioRecorderPlugin extends Plugin {
 							);
 						}
 					}
+					mixing?.hide();
 					if (recovered.length > 0) {
 						new Notice(
 							`Recovered ${String(recovered.length)} audio file(s): ${recovered.join(', ')}`,
@@ -635,6 +662,11 @@ export default class AudioRecorderPlugin extends Plugin {
 					if (failed.length > 0) {
 						new Notice(
 							`Could not recover ${String(failed.length)} track(s); their temporary files were kept for the next attempt.`,
+						);
+					}
+					if (mergeFailed) {
+						new Notice(
+							'Could not mix the recovered tracks into one file. Each track was saved as its own file.',
 						);
 					}
 				},

@@ -5,9 +5,11 @@
  * surviving audio back to the user or discards it. What survives
  * depends on how the session wrote to disk: raw mid-stream segments
  * that have to be reassembled, or rotation parts that are already
- * complete files. Recovery never transcodes, because a raw
- * reassembled container is the safest artifact a truncated stream can
- * produce.
+ * complete files. Each track is recovered without transcoding, because a
+ * raw reassembled container is the safest artifact a truncated stream can
+ * produce. A session that merges its tracks also gets the merged file a
+ * normal stop would have written, mixed from the PCM segments or decoded
+ * and encoded from those raw tracks, which stay beside it.
  * @module recording/RecoveryService
  */
 
@@ -21,6 +23,13 @@ import {
 	removeTemporaryArtifacts,
 	resolveUniquePathInDirectory,
 } from '../audio/RecordingFileManager';
+import { mergeAudioTracks } from '../audio/AudioFormatConverter';
+import type { TrackMix } from '../types';
+import {
+	mergedFileFormat,
+	mergePlacement,
+	streamMixToWav,
+} from './mergeOutput';
 import { JOURNAL_VERSION } from './SessionJournal';
 import type {
 	JournalSession,
@@ -36,6 +45,172 @@ export interface RecoveryResult {
 	recoveredPaths: string[];
 	/** Base names of tracks that could not be recovered. */
 	failedTracks: string[];
+	/**
+	 * True when the session merges its tracks and the merge of the recovered
+	 * tracks failed. Each track is still recovered as its own file.
+	 */
+	mergeFailed: boolean;
+}
+
+/** One track recovered from its segments, as the merge takes it. */
+interface RecoveredTrack {
+	/** Vault path of the recovered file. */
+	path: string;
+	/** The journaled track, which holds its place in the merged file. */
+	track: JournalTrack;
+}
+
+/**
+ * Mixes a recovered PCM session from the segments still on disk, the
+ * bounded-memory route its stop takes to a WAV. The segments are headerless
+ * PCM, so the surviving ones mix whatever was lost between them.
+ * @param tracks - Tracks recovered from segments, in track order
+ * @param mixes - Level and position of each track, in the same order
+ * @param alignLevels - Whether the tracks are brought to one level first
+ * @param app - Obsidian App instance
+ * @returns The WAV bytes, or null when the session is not PCM or the
+ * streaming mixer does not take it
+ * @throws WavSizeLimitError when the mix would pass the WAV container ceiling
+ */
+async function streamMixPcmSegments(
+	tracks: readonly RecoveredTrack[],
+	mixes: readonly TrackMix[],
+	alignLevels: boolean,
+	app: App,
+): Promise<ArrayBuffer | null> {
+	if (!tracks.every(({ track }) => track.isPcm)) {
+		return null;
+	}
+	return streamMixToWav(
+		tracks.map(({ track }, index) => ({
+			segmentPaths: track.segmentPaths,
+			channels: track.pcmChannels,
+			sampleRate: track.pcmSampleRate,
+			...mixes[index],
+		})),
+		app,
+		{
+			alignLevels,
+			// One width for the session: every track is captured by one setting
+			format: normalizePcmSampleFormat(tracks[0]?.track.pcmFormat),
+		},
+	);
+}
+
+/**
+ * Merges the tracks of an interrupted session into the one file a normal
+ * stop would have written, through the same merge, placement and format as
+ * {@link module:recording/RecordingFinalizer}. A PCM session written as WAV
+ * is mixed from its segments in bounded memory, which is why the caller
+ * removes them only afterwards. For any other session the recovered track
+ * files are read back rather than held from the recovery loop, so only the
+ * merge itself holds the session's audio at once.
+ * @throws WavSizeLimitError when the mix would pass the WAV container ceiling
+ * @param session - Journaled session with a merged file name
+ * @param baseName - Base name of the merged file
+ * @param directory - Folder the recovered tracks were written to
+ * @param tracks - Tracks recovered from segments, in track order
+ * @param app - Obsidian App instance
+ * @returns Path of the merged file
+ */
+async function mergeRecoveredTracks(
+	session: JournalSession,
+	baseName: string,
+	directory: string,
+	tracks: readonly RecoveredTrack[],
+	app: App,
+): Promise<string> {
+	const format = mergedFileFormat(session.outputFormat);
+	const mixes = tracks.map(({ track }): TrackMix => ({
+		gainDb: track.gainDb ?? 0,
+		pan: track.pan ?? 0,
+	}));
+	const alignLevels = session.alignTrackLevels ?? false;
+	let mergedBytes =
+		format === FORMAT_WAV
+			? await streamMixPcmSegments(tracks, mixes, alignLevels, app)
+			: null;
+	if (mergedBytes === null) {
+		const readTrack = async (track: RecoveredTrack): Promise<Blob> =>
+			new Blob([await app.vault.adapter.readBinary(track.path)]);
+		const merged = await mergeAudioTracks(
+			tracks,
+			format,
+			session.bitrate,
+			false,
+			readTrack,
+			readTrack,
+			undefined,
+			mergePlacement(mixes, alignLevels),
+		);
+		mergedBytes = await merged.arrayBuffer();
+	}
+	const outputPath = await resolveUniquePathInDirectory(
+		directory,
+		`${baseName}.${format}`,
+		app,
+	);
+	await app.vault.createBinary(outputPath, mergedBytes);
+	return outputPath;
+}
+
+/**
+ * Adds the merged file to a recovery when a normal stop of the session would
+ * have written one. A failed merge is reported on the result and leaves the
+ * recovered tracks as they are.
+ *
+ * A rotation session's tracks are sets of parts, which this merge does not
+ * join, so they stay one set per track. A track that failed would be missing
+ * from the mix, and a merged file lacking one voice passes for the whole
+ * conversation, so the session then stays one file per track. The same holds
+ * for a track that left nothing on disk, which the journal no longer lists:
+ * the session then holds fewer tracks than it recorded, and the missing
+ * merged file is reported.
+ * @param session - Journaled session
+ * @param adoptsParts - Whether the session's part files are the recording
+ * @param tracks - Tracks recovered from segments, in track order
+ * @param result - The recovery's outcome, extended in place
+ * @param app - Obsidian App instance
+ */
+async function mergeAsStopWould(
+	session: JournalSession,
+	adoptsParts: boolean,
+	tracks: readonly RecoveredTrack[],
+	result: RecoveryResult,
+	app: App,
+): Promise<void> {
+	const baseName = adoptsParts ? undefined : session.mergedFileBaseName;
+	const [firstTrack] = tracks;
+	if (baseName === undefined || result.failedTracks.length > 0) {
+		return;
+	}
+	// A track that never flushed a segment was pruned before this recovery
+	// began and is no failed track, yet its voice is missing all the same
+	if (
+		firstTrack === undefined ||
+		tracks.length !== session.mergedTrackCount
+	) {
+		result.mergeFailed = true;
+		return;
+	}
+	try {
+		result.recoveredPaths.push(
+			await mergeRecoveredTracks(
+				session,
+				baseName,
+				directoryOf(firstTrack.path),
+				tracks,
+				app,
+			),
+		);
+	} catch (error) {
+		console.error(
+			`${PLUGIN_LOG_PREFIX} Failed to merge recovered tracks:`,
+			session.sessionId,
+			error,
+		);
+		result.mergeFailed = true;
+	}
 }
 
 /**
@@ -186,9 +361,14 @@ export async function recoverSession(
 	journal: SessionJournal,
 	app: App,
 ): Promise<RecoveryResult> {
-	const result: RecoveryResult = { recoveredPaths: [], failedTracks: [] };
+	const result: RecoveryResult = {
+		recoveredPaths: [],
+		failedTracks: [],
+		mergeFailed: false,
+	};
 	const remainingTracks: JournalTrack[] = [];
 	const adoptsParts = ownsPartFiles(session);
+	const recoveredTracks: RecoveredTrack[] = [];
 
 	for (const track of session.tracks) {
 		if (adoptsParts) {
@@ -246,12 +426,7 @@ export async function recoverSession(
 			);
 			await app.vault.createBinary(outputPath, outputBytes);
 			result.recoveredPaths.push(outputPath);
-
-			await removeTemporaryArtifacts(
-				track.segmentPaths,
-				'Failed to remove recovered segment file',
-				app,
-			);
+			recoveredTracks.push({ path: outputPath, track });
 		} catch (error) {
 			console.error(
 				`${PLUGIN_LOG_PREFIX} Failed to recover track:`,
@@ -262,6 +437,17 @@ export async function recoverSession(
 			remainingTracks.push(journaled);
 		}
 	}
+
+	await mergeAsStopWould(session, adoptsParts, recoveredTracks, result, app);
+
+	// Only now, because the merge of a PCM session streams from the segments,
+	// and a recovery cut short during the merge is offered again while they
+	// and the journal entry are still there
+	await removeTemporaryArtifacts(
+		recoveredTracks.flatMap(({ track }) => track.segmentPaths),
+		'Failed to remove recovered segment file',
+		app,
+	);
 
 	await persistSessionUpdate(journal, {
 		...session,

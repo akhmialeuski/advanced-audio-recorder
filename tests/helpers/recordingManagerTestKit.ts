@@ -9,6 +9,7 @@
 
 import type { App, TFile } from 'obsidian';
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { SessionJournal } from 'src/recording/SessionJournal';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
@@ -527,6 +528,32 @@ export const recordingManagerOver = (
 		onStatusChange,
 		makeFakeMarkerStore().store,
 	);
+
+/**
+ * Starts a recording whose session is journaled, the way a session the next
+ * launch has to recover begins. The crash suites then lose the app without
+ * stopping and read the journal back as the next launch would.
+ * @param app - The app the manager records into
+ * @param settings - The settings the session starts with
+ * @param journalPath - Where the journal file lives in the vault
+ * @returns The running manager and the journal it writes
+ */
+export const startJournaledRecording = async (
+	app: App,
+	settings: AudioRecorderSettings,
+	journalPath: string,
+): Promise<{ journal: SessionJournal; manager: RecordingManager }> => {
+	const journal = new SessionJournal(journalPath, app);
+	const manager = new RecordingManager(
+		app,
+		settings,
+		jest.fn(),
+		makeFakeMarkerStore().store,
+		journal,
+	);
+	await manager.startRecording();
+	return { journal, manager };
+};
 
 /**
  * Installs a bank of MediaRecorder doubles, one per track, and points

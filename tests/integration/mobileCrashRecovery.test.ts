@@ -9,7 +9,7 @@
  */
 
 import type { App } from 'obsidian';
-import { RecordingManager } from 'src/recording/RecordingManager';
+import type { RecordingManager } from 'src/recording/RecordingManager';
 import { SessionJournal } from 'src/recording/SessionJournal';
 import type { JournalSession } from 'src/recording/SessionJournal';
 import {
@@ -28,7 +28,7 @@ import { useMobilePlatform } from '../helpers/platform';
 import {
 	createVaultApp,
 	installRecordingMediaStubs,
-	makeFakeMarkerStore,
+	startJournaledRecording,
 	makeMediaRecorderDouble,
 	stubAudioStreams,
 	type MockMediaRecorder,
@@ -84,16 +84,11 @@ async function startMobileSession(): Promise<MobileSession> {
 	};
 	const recorder = makeMediaRecorderDouble({ state: 'recording' });
 	stubAudioStreams();
-	const journal = new SessionJournal(JOURNAL_PATH, app);
-	const manager = new RecordingManager(
+	const { journal, manager } = await startJournaledRecording(
 		app,
 		settings,
-		jest.fn(),
-		makeFakeMarkerStore().store,
-		journal,
+		JOURNAL_PATH,
 	);
-
-	await manager.startRecording();
 	return { app, files, journal, manager, recorder };
 }
 

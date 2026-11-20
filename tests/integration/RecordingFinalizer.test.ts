@@ -767,7 +767,18 @@ describe('RecordingFinalizer', () => {
 			await finalizer.saveRecording(targets, null);
 
 			expect(jest.mocked(mixPcmTracksToWav)).not.toHaveBeenCalled();
-			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalled();
+			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalledTimes(1);
+			// The mix reports its encode through the session's own progress,
+			// so a long merge does not sit silent at "Mixing tracks"
+			const reportMix = at(
+				jest.mocked(mergeAudioTracks).mock.calls,
+				0,
+			)[6];
+			defined(reportMix)(55, 'Encoding audio...');
+			expect(onProgress).toHaveBeenLastCalledWith({
+				percent: 55,
+				description: 'Encoding audio...',
+			});
 		});
 
 		it('keeps the merged file when cleanup fails', async () => {

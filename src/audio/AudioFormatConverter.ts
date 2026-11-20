@@ -43,10 +43,11 @@ import {
 export type FormatProgressCallback = (percent: number) => void;
 
 /**
- * Function that builds a Blob from a RecordingTarget.
+ * Function that builds the Blob of one track to merge. A live session hands
+ * in its RecordingTargets, and a recovery hands in the files it rebuilt.
  */
-export type TrackBlobBuilder = (
-	target: RecordingTarget,
+export type TrackBlobBuilder<Track = RecordingTarget> = (
+	target: Track,
 ) => Promise<Blob | null>;
 
 /**
@@ -770,7 +771,7 @@ function applyHeadroom(buffer: AudioBuffer): AudioBuffer {
  * only when the streaming mix cannot apply (tryStreamMixToWav covers PCM
  * tracks written as WAV) - and should be revisited if the streaming mixer
  * ever learns to write a compressed format.
- * @param chunkTargets - Recording targets for each track
+ * @param chunkTargets - One entry per track, in placement order
  * @param targetFormat - Resolved encodable output format
  * @param bitrate - Encoder bitrate in bits per second
  * @param isWavPcmRecording - Whether recording uses PCM/WAV path
@@ -780,13 +781,13 @@ function applyHeadroom(buffer: AudioBuffer): AudioBuffer {
  * @param placement - Where the tracks sit; absent leaves them as captured
  * @returns Merged audio blob in the target format
  */
-export async function mergeAudioTracks(
-	chunkTargets: RecordingTarget[],
+export async function mergeAudioTracks<Track = RecordingTarget>(
+	chunkTargets: readonly Track[],
 	targetFormat: string,
 	bitrate: number,
 	isWavPcmRecording: boolean,
-	buildPcmTrackWavBlob: TrackBlobBuilder,
-	buildTrackBlob: TrackBlobBuilder,
+	buildPcmTrackWavBlob: TrackBlobBuilder<Track>,
+	buildTrackBlob: TrackBlobBuilder<Track>,
 	onProgress?: (percent: number, description: string) => void,
 	placement?: MergePlacement,
 ): Promise<Blob> {
