@@ -5,9 +5,11 @@
  * surviving audio back to the user or discards it. What survives
  * depends on how the session wrote to disk: raw mid-stream segments
  * that have to be reassembled, or rotation parts that are already
- * complete files. Recovery never transcodes, because a raw
- * reassembled container is the safest artifact a truncated stream can
- * produce.
+ * complete files. Each track is recovered without transcoding, because a
+ * raw reassembled container is the safest artifact a truncated stream can
+ * produce. A session that merges its tracks also gets the merged file a
+ * normal stop would have written, decoded and encoded from those raw
+ * tracks, which stay beside it.
  * @module recording/RecoveryService
  */
 
@@ -21,6 +23,9 @@ import {
 	removeTemporaryArtifacts,
 	resolveUniquePathInDirectory,
 } from '../audio/RecordingFileManager';
+import { mergeAudioTracks } from '../audio/AudioFormatConverter';
+import type { TrackMix } from '../types';
+import { mergedFileFormat, mergePlacement } from './mergeOutput';
 import { JOURNAL_VERSION } from './SessionJournal';
 import type {
 	JournalSession,
@@ -36,6 +41,119 @@ export interface RecoveryResult {
 	recoveredPaths: string[];
 	/** Base names of tracks that could not be recovered. */
 	failedTracks: string[];
+	/**
+	 * True when the session merges its tracks and the merge of the recovered
+	 * tracks failed. Each track is still recovered as its own file.
+	 */
+	mergeFailed: boolean;
+}
+
+/** One track recovered from its segments, as the merge takes it. */
+interface RecoveredTrack {
+	/** Vault path of the recovered file. */
+	path: string;
+	/** The journaled track, which holds its place in the merged file. */
+	track: JournalTrack;
+}
+
+/**
+ * Merges the tracks of an interrupted session into the one file a normal
+ * stop would have written, through the same merge, placement and format as
+ * {@link module:recording/RecordingFinalizer}. The recovered track files are
+ * read back rather than held from the recovery loop, so only the merge
+ * itself holds the session's audio at once.
+ * @param session - Journaled session with a merged file name
+ * @param baseName - Base name of the merged file
+ * @param directory - Folder the recovered tracks were written to
+ * @param tracks - Tracks recovered from segments, in track order
+ * @param app - Obsidian App instance
+ * @returns Path of the merged file
+ */
+async function mergeRecoveredTracks(
+	session: JournalSession,
+	baseName: string,
+	directory: string,
+	tracks: readonly RecoveredTrack[],
+	app: App,
+): Promise<string> {
+	const format = mergedFileFormat(session.outputFormat);
+	const readTrack = async (track: RecoveredTrack): Promise<Blob> =>
+		new Blob([await app.vault.adapter.readBinary(track.path)]);
+	const merged = await mergeAudioTracks(
+		tracks,
+		format,
+		session.bitrate,
+		false,
+		readTrack,
+		readTrack,
+		undefined,
+		mergePlacement(
+			tracks.map(({ track }): TrackMix => ({
+				gainDb: track.gainDb ?? 0,
+				pan: track.pan ?? 0,
+			})),
+			session.alignTrackLevels ?? false,
+		),
+	);
+	const outputPath = await resolveUniquePathInDirectory(
+		directory,
+		`${baseName}.${format}`,
+		app,
+	);
+	await app.vault.createBinary(outputPath, await merged.arrayBuffer());
+	return outputPath;
+}
+
+/**
+ * Adds the merged file to a recovery when a normal stop of the session would
+ * have written one. A failed merge is reported on the result and leaves the
+ * recovered tracks as they are.
+ *
+ * A rotation session's tracks are sets of parts, which this merge does not
+ * join, so they stay one set per track. A track that failed would be missing
+ * from the mix, and a merged file lacking one voice passes for the whole
+ * conversation, so the session then stays one file per track.
+ * @param session - Journaled session
+ * @param adoptsParts - Whether the session's part files are the recording
+ * @param tracks - Tracks recovered from segments, in track order
+ * @param result - The recovery's outcome, extended in place
+ * @param app - Obsidian App instance
+ */
+async function mergeAsStopWould(
+	session: JournalSession,
+	adoptsParts: boolean,
+	tracks: readonly RecoveredTrack[],
+	result: RecoveryResult,
+	app: App,
+): Promise<void> {
+	const baseName = adoptsParts ? undefined : session.mergedFileBaseName;
+	const [firstTrack] = tracks;
+	if (
+		baseName === undefined ||
+		result.failedTracks.length > 0 ||
+		firstTrack === undefined ||
+		tracks.length < 2
+	) {
+		return;
+	}
+	try {
+		result.recoveredPaths.push(
+			await mergeRecoveredTracks(
+				session,
+				baseName,
+				directoryOf(firstTrack.path),
+				tracks,
+				app,
+			),
+		);
+	} catch (error) {
+		console.error(
+			`${PLUGIN_LOG_PREFIX} Failed to merge recovered tracks:`,
+			session.sessionId,
+			error,
+		);
+		result.mergeFailed = true;
+	}
 }
 
 /**
@@ -186,9 +304,14 @@ export async function recoverSession(
 	journal: SessionJournal,
 	app: App,
 ): Promise<RecoveryResult> {
-	const result: RecoveryResult = { recoveredPaths: [], failedTracks: [] };
+	const result: RecoveryResult = {
+		recoveredPaths: [],
+		failedTracks: [],
+		mergeFailed: false,
+	};
 	const remainingTracks: JournalTrack[] = [];
 	const adoptsParts = ownsPartFiles(session);
+	const recoveredTracks: RecoveredTrack[] = [];
 
 	for (const track of session.tracks) {
 		if (adoptsParts) {
@@ -246,6 +369,7 @@ export async function recoverSession(
 			);
 			await app.vault.createBinary(outputPath, outputBytes);
 			result.recoveredPaths.push(outputPath);
+			recoveredTracks.push({ path: outputPath, track });
 
 			await removeTemporaryArtifacts(
 				track.segmentPaths,
@@ -262,6 +386,8 @@ export async function recoverSession(
 			remainingTracks.push(journaled);
 		}
 	}
+
+	await mergeAsStopWould(session, adoptsParts, recoveredTracks, result, app);
 
 	await persistSessionUpdate(journal, {
 		...session,

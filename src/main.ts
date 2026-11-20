@@ -600,6 +600,7 @@ export default class AudioRecorderPlugin extends Plugin {
 				onRecover: async () => {
 					const recovered: string[] = [];
 					const failed: string[] = [];
+					let mergeFailed = false;
 					for (const session of sessions) {
 						// Per session, not per run: recoverSession writes the
 						// journal back when it is done, and that write can
@@ -614,6 +615,7 @@ export default class AudioRecorderPlugin extends Plugin {
 							);
 							recovered.push(...result.recoveredPaths);
 							failed.push(...result.failedTracks);
+							mergeFailed ||= result.mergeFailed;
 						} catch (error) {
 							console.error(
 								`${PLUGIN_LOG_PREFIX} Failed to recover session:`,
@@ -635,6 +637,11 @@ export default class AudioRecorderPlugin extends Plugin {
 					if (failed.length > 0) {
 						new Notice(
 							`Could not recover ${String(failed.length)} track(s); their temporary files were kept for the next attempt.`,
+						);
+					}
+					if (mergeFailed) {
+						new Notice(
+							'Could not mix the recovered tracks into one file. Each track was saved as its own file.',
 						);
 					}
 				},

@@ -47,12 +47,11 @@ export interface JournalTrack {
 	 * Absent on a session that writes one file per track, and on every
 	 * journal written before the mixer could place a track.
 	 *
-	 * Recorded rather than used: {@link module:recording/RecoveryService}
-	 * writes one file per track and mixes nothing, so nothing reads these
-	 * today. They are written because they cannot be recovered later - the
-	 * settings they came from may have changed by the next launch, and the
-	 * placement of a crashed session is only knowable from the session
-	 * itself. A recovery that learns to merge reads them here.
+	 * {@link module:recording/RecoveryService} reads them when it merges the
+	 * recovered tracks. They are journaled because they cannot be recovered
+	 * later - the settings they came from may have changed by the next
+	 * launch, and the placement of a crashed session is only knowable from
+	 * the session itself.
 	 *
 	 * Adding them deliberately did not bump JOURNAL_VERSION, by the
 	 * precedent captureMode set: an older plugin ignores fields it does not
@@ -118,6 +117,24 @@ export interface JournalSession {
 	recorderFormat: string;
 	/** Encoder bitrate snapshotted at session start. */
 	bitrate: number;
+	/**
+	 * Base name, without extension, of the file a normal stop would merge
+	 * the tracks into, rendered at the start from the same name context.
+	 * Present only on a session that merges its tracks, which is what tells
+	 * a recovery to merge them too. Absent on a session writing one file
+	 * per track, and on every journal written before recovery could merge,
+	 * which is then recovered one file per track as before.
+	 *
+	 * Adding it deliberately did not bump JOURNAL_VERSION, by the precedent
+	 * captureMode set.
+	 */
+	mergedFileBaseName?: string;
+	/**
+	 * Whether the merge brings the tracks to a common level first, snapshotted
+	 * with {@link JournalSession.mergedFileBaseName} because the setting it
+	 * came from may have changed by the next launch.
+	 */
+	alignTrackLevels?: boolean;
 	/** Tracks of the session. */
 	tracks: JournalTrack[];
 }

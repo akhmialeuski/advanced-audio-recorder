@@ -31,6 +31,7 @@ import {
 	PCM_FLUSH_THRESHOLD_BYTES,
 	FORMAT_WEBM,
 	FORMAT_WAV,
+	MERGED_FILE_SOURCE_NAME,
 } from '../constants';
 import {
 	getChunkFlushThresholdBytes,
@@ -61,6 +62,7 @@ import {
 import { mixLayout } from './StreamingMixer';
 import { PartRotationController } from './PartRotationController';
 import { SessionJournal } from './SessionJournal';
+import type { JournalSession } from './SessionJournal';
 import { computePcmPartLimitBytes } from './AudioSplitter';
 import { captureInsertionContext } from './NoteInserter';
 import { getActiveNoteName } from '../audio/RecordingFileManager';
@@ -483,6 +485,7 @@ export class RecordingManager {
 				outputFormat: this.session.outputFormat,
 				recorderFormat: this.session.recorderFormat,
 				bitrate: this.session.bitrate,
+				...this.journaledMerge(),
 				tracks: this.chunkTargets.map((target, index) => ({
 					fileBaseName: target.fileBaseName,
 					isPcm: this.session.isWavPcm,
@@ -1136,6 +1139,31 @@ export class RecordingManager {
 				'Enable auto-split in the settings, or stop and start a new ' +
 				'recording, so the audio can be saved.',
 		);
+	}
+
+	/**
+	 * What a recovery needs to merge this session's tracks the way its stop
+	 * would: the merged file's name and whether levels are aligned. Decided by
+	 * the same test the finalizer's stop applies, so a recovery merges exactly
+	 * the sessions a normal stop would have merged, and nothing for the rest.
+	 * @returns The journal fields of the merge, or none
+	 */
+	private journaledMerge(): Pick<
+		JournalSession,
+		'mergedFileBaseName' | 'alignTrackLevels'
+	> {
+		if (
+			this.session.outputMode !== OutputMode.Single ||
+			this.chunkTargets.length < 2
+		) {
+			return {};
+		}
+		return {
+			mergedFileBaseName: renderRecordingFileName(this.session, {
+				source: MERGED_FILE_SOURCE_NAME,
+			}),
+			alignTrackLevels: this.session.alignTrackLevels,
+		};
 	}
 
 	/**
