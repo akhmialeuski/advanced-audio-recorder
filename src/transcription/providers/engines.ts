@@ -56,6 +56,7 @@ import { WhisperApiProvider } from './WhisperApiProvider';
 import { GEMINI_TOKEN_RATES, type TokenRate } from './geminiRates';
 import type { TranscriptionProvider } from './TranscriptionProvider';
 import {
+	effectiveDiarize,
 	effectiveDictionary,
 	isProviderAvailableOnPlatform,
 } from './capabilities';
@@ -74,6 +75,17 @@ export type EnginePricing =
 			usdPerMillionTextInput: number;
 			usdPerMillionOutput: number;
 	  };
+
+/**
+ * What a run asks of the engine that its price can depend on. An engine that
+ * bills one rate whatever is asked ignores it.
+ */
+export interface BilledRunFeatures {
+	/** Speaker labels are requested. */
+	diarize: boolean;
+	/** Biasing terms travel with the request. */
+	biased: boolean;
+}
 
 /** What a cloud engine's client is built from, once its settings check out. */
 interface CloudEngineConfig {
@@ -135,8 +147,12 @@ export interface TranscriptionEngineDescriptor {
 	 * engine, which has no billed model.
 	 */
 	model(settings: AudioRecorderSettings): string;
-	/** Resolves the rate for a model id, or null when none is built in. */
-	pricing(model: string): EnginePricing | null;
+	/**
+	 * Resolves the rate for a model id, or null when none is built in. An
+	 * engine that bills extras on top of the model's rate adds the ones the
+	 * run asks for, and quotes the bare rate when no run is given.
+	 */
+	pricing(model: string, run?: BilledRunFeatures): EnginePricing | null;
 	/**
 	 * Plans how the user's dictionary terms are applied within this engine's
 	 * mechanism and request limits. The per-engine rules live with the engine
@@ -489,6 +505,36 @@ export function planDictionaryBias(
 	// The mechanism and its limits are engine facts, so the descriptor plans
 	// them; only the model-independent capability gate above is shared.
 	return transcriptionEngine(engineId).planDictionary(model, gated);
+}
+
+/**
+ * What a run asks of the selected engine that its price can depend on. The
+ * estimate shown before a run and the cost recorded after it both read this,
+ * so an extra is never quoted and then left unbilled, or the reverse.
+ *
+ * A two-pass run counts as biased throughout, though its first pass carries
+ * only the dictionary: the usage of both passes is priced as one sum, and the
+ * second pass always sends the generated terms.
+ * @param settings - The run's settings snapshot
+ * @param run - Whether the run wants speaker labels and makes a second pass,
+ *   and the dictionary terms it resolved
+ * @returns The features the engine's price is resolved with
+ */
+export function billedRunFeatures(
+	settings: AudioRecorderSettings,
+	run: { diarize: boolean; twoPass: boolean; dictionaryTerms: string[] },
+): BilledRunFeatures {
+	const engine = selectedTranscriptionEngine(settings);
+	return {
+		diarize: effectiveDiarize(engine.id, run.diarize),
+		biased:
+			run.twoPass ||
+			planDictionaryBias(
+				engine.id,
+				engine.model(settings),
+				run.dictionaryTerms,
+			).applied.length > 0,
+	};
 }
 
 /**

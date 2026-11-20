@@ -28,11 +28,14 @@ import { LLM_TASK_LABELS } from '../settings/labels';
 import { jobLlmVendor, jobVendorId, llmVendor, LlmJobId } from './llm/vendors';
 import { vendorMaxTokens } from '../providers/providers';
 import {
+	billedRunFeatures,
 	matchRate,
 	selectedTranscriptionEngine,
 	transcriptionEngine,
+	type BilledRunFeatures,
 	type EnginePricing,
 } from './providers/engines';
+import { resolveDictionaryTermList } from '../settings/profileResolution';
 
 export type { EnginePricing } from './providers/engines';
 import { LlmTask } from './llmPostProcess';
@@ -105,12 +108,14 @@ const CHAPTERS_OUTPUT_TOKEN_RATIO = 0.1;
  * built-in rate matches yields null ("no estimate") instead of a wrong number.
  * @param engineId - Transcription engine id
  * @param model - Selected model id for that engine
+ * @param run - What the run asks of the engine, for one that bills extras
  */
 export function resolveEnginePricing(
 	engineId: TranscriptionProviderId,
 	model: string,
+	run?: BilledRunFeatures,
 ): EnginePricing | null {
-	return transcriptionEngine(engineId).pricing(model);
+	return transcriptionEngine(engineId).pricing(model, run);
 }
 
 /**
@@ -466,7 +471,14 @@ function transcriptionEstimateLine(
 			? `Transcription (${String(passes)} passes)`
 			: 'Transcription';
 	const base = { label, providerName, model, pricingUrl };
-	const pricing = engine.pricing(model);
+	const pricing = engine.pricing(
+		model,
+		billedRunFeatures(settings, {
+			diarize: settings.transcriptionDiarize,
+			twoPass: passes > 1,
+			dictionaryTerms: resolveDictionaryTermList(settings),
+		}),
+	);
 	if (pricing?.kind === 'free') {
 		return { ...base, pricingUrl: undefined, usd: 0, free: true };
 	}

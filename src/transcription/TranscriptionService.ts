@@ -73,8 +73,15 @@ import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
 import { buildPostProcessPrompt, LlmTask } from './llmPostProcess';
 import { TranscriptTranslator } from './llm/TranscriptTranslator';
 import { describeDictionaryOmission } from './dictionaryBias';
-import { planDictionaryBias } from './providers/engines';
-import { advancedBiasUnsupportedReason } from './advanced/advancedBias';
+import {
+	billedRunFeatures,
+	planDictionaryBias,
+	type BilledRunFeatures,
+} from './providers/engines';
+import {
+	advancedBiasUnsupportedReason,
+	advancedTwoPassWillRun,
+} from './advanced/advancedBias';
 import {
 	AdvancedTwoPassRunner,
 	type PassResult,
@@ -684,6 +691,11 @@ export class TranscriptionService {
 			payloads,
 			token,
 			{ onProgress: options.onProgress, onCost: options.onCost },
+			billedRunFeatures(settings, {
+				diarize,
+				twoPass: advancedTwoPassWillRun(settings),
+				dictionaryTerms,
+			}),
 		);
 		const { failedParts, secondPassResults } = ledger;
 		const runCost = ledger.context.runCost;
@@ -970,6 +982,13 @@ export class TranscriptionService {
 			prepared.payloads,
 			token,
 			{ onProgress: options.onProgress },
+			// A dictation is one plain pass with no speakers, whatever the
+			// transcription settings say about either.
+			billedRunFeatures(settings, {
+				diarize: false,
+				twoPass: false,
+				dictionaryTerms,
+			}),
 		);
 		await this.transcribePass(
 			ledger.context,
@@ -1193,6 +1212,7 @@ export class TranscriptionService {
 	 * @param payloads - The parts of the plan the run sends
 	 * @param token - Cancellation for the run
 	 * @param report - Where progress and running cost are reported
+	 * @param billed - What the run asks of the engine that its price depends on
 	 * @returns An empty ledger over those parts
 	 */
 	private openLedger(
@@ -1202,6 +1222,7 @@ export class TranscriptionService {
 		payloads: readonly PreparedPayload[],
 		token: CancellationToken,
 		report: Pick<PassContext, 'onProgress' | 'onCost'>,
+		billed: BilledRunFeatures,
 	): RunLedger {
 		const results: PassResult[] = [];
 		const secondPassResults: PassResult[] = [];
@@ -1213,6 +1234,7 @@ export class TranscriptionService {
 		const pricing = resolveEnginePricing(
 			settings.transcriptionProvider,
 			selectedEngineModel(settings, settings.transcriptionProvider),
+			billed,
 		);
 		const runCost = (): TranscribeRunCost => {
 			const usage = sumUsage([

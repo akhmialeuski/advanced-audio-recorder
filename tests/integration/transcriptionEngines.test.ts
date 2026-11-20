@@ -8,6 +8,7 @@
 import {
 	TRANSCRIPTION_ENGINE_IDS,
 	TRANSCRIPTION_ENGINES,
+	billedRunFeatures,
 	createTranscriptionProvider,
 	localWhisperTimeoutMs,
 	matchRate,
@@ -54,6 +55,7 @@ import type {
 	TranscriptionProviderId,
 } from 'src/settings/settingsSchema';
 import { defined } from '../helpers/assertions';
+import { defaultSettings } from '../helpers/settingsFixtures';
 
 /** The engines a transcription run reaches over an account. */
 const CLOUD_ENGINES: EngineId[] = [
@@ -448,5 +450,74 @@ describe('matchRate', () => {
 
 	it('returns undefined when nothing matches', () => {
 		expect(matchRate([['nova-3', 7]], 'mystery')).toBeUndefined();
+	});
+});
+
+describe('what a run asks of the engine that its price can depend on', () => {
+	/**
+	 * The features of a run on an engine and model, with one dictionary term
+	 * unless the case names another list.
+	 * @param overrides - The engine and model the case selects
+	 * @param run - What the case varies about the run
+	 * @returns The features the price is resolved with
+	 */
+	const featuresOf = (
+		overrides: Partial<AudioRecorderSettings>,
+		run: Partial<Parameters<typeof billedRunFeatures>[1]> = {},
+	): ReturnType<typeof billedRunFeatures> =>
+		billedRunFeatures(
+			{ ...defaultSettings(), ...overrides },
+			{
+				diarize: true,
+				twoPass: false,
+				dictionaryTerms: ['Obsidian'],
+				...run,
+			},
+		);
+
+	it('counts speakers and terms on an engine that takes both', () => {
+		expect(
+			featuresOf({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+			}),
+		).toEqual({ diarize: true, biased: true });
+	});
+
+	it('drops the speakers an engine cannot label', () => {
+		expect(
+			featuresOf({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			}).diarize,
+		).toBe(false);
+	});
+
+	it('drops the terms a model cannot carry', () => {
+		// A stored dictionary never reaches a Deepgram-hosted Whisper model,
+		// so nothing biased is sent and nothing biased is billed
+		expect(
+			featuresOf({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'whisper-large',
+			}).biased,
+		).toBe(false);
+	});
+
+	it('is unbiased with no terms and one pass', () => {
+		expect(
+			featuresOf(
+				{ transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM },
+				{ dictionaryTerms: [] },
+			).biased,
+		).toBe(false);
+	});
+
+	it('counts a second pass as biased even with no dictionary', () => {
+		expect(
+			featuresOf(
+				{ transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM },
+				{ dictionaryTerms: [], twoPass: true },
+			).biased,
+		).toBe(true);
 	});
 });
