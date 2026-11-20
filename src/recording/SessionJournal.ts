@@ -130,6 +130,13 @@ export interface JournalSession {
 	 */
 	mergedFileBaseName?: string;
 	/**
+	 * How many tracks the merged file is made of, journaled because a track
+	 * that never flushed a segment is pruned from the session before a
+	 * recovery sees it. A recovery holding fewer tracks than this would merge
+	 * a file with a voice missing, so it leaves the tracks unmerged.
+	 */
+	mergedTrackCount?: number;
+	/**
 	 * Whether the merge brings the tracks to a common level first, snapshotted
 	 * with {@link JournalSession.mergedFileBaseName} because the setting it
 	 * came from may have changed by the next launch.

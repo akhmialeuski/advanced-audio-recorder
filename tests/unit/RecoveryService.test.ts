@@ -78,6 +78,7 @@ const mergingSession = (
 ): JournalSession =>
 	createJournalSession({
 		mergedFileBaseName: MERGED_BASE_NAME,
+		mergedTrackCount: 2,
 		alignTrackLevels: true,
 		tracks: [
 			createTrack({
@@ -744,6 +745,39 @@ describe('RecoveryService', () => {
 
 			expect(result.recoveredPaths).toHaveLength(2);
 			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalledTimes(0);
+		});
+
+		it('reports the missing merge when a track never reached the disk', async () => {
+			// Each track flushes on its own threshold, so a crash can fall
+			// after one track's first segment and before the other's
+			storeJournal([mergingSession([{}, { segmentPaths: [] }])]);
+			const [offered] = await collectRecoverableSessions(
+				journal,
+				mockApp,
+			);
+
+			const result = await recoverSession(
+				defined(offered),
+				journal,
+				mockApp,
+			);
+
+			expect(result.recoveredPaths).toEqual([
+				'Audio/recording-Mic-stamp-recovered.webm',
+			]);
+			expect(result.mergeFailed).toBe(true);
+		});
+
+		it('leaves the tracks unmerged when fewer came back than the session recorded', async () => {
+			const session = mergingSession([{}, {}], { mergedTrackCount: 3 });
+			storeJournal([session]);
+
+			const result = await recoverSession(session, journal, mockApp);
+
+			// Two voices of three would pass for the whole conversation
+			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalledTimes(0);
+			expect(result.mergeFailed).toBe(true);
+			expect(result.recoveredPaths).toHaveLength(2);
 		});
 	});
 

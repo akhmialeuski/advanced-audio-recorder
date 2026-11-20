@@ -1143,14 +1143,15 @@ export class RecordingManager {
 
 	/**
 	 * What a recovery needs to merge this session's tracks the way its stop
-	 * would: the merged file's name and whether levels are aligned. Decided by
+	 * would: the merged file's name, how many tracks it is made of and whether
+	 * levels are aligned. Decided by
 	 * the same test the finalizer's stop applies, so a recovery merges exactly
 	 * the sessions a normal stop would have merged, and nothing for the rest.
 	 * @returns The journal fields of the merge, or none
 	 */
 	private journaledMerge(): Pick<
 		JournalSession,
-		'mergedFileBaseName' | 'alignTrackLevels'
+		'mergedFileBaseName' | 'mergedTrackCount' | 'alignTrackLevels'
 	> {
 		if (
 			this.session.outputMode !== OutputMode.Single ||
@@ -1162,6 +1163,7 @@ export class RecordingManager {
 			mergedFileBaseName: renderRecordingFileName(this.session, {
 				source: MERGED_FILE_SOURCE_NAME,
 			}),
+			mergedTrackCount: this.chunkTargets.length,
 			alignTrackLevels: this.session.alignTrackLevels,
 		};
 	}

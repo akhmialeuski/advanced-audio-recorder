@@ -112,7 +112,10 @@ async function mergeRecoveredTracks(
  * A rotation session's tracks are sets of parts, which this merge does not
  * join, so they stay one set per track. A track that failed would be missing
  * from the mix, and a merged file lacking one voice passes for the whole
- * conversation, so the session then stays one file per track.
+ * conversation, so the session then stays one file per track. The same holds
+ * for a track that left nothing on disk, which the journal no longer lists:
+ * the session then holds fewer tracks than it recorded, and the missing
+ * merged file is reported.
  * @param session - Journaled session
  * @param adoptsParts - Whether the session's part files are the recording
  * @param tracks - Tracks recovered from segments, in track order
@@ -128,12 +131,16 @@ async function mergeAsStopWould(
 ): Promise<void> {
 	const baseName = adoptsParts ? undefined : session.mergedFileBaseName;
 	const [firstTrack] = tracks;
+	if (baseName === undefined || result.failedTracks.length > 0) {
+		return;
+	}
+	// A track that never flushed a segment was pruned before this recovery
+	// began and is no failed track, yet its voice is missing all the same
 	if (
-		baseName === undefined ||
-		result.failedTracks.length > 0 ||
 		firstTrack === undefined ||
-		tracks.length < 2
+		tracks.length !== session.mergedTrackCount
 	) {
+		result.mergeFailed = true;
 		return;
 	}
 	try {
