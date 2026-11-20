@@ -1136,7 +1136,7 @@ export class TranscriptionService {
 		const dictionaryTerms = resolveDictionaryTermList(settings);
 		const dictionaryPlan = planDictionaryBias(
 			settings.transcriptionProvider,
-			settings.deepgramModel,
+			selectedEngineModel(settings, settings.transcriptionProvider),
 			dictionaryTerms,
 		);
 		const dictionaryNotice = describeDictionaryOmission(dictionaryPlan);

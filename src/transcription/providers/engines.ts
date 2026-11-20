@@ -360,12 +360,10 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricing: (model) => perMinutePricing(matchRate(VOXTRAL_RATES, model)),
 		// One flat cap on the number of context_bias entries, the same shape
 		// Deepgram's keyterm mechanism has, and the same for every model in the
-		// catalogue - so the model argument is deliberately unread: the service
-		// passes the configured Deepgram model id into it, which is only ever
-		// the right answer for Deepgram. The cap counts entries on the wire
-		// rather than terms in the list, because the encoding decides how many
-		// entries a list becomes, and a notice built on any other count reports
-		// a number the request never carried.
+		// catalogue, so the model argument is unread. The cap counts entries on
+		// the wire rather than terms in the list, because the encoding decides
+		// how many entries a list becomes, and a notice built on any other
+		// count reports a number the request never carried.
 		planDictionary: (_model, terms) => {
 			const applied = termsWithinVoxtralContextBias(terms);
 			if (applied.length < terms.length) {
