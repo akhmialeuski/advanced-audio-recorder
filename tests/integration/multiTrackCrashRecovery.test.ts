@@ -24,7 +24,8 @@ import {
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
-import { at } from '../helpers/assertions';
+import { gainFactor } from 'src/recording/mixMath';
+import { at, defined } from '../helpers/assertions';
 import { internalsOf } from '../helpers/doubles';
 import { useDesktopPlatform } from '../helpers/platform';
 import {
@@ -135,8 +136,28 @@ describe('crash recovery of an interrupted two-track session', () => {
 			await crashTwoTrackSession('single');
 
 		expect(offered.mergedFileBaseName).toMatch(/^recording-multitrack-/);
+		expect(offered.mergedTrackCount).toBe(2);
 		expect(offered.alignTrackLevels).toBe(true);
 		expect(offered.tracks.map((track) => track.gainDb)).toEqual([-6, 0]);
+		// Two tracks captured at one level, each over samples of its own, so
+		// what the merge did to either is readable afterwards
+		const samples = [0, 1].map(() => new Float32Array(8).fill(0.5));
+		const decodeAudioData = jest.fn();
+		for (const data of samples) {
+			decodeAudioData.mockResolvedValueOnce({
+				duration: 1,
+				numberOfChannels: 1,
+				getChannelData: () => data,
+			});
+		}
+		jest.mocked(AudioContext).mockImplementationOnce(
+			() =>
+				({
+					decodeAudioData,
+					close: jest.fn().mockResolvedValue(undefined),
+					sampleRate: 44100,
+				}) as unknown as AudioContext,
+		);
 
 		const result = await recoverSession(offered, journal, app);
 
@@ -153,11 +174,13 @@ describe('crash recovery of an interrupted two-track session', () => {
 		}
 		expect(files.binary.has(mergedPath)).toBe(true);
 		// Both tracks reached the one encode of the merged file
-		const audioContexts = jest.mocked(AudioContext).mock.results;
-		const decoder = at(audioContexts, audioContexts.length - 1).value as {
-			decodeAudioData: jest.Mock;
-		};
-		expect(decoder.decodeAudioData).toHaveBeenCalledTimes(2);
+		expect(decodeAudioData).toHaveBeenCalledTimes(2);
+		// Alignment scales two equally loud tracks alike, so the level
+		// between them is the 6 dB the journal kept for the microphone
+		expect(at(samples, 0)[0]).toBeCloseTo(
+			defined(at(samples, 1)[0]) * gainFactor(-6),
+		);
+		expect(at(samples, 1)[0]).toBeGreaterThan(0);
 		expect(jest.mocked(encodeAudioBuffer)).toHaveBeenLastCalledWith(
 			expect.anything(),
 			{ format: 'webm', bitrate: offered.bitrate },
