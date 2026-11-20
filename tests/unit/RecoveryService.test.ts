@@ -752,6 +752,23 @@ describe('RecoveryService', () => {
 			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalledTimes(0);
 		});
 
+		it('decodes a compressed session even when its merged file is a WAV', async () => {
+			// MediaRecorder segments are a container stream, which the
+			// streaming mixer cannot read as PCM
+			const session = mergingSession([{}, {}], { outputFormat: 'wav' });
+			storeJournal([session]);
+
+			const result = await recoverSession(session, journal, mockApp);
+
+			expect(jest.mocked(mixPcmTracksToWav)).toHaveBeenCalledTimes(0);
+			expect(at(jest.mocked(mergeAudioTracks).mock.calls, 0)[1]).toBe(
+				'wav',
+			);
+			expect(at(result.recoveredPaths, 2)).toBe(
+				`Audio/${MERGED_BASE_NAME}.wav`,
+			);
+		});
+
 		it('reports the missing merge when a track never reached the disk', async () => {
 			// Each track flushes on its own threshold, so a crash can fall
 			// after one track's first segment and before the other's
