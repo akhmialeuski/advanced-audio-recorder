@@ -28,6 +28,10 @@ jest.mock('src/audio/AudioFormatConverter', () => ({
 	...jest.requireActual<object>('src/audio/AudioFormatConverter'),
 	mergeAudioTracks: jest.fn(),
 }));
+jest.mock('src/recording/StreamingMixer', () => ({
+	...jest.requireActual<object>('src/recording/StreamingMixer'),
+	mixPcmTracksToWav: jest.fn(),
+}));
 
 import {
 	assembleWavFromPcmSegmentFiles,
@@ -35,6 +39,7 @@ import {
 } from 'src/audio/WavEncoder';
 import { mergeAudioTracks } from 'src/audio/AudioFormatConverter';
 import { mergePlacement } from 'src/recording/mergeOutput';
+import { mixPcmTracksToWav } from 'src/recording/StreamingMixer';
 
 const JOURNAL_PATH = '.obsidian/plugins/aar/recording-journal.json';
 
@@ -778,6 +783,105 @@ describe('RecoveryService', () => {
 			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalledTimes(0);
 			expect(result.mergeFailed).toBe(true);
 			expect(result.recoveredPaths).toHaveLength(2);
+		});
+	});
+
+	describe('recovering a PCM session that merges its tracks into a WAV', () => {
+		const PCM_SEGMENTS = ['Audio/mic-pcm1.tmp', 'Audio/line-pcm1.tmp'];
+
+		/**
+		 * Recovers a two-track PCM session saved as WAV, each track left
+		 * holding one raw segment.
+		 * @returns What the recovery reports
+		 */
+		const recoverPcmSession = async (): Promise<
+			Awaited<ReturnType<typeof recoverSession>>
+		> => {
+			seedFiles(PCM_SEGMENTS);
+			const session = mergingSession(
+				[
+					{ isPcm: true, segmentPaths: [at(PCM_SEGMENTS, 0)] },
+					{
+						isPcm: true,
+						pcmChannels: 2,
+						segmentPaths: [at(PCM_SEGMENTS, 1)],
+					},
+				],
+				{ outputFormat: 'wav', recorderFormat: 'wav' },
+			);
+			storeJournal([session]);
+			return recoverSession(session, journal, mockApp);
+		};
+
+		it('mixes the segments on disk instead of decoding the recovered files', async () => {
+			let segmentsAtMix: boolean[] = [];
+			jest.mocked(mixPcmTracksToWav).mockImplementation(() => {
+				segmentsAtMix = PCM_SEGMENTS.map((path) =>
+					binaryFiles.has(path),
+				);
+				return Promise.resolve(new ArrayBuffer(50));
+			});
+
+			const result = await recoverPcmSession();
+
+			// The route a normal stop takes: bounded memory, and the
+			// container ceiling checked before anything is written
+			expect(jest.mocked(mixPcmTracksToWav)).toHaveBeenCalledWith(
+				[
+					{
+						segmentPaths: [at(PCM_SEGMENTS, 0)],
+						channels: 1,
+						sampleRate: 44100,
+						gainDb: -6,
+						pan: 0,
+					},
+					{
+						segmentPaths: [at(PCM_SEGMENTS, 1)],
+						channels: 2,
+						sampleRate: 44100,
+						gainDb: 0,
+						pan: 1,
+					},
+				],
+				mockApp,
+				expect.objectContaining({ alignLevels: true }),
+			);
+			expect(segmentsAtMix).toEqual([true, true]);
+			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalledTimes(0);
+			expect(at(result.recoveredPaths, 2)).toBe(
+				`Audio/${MERGED_BASE_NAME}.wav`,
+			);
+			// The segments go once the merged file is written
+			expect(PCM_SEGMENTS.some((path) => binaryFiles.has(path))).toBe(
+				false,
+			);
+		});
+
+		it('reports a mix past the container ceiling instead of decoding it', async () => {
+			jest.mocked(mixPcmTracksToWav).mockRejectedValue(
+				new WavSizeLimitError(),
+			);
+
+			const result = await recoverPcmSession();
+
+			expect(result.mergeFailed).toBe(true);
+			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalledTimes(0);
+			expect(result.recoveredPaths).toHaveLength(2);
+		});
+
+		it('falls back to decoding when the streaming mix gives up', async () => {
+			jest.mocked(mixPcmTracksToWav).mockRejectedValue(
+				new Error('adapter cannot stat'),
+			);
+			jest.mocked(mergeAudioTracks).mockResolvedValue(
+				new Blob(['mixed']),
+			);
+
+			const result = await recoverPcmSession();
+
+			expect(jest.mocked(mergeAudioTracks)).toHaveBeenCalledTimes(1);
+			expect(result.mergeFailed).toBe(false);
+			expect(result.recoveredPaths).toHaveLength(3);
 		});
 	});
 

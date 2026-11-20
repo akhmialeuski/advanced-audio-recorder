@@ -44,8 +44,11 @@ import {
 } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { audioMimeForExtension } from '../audio/formatRegistry';
-import { canStreamMix, mixPcmTracksToWav } from './StreamingMixer';
-import { mergedFileFormat, mergePlacement } from './mergeOutput';
+import {
+	mergedFileFormat,
+	mergePlacement,
+	streamMixToWav,
+} from './mergeOutput';
 import { buildPartFileName } from './AudioSplitter';
 import { insertFileLinks } from './NoteInserter';
 import type { TrackWriteQueue } from './TrackWriteQueue';
@@ -595,49 +598,33 @@ export class RecordingFinalizer {
 				...(session.trackMix[index] ?? {}),
 			}))
 			.filter((track) => track.segmentPaths.length > 0);
-		if (!canStreamMix(tracks)) {
+		// A mix past the container ceiling is refused here rather than
+		// answered by the fallback, and the refusal names auto-split, which
+		// is what the user can act on.
+		const wavBuffer = await streamMixToWav(tracks, this.app, {
+			onProgress: (percent) => {
+				this.reportProgress(
+					40 + Math.round(percent * 0.2),
+					'Mixing tracks...',
+				);
+			},
+			alignLevels: session.alignTrackLevels,
+			format: session.pcmFormat,
+		});
+		if (wavBuffer === null) {
 			this.debugLogger.log('Mixing through the Web Audio route', {
-				reason: 'the streaming mixer does not take these tracks',
+				reason: 'the streaming mixer did not take these tracks',
 				tracks: tracks.length,
 			});
 			return null;
 		}
-		try {
-			const wavBuffer = await mixPcmTracksToWav(tracks, this.app, {
-				onProgress: (percent) => {
-					this.reportProgress(
-						40 + Math.round(percent * 0.2),
-						'Mixing tracks...',
-					);
-				},
-				alignLevels: session.alignTrackLevels,
-				format: session.pcmFormat,
-			});
-			this.debugLogger.log('Mixed through the streaming route', {
-				tracks: tracks.length,
-				alignLevels: session.alignTrackLevels,
-			});
-			return new Blob([wavBuffer], {
-				type: audioMimeForExtension(FORMAT_WAV),
-			});
-		} catch (error) {
-			// The one failure the fallback cannot answer. Every other reason
-			// the streaming mix gives up is a property of the route - a rate
-			// mismatch, an adapter without stat - and the Web Audio mix takes
-			// another route to the same file. The container ceiling is a
-			// property of the audio: that mix encodes through mediabunny,
-			// which is outside the check entirely, so it would spend the
-			// decode only to write a file whose stated sizes have wrapped.
-			// The refusal names auto-split, which is what the user can act on.
-			if (error instanceof WavSizeLimitError) {
-				throw error;
-			}
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Streaming mix failed, falling back to the Web Audio mix:`,
-				error,
-			);
-			return null;
-		}
+		this.debugLogger.log('Mixed through the streaming route', {
+			tracks: tracks.length,
+			alignLevels: session.alignTrackLevels,
+		});
+		return new Blob([wavBuffer], {
+			type: audioMimeForExtension(FORMAT_WAV),
+		});
 	}
 
 	/**

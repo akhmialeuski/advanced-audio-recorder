@@ -1,17 +1,21 @@
 /**
  * What a merged multi-track file is made of: where each track sits in it and
- * which format it is written in. A session stopped normally and a session
- * recovered after a crash both merge through these, so the two produce the
- * same file.
+ * which format it is written in, and the bounded-memory route a PCM session
+ * takes to it. A session stopped normally and a session recovered after a
+ * crash both merge through these, so the two produce the same file.
  * @module recording/mergeOutput
  */
 
-import { FORMAT_WAV } from '../constants';
+import type { App } from 'obsidian';
+import { FORMAT_WAV, PLUGIN_LOG_PREFIX } from '../constants';
 import { INT16_MAX } from '../audio/pcm';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import type { MergePlacement } from '../audio/AudioFormatConverter';
+import { WavSizeLimitError } from '../audio/WavEncoder';
 import type { TrackMix } from '../types';
 import { gainFactor, normalizeFactor, panGains } from './mixMath';
+import { canStreamMix, mixPcmTracksToWav } from './StreamingMixer';
+import type { MixOptions, PcmMixTrack } from './StreamingMixer';
 
 /**
  * Where a session's tracks sit in a merged file, in the terms the Web Audio
@@ -68,4 +72,42 @@ export function mergePlacement(
  */
 export function mergedFileFormat(outputFormat: string): string {
 	return isOfflineEncodingSupported(outputFormat) ? outputFormat : FORMAT_WAV;
+}
+
+/**
+ * Mixes PCM tracks into a WAV from their segment files in bounded memory,
+ * where the streaming mixer takes them.
+ *
+ * Every reason the streaming mix gives up but one is a property of the
+ * route - a rate mismatch, an adapter without stat - and the Web Audio mix
+ * takes another route to the same file, so those answer null. The container
+ * ceiling is a property of the audio: that mix encodes through mediabunny,
+ * which is outside the check entirely, so it would spend the decode only to
+ * write a file whose stated sizes have wrapped. That refusal is rethrown.
+ * @param tracks - The tracks with their segments, in placement order
+ * @param app - Obsidian App instance
+ * @param options - Progress, sample format, and whether to align levels
+ * @returns The WAV bytes, or null when the caller has to mix another way
+ * @throws WavSizeLimitError when the mix would pass the container ceiling
+ */
+export async function streamMixToWav(
+	tracks: PcmMixTrack[],
+	app: App,
+	options: MixOptions,
+): Promise<ArrayBuffer | null> {
+	if (!canStreamMix(tracks)) {
+		return null;
+	}
+	try {
+		return await mixPcmTracksToWav(tracks, app, options);
+	} catch (error) {
+		if (error instanceof WavSizeLimitError) {
+			throw error;
+		}
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Streaming mix failed, falling back to the Web Audio mix:`,
+			error,
+		);
+		return null;
+	}
 }
