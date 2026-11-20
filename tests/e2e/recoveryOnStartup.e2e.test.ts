@@ -11,7 +11,7 @@
 
 import AudioRecorderPlugin from 'src/main';
 import { at } from '../helpers/assertions';
-import { noticeMessages } from '../mocks/obsidian';
+import { noticeInstances, noticeMessages } from '../mocks/obsidian';
 import { RecoveryModal } from 'src/ui/RecoveryModal';
 import {
 	collectRecoverableSessions,
@@ -154,6 +154,33 @@ describe('recovering the interrupted session', () => {
 				message.includes('Could not mix the recovered tracks'),
 			),
 		).toBe(true);
+	});
+
+	it('says a mix is running for as long as a session is being merged', async () => {
+		const merging = {
+			...interruptedSession('a'),
+			mergedFileBaseName: 'recording-multitrack-a',
+		};
+		await loadWithSessions([merging]);
+		let shownDuringRecovery: string[] = [];
+		jest.mocked(recoverSession).mockImplementation(() => {
+			shownDuringRecovery = noticeMessages();
+			return Promise.resolve({
+				recoveredPaths: [],
+				failedTracks: [],
+				mergeFailed: false,
+			});
+		});
+
+		await recoveryChoices().onRecover();
+
+		// The merge decodes and encodes the whole session while the dialog
+		// shows nothing but its three buttons
+		expect(shownDuringRecovery).toEqual([
+			'Recovering audio and mixing the tracks into one file. A long recording can take a few minutes.',
+		]);
+		expect(at(noticeInstances, 0).timeout).toBe(0);
+		expect(at(noticeInstances, 0).hide).toHaveBeenCalledTimes(1);
 	});
 
 	it('says nothing at all when there was nothing to bring back', async () => {
