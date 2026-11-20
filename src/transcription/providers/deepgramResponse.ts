@@ -14,28 +14,20 @@ import type {
 	TranscriptionUsage,
 } from '../TranscriptTypes';
 import type { WhisperResult } from './whisperResponse';
-import { isRecord, num } from './responseUtils';
+import { billedSeconds, isRecord, num } from './responseUtils';
 
 /**
  * Reads the billed audio duration from Deepgram's `metadata.duration`
- * (seconds), when present and finite, so the run's actual cost can be
- * computed.
+ * (seconds), which is nested where the other engines report it flat.
+ * @param body - The parsed response body
+ * @returns The usage, or undefined when the body carries no duration
  */
 function deepgramUsage(
 	body: Record<string, unknown>,
 ): TranscriptionUsage | undefined {
-	if (!isRecord(body.metadata)) {
-		return undefined;
-	}
-	const duration = body.metadata.duration;
-	if (
-		typeof duration !== 'number' ||
-		!Number.isFinite(duration) ||
-		duration < 0
-	) {
-		return undefined;
-	}
-	return { audioSeconds: duration };
+	return isRecord(body.metadata)
+		? billedSeconds(body.metadata.duration)
+		: undefined;
 }
 
 /** Formats a Deepgram speaker index (0-based) as a label, when present. */

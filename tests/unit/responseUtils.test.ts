@@ -8,7 +8,11 @@
  * visible instead of silently reshaping four transcripts.
  */
 
-import { isRecord, num } from 'src/transcription/providers/responseUtils';
+import {
+	billedSeconds,
+	isRecord,
+	num,
+} from 'src/transcription/providers/responseUtils';
 
 describe('isRecord', () => {
 	it.each([
@@ -68,5 +72,26 @@ describe('num', () => {
 	// collapse a segment onto its own start rather than onto the timeline's.
 	it('prefers a usable value over the fallback', () => {
 		expect(num(3, 7)).toBe(3);
+	});
+});
+
+describe('billedSeconds', () => {
+	// Zero is a real answer: an engine that billed nothing said so, and the
+	// run's cost must read it rather than fall back to an estimate.
+	it.each([
+		{ name: 'a duration', value: 12.5 },
+		{ name: 'zero', value: 0 },
+	])('reads $name as the billed audio', ({ value }) => {
+		expect(billedSeconds(value)).toEqual({ audioSeconds: value });
+	});
+
+	it.each([
+		{ name: 'a missing field', value: undefined },
+		{ name: 'a numeric string', value: '12' },
+		{ name: 'a negative number', value: -1 },
+		{ name: 'NaN', value: Number.NaN },
+		{ name: 'Infinity', value: Number.POSITIVE_INFINITY },
+	])('reports no usage for $name', ({ value }) => {
+		expect(billedSeconds(value)).toBeUndefined();
 	});
 });

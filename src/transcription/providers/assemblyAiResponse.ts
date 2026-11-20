@@ -8,13 +8,9 @@
  */
 
 import { MS_PER_SECOND } from '../../constants';
-import type {
-	TranscriptSegment,
-	TranscriptWord,
-	TranscriptionUsage,
-} from '../TranscriptTypes';
+import type { TranscriptSegment, TranscriptWord } from '../TranscriptTypes';
 import type { WhisperResult } from './whisperResponse';
-import { isRecord, num } from './responseUtils';
+import { billedSeconds, isRecord, num } from './responseUtils';
 
 /** A speaker AssemblyAI names with one capital letter, `A` being the first. */
 const LETTER_SPEAKER = /^[A-Z]$/;
@@ -98,21 +94,6 @@ function sentenceSegment(
 }
 
 /**
- * Reads the billed audio duration from the transcript's `audio_duration`
- * (seconds), when present and finite, so the run's actual cost can be
- * computed.
- * @param duration - The `audio_duration` field of the transcript
- * @returns The usage, or undefined when the field carries no duration
- */
-function billedUsage(duration: unknown): TranscriptionUsage | undefined {
-	return typeof duration === 'number' &&
-		Number.isFinite(duration) &&
-		duration >= 0
-		? { audioSeconds: duration }
-		: undefined;
-}
-
-/**
  * Maps a completed AssemblyAI transcript and its sentences to a WhisperResult.
  * Falls back to one segment built from the transcript's flat `text` when the
  * sentences carry nothing.
@@ -137,7 +118,8 @@ export function mapAssemblyAiResponse(
 	if (segments.length === 0 && flatText !== '') {
 		segments.push({ start: 0, end: 0, text: flatText });
 	}
-	const usage = billedUsage(body.audio_duration);
+	// `audio_duration` is the billed audio, in seconds.
+	const usage = billedSeconds(body.audio_duration);
 	return {
 		language:
 			typeof body.language_code === 'string'
