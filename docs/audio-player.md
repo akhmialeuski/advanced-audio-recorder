@@ -303,7 +303,7 @@ The index keeps itself current: a recording renamed or deleted is carried over o
 
 - A **timecoded list**, one line per marker with the timecode first, which is the form a video description box takes. Written beside the audio with the recording's extension replaced, so `recording.webm` exports to `recording.chapters.txt`.
 - A **cue sheet**, which players and audio editors read. Written as `recording.cue`, again with the extension replaced. Only chapters go into it: a cue sheet describes a division of the recording into playable tracks, and a bookmark is a point rather than a division.
-- A **Markdown outline** whose timecodes are **clickable links** into the recording, built by the same mechanism transcripts use, so pressing one moves playback there. It is inserted into the open note or copied to the clipboard, as you choose.
+- A **Markdown outline** whose timecodes are **clickable links** into the recording, built by the same mechanism transcripts use, so pressing one moves playback there. It is inserted into the open note, in Reading view as well as while editing, or copied to the clipboard, as you choose.
 
 The timecodes widen together to the longest one in the export, so a recording over an hour renders every line as `h:mm:ss` and the list reads as a column. A note written on a marker is appended after a dash in the timecoded list and in the Markdown outline. The cue sheet carries no notes, because its format has no field for one.
 

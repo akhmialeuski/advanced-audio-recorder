@@ -75,10 +75,11 @@ export type RecordingControls = {
 export interface InsertionContext {
 	/** Path of the note that was active when recording started. */
 	filePath: string;
-	/** Cursor line number at recording start. */
-	line: number;
-	/** Cursor character offset at recording start. */
-	ch: number;
+	/**
+	 * Cursor line number at recording start, or null when the note was in
+	 * Reading view, which has no cursor: the links then go to its end.
+	 */
+	line: number | null;
 }
 
 /**

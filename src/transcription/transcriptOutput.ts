@@ -9,7 +9,9 @@ import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
 import { directoryOf } from '../utils/paths';
-import { findNoteView } from '../utils/noteViews';
+import { embedsOf } from '../recording/NoteInserter';
+import { lineOfText, withBlockInserted } from '../utils/noteText';
+import { findNoteEditor } from '../utils/noteViews';
 import { serializeTranscriptFile } from './transcriptFormat';
 import {
 	type Transcript,
@@ -106,32 +108,71 @@ export async function writeTranscriptFile(
 }
 
 /**
- * Inserts a Markdown block at the cursor of the given note, optionally under
- * a heading. Returns true when inserted, false when the note is not open in
- * an editable view (reading mode or not open), so the caller can fall back.
+ * The line of a note a transcript written through the vault goes after: the
+ * line embedding the recording, so the transcript sits under its player, as
+ * it does when inserted at a cursor placed there. Found in the content the
+ * write is applied to, by the embed's exact text, so a stale cache cannot
+ * misplace it.
+ * @param app - Obsidian App
+ * @param note - The note being written
+ * @param recording - The transcribed recording, when the caller has one
+ * @param content - The note's content at the moment of the write
+ * @returns The zero-based line, or null for the end of the note
+ */
+function lineAfterRecording(
+	app: App,
+	note: TFile,
+	recording: TFile | null,
+	content: string,
+): number | null {
+	const embed = recording ? embedsOf(app, note, recording)[0] : undefined;
+	return embed ? lineOfText(content, embed.original) : null;
+}
+
+/**
+ * Inserts a Markdown block into the given note, optionally under a heading.
+ *
+ * A note being edited takes the block at its cursor, through the editor, so
+ * it joins what is typed there and is undone with the editor's own undo. A
+ * note in Reading view, or one that is not open, has no cursor and no editor
+ * that reaches its file, so it is written through the vault: under the embed
+ * of the recording when the note has one, at its end otherwise. Returns false
+ * only when nothing was written - the note is gone, or the write was refused -
+ * so the caller can fall back.
  * @param app - Obsidian App
  * @param notePath - Vault path of the target note (the link source)
  * @param body - Markdown to insert
  * @param heading - Optional heading line (empty for none)
+ * @param recording - The recording the block is about, when there is one
  */
-function insertBlockIntoNote(
+async function insertBlockIntoNote(
 	app: App,
 	notePath: string,
 	body: string,
 	heading: string,
-): boolean {
-	const view = findNoteView(app, notePath);
-	if (!view) {
-		return false;
-	}
+	recording: TFile | null,
+): Promise<boolean> {
 	const block = heading ? `${heading}\n\n${body}` : body;
 	try {
-		const editor = view.editor;
-		const cursor = editor.getCursor();
-		editor.replaceRange(`\n\n${block}\n`, cursor);
+		const editor = findNoteEditor(app, notePath);
+		if (editor) {
+			editor.replaceRange(`\n\n${block}\n`, editor.getCursor());
+			return true;
+		}
+		const note = app.vault.getFileByPath(notePath);
+		if (!note) {
+			return false;
+		}
+		await app.vault.process(note, (content) =>
+			withBlockInserted(
+				content,
+				block,
+				lineAfterRecording(app, note, recording, content),
+			),
+		);
 		return true;
 	} catch (error) {
-		// The note may be in reading mode or otherwise not editable; report
+		// A refused write must not take a finished transcript with it: report
 		// not-inserted so the caller can fall back to the file/notice.
 		console.warn(
 			`${PLUGIN_LOG_PREFIX} Could not insert into the note:`,
@@ -142,21 +183,25 @@ function insertBlockIntoNote(
 }
 
 /**
- * Inserts the transcript Markdown at the cursor of the note the timecode
- * links were generated against, optionally under a heading. Returns true
- * when inserted, false when that note is not open in an editable view.
+ * Inserts the transcript Markdown into the note the timecode links were
+ * generated against, optionally under a heading: at the cursor of a note
+ * being edited, through the vault otherwise. Returns true when inserted,
+ * false when the note could not be written.
  * @param app - Obsidian App
  * @param notePath - Vault path of the target note (the link source)
  * @param markdown - Rendered transcript Markdown
  * @param heading - Optional heading line (empty for none)
+ * @param recording - The transcribed recording, which a note written through
+ *   the vault takes the transcript under the embed of
  */
 export function insertTranscriptIntoNote(
 	app: App,
 	notePath: string,
 	markdown: string,
 	heading: string,
-): boolean {
-	return insertBlockIntoNote(app, notePath, markdown, heading);
+	recording: TFile | null = null,
+): Promise<boolean> {
+	return insertBlockIntoNote(app, notePath, markdown, heading, recording);
 }
 
 /**
@@ -164,20 +209,23 @@ export function insertTranscriptIntoNote(
  * optionally under a heading. The link is built with
  * {@link App.fileManager.generateMarkdownLink} so it honors the vault's
  * link format (a `[[wikilink]]` when wikilinks are enabled). Returns true
- * when inserted, false when the note is not open in an editable view.
+ * when inserted, false when the note could not be written.
  * @param app - Obsidian App
  * @param notePath - Vault path of the target note (the link source)
  * @param transcriptFile - The written transcript file to link to
  * @param heading - Optional heading line (empty for none)
+ * @param recording - The transcribed recording, which a note written through
+ *   the vault takes the link under the embed of
  */
 export function insertTranscriptFileLink(
 	app: App,
 	notePath: string,
 	transcriptFile: TFile,
 	heading: string,
-): boolean {
+	recording: TFile | null = null,
+): Promise<boolean> {
 	const link = app.fileManager.generateMarkdownLink(transcriptFile, notePath);
-	return insertBlockIntoNote(app, notePath, link, heading);
+	return insertBlockIntoNote(app, notePath, link, heading, recording);
 }
 
 /** Outcome of writing a transcript, used to build an honest user notice. */
@@ -216,8 +264,8 @@ export function describeTranscriptOutcome(
 	} = outcome;
 	if (savedAsFallback && filePath) {
 		return (
-			`Could not insert the transcript into the note (open it in editing ` +
-			`mode to insert there). Saved to ${filePath} instead.`
+			`Could not insert the transcript into the note (it could not be ` +
+			`written to). Saved to ${filePath} instead.`
 		);
 	}
 	const parts: string[] = [];
@@ -227,11 +275,11 @@ export function describeTranscriptOutcome(
 	if (filePath) {
 		if (linkRequested) {
 			// A link to the file was requested: report honestly whether it
-			// landed, since insertion fails when the note is not editable.
+			// landed, since the note may be gone by the time the run ends.
 			parts.push(
 				linkInserted
 					? `saved to ${filePath} and linked in the note`
-					: `saved to ${filePath} (open the note in editing mode to link it)`,
+					: `saved to ${filePath} (the note could not be written to, so it is not linked there)`,
 			);
 		} else {
 			parts.push(`saved to ${filePath}`);
@@ -243,7 +291,7 @@ export function describeTranscriptOutcome(
 	if (noteRequested) {
 		// Note output was requested but nothing was written and no fallback
 		// file exists: be honest rather than claim a hollow success.
-		return 'Could not write the transcript. Open the note in editing mode and try again.';
+		return 'Could not write the transcript: the note could not be written to.';
 	}
 	return 'Transcript ready.';
 }

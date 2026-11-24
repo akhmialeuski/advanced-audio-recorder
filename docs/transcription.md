@@ -444,12 +444,12 @@ Pick where the transcript lands with **Destination**:
 
 | Destination option                       | What it does                                                                                            |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Insert into note**                     | Render the full transcript Markdown into the active note at the cursor.                                 |
+| **Insert into note**                     | Render the full transcript Markdown into the note the recording was reached from.                       |
 | **Save to file**                         | Write a sidecar transcript file next to the audio.                                                      |
 | **Note and file**                        | Do both - insert the Markdown and write the sidecar file.                                               |
 | **Save to file and link it in the note** | Write the sidecar file and insert a link to it into the note (instead of pasting the whole transcript). |
 
-When you ask for in-note output but the note is not open in an editable view (reading mode, or not open at all), a completed transcript is **never silently dropped**: the plugin writes a sidecar file as a fallback and the notice tells you what happened. If the audio file itself is the active pane (as with the **Transcribe audio** command), an in-note-only destination is downgraded to a file up front, so the run does what it can without a misleading "could not insert" outcome.
+In-note output works in every view mode. A note you are **editing** (Live Preview or Source mode) takes the transcript at the cursor, through the editor, so it can be undone there. A note in **Reading view**, which has no cursor, and a note that was closed while the run was going are written through the vault instead: the transcript goes under the embed of the recording when the note has one, and at the end of the note otherwise. A completed transcript is **never silently dropped**: if the note cannot be written at all (it was deleted during the run, for example), the plugin writes a sidecar file as a fallback and the notice tells you what happened. If the audio file itself is the active pane (as with the **Transcribe audio** command), an in-note-only destination is downgraded to a file up front, so the run does what it can without a misleading "could not insert" outcome.
 
 **File formats** (shown when the destination is anything other than note-only):
 
@@ -727,7 +727,7 @@ Per-engine fields (base URL, key, model picker, upload chunk size) are documente
 - **The Transcribe audio palette command does nothing** - it runs only when the active file is an audio file and transcription is enabled. Open the audio file (or its note) and try again.
 - **Speaker labels never appear** - only Deepgram, Gemini, Mistral Voxtral, and AssemblyAI diarize, so the toggle is disabled for Whisper API and local whisper.cpp. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
 - **Speaker numbers change partway through a Gemini transcript** - a recording longer than 15 minutes is split into parts and Gemini renumbers speakers per part. Use **Deepgram** (sends the whole file) or split the recording for consistent speakers. A recording of exactly 15 minutes is not split and shows no such warning.
-- **"Could not insert the transcript into the note"** - the note was not open in editing mode. The transcript is saved as a sidecar file as a fallback; the notice shows its path. Open the note in editing mode to insert there.
+- **"Could not insert the transcript into the note"** - the note could not be written to, typically because it was deleted or moved while the transcription was running. The transcript is saved as a sidecar file as a fallback; the notice shows its path. The view mode does not matter: a note in Reading view takes the transcript like one being edited.
 - **A request times out** - raise **Request timeout** (up to 60 minutes) for slow connections or very large uploads, or split the file first.
 - **A local whisper.cpp run is stopped before it finishes** - the process outlived **Local run timeout**. Raise it (up to 720 minutes) or point the engine at a smaller model; a large model on a slow CPU can take longer than the recording itself.
 - **A part of a long recording is missing** - that part failed; a `> [!warning]` callout names the stretch and a notice explains the cause. Re-run the failed file, or check the engine's quota and key.

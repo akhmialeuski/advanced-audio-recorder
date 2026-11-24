@@ -79,7 +79,7 @@ describe('describeTranscriptOutcome', () => {
 		).toBe('Transcript saved to audio.srt and linked in the note.');
 	});
 
-	it('does not claim a link when the note was not editable', () => {
+	it('does not claim a link when the note could not be written to', () => {
 		const text = describeTranscriptOutcome({
 			inserted: false,
 			filePath: 'audio.srt',
@@ -89,7 +89,7 @@ describe('describeTranscriptOutcome', () => {
 			linkInserted: false,
 		});
 		expect(text).toContain('saved to audio.srt');
-		expect(text).toContain('to link it');
+		expect(text).toContain('not linked there');
 		expect(text).not.toContain('linked in the note.');
 	});
 });

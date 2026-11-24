@@ -8,7 +8,7 @@
  * @module actions/transcript/transcriptActions
  */
 
-import { MarkdownView, TFile } from 'obsidian';
+import { TFile } from 'obsidian';
 import type { CliData, Editor } from 'obsidian';
 import { COMMAND_IDS } from '../../constants';
 import { lineTimecodeRef } from '../../obsidian/timecodeRefs';
@@ -51,7 +51,7 @@ import type {
 } from './transcriptContext';
 import { FILE_TARGET_PARAMS, namedVaultFile } from '../file/recordingTargets';
 import { editorLines, noteLines } from './transcriptLines';
-import { findNoteView } from '../../utils/noteViews';
+import { activeNote, findNoteEditor } from '../../utils/noteViews';
 import { isRefusal, type Refusable } from '../../utils/refusal';
 
 /** The lines a selection holds text on, and where it starts and ends. */
@@ -170,9 +170,10 @@ export function activeTranscriptSelection(
 	services: ActionServices,
 ): () => TranscriptSelectionContext | null {
 	return (): TranscriptSelectionContext | null => {
-		const view = services.app.workspace.getActiveViewOfType(MarkdownView);
-		return view?.file
-			? transcriptSelectionIn(services, view.editor, view.file)
+		// Reading view has no selection of the editor's to act on.
+		const note = activeNote(services.app);
+		return note?.editor && note.file
+			? transcriptSelectionIn(services, note.editor, note.file)
 			: null;
 	};
 }
@@ -488,12 +489,12 @@ async function namedSelection(
 				'Name the note of the transcript with file=<name> or path=<vault path>, or open it in Obsidian.',
 		};
 	}
-	// An open note is edited where it is open: the line numbers are the ones
-	// its editor shows, including what is not saved yet, and the edit can be
-	// undone there. A note that is not open is edited on disk.
-	const view = findNoteView(app, note.path);
-	const lines = view
-		? editorLines(view.editor)
+	// A note being edited is edited in its editor: the line numbers are the
+	// ones the editor shows, including what is not saved yet, and the edit can
+	// be undone there. A note in Reading view or not open is edited on disk.
+	const editor = findNoteEditor(app, note.path);
+	const lines = editor
+		? editorLines(editor)
 		: noteLines(app, note, await app.vault.read(note));
 	const range = { min: 1, max: lines.lineCount(), integer: true };
 	const first = cliNumber(args, LINE_PARAM, range);

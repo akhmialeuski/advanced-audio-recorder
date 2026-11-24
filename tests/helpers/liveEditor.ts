@@ -140,6 +140,7 @@ function obsidianEditorOver(
 		view.state.doc.line(pos.line + 1).from + pos.ch;
 	const editor = partial<Editor>({
 		getLine: (line: number) => view.state.doc.line(line + 1).text,
+		lastLine: () => view.state.doc.lines - 1,
 		getValue: () => view.state.doc.toString(),
 		offsetToPos,
 		posToOffset,

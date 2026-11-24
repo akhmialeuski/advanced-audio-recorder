@@ -705,6 +705,7 @@ describe('RecordingManager', () => {
 			(
 				mockApp.workspace.getActiveViewOfType as jest.Mock
 			).mockReturnValue({
+				getMode: () => 'source',
 				editor: { replaceSelection: mockReplaceSelection },
 			});
 
@@ -744,6 +745,7 @@ describe('RecordingManager', () => {
 			(
 				mockApp.workspace.getActiveViewOfType as jest.Mock
 			).mockReturnValue({
+				getMode: () => 'source',
 				editor: { replaceSelection: mockReplaceSelection },
 			});
 
@@ -784,6 +786,7 @@ describe('RecordingManager', () => {
 			(
 				mockApp.workspace.getActiveViewOfType as jest.Mock
 			).mockReturnValue({
+				getMode: () => 'source',
 				editor: { replaceSelection: mockReplaceSelection },
 			});
 
@@ -811,6 +814,7 @@ describe('RecordingManager', () => {
 				mockApp.workspace.getActiveViewOfType as jest.Mock
 			).mockReturnValue({
 				file: { path: 'Notes/active.md' },
+				getMode: () => 'source',
 				editor: { replaceSelection: jest.fn() },
 			});
 
@@ -877,6 +881,7 @@ describe('RecordingManager', () => {
 				mockApp.workspace.getActiveViewOfType as jest.Mock
 			).mockReturnValue({
 				file: { path: 'Notes/my-note.md' },
+				getMode: () => 'source',
 				editor: {
 					getCursor: mockGetCursor,
 					replaceRange: mockReplaceRange,
@@ -887,7 +892,9 @@ describe('RecordingManager', () => {
 			// Mock getLeavesOfType for finding the stored note
 			const mockLeafView = {
 				file: { path: 'Notes/my-note.md' },
+				getMode: () => 'source',
 				editor: {
+					lastLine: () => 20,
 					replaceRange: mockReplaceRange,
 					replaceSelection: jest.fn(),
 				},
@@ -918,7 +925,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('fallbacks to replaceSelection when stored note leaf is not found', async () => {
+		it('writes the stored note through the vault when it is no longer open', async () => {
 			const mockReplaceSelection = jest.fn();
 			const mockGetCursor = jest.fn().mockReturnValue({ line: 2, ch: 0 });
 
@@ -927,6 +934,7 @@ describe('RecordingManager', () => {
 				mockApp.workspace.getActiveViewOfType as jest.Mock
 			).mockReturnValue({
 				file: { path: 'Notes/original.md' },
+				getMode: () => 'source',
 				editor: {
 					getCursor: mockGetCursor,
 					replaceSelection: mockReplaceSelection,
@@ -937,6 +945,11 @@ describe('RecordingManager', () => {
 			(
 				mockApp.workspace as unknown as Record<string, unknown>
 			).getLeavesOfType = jest.fn().mockReturnValue([]);
+			const process = jest.fn().mockResolvedValue('');
+			Object.assign(mockApp.vault, {
+				getFileByPath: (path: string) => ({ path }),
+				process,
+			});
 
 			mockSettings = {
 				...DEFAULT_SETTINGS,
@@ -950,8 +963,13 @@ describe('RecordingManager', () => {
 
 			await recordOneChunk(manager, mockMediaRecorder);
 
-			// Falls back to active view replaceSelection
-			expect(mockReplaceSelection).toHaveBeenCalled();
+			// The link belongs in the note the recording was started in, not
+			// in whichever one is active when the save ends.
+			expect(process).toHaveBeenCalledWith(
+				expect.objectContaining({ path: 'Notes/original.md' }),
+				expect.any(Function),
+			);
+			expect(mockReplaceSelection).not.toHaveBeenCalled();
 		});
 
 		it('clears insertionContext after stopRecording', async () => {
@@ -960,6 +978,7 @@ describe('RecordingManager', () => {
 				mockApp.workspace.getActiveViewOfType as jest.Mock
 			).mockReturnValue({
 				file: { path: 'Notes/test.md' },
+				getMode: () => 'source',
 				editor: {
 					getCursor: mockGetCursor,
 					replaceSelection: jest.fn(),

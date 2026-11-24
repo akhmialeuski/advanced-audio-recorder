@@ -28,6 +28,57 @@ if (!OBSIDIAN_RESTRICTED_IMPORTS) {
 // multipart boundary or YAML front-matter in a test fixture) are never flagged.
 const localRules = {
     rules: {
+        'no-markdown-view-editor': {
+            meta: {
+                type: 'problem',
+                docs: {
+                    description:
+                        'Disallow reading MarkdownView.editor outside utils/noteViews: in Reading view that editor is hidden, and a write to it never reaches the note and raises no error.',
+                },
+                schema: [],
+                messages: {
+                    viewEditor:
+                        'MarkdownView.editor also exists in Reading view, where a write to it is silently lost. Take the editor from findNoteEditor(), activeNote() or editorOf() in utils/noteViews, and write through the vault when they return none.',
+                },
+            },
+            create(context) {
+                const services = context.sourceCode.parserServices;
+                if (!services?.program) {
+                    return {};
+                }
+                const isMarkdownView = (node) => {
+                    const type = services.getTypeAtLocation(node);
+                    return (type.isUnion() ? type.types : [type]).some(
+                        (part) =>
+                            part.getSymbol()?.getName() === 'MarkdownView',
+                    );
+                };
+                const isEditorKey = (node, computed) =>
+                    !computed &&
+                    node.type === 'Identifier' &&
+                    node.name === 'editor';
+                return {
+                    MemberExpression(node) {
+                        if (
+                            isEditorKey(node.property, node.computed) &&
+                            isMarkdownView(node.object)
+                        ) {
+                            context.report({ node, messageId: 'viewEditor' });
+                        }
+                    },
+                    ObjectPattern(node) {
+                        const taken = node.properties.some(
+                            (property) =>
+                                property.type === 'Property' &&
+                                isEditorKey(property.key, property.computed),
+                        );
+                        if (taken && isMarkdownView(node)) {
+                            context.report({ node, messageId: 'viewEditor' });
+                        }
+                    },
+                };
+            },
+        },
         'no-non-ascii-typography': {
             meta: {
                 type: 'problem',
@@ -236,6 +287,20 @@ export default tseslint.config(
                 'error',
                 { max: 50, skipComments: true, skipBlankLines: true },
             ],
+        },
+    },
+    {
+        // A Markdown view keeps its editor in Reading view, hidden: a write
+        // to it raises no error and never reaches the note, which is how a
+        // finished transcript was once reported as inserted and lost. Only
+        // utils/noteViews reads the property, and it hands the editor out for
+        // a view in editing mode alone, so every other module has to deal
+        // with the case where there is none.
+        files: ['src/**/*.ts'],
+        ignores: ['src/utils/noteViews.ts'],
+        plugins: { local: localRules },
+        rules: {
+            'local/no-markdown-view-editor': 'error',
         },
     },
     {

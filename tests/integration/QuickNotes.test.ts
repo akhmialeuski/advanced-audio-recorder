@@ -575,7 +575,28 @@ describe('quick notes', () => {
 
 		expect(writeText).toHaveBeenCalledWith(HEARD);
 		expect(noticeMessages()).toContain(
-			'No note is open to take the quick note, so its text was copied to the clipboard.',
+			'No note is being edited to take the quick note, so its text was copied to the clipboard.',
+		);
+	});
+
+	it('says no note is being edited when the active note is in Reading view', async () => {
+		// A note in Reading view has no cursor, so it takes no quick note
+		// started with no note active. It is open in front of the user, so a
+		// notice saying no note is open would name the wrong cause.
+		const writeText = jest.fn().mockResolvedValue(undefined);
+		Object.assign(navigator, { clipboard: { writeText } });
+		const h = harness({ views: () => [] });
+		await h.controller.toggle();
+		jest.spyOn(h.note.markdownView, 'getMode').mockReturnValue('preview');
+		jest.mocked(h.app.workspace.getActiveViewOfType).mockReturnValue(
+			h.note.markdownView,
+		);
+		await h.controller.toggle();
+
+		expect(writeText).toHaveBeenCalledWith(HEARD);
+		expect(h.note.text()).toBe(NOTE);
+		expect(noticeMessages()).toContain(
+			'No note is being edited to take the quick note, so its text was copied to the clipboard.',
 		);
 	});
 
@@ -869,7 +890,7 @@ describe('quick notes that go wrong', () => {
 		await dictate(h.controller);
 
 		expect(noticeMessages()).toContain(
-			`No note is open to take the quick note, and the clipboard refused it. The text: ${HEARD}`,
+			`No note is being edited to take the quick note, and the clipboard refused it. The text: ${HEARD}`,
 		);
 		expect(noticeMessages()).not.toContainEqual(
 			expect.stringContaining('Quick note failed'),

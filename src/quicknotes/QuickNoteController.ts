@@ -308,7 +308,7 @@ export class QuickNoteController {
 		// open notes would make "no note is open" a false thing to say.
 		const reason = anchor
 			? `Quick note: ${anchor.notePath} no longer exists`
-			: 'No note is open to take the quick note';
+			: 'No note is being edited to take the quick note';
 		try {
 			await navigator.clipboard.writeText(text);
 		} catch (error) {

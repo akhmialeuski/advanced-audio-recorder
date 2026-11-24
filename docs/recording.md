@@ -247,6 +247,8 @@ By default the embed link is inserted at the cursor in whatever note is active w
 
 The position is captured as a snapshot at the moment recording begins. One caveat follows from that: if you **edit the original note while recording** - adding or deleting text above the saved spot - the remembered position can shift, because it is an offset into the note as it was when recording started. For predictable placement, avoid editing the target note's earlier content during a recording, or simply leave this option off and let the link land at your cursor on stop.
 
+The link is written in every view mode. A note in **Reading view** has no cursor, so there the link goes to the end of the note - both for the note that is active when the recording stops and for one the recording was started in while it was in Reading view. A note that was closed during the recording still takes the link at the remembered line.
+
 This setting works together with the [file storage options](file-operations.md) that decide _which folder_ the audio file itself is written to.
 
 ---

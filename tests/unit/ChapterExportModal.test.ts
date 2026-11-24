@@ -188,6 +188,9 @@ describe('writing the outline', () => {
 			'note.md',
 			'- [[talk#t=0|0:00]] Intro\n- [[talk#t=125|2:05]] Middle',
 			'',
+			// The recording, whose embed a note written through the vault
+			// takes the outline under.
+			expect.objectContaining({ path: 'Recordings/talk.webm' }),
 		);
 	});
 
@@ -225,7 +228,9 @@ describe('writing the outline', () => {
 		press(modal, 'Export');
 		await tick();
 
-		expect(noticeMessages().join(' ')).toContain('editing mode');
+		expect(noticeMessages().join(' ')).toContain(
+			'Copy the outline to the clipboard',
+		);
 		error.mockRestore();
 	});
 });
