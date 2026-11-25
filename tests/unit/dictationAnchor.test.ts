@@ -115,6 +115,75 @@ describe('DictationAnchor', () => {
 		await expect(anchor?.insert(app, 'X')).resolves.toBeNull();
 	});
 
+	/**
+	 * Lets the vault hold the mounted note, and returns what a write through
+	 * it leaves in the file.
+	 * @param app - The app
+	 * @param live - The mounted note
+	 * @param onDisk - The note's text in its file
+	 */
+	function fileOf(
+		app: App,
+		live: LiveMarkdownView,
+		onDisk: string,
+	): () => string {
+		let content = onDisk;
+		jest.mocked(app.vault.getFileByPath).mockReturnValue(
+			live.markdownView.file,
+		);
+		jest.mocked(app.vault.process).mockImplementation((_file, change) => {
+			content = change(content);
+			return Promise.resolve(content);
+		});
+		return () => content;
+	}
+
+	it('writes a dictation started in Reading view to a line of its own at the end of the file', async () => {
+		// Regression (#177): the view keeps its editor in Reading view, and
+		// its cursor is one the user cannot see. A write to it never reaches
+		// the note, so the text goes through the vault instead. The plugin,
+		// not the user, chose the end of the note, so the text must not run
+		// on from the last sentence there.
+		const live = note('one two', 4);
+		jest.spyOn(live.markdownView, 'getMode').mockReturnValue('preview');
+		const app = appShowing([live.markdownView]);
+		const onDisk = fileOf(app, live, 'one two');
+
+		const anchor = DictationAnchor.place(app);
+
+		await expect(anchor?.insert(app, 'X')).resolves.toBe(PATH);
+		expect(onDisk()).toBe('one two\nX\n');
+		expect(live.text()).toBe('one two');
+	});
+
+	it('puts a dictation started in Reading view on a line of its own in the pane editing the note', async () => {
+		const reading = note('one two', 4);
+		jest.spyOn(reading.markdownView, 'getMode').mockReturnValue('preview');
+		const editing = note('one two', 0);
+		const app = appShowing([reading.markdownView, editing.markdownView]);
+
+		const anchor = DictationAnchor.place(app);
+
+		await expect(anchor?.insert(app, 'X')).resolves.toBe(PATH);
+		expect(editing.text()).toBe('one two\nX\n');
+		expect(reading.text()).toBe('one two');
+	});
+
+	it('writes the file at the mapped anchor when the note went to Reading view meanwhile', async () => {
+		const live = note('one two', 4);
+		const app = appShowing([live.markdownView]);
+		const onDisk = fileOf(app, live, 'top one two');
+		const anchor = DictationAnchor.place(app);
+		typeAbove(live)();
+		jest.spyOn(live.markdownView, 'getMode').mockReturnValue('preview');
+
+		await expect(anchor?.insert(app, 'X')).resolves.toBe(PATH);
+
+		expect(onDisk()).toBe('top one Xtwo');
+		expect(live.text()).toBe('top one two');
+		expect(live.view.state.field(dictationAnchorField)).toBeNull();
+	});
+
 	it('keeps mapping the anchor through a transaction carrying another effect', async () => {
 		const live = note('one two', 4);
 		const other = StateEffect.define<null>();

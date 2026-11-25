@@ -309,13 +309,15 @@ export class RecordingFinalizer {
 			}
 		}
 
-		let notePath: string | null = null;
-		if (fileLinks.length > 0) {
-			notePath = insertFileLinks(fileLinks, insertionContext, this.app);
-			new Notice(`Saved ${String(fileLinks.length)} audio file(s)`);
-		} else {
-			new Notice('No audio data recorded');
-		}
+		const saved = fileLinks.length > 0;
+		const notePath = saved
+			? await insertFileLinks(fileLinks, insertionContext, this.app)
+			: null;
+		new Notice(
+			saved
+				? `Saved ${String(fileLinks.length)} audio file(s)`
+				: 'No audio data recorded',
+		);
 		return { audioPaths: fileLinks, notePath, trackFiles };
 	}
 

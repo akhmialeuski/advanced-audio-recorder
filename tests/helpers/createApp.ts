@@ -230,6 +230,7 @@ export interface SpiedEditor {
 	replaceRange: jest.Mock;
 	replaceSelection: jest.Mock;
 	getValue: jest.Mock;
+	getLine: jest.Mock;
 	lastLine: jest.Mock;
 }
 
@@ -251,6 +252,11 @@ export function createMarkdownView(
 	options: {
 		file?: TFile | null;
 		cursor?: { line: number; ch: number } | null;
+		/**
+		 * The view mode; editing when omitted. A view in Reading view keeps
+		 * its editor, as Obsidian's does, and nothing may be written to it.
+		 */
+		mode?: 'source' | 'preview';
 	} = {},
 ): SpiedMarkdownView {
 	const editor: SpiedEditor = {
@@ -261,6 +267,7 @@ export function createMarkdownView(
 		replaceRange: jest.fn(),
 		replaceSelection: jest.fn(),
 		getValue: jest.fn().mockReturnValue(''),
+		getLine: jest.fn().mockReturnValue(''),
 		lastLine: jest.fn().mockReturnValue(0),
 	};
 	return Object.assign(
@@ -268,6 +275,7 @@ export function createMarkdownView(
 		{
 			file: options.file ?? null,
 			editor: options.cursor === null ? null : editor,
+			mode: options.mode ?? 'source',
 		},
 	);
 }

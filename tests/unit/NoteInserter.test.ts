@@ -38,6 +38,8 @@ function appWithViews(overrides?: {
 	leaves?: Array<{ view: SpiedMarkdownView }>;
 	generateMarkdownLink?: jest.Mock;
 	indexed?: boolean;
+	/** The notes on disk, by path; written back by `vault.process`. */
+	notes?: Record<string, string>;
 }): App {
 	const activeView = overrides?.activeView ?? null;
 	const leaves = overrides?.leaves ?? [];
@@ -50,6 +52,13 @@ function appWithViews(overrides?: {
 		vault: {
 			getFileByPath: (path: string): TFile | null =>
 				overrides?.indexed === false ? null : createFile(path),
+			process: jest.fn(
+				(file: TFile, change: (content: string) => string) => {
+					const notes = overrides?.notes ?? {};
+					notes[file.path] = change(notes[file.path] ?? '');
+					return Promise.resolve(notes[file.path]);
+				},
+			),
 		},
 		fileManager: {
 			generateMarkdownLink:
@@ -62,22 +71,25 @@ function appWithViews(overrides?: {
 /**
  * A markdown view over a note, optionally with a cursor in it.
  * @param filePath - Note the view shows, or null for a view with no file
- * @param cursorLine - Cursor line; omit for a view with no editor
+ * @param cursorLine - Cursor line
  * @param cursorCh - Cursor column
- * @returns The view, with every editor method spied
+ * @param mode - The view mode; editing when omitted
+ * @returns The view, with every editor method spied, over a note long enough
+ *   for every line a test names to be inside it
  */
 function createMockView(
 	filePath: string | null,
-	cursorLine?: number,
-	cursorCh?: number,
+	cursorLine: number,
+	cursorCh: number,
+	mode: 'source' | 'preview' = 'source',
 ): SpiedMarkdownView {
-	return createMarkdownView({
+	const view = createMarkdownView({
 		file: filePath ? createFile(filePath) : null,
-		cursor:
-			cursorLine === undefined || cursorCh === undefined
-				? null
-				: { line: cursorLine, ch: cursorCh },
+		cursor: { line: cursorLine, ch: cursorCh },
+		mode,
 	});
+	view.editor.lastLine.mockReturnValue(100);
+	return view;
 }
 
 describe('NoteInserter', () => {
@@ -103,7 +115,6 @@ describe('NoteInserter', () => {
 			expect(result).toEqual({
 				filePath: 'notes/test.md',
 				line: 10,
-				ch: 5,
 			});
 			expect(logger.log).not.toHaveBeenCalled();
 		});
@@ -133,21 +144,21 @@ describe('NoteInserter', () => {
 			);
 		});
 
-		it('returns null and logs when view has no editor (no cursor)', () => {
-			// A view showing a note, but with no editor to write into
-			const view = createMockView('notes/test.md');
+		it('captures a note in Reading view without a line', () => {
+			// Reading view has no cursor; its hidden editor still reports
+			// one, which is not where the user is and must not be used.
+			const view = createMockView('notes/test.md', 4, 2, 'preview');
 			const app = appWithViews({ activeView: view });
 			const logger = createMockDebugLogger();
 
 			const result = captureInsertionContext(app, true, logger);
 
-			expect(result).toBeNull();
-			expect(logger.log).toHaveBeenCalledWith(
-				'Could not capture insertion context: no active Markdown view',
-			);
+			expect(result).toEqual({ filePath: 'notes/test.md', line: null });
+			expect(view.editor.getCursor).not.toHaveBeenCalled();
+			expect(logger.log).not.toHaveBeenCalled();
 		});
 
-		it('captures cursor at line 0 ch 0 correctly', () => {
+		it('captures a cursor on the first line', () => {
 			const view = createMockView('notes/test.md', 0, 0);
 			const app = appWithViews({ activeView: view });
 			const logger = createMockDebugLogger();
@@ -157,23 +168,21 @@ describe('NoteInserter', () => {
 			expect(result).toEqual({
 				filePath: 'notes/test.md',
 				line: 0,
-				ch: 0,
 			});
 		});
 	});
 
 	describe('insertFileLinks', () => {
-		it('inserts at insertion context position when context and matching leaf exist', () => {
+		it('inserts at insertion context position when context and matching leaf exist', async () => {
 			const view = createMockView('notes/daily.md', 5, 0);
 			const leaf = { view };
 			const context: InsertionContext = {
 				filePath: 'notes/daily.md',
 				line: 7,
-				ch: 3,
 			};
 			const app = appWithViews({ leaves: [leaf] });
 
-			insertFileLinks(['recordings/audio.webm'], context, app);
+			await insertFileLinks(['recordings/audio.webm'], context, app);
 
 			expect(app.workspace.getLeavesOfType).toHaveBeenCalledWith(
 				'markdown',
@@ -187,62 +196,182 @@ describe('NoteInserter', () => {
 			expect(app.workspace.getActiveViewOfType).not.toHaveBeenCalled();
 		});
 
-		it('falls back to active editor when insertion context leaf not found', () => {
+		it('writes the context note through the vault when it is in Reading view', async () => {
+			// Regression (#177): the view keeps its editor in Reading view,
+			// and a write to it never reaches the note.
+			const view = createMockView('notes/daily.md', 0, 0, 'preview');
+			const notes = { 'notes/daily.md': 'one\ntwo\nthree\n' };
+			const app = appWithViews({ leaves: [{ view }], notes });
+
+			const notePath = await insertFileLinks(
+				['recordings/audio.webm'],
+				{ filePath: 'notes/daily.md', line: 1 },
+				app,
+			);
+
+			expect(notePath).toBe('notes/daily.md');
+			expect(view.editor.replaceRange).not.toHaveBeenCalled();
+			expect(notes['notes/daily.md']).toBe(
+				'one\ntwo\n![[audio.webm]]\nthree\n',
+			);
+		});
+
+		it('writes the context note through the vault when it was closed meanwhile', async () => {
+			// The recording was started in this note, so its link belongs
+			// there, not in whichever note the user moved on to.
+			const activeView = createMockView('notes/other.md', 2, 0);
+			const notes = { 'notes/daily.md': 'one\ntwo' };
+			const app = appWithViews({ activeView, leaves: [], notes });
+
+			const notePath = await insertFileLinks(
+				['recordings/audio.webm'],
+				{ filePath: 'notes/daily.md', line: 0 },
+				app,
+			);
+
+			expect(notePath).toBe('notes/daily.md');
+			expect(notes['notes/daily.md']).toBe('one\n![[audio.webm]]\ntwo');
+			expect(activeView.editor.replaceSelection).not.toHaveBeenCalled();
+		});
+
+		it('adds to the end of a note the recording was started in from Reading view', async () => {
+			const view = createMockView('notes/daily.md', 0, 0, 'preview');
+			const notes = { 'notes/daily.md': 'one\ntwo\n' };
+			const app = appWithViews({ leaves: [{ view }], notes });
+
+			await insertFileLinks(
+				['recordings/audio.webm'],
+				{ filePath: 'notes/daily.md', line: null },
+				app,
+			);
+
+			expect(notes['notes/daily.md']).toBe('one\ntwo\n![[audio.webm]]\n');
+		});
+
+		it('adds after the last line of the editor when the context has no line', async () => {
+			// Started in Reading view, switched to editing before the save.
+			const view = createMockView('notes/daily.md', 0, 0);
+			view.editor.lastLine.mockReturnValue(2);
+			view.editor.getLine.mockReturnValue('three');
+			const app = appWithViews({ leaves: [{ view }] });
+
+			await insertFileLinks(
+				['recordings/audio.webm'],
+				{ filePath: 'notes/daily.md', line: null },
+				app,
+			);
+
+			expect(view.editor.replaceRange).toHaveBeenCalledWith(
+				'\n![[audio.webm]]\n',
+				{ line: 2, ch: 5 },
+			);
+		});
+
+		it('falls back to the active editor when the context note no longer exists', async () => {
 			const activeView = createMockView('notes/other.md', 2, 0);
 			const context: InsertionContext = {
 				filePath: 'notes/daily.md',
 				line: 7,
-				ch: 3,
 			};
-			// No leaves match the context filePath
-			const app = appWithViews({ activeView, leaves: [] });
+			const app = appWithViews({
+				activeView,
+				leaves: [],
+				indexed: false,
+			});
 
-			insertFileLinks(['recordings/audio.webm'], context, app);
+			await insertFileLinks(['recordings/audio.webm'], context, app);
 
 			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
-				'![[audio.webm]]',
+				'![[recordings/audio.webm]]',
 			);
 		});
 
-		it('falls back to active editor when insertionContext is null', () => {
+		it('adds to the end of the active note when it is in Reading view', async () => {
+			const activeView = createMockView(
+				'notes/other.md',
+				3,
+				0,
+				'preview',
+			);
+			const notes = { 'notes/other.md': 'text' };
+			const app = appWithViews({ activeView, notes });
+
+			const notePath = await insertFileLinks(
+				['recordings/audio.webm'],
+				null,
+				app,
+			);
+
+			expect(notePath).toBe('notes/other.md');
+			expect(activeView.editor.replaceSelection).not.toHaveBeenCalled();
+			expect(notes['notes/other.md']).toBe('text\n![[audio.webm]]\n');
+		});
+
+		it('names no note when the active note in Reading view is gone', async () => {
+			const activeView = createMockView(
+				'notes/other.md',
+				0,
+				0,
+				'preview',
+			);
+			const app = appWithViews({ activeView, indexed: false });
+
+			await expect(
+				insertFileLinks(['recordings/audio.webm'], null, app),
+			).resolves.toBeNull();
+			expect(app.vault.process).not.toHaveBeenCalled();
+		});
+
+		it('names no note for a view in Reading view that shows no file', async () => {
+			const activeView = createMockView(null, 0, 0, 'preview');
+			const app = appWithViews({ activeView });
+
+			await expect(
+				insertFileLinks(['recordings/audio.webm'], null, app),
+			).resolves.toBeNull();
+			expect(app.vault.process).not.toHaveBeenCalled();
+		});
+
+		it('falls back to active editor when insertionContext is null', async () => {
 			const activeView = createMockView('notes/other.md', 2, 0);
 			const app = appWithViews({ activeView });
 
-			insertFileLinks(['recordings/audio.webm'], null, app);
+			await insertFileLinks(['recordings/audio.webm'], null, app);
 
 			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[audio.webm]]',
 			);
 		});
 
-		it('does nothing when no editor is available and no context match', () => {
-			const app = appWithViews({ activeView: null, leaves: [] });
+		it('does nothing when no editor is available and the context note is gone', async () => {
+			const app = appWithViews({
+				activeView: null,
+				leaves: [],
+				indexed: false,
+			});
 			const context: InsertionContext = {
 				filePath: 'notes/missing.md',
 				line: 0,
-				ch: 0,
 			};
 
-			// Should not throw
-			expect(() =>
+			await expect(
 				insertFileLinks(['recordings/audio.webm'], context, app),
-			).not.toThrow();
+			).resolves.toBeNull();
 		});
 
-		it('does nothing when no editor is available and context is null', () => {
+		it('does nothing when no editor is available and context is null', async () => {
 			const app = appWithViews({ activeView: null });
 
-			// Should not throw
-			expect(() =>
+			await expect(
 				insertFileLinks(['recordings/audio.webm'], null, app),
-			).not.toThrow();
+			).resolves.toBeNull();
 		});
 
-		it('embeds the link generated for the file', () => {
+		it('embeds the link generated for the file', async () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
 			const app = appWithViews({ activeView });
 
-			insertFileLinks(
+			await insertFileLinks(
 				['path/to/deep/folder/my-recording.mp3'],
 				null,
 				app,
@@ -253,11 +382,11 @@ describe('NoteInserter', () => {
 			);
 		});
 
-		it('handles multiple file links joined with newlines', () => {
+		it('handles multiple file links joined with newlines', async () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
 			const app = appWithViews({ activeView });
 
-			insertFileLinks(
+			await insertFileLinks(
 				[
 					'recordings/audio1.webm',
 					'recordings/audio2.mp3',
@@ -272,17 +401,16 @@ describe('NoteInserter', () => {
 			);
 		});
 
-		it('handles multiple file links at insertion context with newline suffix', () => {
+		it('handles multiple file links at insertion context with newline suffix', async () => {
 			const view = createMockView('notes/daily.md', 5, 0);
 			const leaf = { view };
 			const context: InsertionContext = {
 				filePath: 'notes/daily.md',
 				line: 3,
-				ch: 0,
 			};
 			const app = appWithViews({ leaves: [leaf] });
 
-			insertFileLinks(
+			await insertFileLinks(
 				['recordings/audio1.webm', 'recordings/audio2.mp3'],
 				context,
 				app,
@@ -294,35 +422,35 @@ describe('NoteInserter', () => {
 			);
 		});
 
-		it('follows the Markdown link format when the vault uses it', () => {
+		it('follows the Markdown link format when the vault uses it', async () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
 			const generateMarkdownLink = jest.fn(
 				(): string => '[my take](../Recordings/my%20take.webm)',
 			);
 			const app = appWithViews({ activeView, generateMarkdownLink });
 
-			insertFileLinks(['Recordings/my take.webm'], null, app);
+			await insertFileLinks(['Recordings/my take.webm'], null, app);
 
 			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![my take](../Recordings/my%20take.webm)',
 			);
 		});
 
-		it('keeps a path the generator adds to tell same-named files apart', () => {
+		it('keeps a path the generator adds to tell same-named files apart', async () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
 			const generateMarkdownLink = jest.fn(
 				(file: TFile): string => `[[${file.path}]]`,
 			);
 			const app = appWithViews({ activeView, generateMarkdownLink });
 
-			insertFileLinks(['Meetings/Audio/recording.flac'], null, app);
+			await insertFileLinks(['Meetings/Audio/recording.flac'], null, app);
 
 			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[Meetings/Audio/recording.flac]]',
 			);
 		});
 
-		it('writes one embed marker when the generator already embeds', () => {
+		it('writes one embed marker when the generator already embeds', async () => {
 			// generateMarkdownLink prefixes media files with "!" by itself
 			const activeView = createMockView('notes/test.md', 0, 0);
 			const generateMarkdownLink = jest.fn(
@@ -330,14 +458,14 @@ describe('NoteInserter', () => {
 			);
 			const app = appWithViews({ activeView, generateMarkdownLink });
 
-			insertFileLinks(['Recordings/recording.webm'], null, app);
+			await insertFileLinks(['Recordings/recording.webm'], null, app);
 
 			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[recording.webm]]',
 			);
 		});
 
-		it('generates the link from the note the context names', () => {
+		it('generates the link from the note the context names', async () => {
 			const view = createMockView('notes/daily.md', 5, 0);
 			const active = createMockView('elsewhere/other.md', 0, 0);
 			const generateMarkdownLink = jest.fn((): string => '[[x]]');
@@ -349,10 +477,9 @@ describe('NoteInserter', () => {
 			const context: InsertionContext = {
 				filePath: 'notes/daily.md',
 				line: 0,
-				ch: 0,
 			};
 
-			insertFileLinks(['Recordings/a.webm'], context, app);
+			await insertFileLinks(['Recordings/a.webm'], context, app);
 
 			expect(generateMarkdownLink).toHaveBeenCalledWith(
 				expect.objectContaining({ path: 'Recordings/a.webm' }),
@@ -360,12 +487,12 @@ describe('NoteInserter', () => {
 			);
 		});
 
-		it('generates the link from the active note when falling back to it', () => {
+		it('generates the link from the active note when falling back to it', async () => {
 			const activeView = createMockView('notes/other.md', 0, 0);
 			const generateMarkdownLink = jest.fn((): string => '[[x]]');
 			const app = appWithViews({ activeView, generateMarkdownLink });
 
-			insertFileLinks(['Recordings/a.webm'], null, app);
+			await insertFileLinks(['Recordings/a.webm'], null, app);
 
 			expect(generateMarkdownLink).toHaveBeenCalledWith(
 				expect.objectContaining({ path: 'Recordings/a.webm' }),
@@ -373,12 +500,12 @@ describe('NoteInserter', () => {
 			);
 		});
 
-		it('generates the link from the vault root for a view showing no note', () => {
+		it('generates the link from the vault root for a view showing no note', async () => {
 			const activeView = createMockView(null, 0, 0);
 			const generateMarkdownLink = jest.fn((): string => '[[x]]');
 			const app = appWithViews({ activeView, generateMarkdownLink });
 
-			insertFileLinks(['Recordings/a.webm'], null, app);
+			await insertFileLinks(['Recordings/a.webm'], null, app);
 
 			expect(generateMarkdownLink).toHaveBeenCalledWith(
 				expect.objectContaining({ path: 'Recordings/a.webm' }),
@@ -386,18 +513,18 @@ describe('NoteInserter', () => {
 			);
 		});
 
-		it('names the full vault path of a file the vault does not index', () => {
+		it('names the full vault path of a file the vault does not index', async () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
 			const app = appWithViews({ activeView, indexed: false });
 
-			insertFileLinks(['Recordings/recording.webm'], null, app);
+			await insertFileLinks(['Recordings/recording.webm'], null, app);
 
 			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[Recordings/recording.webm]]',
 			);
 		});
 
-		it('skips non-matching leaves and finds the correct one', () => {
+		it('skips non-matching leaves and finds the correct one', async () => {
 			const wrongView = createMockView('notes/wrong.md', 0, 0);
 			const correctView = createMockView('notes/target.md', 0, 0);
 			const wrongLeaf = { view: wrongView };
@@ -405,11 +532,10 @@ describe('NoteInserter', () => {
 			const context: InsertionContext = {
 				filePath: 'notes/target.md',
 				line: 5,
-				ch: 0,
 			};
 			const app = appWithViews({ leaves: [wrongLeaf, correctLeaf] });
 
-			insertFileLinks(['recordings/audio.webm'], context, app);
+			await insertFileLinks(['recordings/audio.webm'], context, app);
 
 			expect(correctView.editor.replaceRange).toHaveBeenCalledWith(
 				'![[audio.webm]]\n',
@@ -420,25 +546,24 @@ describe('NoteInserter', () => {
 			expect(wrongView.editor.replaceRange).not.toHaveBeenCalled();
 		});
 
-		it('handles empty file links array', () => {
+		it('handles empty file links array', async () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
 			const app = appWithViews({ activeView });
 
-			insertFileLinks([], null, app);
+			await insertFileLinks([], null, app);
 
 			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith('');
 		});
 
-		it('returns the context note path when inserted at the captured context', () => {
+		it('returns the context note path when inserted at the captured context', async () => {
 			const view = createMockView('notes/daily.md', 5, 0);
 			const context: InsertionContext = {
 				filePath: 'notes/daily.md',
 				line: 7,
-				ch: 3,
 			};
 			const app = appWithViews({ leaves: [{ view }] });
 
-			const notePath = insertFileLinks(
+			const notePath = await insertFileLinks(
 				['recordings/audio.webm'],
 				context,
 				app,
@@ -447,11 +572,11 @@ describe('NoteInserter', () => {
 			expect(notePath).toBe('notes/daily.md');
 		});
 
-		it('returns the active note path when falling back to the active editor', () => {
+		it('returns the active note path when falling back to the active editor', async () => {
 			const activeView = createMockView('notes/other.md', 2, 0);
 			const app = appWithViews({ activeView, leaves: [] });
 
-			const notePath = insertFileLinks(
+			const notePath = await insertFileLinks(
 				['recordings/audio.webm'],
 				null,
 				app,
@@ -460,10 +585,10 @@ describe('NoteInserter', () => {
 			expect(notePath).toBe('notes/other.md');
 		});
 
-		it('returns null when no editor is available to receive the links', () => {
+		it('returns null when no editor is available to receive the links', async () => {
 			const app = appWithViews({ activeView: null, leaves: [] });
 
-			const notePath = insertFileLinks(
+			const notePath = await insertFileLinks(
 				['recordings/audio.webm'],
 				null,
 				app,
@@ -485,6 +610,16 @@ describe('NoteInserter', () => {
 			expect(active.editor.replaceSelection).toHaveBeenCalledWith(
 				'dictated',
 			);
+		});
+
+		it('inserts nothing into a note in Reading view, which has no cursor', () => {
+			// The caller then keeps the text on the clipboard instead of
+			// writing it to a hidden editor that never reaches the note.
+			const reading = createMockView('notes/other.md', 0, 0, 'preview');
+			const app = appWithViews({ activeView: reading });
+
+			expect(insertTextAtCursor(app, 'dictated')).toBeNull();
+			expect(reading.editor.replaceSelection).not.toHaveBeenCalled();
 		});
 
 		it('names no note for an active view that shows no file', () => {

@@ -279,11 +279,6 @@
 			"count": 1
 		}
 	},
-	"src/quicknotes/dictationAnchor.ts": {
-		"complexity": {
-			"count": 1
-		}
-	},
 	"src/recording/AudioSplitter.ts": {
 		"complexity": {
 			"count": 1
@@ -312,11 +307,6 @@
 	},
 	"src/recording/MemoryRecorder.ts": {
 		"max-lines-per-function": {
-			"count": 1
-		}
-	},
-	"src/recording/NoteInserter.ts": {
-		"complexity": {
 			"count": 1
 		}
 	},

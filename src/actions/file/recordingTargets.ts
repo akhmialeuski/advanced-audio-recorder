@@ -14,9 +14,10 @@
  * @module actions/file/recordingTargets
  */
 
-import { getLinkpath, MarkdownView, normalizePath, TFile } from 'obsidian';
+import { getLinkpath, normalizePath, TFile } from 'obsidian';
 import type { App, CliData, CliFlags, Editor, EditorPosition } from 'obsidian';
 import { isAudioFile } from '../../utils/audioFile';
+import { activeNote } from '../../utils/noteViews';
 import { linkAtColumn } from '../../obsidian/sourceLinks';
 import { recordingsInNote } from '../../obsidian/noteRecordings';
 import { hasTimecodeSubpath } from '../../player/timecodeLinks';
@@ -203,13 +204,14 @@ export function activeRecordings(services: ActionServices): FileContext[] {
 	if (active.extension !== 'md') {
 		return [];
 	}
-	const view = app.workspace.getActiveViewOfType(MarkdownView);
+	// Reading view has no cursor for a link to be under.
+	const note = activeNote(app);
 	const underCursor =
-		view?.file === active
+		note?.editor && note.file === active
 			? recordingLinkAt(
 					app,
-					view.editor,
-					view.editor.getCursor(),
+					note.editor,
+					note.editor.getCursor(),
 					active.path,
 				)
 			: null;

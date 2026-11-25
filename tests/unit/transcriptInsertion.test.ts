@@ -3,8 +3,10 @@
  * the timecode links were generated against - not whatever pane happens to be
  * active when an async run finishes - so the view lookup is what keeps a long
  * transcription from dumping its output into an unrelated file the user
- * switched to mid-run. A refused insert must report false rather than throw, so
- * the caller can still write the sidecar fallback.
+ * switched to mid-run. A note that no editor is editing - one in Reading view,
+ * or closed - is written through the vault, since nothing else reaches its
+ * file. A refused insert must report false rather than throw, so the caller
+ * can still write the sidecar fallback.
  * @module tests/unit/transcriptInsertion.test
  */
 
@@ -21,7 +23,7 @@ import { createMockApp } from '../helpers/createApp';
 /** A Markdown leaf whose editor records the ranges written into it. */
 function makeLeaf(
 	notePath: string | null,
-	options: { throws?: boolean } = {},
+	options: { throws?: boolean; mode?: 'source' | 'preview' } = {},
 ): {
 	leaf: { view: MarkdownView };
 	writes: [string, unknown][];
@@ -34,6 +36,12 @@ function makeLeaf(
 	Object.defineProperty(view, 'file', {
 		value: notePath === null ? null : { path: notePath },
 	});
+	Object.defineProperty(view, 'getMode', {
+		value: () => options.mode ?? 'source',
+	});
+	// Reading view keeps the editor, hidden: it takes a write without an
+	// error and the note never receives it, so a write recorded here for a
+	// view in that mode is a transcript lost.
 	Object.defineProperty(view, 'editor', {
 		get: () => ({
 			getCursor: () => ({ line: 3, ch: 0 }),
@@ -48,30 +56,66 @@ function makeLeaf(
 	return { leaf: { view }, writes };
 }
 
-/** An App exposing the given Markdown leaves. */
-function makeApp(
-	leaves: { view: MarkdownView }[],
-	generateMarkdownLink = jest.fn().mockReturnValue('[[audio.srt]]'),
-): App {
+/** What a test app is built from. */
+interface AppOptions {
+	/** The Markdown leaves that are open. */
+	leaves?: { view: MarkdownView }[];
+	/** The notes on disk, by path; written back by `vault.process`. */
+	notes?: Record<string, string>;
+	/** The embeds the cache reports for every note, by their exact text. */
+	embeds?: string[];
+	generateMarkdownLink?: jest.Mock;
+}
+
+/** An App exposing the given Markdown leaves over the given notes. */
+function makeApp(options: AppOptions = {}): App {
+	const { leaves = [], notes = {}, embeds = [] } = options;
 	return createMockApp({
 		workspace: {
 			getLeavesOfType: jest.fn((type: string) =>
 				type === 'markdown' ? leaves : [],
 			),
 		},
-		fileManager: { generateMarkdownLink },
+		vault: {
+			getFileByPath: jest.fn((path: string) =>
+				path in notes ? { path } : null,
+			),
+			process: jest.fn(
+				(file: TFile, change: (content: string) => string) => {
+					notes[file.path] = change(notes[file.path] ?? '');
+					return Promise.resolve(notes[file.path]);
+				},
+			),
+		},
+		metadataCache: {
+			getFileCache: jest.fn().mockReturnValue({
+				embeds: embeds.map((original) => ({
+					original,
+					link: RECORDING.path,
+				})),
+			}),
+			getFirstLinkpathDest: jest.fn().mockReturnValue(RECORDING),
+		},
+		fileManager: {
+			generateMarkdownLink:
+				options.generateMarkdownLink ??
+				jest.fn().mockReturnValue('[[audio.srt]]'),
+		},
 	}).app;
 }
 
+/** The recording the transcripts are of. */
+const RECORDING = { path: 'Recordings/audio.webm' } as TFile;
+
 describe('insertTranscriptIntoNote', () => {
-	it('writes at the cursor of the note the links were generated against', () => {
+	it('writes at the cursor of the note the links were generated against', async () => {
 		const target = makeLeaf('Notes/meeting.md');
 		const other = makeLeaf('Notes/unrelated.md');
-		const app = makeApp([other.leaf, target.leaf]);
+		const app = makeApp({ leaves: [other.leaf, target.leaf] });
 
-		expect(
+		await expect(
 			insertTranscriptIntoNote(app, 'Notes/meeting.md', 'body', ''),
-		).toBe(true);
+		).resolves.toBe(true);
 
 		expect(at(target.writes, 0)).toEqual([
 			'\n\nbody\n',
@@ -81,11 +125,11 @@ describe('insertTranscriptIntoNote', () => {
 		expect(other.writes).toEqual([]);
 	});
 
-	it('puts the heading above the body when one is given', () => {
+	it('puts the heading above the body when one is given', async () => {
 		const target = makeLeaf('Notes/meeting.md');
 
-		insertTranscriptIntoNote(
-			makeApp([target.leaf]),
+		await insertTranscriptIntoNote(
+			makeApp({ leaves: [target.leaf] }),
 			'Notes/meeting.md',
 			'body',
 			'## Transcript',
@@ -94,80 +138,172 @@ describe('insertTranscriptIntoNote', () => {
 		expect(at(at(target.writes, 0), 0)).toBe('\n\n## Transcript\n\nbody\n');
 	});
 
-	it('reports not-inserted when the target note is not open', () => {
-		const other = makeLeaf('Notes/unrelated.md');
+	it('writes a note in Reading view through the vault, not its hidden editor', async () => {
+		// Regression (#177): the view keeps its editor in Reading view, and a
+		// write to it raised no error and never reached the note, so a paid
+		// transcript was reported as inserted and lost.
+		const target = makeLeaf('Notes/meeting.md', { mode: 'preview' });
+		const notes = { 'Notes/meeting.md': 'Agenda\n' };
 
-		expect(
+		await expect(
 			insertTranscriptIntoNote(
-				makeApp([other.leaf]),
+				makeApp({ leaves: [target.leaf], notes }),
+				'Notes/meeting.md',
+				'body',
+				'## Transcript',
+			),
+		).resolves.toBe(true);
+
+		expect(target.writes).toEqual([]);
+		expect(notes['Notes/meeting.md']).toBe(
+			'Agenda\n\n## Transcript\n\nbody\n',
+		);
+	});
+
+	it('puts the transcript under the embed of its recording in a note written through the vault', async () => {
+		// Reading view has no cursor, and the transcript belongs under the
+		// player it was started from rather than below everything else.
+		const target = makeLeaf('Notes/meeting.md', { mode: 'preview' });
+		const notes = {
+			'Notes/meeting.md': 'Agenda\n![[audio.webm]]\nNext steps\n',
+		};
+
+		await insertTranscriptIntoNote(
+			makeApp({
+				leaves: [target.leaf],
+				notes,
+				embeds: ['![[audio.webm]]'],
+			}),
+			'Notes/meeting.md',
+			'body',
+			'',
+			RECORDING,
+		);
+
+		expect(notes['Notes/meeting.md']).toBe(
+			'Agenda\n![[audio.webm]]\n\nbody\n\nNext steps\n',
+		);
+	});
+
+	it('uses the pane editing the note when another shows it in Reading view', async () => {
+		// What is typed in the editor is not on disk yet, so the note open in
+		// both modes is written where it is being edited.
+		const reading = makeLeaf('Notes/meeting.md', { mode: 'preview' });
+		const editing = makeLeaf('Notes/meeting.md');
+		const notes = { 'Notes/meeting.md': 'Agenda\n' };
+
+		await insertTranscriptIntoNote(
+			makeApp({ leaves: [reading.leaf, editing.leaf], notes }),
+			'Notes/meeting.md',
+			'body',
+			'',
+		);
+
+		expect(at(at(editing.writes, 0), 0)).toBe('\n\nbody\n');
+		expect(reading.writes).toEqual([]);
+		expect(notes['Notes/meeting.md']).toBe('Agenda\n');
+	});
+
+	it('writes a note that is not open through the vault', async () => {
+		// The user closed the note during a long run; the transcript still
+		// belongs in it, and the pane they moved to is left alone.
+		const other = makeLeaf('Notes/unrelated.md');
+		const notes = { 'Notes/meeting.md': 'Agenda' };
+
+		await expect(
+			insertTranscriptIntoNote(
+				makeApp({ leaves: [other.leaf], notes }),
 				'Notes/meeting.md',
 				'body',
 				'',
 			),
-		).toBe(false);
+		).resolves.toBe(true);
+
+		expect(notes['Notes/meeting.md']).toBe('Agenda\n\nbody\n');
 		expect(other.writes).toEqual([]);
 	});
 
-	it('reports not-inserted for an empty note path', () => {
+	it('reports not-inserted when the target note no longer exists', async () => {
+		const other = makeLeaf('Notes/unrelated.md');
+
+		await expect(
+			insertTranscriptIntoNote(
+				makeApp({ leaves: [other.leaf] }),
+				'Notes/meeting.md',
+				'body',
+				'',
+			),
+		).resolves.toBe(false);
+		expect(other.writes).toEqual([]);
+	});
+
+	it('reports not-inserted for an empty note path', async () => {
 		const target = makeLeaf('Notes/meeting.md');
 
 		// A run with no host note must not fall through to "the first open
 		// Markdown leaf" - that is exactly the wrong-file bug.
-		expect(
-			insertTranscriptIntoNote(makeApp([target.leaf]), '', 'body', ''),
-		).toBe(false);
+		await expect(
+			insertTranscriptIntoNote(
+				makeApp({ leaves: [target.leaf] }),
+				'',
+				'body',
+				'',
+			),
+		).resolves.toBe(false);
 		expect(target.writes).toEqual([]);
 	});
 
-	it('ignores a leaf whose view has no file', () => {
+	it('ignores a leaf whose view has no file', async () => {
 		const empty = makeLeaf(null);
 
-		expect(
+		await expect(
 			insertTranscriptIntoNote(
-				makeApp([empty.leaf]),
+				makeApp({ leaves: [empty.leaf] }),
 				'Notes/meeting.md',
 				'body',
 				'',
 			),
-		).toBe(false);
+		).resolves.toBe(false);
+		expect(empty.writes).toEqual([]);
 	});
 
-	it('reports not-inserted instead of throwing when the editor refuses', () => {
+	it('reports not-inserted instead of throwing when the write is refused', async () => {
 		const target = makeLeaf('Notes/meeting.md', { throws: true });
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-		// A note in reading mode: the caller needs a false to fall back to the
-		// sidecar file, not an exception that aborts the whole run.
-		expect(
+		// The caller needs a false to fall back to the sidecar file, not an
+		// exception that aborts the whole run and takes the transcript along.
+		await expect(
 			insertTranscriptIntoNote(
-				makeApp([target.leaf]),
+				makeApp({ leaves: [target.leaf] }),
 				'Notes/meeting.md',
 				'body',
 				'',
 			),
-		).toBe(false);
+		).resolves.toBe(false);
 		expect(warn).toHaveBeenCalled();
+		warn.mockRestore();
 	});
 });
 
 describe('insertTranscriptFileLink', () => {
 	const transcriptFile = { path: 'Recordings/audio.srt' } as TFile;
 
-	it('inserts a link built for the vault link format', () => {
+	it('inserts a link built for the vault link format', async () => {
 		const target = makeLeaf('Notes/meeting.md');
 		const generateMarkdownLink = jest
 			.fn()
 			.mockReturnValue('[[Recordings/audio.srt]]');
-		const app = makeApp([target.leaf], generateMarkdownLink);
+		const app = makeApp({ leaves: [target.leaf], generateMarkdownLink });
 
-		expect(
+		await expect(
 			insertTranscriptFileLink(
 				app,
 				'Notes/meeting.md',
 				transcriptFile,
 				'',
 			),
-		).toBe(true);
+		).resolves.toBe(true);
 
 		// Built through Obsidian rather than hand-formatted, so a wikilink vault
 		// gets a wikilink and a Markdown-link vault gets a Markdown link.
@@ -180,11 +316,11 @@ describe('insertTranscriptFileLink', () => {
 		);
 	});
 
-	it('places the link under the heading when one is given', () => {
+	it('places the link under the heading when one is given', async () => {
 		const target = makeLeaf('Notes/meeting.md');
 
-		insertTranscriptFileLink(
-			makeApp([target.leaf]),
+		await insertTranscriptFileLink(
+			makeApp({ leaves: [target.leaf] }),
 			'Notes/meeting.md',
 			transcriptFile,
 			'## Transcript',
@@ -195,15 +331,32 @@ describe('insertTranscriptFileLink', () => {
 		);
 	});
 
-	it('reports not-inserted when the note is not open', () => {
-		expect(
+	it('links the file in a note in Reading view through the vault', async () => {
+		const target = makeLeaf('Notes/meeting.md', { mode: 'preview' });
+		const notes = { 'Notes/meeting.md': 'Agenda\n' };
+
+		await expect(
 			insertTranscriptFileLink(
-				makeApp([]),
+				makeApp({ leaves: [target.leaf], notes }),
 				'Notes/meeting.md',
 				transcriptFile,
 				'',
 			),
-		).toBe(false);
+		).resolves.toBe(true);
+
+		expect(target.writes).toEqual([]);
+		expect(notes['Notes/meeting.md']).toBe('Agenda\n\n[[audio.srt]]\n');
+	});
+
+	it('reports not-inserted when the note no longer exists', async () => {
+		await expect(
+			insertTranscriptFileLink(
+				makeApp(),
+				'Notes/meeting.md',
+				transcriptFile,
+				'',
+			),
+		).resolves.toBe(false);
 	});
 });
 

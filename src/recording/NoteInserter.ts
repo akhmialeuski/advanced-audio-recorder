@@ -5,15 +5,17 @@
  * @module recording/NoteInserter
  */
 
-import { MarkdownView, TFile, getLinkpath } from 'obsidian';
-import type { App, EmbedCache } from 'obsidian';
+import { getLinkpath } from 'obsidian';
+import type { App, Editor, EmbedCache, TFile } from 'obsidian';
 import type { InsertionContext } from '../types';
 import type { DebugLogSink } from '../utils/DebugLogger';
-import { findNoteView } from '../utils/noteViews';
+import { withLinesInserted } from '../utils/noteText';
+import { activeNote, findNoteEditor } from '../utils/noteViews';
 
 /**
- * Captures the active note path and cursor position for later
- * insertion of audio links.
+ * Captures the active note path and cursor line for later insertion of
+ * audio links. A note in Reading view is captured too, without a line: it
+ * has no cursor, and its hidden editor's one is not where the user is.
  * @param app - Obsidian App instance
  * @param insertAtOriginalPosition - Whether to capture context
  * @param debugLogger - Logger for debug output
@@ -27,14 +29,12 @@ export function captureInsertionContext(
 	if (!insertAtOriginalPosition) {
 		return null;
 	}
-	const view = app.workspace.getActiveViewOfType(MarkdownView);
-	const filePath = view?.file?.path;
-	const cursor = view?.editor?.getCursor();
-	if (filePath && cursor) {
+	const note = activeNote(app);
+	const filePath = note?.file?.path;
+	if (filePath) {
 		return {
 			filePath,
-			line: cursor.line,
-			ch: cursor.ch,
+			line: note.editor?.getCursor().line ?? null,
 		};
 	}
 	debugLogger.log(
@@ -85,46 +85,119 @@ function embedLinksFor(app: App, paths: string[], sourcePath: string): string {
 }
 
 /**
- * Inserts embeds of the given files into a note. Uses the captured
- * insertion context if available, otherwise falls back to the currently
- * active editor. The embeds are built for the note they land in, since a
- * relative or shortest-path link is only correct from there.
+ * Adds lines after a line of the note an editor holds, or at its end.
+ * @param editor - The editor the note is being edited in
+ * @param text - The lines to add
+ * @param afterLine - Zero-based line to add after, or null for the end
+ */
+export function insertLinesInEditor(
+	editor: Editor,
+	text: string,
+	afterLine: number | null,
+): void {
+	const last = editor.lastLine();
+	if (afterLine !== null && afterLine < last) {
+		editor.replaceRange(`${text}\n`, { line: afterLine + 1, ch: 0 });
+		return;
+	}
+	// Past the last line there is no line start to insert at, so the text
+	// opens with the break that ends the last line when it holds any text.
+	const end = editor.getLine(last).length;
+	editor.replaceRange(`${end > 0 ? '\n' : ''}${text}\n`, {
+		line: last,
+		ch: end,
+	});
+}
+
+/**
+ * Adds lines to a specific note: through its editor when it is being edited,
+ * so they join what is typed there, and through the vault when it is in
+ * Reading view or not open, where no editor reaches its file.
+ * @param app - Obsidian App instance
+ * @param notePath - Vault path of the note
+ * @param text - The lines to add
+ * @param afterLine - Zero-based line to add after, or null for the end
+ * @returns Whether the note took the lines; false when it no longer exists
+ */
+async function insertLinesIntoNote(
+	app: App,
+	notePath: string,
+	text: string,
+	afterLine: number | null,
+): Promise<boolean> {
+	const editor = findNoteEditor(app, notePath);
+	if (editor) {
+		insertLinesInEditor(editor, text, afterLine);
+		return true;
+	}
+	const note = app.vault.getFileByPath(notePath);
+	if (!note) {
+		return false;
+	}
+	await app.vault.process(note, (content) =>
+		withLinesInserted(content, text, afterLine),
+	);
+	return true;
+}
+
+/**
+ * Inserts embeds of the given files into a note: the note the recording was
+ * started in, after the line the cursor was on, or else the active note, at
+ * its cursor. Either note takes them in any view mode - a note in Reading
+ * view, which has no cursor, takes them at its end. The embeds are built for
+ * the note they land in, since a relative or shortest-path link is only
+ * correct from there.
  * @param fileLinks - Array of saved file paths
  * @param insertionContext - Previously captured cursor context
  * @param app - Obsidian App instance
  * @returns The path of the note the links were inserted into, or null when
- *          no editable note was available to receive them
+ *          no note was available to receive them
  */
-export function insertFileLinks(
+export async function insertFileLinks(
 	fileLinks: string[],
 	insertionContext: InsertionContext | null,
 	app: App,
-): string | null {
-	if (insertionContext) {
-		const leafView = findNoteView(app, insertionContext.filePath);
-		if (leafView) {
-			const notePath = leafView.file?.path ?? insertionContext.filePath;
-			const pos = {
-				line: insertionContext.line + 1,
-				ch: 0,
-			};
-			leafView.editor.replaceRange(
-				embedLinksFor(app, fileLinks, notePath) + '\n',
-				pos,
-			);
-			return notePath;
-		}
+): Promise<string | null> {
+	const linksFor = (notePath: string): string =>
+		embedLinksFor(app, fileLinks, notePath);
+	if (
+		insertionContext &&
+		(await insertLinesIntoNote(
+			app,
+			insertionContext.filePath,
+			linksFor(insertionContext.filePath),
+			insertionContext.line,
+		))
+	) {
+		return insertionContext.filePath;
 	}
+	return insertIntoActiveNote(app, linksFor);
+}
 
-	// Fallback: insert into the currently active note
-	const activeView = app.workspace.getActiveViewOfType(MarkdownView);
-	const editor = activeView?.editor;
-	if (editor) {
-		const notePath = activeView.file?.path ?? null;
-		editor.replaceSelection(embedLinksFor(app, fileLinks, notePath ?? ''));
+/**
+ * Inserts lines into the active note: at the cursor of one being edited, at
+ * the end of one in Reading view.
+ * @param app - Obsidian App instance
+ * @param linesFor - Builds the lines for the note they land in
+ * @returns The path of the note that took them, or null when none did
+ */
+async function insertIntoActiveNote(
+	app: App,
+	linesFor: (notePath: string) => string,
+): Promise<string | null> {
+	const active = activeNote(app);
+	if (!active) {
+		return null;
+	}
+	const notePath = active.file?.path ?? null;
+	if (active.editor) {
+		active.editor.replaceSelection(linesFor(notePath ?? ''));
 		return notePath;
 	}
-	return null;
+	const written =
+		notePath !== null &&
+		(await insertLinesIntoNote(app, notePath, linesFor(notePath), null));
+	return written ? notePath : null;
 }
 
 /**
@@ -132,16 +205,16 @@ export function insertFileLinks(
  * no note was active to anchor it.
  * @param app - Obsidian App instance
  * @param text - The text to insert, verbatim
- * @returns The path of the note the text went into, or null when no note was
- *   open to take it
+ * @returns The path of the note the text went into, or null when no note is
+ *   being edited: a note in Reading view has no cursor to take it at
  */
 export function insertTextAtCursor(app: App, text: string): string | null {
-	const view = app.workspace.getActiveViewOfType(MarkdownView);
-	if (!view) {
+	const active = activeNote(app);
+	if (!active?.editor) {
 		return null;
 	}
-	view.editor.replaceSelection(text);
-	return view.file?.path ?? null;
+	active.editor.replaceSelection(text);
+	return active.file?.path ?? null;
 }
 
 /**

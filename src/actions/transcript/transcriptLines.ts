@@ -9,6 +9,7 @@
 
 import type { App, Editor, TFile } from 'obsidian';
 import type { TranscriptLines } from '../../speakers/transcriptLineSelection';
+import { lineBreakOf } from '../../utils/noteText';
 
 /**
  * The lines of an open editor. Written through the editor, so an edit made
@@ -39,14 +40,6 @@ export function editorLines(
 		},
 	};
 }
-
-/**
- * The line break a note uses: Windows line ends are kept as they are, so an
- * edit does not rewrite every line of a note written on another system.
- * @param content - The note
- */
-const lineBreakOf = (content: string): string =>
-	content.includes('\r\n') ? '\r\n' : '\n';
 
 /**
  * The lines of a note as the file holds them, read once. Written through the

@@ -176,15 +176,16 @@ export class ChapterExportModal extends PluginModal {
 			);
 		}
 		if (
-			!insertTranscriptIntoNote(
+			!(await insertTranscriptIntoNote(
 				this.app,
 				this.options.notePath,
 				outline,
 				'',
-			)
+				this.options.file,
+			))
 		) {
 			throw new Error(
-				'The note could not be written to. Open it in editing mode, or copy the outline to the clipboard.',
+				'The note could not be written to. Copy the outline to the clipboard instead.',
 			);
 		}
 		return `Outline inserted into ${this.options.notePath}.`;

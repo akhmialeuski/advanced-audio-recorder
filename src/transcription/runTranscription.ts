@@ -141,27 +141,29 @@ export async function transcribeFile(
 	}
 	let inserted = false;
 	if (wantsNote) {
-		inserted = insertTranscriptIntoNote(
+		inserted = await insertTranscriptIntoNote(
 			app,
 			options.notePathForLinks,
 			result.translation
 				? `${result.markdown}\n\n### ${result.translation.language}\n\n${result.translation.markdown}`
 				: result.markdown,
 			settings.transcriptHeading,
+			file,
 		);
 	}
 	let linkInserted = false;
 	if (wantsLink && transcriptFile) {
-		linkInserted = insertTranscriptFileLink(
+		linkInserted = await insertTranscriptFileLink(
 			app,
 			options.notePathForLinks,
 			transcriptFile,
 			settings.transcriptHeading,
+			file,
 		);
 	}
 	// Safety net: a completed (and, on a paid API, already-billed) transcript
 	// must never be silently dropped. If in-note output was the only requested
-	// destination but the insert failed (note not open, reading mode), write a
+	// destination but the insert failed (the note is gone or refused the write), write a
 	// sidecar file instead of reporting a hollow success.
 	let savedAsFallback = false;
 	if (wantsNote && !inserted && transcriptFile === null) {

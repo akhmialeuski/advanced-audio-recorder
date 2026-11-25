@@ -2048,9 +2048,18 @@ export class MarkdownView {
 	// What the editor holds, which Obsidian saves to disk two seconds after
 	// the typing stops; a test sets it apart from the file to tell the two.
 	data = '';
+	// Editing unless a test says otherwise, also for a double built from the
+	// prototype, which no field initializer runs for. In Reading view the
+	// real view keeps its editor, hidden, and a write to it never reaches
+	// the note.
+	mode?: 'source' | 'preview';
 
 	getViewData(): string {
 		return this.data;
+	}
+
+	getMode(): 'source' | 'preview' {
+		return this.mode ?? 'source';
 	}
 }
 

@@ -1,12 +1,19 @@
 /**
- * Tests the one lookup of the open view showing a note. Transcript output,
- * the note inserter and profile notes all target a note they captured
- * earlier, so the lookup must answer by path and never by what is active.
+ * Tests the one lookup of the open view showing a note, and of the editor a
+ * note can be written through. Transcript output, the note inserter and
+ * profile notes all target a note they captured earlier, so the lookup must
+ * answer by path and never by what is active, and must never hand out the
+ * hidden editor of a view in Reading view, where a write is silently lost.
  * @module tests/unit/noteViews.test
  */
 
 import type { App } from 'obsidian';
-import { findNoteView } from 'src/utils/noteViews';
+import {
+	activeNote,
+	editorOf,
+	findNoteEditor,
+	findNoteView,
+} from 'src/utils/noteViews';
 import {
 	createFile,
 	createMarkdownView,
@@ -63,5 +70,104 @@ describe('findNoteView', () => {
 		const pathless = createMarkdownView({ file: createFile('') });
 
 		expect(findNoteView(appWithLeaves([pathless]), '')).toBeNull();
+	});
+});
+
+describe('editorOf', () => {
+	it('is the editor of a view being edited', () => {
+		const view = createMarkdownView({ file: createFile('a.md') });
+
+		expect(editorOf(view)).toBe(view.editor);
+	});
+
+	it('is nothing in Reading view, though the view still holds an editor', () => {
+		// Regression (#177): that editor is hidden; it takes a write without
+		// an error and the note never receives it.
+		const view = createMarkdownView({
+			file: createFile('a.md'),
+			mode: 'preview',
+		});
+
+		expect(view.editor).toBeDefined();
+		expect(editorOf(view)).toBeNull();
+	});
+});
+
+describe('findNoteEditor', () => {
+	it('finds the editor of the note, whichever pane it is in', () => {
+		const other = createMarkdownView({ file: createFile('other.md') });
+		const target = createMarkdownView({ file: createFile('notes/a.md') });
+
+		expect(
+			findNoteEditor(appWithLeaves([other, target]), 'notes/a.md'),
+		).toBe(target.editor);
+	});
+
+	it('answers null for a note open in Reading view only', () => {
+		const reading = createMarkdownView({
+			file: createFile('notes/a.md'),
+			mode: 'preview',
+		});
+
+		expect(
+			findNoteEditor(appWithLeaves([reading]), 'notes/a.md'),
+		).toBeNull();
+	});
+
+	it('takes the pane editing the note over one showing it in Reading view', () => {
+		// What is typed in the editor is not on disk yet, so a write must
+		// join it there rather than go around it through the file.
+		const reading = createMarkdownView({
+			file: createFile('notes/a.md'),
+			mode: 'preview',
+		});
+		const editing = createMarkdownView({ file: createFile('notes/a.md') });
+
+		expect(
+			findNoteEditor(appWithLeaves([reading, editing]), 'notes/a.md'),
+		).toBe(editing.editor);
+	});
+
+	it('answers null when the note is not open', () => {
+		expect(findNoteEditor(appWithLeaves([]), 'notes/a.md')).toBeNull();
+	});
+});
+
+describe('activeNote', () => {
+	/**
+	 * An App whose active Markdown view is the given one.
+	 * @param view - The active view, or null when none is a Markdown view
+	 */
+	const appWithActive = (view: unknown): App =>
+		createMockApp({
+			workspace: {
+				getActiveViewOfType: jest.fn().mockReturnValue(view),
+			},
+		}).app;
+
+	it('is the active note with the editor it is being edited in', () => {
+		const file = createFile('notes/a.md');
+		const view = createMarkdownView({ file });
+
+		expect(activeNote(appWithActive(view))).toEqual({
+			view,
+			file,
+			editor: view.editor,
+		});
+	});
+
+	it('names the note but no editor in Reading view', () => {
+		const file = createFile('notes/a.md');
+		const view = createMarkdownView({ file, mode: 'preview' });
+
+		expect(activeNote(appWithActive(view))).toEqual({
+			view,
+			file,
+			editor: null,
+		});
+	});
+
+	it('is nothing when the active view is not a Markdown one', () => {
+		expect(activeNote(appWithActive(null))).toBeNull();
 	});
 });
