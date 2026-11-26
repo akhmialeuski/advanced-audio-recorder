@@ -176,6 +176,19 @@ describe('a declared endpoint that answers without speakers', () => {
 		).toBe(true);
 	});
 
+	// A silent recording leaves nothing to label, so an answer without
+	// speakers says nothing about the declaration and must not ask the user
+	// to undo it.
+	it('says nothing when the endpoint heard no speech', async () => {
+		await runDeclared([]);
+
+		expect(
+			notices().some((text) =>
+				text.includes('returned no speaker labels'),
+			),
+		).toBe(false);
+	});
+
 	it('says nothing once the endpoint labelled a speaker', async () => {
 		await runDeclared([
 			{ start: 0, end: 1, text: 'hi', speaker: 'SPEAKER_00' },
