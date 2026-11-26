@@ -53,6 +53,7 @@ describe('engine settings', () => {
 				apiKeySecret: 'leaked',
 				model: 'gpt-5.6-sol',
 				maxTokens: 1234,
+				endpointDiarizes: true,
 			});
 
 			expect(settings).toEqual(DEFAULT_SETTINGS);
@@ -118,7 +119,30 @@ describe('engine settings', () => {
 				models: [],
 				maxTokens: 0,
 				uploadChunkMb: 0,
+				endpointDiarizes: false,
 			});
+		});
+
+		it('writes the chunk size of the engine that splits an upload', () => {
+			applyEngineSettings(settings, ENGINE_IDS.WHISPER_API, {
+				uploadChunkMb: 10,
+			});
+
+			expect(settings.transcriptionChunkMb).toBe(10);
+		});
+
+		it('records what the user declared about a Whisper API endpoint', () => {
+			// Whether the server behind the base URL diarizes is the user's
+			// to say, and it is said on the engine whose endpoint it is.
+			applyEngineSettings(settings, ENGINE_IDS.WHISPER_API, {
+				endpointDiarizes: true,
+			});
+
+			expect(settings.whisperApiEndpointDiarizes).toBe(true);
+			expect(
+				readEngineSettings(settings, ENGINE_IDS.WHISPER_API)
+					.endpointDiarizes,
+			).toBe(true);
 		});
 
 		it('reads the resolved key next to the link it came from', () => {
@@ -255,6 +279,7 @@ describe('engine settings', () => {
 					engine.models?.modelsKey,
 					engine.maxTokens?.key,
 					engine.uploadChunk?.key,
+					engine.endpointDiarization?.key,
 				];
 				for (const key of keys) {
 					if (key === undefined || key === null) {
@@ -288,6 +313,10 @@ describe('engine settings', () => {
 			expect(engineFieldOf('transcriptionChunkMb')).toEqual({
 				engine: ENGINE_IDS.WHISPER_API,
 				field: 'uploadChunkMb',
+			});
+			expect(engineFieldOf('whisperApiEndpointDiarizes')).toEqual({
+				engine: ENGINE_IDS.WHISPER_API,
+				field: 'endpointDiarizes',
 			});
 		});
 	});

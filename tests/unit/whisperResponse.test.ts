@@ -124,6 +124,66 @@ describe('mapWhisperResponse', () => {
 		});
 	});
 
+	// A diarizing host that keeps the plain Whisper segments untouched answers
+	// the speakers in a list of its own, cut at speaker turns.
+	describe('a separate speaker_segments list', () => {
+		it('is taken when the plain segments name no speaker', () => {
+			const result = mapWhisperResponse({
+				segments: [{ start: 0, end: 4, text: 'hello there hi' }],
+				speaker_segments: [
+					{
+						start: 0,
+						end: 2,
+						text: 'hello there',
+						speaker_id: 'SPEAKER_00',
+					},
+					{ start: 2, end: 4, text: 'hi', speaker_id: 'SPEAKER_01' },
+				],
+			});
+
+			expect(result.segments).toEqual([
+				{
+					start: 0,
+					end: 2,
+					text: 'hello there',
+					speaker: 'SPEAKER_00',
+				},
+				{ start: 2, end: 4, text: 'hi', speaker: 'SPEAKER_01' },
+			]);
+		});
+
+		it('is taken even when there is no plain segment array', () => {
+			const result = mapWhisperResponse({
+				text: 'hi',
+				speaker_segments: [
+					{ start: 0, end: 1, text: 'hi', speaker_id: 'SPEAKER_00' },
+				],
+			});
+
+			expect(at(result.segments, 0).speaker).toBe('SPEAKER_00');
+		});
+
+		it('gives way to plain segments that already carry speakers', () => {
+			const result = mapWhisperResponse({
+				segments: [{ start: 0, end: 1, text: 'a', speaker: 'A' }],
+				speaker_segments: [
+					{ start: 0, end: 1, text: 'b', speaker_id: 'SPEAKER_00' },
+				],
+			});
+
+			expect(at(result.segments, 0).text).toBe('a');
+		});
+
+		it('is ignored when it names no speaker either', () => {
+			const result = mapWhisperResponse({
+				segments: [{ start: 0, end: 1, text: 'plain' }],
+				speaker_segments: [{ start: 0, end: 1, text: 'other' }],
+			});
+
+			expect(at(result.segments, 0).text).toBe('plain');
+		});
+	});
+
 	describe('the words within a segment', () => {
 		it('reads a word written under `text` rather than `word`', () => {
 			const result = mapWhisperResponse({

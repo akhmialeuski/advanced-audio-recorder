@@ -73,12 +73,14 @@ Choose the **Transcription engine** from the dropdown. Six engines are available
 
 | Engine                              | Type                        | Size limit per request | Diarization | Network  |
 | ----------------------------------- | --------------------------- | ---------------------- | ----------- | -------- |
-| **Whisper API (OpenAI-compatible)** | Cloud (OpenAI, Groq, …)     | 25 MB (hard)           | No          | Required |
+| **Whisper API (OpenAI-compatible)** | Cloud (OpenAI, Groq, …)     | 25 MB (hard)           | Opt-in¹     | Required |
 | **Deepgram**                        | Cloud (pre-recorded API)    | 2 GB                   | Yes         | Required |
 | **Google Gemini**                   | Cloud (multimodal)          | 2 GB                   | Yes         | Required |
 | **Mistral Voxtral**                 | Cloud (batch transcription) | 1 GB                   | Yes         | Required |
 | **AssemblyAI**                      | Cloud (pre-recorded jobs)   | 2.2 GB                 | Yes         | Required |
 | **Local whisper.cpp (desktop)**     | Local binary, fully offline | None (local)           | No          | None     |
+
+¹ Only when the server behind the base URL diarizes and you say so on the engine's page; see [Whisper API](#whisper-api-openai-compatible).
 
 Audio preparation (decoding and chunking, when a provider needs it) happens **in memory**. Whenever a provider accepts the original container and the file fits the limit, the file is sent untouched, which keeps memory low and avoids re-encoding. Nothing is written to disk during preparation, except that the local whisper.cpp engine hands each request to the binary as a temporary WAV and deletes it afterward.
 
@@ -88,24 +90,29 @@ OpenAI's speech-to-text API, and any OpenAI-compatible host (for example **Groq*
 
 Settings to fill:
 
-| Setting               | Description                                                                                                                     | Default                     |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| **Upload chunk size** | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                                           | 24                          |
-| **Base URL**          | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL. Shared with the OpenAI engine.                 | `https://api.openai.com/v1` |
-| **OpenAI API key**    | Your API key, read by this engine and by the OpenAI one. Kept in Obsidian's keychain on this device.                            | -                           |
-| **Model**             | Model id in use, picked from the ids the **Model catalogue** entry below it holds. Must support `verbose_json` with timestamps. | `whisper-1`                 |
+| Setting                             | Description                                                                                                                     | Default                     |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| **Upload chunk size**               | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                                           | 24                          |
+| **Base URL**                        | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL. Shared with the OpenAI engine.                 | `https://api.openai.com/v1` |
+| **OpenAI API key**                  | Your API key, read by this engine and by the OpenAI one. Kept in Obsidian's keychain on this device.                            | -                           |
+| **Endpoint returns speaker labels** | Turn on only if the server at the base URL diarizes. Speaker diarization is then offered for this engine.                       | Off                         |
+| **Model**                           | Model id in use, picked from the ids the **Model catalogue** entry below it holds. Must support `verbose_json` with timestamps. | `whisper-1`                 |
 
 Behavior and limits:
 
 - **Per-request limit is a hard 25 MB.** Files **at or under 25 MB** are uploaded in their **original container**, untouched.
 - **Larger files** are resampled to **16 kHz mono**, split into upload-sized WAV chunks (sized by **Upload chunk size**, default 24 MB to stay under the 25 MB limit), and the per-chunk results are stitched back onto one timeline.
-- **No diarization.** Whisper does not return speaker labels, so **Speaker diarization** is disabled for this engine.
+- **Diarization only from a server that offers it.** OpenAI's own `whisper-1` returns no speaker labels, but a self-hosted OpenAI-compatible server may, and the plugin cannot tell the two apart. So **Speaker diarization** stays disabled for this engine until you turn on **Endpoint returns speaker labels** on its page, which says your server diarizes. A diarized run then adds `diarize=true` to the request, the field the OpenAI-compatible hosts that diarize read, and keeps asking for `verbose_json`, so timing, word timestamps and the dictionary prompt work as before. Each segment's `speaker` (or `speaker_id`) becomes its speaker label. A host that answers speakers in a separate `speaker_segments` list is read from that list. The labels are kept as the server writes them, for example `SPEAKER_00`, and can be renamed like any other engine's.
+    - **If the server ignores the field**, the transcript comes back without speakers and a notice says the endpoint returned no speaker labels, so a wrong setting does not go unnoticed. Turn the setting off if your server cannot diarize. A server that refuses unknown fields fails the run with its own error instead.
+    - **Long recordings.** A recording over the 25 MB limit is split into chunks, and the server numbers speakers per request, so labels can differ between chunks. The run warns about this, as it does on every engine that splits.
+    - **Not with speech translation.** The translating operation takes no diarization field, so a translated run carries no speakers.
+    - OpenAI's own diarizing model, `gpt-4o-transcribe-diarize`, is not supported. It answers in a different format (`diarized_json`), takes no prompt and no timestamp granularity, and is scheduled to shut down on February 26, 2027.
 - **Speech translation.** The endpoint carries a second operation that writes the recording down in **English** whatever was spoken. Turn on **Translate speech to English** to use it. Chunking and the dictionary bias behave exactly as they do on the transcription operation, but the translation one takes a narrower set of fields, so two things are dropped from the request rather than sent and refused. The **Language** hint goes, because it would describe the audio rather than the answer. **Word-level timestamps** go with it, because the operation has no timing granularity to ask for and answers with segments only, so a translated transcript carries per-segment timings and never per-word ones. This is the only engine that offers speech translation at all. To translate into any other language, or on any other engine, use the [translation task](llm-post-processing.md) of LLM post-processing instead, which runs on the finished transcript.
 - **Model requirements.** Only models that return `verbose_json` with segment timestamps work. `whisper-1` is OpenAI's; `whisper-large-v3` and `whisper-large-v3-turbo` are served by Groq and other compatible hosts. OpenAI's `gpt-4o-transcribe` models do **not** support `verbose_json`, and `gpt-transcribe` documents no segment timestamps, so both are intentionally excluded. OpenAI has scheduled `whisper-1` to shut down on February 26, 2027.
 
 Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The **Whisper API models** link in the **Model** row's description points at the [OpenAI speech-to-text guide](https://developers.openai.com/api/docs/guides/speech-to-text).
 
-![The Whisper API engine page under Engines, with the Base URL, OpenAI API key keychain picker, Model and Upload chunk size rows](images/settings-engine-whisper-api.png)
+![The Whisper API engine page under Engines, with the Base URL, the OpenAI API key keychain picker, the Endpoint returns speaker labels toggle turned off, Model and Upload chunk size rows](images/settings-engine-whisper-api.png)
 
 ### Deepgram
 
@@ -298,7 +305,7 @@ The plugin names no language of its own in the instruction it sends: the codes c
 
 The transcript data model carries a **speaker** label per segment. To populate it, enable **Speaker diarization** - the provider then detects the number of speakers automatically and labels segments (for example `Speaker 1`, `Speaker 2`).
 
-- **Diarization is available with Deepgram, Google Gemini, Mistral Voxtral, and AssemblyAI.** For Whisper API and local whisper.cpp the **Speaker diarization** toggle is **disabled and greyed out**, since those engines never return speaker labels.
+- **Diarization is available with Deepgram, Google Gemini, Mistral Voxtral, and AssemblyAI**, and with the Whisper API once **Endpoint returns speaker labels** is on for a server that diarizes. For local whisper.cpp, and for a Whisper API endpoint nobody declared, the **Speaker diarization** toggle is **disabled and greyed out**, and its description says why.
 - The effective state is what matters: a stored "on" reads as off the moment you switch to an engine that cannot diarize, so the toggle never claims a result it cannot deliver.
 
 When diarization is **not in effect** (an engine that cannot diarize, or the toggle turned off), speaker labels are **stripped from the transcript entirely**. Neither the in-note Markdown nor the sidecar file - **including JSON** - shows them. The strip happens once on the canonical transcript, so every output path stays consistent.
@@ -725,7 +732,7 @@ Per-engine fields (base URL, key, model picker, upload chunk size) are documente
 
 - **"Transcribe audio" is missing from the menu** - enable **Enable transcription** in settings first.
 - **The Transcribe audio palette command does nothing** - it runs only when the active file is an audio file and transcription is enabled. Open the audio file (or its note) and try again.
-- **Speaker labels never appear** - only Deepgram, Gemini, Mistral Voxtral, and AssemblyAI diarize, so the toggle is disabled for Whisper API and local whisper.cpp. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
+- **Speaker labels never appear** - Deepgram, Gemini, Mistral Voxtral and AssemblyAI diarize, and so does the Whisper API once **Endpoint returns speaker labels** is on for a server that diarizes. Local whisper.cpp never does. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
 - **Speaker numbers change partway through a Gemini transcript** - a recording longer than 15 minutes is split into parts and Gemini renumbers speakers per part. Use **Deepgram** (sends the whole file) or split the recording for consistent speakers. A recording of exactly 15 minutes is not split and shows no such warning.
 - **"Could not insert the transcript into the note"** - the note could not be written to, typically because it was deleted or moved while the transcription was running. The transcript is saved as a sidecar file as a fallback; the notice shows its path. The view mode does not matter: a note in Reading view takes the transcript like one being edited.
 - **A request times out** - raise **Request timeout** (up to 60 minutes) for slow connections or very large uploads, or split the file first.

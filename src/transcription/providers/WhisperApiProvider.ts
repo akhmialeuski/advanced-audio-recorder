@@ -6,9 +6,9 @@
  * and model.
  * Word timestamps are requested best-effort from the transcription operation,
  * and not at all from the translation one, which has no timing granularity to
- * ask for. Speaker diarization is not offered: OpenAI's Whisper returns no
- * speaker labels, so the diarization UI is disabled for this engine rather
- * than requesting a field the API silently ignores.
+ * ask for. Speaker labels are asked for with `diarize=true` only where the
+ * user declared that the endpoint returns them (OpenAI's own Whisper does
+ * not); the service gates that before a request reaches this provider.
  * @module transcription/providers/WhisperApiProvider
  */
 
@@ -18,6 +18,7 @@ import { whisperPromptValue } from '../dictionaryBias';
 import {
 	authHeader,
 	buildMultipart,
+	type MultipartField,
 	requestJson,
 	trimTrailingSlash,
 	uploadTimeoutMs,
@@ -52,6 +53,62 @@ export interface WhisperApiConfig {
 	model: string;
 	/** Per-request timeout cap (ms); the user-configured transcription limit. */
 	requestTimeoutMs?: number;
+}
+
+/** The text arm of a multipart field, as `buildMultipart` takes it. */
+type TextField = Extract<MultipartField, { type: 'text' }>;
+
+/**
+ * The fields a request carries only when the run asks for them and the
+ * operation takes them.
+ * @param options - What the run asks for
+ * @param translating - Whether the request goes to the translating operation
+ * @returns The text fields to add, in the order they are sent
+ */
+function optionalFields(
+	options: TranscribeOptions,
+	translating: boolean,
+): TextField[] {
+	const fields: TextField[] = [];
+	// The translation operation writes English whatever was spoken, so a
+	// language hint would be a claim about the answer rather than about
+	// the audio; the endpoint rejects it.
+	if (options.language && !translating) {
+		fields.push({
+			type: 'text',
+			name: 'language',
+			value: options.language,
+		});
+	}
+	// Speaker labels, from an endpoint the user declared as diarizing - the
+	// gate is the service's, so a true here was asked for and is possible.
+	// `diarize=true` is how the OpenAI-compatible hosts that diarize take
+	// the request (Mistral's own endpoint, Together, self-hosted servers),
+	// and the answer stays `verbose_json`, whose segments then carry a
+	// speaker each. OpenAI's own diarizing model takes a different response
+	// format and drops the prompt and the word timing this request relies
+	// on, so it is not what this field asks for. The translating operation
+	// takes a fixed set of fields that has no diarization among them.
+	if (options.diarize && !translating) {
+		fields.push({
+			type: 'text',
+			name: 'diarize',
+			value: 'true',
+		});
+	}
+	// OpenAI's `prompt` seeds recognition with preferred spellings, and it
+	// is also where the advanced second pass puts its bias sentence. Which
+	// of the two wins, and how a dictionary is bounded to fit, is one policy
+	// shared with the local engine.
+	const promptValue = whisperPromptValue(options);
+	if (promptValue) {
+		fields.push({
+			type: 'text',
+			name: 'prompt',
+			value: promptValue,
+		});
+	}
+	return fields;
 }
 
 /**
@@ -104,28 +161,7 @@ export class WhisperApiProvider implements TranscriptionProvider {
 				value,
 			})),
 		];
-		// The translation operation writes English whatever was spoken, so a
-		// language hint would be a claim about the answer rather than about
-		// the audio; the endpoint rejects it.
-		if (options.language && !translating) {
-			fields.push({
-				type: 'text' as const,
-				name: 'language',
-				value: options.language,
-			});
-		}
-		// OpenAI's `prompt` seeds recognition with preferred spellings, and it
-		// is also where the advanced second pass puts its bias sentence. Which
-		// of the two wins, and how a dictionary is bounded to fit, is one policy
-		// shared with the local engine.
-		const promptValue = whisperPromptValue(options);
-		if (promptValue) {
-			fields.push({
-				type: 'text' as const,
-				name: 'prompt',
-				value: promptValue,
-			});
-		}
+		fields.push(...optionalFields(options, translating));
 
 		const { body, contentType } = buildMultipart(fields);
 		const json = await requestJson({

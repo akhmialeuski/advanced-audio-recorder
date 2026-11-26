@@ -26,6 +26,7 @@ export function transcriptOutputGroup(
 		effectiveDiarize(
 			settings.transcriptionProvider,
 			settings.transcriptionDiarize,
+			settings,
 		);
 	const speakerHint =
 		'Available only with speaker diarization; the current engine and settings produce no speaker labels.';

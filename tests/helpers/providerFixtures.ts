@@ -30,7 +30,7 @@ export const UNLIMITED_CAPABILITIES: ProviderCapabilities = {
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	durationCapCheck: 'proven-by-bytes',
 	originalContainers: { accepts: () => true },
-	supportsDiarization: true,
+	diarization: 'native',
 	supportsDictionary: true,
 	wordTimestamps: 'requested',
 	biasChannel: 'prompt',
@@ -97,7 +97,7 @@ export function fakeProvider(options: FakeProviderOptions = {}): FakeProvider {
 
 /** Capability overrides for an engine that returns no speaker labels. */
 export const NO_DIARIZATION: Partial<ProviderCapabilities> = {
-	supportsDiarization: false,
+	diarization: 'none',
 	supportsDictionary: false,
 	wordTimestamps: 'none',
 };

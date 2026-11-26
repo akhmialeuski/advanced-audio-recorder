@@ -506,7 +506,7 @@ describe('provider factories', () => {
 				extension: 'webm',
 			}),
 		).toBe(true);
-		expect(provider.capabilities.supportsDiarization).toBe(true);
+		expect(provider.capabilities.diarization).toBe('native');
 	});
 
 	it('requires a key for every LLM provider', () => {

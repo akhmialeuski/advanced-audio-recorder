@@ -55,8 +55,66 @@ function mapWords(value: unknown): TranscriptWord[] | undefined {
 }
 
 /**
+ * Maps one segment entry.
+ * @param entry - The entry as the response holds it
+ * @returns The segment, or null for an entry that carries no text
+ */
+function mapSegment(entry: unknown): TranscriptSegment | null {
+	if (!isRecord(entry)) {
+		return null;
+	}
+	const text = typeof entry.text === 'string' ? entry.text.trim() : '';
+	if (text === '') {
+		return null;
+	}
+	// Speaker label: OpenAI-compatible endpoints use `speaker`, Mistral
+	// Voxtral and Together use `speaker_id`. Both name the same thing.
+	const speakerValue = entry.speaker ?? entry.speaker_id;
+	const speaker = typeof speakerValue === 'string' ? speakerValue : undefined;
+	const words = mapWords(entry.words);
+	return {
+		start: num(entry.start),
+		end: num(entry.end, num(entry.start)),
+		text,
+		...(speaker ? { speaker } : {}),
+		...(words ? { words } : {}),
+	};
+}
+
+/**
+ * Maps a segment array, skipping entries that carry no text.
+ * @param value - The array as the response holds it
+ * @returns The segments, empty when there is no array or nothing in it
+ */
+function mapSegments(value: unknown): TranscriptSegment[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	return value
+		.map(mapSegment)
+		.filter((segment): segment is TranscriptSegment => segment !== null);
+}
+
+/**
+ * The segments a response is read from. Some diarizing hosts keep the plain
+ * Whisper segments as they are and answer the speakers in a list of their
+ * own, `speaker_segments`, cut at speaker turns (Together does). That list is
+ * the diarized transcript, so it is the one taken whenever the plain segments
+ * name no speaker and it does.
+ * @param body - Parsed JSON response body
+ * @returns The segments, empty when the response carries none
+ */
+function responseSegments(body: Record<string, unknown>): TranscriptSegment[] {
+	const plain = mapSegments(body.segments);
+	const bySpeaker = mapSegments(body.speaker_segments);
+	const labelled = (segments: TranscriptSegment[]): boolean =>
+		segments.some((segment) => segment.speaker !== undefined);
+	return !labelled(plain) && labelled(bySpeaker) ? bySpeaker : plain;
+}
+
+/**
  * Maps a Whisper `verbose_json` response, or a compatible shape such as the one
- * Mistral Voxtral answers with, to a WhisperResult. Falls back to a single
+ * Mistral Voxtral or a diarizing host answers with, to a WhisperResult. Falls back to a single
  * segment built from the top-level `text` when no segment array is present.
  * @param body - Parsed JSON response body
  */
@@ -76,32 +134,8 @@ export function mapWhisperResponse(body: unknown): WhisperResult {
 			isRecord(body.usage) ? body.usage.prompt_audio_seconds : undefined,
 		);
 
-	const rawSegments = body.segments;
-	if (Array.isArray(rawSegments) && rawSegments.length > 0) {
-		const segments: TranscriptSegment[] = [];
-		for (const entry of rawSegments) {
-			if (!isRecord(entry)) {
-				continue;
-			}
-			const text =
-				typeof entry.text === 'string' ? entry.text.trim() : '';
-			if (text === '') {
-				continue;
-			}
-			// Speaker label: OpenAI-compatible endpoints use `speaker`, Mistral
-			// Voxtral uses `speaker_id`. Both name the same thing.
-			const speakerValue = entry.speaker ?? entry.speaker_id;
-			const speaker =
-				typeof speakerValue === 'string' ? speakerValue : undefined;
-			const words = mapWords(entry.words);
-			segments.push({
-				start: num(entry.start),
-				end: num(entry.end, num(entry.start)),
-				text,
-				...(speaker ? { speaker } : {}),
-				...(words ? { words } : {}),
-			});
-		}
+	const segments = responseSegments(body);
+	if (segments.length > 0) {
 		return { language, segments, ...(usage ? { usage } : {}) };
 	}
 

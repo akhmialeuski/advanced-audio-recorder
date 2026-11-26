@@ -594,7 +594,7 @@ export function billedRunFeatures(
 ): BilledRunFeatures {
 	const engine = selectedTranscriptionEngine(settings);
 	return {
-		diarize: effectiveDiarize(engine.id, run.diarize),
+		diarize: effectiveDiarize(engine.id, run.diarize, settings),
 		biased:
 			run.twoPass ||
 			planDictionaryBias(

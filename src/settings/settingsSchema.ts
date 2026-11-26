@@ -592,6 +592,14 @@ export interface AudioRecorderSettings {
 	whisperApiModel: string;
 	/** Known Whisper API model ids offered in the picker (user-editable) */
 	whisperApiModels: string[];
+	/**
+	 * Whether the endpoint behind the Whisper API base URL returns speaker
+	 * labels. Declared by the user, because the engine cannot know: OpenAI's
+	 * `whisper-1` never does, while a self-hosted OpenAI-compatible server may.
+	 * On, the engine offers speaker diarization and a diarized run sends
+	 * `diarize=true`.
+	 */
+	whisperApiEndpointDiarizes: boolean;
 	/** Deepgram API base URL */
 	deepgramBaseUrl: string;
 	/** Deepgram API key (runtime value, resolved from the keychain) */
@@ -1059,6 +1067,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	whisperApiKeySecret: '',
 	whisperApiModel: DEFAULT_WHISPER_API_MODEL,
 	whisperApiModels: [...WHISPER_API_MODEL_SUGGESTIONS],
+	whisperApiEndpointDiarizes: false,
 	deepgramBaseUrl: DEFAULT_DEEPGRAM_BASE_URL,
 	deepgramApiKey: '',
 	deepgramApiKeySecret: '',

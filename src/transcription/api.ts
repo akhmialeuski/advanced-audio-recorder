@@ -12,6 +12,7 @@ export type {
 	TranscriptionRunOutcome,
 } from './RecordingTranscriber';
 export {
+	diarizationUnavailableNote,
 	effectiveDiarize,
 	effectiveWordTimestamps,
 	isProviderAvailableOnPlatform,

@@ -56,6 +56,8 @@ export interface EngineSettingsPatch {
 	readonly maxTokens?: number;
 	/** Megabytes per chunk where this engine splits an upload. */
 	readonly uploadChunkMb?: number;
+	/** Whether the user declares that the endpoint returns speaker labels. */
+	readonly endpointDiarizes?: boolean;
 }
 
 /** One field of one engine's configuration. */
@@ -80,6 +82,7 @@ export interface EngineSettingsView {
 	readonly models: readonly string[];
 	readonly maxTokens: number;
 	readonly uploadChunkMb: number;
+	readonly endpointDiarizes: boolean;
 }
 
 /** One engine's configuration, as it stands in the given settings. */
@@ -97,10 +100,32 @@ export function readEngineSettings(
 		apiKeySecret: account ? account.apiKeySecret(settings) : '',
 		model: models ? models.model(settings) : '',
 		models: models ? models.models(settings) : [],
+		...readEngineOwnFields(settings, engine),
+	};
+}
+
+/**
+ * The fields an engine holds on its own rather than through its account or
+ * its catalogue, each answering with a value where the engine holds none.
+ * @param settings - The settings to read
+ * @param engine - The engine being read
+ * @returns Those fields, as the view carries them
+ */
+function readEngineOwnFields(
+	settings: AudioRecorderSettings,
+	engine: EngineDescriptor,
+): Pick<
+	EngineSettingsView,
+	'maxTokens' | 'uploadChunkMb' | 'endpointDiarizes'
+> {
+	return {
 		maxTokens: engine.maxTokens ? engine.maxTokens.get(settings) : 0,
 		uploadChunkMb: engine.uploadChunk
 			? engine.uploadChunk.get(settings)
 			: 0,
+		endpointDiarizes: engine.endpointDiarization
+			? engine.endpointDiarization.get(settings)
+			: false,
 	};
 }
 
@@ -139,12 +164,7 @@ export function applyEngineSettings(
 			account.setApiKey(settings, '');
 		}
 	}
-	if (engine.maxTokens && patch.maxTokens !== undefined) {
-		engine.maxTokens.set(settings, patch.maxTokens);
-	}
-	if (engine.uploadChunk && patch.uploadChunkMb !== undefined) {
-		engine.uploadChunk.set(settings, patch.uploadChunkMb);
-	}
+	applyEngineOwnFields(settings, engine, patch);
 	const models = engine.models;
 	if (!models) {
 		return;
@@ -168,6 +188,29 @@ export function applyEngineSettings(
 	}
 	models.setModels(settings, ensureSelectedInList(saved, selected));
 	models.setModel(settings, selected);
+}
+
+/**
+ * Writes the fields an engine holds on its own rather than through its account
+ * or its catalogue, each only where the engine holds it.
+ * @param settings - The settings to write into
+ * @param engine - The engine being configured
+ * @param patch - What moves; anything unnamed keeps its value
+ */
+function applyEngineOwnFields(
+	settings: AudioRecorderSettings,
+	engine: EngineDescriptor,
+	patch: EngineSettingsPatch,
+): void {
+	if (engine.maxTokens && patch.maxTokens !== undefined) {
+		engine.maxTokens.set(settings, patch.maxTokens);
+	}
+	if (engine.uploadChunk && patch.uploadChunkMb !== undefined) {
+		engine.uploadChunk.set(settings, patch.uploadChunkMb);
+	}
+	if (engine.endpointDiarization && patch.endpointDiarizes !== undefined) {
+		engine.endpointDiarization.set(settings, patch.endpointDiarizes);
+	}
 }
 
 /**
@@ -217,16 +260,32 @@ function collectEngineFields(): ReadonlyMap<string, EngineSettingsField> {
 		}
 	};
 	for (const id of ENGINE_ORDER) {
-		const engine = ENGINES[id];
-		const account = accountOf(engine);
-		claim(account?.baseUrlKey, id, 'baseUrl');
-		claim(account?.apiKeySecretKey, id, 'apiKeySecret');
-		claim(engine.models?.modelKey, id, 'model');
-		claim(engine.models?.modelsKey, id, 'models');
-		claim(engine.maxTokens?.key, id, 'maxTokens');
-		claim(engine.uploadChunk?.key, id, 'uploadChunkMb');
+		for (const [key, field] of engineFieldKeys(ENGINES[id])) {
+			claim(key, id, field);
+		}
 	}
 	return fields;
+}
+
+/**
+ * The settings key behind each field of one engine, undefined where the
+ * engine holds no such field.
+ * @param engine - The engine whose keys are listed
+ * @returns Each key paired with the field it stores
+ */
+function engineFieldKeys(
+	engine: EngineDescriptor,
+): [string | undefined, EngineSettingsFieldName][] {
+	const account = accountOf(engine);
+	return [
+		[account?.baseUrlKey, 'baseUrl'],
+		[account?.apiKeySecretKey, 'apiKeySecret'],
+		[engine.models?.modelKey, 'model'],
+		[engine.models?.modelsKey, 'models'],
+		[engine.maxTokens?.key, 'maxTokens'],
+		[engine.uploadChunk?.key, 'uploadChunkMb'],
+		[engine.endpointDiarization?.key, 'endpointDiarizes'],
+	];
 }
 
 /**

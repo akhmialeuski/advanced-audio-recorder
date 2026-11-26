@@ -178,6 +178,7 @@ export function fullyPopulatedSettings(): Omit<
 		whisperApiKeySecret: 'whisper-test-key',
 		whisperApiModel: 'whisper-large-v3',
 		whisperApiModels: ['whisper-large-v3', 'whisper-1'],
+		whisperApiEndpointDiarizes: true,
 		deepgramBaseUrl: 'https://api.deepgram.com/v1',
 		deepgramApiKey: 'dg-test',
 		deepgramApiKeySecret: 'deepgram-test-key',

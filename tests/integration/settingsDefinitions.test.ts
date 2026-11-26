@@ -730,6 +730,32 @@ describe('settings definitions', () => {
 			expect(typeof disabled === 'function' && disabled()).toBe(false);
 		});
 
+		it('offers diarization on a Whisper API endpoint declared as diarizing', () => {
+			// Whether the server behind the base URL diarizes is the user's to
+			// say; until they do, the row says where to say it.
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			const undeclared = rowOf(
+				build(),
+				TRANSCRIPTION,
+				'Speaker diarization',
+			);
+
+			expect(disabledOf(undeclared.control)).toBe(true);
+			expect(undeclared.desc).toMatch(/Endpoint returns speaker labels/);
+
+			settings.whisperApiEndpointDiarizes = true;
+			const declared = rowOf(
+				build(),
+				TRANSCRIPTION,
+				'Speaker diarization',
+			);
+
+			expect(disabledOf(declared.control)).toBe(false);
+			expect(declared.desc).toMatch(/Request speaker labels/);
+		});
+
 		// Same shape as the diarization row above, for the same reason: an
 		// engine decides this for itself, so the switch is shown and locked
 		// with its description saying what the engine does instead.
@@ -1654,6 +1680,23 @@ describe('settings definitions', () => {
 
 			expect(link?.textContent).toBe('Whisper API models');
 			expect(link?.getAttribute('href')).toBe(WHISPER_API_MODELS_DOC_URL);
+		});
+
+		it('asks whether the endpoint diarizes only where the endpoint is any server', () => {
+			// A vendor's own service diarizes or does not as a matter of fact;
+			// only the Whisper API's base URL may name a server that does, so
+			// the question follows the rows that point at that server.
+			expect(pageEntryNames(EngineLabel.WhisperApi)).toEqual([
+				'Base URL',
+				'OpenAI API key',
+				'Endpoint returns speaker labels',
+				'Model',
+				'Model catalogue',
+				'Upload chunk size',
+			]);
+			expect(pageEntryNames(EngineLabel.Deepgram)).not.toContain(
+				'Endpoint returns speaker labels',
+			);
 		});
 
 		it('offers a chunk size only on the engine that splits an upload', () => {

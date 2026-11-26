@@ -13,6 +13,7 @@ import {
 } from '../../constants';
 import {
 	languageNote,
+	diarizationUnavailableNote,
 	providerSupportsDiarization,
 	providerSupportsSpeechTranslation,
 	wordTimestampsNote,
@@ -50,7 +51,7 @@ export function transcriptionGroup(
 	const settings = ctx.settings;
 	const enabled = (): boolean => settings.transcriptionEnabled;
 	const canDiarize = (): boolean =>
-		providerSupportsDiarization(settings.transcriptionProvider);
+		providerSupportsDiarization(settings.transcriptionProvider, settings);
 	const canTranslateSpeech = (): boolean =>
 		providerSupportsSpeechTranslation(settings.transcriptionProvider);
 	return {
@@ -121,7 +122,14 @@ export function transcriptionGroup(
 			{
 				name: 'Speaker diarization',
 				aliases: ['speakers', 'who spoke', 'diarisation'],
-				desc: 'Request speaker labels. Speaker count is detected automatically.',
+				// Built per read: the engine and the declaration about its
+				// endpoint both reshape the tree, so the sentence cannot go
+				// stale while the row is on screen.
+				desc: canDiarize()
+					? 'Request speaker labels. Speaker count is detected automatically.'
+					: diarizationUnavailableNote(
+							settings.transcriptionProvider,
+						),
 				visible: enabled,
 				control: {
 					type: 'toggle',

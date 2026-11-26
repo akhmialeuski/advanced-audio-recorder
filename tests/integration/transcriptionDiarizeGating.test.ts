@@ -11,7 +11,7 @@
  * @module tests/unit/transcriptionDiarizeGating.test
  */
 
-import type { App, TFile } from 'obsidian';
+import { Notice, type App, type TFile } from 'obsidian';
 import { TranscriptionService } from 'src/transcription/TranscriptionService';
 import type { TranscribeOptions } from 'src/transcription/providers/TranscriptionProvider';
 import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
@@ -122,6 +122,83 @@ describe('TranscriptionService diarization gating', () => {
 			transcriptionDiarize: false,
 		});
 		expect(lastOptions(provider)?.diarize).toBe(false);
+	});
+
+	it('requests diarization from a Whisper API endpoint declared as diarizing', async () => {
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			transcriptionDiarize: true,
+			whisperApiEndpointDiarizes: true,
+		});
+		expect(lastOptions(provider)?.diarize).toBe(true);
+	});
+});
+
+// The declaration is the user's word about a server the plugin cannot see, so
+// the one sign that it is wrong - a diarized answer naming nobody - is told to
+// the user rather than passed off as a transcript without speakers.
+describe('a declared endpoint that answers without speakers', () => {
+	const mockNotice = jest.mocked(Notice);
+
+	/**
+	 * Runs a diarized Whisper API transcription against a declared endpoint.
+	 * @param segments - What the endpoint answers with
+	 */
+	async function runDeclared(segments: TranscriptSegment[]): Promise<void> {
+		const service = new TranscriptionService(
+			makeApp(),
+			() =>
+				mergeSettings({
+					transcriptionProvider:
+						TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+					transcriptionDiarize: true,
+					whisperApiEndpointDiarizes: true,
+				}),
+			{ createProvider: () => makeProvider(segments) },
+		);
+		await service.run(audioFile, { notePathForLinks: 'note.md' });
+	}
+
+	/** Every notice text the run raised. */
+	function notices(): string[] {
+		return mockNotice.mock.calls.map(([message]) =>
+			typeof message === 'string' ? message : (message.textContent ?? ''),
+		);
+	}
+
+	it('says the endpoint returned no speaker labels', async () => {
+		await runDeclared([{ start: 0, end: 1, text: 'hi' }]);
+
+		expect(
+			notices().some((text) =>
+				text.includes('returned no speaker labels'),
+			),
+		).toBe(true);
+	});
+
+	// A silent recording leaves nothing to label, so an answer without
+	// speakers says nothing about the declaration and must not ask the user
+	// to undo it.
+	it('says nothing when the endpoint heard no speech', async () => {
+		await runDeclared([]);
+
+		expect(
+			notices().some((text) =>
+				text.includes('returned no speaker labels'),
+			),
+		).toBe(false);
+	});
+
+	it('says nothing once the endpoint labelled a speaker', async () => {
+		await runDeclared([
+			{ start: 0, end: 1, text: 'hi', speaker: 'SPEAKER_00' },
+		]);
+
+		expect(
+			notices().some((text) =>
+				text.includes('returned no speaker labels'),
+			),
+		).toBe(false);
 	});
 });
 

@@ -59,7 +59,7 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 5. On the **Google Gemini API key** row, click **Link...**. In Obsidian's secret picker choose **Add secret...** (it opens straight away while the keychain is empty), enter an ID such as `gemini-api-key`, paste your key as the secret, and save. The key is kept in Obsidian's keychain on this device; the plugin stores only the ID.
 6. Under **Model**, pick `gemini-4-hydrogen` (default) or `gemini-4-argon` for harder audio. Open the **Model catalogue** entry below it to add any other model id with the **+** button beside the filter, to drop one with the **×** button on its row, or follow the **Gemini model list** link at the end of the **Model** row's description to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
 7. (Optional) Back under **Transcription**, set **Language** to `auto` (default) or an ISO code such as `en`, `ru`, or `es`. Gemini transcribes each segment in the language actually spoken regardless, but a hint can help.
-8. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is only enabled for Gemini, Deepgram, Mistral Voxtral, and AssemblyAI.
+8. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is enabled for Gemini, Deepgram, Mistral Voxtral, and AssemblyAI, and for a Whisper API endpoint declared as diarizing.
 9. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
 
 ![The Model catalogue page of the Google Gemini engine: the Filter models box with the add button beside it, above the six seeded model ids, each with a delete button, and In use under gemini-4-hydrogen](../images/settings-gemini-model-picker.png)
