@@ -720,14 +720,6 @@
 			"count": 1
 		}
 	},
-	"src/transcription/runOptions.ts": {
-		"complexity": {
-			"count": 1
-		},
-		"max-lines-per-function": {
-			"count": 1
-		}
-	},
 	"src/transcription/runTranscription.ts": {
 		"complexity": {
 			"count": 1

@@ -228,24 +228,47 @@ export interface TranscriptionRun {
 	readonly picks: readonly ProfilePick[];
 }
 
-/**
- * Reads what was typed into changes to a run's settings, the way the
- * dialog's controls change its own copy, checking each value first.
- * @param live - The plugin's settings, which name the profiles to pick from
- * @param args - The arguments as typed
- * @returns The run, or the refusal naming what was typed wrong
- */
-export function transcriptionRun(
+/** One change to a run's copy of the settings. */
+type Change = (run: AudioRecorderSettings) => void;
+
+/** What one group of parameters read: its changes and its profile picks. */
+interface Reading {
+	readonly changes: readonly Change[];
+	readonly picks: readonly ProfilePick[];
+}
+
+/** Reads one group of parameters, or refuses naming what was typed wrong. */
+type Reader = (
 	live: AudioRecorderSettings,
 	args: CliData,
-): Refusable<TranscriptionRun> {
-	const changes: ((run: AudioRecorderSettings) => void)[] = [];
+) => Refusable<Reading>;
+
+/**
+ * A reading that changes settings and picks no profile.
+ * @param changes - The changes
+ * @returns The reading
+ */
+function changesOnly(changes: readonly Change[]): Refusable<Reading> {
+	return { value: { changes, picks: [] } };
+}
+
+/** Reads the language, which takes any text. */
+const readLanguage: Reader = (_live, args) => {
 	const language = cliText(args, 'language');
-	if (language !== null) {
-		changes.push((run) => {
-			run.transcriptionLanguage = language;
-		});
-	}
+	return changesOnly(
+		language === null
+			? []
+			: [
+					(run) => {
+						run.transcriptionLanguage = language;
+					},
+				],
+	);
+};
+
+/** Reads the dropdowns. */
+const readChoices: Reader = (_live, args) => {
+	const changes: Change[] = [];
 	for (const option of CHOICES) {
 		const read = option.read(args);
 		if (isRefusal(read)) {
@@ -255,6 +278,12 @@ export function transcriptionRun(
 			changes.push(read.value);
 		}
 	}
+	return changesOnly(changes);
+};
+
+/** Reads the switches. */
+const readSwitches: Reader = (_live, args) => {
+	const changes: Change[] = [];
 	for (const option of SWITCHES) {
 		const read = cliSwitch(args, option.param);
 		if (isRefusal(read)) {
@@ -267,6 +296,12 @@ export function transcriptionRun(
 			});
 		}
 	}
+	return changesOnly(changes);
+};
+
+/** Reads the profile pickers, each by the name of a profile of its kind. */
+const readProfiles: Reader = (live, args) => {
+	const changes: Change[] = [];
 	const picks: ProfilePick[] = [];
 	for (const option of PROFILES) {
 		const name = cliText(args, option.param);
@@ -282,6 +317,38 @@ export function transcriptionRun(
 		changes.push((run) => {
 			setSelectedProfileId(run, option.kind, id);
 		});
+	}
+	return { value: { changes, picks } };
+};
+
+/** The groups, in the order their changes are applied. */
+const READERS: readonly Reader[] = [
+	readLanguage,
+	readChoices,
+	readSwitches,
+	readProfiles,
+];
+
+/**
+ * Reads what was typed into changes to a run's settings, the way the
+ * dialog's controls change its own copy, checking each value first.
+ * @param live - The plugin's settings, which name the profiles to pick from
+ * @param args - The arguments as typed
+ * @returns The run, or the refusal naming what was typed wrong
+ */
+export function transcriptionRun(
+	live: AudioRecorderSettings,
+	args: CliData,
+): Refusable<TranscriptionRun> {
+	const changes: Change[] = [];
+	const picks: ProfilePick[] = [];
+	for (const reader of READERS) {
+		const read = reader(live, args);
+		if (isRefusal(read)) {
+			return read;
+		}
+		changes.push(...read.value.changes);
+		picks.push(...read.value.picks);
 	}
 	return {
 		value: {
