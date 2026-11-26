@@ -14,8 +14,8 @@ import type { CliData } from 'obsidian';
 import {
 	describeTranscriptionOutcome,
 	transcribeFromCli,
-	transcriptionRun,
 } from 'src/actions/file/transcribeCli';
+import { transcriptionRun } from 'src/transcription/runOptions';
 import type { FileContext } from 'src/actions/file/FileContext';
 import {
 	ProfileKindId,
