@@ -95,8 +95,8 @@ Settings to fill:
 | **Upload chunk size**               | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                                           | 24                          |
 | **Base URL**                        | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL. Shared with the OpenAI engine.                 | `https://api.openai.com/v1` |
 | **OpenAI API key**                  | Your API key, read by this engine and by the OpenAI one. Kept in Obsidian's keychain on this device.                            | -                           |
-| **Model**                           | Model id in use, picked from the ids the **Model catalogue** entry below it holds. Must support `verbose_json` with timestamps. | `whisper-1`                 |
 | **Endpoint returns speaker labels** | Turn on only if the server at the base URL diarizes. Speaker diarization is then offered for this engine.                       | Off                         |
+| **Model**                           | Model id in use, picked from the ids the **Model catalogue** entry below it holds. Must support `verbose_json` with timestamps. | `whisper-1`                 |
 
 Behavior and limits:
 
