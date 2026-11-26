@@ -112,7 +112,7 @@ Behavior and limits:
 
 Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The **Whisper API models** link in the **Model** row's description points at the [OpenAI speech-to-text guide](https://developers.openai.com/api/docs/guides/speech-to-text).
 
-![The Whisper API engine page under Engines, with the Base URL, OpenAI API key keychain picker, Model, Upload chunk size and Endpoint returns speaker labels rows](images/settings-engine-whisper-api.png)
+![The Whisper API engine page under Engines, with the Base URL, the OpenAI API key keychain picker, the Endpoint returns speaker labels toggle turned off, Model and Upload chunk size rows](images/settings-engine-whisper-api.png)
 
 ### Deepgram
 
