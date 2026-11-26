@@ -1684,10 +1684,16 @@ describe('settings definitions', () => {
 
 		it('asks whether the endpoint diarizes only where the endpoint is any server', () => {
 			// A vendor's own service diarizes or does not as a matter of fact;
-			// only the Whisper API's base URL may name a server that does.
-			expect(pageEntryNames(EngineLabel.WhisperApi)).toContain(
+			// only the Whisper API's base URL may name a server that does, so
+			// the question follows the rows that point at that server.
+			expect(pageEntryNames(EngineLabel.WhisperApi)).toEqual([
+				'Base URL',
+				'OpenAI API key',
 				'Endpoint returns speaker labels',
-			);
+				'Model',
+				'Model catalogue',
+				'Upload chunk size',
+			]);
 			expect(pageEntryNames(EngineLabel.Deepgram)).not.toContain(
 				'Endpoint returns speaker labels',
 			);
