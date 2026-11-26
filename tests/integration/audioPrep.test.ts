@@ -55,6 +55,12 @@ const decodableMock = jest.mocked(isDecodableSize);
 /** An engine that reads any container, as Whisper API and Deepgram do. */
 const READS_EVERY_CONTAINER: ContainerSupport = { accepts: () => true };
 
+/**
+ * An engine whose parts are cut by the plugin and start where the last one
+ * ended, as every engine but Gemini is.
+ */
+const SENDS_PARTS_AS_BYTES = { clipsUploadedFile: false, leadInSeconds: 0 };
+
 /** An engine that reads none, as local whisper.cpp does. */
 const READS_NO_CONTAINER: ContainerSupport = { accepts: () => false };
 
@@ -73,6 +79,7 @@ const READS_EVERYTHING = {
 	durationCapCheck: DurationCapCheck.ProvenByBytes,
 	originalContainers: READS_EVERY_CONTAINER,
 	engineLabel: 'Test Engine',
+	...SENDS_PARTS_AS_BYTES,
 };
 
 /** The container of a file stored under this extension. */
@@ -360,6 +367,7 @@ describe('prepareAudio (a container the engine does not read)', () => {
 		engineLabel: 'Test Engine',
 		chunkSeconds: 60,
 		diarize: false,
+		...SENDS_PARTS_AS_BYTES,
 	};
 
 	// A short webm fits every limit, and it used to be sent as it stood for
@@ -430,6 +438,7 @@ describe('prepareAudio (a cap the endpoint holds)', () => {
 		engineLabel: 'Test Engine',
 		chunkSeconds: 2,
 		diarize: true,
+		...SENDS_PARTS_AS_BYTES,
 	};
 
 	it('sends a container the engine reads whole whatever its size proves', async () => {

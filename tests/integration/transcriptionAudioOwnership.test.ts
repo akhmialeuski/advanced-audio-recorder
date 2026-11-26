@@ -290,11 +290,20 @@ async function runToCompletion(
 	);
 }
 
-describe('a WebM recording an engine refused for now', () => {
+/**
+ * A container Gemini does not read as it stands, so the run decodes it: the
+ * one this plugin records in by default.
+ */
+const DECODED_FOR_GEMINI = 'webm';
+
+describe('a recording an engine refused for now, in a container it has decoded', () => {
 	it('is transcribed by Gemini on the attempt after the refusal', async () => {
 		scriptGemini({ refusals: 1, answer: () => 'recovered' });
 
-		const result = await runToCompletion(gemini(), recording('webm'));
+		const result = await runToCompletion(
+			gemini(),
+			recording(DECODED_FOR_GEMINI),
+		);
 
 		expect(result.markdown).toContain('recovered');
 	});
@@ -302,7 +311,7 @@ describe('a WebM recording an engine refused for now', () => {
 	it('is decoded once for Gemini however many times it is sent', async () => {
 		scriptGemini({ refusals: 1, answer: () => 'recovered' });
 
-		await runToCompletion(gemini(), recording('webm'));
+		await runToCompletion(gemini(), recording(DECODED_FOR_GEMINI));
 
 		expect(decoder.decodedByteLengths).toEqual([RECORDING_BYTES]);
 	});
@@ -310,7 +319,7 @@ describe('a WebM recording an engine refused for now', () => {
 	it('reaches Gemini as the same WAV on every attempt', async () => {
 		const log = scriptGemini({ refusals: 1, answer: () => 'recovered' });
 
-		await runToCompletion(gemini(), recording('webm'));
+		await runToCompletion(gemini(), recording(DECODED_FOR_GEMINI));
 
 		expect(log.uploadTypes).toEqual([WAV_MIME, WAV_MIME]);
 		expect(log.uploads[0]?.byteLength).toBeGreaterThan(0);
@@ -329,6 +338,21 @@ describe('a WebM recording an engine refused for now', () => {
 });
 
 describe('a recording in a container the engine reads as it stands', () => {
+	it.each(['ogg', 'm4a', 'mp4'])(
+		'reaches Gemini as the %s it was recorded in, never decoded',
+		async (extension) => {
+			const log = scriptGemini({
+				refusals: 1,
+				answer: () => 'recovered',
+			});
+
+			await runToCompletion(gemini(), recording(extension));
+
+			expect(decoder.decodedByteLengths).toEqual([]);
+			expect(log.uploadTypes).not.toContain(WAV_MIME);
+		},
+	);
+
 	it('is sent to Gemini again without ever being decoded', async () => {
 		const log = scriptGemini({ refusals: 1, answer: () => 'recovered' });
 
@@ -343,7 +367,7 @@ describe('a recording in a container the engine reads as it stands', () => {
 	});
 });
 
-describe('the advanced second pass over a WebM recording', () => {
+describe('the advanced second pass over a recording the run decoded', () => {
 	it('sends Gemini the audio the first pass sent and adopts its transcript', async () => {
 		const log = scriptGemini({
 			refusals: 0,
@@ -353,10 +377,14 @@ describe('the advanced second pass over a WebM recording', () => {
 					: 'Поручим Иванову деплой сервиса в кубернетис.',
 		});
 
-		const result = await runToCompletion(gemini(), recording('webm'), {
-			transcriptionAdvancedSettingsEnabled: true,
-			transcriptionAdvancedEnabled: true,
-		});
+		const result = await runToCompletion(
+			gemini(),
+			recording(DECODED_FOR_GEMINI),
+			{
+				transcriptionAdvancedSettingsEnabled: true,
+				transcriptionAdvancedEnabled: true,
+			},
+		);
 
 		expect(result.markdown).toContain('Kubernetes');
 		expect(log.uploads).toHaveLength(2);

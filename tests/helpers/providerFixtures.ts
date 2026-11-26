@@ -39,6 +39,9 @@ export const UNLIMITED_CAPABILITIES: ProviderCapabilities = {
 	readsLanguageList: false,
 	rewritesInRequest: false,
 	estimatesTimecodes: false,
+	clipsUploadedFile: false,
+	maxParallelRequests: 1,
+	partLeadInSeconds: 0,
 };
 
 /** What a suite varies about the provider it transcribes through. */

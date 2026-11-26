@@ -15,6 +15,8 @@ import {
 	GEMINI_AUDIO_MIME_TYPES,
 	GEMINI_MAX_REQUEST_BYTES,
 	GEMINI_MAX_WHOLE_FILE_SECONDS,
+	GEMINI_PARALLEL_REQUESTS,
+	PART_LEAD_IN_SECONDS,
 	TRANSCRIPTION_PROVIDER_IDS,
 	VOXTRAL_AUDIO_EXTENSIONS,
 	VOXTRAL_MAX_REQUEST_BYTES,
@@ -48,12 +50,12 @@ const DECODED_WAV_ONLY: ContainerSupport = { accepts: () => false };
 
 /**
  * Gemini's File API, asked by MIME type - the unit Google documents the list
- * in. Everything else, notably the `webm` this plugin records by default and
- * the `mp4`/`m4a` it can record, is decoded to WAV before upload.
+ * in. It covers the `mp4`/`m4a` this plugin can record. Everything else,
+ * notably the `webm` it records by default, is decoded to WAV before upload.
  */
 const GEMINI_CONTAINERS: ContainerSupport = {
 	accepts: ({ contentType }) => GEMINI_AUDIO_MIME_TYPES.has(contentType),
-	acceptedNames: 'mp3, aac, ogg, flac, aiff or wav',
+	acceptedNames: 'mp4, m4a, mp3, aac, ogg, flac, aiff or wav',
 };
 
 /**
@@ -91,6 +93,9 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	readsLanguageList: false,
 	rewritesInRequest: false,
 	estimatesTimecodes: false,
+	clipsUploadedFile: false,
+	maxParallelRequests: 1,
+	partLeadInSeconds: 0,
 };
 
 /** Deepgram pre-recorded API: diarizes a whole request with stable labels. */
@@ -111,6 +116,9 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	readsLanguageList: false,
 	rewritesInRequest: false,
 	estimatesTimecodes: false,
+	clipsUploadedFile: false,
+	maxParallelRequests: 1,
+	partLeadInSeconds: 0,
 };
 
 /** Local whisper.cpp: no upload limit, needs decoded WAV, no diarization. */
@@ -130,17 +138,20 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	readsLanguageList: false,
 	rewritesInRequest: false,
 	estimatesTimecodes: false,
+	clipsUploadedFile: false,
+	maxParallelRequests: 1,
+	partLeadInSeconds: 0,
 };
 
 /**
- * Google Gemini: a multimodal model that transcribes a whole file uploaded via
- * the File API in one request, so it diarizes with stable speaker numbering.
- * Reads the containers its File API lists as they stand; a recording in any
- * other is decoded to WAV by the service first. Bounded by a per-request
- * duration cap: a recording longer than
- * {@link GEMINI_MAX_WHOLE_FILE_SECONDS} is split into parts so one request never
- * outlasts the timeout or truncates the output, at the cost of speaker numbering
- * resetting between parts (surfaced to the user as a warning).
+ * Google Gemini: a multimodal model that hears the audio and writes the
+ * transcript as its answer. Reads the containers its File API lists as they
+ * stand, and a recording in any other is decoded to WAV by the service first.
+ * Bounded by a per-request duration cap: a recording longer than
+ * {@link GEMINI_MAX_WHOLE_FILE_SECONDS} is uploaded once and asked for in
+ * parts, several at a time, so one request never outlasts the timeout or
+ * truncates its output. Each later part of a diarized run carries the end of
+ * the part before it, which is what the speakers are matched across parts on.
  */
 export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: GEMINI_MAX_REQUEST_BYTES,
@@ -169,6 +180,13 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	// writes (see transcriptSchema in GeminiProvider), estimated rather than
 	// measured, and on long parts they drift past the audio that was sent.
 	estimatesTimecodes: true,
+	// A file uploaded once is asked for by time span (`Part.audioMetadata`),
+	// billed for the span alone, so parts cost no decode and no second upload.
+	clipsUploadedFile: true,
+	maxParallelRequests: GEMINI_PARALLEL_REQUESTS,
+	// The model numbers speakers per request, and names them when it hears a
+	// name, so neighbouring parts share a stretch to be matched on.
+	partLeadInSeconds: PART_LEAD_IN_SECONDS,
 };
 
 /**
@@ -231,6 +249,9 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	readsLanguageList: false,
 	rewritesInRequest: false,
 	estimatesTimecodes: false,
+	clipsUploadedFile: false,
+	maxParallelRequests: 1,
+	partLeadInSeconds: 0,
 };
 
 /**
@@ -270,6 +291,9 @@ export const ASSEMBLYAI_CAPABILITIES: ProviderCapabilities = {
 	rewritesInRequest: false,
 	// Start and end are measured on the audio, in milliseconds.
 	estimatesTimecodes: false,
+	clipsUploadedFile: false,
+	maxParallelRequests: 1,
+	partLeadInSeconds: 0,
 };
 
 /** Capabilities for every engine, keyed by its settings id. */

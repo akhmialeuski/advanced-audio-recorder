@@ -66,6 +66,10 @@ export type AdvancedPassOutcome =
 /** One transcribed part, as the run accumulates them. */
 export interface PassResult {
 	offsetSeconds: number;
+	/** How much of the part's start belongs to the part before it. */
+	leadInSeconds?: number;
+	/** Where the part ends on the recording, when it was measured. */
+	endSeconds?: number;
 	transcript: Transcript;
 	usage?: TranscriptionUsage;
 	/** The rewritten text, when the part was sent with a rewrite instruction. */

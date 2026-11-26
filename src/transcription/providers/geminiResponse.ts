@@ -11,6 +11,7 @@
  */
 
 import type { TranscriptSegment } from '../TranscriptTypes';
+import type { AudioClip } from './TranscriptionProvider';
 import { dominantSegmentLanguage } from '../transcriptModel';
 import { parseTimecode } from '../../utils/TimeUtils';
 import { PLUGIN_LOG_PREFIX } from '../../constants';
@@ -138,4 +139,42 @@ export function mapGeminiRewrite(body: unknown): WhisperResult {
 		}
 	}
 	return { segments: [], rewritten, ...(usage ? { usage } : {}) };
+}
+
+/**
+ * Re-counts a clipped request's lines from the start of the clip when the
+ * model counted them from the start of the recording.
+ *
+ * Asked for a stretch of an uploaded recording, the model writes its
+ * timecodes either way and does not say which: the same lesson came back as
+ * 12:06 to 24:06 for one stretch and 0:00 to 2:00 for another. The two
+ * readings put the middle line of the answer a whole clip start apart, so the
+ * one whose expected middle is nearer is the one the model used. A clip that
+ * opens the recording reads the same both ways.
+ * @param segments - The lines as the model timed them
+ * @param clip - The stretch of the recording that was asked for
+ * @returns The lines timed from the start of the clip
+ */
+export function rebaseToClip(
+	segments: TranscriptSegment[],
+	clip: AudioClip,
+): TranscriptSegment[] {
+	const starts = segments
+		.map((segment) => segment.start)
+		.sort((a, b) => a - b);
+	const median = starts[Math.floor(starts.length / 2)];
+	if (clip.startSeconds <= 0 || median === undefined) {
+		return segments;
+	}
+	const middle = (clip.endSeconds - clip.startSeconds) / 2;
+	const fromClipStart = Math.abs(median - middle);
+	const fromRecordingStart = Math.abs(median - clip.startSeconds - middle);
+	if (fromRecordingStart >= fromClipStart) {
+		return segments;
+	}
+	return segments.map((segment) => ({
+		...segment,
+		start: Math.max(0, segment.start - clip.startSeconds),
+		end: Math.max(0, segment.end - clip.startSeconds),
+	}));
 }

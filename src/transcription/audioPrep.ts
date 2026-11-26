@@ -1,8 +1,10 @@
 /**
  * Prepares an audio file for a transcription provider, entirely in memory.
  * The cheap path sends the original container bytes untouched (when the
- * provider reads that container and the file fits its limits); the fallback
- * path decodes to 16 kHz mono and splits into WAV chunks under the limits. No
+ * provider reads that container and the file fits its limits); an engine that
+ * cuts a stretch out of an uploaded file gets the same bytes once and a time
+ * span per part; the fallback path decodes to 16 kHz mono and splits into WAV
+ * chunks under the limits. No
  * temporary files are written, so preparation works on desktop and mobile
  * alike, and avoiding the decode keeps peak memory at the encoded file
  * size for providers that take the original format.
@@ -34,6 +36,7 @@ import {
 } from './audioChunks';
 import {
 	DurationCapCheck,
+	type AudioClip,
 	type AudioContainer,
 	type ContainerSupport,
 	type ProviderCapabilities,
@@ -77,6 +80,22 @@ export interface AudioPrepOptions {
 	chunkSeconds: number;
 	/** Whether speaker diarization is requested for this run. */
 	diarize: boolean;
+	/**
+	 * Whether the provider cuts each part out of the recording uploaded once
+	 * (see `ProviderCapabilities.clipsUploadedFile`).
+	 */
+	clipsUploadedFile: boolean;
+	/**
+	 * Seconds of the part before it that each later part carries, zero when
+	 * parts start where the last one ended. Already zero for a run without
+	 * speaker labels, which has nothing to match across parts.
+	 */
+	leadInSeconds: number;
+	/**
+	 * The recording's length as its container states it, when the caller
+	 * read it. What lets a provider that clips plan its parts with no decode.
+	 */
+	knownDurationSeconds?: number | undefined;
 }
 
 /**
@@ -93,11 +112,24 @@ export interface PreparedPayload {
 	/** Offset of this payload from the start of the recording, in seconds. */
 	offsetSeconds: number;
 	/**
-	 * End of this payload on the recording timeline, in seconds. Present on the
-	 * decode path (so a part can be labelled and subdivided by its time range);
-	 * absent on the whole-file path, whose true duration is never measured.
+	 * End of this payload on the recording timeline, in seconds. Present when
+	 * the recording's length is known (so a part can be labelled and
+	 * subdivided by its time range); absent for a file sent whole on trust,
+	 * whose true duration is never measured.
 	 */
 	endSeconds?: number;
+	/**
+	 * How much of the start of this payload belongs to the part before it, in
+	 * seconds. The part's own stretch begins this long after
+	 * {@link offsetSeconds}; see {@link ownStartSeconds}. Absent when the
+	 * payload starts where its part does.
+	 */
+	leadInSeconds?: number;
+	/**
+	 * The stretch of the bytes this part is, when {@link createData} returns
+	 * the whole recording and the provider cuts the stretch out itself.
+	 */
+	clip?: AudioClip;
 	/** Builds the upload bytes; invoked once, right before uploading. */
 	createData(): ArrayBuffer | Promise<ArrayBuffer>;
 	/**
@@ -108,6 +140,18 @@ export interface PreparedPayload {
 	 * subdividable length.
 	 */
 	subdivide?: () => PreparedPayload[];
+}
+
+/**
+ * Where a part's own stretch of the recording begins: after the lead-in it
+ * shares with the part before it, when it has one.
+ * @param payload - The prepared part
+ * @returns The start of the stretch only this part answers for, in seconds
+ */
+export function ownStartSeconds(
+	payload: Pick<PreparedPayload, 'offsetSeconds' | 'leadInSeconds'>,
+): number {
+	return payload.offsetSeconds + (payload.leadInSeconds ?? 0);
 }
 
 /** Prepared payloads ready to transcribe. */
@@ -231,6 +275,13 @@ function assertDecodable(
 /**
  * Prepares an audio file into provider-ready payloads.
  *
+ * Clip path: a provider that cuts a stretch out of an uploaded file (see
+ * {@link planClips}) gets the original bytes and a time span per part, with
+ * no decode, whenever the recording's length is known. It comes first because
+ * it keeps that length: a recording of one part is sent whole with its end,
+ * which is what its request's output limit and the check of its answer are
+ * sized by, even when its bytes alone would prove it short.
+ *
  * Whole-file path: when {@link sendsWholeFile} holds - the provider reads the
  * original container, the encoded file is within its byte limit, and its length
  * is within the duration cap or left to the endpoint - the original bytes are
@@ -274,6 +325,11 @@ export async function prepareAudio(
 	container: AudioContainer,
 	options: AudioPrepOptions,
 ): Promise<PreparedAudio> {
+	const clipped = planClips(raw, fileName, container, options);
+	if (clipped) {
+		return clipped;
+	}
+
 	if (sendsWholeFile(raw.byteLength, container, options)) {
 		return {
 			payloads: [
@@ -290,46 +346,242 @@ export async function prepareAudio(
 
 	assertDecodable(raw.byteLength, container, options);
 
-	// The full decoded PCM stays alive for the whole run (~230 MB for an
-	// hour at 16 kHz mono, audit finding 6.8): each chunk's WAV is
-	// materialized lazily from a non-copying subarray view, and keeping the
-	// samples is what lets a part be re-split on demand when a provider
-	// overruns its output token budget. A decode-per-chunk scheme would
-	// drop the retention but re-decode the file once per chunk; revisit if
-	// long-recording memory pressure ever outweighs that trade.
-	const samples = await decodeToMono16k(raw);
+	return decodedParts(await decodeToMono16k(raw), options);
+}
+
+/**
+ * Plans a decoded recording as WAV parts cut from its samples.
+ *
+ * The full decoded PCM stays alive for the whole run (~230 MB for an hour at
+ * 16 kHz mono, audit finding 6.8): each chunk's WAV is materialized lazily
+ * from a non-copying subarray view, and keeping the samples is what lets a
+ * part be re-split on demand when a provider overruns its output token
+ * budget. A decode-per-chunk scheme would drop the retention but re-decode
+ * the file once per chunk; revisit if long-recording memory pressure ever
+ * outweighs that trade.
+ * @param samples - The recording, mono at 16 kHz
+ * @param options - Provider-derived preparation options
+ * @returns The planned parts
+ */
+function decodedParts(
+	samples: Float32Array,
+	options: AudioPrepOptions,
+): PreparedAudio {
 	const totalSeconds = samples.length / TRANSCRIBE_SAMPLE_RATE;
 	const plans = planChunks(totalSeconds, options.chunkSeconds);
 	const multiChunk = plans.length > 1;
-	// Build a payload for a plan, retaining the decoded samples so the part can
-	// be re-split on demand when a provider overruns its output token budget.
 	const buildPayload = (
 		plan: ChunkPlan,
 		filename: string,
-	): PreparedPayload => ({
-		contentType: WAV_MIME,
-		filename,
-		offsetSeconds: plan.startSeconds,
-		endSeconds: plan.endSeconds,
-		createData: () => extractChunkWav(samples, plan),
-		subdivide: () =>
-			splitChunkPlan(plan, MIN_SUBDIVIDE_SECONDS).map((half) =>
-				buildPayload(half, `audio-${String(half.index)}.wav`),
-			),
-	});
-	const payloads: PreparedPayload[] = plans.map((plan) =>
-		buildPayload(
-			plan,
-			multiChunk ? `audio-${String(plan.index)}.wav` : 'audio.wav',
-		),
-	);
-	return {
-		payloads,
-		diarizationSplitWarning: shouldWarnDiarizationSplit(
-			plans.length,
-			options.diarize,
-		),
+		leadIn: number,
+	): PreparedPayload => {
+		const sent = withLeadIn(plan, leadIn);
+		return {
+			contentType: WAV_MIME,
+			filename,
+			offsetSeconds: sent.startSeconds,
+			endSeconds: plan.endSeconds,
+			...(leadIn > 0 ? { leadInSeconds: leadIn } : {}),
+			createData: () => extractChunkWav(samples, sent),
+			subdivide: () =>
+				splitChunkPlan(plan, MIN_SUBDIVIDE_SECONDS).map((half, at) =>
+					buildPayload(
+						half,
+						`audio-${String(half.index)}.wav`,
+						at === 0 ? leadIn : options.leadInSeconds,
+					),
+				),
+		};
 	};
+	return {
+		payloads: plans.map((plan) =>
+			buildPayload(
+				plan,
+				multiChunk ? `audio-${String(plan.index)}.wav` : 'audio.wav',
+				leadInFor(plan, options.leadInSeconds),
+			),
+		),
+		diarizationSplitWarning: warnsOfSplit(plans.length, options),
+	};
+}
+
+/**
+ * Whether a run split into this many parts tells the user that speaker
+ * labels may differ between them. A run whose later parts carry a lead-in
+ * has its labels matched across parts instead.
+ * @param partCount - How many parts the recording was planned as
+ * @param options - Provider-derived preparation options
+ * @returns True when the caller should warn
+ */
+function warnsOfSplit(
+	partCount: number,
+	options: Pick<AudioPrepOptions, 'diarize' | 'leadInSeconds'>,
+): boolean {
+	return (
+		options.leadInSeconds === 0 &&
+		shouldWarnDiarizationSplit(partCount, options.diarize)
+	);
+}
+
+/**
+ * The lead-in a planned part is sent with: none for the part that opens the
+ * recording, which has no part before it.
+ * @param plan - The planned part
+ * @param leadInSeconds - What a later part carries
+ * @returns Seconds of the part before it this part is sent with
+ */
+function leadInFor(plan: ChunkPlan, leadInSeconds: number): number {
+	return Math.min(leadInSeconds, plan.startSeconds);
+}
+
+/**
+ * The stretch actually sent for a part: its plan, started early by its
+ * lead-in.
+ * @param plan - The part's own stretch
+ * @param leadIn - Seconds of the part before it to send as well
+ * @returns The plan the audio is cut by
+ */
+function withLeadIn(plan: ChunkPlan, leadIn: number): ChunkPlan {
+	return { ...plan, startSeconds: plan.startSeconds - leadIn };
+}
+
+/**
+ * The length a provider that clips can plan this recording by, or null when
+ * it cannot: the provider does not clip, does not read this container, the
+ * file is over its byte limit, or nobody read the length.
+ * @param byteLength - Encoded file size in bytes
+ * @param container - The original container
+ * @param options - Provider-derived preparation options
+ * @returns The recording's length in seconds, or null
+ */
+function clippableSeconds(
+	byteLength: number,
+	container: AudioContainer,
+	options: AudioPrepOptions,
+): number | null {
+	const totalSeconds = options.knownDurationSeconds ?? Number.NaN;
+	const applies =
+		options.clipsUploadedFile &&
+		Number.isFinite(totalSeconds) &&
+		totalSeconds > 0 &&
+		options.originalContainers.accepts(container) &&
+		byteLength <= options.maxRequestBytes;
+	return applies ? totalSeconds : null;
+}
+
+/**
+ * Plans a recording as time spans of its own bytes, for a provider that cuts
+ * each span out of the file it was sent once. Nothing is decoded: the spans
+ * come from the length the container states, so peak memory stays at the
+ * encoded file and the upload is the recording as it was recorded.
+ *
+ * Null when this path does not apply (see {@link clippableSeconds}), which
+ * leaves the decode path, which measures the recording, to plan the parts.
+ * @param raw - Encoded file bytes, only ever read
+ * @param fileName - Source file name, the upload's name
+ * @param container - The original container
+ * @param options - Provider-derived preparation options
+ * @returns The planned parts, or null when this path does not apply
+ */
+function planClips(
+	raw: ArrayBuffer,
+	fileName: string,
+	container: AudioContainer,
+	options: AudioPrepOptions,
+): PreparedAudio | null {
+	const totalSeconds = clippableSeconds(raw.byteLength, container, options);
+	if (totalSeconds === null) {
+		return null;
+	}
+	const whole: WholeUpload = {
+		contentType: container.contentType,
+		filename: fileName,
+		createData: () => raw,
+	};
+	const plans = planChunks(totalSeconds, options.chunkSeconds);
+	const [single] = plans;
+	if (plans.length === 1 && single) {
+		// Short enough for one request: the file goes as it is, and its known
+		// end is what lets the answer be held against its length. Its request
+		// carries an output limit like any other, so an answer cut at it is
+		// asked for again as two stretches of the same file.
+		return {
+			payloads: [
+				{
+					...whole,
+					offsetSeconds: 0,
+					endSeconds: totalSeconds,
+					subdivide: () =>
+						clipHalves(whole, single, 0, options.leadInSeconds),
+				},
+			],
+			diarizationSplitWarning: false,
+		};
+	}
+	return {
+		payloads: plans.map((plan) =>
+			clipOf(
+				whole,
+				plan,
+				leadInFor(plan, options.leadInSeconds),
+				options.leadInSeconds,
+			),
+		),
+		diarizationSplitWarning: warnsOfSplit(plans.length, options),
+	};
+}
+
+/** The recording as it is uploaded, which every part cut from it is lent. */
+type WholeUpload = Pick<
+	PreparedPayload,
+	'contentType' | 'filename' | 'createData'
+>;
+
+/**
+ * One stretch of an uploaded recording, as the part the provider cuts out.
+ * @param whole - The recording as it is uploaded
+ * @param plan - The part's own stretch
+ * @param leadIn - Seconds of the part before it that this part is sent with
+ * @param laterLeadIn - What a part that follows another carries
+ * @returns The part
+ */
+function clipOf(
+	whole: WholeUpload,
+	plan: ChunkPlan,
+	leadIn: number,
+	laterLeadIn: number,
+): PreparedPayload {
+	const sent = withLeadIn(plan, leadIn);
+	return {
+		...whole,
+		offsetSeconds: sent.startSeconds,
+		endSeconds: plan.endSeconds,
+		...(leadIn > 0 ? { leadInSeconds: leadIn } : {}),
+		clip: { startSeconds: sent.startSeconds, endSeconds: plan.endSeconds },
+		subdivide: () => clipHalves(whole, plan, leadIn, laterLeadIn),
+	};
+}
+
+/**
+ * The two halves a stretch is asked for again in, once its answer was cut at
+ * the output limit: the first keeps the stretch's own lead-in, and the second
+ * follows the first, so it carries the lead-in of a later part. None when a
+ * half would be shorter than the floor.
+ * @param whole - The recording as it is uploaded
+ * @param plan - The stretch to split
+ * @param leadIn - The lead-in the stretch itself was sent with
+ * @param laterLeadIn - What a part that follows another carries
+ * @returns The halves, or none
+ */
+function clipHalves(
+	whole: WholeUpload,
+	plan: ChunkPlan,
+	leadIn: number,
+	laterLeadIn: number,
+): PreparedPayload[] {
+	return splitChunkPlan(plan, MIN_SUBDIVIDE_SECONDS).map((half, at) =>
+		clipOf(whole, half, at === 0 ? leadIn : laterLeadIn, laterLeadIn),
+	);
 }
 
 /**
@@ -381,5 +633,7 @@ export function audioPrepOptions(
 		engineLabel,
 		chunkSeconds,
 		diarize,
+		clipsUploadedFile: capabilities.clipsUploadedFile,
+		leadInSeconds: diarize ? capabilities.partLeadInSeconds : 0,
 	};
 }

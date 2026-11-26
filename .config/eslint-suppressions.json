@@ -640,11 +640,6 @@
 			"count": 1
 		}
 	},
-	"src/transcription/audioPrep.ts": {
-		"max-lines-per-function": {
-			"count": 1
-		}
-	},
 	"src/transcription/costs.ts": {
 		"complexity": {
 			"count": 2

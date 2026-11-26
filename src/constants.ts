@@ -799,9 +799,16 @@ export const GEMINI_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
 export const GEMINI_INLINE_MAX_BYTES = 14 * 1024 * 1024;
 
 /**
- * Container MIME types the Gemini File API accepts for audio directly. Any
- * other container (notably `audio/webm` and `audio/mp4`/m4a, which the plugin
- * can record) is decoded to 16 kHz mono WAV before upload.
+ * Container MIME types Gemini reads as they stand, from the list in Google's
+ * audio guide (https://ai.google.dev/gemini-api/docs/audio). `audio/mp4` is
+ * the type this plugin gives both `m4a` and `mp4`: a 59-minute `mp4` and a
+ * 24-minute `m4a` lesson were uploaded and transcribed as they were on
+ * November 26, 2026, where decoding them to WAV first had turned 43 MB into
+ * 114 MB of upload. Any other container is decoded to 16 kHz mono WAV before
+ * upload. That includes `audio/webm`, which the guide lists too: the WebM a
+ * live recorder writes carries no length and no seek index, and whether
+ * Gemini cuts a stretch out of such a file has not been measured, so the
+ * container this plugin records in by default keeps the path it always took.
  */
 export const GEMINI_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
 	WAV_MIME,
@@ -810,6 +817,7 @@ export const GEMINI_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
 	`${MIME_TYPE_AUDIO_PREFIX}ogg`,
 	`${MIME_TYPE_AUDIO_PREFIX}flac`,
 	`${MIME_TYPE_AUDIO_PREFIX}aiff`,
+	`${MIME_TYPE_AUDIO_PREFIX}mp4`,
 ]);
 
 /** Header carrying the Gemini API key on every request. */
@@ -881,15 +889,51 @@ export const GEMINI_GENERATE_MIN_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Longest recording, in seconds, that Gemini transcribes in a single
- * `generateContent` request. Beyond this the audio is split into parts that
- * are transcribed separately and stitched back onto the timeline: one request
- * for a long meeting would otherwise outlast the request timeout and risk
- * MAX_TOKENS truncation, since both inference time and the output transcript
- * grow with audio duration. Sized so each part finishes comfortably within
- * {@link GEMINI_GENERATE_MIN_TIMEOUT_MS}. Splitting resets Gemini's per-request
- * speaker numbering, so a diarized split surfaces a warning to the user.
+ * `generateContent` request. Beyond this the recording is asked for in parts
+ * that are stitched back onto the timeline: one request for a long meeting
+ * would otherwise outlast the request timeout and risk MAX_TOKENS truncation,
+ * since both inference time and the output transcript grow with audio
+ * duration. Ten minutes rather than the fifteen it was while parts were sent
+ * one after another: parts now go out {@link GEMINI_PARALLEL_REQUESTS} at a
+ * time, so a shorter part costs no wall time, answers in about 40 s on
+ * `gemini-4-hydrogen` (measured at 45-55 s for twelve minutes), and loses
+ * less when one answer has to be asked for again.
  */
-export const GEMINI_MAX_WHOLE_FILE_SECONDS = 15 * 60;
+export const GEMINI_MAX_WHOLE_FILE_SECONDS = 10 * 60;
+
+/**
+ * How many parts of one recording are asked of Gemini at the same time. An
+ * hour-long lesson is six parts, so four leaves it two rounds of requests
+ * instead of six in a row. A key whose plan allows fewer requests a minute
+ * answers the extra ones with 429 and a `Retry-After`, which the run already
+ * waits out part by part.
+ */
+export const GEMINI_PARALLEL_REQUESTS = 4;
+
+/**
+ * Output tokens a transcription request may spend per second of the audio it
+ * covers. `gemini-4-hydrogen` wrote 13 answer tokens and 8 thinking tokens
+ * per second of a two-speaker lesson, and `gemini-3.8-flash` 17 with no
+ * thinking, so 60 leaves room for speech three times as dense. Without a
+ * limit a model that starts repeating one word runs to the model's own
+ * ceiling: one such answer was billed 65 520 tokens for an unusable JSON.
+ */
+export const GEMINI_OUTPUT_TOKENS_PER_SECOND = 60;
+
+/**
+ * Floor of the per-request output limit, so a part of a few seconds still has
+ * room for the thinking the model does before its first line.
+ */
+export const GEMINI_MIN_OUTPUT_TOKENS = 4096;
+
+/**
+ * Seconds of the previous part that a later part of a diarized recording is
+ * sent with. The model numbers speakers per request, so the same stretch
+ * heard by two neighbouring requests is what lets the run tell that one
+ * request's "Speaker 2" is the other's "Olga". The lead-in is read for that
+ * and for the sentence the cut fell in, and its other lines are dropped.
+ */
+export const PART_LEAD_IN_SECONDS = 30;
 
 /**
  * Smallest half an adaptive subdivision may produce when a part overruns a

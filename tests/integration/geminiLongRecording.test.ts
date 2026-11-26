@@ -14,7 +14,10 @@ import {
 } from 'src/transcription/TranscriptionService';
 import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';
 import type { RecordingRange } from 'src/transcription/partFailure';
-import { prepareAudio } from 'src/transcription/audioPrep';
+import {
+	audioContainerFromExtension,
+	prepareAudio,
+} from 'src/transcription/audioPrep';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { partial, silenceConsole } from '../helpers/doubles';
@@ -52,6 +55,17 @@ function prepareParts(bounds: [number, number][]): void {
 			createData: () => new ArrayBuffer(4),
 		})),
 		diarizationSplitWarning: false,
+	});
+}
+
+/**
+ * Names the recording's container as one Gemini reads as it stands, which is
+ * when the run asks for its length. The shared double names every file WebM.
+ */
+function readsItsContainer(): void {
+	jest.mocked(audioContainerFromExtension).mockReturnValueOnce({
+		contentType: 'audio/mp4',
+		extension: 'm4a',
 	});
 }
 
@@ -148,10 +162,13 @@ const SHORT_FIRST = answer([{ start: 24, end: 450, text: 'Dzień dobry.' }]);
 /**
  * Transcribes the recording through a real Gemini provider.
  * @param onlyRanges - The stretches a top-up asks for, or none for a full run
+ * @param readDurationSeconds - Reads the recording's length for the plan
  * @returns What the run returned
  */
 function transcribe(
 	onlyRanges?: RecordingRange[],
+	readDurationSeconds: () => Promise<number | null> = () =>
+		Promise.resolve(null),
 ): ReturnType<TranscriptionService['run']> {
 	const service = new TranscriptionService(
 		createMockApp().app,
@@ -168,6 +185,7 @@ function transcribe(
 					apiKey: 'gm-test',
 					model: 'gemini-3.8-flash',
 				}),
+			readDurationSeconds,
 		},
 	);
 	return service.run(recording, {
@@ -252,8 +270,10 @@ describe('a long recording Gemini transcribes in parts', () => {
 		);
 	});
 
+	// Both parts are in flight before either is sent again, so the answers
+	// are queued first part, last part, and then the first part's second try.
 	it('sends a part again when its lines stop more than a minute before its end', async () => {
-		const sent = queueResponses([SHORT_FIRST, WHOLE_FIRST, WHOLE_LAST]);
+		const sent = queueResponses([SHORT_FIRST, WHOLE_LAST, WHOLE_FIRST]);
 
 		const result = await transcribe();
 
@@ -262,7 +282,7 @@ describe('a long recording Gemini transcribes in parts', () => {
 	});
 
 	it('reports a part whose lines stopped short on both attempts', async () => {
-		queueResponses([SHORT_FIRST, SHORT_FIRST, WHOLE_LAST]);
+		queueResponses([SHORT_FIRST, WHOLE_LAST, SHORT_FIRST]);
 
 		const result = await transcribe();
 
@@ -279,8 +299,8 @@ describe('a long recording Gemini transcribes in parts', () => {
 	it('names both faults when the two answers failed differently', async () => {
 		queueResponses([
 			SHORT_FIRST,
-			answer([{ start: 798, end: 800, text: 'Dobrze.' }]),
 			WHOLE_LAST,
+			answer([{ start: 798, end: 800, text: 'Dobrze.' }]),
 		]);
 
 		const result = await transcribe();
@@ -397,5 +417,43 @@ describe('a long recording Gemini transcribes in parts', () => {
 		expect(result.missingParts.map((part) => part.label)).toEqual([
 			'the 0:00-12:06 segment',
 		]);
+	});
+
+	it('hands preparation the length the recording states, to plan the parts by', async () => {
+		queueResponses([WHOLE_FIRST, WHOLE_LAST]);
+		readsItsContainer();
+
+		await transcribe(undefined, () => Promise.resolve(RECORDING_SECONDS));
+
+		expect(mockPrepareAudio.mock.lastCall?.[3]).toEqual({
+			knownDurationSeconds: RECORDING_SECONDS,
+		});
+	});
+
+	// A length that cannot be read is not a reason to fail a run that can
+	// still measure the recording by decoding it.
+	it('prepares the recording without a length when reading it fails', async () => {
+		queueResponses([WHOLE_FIRST, WHOLE_LAST]);
+		readsItsContainer();
+
+		const result = await transcribe(undefined, () =>
+			Promise.reject(new Error('unreadable')),
+		);
+
+		expect(mockPrepareAudio.mock.lastCall?.[3]).not.toEqual({
+			knownDurationSeconds: expect.any(Number),
+		});
+		expect(result.missingParts).toEqual([]);
+	});
+
+	it('prepares the recording without a length when its container states none', async () => {
+		queueResponses([WHOLE_FIRST, WHOLE_LAST]);
+		readsItsContainer();
+
+		await transcribe(undefined, () => Promise.resolve(null));
+
+		expect(mockPrepareAudio.mock.lastCall?.[3]).not.toEqual({
+			knownDurationSeconds: expect.any(Number),
+		});
 	});
 });

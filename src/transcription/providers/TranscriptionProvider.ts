@@ -110,6 +110,24 @@ export interface AudioPayload {
 	filename: string;
 	/** Offset of this payload from the start of the recording, in seconds. */
 	offsetSeconds: number;
+	/**
+	 * How much audio this request covers, in seconds, when the run measured
+	 * it. Absent for a file sent whole on trust, whose length nobody read.
+	 */
+	durationSeconds?: number;
+	/**
+	 * The stretch of {@link data} this request is for, when `data` is the
+	 * whole recording and the engine cuts the stretch out itself (see
+	 * {@link ProviderCapabilities.clipsUploadedFile}). The timings a provider
+	 * returns are still counted from the start of the stretch.
+	 */
+	clip?: AudioClip;
+}
+
+/** A stretch of a recording, in seconds from its start. */
+export interface AudioClip {
+	readonly startSeconds: number;
+	readonly endSeconds: number;
 }
 
 /**
@@ -341,6 +359,26 @@ export interface ProviderCapabilities {
 	 * part's answer against the part and sends it once more when it left it.
 	 */
 	estimatesTimecodes: boolean;
+	/**
+	 * Whether the engine cuts a stretch out of a recording it was sent once,
+	 * so a long recording is uploaded whole a single time and each part is a
+	 * request naming its start and end (see {@link AudioPayload.clip}). Such
+	 * a recording is never decoded: its parts are planned from the length its
+	 * container states.
+	 */
+	clipsUploadedFile: boolean;
+	/**
+	 * How many parts of one recording the engine is asked for at the same
+	 * time. One for an engine whose parts are sent in turn.
+	 */
+	maxParallelRequests: number;
+	/**
+	 * Seconds of the part before it that a later part of a diarized recording
+	 * is sent with, for an engine that numbers speakers per request: the
+	 * shared stretch is what the run matches one part's labels to the next's
+	 * on. Zero for an engine whose parts start where the last one ended.
+	 */
+	partLeadInSeconds: number;
 }
 
 /** A provider that transcribes a single audio payload. */
@@ -367,4 +405,10 @@ export interface TranscriptionProvider {
 		payload: AudioPayload,
 		options: TranscribeOptions,
 	): Promise<WhisperResult>;
+	/**
+	 * Releases what the provider kept between requests of one run, such as a
+	 * recording uploaded once for all of its parts. Called once the run is
+	 * over, however it ended. Absent on a provider that keeps nothing.
+	 */
+	dispose?(): Promise<void>;
 }
