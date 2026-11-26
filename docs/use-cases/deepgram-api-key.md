@@ -23,7 +23,7 @@ Deepgram is one of six transcription engines in the plugin (alongside the [Whisp
 - **Free starter credit, then pay-as-you-go.** A new Deepgram account includes a starter credit so you can transcribe right away; after that you pay only for what you use.
 - **Default model `nova-3`.** The plugin ships pointing at Deepgram's current general model, with a model picker for named variants and older families.
 
-If you only ever record a single speaker and want a fully free, offline option, [local whisper.cpp](../use-cases/local-whisper-cpp.md) may suit you better - but it cannot diarize. For diarized speaker labels, use Deepgram, Gemini, Mistral Voxtral, or AssemblyAI. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for how speaker labels flow into the transcript.
+If you only ever record a single speaker and want a fully free, offline option, [local whisper.cpp](../use-cases/local-whisper-cpp.md) may suit you better - but it cannot diarize. For diarized speaker labels, use Deepgram, Gemini, Mistral Voxtral, or AssemblyAI, or a self-hosted Whisper server that diarizes through the Whisper API engine. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for how speaker labels flow into the transcript.
 
 ## Step 1: Sign up for Deepgram
 
@@ -72,7 +72,7 @@ Diarization is what separates each voice into a labelled speaker. It is **off by
 1. Still in the **Transcription** section, find **Speaker diarization**.
 2. Turn it **on**.
 
-**Speaker diarization** is enabled only for engines that support it - **Deepgram**, **Google Gemini**, **Mistral Voxtral**, and **AssemblyAI**. With the Whisper API or local whisper.cpp selected, the toggle is greyed out, and in the **Transcribe audio** dialog it reads _"Not supported by the selected engine. Use Deepgram for speaker labels."_ Because you selected Deepgram in Step 3, the toggle is active.
+**Speaker diarization** is enabled only for engines that support it - **Deepgram**, **Google Gemini**, **Mistral Voxtral**, and **AssemblyAI**, and the **Whisper API** once **Endpoint returns speaker labels** is on for a self-hosted server that diarizes. With local whisper.cpp selected, the toggle is greyed out, and in the **Transcribe audio** dialog it reads _"Not supported by the selected engine. Use Deepgram for speaker labels."_ With an undeclared Whisper API it is greyed out too, and names the setting to turn on. Because you selected Deepgram in Step 3, the toggle is active.
 
 ![Speaker diarization toggle turned on in the Transcription settings](../images/settings-transcription-diarization.png)
 

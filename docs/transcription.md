@@ -112,7 +112,7 @@ Behavior and limits:
 
 Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The **Whisper API models** link in the **Model** row's description points at the [OpenAI speech-to-text guide](https://developers.openai.com/api/docs/guides/speech-to-text).
 
-![The Whisper API engine page under Engines, with the Base URL, OpenAI API key keychain picker, Model and Upload chunk size rows](images/settings-engine-whisper-api.png)
+![The Whisper API engine page under Engines, with the Base URL, OpenAI API key keychain picker, Model, Upload chunk size and Endpoint returns speaker labels rows](images/settings-engine-whisper-api.png)
 
 ### Deepgram
 
@@ -732,7 +732,7 @@ Per-engine fields (base URL, key, model picker, upload chunk size) are documente
 
 - **"Transcribe audio" is missing from the menu** - enable **Enable transcription** in settings first.
 - **The Transcribe audio palette command does nothing** - it runs only when the active file is an audio file and transcription is enabled. Open the audio file (or its note) and try again.
-- **Speaker labels never appear** - only Deepgram, Gemini, Mistral Voxtral, and AssemblyAI diarize, so the toggle is disabled for Whisper API and local whisper.cpp. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
+- **Speaker labels never appear** - Deepgram, Gemini, Mistral Voxtral and AssemblyAI diarize, and so does the Whisper API once **Endpoint returns speaker labels** is on for a server that diarizes. Local whisper.cpp never does. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
 - **Speaker numbers change partway through a Gemini transcript** - a recording longer than 15 minutes is split into parts and Gemini renumbers speakers per part. Use **Deepgram** (sends the whole file) or split the recording for consistent speakers. A recording of exactly 15 minutes is not split and shows no such warning.
 - **"Could not insert the transcript into the note"** - the note could not be written to, typically because it was deleted or moved while the transcription was running. The transcript is saved as a sidecar file as a fallback; the notice shows its path. The view mode does not matter: a note in Reading view takes the transcript like one being edited.
 - **A request times out** - raise **Request timeout** (up to 60 minutes) for slow connections or very large uploads, or split the file first.

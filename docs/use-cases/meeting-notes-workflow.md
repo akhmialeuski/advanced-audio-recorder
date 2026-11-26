@@ -67,7 +67,7 @@ Diarization (splitting the transcript by speaker) is what makes a meeting transc
 | **Mistral Voxtral** | Yes         | 1 GB     | Paid, about $0.003 a minute | Up to three hours in one request, one speaker numbering | [Mistral](mistral-api-key.md)       |
 | **AssemblyAI**      | Yes         | 2.2 GB   | Paid, about $0.21 an hour   | Up to ten hours in one job, one speaker numbering       | [AssemblyAI](assemblyai-api-key.md) |
 
-The **Whisper API** engine (OpenAI / Groq) and **local whisper.cpp** do **not** diarize - the **Speaker diarization** toggle is greyed out for them. Use them only if you do not need speaker labels.
+The **Whisper API** engine does **not** diarize through OpenAI or Groq, and **local whisper.cpp** never does - the **Speaker diarization** toggle is greyed out for them. A self-hosted Whisper server that diarizes is the exception: turn on **Endpoint returns speaker labels** on the Whisper API page and the toggle unlocks (see [Whisper API](../transcription.md#whisper-api-openai-compatible)).
 
 For a multi-hour meeting, Deepgram sends the whole file in one request, so speaker numbering stays consistent end to end. Gemini also accepts up to 2 GB, but a recording longer than **15 minutes** is split into parts and stitched back together, and a diarized split **resets speaker numbering** at each part boundary, which the plugin surfaces as a warning. Mistral Voxtral also sends the recording whole, up to three hours or 1 GB, so its speaker numbering holds end to end as Deepgram's does. If consistent labels across a very long meeting matter most, prefer Deepgram, Voxtral, or AssemblyAI. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for the full behavior.
 
@@ -277,7 +277,7 @@ Use this once to confirm your setup, then just record.
 
 ## Troubleshooting
 
-- **The Speaker diarization toggle is greyed out** - the selected engine cannot diarize. Switch **Transcription engine** to **Deepgram**, **Google Gemini**, **Mistral Voxtral**, or **AssemblyAI**.
+- **The Speaker diarization toggle is greyed out** - the selected engine cannot diarize. Switch **Transcription engine** to **Deepgram**, **Google Gemini**, **Mistral Voxtral**, or **AssemblyAI**, or, for a self-hosted Whisper server that diarizes, turn on **Endpoint returns speaker labels** on the Whisper API page.
 - **Speaker numbers reset partway through a long Gemini transcript** - Gemini splits recordings longer than 15 minutes into parts, and diarized splits restart speaker numbering at each boundary (surfaced as a warning). Use **Deepgram** for consistent labels across a long meeting.
 - **One person came back as two speakers** - diarization split them across labels (a changed microphone position, a long pause, a phone joining). In **Rename speakers**, type the same name into both rows and confirm the merge: their lines become one speaker everywhere. Do it before anyone edits the note, since merged lines read identically afterwards and only a new transcription can separate them again.
 - **The play buttons in Rename speakers are greyed out** - that recording's roster predates speaker samples. Transcribe it once more with **Speaker diarization** on and the samples appear.

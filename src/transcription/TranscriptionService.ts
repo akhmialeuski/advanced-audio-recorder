@@ -809,6 +809,7 @@ export class TranscriptionService {
 			diarize,
 			translated: transcribeOptions.translateToEnglish === true,
 			speakers: canonical.speakers,
+			segmentCount: canonical.segments.length,
 		});
 		// A diarized re-transcription re-applies the names the user assigned
 		// earlier (stored in the recording's sidecar) and refreshes the stored

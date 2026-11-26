@@ -298,9 +298,9 @@ function enginePage(
 		});
 	}
 	// Asked only of an engine whose endpoint is whatever compatible server the
-	// base URL names, beside that URL, because it is a fact about the server
-	// there and not a choice per run: the run's own diarization switch stays
-	// where it was, and is offered once this says the server can answer it.
+	// base URL names, because it is a fact about that server and not a choice
+	// per run: the run's own diarization switch stays where it was, and is
+	// offered once this says the server can answer it.
 	if (engine.endpointDiarization) {
 		rows.push({
 			name: 'Endpoint returns speaker labels',

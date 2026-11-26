@@ -361,10 +361,13 @@ export function effectiveDiarize(
  * says the server ignored the request rather than that one person spoke. The
  * declaration is the user's, so the user is the one told, rather than the run
  * failing over a transcript that is otherwise fine. A run that translated the
- * speech is exempt: the translating operation takes no diarization field.
+ * speech is exempt: the translating operation takes no diarization field. So
+ * is a run that came back with no segment at all, a silent recording, since
+ * there was nothing to label.
  * @param id - The run's transcription engine id
  * @param run - Whether the run asked for speaker labels and translated the
- *   speech, and the speaker labels its transcript came back with
+ *   speech, and the speaker labels and the number of segments its transcript
+ *   came back with
  * @returns The notice, or null when there is nothing to report
  */
 export function undeliveredDiarizationNotice(
@@ -373,6 +376,7 @@ export function undeliveredDiarizationNotice(
 		diarize: boolean;
 		translated: boolean;
 		speakers: readonly string[];
+		segmentCount: number;
 	},
 ): string | null {
 	if (
@@ -380,6 +384,7 @@ export function undeliveredDiarizationNotice(
 			DiarizationSupport.Declared ||
 		!run.diarize ||
 		run.translated ||
+		run.segmentCount === 0 ||
 		run.speakers.length > 0
 	) {
 		return null;

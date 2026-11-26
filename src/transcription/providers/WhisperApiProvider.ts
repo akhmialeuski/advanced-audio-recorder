@@ -18,6 +18,7 @@ import { whisperPromptValue } from '../dictionaryBias';
 import {
 	authHeader,
 	buildMultipart,
+	type MultipartField,
 	requestJson,
 	trimTrailingSlash,
 	uploadTimeoutMs,
@@ -54,6 +55,9 @@ export interface WhisperApiConfig {
 	requestTimeoutMs?: number;
 }
 
+/** The text arm of a multipart field, as `buildMultipart` takes it. */
+type TextField = Extract<MultipartField, { type: 'text' }>;
+
 /**
  * The fields a request carries only when the run asks for them and the
  * operation takes them.
@@ -64,8 +68,8 @@ export interface WhisperApiConfig {
 function optionalFields(
 	options: TranscribeOptions,
 	translating: boolean,
-): { type: 'text'; name: string; value: string }[] {
-	const fields: { type: 'text'; name: string; value: string }[] = [];
+): TextField[] {
+	const fields: TextField[] = [];
 	// The translation operation writes English whatever was spoken, so a
 	// language hint would be a claim about the answer rather than about
 	// the audio; the endpoint rejects it.

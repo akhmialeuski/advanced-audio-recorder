@@ -335,6 +335,7 @@ describe('undeliveredDiarizationNotice', () => {
 				diarize: true,
 				translated: false,
 				speakers: [],
+				segmentCount: 3,
 			}),
 		).toContain('returned no speaker labels');
 	});
@@ -345,6 +346,7 @@ describe('undeliveredDiarizationNotice', () => {
 				diarize: true,
 				translated: false,
 				speakers: ['SPEAKER_00'],
+				segmentCount: 3,
 			}),
 		).toBeNull();
 	});
@@ -355,6 +357,7 @@ describe('undeliveredDiarizationNotice', () => {
 				diarize: false,
 				translated: false,
 				speakers: [],
+				segmentCount: 3,
 			}),
 		).toBeNull();
 		expect(
@@ -362,6 +365,18 @@ describe('undeliveredDiarizationNotice', () => {
 				diarize: true,
 				translated: true,
 				speakers: [],
+				segmentCount: 3,
+			}),
+		).toBeNull();
+	});
+
+	it('stays quiet for a silent recording, which had nothing to label', () => {
+		expect(
+			undeliveredDiarizationNotice(whisper, {
+				diarize: true,
+				translated: false,
+				speakers: [],
+				segmentCount: 0,
 			}),
 		).toBeNull();
 	});
@@ -372,6 +387,7 @@ describe('undeliveredDiarizationNotice', () => {
 				diarize: true,
 				translated: false,
 				speakers: [],
+				segmentCount: 3,
 			}),
 		).toBeNull();
 	});
