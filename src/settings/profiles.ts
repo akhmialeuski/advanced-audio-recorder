@@ -46,6 +46,8 @@ export const ProfileKindId = {
 	LlmTranslate: 'llmTranslate',
 	/** The instruction a dictated quick note is rewritten with. */
 	QuickNote: 'quickNote',
+	/** The choices of one transcription run, saved under a name. */
+	RunPreset: 'runPreset',
 } as const;
 
 /** Which kind of thing a profile holds (derived from {@link ProfileKindId}). */

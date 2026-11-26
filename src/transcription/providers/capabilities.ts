@@ -524,7 +524,7 @@ export function providerReadsLanguageHint(
 const LANGUAGE_LIST_SEPARATOR = ',';
 
 /** The language field's value that asks the engine to detect the language. */
-const AUTO_LANGUAGE = 'auto';
+export const AUTO_LANGUAGE = 'auto';
 
 /**
  * Whether the engine can be told every language a recording switches between.

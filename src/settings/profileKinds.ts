@@ -1,8 +1,9 @@
 /**
  * The kinds of profile the plugin keeps, described once each.
  *
- * A glossary, a chapter-guidance prompt, a participant roster, and a
- * post-processing prompt are the same thing four times over, and
+ * A glossary, a chapter-guidance prompt, a participant roster, a
+ * post-processing prompt, and a run preset are the same thing several times
+ * over, and
  * {@link module:settings/profiles} now stores them as one shape. What is left
  * per kind is what a kind actually differs in: the copy, what an entry says
  * about itself, and which block of the settings shows it.
@@ -24,6 +25,8 @@ import { type Profile, ProfileKindId } from './profiles';
 import { parseDictionary } from '../transcription/dictionary';
 import { LlmTask } from '../transcription/llmPostProcess';
 import { parseParticipantBody } from '../speakers/participantRoster';
+import { RUN_PARAMS } from '../transcription/runOptions';
+import { presetOptionCount } from '../transcription/runPreset';
 
 /**
  * Which block of the settings a kind's catalogue belongs to. Not stored: the
@@ -147,12 +150,38 @@ function promptSelectionDesc(what: string): string {
 }
 
 /**
+ * What a preset holds, for its catalogue entry.
+ * @param profile - The preset
+ * @returns The number of options it sets, or that its text does not read
+ */
+function presetSummary(profile: Profile): string {
+	const count = presetOptionCount(profile.body);
+	return count === null
+		? 'an option that cannot be read'
+		: countSummary(count, 'option', 'options');
+}
+
+/**
  * Every kind of profile, in the order the settings show them. Which block each
  * one belongs to is the kind's own `section`, and the settings tree filters the
  * catalogues it built from this list by it, so there is no second answer here
  * to the same question.
  */
 export const PROFILE_KINDS: readonly ProfileKind[] = [
+	defineKind({
+		id: ProfileKindId.RunPreset,
+		section: ProfileSection.Transcription,
+		heading: 'Transcription presets',
+		catalogueDesc:
+			'Named sets of run options: the engine, its model, the language, the switches and the profiles. Pick one in the Transcribe dialog to set them all at once.',
+		selectionName: 'Preset',
+		selectionDesc:
+			'Preset the Transcribe dialog opens with; None opens it with the settings as they stand.',
+		bodyName: 'Options',
+		bodyDesc: `One option per line as name: value. An option left out stays as the settings have it. The names are those of the transcribe command: ${RUN_PARAMS.join(', ')}.`,
+		summary: presetSummary,
+		visible: (settings) => settings.transcriptionEnabled,
+	}),
 	defineKind({
 		id: ProfileKindId.Participants,
 		section: ProfileSection.Transcription,

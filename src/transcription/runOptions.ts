@@ -14,10 +14,13 @@
 import type { CliData } from 'obsidian';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
+	NO_PROFILE_NAME,
 	ProfileKindId,
 	profileIdNamed,
+	selectedProfile,
 	setSelectedProfileId,
 } from '../settings/profiles';
+import { PROMPT_KIND_OF_TASK } from '../settings/profileResolution';
 import {
 	LLM_TASK_OPTIONS,
 	TRANSCRIPT_DESTINATION_OPTIONS,
@@ -27,6 +30,7 @@ import {
 } from '../settings/labels';
 import { cliChoice, cliSwitch, cliText } from '../obsidian/cliArgs';
 import { engineOfTranscription } from '../providers/providers';
+import { AUTO_LANGUAGE } from './providers/capabilities';
 import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** The settings a dropdown of the dialog sets for one run. */
@@ -48,6 +52,8 @@ interface ChoiceOption {
 	readonly read: (
 		args: CliData,
 	) => Refusable<((run: AudioRecorderSettings) => void) | null>;
+	/** What the settings hold for it, as it would be typed. */
+	readonly current: (settings: AudioRecorderSettings) => string;
 }
 
 /**
@@ -69,6 +75,7 @@ function choice<K extends ChoiceSetting>(
 		param,
 		values,
 		description,
+		current: (settings) => settings[setting],
 		read: (args) => {
 			const read = cliChoice(args, param, values);
 			if (isRefusal(read)) {
@@ -92,6 +99,8 @@ interface SwitchOption {
 	readonly param: string;
 	readonly description: string;
 	readonly apply: (run: AudioRecorderSettings, on: boolean) => void;
+	/** Whether the settings have it on. */
+	readonly current: (settings: AudioRecorderSettings) => boolean;
 }
 
 /** A profile picker of the dialog, as a parameter. */
@@ -100,6 +109,9 @@ interface ProfileOption {
 	readonly kind: ProfileKindId;
 	readonly description: string;
 }
+
+/** Parameter that names the language, or the languages, of the run. */
+const LANGUAGE_PARAM = 'language';
 
 /** Parameter that names the engine of the run. */
 const ENGINE_PARAM = 'engine';
@@ -145,6 +157,7 @@ export const SWITCHES: readonly SwitchOption[] = [
 		apply: (run, on) => {
 			run.transcriptionDiarize = on;
 		},
+		current: (settings) => settings.transcriptionDiarize,
 	},
 	{
 		param: 'words',
@@ -152,6 +165,7 @@ export const SWITCHES: readonly SwitchOption[] = [
 		apply: (run, on) => {
 			run.transcriptionWordTimestamps = on;
 		},
+		current: (settings) => settings.transcriptionWordTimestamps,
 	},
 	{
 		param: 'advanced',
@@ -159,6 +173,7 @@ export const SWITCHES: readonly SwitchOption[] = [
 		apply: (run, on) => {
 			run.transcriptionAdvancedSettingsEnabled = on;
 		},
+		current: (settings) => settings.transcriptionAdvancedSettingsEnabled,
 	},
 	{
 		param: 'twopass',
@@ -166,6 +181,7 @@ export const SWITCHES: readonly SwitchOption[] = [
 		apply: (run, on) => {
 			run.transcriptionAdvancedEnabled = on;
 		},
+		current: (settings) => settings.transcriptionAdvancedEnabled,
 	},
 	{
 		param: 'timestamps',
@@ -173,6 +189,7 @@ export const SWITCHES: readonly SwitchOption[] = [
 		apply: (run, on) => {
 			run.transcriptIncludeTimestamps = on;
 		},
+		current: (settings) => settings.transcriptIncludeTimestamps,
 	},
 	{
 		param: 'speakers',
@@ -180,6 +197,7 @@ export const SWITCHES: readonly SwitchOption[] = [
 		apply: (run, on) => {
 			run.transcriptIncludeSpeakers = on;
 		},
+		current: (settings) => settings.transcriptIncludeSpeakers,
 	},
 	{
 		param: 'postprocess',
@@ -187,6 +205,7 @@ export const SWITCHES: readonly SwitchOption[] = [
 		apply: (run, on) => {
 			run.llmPostProcessEnabled = on;
 		},
+		current: (settings) => settings.llmPostProcessEnabled,
 	},
 	{
 		param: 'chapters',
@@ -194,6 +213,7 @@ export const SWITCHES: readonly SwitchOption[] = [
 		apply: (run, on) => {
 			run.transcriptionAutoChaptersOnTranscribe = on;
 		},
+		current: (settings) => settings.transcriptionAutoChaptersOnTranscribe,
 	},
 ];
 
@@ -286,7 +306,7 @@ function changesOnly(changes: readonly Change[]): Refusable<Reading> {
 
 /** Reads the language, which takes any text. */
 const readLanguage: Reader = (_live, args) => {
-	const language = cliText(args, 'language');
+	const language = cliText(args, LANGUAGE_PARAM);
 	return changesOnly(
 		language === null
 			? []
@@ -423,4 +443,61 @@ export function transcriptionRun(
 			picks,
 		},
 	};
+}
+
+/** Every parameter a run can be stated with. */
+export const RUN_PARAMS: readonly string[] = [
+	LANGUAGE_PARAM,
+	MODEL_PARAM,
+	...CHOICES.map((option) => option.param),
+	...SWITCHES.map((option) => option.param),
+	...PROFILES.map((option) => option.param),
+];
+
+/** The prompt profile kinds, of which a run uses the one of its task. */
+const PROMPT_KINDS: ReadonlySet<ProfileKindId> = new Set(
+	Object.values(PROMPT_KIND_OF_TASK),
+);
+
+/**
+ * States the settings as the parameters that would reproduce them: what
+ * transcriptionRun reads back into the same run. The prompt profile is given
+ * for the task the settings name and for no other, since a run uses one task.
+ * @param settings - The settings to state
+ * @returns Each parameter with its value, in the order they are applied
+ */
+export function currentRunOptions(
+	settings: AudioRecorderSettings,
+): [param: string, value: string][] {
+	const models = engineOfTranscription(
+		settings.transcriptionProvider,
+	)?.models;
+	const taskKind = PROMPT_KIND_OF_TASK[settings.llmPostProcessTask];
+	return [
+		// The setting may be left empty to detect the language, and a line
+		// with no value does not read back, so it is stated as the word that
+		// means the same.
+		[
+			LANGUAGE_PARAM,
+			settings.transcriptionLanguage.trim() || AUTO_LANGUAGE,
+		],
+		...CHOICES.map((option): [string, string] => [
+			option.param,
+			option.current(settings),
+		]),
+		...(models
+			? [[MODEL_PARAM, models.model(settings)] as [string, string]]
+			: []),
+		...SWITCHES.map((option): [string, string] => [
+			option.param,
+			option.current(settings) ? 'on' : 'off',
+		]),
+		...PROFILES.filter(
+			(option) =>
+				!PROMPT_KINDS.has(option.kind) || option.kind === taskKind,
+		).map((option): [string, string] => [
+			option.param,
+			selectedProfile(settings, option.kind)?.name ?? NO_PROFILE_NAME,
+		]),
+	];
 }

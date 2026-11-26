@@ -20,6 +20,7 @@ import {
 import type { Profile } from 'src/settings/profiles';
 import {
 	LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+	LANGUAGE_LESSON_PRESET_ID,
 	MODEL_SEED_GENERATION,
 	LLM_PROVIDER_IDS,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -160,7 +161,21 @@ describe('Settings', () => {
 			);
 			expect(DEFAULT_SETTINGS.shippedProfileIds).toEqual([
 				LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+				LANGUAGE_LESSON_PRESET_ID,
 			]);
+		});
+
+		it('ships the language lesson preset, which names no language and is not in use', () => {
+			const preset = DEFAULT_SETTINGS.profiles.find(
+				(profile) => profile.id === LANGUAGE_LESSON_PRESET_ID,
+			);
+
+			expect(preset).toMatchObject({
+				kind: 'runPreset',
+				name: 'Language lesson',
+				body: 'engine: gemini\ndiarize: on\npostprocess: on\ntask: cleanup\ncleanup: Language lesson',
+			});
+			expect(DEFAULT_SETTINGS.selectedProfileIds.runPreset).toBe('');
 		});
 	});
 
@@ -183,7 +198,24 @@ describe('Settings', () => {
 			expect(merged.profiles[0]).toEqual(storedProfile);
 			expect(merged.shippedProfileIds).toEqual([
 				LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+				LANGUAGE_LESSON_PRESET_ID,
 			]);
+		});
+
+		it('gives an install that already holds the cleanup profile the preset, once', () => {
+			const merged = mergeSettings({
+				profiles: [storedProfile],
+				shippedProfileIds: [LANGUAGE_LESSON_CLEANUP_PROFILE_ID],
+			});
+
+			expect(
+				merged.profiles.filter(
+					(profile) => profile.id === LANGUAGE_LESSON_PRESET_ID,
+				),
+			).toHaveLength(1);
+			expect(mergeSettings(merged).profiles).toHaveLength(
+				merged.profiles.length,
+			);
 		});
 
 		it('does not bring back a shipped profile the user deleted', () => {

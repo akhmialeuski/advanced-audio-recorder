@@ -1263,6 +1263,27 @@ export const LANGUAGE_LESSON_CLEANUP_PROFILE_ID =
 export const LANGUAGE_LESSON_CLEANUP_PROFILE_NAME = 'Language lesson';
 
 /**
+ * Id of the transcription preset for language lessons, shipped with the
+ * cleanup profile it names. A stable literal for the same reason.
+ */
+export const LANGUAGE_LESSON_PRESET_ID = 'shipped-run-preset-language-lesson';
+
+/**
+ * What the shipped language lesson preset sets: the one engine that reads a
+ * list of languages, speaker labels to tell the tutor from the student, and
+ * the cleanup profile written for lessons. It names no language, which is the
+ * lesson's own: the user adds a `language` line, or saves the dialog's
+ * options as a preset of their own.
+ */
+export const LANGUAGE_LESSON_PRESET_BODY = [
+	'engine: gemini',
+	'diarize: on',
+	'postprocess: on',
+	'task: cleanup',
+	`cleanup: ${LANGUAGE_LESSON_CLEANUP_PROFILE_NAME}`,
+].join('\n');
+
+/**
  * Cleanup instruction for a recorded language lesson, where a student and a
  * tutor switch between the language being learned and one they share. It
  * names no language: which ones a lesson holds is the transcript's to say, and
