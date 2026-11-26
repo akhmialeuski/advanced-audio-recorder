@@ -26,6 +26,7 @@ import {
 	type LabeledOption,
 } from '../settings/labels';
 import { cliChoice, cliSwitch, cliText } from '../obsidian/cliArgs';
+import { engineOfTranscription } from '../providers/providers';
 import { isRefusal, type Refusable } from '../utils/refusal';
 
 /** The settings a dropdown of the dialog sets for one run. */
@@ -100,10 +101,18 @@ interface ProfileOption {
 	readonly description: string;
 }
 
+/** Parameter that names the engine of the run. */
+const ENGINE_PARAM = 'engine';
+
+/** The engines a run may name. */
+const ENGINE_VALUES = TRANSCRIPTION_PROVIDER_OPTIONS.map(
+	(option) => option.value,
+);
+
 /** The dialog's dropdowns. */
 export const CHOICES: readonly ChoiceOption[] = [
 	choice(
-		'engine',
+		ENGINE_PARAM,
 		'transcriptionProvider',
 		TRANSCRIPTION_PROVIDER_OPTIONS,
 		'Transcription engine for this run.',
@@ -205,7 +214,30 @@ export const PROFILES: readonly ProfileOption[] = [
 		kind: ProfileKindId.ChapterPrompt,
 		description: 'Chapter guidance profile, by name, or none.',
 	},
+	{
+		param: 'cleanup',
+		kind: ProfileKindId.LlmCleanup,
+		description: 'Cleanup prompt profile, by name, or none.',
+	},
+	{
+		param: 'summary',
+		kind: ProfileKindId.LlmSummary,
+		description: 'Summary prompt profile, by name, or none.',
+	},
+	{
+		param: 'translation',
+		kind: ProfileKindId.LlmTranslate,
+		description: 'Translation prompt profile, by name, or none.',
+	},
+	{
+		param: 'instruction',
+		kind: ProfileKindId.LlmCustom,
+		description: 'Custom instruction profile, by name, or none.',
+	},
 ];
+
+/** Parameter that names the model of the run's engine. */
+export const MODEL_PARAM = 'model';
 
 /** A profile choice the run makes, kept as the default the way the dialog keeps it. */
 export interface ProfilePick {
@@ -321,9 +353,38 @@ const readProfiles: Reader = (live, args) => {
 	return { value: { changes, picks } };
 };
 
+/**
+ * Reads the model, which belongs to whichever engine the run ends up on:
+ * the one typed beside it, or the one the settings name. An engine with no
+ * model to choose refuses it, since the value would go nowhere.
+ */
+const readModel: Reader = (live, args) => {
+	const model = cliText(args, MODEL_PARAM);
+	if (model === null) {
+		return changesOnly([]);
+	}
+	const typed = cliChoice(args, ENGINE_PARAM, ENGINE_VALUES);
+	if (isRefusal(typed)) {
+		return typed;
+	}
+	const id = typed.value ?? live.transcriptionProvider;
+	const models = engineOfTranscription(id)?.models;
+	if (!models) {
+		return {
+			refusal: `${MODEL_PARAM}=${model} cannot be applied: the ${id} engine has no model to choose.`,
+		};
+	}
+	return changesOnly([
+		(run) => {
+			models.setModel(run, model);
+		},
+	]);
+};
+
 /** The groups, in the order their changes are applied. */
 const READERS: readonly Reader[] = [
 	readLanguage,
+	readModel,
 	readChoices,
 	readSwitches,
 	readProfiles,

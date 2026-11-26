@@ -26,6 +26,7 @@ import {
 } from '../../transcription/api';
 import {
 	CHOICES,
+	MODEL_PARAM,
 	PROFILES,
 	SWITCHES,
 	transcriptionRun,
@@ -47,6 +48,7 @@ export const TRANSCRIBE_PARAMS: CliFlags = {
 		'<codes>',
 		'Language code, several separated by commas, or auto.',
 	),
+	[MODEL_PARAM]: valueParam('<id>', 'Model of the engine the run uses.'),
 	...Object.fromEntries(
 		CHOICES.map((option) => [
 			option.param,

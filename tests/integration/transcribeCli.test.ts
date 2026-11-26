@@ -22,7 +22,10 @@ import {
 	selectedProfileId,
 	type Profile,
 } from 'src/settings/profiles';
-import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import {
+	LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from 'src/constants';
 import type {
 	RecordingTranscriptionRequest,
 	TranscriptionRunOutcome,
@@ -208,6 +211,43 @@ describe('the choices a command line makes for one run', () => {
 			value: expect.objectContaining({
 				picks: [{ kind: ProfileKindId.Dictionary, id: '' }],
 			}),
+		});
+	});
+
+	it('picks the prompt profile of a post-processing task by its name', () => {
+		const run = valueOrThrow(runOf({ cleanup: 'language lesson' }));
+
+		expect(run.picks).toEqual([
+			{
+				kind: ProfileKindId.LlmCleanup,
+				id: LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+			},
+		]);
+	});
+
+	it('sets the model of the engine typed beside it', () => {
+		const run = applied({ engine: 'gemini', model: 'gemini-4-neon' });
+
+		expect(run.geminiModel).toBe('gemini-4-neon');
+		expect(run.whisperApiModel).toBe(createSut().settings.whisperApiModel);
+	});
+
+	it('sets the model of the engine the settings name when none is typed', () => {
+		expect(applied({ model: 'gpt-transcribe' }).whisperApiModel).toBe(
+			'gpt-transcribe',
+		);
+	});
+
+	it('refuses a model for an engine that has none to choose', () => {
+		expect(runOf({ engine: 'local-whisper', model: 'large-v3' })).toEqual({
+			refusal:
+				'model=large-v3 cannot be applied: the local-whisper engine has no model to choose.',
+		});
+	});
+
+	it('refuses a model typed beside an engine that does not exist', () => {
+		expect(runOf({ engine: 'whisperx', model: 'large-v3' })).toEqual({
+			refusal: expect.stringContaining('engine=whisperx is not one of'),
 		});
 	});
 
