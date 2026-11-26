@@ -29,8 +29,8 @@ import {
 	MODEL_PARAM,
 	PROFILES,
 	SWITCHES,
-	transcriptionRun,
 } from '../../transcription/runOptions';
+import { PRESET_PARAM, runWithPreset } from '../../transcription/runPreset';
 import { JobProgressNotice } from '../../ui/JobProgressNotice';
 import {
 	choiceParam,
@@ -49,6 +49,10 @@ export const TRANSCRIBE_PARAMS: CliFlags = {
 		'Language code, several separated by commas, or auto.',
 	),
 	[MODEL_PARAM]: valueParam('<id>', 'Model of the engine the run uses.'),
+	[PRESET_PARAM]: valueParam(
+		'<preset>',
+		'Transcription preset the run starts from, by name. Other parameters override it.',
+	),
 	...Object.fromEntries(
 		CHOICES.map((option) => [
 			option.param,
@@ -139,7 +143,7 @@ export async function transcribeFromCli(
 ): Promise<string> {
 	const { file, services } = context;
 	const live = services.getSettings();
-	const read = transcriptionRun(live, args);
+	const read = runWithPreset(live, args);
 	if (isRefusal(read)) {
 		return read.refusal;
 	}

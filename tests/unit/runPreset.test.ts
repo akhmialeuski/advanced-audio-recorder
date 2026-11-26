@@ -6,10 +6,12 @@
  */
 
 import {
+	argsWithPreset,
 	presetArgs,
 	presetBodyOf,
 	presetOptionCount,
 	presetRun,
+	runWithPreset,
 } from 'src/transcription/runPreset';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { LANGUAGE_LESSON_CLEANUP_PROFILE_ID } from 'src/constants';
@@ -105,8 +107,67 @@ describe('presetRun', () => {
 		});
 	});
 
+	it('refuses text that is no preset before reading any option', () => {
+		expect(presetRun(EVERYDAY, 'speed: fast')).toEqual({
+			refusal: expect.stringContaining('is not an option of a run'),
+		});
+	});
+
 	it('refuses a profile that no longer exists by the name the preset gives', () => {
 		expect(presetRun(EVERYDAY, 'cleanup: Lectures')).toEqual({
+			refusal: expect.stringContaining('No profile named "Lectures"'),
+		});
+	});
+});
+
+describe('argsWithPreset', () => {
+	const withLesson = {
+		...EVERYDAY,
+		profiles: [
+			...EVERYDAY.profiles,
+			{
+				id: 'preset-lesson',
+				kind: 'runPreset' as const,
+				name: 'Lesson',
+				body: 'language: pl, uk\ndiarize: on',
+			},
+			{
+				id: 'preset-broken',
+				kind: 'runPreset' as const,
+				name: 'Broken',
+				body: 'speed: fast',
+			},
+		],
+	};
+
+	it('answers what was typed when no preset is named', () => {
+		const args = { language: 'de' };
+
+		expect(argsWithPreset(withLesson, args)).toEqual({ value: args });
+	});
+
+	it('puts what was typed over what the preset states', () => {
+		expect(
+			argsWithPreset(withLesson, { preset: 'lesson', language: 'de' }),
+		).toEqual({
+			value: { preset: 'lesson', language: 'de', diarize: 'on' },
+		});
+	});
+
+	it('reads none as no preset at all', () => {
+		expect(argsWithPreset(withLesson, { preset: 'none' })).toEqual({
+			value: { preset: 'none' },
+		});
+	});
+
+	it('refuses a preset whose text does not read', () => {
+		expect(argsWithPreset(withLesson, { preset: 'broken' })).toEqual({
+			refusal: expect.stringContaining('is not an option of a run'),
+		});
+	});
+
+	it('refuses a preset nobody saved', () => {
+		expect(runWithPreset(withLesson, { preset: 'Lectures' })).toEqual({
 			refusal: expect.stringContaining('No profile named "Lectures"'),
 		});
 	});
@@ -179,5 +240,56 @@ describe('a preset saved with the language setting left empty', () => {
 
 		expect(body.split('\n')).toContain('language: auto');
 		expect(presetOptionCount(body)).not.toBeNull();
+	});
+});
+
+// A model belongs to its engine, so a run that names another engine beside
+// the preset must not hand that engine the preset's model.
+describe('a saved preset named beside an engine on the command line', () => {
+	const onGemini = mergeSettings({
+		transcriptionEnabled: true,
+		transcriptionProvider: 'gemini',
+		geminiModel: 'gemini-4-hydrogen',
+	});
+	const withSaved = {
+		...EVERYDAY,
+		profiles: [
+			...EVERYDAY.profiles,
+			{
+				id: 'preset-saved',
+				kind: 'runPreset' as const,
+				name: 'Saved',
+				body: presetBodyOf(onGemini),
+			},
+		],
+	};
+
+	it('leaves its model behind when the engine typed is another one', () => {
+		const run = valueOrThrow(
+			runWithPreset(withSaved, { preset: 'Saved', engine: 'deepgram' }),
+		).apply(withSaved);
+
+		expect(run.transcriptionProvider).toBe('deepgram');
+		expect(run.deepgramModel).toBe(EVERYDAY.deepgramModel);
+	});
+
+	it('keeps its model when the engine typed is its own', () => {
+		const run = valueOrThrow(
+			runWithPreset(withSaved, { preset: 'Saved', engine: 'Gemini' }),
+		).apply({ ...withSaved, geminiModel: 'gemini-3.8-flash' });
+
+		expect(run.geminiModel).toBe('gemini-4-hydrogen');
+	});
+
+	it('takes the model typed beside another engine', () => {
+		const run = valueOrThrow(
+			runWithPreset(withSaved, {
+				preset: 'Saved',
+				engine: 'deepgram',
+				model: 'nova-2',
+			}),
+		).apply(withSaved);
+
+		expect(run.deepgramModel).toBe('nova-2');
 	});
 });

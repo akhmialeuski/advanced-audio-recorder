@@ -211,6 +211,23 @@ describe('the options a transcription run is opened with', () => {
 		).toHaveBeenCalled();
 	});
 
+	it('keeps a preset saved in the dialog and opens the next dialog on it', async () => {
+		const { plugin, modalOptions } = await options();
+
+		const id = await modalOptions.onPresetSaved?.(
+			'Polish lesson',
+			'engine: gemini',
+		);
+
+		expect(plugin.settings.profiles).toContainEqual({
+			id,
+			kind: 'runPreset',
+			name: 'Polish lesson',
+			body: 'engine: gemini',
+		});
+		expect(plugin.settings.selectedProfileIds.runPreset).toBe(id);
+	});
+
 	it('generates chapters from the transcript the run just produced', async () => {
 		// Working from the in-memory transcript is what lets chapters appear
 		// without a second read of the note that was only just written.

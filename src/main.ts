@@ -18,7 +18,12 @@ import {
 } from './constants';
 import { isRecordingBannerSupported } from './platform/capabilities';
 import type { AudioRecorderSettings } from './settings/settingsSchema';
-import { setSelectedProfileId, type ProfileKindId } from './settings/profiles';
+import {
+	addProfile,
+	createProfile,
+	ProfileKindId,
+	setSelectedProfileId,
+} from './settings/profiles';
 import {
 	mergeSettingsAsync,
 	serializeSettings,
@@ -1658,6 +1663,26 @@ export default class AudioRecorderPlugin extends Plugin {
 			) => {
 				setSelectedProfileId(this.settings, kind, profileId);
 				await this.saveSettings();
+			},
+			// A preset saved in the dialog is the one the next dialog opens
+			// on, as the one picked there is.
+			onPresetSaved: async (name: string, body: string) => {
+				const preset = createProfile(
+					ProfileKindId.RunPreset,
+					name,
+					body,
+				);
+				this.settings.profiles = addProfile(
+					this.settings.profiles,
+					preset,
+				);
+				setSelectedProfileId(
+					this.settings,
+					ProfileKindId.RunPreset,
+					preset.id,
+				);
+				await this.saveSettings();
+				return preset.id;
 			},
 			transcriber: this.recordingTranscriber,
 			costTracker: this.transcriptionCostTracker,

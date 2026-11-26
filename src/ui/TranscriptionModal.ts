@@ -68,6 +68,8 @@ import {
 	ProfileKindId,
 } from '../settings/profiles';
 import type { SaveProgress } from '../types';
+import { presetBodyOf, settingsWithPreset } from '../transcription/runPreset';
+import { renderPresetRow } from './presetRow';
 import { createProgressBar, type ProgressBar } from './progressBar';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
@@ -104,6 +106,12 @@ export type TranscriptionModalOptions = {
 	 * pickers differ in nothing but the kind they pick.
 	 */
 	onProfileSelected?: (kind: ProfileKindId, id: string) => Promise<void>;
+	/**
+	 * Saves the options of the run as a new preset and answers its id, so the
+	 * dialog shows it picked. Absent where nothing can keep one, and the
+	 * button then saves nothing.
+	 */
+	onPresetSaved?: (name: string, body: string) => Promise<string>;
 	/**
 	 * Runs the transcription with the plugin's services: the sidecar store,
 	 * the session total and the chapters that follow a run. The dialog only
@@ -189,6 +197,8 @@ export class TranscriptionModal extends PluginModal {
 	};
 	/** Per-run settings copy: edited here, never persisted to plugin data. */
 	private readonly runSettings: AudioRecorderSettings;
+	/** Why the picked preset could not be applied, shown on its row. */
+	private presetProblem: string | null = null;
 	/**
 	 * Note the transcript is inserted into and timecode links are built
 	 * against - resolved once at construction so the run targets the right
@@ -199,7 +209,7 @@ export class TranscriptionModal extends PluginModal {
 	constructor(
 		app: App,
 		private readonly file: TFile,
-		getSettings: () => AudioRecorderSettings,
+		private readonly getSettings: () => AudioRecorderSettings,
 		private readonly options: TranscriptionModalOptions,
 	) {
 		super(app);
@@ -215,10 +225,48 @@ export class TranscriptionModal extends PluginModal {
 			this.options.notePath ??
 			app.workspace.getActiveViewOfType(MarkdownView)?.file?.path ??
 			'';
+		// The dialog opens on the preset picked last, as it opens on the
+		// profiles picked last.
+		this.pickPreset(
+			selectedProfileId(this.runSettings, ProfileKindId.RunPreset),
+		);
+	}
+
+	/**
+	 * Starts the run's options over from the plugin's settings with a preset
+	 * laid over them, so picking a second preset does not keep what the first
+	 * one set. The copy is refilled rather than replaced, because the rows
+	 * already rendered write into it.
+	 * @param presetId - Id of the preset, '' for none
+	 */
+	private pickPreset(presetId: string): void {
+		const { settings, problem } = settingsWithPreset(
+			this.getSettings(),
+			presetId,
+		);
+		this.presetProblem = problem;
+		Object.assign(this.runSettings, settings);
 		this.runSettings.transcriptDestination = effectiveTranscriptDestination(
 			this.runSettings.transcriptDestination,
 			this.notePath !== '',
 		);
+	}
+
+	/**
+	 * Saves the options as they stand as a preset and shows it picked.
+	 * @param name - The name the user gave it
+	 */
+	private async savePreset(name: string): Promise<void> {
+		const id = await this.options.onPresetSaved?.(
+			name,
+			presetBodyOf(this.runSettings),
+		);
+		if (id === undefined) {
+			return;
+		}
+		this.runSettings.profiles = this.getSettings().profiles;
+		setSelectedProfileId(this.runSettings, ProfileKindId.RunPreset, id);
+		this.renderConfig();
 	}
 
 	override onOpen(): void {
@@ -359,6 +407,22 @@ export class TranscriptionModal extends PluginModal {
 			s.transcriptionDiarize,
 			s,
 		);
+		renderPresetRow(container, {
+			app: this.app,
+			settings: s,
+			problem: this.presetProblem,
+			onPick: (id) => {
+				this.pickPreset(id);
+				void this.options.onProfileSelected?.(
+					ProfileKindId.RunPreset,
+					id,
+				);
+				this.renderConfig();
+			},
+			onSave: (name) => {
+				void this.savePreset(name);
+			},
+		});
 		addText(ctx, {
 			name: 'Language',
 			// The same sentence the settings tab shows, so one engine cannot be

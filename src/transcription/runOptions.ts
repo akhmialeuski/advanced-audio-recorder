@@ -114,7 +114,7 @@ interface ProfileOption {
 const LANGUAGE_PARAM = 'language';
 
 /** Parameter that names the engine of the run. */
-const ENGINE_PARAM = 'engine';
+export const ENGINE_PARAM = 'engine';
 
 /** The engines a run may name. */
 const ENGINE_VALUES = TRANSCRIPTION_PROVIDER_OPTIONS.map(
