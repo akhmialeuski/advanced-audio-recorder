@@ -24,8 +24,10 @@ import {
 	isProviderAvailableOnPlatform,
 	LOCAL_WHISPER_CAPABILITIES,
 	effectiveWordTimestamps,
+	diarizationUnavailableNote,
 	providerSupportsDiarization,
 	providerSupportsDictionary,
+	undeliveredDiarizationNotice,
 	providerWordTimestamps,
 	wordTimestampsNote,
 	wordTimestampsSelectable,
@@ -34,9 +36,11 @@ import {
 } from 'src/transcription/providers/capabilities';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import {
+	DiarizationSupport,
 	DurationCapCheck,
 	type ProviderCapabilities,
 } from 'src/transcription/providers/TranscriptionProvider';
+import { defaultSettings } from '../helpers/settingsFixtures';
 import { audioContainerFromExtension } from 'src/transcription/audioPrep';
 import { TRANSCRIPTION_PROVIDER_LABELS } from 'src/settings/labels';
 import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvider';
@@ -47,11 +51,19 @@ import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 
 describe('transcription provider capabilities', () => {
 	it('advertises diarization only for engines that return speaker labels', () => {
-		expect(WHISPER_API_CAPABILITIES.supportsDiarization).toBe(false);
-		expect(LOCAL_WHISPER_CAPABILITIES.supportsDiarization).toBe(false);
-		expect(DEEPGRAM_CAPABILITIES.supportsDiarization).toBe(true);
-		expect(GEMINI_CAPABILITIES.supportsDiarization).toBe(true);
-		expect(VOXTRAL_CAPABILITIES.supportsDiarization).toBe(true);
+		expect(WHISPER_API_CAPABILITIES.diarization).toBe(
+			DiarizationSupport.Declared,
+		);
+		expect(LOCAL_WHISPER_CAPABILITIES.diarization).toBe(
+			DiarizationSupport.None,
+		);
+		expect(DEEPGRAM_CAPABILITIES.diarization).toBe(
+			DiarizationSupport.Native,
+		);
+		expect(GEMINI_CAPABILITIES.diarization).toBe(DiarizationSupport.Native);
+		expect(VOXTRAL_CAPABILITIES.diarization).toBe(
+			DiarizationSupport.Native,
+		);
 	});
 
 	it('lets only Gemini rewrite what it heard inside the transcription request', () => {
@@ -132,23 +144,68 @@ describe('transcription provider capabilities', () => {
 	});
 
 	it('exposes diarization support through the UI helper', () => {
+		const settings = defaultSettings();
 		expect(
-			providerSupportsDiarization(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API),
+			providerSupportsDiarization(
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				settings,
+			),
 		).toBe(false);
 		expect(
 			providerSupportsDiarization(
 				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				settings,
 			),
 		).toBe(false);
 		expect(
-			providerSupportsDiarization(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM),
+			providerSupportsDiarization(
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				settings,
+			),
 		).toBe(true);
 		expect(
-			providerSupportsDiarization(TRANSCRIPTION_PROVIDER_IDS.GEMINI),
+			providerSupportsDiarization(
+				TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+				settings,
+			),
 		).toBe(true);
 		expect(
-			providerSupportsDiarization(TRANSCRIPTION_PROVIDER_IDS.VOXTRAL),
+			providerSupportsDiarization(
+				TRANSCRIPTION_PROVIDER_IDS.VOXTRAL,
+				settings,
+			),
 		).toBe(true);
+	});
+
+	it('lets the Whisper API diarize once its endpoint is declared as diarizing', () => {
+		const settings = defaultSettings();
+		settings.whisperApiEndpointDiarizes = true;
+		expect(
+			providerSupportsDiarization(
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				settings,
+			),
+		).toBe(true);
+		// The declaration is about the Whisper API endpoint, not every engine.
+		expect(
+			providerSupportsDiarization(
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				settings,
+			),
+		).toBe(false);
+	});
+
+	it('points an undeclared Whisper API at the declaration, and others at Deepgram', () => {
+		expect(
+			diarizationUnavailableNote(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API),
+		).toContain('"Endpoint returns speaker labels"');
+		expect(
+			diarizationUnavailableNote(
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			),
+		).toBe(
+			'Not supported by the selected engine. Use Deepgram for speaker labels.',
+		);
 	});
 
 	it('advertises dictionary biasing for every current engine', () => {
@@ -214,21 +271,109 @@ describe('effectiveDictionary', () => {
 
 describe('effectiveDiarize', () => {
 	it('requests diarization only when requested AND the engine supports it', () => {
+		const settings = defaultSettings();
 		expect(
-			effectiveDiarize(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, true),
+			effectiveDiarize(
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				true,
+				settings,
+			),
 		).toBe(true);
 		expect(
-			effectiveDiarize(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, false),
+			effectiveDiarize(
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				false,
+				settings,
+			),
 		).toBe(false);
 	});
 
 	it('ignores a requested "on" for an engine that cannot diarize', () => {
+		const settings = defaultSettings();
 		expect(
-			effectiveDiarize(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, true),
+			effectiveDiarize(
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				true,
+				settings,
+			),
 		).toBe(false);
 		expect(
-			effectiveDiarize(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER, true),
+			effectiveDiarize(
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				true,
+				settings,
+			),
 		).toBe(false);
+	});
+
+	it('honours a requested "on" for a Whisper API endpoint declared as diarizing', () => {
+		const settings = defaultSettings();
+		settings.whisperApiEndpointDiarizes = true;
+		expect(
+			effectiveDiarize(
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				true,
+				settings,
+			),
+		).toBe(true);
+		expect(
+			effectiveDiarize(
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				false,
+				settings,
+			),
+		).toBe(false);
+	});
+});
+
+describe('undeliveredDiarizationNotice', () => {
+	const whisper = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+
+	it('names a declared endpoint that answered a diarized run without speakers', () => {
+		expect(
+			undeliveredDiarizationNotice(whisper, {
+				diarize: true,
+				translated: false,
+				speakers: [],
+			}),
+		).toContain('returned no speaker labels');
+	});
+
+	it('stays quiet once the endpoint labelled anyone', () => {
+		expect(
+			undeliveredDiarizationNotice(whisper, {
+				diarize: true,
+				translated: false,
+				speakers: ['SPEAKER_00'],
+			}),
+		).toBeNull();
+	});
+
+	it('stays quiet for a run that did not ask, or that translated', () => {
+		expect(
+			undeliveredDiarizationNotice(whisper, {
+				diarize: false,
+				translated: false,
+				speakers: [],
+			}),
+		).toBeNull();
+		expect(
+			undeliveredDiarizationNotice(whisper, {
+				diarize: true,
+				translated: true,
+				speakers: [],
+			}),
+		).toBeNull();
+	});
+
+	it("leaves a vendor's own diarizer alone", () => {
+		expect(
+			undeliveredDiarizationNotice(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, {
+				diarize: true,
+				translated: false,
+				speakers: [],
+			}),
+		).toBeNull();
 	});
 });
 

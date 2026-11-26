@@ -23,9 +23,12 @@ import {
 } from '../../constants';
 import { isLocalTranscriptionSupported } from '../../platform/capabilities';
 import type { TranscriptionProviderId } from '../../settings/settingsSchema';
+import { engineOfTranscription } from '../../providers/providers';
+import type { AudioRecorderSettings } from '../../settings/settingsSchema';
 import {
 	AdvancedBiasChannel,
 	type ContainerSupport,
+	DiarizationSupport,
 	DurationCapCheck,
 	type ProviderCapabilities,
 	WordTimestampSupport,
@@ -65,15 +68,17 @@ const VOXTRAL_CONTAINERS: ContainerSupport = {
 };
 
 /**
- * OpenAI-compatible Whisper API. OpenAI's `whisper-1` does not return speaker
- * labels, so diarization is not offered for this engine.
+ * OpenAI-compatible Whisper API. Whether it diarizes is the endpoint's answer
+ * rather than the engine's: OpenAI's `whisper-1` returns no speaker labels,
+ * while a self-hosted compatible server may, so diarization is offered once the
+ * user declares that their endpoint returns them.
  */
 export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: WHISPER_API_MAX_REQUEST_BYTES,
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	durationCapCheck: DurationCapCheck.ProvenByBytes,
 	originalContainers: ANY_CONTAINER,
-	supportsDiarization: false,
+	diarization: DiarizationSupport.Declared,
 	// OpenAI Whisper accepts a `prompt` that seeds recognition with spellings.
 	supportsDictionary: true,
 	// The one engine that reads the request: it adds the `word` granularity.
@@ -94,7 +99,7 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	durationCapCheck: DurationCapCheck.ProvenByBytes,
 	originalContainers: ANY_CONTAINER,
-	supportsDiarization: true,
+	diarization: DiarizationSupport.Native,
 	// Deepgram biases via keyterm (nova-3) or keywords (nova-2 and older).
 	supportsDictionary: true,
 	// Every Deepgram response carries its words, asked for or not, and the
@@ -114,7 +119,7 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	durationCapCheck: DurationCapCheck.ProvenByBytes,
 	originalContainers: DECODED_WAV_ONLY,
-	supportsDiarization: false,
+	diarization: DiarizationSupport.None,
 	// whisper.cpp accepts an initial prompt via the --prompt CLI flag.
 	supportsDictionary: true,
 	// The -oj output carries segment offsets and nothing finer.
@@ -144,7 +149,7 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	// cannot prove itself short is measured rather than sent on trust.
 	durationCapCheck: DurationCapCheck.ProvenByBytes,
 	originalContainers: GEMINI_CONTAINERS,
-	supportsDiarization: true,
+	diarization: DiarizationSupport.Native,
 	// Gemini biases via the instruction text sent alongside the audio.
 	supportsDictionary: true,
 	// The transcript comes back as timed segments; the model is not asked for,
@@ -187,7 +192,7 @@ export const VOXTRAL_CAPABILITIES: ProviderCapabilities = {
 	maxRequestSeconds: VOXTRAL_MAX_REQUEST_SECONDS,
 	durationCapCheck: DurationCapCheck.LeftToEndpoint,
 	originalContainers: VOXTRAL_CONTAINERS,
-	supportsDiarization: true,
+	diarization: DiarizationSupport.Native,
 	// Voxtral biases through context_bias, a flat list of terms bounded by an
 	// entry count, which is the keyterm shape rather than the prompt one.
 	supportsDictionary: true,
@@ -243,7 +248,7 @@ export const ASSEMBLYAI_CAPABILITIES: ProviderCapabilities = {
 	durationCapCheck: DurationCapCheck.LeftToEndpoint,
 	originalContainers: ANY_CONTAINER,
 	// `speaker_labels` on the job, answered as a `speaker` on every sentence.
-	supportsDiarization: true,
+	diarization: DiarizationSupport.Native,
 	// `keyterms_prompt`, a flat list of words and phrases.
 	supportsDictionary: true,
 	// Every sentence of the answer carries its words, asked for or not. From
@@ -282,14 +287,50 @@ export const TRANSCRIPTION_PROVIDER_CAPABILITIES: Record<
 
 /**
  * Whether the engine produces speaker labels. The UI uses this to enable or
- * disable the diarization toggle for the selected engine.
+ * disable the diarization toggle for the selected engine. An engine whose
+ * endpoint may or may not diarize answers with what the user declared about
+ * that endpoint on the engine's own page.
  * @param id - Selected transcription engine id
+ * @param settings - Settings holding the user's declaration about the endpoint
  * @returns True when the engine can diarize
  */
 export function providerSupportsDiarization(
 	id: TranscriptionProviderId,
+	settings: AudioRecorderSettings,
 ): boolean {
-	return TRANSCRIPTION_PROVIDER_CAPABILITIES[id].supportsDiarization;
+	switch (TRANSCRIPTION_PROVIDER_CAPABILITIES[id].diarization) {
+		case DiarizationSupport.Native:
+			return true;
+		case DiarizationSupport.Declared:
+			return (
+				engineOfTranscription(id)?.endpointDiarization?.get(
+					settings,
+				) === true
+			);
+		default:
+			return false;
+	}
+}
+
+/**
+ * What the diarization row says on an engine that cannot diarize right now.
+ * Kept beside the capability rather than at each surface, so the settings tab
+ * and the per-run dialog cannot describe the same engine differently - and so
+ * an engine waiting on the user's declaration points at where it is made
+ * instead of at another engine.
+ * @param id - Selected transcription engine id
+ * @returns The sentence for the diarization row's description
+ */
+export function diarizationUnavailableNote(
+	id: TranscriptionProviderId,
+): string {
+	if (
+		TRANSCRIPTION_PROVIDER_CAPABILITIES[id].diarization ===
+		DiarizationSupport.Declared
+	) {
+		return 'Off until you declare that your endpoint returns speaker labels: OpenAI\'s own Whisper does not, a self-hosted server may. Turn on "Endpoint returns speaker labels" on this engine\'s page under Settings > Engines.';
+	}
+	return 'Not supported by the selected engine. Use Deepgram for speaker labels.';
 }
 
 /**
@@ -299,13 +340,54 @@ export function providerSupportsDiarization(
  * from a diarizing engine is ignored for an engine that cannot diarize.
  * @param id - Selected transcription engine id
  * @param requested - The user's diarization preference
+ * @param settings - Settings holding the user's declaration about the endpoint
  * @returns Whether speaker labels should be requested
  */
 export function effectiveDiarize(
 	id: TranscriptionProviderId,
 	requested: boolean,
+	settings: AudioRecorderSettings,
 ): boolean {
-	return requested && providerSupportsDiarization(id);
+	return requested && providerSupportsDiarization(id, settings);
+}
+
+/**
+ * What to tell the user when a run asked an endpoint they declared as
+ * diarizing for speaker labels and got none back.
+ *
+ * Only a declared endpoint is held to this. A vendor's own diarizer labels
+ * even a one-person recording with a single speaker, and a self-hosted server
+ * that diarizes does the same, so a diarized answer carrying no label at all
+ * says the server ignored the request rather than that one person spoke. The
+ * declaration is the user's, so the user is the one told, rather than the run
+ * failing over a transcript that is otherwise fine. A run that translated the
+ * speech is exempt: the translating operation takes no diarization field.
+ * @param id - The run's transcription engine id
+ * @param run - Whether the run asked for speaker labels and translated the
+ *   speech, and the speaker labels its transcript came back with
+ * @returns The notice, or null when there is nothing to report
+ */
+export function undeliveredDiarizationNotice(
+	id: TranscriptionProviderId,
+	run: {
+		diarize: boolean;
+		translated: boolean;
+		speakers: readonly string[];
+	},
+): string | null {
+	if (
+		TRANSCRIPTION_PROVIDER_CAPABILITIES[id].diarization !==
+			DiarizationSupport.Declared ||
+		!run.diarize ||
+		run.translated ||
+		run.speakers.length > 0
+	) {
+		return null;
+	}
+	return (
+		'The endpoint returned no speaker labels, so the transcript has none. ' +
+		'If this endpoint cannot diarize, turn off "Endpoint returns speaker labels" on the engine\'s page under Settings > Engines.'
+	);
 }
 
 /**

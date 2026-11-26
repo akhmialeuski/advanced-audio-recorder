@@ -31,6 +31,7 @@ import type { WhisperResult } from './providers/whisperResponse';
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
+	TranscriptionProviderId,
 } from '../settings/settingsSchema';
 import {
 	advancedTwoPassEnabled,
@@ -112,6 +113,7 @@ import {
 	effectiveLanguages,
 	effectiveSpeechTranslation,
 	effectiveWordTimestamps,
+	undeliveredDiarizationNotice,
 } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from './llm/llmStep';
@@ -589,6 +591,24 @@ function estimatedSpan(part: PartRun): PartSpan | null {
 }
 
 /**
+ * Tells the user when an endpoint they declared as diarizing answered a
+ * diarized run without a single speaker label. That is the one sign the
+ * declaration is wrong, so it is named rather than passed off as a transcript
+ * without speakers. The rule itself lives with the capability it is about.
+ * @param id - The run's transcription engine id
+ * @param run - What the run asked for and the speakers it came back with
+ */
+function reportUndeliveredDiarization(
+	id: TranscriptionProviderId,
+	run: Parameters<typeof undeliveredDiarizationNotice>[1],
+): void {
+	const notice = undeliveredDiarizationNotice(id, run);
+	if (notice) {
+		new Notice(notice);
+	}
+}
+
+/**
  * Runs the full transcription pipeline for an audio file.
  */
 export class TranscriptionService {
@@ -638,6 +658,7 @@ export class TranscriptionService {
 		const diarize = effectiveDiarize(
 			settings.transcriptionProvider,
 			settings.transcriptionDiarize,
+			settings,
 		);
 		const { transcribeOptions, dictionaryTerms } = this.requestOptions(
 			settings,
@@ -784,6 +805,11 @@ export class TranscriptionService {
 		// the canonical transcript, keeps every consumer consistent rather than
 		// gating each renderer separately.
 		const canonical = diarize ? working : stripSpeakers(working);
+		reportUndeliveredDiarization(settings.transcriptionProvider, {
+			diarize,
+			translated: transcribeOptions.translateToEnglish === true,
+			speakers: canonical.speakers,
+		});
 		// A diarized re-transcription re-applies the names the user assigned
 		// earlier (stored in the recording's sidecar) and refreshes the stored
 		// roster, so renamed speakers survive a re-run without user action.

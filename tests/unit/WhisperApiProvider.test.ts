@@ -258,3 +258,42 @@ describe('asking the endpoint to translate the speech', () => {
 		expect(body).toContain('Kubernetes');
 	});
 });
+
+// Speaker labels are asked for only on an endpoint the user declared as
+// diarizing; the service gates that, so `diarize` arrives here true only then.
+// The field is the one OpenAI-compatible diarizing hosts read, and the answer
+// stays verbose_json so the segments, their timing and the prompt survive.
+describe('asking a declared endpoint for speaker labels', () => {
+	it('sends diarize=true when the run asks for speakers', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			transcribeOptions({ diarize: true }),
+		);
+
+		const body = requestBodyText(calls);
+		expect(body).toContain('name="diarize"\r\n\r\ntrue');
+		expect(body).toContain('verbose_json');
+		expect(body).toContain('timestamp_granularities');
+	});
+
+	it('sends no diarize field when the run does not ask', async () => {
+		const calls = capture();
+
+		await provider().transcribe(payload(), transcribeOptions());
+
+		expect(requestBodyText(calls)).not.toContain('name="diarize"');
+	});
+
+	it('keeps the field off the translating operation, which does not take it', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			transcribeOptions({ diarize: true, translateToEnglish: true }),
+		);
+
+		expect(requestBodyText(calls)).not.toContain('name="diarize"');
+	});
+});

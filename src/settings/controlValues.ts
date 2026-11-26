@@ -118,6 +118,18 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 			{ reshapesTree: true },
 		]),
 	),
+	// Declaring that an engine's endpoint returns speaker labels is what lets
+	// that engine diarize, and the speaker-only rows of the transcript output
+	// describe themselves by whether a run produces labels, a sentence built
+	// once per read. Read from the registry, like the catalogue rows above.
+	...Object.fromEntries(
+		ENGINE_ORDER.flatMap((id) => {
+			const declaration = ENGINES[id].endpointDiarization;
+			return declaration
+				? [[declaration.key, { reshapesTree: true }]]
+				: [];
+		}),
+	),
 };
 
 /**

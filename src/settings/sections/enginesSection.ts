@@ -297,6 +297,18 @@ function enginePage(
 			},
 		});
 	}
+	// Asked only of an engine whose endpoint is whatever compatible server the
+	// base URL names, beside that URL, because it is a fact about the server
+	// there and not a choice per run: the run's own diarization switch stays
+	// where it was, and is offered once this says the server can answer it.
+	if (engine.endpointDiarization) {
+		rows.push({
+			name: 'Endpoint returns speaker labels',
+			aliases: ['diarization', 'diarize', 'speakers', 'self hosted'],
+			desc: "Turn on only if the server at the base URL diarizes, as some self-hosted Whisper servers do. Speaker diarization is then offered for this engine, and a diarized run sends diarize=true and reads each segment's speaker. OpenAI's own whisper-1 returns no speaker labels. If the server answers without any, the run says so.",
+			control: { type: 'toggle', key: engine.endpointDiarization.key },
+		});
+	}
 	if (!connection) {
 		rows.push(
 			imperativeBlockRow({

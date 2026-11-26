@@ -220,6 +220,21 @@ export interface EngineDescriptor {
 	 * to a job that calls it.
 	 */
 	readonly maxTokens: EngineNumericField | null;
+	/**
+	 * Where the user declares that this engine's endpoint returns speaker
+	 * labels, or null where whether it diarizes is a fact about the engine.
+	 * Only an engine whose endpoint is any compatible server has a question to
+	 * ask here: the Whisper API reaches OpenAI, which does not diarize through
+	 * it, or a self-hosted server, which may.
+	 */
+	readonly endpointDiarization: EngineToggleField | null;
+}
+
+/** Where one switch an engine owns is stored, and how it is read and written. */
+export interface EngineToggleField {
+	readonly key: PrimitiveSettingKey;
+	readonly get: (settings: AudioRecorderSettings) => boolean;
+	readonly set: (settings: AudioRecorderSettings, value: boolean) => void;
 }
 
 /**
@@ -389,6 +404,11 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Whisper API models',
 			docUrl: WHISPER_API_MODELS_DOC_URL,
 		},
+		endpointDiarization: {
+			key: 'whisperApiEndpointDiarizes',
+			get: (s) => s.whisperApiEndpointDiarizes,
+			set: (s, value) => (s.whisperApiEndpointDiarizes = value),
+		},
 		maxTokens: null,
 	},
 	[ENGINE_IDS.OPENAI_LLM]: {
@@ -413,6 +433,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'OpenAI models',
 			docUrl: OPENAI_MODELS_DOC_URL,
 		},
+		endpointDiarization: null,
 		maxTokens: {
 			key: 'llmOpenAiMaxTokens',
 			get: (settings) => settings.llmOpenAiMaxTokens,
@@ -441,6 +462,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Deepgram model list',
 			docUrl: DEEPGRAM_MODELS_DOC_URL,
 		},
+		endpointDiarization: null,
 		maxTokens: null,
 	},
 	[ENGINE_IDS.GEMINI]: {
@@ -467,6 +489,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Gemini model list',
 			docUrl: GEMINI_MODELS_DOC_URL,
 		},
+		endpointDiarization: null,
 		maxTokens: {
 			key: 'geminiMaxTokens',
 			get: (settings) => settings.geminiMaxTokens,
@@ -495,6 +518,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Anthropic models',
 			docUrl: ANTHROPIC_MODELS_DOC_URL,
 		},
+		endpointDiarization: null,
 		maxTokens: {
 			key: 'llmAnthropicMaxTokens',
 			get: (settings) => settings.llmAnthropicMaxTokens,
@@ -523,6 +547,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Voxtral model list',
 			docUrl: VOXTRAL_MODELS_DOC_URL,
 		},
+		endpointDiarization: null,
 		maxTokens: null,
 	},
 	[ENGINE_IDS.MISTRAL_LLM]: {
@@ -550,6 +575,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Mistral models',
 			docUrl: MISTRAL_MODELS_DOC_URL,
 		},
+		endpointDiarization: null,
 		maxTokens: {
 			key: 'llmMistralMaxTokens',
 			get: (settings) => settings.llmMistralMaxTokens,
@@ -579,6 +605,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'DeepSeek models',
 			docUrl: DEEPSEEK_MODELS_DOC_URL,
 		},
+		endpointDiarization: null,
 		maxTokens: {
 			key: 'llmDeepSeekMaxTokens',
 			get: (settings) => settings.llmDeepSeekMaxTokens,
@@ -607,6 +634,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'AssemblyAI model list',
 			docUrl: ASSEMBLYAI_MODELS_DOC_URL,
 		},
+		endpointDiarization: null,
 		maxTokens: null,
 	},
 	[ENGINE_IDS.LOCAL_WHISPER]: {
@@ -621,6 +649,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		llmId: null,
 		uploadLimitMb: 0,
 		uploadChunk: null,
+		endpointDiarization: null,
 		maxTokens: null,
 	},
 };

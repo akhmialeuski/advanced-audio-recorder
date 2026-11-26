@@ -150,6 +150,30 @@ export const WordTimestampSupport = {
 export type WordTimestampSupport =
 	(typeof WordTimestampSupport)[keyof typeof WordTimestampSupport];
 
+/**
+ * Whether an engine can return speaker labels, and who knows it.
+ *
+ * Three answers rather than two, because an endpoint is not always the
+ * engine's own. Deepgram, Gemini, Voxtral and AssemblyAI are their vendors'
+ * services, and they diarize. Local whisper.cpp never does. The Whisper API is
+ * whatever OpenAI-compatible server its base URL points at: OpenAI's own
+ * `whisper-1` returns no speaker labels, while a self-hosted server may, and
+ * only the user knows which one they run. So that engine diarizes when the
+ * user declares that its endpoint does, and not otherwise.
+ */
+export const DiarizationSupport = {
+	/** The engine's service returns speaker labels when asked. */
+	Native: 'native',
+	/** Speaker labels come back only from an endpoint the user declared. */
+	Declared: 'declared',
+	/** The engine never returns speaker labels. */
+	None: 'none',
+} as const;
+
+/** Whether an engine diarizes (derived from {@link DiarizationSupport}). */
+export type DiarizationSupport =
+	(typeof DiarizationSupport)[keyof typeof DiarizationSupport];
+
 /** The two things that name the container a recording arrives in. */
 export interface AudioContainer {
 	/** MIME type declared for the bytes, e.g. 'audio/webm'. */
@@ -250,21 +274,22 @@ export interface ProviderCapabilities {
 	/**
 	 * Whether the provider can return speaker labels at all. Gates the
 	 * diarization UI and the diarize request: an engine that cannot diarize
-	 * (OpenAI's Whisper, local whisper.cpp) must not offer an enabled toggle,
-	 * since the request would be silently ignored and mislead the user.
+	 * (local whisper.cpp, or a Whisper API endpoint nobody declared as
+	 * diarizing) must not offer an enabled toggle, since the request would be
+	 * silently ignored and mislead the user.
 	 */
-	supportsDiarization: boolean;
+	diarization: DiarizationSupport;
 	/**
 	 * Whether the engine can bias recognition toward user-supplied terms
 	 * (a custom dictionary). Gates the dictionary field the same way
-	 * {@link supportsDiarization} gates the diarization toggle: an engine
+	 * {@link diarization} gates the diarization toggle: an engine
 	 * that cannot bias must not offer an enabled field, since the terms
 	 * would be silently dropped and mislead the user.
 	 */
 	supportsDictionary: boolean;
 	/**
 	 * What the engine does with a request for per-word timing. Gates the
-	 * word-timestamp switch the way {@link supportsDiarization} gates the
+	 * word-timestamp switch the way {@link diarization} gates the
 	 * diarization toggle: a switch that changes nothing on the chosen engine is
 	 * offered disabled, with the engine's actual behaviour named beside it,
 	 * rather than accepting a request the engine will drop.
@@ -280,7 +305,7 @@ export interface ProviderCapabilities {
 	/**
 	 * Whether the engine has an operation that translates the speech into
 	 * English while transcribing it. Gates the offer the way
-	 * {@link supportsDiarization} gates the diarization toggle: an engine with
+	 * {@link diarization} gates the diarization toggle: an engine with
 	 * no such operation must not be asked for one.
 	 */
 	supportsSpeechTranslation: boolean;
@@ -289,7 +314,7 @@ export interface ProviderCapabilities {
 	 * until Voxtral, whose `timestamp_granularities` is documented as
 	 * incompatible with `language` - and since the granularity is what makes the
 	 * response carry segments at all, it is the hint that has to go. Gates the
-	 * language row the way {@link supportsDiarization} gates the diarization
+	 * language row the way {@link diarization} gates the diarization
 	 * toggle: a value that cannot reach the request is never sent, and the row
 	 * says so rather than looking as though it applied.
 	 */

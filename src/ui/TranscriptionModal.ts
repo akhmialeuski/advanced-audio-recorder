@@ -37,6 +37,7 @@ import { readAudioMetadata } from '../utils/AudioFileAnalyzer';
 import {
 	buildCostEstimate,
 	costEstimateNeedsDuration,
+	diarizationUnavailableNote,
 	effectiveDiarize,
 	effectiveWordTimestamps,
 	effectiveTranscriptDestination,
@@ -347,12 +348,16 @@ export class TranscriptionModal extends PluginModal {
 			},
 		};
 
-		const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
+		const canDiarize = providerSupportsDiarization(
+			s.transcriptionProvider,
+			s,
+		);
 		// Whether speaker labels will actually be produced for this run; gates the
 		// Include speakers toggle below the same way it gates the toggle itself.
 		const diarizes = effectiveDiarize(
 			s.transcriptionProvider,
 			s.transcriptionDiarize,
+			s,
 		);
 		addText(ctx, {
 			name: 'Language',
@@ -460,13 +465,14 @@ export class TranscriptionModal extends PluginModal {
 			name: 'Speaker diarization',
 			desc: canDiarize
 				? 'Request speaker labels (providers detect the speaker count automatically).'
-				: 'Not supported by the selected engine. Use Deepgram for speaker labels.',
+				: diarizationUnavailableNote(s.transcriptionProvider),
 			// Reflect the effective state: a stored "on" from a diarizing engine
 			// must read as off here when the chosen engine cannot diarize.
 			get: () =>
 				effectiveDiarize(
 					s.transcriptionProvider,
 					s.transcriptionDiarize,
+					s,
 				),
 			set: (v) => (s.transcriptionDiarize = v),
 			disabled: !canDiarize,
