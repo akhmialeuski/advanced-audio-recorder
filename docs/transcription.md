@@ -527,7 +527,7 @@ Every other option sits in a collapsed **More options** block below them; click 
 - **Advanced settings** - a master switch (off by default) that reveals the term-biasing controls for this run; with it off the recording transcribes in one plain pass with no biasing. When on it shows a **Dictionary** picker (choose a named profile to bias this run, or None) and an **Advanced two-pass transcription** toggle (the experimental context-biased two-pass mode, roughly 2x the engine cost plus LLM calls, reusing the Dictionary terms above and leaving its length safeguard in the settings tab).
 - **File format** - shown when the destination is not note-only.
 - **Include timestamps** and **Include speakers** - shown only when the destination renders Markdown into the note (Insert into note / Note and file); **Include speakers** is diarization-gated.
-- **LLM post-processing** - toggle it on, and pick the **LLM task** (Clean up / Summarize / Translate / Custom) for this run.
+- **LLM post-processing** - toggle it on, and pick the **LLM task** (Clean up / Summarize / Translate / Custom / Structure with a template) for this run. Below it, the profile the task uses can be picked for this run: the **Note template profile** for a template, the **Summary prompt profile** for a summary, and so on. The pick is remembered as the default for the next run and for transcribe-on-save.
 - **Generate chapters** - shown when auto chapters are enabled; asks the LLM for titled chapters after transcribing. Turned on, it adds a **Chapter profile** picker for the guidance this run uses.
 
 The detailed in-note templates (note heading, timestamp/speaker/line format) stay in the **settings tab**, and so does everything about a service itself, since a credential cannot be entered safely in a transient dialog: each engine's endpoint, key, model catalogue, and token ceiling belong on its page under **Engines**. Whatever you set in those template and provider fields is applied as configured.
@@ -536,7 +536,7 @@ Options toggled mid-run do **not** change an in-flight job: the run snapshots it
 
 ![The Transcribe audio dialog with the Preset row set to None and its save button, the Language, Participant profile and Destination rows, and the collapsed More options block below them, above the cost line and the Transcribe, Minimize and Close buttons](images/transcription-dialog.png)
 
-![The same dialog with the More options block open, listing Engine, Speaker diarization, disabled Word-level timestamps, Advanced settings, Dictionary, Advanced two-pass transcription, File format, Include timestamps, Include speakers, LLM post-processing, LLM task and Generate chapters](images/transcription-dialog-advanced.png)
+![The same dialog with the More options block open, listing Engine, Speaker diarization, disabled Word-level timestamps, Advanced settings, Dictionary, Advanced two-pass transcription, File format, Include timestamps, Include speakers, LLM post-processing, LLM task, the Cleanup prompt profile that task uses, and Generate chapters](images/transcription-dialog-advanced.png)
 
 ### Transcription presets
 

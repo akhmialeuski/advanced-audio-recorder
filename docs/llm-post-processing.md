@@ -223,6 +223,8 @@ A template is applied as best it can be:
 - **A template that cannot be rendered**, such as one with two parts of the same name, keeps the plain transcript, with a notice naming the problem.
 - **With no template selected**, the transcript is kept as it is, with a notice.
 
+Which template a run uses can also be picked in the **Transcribe** dialog, under the **LLM task**, so a daily sync and a lecture each get their own without a trip to the settings.
+
 The **Template variables** row on a template's page checks it as you type: a part without a name or an instruction, an unknown format or setting, a part inside a repeat, a profile no prompt profile is called, `{{parts.name}}` naming no part, and a transcript written twice or with a setting it does not take. The cost estimate before a run counts the calls the selected template makes.
 
 #### Structuring a transcript you already have
