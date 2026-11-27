@@ -17,6 +17,11 @@ import { PROMPT_KIND_OF_TASK } from '../settings/profileResolution';
 import { TEMPLATE_OUTPUT_OPTIONS } from '../settings/labels';
 import type { TemplateOutput } from '../transcription/llmPostProcess';
 import {
+	routeReasonText,
+	type TemplateRoute,
+	unknownTemplateText,
+} from '../templates/templateRouting';
+import {
 	ProfileKindId,
 	profilesOfKind,
 	selectedProfile,
@@ -32,15 +37,45 @@ import {
 export type ProfilePicked = (kind: ProfileKindId, id: string) => void;
 
 /**
+ * The line under the row: what chose the template while it is still the one
+ * the note called for, then where the profile's text comes from.
+ * @param ctx - The dialog's controls, over the run's settings
+ * @param profileText - Says where the picked profile's text comes from
+ * @param kindId - The kind the row picks
+ * @param route - What the note called for; none for a run without a template
+ */
+function pickerDescription(
+	ctx: SettingsSectionContext,
+	profileText: ProfileTextSource,
+	kindId: ProfileKindId,
+	route: TemplateRoute | undefined,
+): string {
+	const profile = selectedProfile(ctx.settings, kindId);
+	const routed =
+		route !== undefined &&
+		profile !== undefined &&
+		profile.id === route.templateId;
+	return [
+		routed ? unknownTemplateText(route, profile.name) : '',
+		routed ? `Applies, ${routeReasonText(route)}.` : '',
+		profileText.status(profile),
+	]
+		.filter((sentence) => sentence !== '')
+		.join(' ');
+}
+
+/**
  * Adds the row picking the profile of the run's post-processing task.
  * @param ctx - The dialog's controls, over the run's settings
  * @param profileText - Says where the picked profile's text comes from
  * @param onPicked - Told of each pick
+ * @param route - Which template the note calls for, shown while it is picked
  */
 export function addTaskProfilePicker(
 	ctx: SettingsSectionContext,
 	profileText: ProfileTextSource,
 	onPicked: ProfilePicked,
+	route?: TemplateRoute,
 ): void {
 	const s = ctx.settings;
 	const kindId = PROMPT_KIND_OF_TASK[s.llmPostProcessTask];
@@ -50,7 +85,7 @@ export function addTaskProfilePicker(
 	}
 	addDropdown(ctx, {
 		name: kind.selectionName,
-		desc: profileText.status(selectedProfile(s, kindId)),
+		desc: pickerDescription(ctx, profileText, kindId, route),
 		options: [
 			{ value: '', label: 'None' },
 			...profilesOfKind(s.profiles, kindId).map((profile) => ({

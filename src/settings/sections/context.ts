@@ -215,6 +215,11 @@ export interface ProfileCatalogue {
 	visible(settings: AudioRecorderSettings): boolean;
 	/** Whether a profile's body names facts of the run in double braces. */
 	readonly templated: boolean;
+	/** Whether a profile declares the tag and folder of the notes it is for. */
+	readonly routes: boolean;
+	/** Control keys of a profile's tag and folder rules. */
+	readonly routeTagKey: string;
+	readonly routeFolderKey: string;
 	/** Opens the list of what a profile's body can name, and its problems. */
 	showVariables(id: string): void;
 	/** Adds an empty profile under a free name. */

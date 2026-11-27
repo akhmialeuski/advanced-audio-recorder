@@ -15,6 +15,7 @@ import type { Profile } from 'src/settings/profiles';
 import { emptyTranscriptSection } from 'src/sidecar/recordingSidecarModel';
 import { recordingVault } from '../helpers/recordingVault';
 import { modalInstances } from '../mocks/obsidian';
+import { asMockApp } from '../helpers/obsidianMock';
 
 const STANDUP = 'Recordings/standup.webm';
 const MEETING = 'Meetings/standup.md';
@@ -175,6 +176,27 @@ describe('structuring a transcript from the command line', () => {
 				appliedAt: 't',
 			},
 		});
+
+		await expect(structureTranscriptFromCli(sut.context, {})).resolves.toBe(
+			`Structured standup.webm with "Plain" into ${MEETING}.`,
+		);
+	});
+
+	it('applies the template the note names when none is named on the command line', async () => {
+		const sut = createSut(WITH_TRANSCRIPT);
+		sut.settings.profiles = [
+			{ ...PLAIN, id: 'other', name: 'Other' },
+			PLAIN,
+		];
+		const { getFileCache } = asMockApp(sut.app).metadataCache;
+		const cacheOf = getFileCache.getMockImplementation();
+		// The note's cache as the vault builds it, with the property added.
+		getFileCache.mockImplementation((note) => ({
+			...(cacheOf?.(note) as object),
+			...(note.path === MEETING
+				? { frontmatter: { 'note-template': 'plain' } }
+				: {}),
+		}));
 
 		await expect(structureTranscriptFromCli(sut.context, {})).resolves.toBe(
 			`Structured standup.webm with "Plain" into ${MEETING}.`,

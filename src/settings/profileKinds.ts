@@ -103,6 +103,16 @@ export interface ProfileKind {
 	 * they stand.
 	 */
 	readonly template?: TemplateDialect;
+	/**
+	 * Whether a profile of this kind declares the tag and the folder of the
+	 * notes it is applied to: true for a note template, which is picked by the
+	 * note a run writes into.
+	 */
+	readonly routes?: boolean;
+	/** Control key namespace of a profile's tag rule, per profile. */
+	readonly routeTagKey: string;
+	/** Control key namespace of a profile's folder rule, per profile. */
+	readonly routeFolderKey: string;
 }
 
 /** What a body written as a template may use, and how it is checked. */
@@ -147,7 +157,12 @@ const NOTE_TEMPLATE: TemplateDialect = {
 /** A kind as it is declared: the keys are the id's to give, not the author's. */
 type ProfileKindSpec = Omit<
 	ProfileKind,
-	'selectionKey' | 'choiceKey' | 'bodyKey' | 'noteKey'
+	| 'selectionKey'
+	| 'choiceKey'
+	| 'bodyKey'
+	| 'noteKey'
+	| 'routeTagKey'
+	| 'routeFolderKey'
 >;
 
 /**
@@ -164,6 +179,8 @@ function defineKind(spec: ProfileKindSpec): ProfileKind {
 		choiceKey: `profile.${spec.id}.choice`,
 		bodyKey: `profile.${spec.id}.body`,
 		noteKey: `profile.${spec.id}.note`,
+		routeTagKey: `profile.${spec.id}.routeTag`,
+		routeFolderKey: `profile.${spec.id}.routeFolder`,
 	};
 }
 
@@ -412,6 +429,7 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		bodyDesc:
 			'Markdown written into the note. {{#part "summary" format="bullets" max=3}}instruction{{/part}} marks a part the model fills, profile="Name" takes its instruction from a cleanup, summary or custom prompt profile, {{transcript}} writes the transcript, and facts of the run such as {{title}} are filled in. Template variables lists them all.',
 		template: NOTE_TEMPLATE,
+		routes: true,
 		summary: templateSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&

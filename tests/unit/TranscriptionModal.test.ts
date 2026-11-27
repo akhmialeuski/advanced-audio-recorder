@@ -31,7 +31,7 @@ import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { at } from '../helpers/assertions';
 import { internalsOf, transcriberDouble } from '../helpers/doubles';
-import { asMockVault } from '../helpers/obsidianMock';
+import { asMockApp, asMockVault } from '../helpers/obsidianMock';
 import { MODAL } from '../helpers/selectors';
 
 // The run itself has its own suites (RecordingTranscriber, runTranscription,
@@ -1217,6 +1217,8 @@ describe('TranscriptionModal running the job', () => {
 		// A snapshot, so a control changed mid-run cannot change the run.
 		expect(request.settings).not.toBe(settings);
 		expect(request.notePath).toBe('Notes/meeting.md');
+		// The dialog showed the template, so the run does not choose again.
+		expect(request.templatePicked).toBe(true);
 		// The length the dialog probed, null until the probe answers; it
 		// only ever sizes a fallback estimate.
 		expect(request.durationSeconds()).toBeNull();
@@ -1513,6 +1515,37 @@ describe('TranscriptionModal profile of the post-processing task', () => {
 		expect(onProfileSelected).toHaveBeenCalledWith('llmTemplate', 't2');
 		expect(runSettingsOf(modal).selectedProfileIds.llmTemplate).toBe('t2');
 		expect(settings.selectedProfileIds.llmTemplate).toBe('t1');
+	});
+
+	it('opens on the template the note names, says why, and lets it be changed', async () => {
+		const app = new App();
+		const mock = asMockApp(app);
+		const [note] = mock.vault.seed([
+			{ path: 'Meetings/a.md', content: '' },
+		]);
+		mock.metadataCache.getFileCache.mockImplementation((file) =>
+			file === note
+				? { frontmatter: { 'note-template': 'lecture' } }
+				: null,
+		);
+		const modal = new TranscriptionModal(
+			app,
+			createAudioFile(),
+			settingsWithTemplates,
+			{ transcriber, notePath: 'Meetings/a.md' },
+		);
+		modal.onOpen();
+		const row = () => settingRow(modal.contentEl, 'Note template profile');
+
+		expect(rowSelect(row()).value).toBe('t2');
+		expect(rowDescription(row())).toContain(
+			"Applies, named by the note's note-template property.",
+		);
+		rowSelect(row()).value = 't1';
+		rowSelect(row()).dispatchEvent(new Event('change'));
+		await tick();
+
+		expect(rowDescription(row())).not.toContain('Applies');
 	});
 
 	it('follows the task: a summary offers the summary prompts', async () => {

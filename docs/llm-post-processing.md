@@ -88,7 +88,7 @@ Your **Custom instruction** is sent to the model **verbatim** as the system prom
 
 The note is written from the selected **note template profile**: Markdown of your own with **parts** the model fills from the transcript. A part is a block standing where its result goes, and its body is the instruction for it:
 
-![A note template profile page with Source set to Typed text, a template holding a summary part, an action items part and the transcript typed into it, and the Template variables row saying no problems were found](images/settings-note-template-page.png)
+![A note template profile page with Source set to Typed text, a template holding a summary part, an action items part and the transcript typed into it, the Apply to notes tagged row set to meeting/weekly and the Apply to notes in folder row set to Meetings, and the Template variables row saying no problems were found](images/settings-note-template-page.png)
 
 <!-- prettier-ignore -->
 ```handlebars
@@ -256,13 +256,34 @@ Reading a property sends its value to the model, and writing one sends nothing a
 
 A run with no note to go into, such as **Transcribe audio** on the recording itself, writes the template's note as a note of its own instead of a transcript file, since what a template writes is a note.
 
+#### Which template a run applies
+
+A note can say which template it wants, so a daily sync is not structured as a lecture because the pick in the dialog was not changed back. When a run writes into a note, the template is chosen by the first of these that decides:
+
+1. **A pick for this run**, in the **Transcribe** dialog or the **Structure transcript with a template** dialog, or `template=` on the command line.
+2. **The note's `note-template` property**, naming a template by its name, whatever its case. A property naming no template falls back to the selected one, and the notice says so.
+3. **A tag of the note** that a template declares under **Apply to notes tagged**. A nested tag counts: a template for `meeting` applies to a note tagged `#meeting/weekly`. When several templates declare a tag the note carries, the first in the list wins.
+4. **A folder the note lies in** that a template declares under **Apply to notes in folder**, or a folder inside it. `Meetings` covers `Meetings/2026/standup.md` and not `Meetings old/standup.md`, and the deepest folder declared wins, so a template for `Meetings/Clients` beats one for `Meetings`.
+5. **The template the settings select.**
+
+<!-- prettier-ignore -->
+```yaml
+---
+note-template: Weekly sync
+---
+```
+
+The tag and the folder are declared on the template's own page, beside its body, so a rule cannot outlive the template it names. The words of the note are not read: a long note would match almost anything, and nothing could tell you why it did.
+
+The dialogs open on the template the note calls for and say under it what chose it, such as _Applies, picked by the folder Meetings._ Picking another one there wins for that run. A run that starts with no dialog, such as transcribe-on-save, the queue or the command line, applies the template the note calls for and names it and the reason in a notice once the run is over. The **Structure transcript with a template** dialog and its command line weigh the note's rules before the template the recording was last structured with.
+
 #### Structuring a transcript you already have
 
 **Structure transcript with a template**, in the recording's context menu, the editor menu of its embed and the command palette, applies a note template to the transcript the recording already has, without transcribing it again. Trying another template on the same meeting then costs only the template's calls: the engine is not asked again, and a paid engine does not bill the recognition twice.
 
 ![The Structure transcript with a template dialog for a recording, with the Note template row set to Weekly sync, the Template output row set to Into the recording's note, the note the result is inserted into, and the estimated cost of the template's calls for a ten-minute transcript above the Structure and Cancel buttons](images/dialog-structure-transcript.png)
 
-The dialog finds the transcript the way [Generate chapters from transcript](transcription.md#auto-chapters) does, from the outputs recorded in the recording's sidecar first and then from transcript files and notes next to it. It opens on the template this recording was last structured with, else the selected one, shows the estimated cost of the template's calls for this transcript, and writes the note where **Template output** sends it: into the note the recording was reached through, under your **Transcript heading**, or as a note of its own, which the dialog lets you pick for this run. A recording reached without a note gets a note of its own. It stays open with a **Cancel** while the model works, and closing it cancels the run. Without a transcript or without any note template, it says which is missing instead.
+The dialog finds the transcript the way [Generate chapters from transcript](transcription.md#auto-chapters) does, from the outputs recorded in the recording's sidecar first and then from transcript files and notes next to it. It opens on the template the note calls for (see [Which template a run applies](#which-template-a-run-applies)), else the one this recording was last structured with, else the selected one, shows the estimated cost of the template's calls for this transcript, and writes the note where **Template output** sends it: into the note the recording was reached through, under your **Transcript heading**, or as a note of its own, which the dialog lets you pick for this run. A recording reached without a note gets a note of its own. It stays open with a **Cancel** while the model works, and closing it cancels the run. Without a transcript or without any note template, it says which is missing instead.
 
 Two things differ from a template applied during a run:
 

@@ -7,6 +7,8 @@
  */
 
 import { App } from 'obsidian';
+import { noticeMessages } from '../mocks/obsidian';
+import { asMockApp } from '../helpers/obsidianMock';
 import {
 	RecordingTranscriber,
 	runOutcomeNotice,
@@ -209,6 +211,56 @@ describe('what a finished run reports', () => {
 
 		expect(onProgress).toHaveBeenCalledWith(0.5, 'Uploading');
 		expect(onCost).toHaveBeenCalledWith(deepgram(0.02));
+	});
+});
+
+describe('the note template a run applies', () => {
+	/** Settings structuring the run with a template, one per meeting folder. */
+	const templated: Partial<AudioRecorderSettings> = {
+		llmPostProcessEnabled: true,
+		llmPostProcessTask: 'template',
+		profiles: [
+			{ id: 'daily', kind: 'llmTemplate', name: 'Daily', body: '' },
+			{
+				id: 'meeting',
+				kind: 'llmTemplate',
+				name: 'Meeting',
+				body: '',
+				routeFolder: 'Meetings',
+			},
+		],
+		selectedProfileIds: {
+			...DEFAULT_SETTINGS.selectedProfileIds,
+			llmTemplate: 'daily',
+		},
+	};
+
+	/**
+	 * Runs into the meeting note, which lies in the folder a template declares.
+	 * @param run - What differs in the request
+	 */
+	async function runIntoMeeting(
+		run: Partial<RecordingTranscriptionRequest> = {},
+	): Promise<string> {
+		const sut = createSut();
+		asMockApp(sut.app).vault.seed([{ path: NOTE, content: '' }]);
+		await sut.transcriber.transcribe(request(templated, run));
+		const [, getSettings] = at(pipeline.mock.calls, 0);
+		return getSettings().selectedProfileIds.llmTemplate;
+	}
+
+	it('applies the template the note calls for, and says why once the run is over', async () => {
+		await expect(runIntoMeeting()).resolves.toBe('meeting');
+		expect(noticeMessages()).toContain(
+			'Structured with "Meeting", picked by the folder Meetings.',
+		);
+	});
+
+	it('keeps the template picked for the run', async () => {
+		await expect(runIntoMeeting({ templatePicked: true })).resolves.toBe(
+			'daily',
+		);
+		expect(noticeMessages().join()).not.toContain('Structured with');
 	});
 });
 

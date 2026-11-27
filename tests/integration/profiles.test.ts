@@ -379,6 +379,40 @@ describe('a note-backed profile in data.json', () => {
 	});
 });
 
+describe('the notes a note template is applied to, in data.json', () => {
+	it('keeps the tag and the folder it declares, and drops empty ones', () => {
+		const settings = mergeSettings({
+			...SHIPPED_PROFILES_GIVEN,
+			profiles: [
+				{
+					id: 'meeting',
+					kind: 'llmTemplate',
+					name: 'Meeting',
+					body: '',
+					routeTag: 'meeting',
+					routeFolder: 'Meetings',
+				},
+				{
+					id: 'none',
+					kind: 'llmTemplate',
+					name: 'None',
+					body: '',
+					routeTag: '',
+					routeFolder: 7 as unknown as string,
+				},
+			],
+		});
+
+		expect(settings.profiles).toEqual([
+			expect.objectContaining({
+				routeTag: 'meeting',
+				routeFolder: 'Meetings',
+			}),
+			{ id: 'none', kind: 'llmTemplate', name: 'None', body: '' },
+		]);
+	});
+});
+
 describe.each(
 	Object.values(ProfileKindId).map((kind) => [kind, kind] as const),
 )('%s profiles', (_name, kind) => {

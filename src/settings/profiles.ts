@@ -78,6 +78,17 @@ export interface Profile {
 	 * before this field existed is, so none of them needs a migration.
 	 */
 	sourcePath?: string;
+	/**
+	 * For a note template, the tag a note carries to have it applied, e.g.
+	 * `meeting`; absent for none. Kept on the template so a rule and its
+	 * template cannot drift apart.
+	 */
+	routeTag?: string;
+	/**
+	 * For a note template, the folder whose notes, nested ones included, have
+	 * it applied; absent for none.
+	 */
+	routeFolder?: string;
 }
 
 /**

@@ -33,6 +33,7 @@ import {
 } from './TranscriptionService';
 import { effectiveTranscriptDestination } from './transcriptOutput';
 import { writesTemplateNote } from './llmPostProcess';
+import { type RoutedRun, routeRunTemplate } from './templateRouteRun';
 import type { Transcript, TranscriptDestination } from './TranscriptTypes';
 
 /**
@@ -91,6 +92,11 @@ export interface RecordingTranscriptionRequest {
 		((fraction: number, label: string) => void) | undefined;
 	/** The run's cost so far, after each part the engine finished. */
 	readonly onCost?: ((cost: TranscribeRunCost) => void) | undefined;
+	/**
+	 * Whether the run's note template was picked for it, as the dialog does,
+	 * rather than left for the note to call for.
+	 */
+	readonly templatePicked?: boolean | undefined;
 }
 
 /** How one run ended. */
@@ -153,8 +159,9 @@ export class RecordingTranscriber {
 		// With no note to insert into, the note alone can only fall back to a
 		// file after an insert that was bound to fail, and the notice would
 		// blame the user for it.
+		const routed = this.routed(request);
 		const settings: AudioRecorderSettings = {
-			...request.settings,
+			...routed.settings,
 			transcriptDestination: effectiveTranscriptDestination(
 				request.settings.transcriptDestination,
 				request.notePath !== '',
@@ -208,6 +215,7 @@ export class RecordingTranscriber {
 			return { status: 'failed', message: errorMessage(error) };
 		}
 		const usd = this.record(result.cost, request);
+		routed.announce();
 		// Started on the fresh in-memory transcript and handed back rather
 		// than awaited: the chapters report their own progress and errors
 		// through notices, and the run's cancellation still reaches the paid
@@ -230,6 +238,21 @@ export class RecordingTranscriber {
 			sessionTotalUsd: this.services.costs.totalUsd(),
 			chapters,
 		};
+	}
+
+	/**
+	 * The run's settings with the template its note calls for, unless one
+	 * was picked for it.
+	 * @param request - The run
+	 */
+	private routed(request: RecordingTranscriptionRequest): RoutedRun {
+		return request.templatePicked === true
+			? { settings: request.settings, announce: () => undefined }
+			: routeRunTemplate(
+					this.services.app,
+					request.settings,
+					request.notePath,
+				);
 	}
 
 	/**

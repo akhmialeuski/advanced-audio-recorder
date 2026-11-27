@@ -24,7 +24,18 @@ import {
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { LlmTask, TemplateOutput } from '../transcription/llmPostProcess';
 import { TEMPLATE_OUTPUT_OPTIONS } from '../settings/labels';
-import { estimateStepCost, formatUsd, LlmJobId } from '../transcription/api';
+import {
+	estimateStepCost,
+	formatUsd,
+	LlmJobId,
+	routedNoteOf,
+} from '../transcription/api';
+import {
+	noteRuleTemplateId,
+	routeReasonText,
+	routeTemplate,
+	type TemplateRoute,
+} from '../templates/templateRouting';
 import type { TranscriptStructurer } from '../transcription/TranscriptStructurer';
 import { CancellationSource } from '../utils/cancellation';
 import { formatTimecode } from '../utils/TimeUtils';
@@ -46,15 +57,18 @@ export interface StructureTranscriptModalOptions {
 }
 
 /**
- * The template the dialog opens on: the one this recording was structured
- * with when it still exists, else the selected one, else the first.
+ * The template the dialog opens on: the one a rule of the note calls for,
+ * else the one this recording was structured with, else the selected one,
+ * else the first; each only while it still exists.
  * @param settings - The current settings
  * @param applied - Id of the template last applied to the recording
+ * @param routed - Id of the template a rule of the note calls for
  * @returns The id, '' when there is no template at all
  */
 export function initialTemplateId(
 	settings: AudioRecorderSettings,
 	applied: string | undefined,
+	routed?: string,
 ): string {
 	const ids = profilesOfKind(
 		settings.profiles,
@@ -62,7 +76,7 @@ export function initialTemplateId(
 	).map((profile) => profile.id);
 	const selected = selectedProfileId(settings, ProfileKindId.LlmTemplate);
 	return (
-		[applied, selected].find(
+		[routed, applied, selected].find(
 			(id): id is string => id !== undefined && ids.includes(id),
 		) ??
 		ids[0] ??
@@ -74,6 +88,8 @@ export function initialTemplateId(
 export class StructureTranscriptModal extends PluginModal {
 	private source: TranscriptLinesSource | null = null;
 	private templateId = '';
+	/** Which template the note calls for, and why. */
+	private route: TemplateRoute | null = null;
 	/** Where this run's note goes, the settings' choice to begin with. */
 	private output: TemplateOutput = TemplateOutput.Note;
 	private loaded = false;
@@ -138,9 +154,14 @@ export class StructureTranscriptModal extends PluginModal {
 			.getTranscript(this.file.path)
 			.catch(() => null);
 		const settings = this.options.getSettings();
+		this.route = routeTemplate(
+			settings,
+			routedNoteOf(this.app, this.options.notePath),
+		);
 		this.templateId = initialTemplateId(
 			settings,
 			section?.appliedTemplate?.profileId,
+			noteRuleTemplateId(this.route),
 		);
 		this.output = settings.llmTemplateOutput;
 		this.loaded = true;
@@ -164,9 +185,7 @@ export class StructureTranscriptModal extends PluginModal {
 		);
 		new Setting(this.contentEl)
 			.setName('Note template')
-			.setDesc(
-				'Builds the note from the transcript this recording already has, without transcribing it again.',
-			)
+			.setDesc(this.templateDescription())
 			.addDropdown((dropdown) => {
 				for (const template of templates) {
 					dropdown.addOption(template.id, template.name);
@@ -177,6 +196,19 @@ export class StructureTranscriptModal extends PluginModal {
 					void this.render();
 				});
 			});
+	}
+
+	/**
+	 * The line under the template row, naming the rule of the note that chose
+	 * the template while it is still the one picked.
+	 */
+	private templateDescription(): string {
+		const intro =
+			'Builds the note from the transcript this recording already has, without transcribing it again.';
+		const route = this.route;
+		return route && noteRuleTemplateId(route) === this.templateId
+			? `${intro} Applies, ${routeReasonText(route)}.`
+			: intro;
 	}
 
 	/**
