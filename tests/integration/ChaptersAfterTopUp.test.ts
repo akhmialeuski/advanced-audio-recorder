@@ -20,6 +20,7 @@ import { isAutoChapterId } from 'src/chapters/chapterGeneration';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { MARKER_KIND, type PlayerMarker } from 'src/markers/markerModel';
 import { EngineLabel } from 'src/providers/providers';
+import { ProfileKindId, type Profile } from 'src/settings/profiles';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
@@ -34,6 +35,7 @@ import {
 	type TranscriptSegment,
 } from 'src/transcription/TranscriptTypes';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
+import { at } from '../helpers/assertions';
 import { partial } from '../helpers/doubles';
 import { waitFor } from '../helpers/async';
 import { completed } from '../helpers/llmDoubles';
@@ -183,8 +185,11 @@ async function transcribedWithAGap({
 		costs: { ...costs, totalUsd: () => 0.02 },
 		// Wired the way the plugin wires it, to the chapter service the
 		// top-up action is handed too.
-		generateChapters: async (target, transcript, signal) => {
-			await autoChapters.generate(target, transcript, undefined, signal);
+		generateChapters: async (target, transcript, runSettings, signal) => {
+			await autoChapters.generate(target, transcript, {
+				signal,
+				runSettings,
+			});
 		},
 	}).transcribe({
 		file,
@@ -343,5 +348,36 @@ describe('auto chapters after a top-up of the parts that failed', () => {
 			'the opening',
 			'the closing',
 		]);
+	});
+});
+
+/** Chapter guidance a run may pick, kept among the stored profiles. */
+const AGENDA: Profile = {
+	id: 'guidance-agenda',
+	kind: ProfileKindId.ChapterPrompt,
+	name: 'Agenda',
+	body: 'Split by agenda item.',
+};
+
+// The dialog and the command line hand a run a copy of the settings, and a
+// preset picked there sets the chapter guidance in that copy alone. The
+// chapters that follow the run are part of it, so they read that copy too.
+describe('auto chapters that follow a run', () => {
+	beforeEach(() => {
+		mockEngineRun.mockReset();
+	});
+
+	it('divide by the guidance the run picked when the stored settings pick none', async () => {
+		const { prompts } = await transcribedWithAGap({
+			stored: { ...CHAPTERS_AFTER_RUN, profiles: [AGENDA] },
+			run: {
+				selectedProfileIds: {
+					...mergeSettings({}).selectedProfileIds,
+					[ProfileKindId.ChapterPrompt]: AGENDA.id,
+				},
+			},
+		});
+
+		expect(at(prompts, 0).system).toContain(AGENDA.body);
 	});
 });

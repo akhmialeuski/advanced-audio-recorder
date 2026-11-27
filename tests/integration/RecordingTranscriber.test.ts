@@ -391,10 +391,15 @@ describe('the chapters that follow a run', () => {
 
 		await transcriber.transcribe(run);
 
-		// Under the run's cancellation, so the queue's stop reaches the call.
+		// Under the run's cancellation, so the queue's stop reaches the call,
+		// and under the run's settings, which hold the guidance it picked.
 		expect(generateChapters).toHaveBeenCalledWith(
 			run.file,
 			transcript,
+			expect.objectContaining({
+				selectedProfileIds: run.settings.selectedProfileIds,
+				transcriptionAutoChaptersOnTranscribe: true,
+			}),
 			token.signal,
 		);
 	});

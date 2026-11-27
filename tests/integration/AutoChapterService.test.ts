@@ -219,12 +219,14 @@ describe('AutoChapterService.generate', () => {
 		const service = makeService({ llm, store });
 
 		const ok = await service.generate(tf('rec.wav'), undefined, {
-			lines: [
-				{ time: 0, text: 'intro talk' },
-				{ time: 60, text: 'main topic' },
-			],
-			origin: 'rec.json',
-			language: 'en',
+			preloaded: {
+				lines: [
+					{ time: 0, text: 'intro talk' },
+					{ time: 60, text: 'main topic' },
+				],
+				origin: 'rec.json',
+				language: 'en',
+			},
 		});
 
 		expect(ok).toBe(true);
@@ -489,12 +491,9 @@ describe('a chapter run the user cancels', () => {
 		const service = makeService({ llm, store });
 		const controller = new AbortController();
 
-		const run = service.generate(
-			tf('rec.wav'),
-			TRANSCRIPT,
-			undefined,
-			controller.signal,
-		);
+		const run = service.generate(tf('rec.wav'), TRANSCRIPT, {
+			signal: controller.signal,
+		});
 		await waitFor(() => llm.started(), {
 			message: 'the chapter call to start',
 		});
@@ -525,12 +524,9 @@ describe('a chapter run the user cancels', () => {
 		const { store, saved } = makeStore();
 		const service = makeService({ llm, store });
 
-		const ok = await service.generate(
-			tf('rec.wav'),
-			TRANSCRIPT,
-			undefined,
-			new AbortController().signal,
-		);
+		const ok = await service.generate(tf('rec.wav'), TRANSCRIPT, {
+			signal: new AbortController().signal,
+		});
 
 		expect(ok).toBe(true);
 		expect(saved()).not.toBeNull();

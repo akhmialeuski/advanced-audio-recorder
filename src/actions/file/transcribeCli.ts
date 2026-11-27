@@ -155,9 +155,8 @@ export async function transcribeFromCli(
 		return refusal;
 	}
 	if (run.picks.length > 0) {
-		// Kept as the next defaults, as a pick in the dialog is - and needed
-		// there, since the chapters generated after the run read the profile
-		// from the plugin settings rather than from this run's copy.
+		// Kept as the next defaults, as a pick in the dialog is. The run
+		// itself, and the chapters that follow it, read this run's copy.
 		for (const pick of run.picks) {
 			setSelectedProfileId(live, pick.kind, pick.id);
 		}

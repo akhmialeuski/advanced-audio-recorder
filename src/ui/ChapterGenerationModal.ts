@@ -336,12 +336,10 @@ export class ChapterGenerationModal extends PluginModal {
 		void this.runExclusive(async () => {
 			// Reuse the transcript already located for the dialog, so the
 			// service does not read the sidecar (or scan the notes) again.
-			await this.options.autoChapters.generate(
-				this.file,
-				undefined,
-				this.source ?? undefined,
-				cancellation.token.signal,
-			);
+			await this.options.autoChapters.generate(this.file, undefined, {
+				preloaded: this.source ?? undefined,
+				signal: cancellation.token.signal,
+			});
 			// Dropped before the close, so the dialog's own teardown does not
 			// cancel a run that has already answered.
 			this.cancellation = null;

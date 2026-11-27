@@ -53,13 +53,15 @@ export interface RecordingTranscriberServices {
 		LlmCostSink &
 		Pick<SessionCostTracker, 'totalUsd'>;
 	/**
-	 * Generates chapters from a finished run's transcript, ending the paid
-	 * call when the signal aborts. Never rejects: every outcome is told to
-	 * the user through notices.
+	 * Generates chapters from a finished run's transcript under the run's own
+	 * settings, which hold the guidance the run picked, ending the paid call
+	 * when the signal aborts. Never rejects: every outcome is told to the
+	 * user through notices.
 	 */
 	readonly generateChapters: (
 		file: TFile,
 		transcript: Transcript,
+		settings: AudioRecorderSettings,
 		signal?: AbortSignal,
 	) => Promise<void>;
 }
@@ -213,6 +215,7 @@ export class RecordingTranscriber {
 			? this.services.generateChapters(
 					file,
 					result.transcript,
+					settings,
 					request.token?.signal,
 				)
 			: null;

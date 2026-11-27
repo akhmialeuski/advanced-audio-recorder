@@ -5,6 +5,7 @@
  * @module tests/integration/recordingEdits.test
  */
 
+import type { ChapterGenerationOptions } from 'src/chapters/AutoChapterService';
 import type { Editor } from 'obsidian';
 import {
 	deleteRecordingWithLink,
@@ -194,12 +195,10 @@ describe('generating chapters from the command line', () => {
 			(
 				_file: unknown,
 				_transcript: unknown,
-				_lines: unknown,
-				_signal: unknown,
-				notify: (message: string) => void,
+				{ notify }: ChapterGenerationOptions,
 			) => {
-				notify('Generating chapters for standup.webm...');
-				notify('Added 3 chapters to standup.webm.');
+				notify?.('Generating chapters for standup.webm...');
+				notify?.('Added 3 chapters to standup.webm.');
 				return Promise.resolve(true);
 			},
 		);

@@ -63,6 +63,33 @@ export interface AutoChapterServiceDeps {
 	probeDuration?: (file: TFile) => Promise<number | null>;
 }
 
+/** What a caller of {@link AutoChapterService.generate} may hand it. */
+export interface ChapterGenerationOptions {
+	/**
+	 * Transcript lines the caller already located (the on-demand dialog loads
+	 * them to show the source and cost estimate), so the sidecar/notes are
+	 * not read a second time.
+	 */
+	readonly preloaded?: TranscriptLinesSource | undefined;
+	/**
+	 * Ends the run when the caller cancels. Generation is a paid call on a
+	 * transcript that can run to thousands of lines, so the dialog that
+	 * starts one offers a Cancel and this is what it pulls.
+	 */
+	readonly signal?: AbortSignal | undefined;
+	/**
+	 * Where every outcome is told to the user: a notice by default, or a
+	 * notice and the answer of the command line that started the run.
+	 */
+	readonly notify?: Notify;
+	/**
+	 * The copy of the settings a transcription run was started with, for the
+	 * chapters that follow it: a preset or a pick made for that run alone
+	 * chose its guidance there. Omitted, the plugin's settings as they stand.
+	 */
+	readonly runSettings?: AudioRecorderSettings;
+}
+
 /** Timed lines plus the transcript language, when a source carried one. */
 interface ResolvedLines {
 	lines: TimedLine[];
@@ -133,23 +160,21 @@ export class AutoChapterService {
 	 * @param file - The audio file to chapter
 	 * @param transcript - In-memory transcript from a just-finished run;
 	 *   omitted, the recording's existing outputs are searched
-	 * @param preloaded - Transcript lines the caller already located (the
-	 *   on-demand dialog loads them to show the source and cost estimate), so
-	 *   the sidecar/notes are not read a second time here
-	 * @param signal - Ends the run when the caller cancels. Generation is a
-	 *   paid call on a transcript that can run to thousands of lines, so the
-	 *   dialog that starts one offers a Cancel and this is what it pulls
-	 * @param notify - Where every outcome is told to the user: a notice, or
-	 *   a notice and the answer of the command line that started the run
+	 * @param options - Where the lines, the cancel, the notices and the
+	 *   settings come from, each with its default
 	 * @returns True when chapters were written
 	 */
 	async generate(
 		file: TFile,
 		transcript?: Transcript,
-		preloaded?: TranscriptLinesSource,
-		signal?: AbortSignal,
-		notify: Notify = showNotice,
+		options: ChapterGenerationOptions = {},
 	): Promise<boolean> {
+		const {
+			preloaded,
+			signal,
+			notify,
+			settings: given,
+		} = this.withDefaults(options);
 		try {
 			// The transcription check: without a transcript (given or found)
 			// there is nothing to derive chapters from, so stop with guidance
@@ -172,7 +197,7 @@ export class AutoChapterService {
 			// stands when generation starts.
 			const { settings, unread } = await readProfileNotes(
 				this.app,
-				this.getSettings(),
+				given,
 			);
 			// The engine this job names, not the one post-processing points at:
 			// chapters are configured on a row of their own.
@@ -281,6 +306,27 @@ export class AutoChapterService {
 			notify(`Chapter generation failed: ${message}`);
 			return false;
 		}
+	}
+
+	/**
+	 * A caller's options with every default filled in: a notice for every
+	 * outcome when the caller named nowhere else, and the plugin's settings
+	 * as they stand when it handed no run's copy.
+	 * @param options - What the caller handed over
+	 * @returns The options generation runs with
+	 */
+	private withDefaults(options: ChapterGenerationOptions): {
+		preloaded: TranscriptLinesSource | undefined;
+		signal: AbortSignal | undefined;
+		notify: Notify;
+		settings: AudioRecorderSettings;
+	} {
+		return {
+			preloaded: options.preloaded,
+			signal: options.signal,
+			notify: options.notify ?? showNotice,
+			settings: options.runSettings ?? this.getSettings(),
+		};
 	}
 
 	/**

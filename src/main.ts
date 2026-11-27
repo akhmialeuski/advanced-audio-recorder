@@ -362,13 +362,11 @@ export default class AudioRecorderPlugin extends Plugin {
 			app: this.app,
 			sidecar: this.sidecarStore,
 			costs: this.transcriptionCostTracker,
-			generateChapters: async (file, transcript, signal) => {
-				await this.autoChapterService.generate(
-					file,
-					transcript,
-					undefined,
+			generateChapters: async (file, transcript, settings, signal) => {
+				await this.autoChapterService.generate(file, transcript, {
 					signal,
-				);
+					runSettings: settings,
+				});
 			},
 		});
 		this.recordingBanner = new RecordingBanner({
