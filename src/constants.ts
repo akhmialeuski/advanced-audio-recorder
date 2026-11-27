@@ -1055,6 +1055,17 @@ export const MAX_TRANSCRIBE_CHUNK_MB = 24;
 /** Default maximum output tokens for LLM post-processing. */
 export const DEFAULT_LLM_MAX_TOKENS = 4096;
 
+/**
+ * Default maximum output tokens for DeepSeek. Its models reason before they
+ * answer, by default, and the reasoning counts against the same limit: one
+ * cleanup on `deepseek-flash` spent 17 552 of 50 000 tokens on it. The value
+ * is the one DeepSeek itself applies in thinking mode when no limit is sent
+ * (https://api-docs.deepseek.com/api/create-chat-completion, read on
+ * November 27, 2026: "the default is 8K in non-thinking mode, 64K in thinking
+ * mode"), within its documented range of 1 to 393 216.
+ */
+export const DEFAULT_LLM_DEEPSEEK_MAX_TOKENS = 64_000;
+
 /** Minimum configurable LLM output token budget. */
 export const MIN_LLM_MAX_TOKENS = 512;
 

@@ -165,6 +165,18 @@ describe('Settings', () => {
 			]);
 		});
 
+		// DeepSeek reasons before it answers and counts that against the
+		// limit, so it starts at the vendor's own default for that mode.
+		it('starts DeepSeek at 64000 output tokens and every other engine at 4096', () => {
+			expect(DEFAULT_SETTINGS).toMatchObject({
+				llmDeepSeekMaxTokens: 64000,
+				llmOpenAiMaxTokens: 4096,
+				llmAnthropicMaxTokens: 4096,
+				geminiMaxTokens: 4096,
+				llmMistralMaxTokens: 4096,
+			});
+		});
+
 		it('ships the language lesson preset, which names no language and is not in use', () => {
 			const preset = DEFAULT_SETTINGS.profiles.find(
 				(profile) => profile.id === LANGUAGE_LESSON_PRESET_ID,
