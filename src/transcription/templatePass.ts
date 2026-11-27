@@ -37,6 +37,10 @@ import {
 	type RunFacts,
 	runTemplateContext,
 } from '../templates/runVariables';
+import {
+	type NoteProperties,
+	noteProperties,
+} from '../templates/partProperties';
 import type { TemplateContext } from '../templates/TemplateEngine';
 import {
 	TRANSCRIPT_HELPER,
@@ -194,6 +198,10 @@ export function noteRendering(
 /** The note a template wrote, and what it changed about the transcript. */
 export interface TemplateNote {
 	readonly markdown: string;
+	/** The properties its parts write to the note; none for a plain task. */
+	readonly properties: NoteProperties;
+	/** Name of the template that wrote it; undefined for a plain task. */
+	readonly templateName?: string | undefined;
 	/**
 	 * Whether the transcript lines carry timestamps, when the template said;
 	 * undefined when it kept the setting or wrote no transcript.
@@ -265,7 +273,11 @@ export class TemplatePass {
 		};
 		const specs = collectParts(template, context);
 		const results = await this.fillParts(specs, facts);
-		return this.assemble(context, results);
+		return {
+			...this.assemble(context, results),
+			properties: noteProperties(specs, results),
+			templateName: this.request.templateName,
+		};
 	}
 
 	/**
@@ -281,10 +293,16 @@ export class TemplatePass {
 		facts: RunFacts,
 	): Promise<Map<string, string>> {
 		const links = this.request.rendering?.links;
+		// A part the model does not fill is its own body, and costs no call.
 		const results = new Map<string, string>(
-			specs.map((spec) => [spec.name, '']),
+			specs.map((spec) => [
+				spec.name,
+				spec.asksModel ? '' : spec.instruction,
+			]),
 		);
-		const groups = groupCalls(this.withInstructions(specs));
+		const groups = groupCalls(
+			this.withInstructions(specs.filter((spec) => spec.asksModel)),
+		);
 		const failed: string[] = [];
 		for (const group of groups) {
 			const answers = await this.ask(group, facts);
@@ -336,7 +354,7 @@ export class TemplatePass {
 	private assemble(
 		context: TemplateContext,
 		results: ReadonlyMap<string, string>,
-	): TemplateNote {
+	): Pick<TemplateNote, 'markdown' | 'timestamps'> {
 		const { rendering, template } = this.request;
 		let timestamps: boolean | undefined;
 		const helpers = rendering

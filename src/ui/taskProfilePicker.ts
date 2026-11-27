@@ -1,6 +1,7 @@
 /**
- * The row of the transcription dialog that picks the prompt profile, or the
- * note template, of the post-processing task chosen for the run.
+ * The rows of the transcription dialog that pick the prompt profile, or the
+ * note template and where its note goes, of the post-processing task chosen
+ * for the run.
  *
  * Which summary prompt or which template suits a recording is a choice made
  * per recording as often as once in the settings: a daily sync and a lecture
@@ -13,8 +14,10 @@
 import type { ProfileTextSource } from '../settings/ProfileTextSource';
 import { PROFILE_KINDS } from '../settings/profileKinds';
 import { PROMPT_KIND_OF_TASK } from '../settings/profileResolution';
+import { TEMPLATE_OUTPUT_OPTIONS } from '../settings/labels';
+import type { TemplateOutput } from '../transcription/llmPostProcess';
 import {
-	type ProfileKindId,
+	ProfileKindId,
 	profilesOfKind,
 	selectedProfile,
 	selectedProfileId,
@@ -64,4 +67,13 @@ export function addTaskProfilePicker(
 		// which counts a template's calls, follow the pick.
 		rerender: true,
 	});
+	if (kindId === ProfileKindId.LlmTemplate) {
+		// For this run only, as the destination row above is.
+		addDropdown(ctx, {
+			name: 'Template output',
+			options: TEMPLATE_OUTPUT_OPTIONS,
+			get: () => s.llmTemplateOutput,
+			set: (value) => (s.llmTemplateOutput = value as TemplateOutput),
+		});
+	}
 }

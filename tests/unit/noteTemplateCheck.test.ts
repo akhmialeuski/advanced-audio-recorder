@@ -268,3 +268,55 @@ describe('checking the callout of a part', () => {
 		expect(check(source)).toEqual([expect.stringContaining(message)]);
 	});
 });
+
+describe('checking where a part writes and who fills it', () => {
+	it('takes a property and a part its own text fills', () => {
+		expect(
+			check(
+				[
+					'{{#part "summary" property="summary"}}The points.{{/part}}',
+					'{{#part "people" property="participants" model=false}}{{join participants ", "}}{{/part}}',
+				].join('\n'),
+			),
+		).toEqual([]);
+	});
+
+	it.each([
+		[
+			'{{#part "a" property=3}}A{{/part}}',
+			'Part "a" needs property to be the name of a property in quotes',
+		],
+		[
+			'{{#part "a" model="no"}}A{{/part}}',
+			'Part "a" needs model to be true or false.',
+		],
+		[
+			'{{#part "a" inline="no"}}A{{/part}}',
+			'Part "a" needs inline to be true or false.',
+		],
+		[
+			'{{#part "a" model=false separate=true}}A{{/part}}',
+			'Part "a" is filled by its own text (model=false), so it makes no call to be separate.',
+		],
+		[
+			'{{part "a" model=false profile="Action items"}}',
+			'Part "a" is filled by its own text (model=false), so it names no profile.',
+		],
+		[
+			'{{#part "a" property="x"}}A{{/part}}{{#part "b" property="x"}}B{{/part}}',
+			'Two parts write the property "x"; each property takes one part.',
+		],
+	])('finds what is wrong with %s', (source, message) => {
+		expect(check(source, ['Action items'])).toContainEqual(
+			expect.stringContaining(message),
+		);
+	});
+
+	it('counts no call for a part its own text fills', () => {
+		const plan = planNoteTemplate(
+			'{{#part "a" model=false}}x{{/part}}{{#part "b" model=false separate=true}}x{{/part}}',
+		);
+
+		expect(plan).toEqual({ calls: 0, outputRatio: 0 });
+	});
+});

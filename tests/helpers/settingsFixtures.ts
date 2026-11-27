@@ -216,6 +216,7 @@ export function fullyPopulatedSettings(): Omit<
 		transcriptHeading: '# T',
 		llmPostProcessEnabled: true,
 		llmPostProcessTask: 'summary',
+		llmTemplateOutput: 'separate',
 		llmTranslateTargetLanguage: 'Spanish',
 		profiles: [
 			{ id: 'p1', kind: 'dictionary', name: 'General', body: 'Foo\nBar' },

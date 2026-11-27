@@ -72,7 +72,7 @@ import {
 	TranscriptDestination,
 	TranscriptFileFormat,
 } from '../transcription/TranscriptTypes';
-import { LlmTask } from '../transcription/llmPostProcess';
+import { LlmTask, TemplateOutput } from '../transcription/llmPostProcess';
 import { noSelectedProfiles, ProfileKindId } from './profiles';
 import type { Profile, SelectedProfileIds } from './profiles';
 import { ChannelMode } from '../audio/downmix';
@@ -706,6 +706,8 @@ export interface AudioRecorderSettings {
 	llmPostProcessEnabled: boolean;
 	/** LLM post-processing task */
 	llmPostProcessTask: LlmTask;
+	/** Where the note a template writes goes: the recording's note or one of its own. */
+	llmTemplateOutput: TemplateOutput;
 	/**
 	 * Language the translation task translates into. Empty means English,
 	 * which is what a plain "translate this" is usually taken to mean and
@@ -1125,6 +1127,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptHeading: '## Transcript',
 	llmPostProcessEnabled: false,
 	llmPostProcessTask: LlmTask.Cleanup,
+	llmTemplateOutput: TemplateOutput.Note,
 	llmTranslateTargetLanguage: '',
 	profiles: seededProfiles(),
 	shippedProfileIds: shippedProfiles().map((profile) => profile.id),

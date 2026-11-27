@@ -458,6 +458,76 @@ export class FileManager {
 			return `[[${target}${subpath ?? ''}${alias ? `|${alias}` : ''}]]`;
 		},
 	);
+
+	// Reads the frontmatter, hands it to the callback and writes it back, as
+	// Obsidian does. The YAML is read one top-level key at a time: a key the
+	// callback leaves as it was keeps its lines exactly, so a test sees that
+	// the other properties were not touched.
+	processFrontMatter = jest.fn(
+		async (
+			file: TFile,
+			fn: (frontmatter: Record<string, unknown>) => void,
+		): Promise<void> => {
+			await this.vault.process(file, (content) => {
+				const info = getFrontMatterInfo(content);
+				const entries = frontmatterEntries(info.frontmatter);
+				const frontmatter: Record<string, unknown> = Object.fromEntries(
+					[...entries].map(([key, entry]) => [key, entry.value]),
+				);
+				fn(frontmatter);
+				const yaml = Object.entries(frontmatter)
+					.map(([key, value]) => {
+						const entry = entries.get(key);
+						return entry && entry.value === value
+							? entry.lines
+							: `${key}: ${JSON.stringify(value)}`;
+					})
+					.join('\n');
+				return `---\n${yaml}\n---\n${content.slice(info.contentStart)}`;
+			});
+		},
+	);
+}
+
+/** One top-level key of a frontmatter block, and the lines it stands on. */
+interface FrontmatterEntry {
+	/** Its value: the text after the key, unquoted; a block's lines as text. */
+	readonly value: unknown;
+	readonly lines: string;
+}
+
+/**
+ * The top-level keys of a frontmatter block, each with the lines it holds,
+ * the indented lines under it included.
+ * @param yaml - The block, without its fences
+ */
+function frontmatterEntries(yaml: string): Map<string, FrontmatterEntry> {
+	const entries = new Map<string, FrontmatterEntry>();
+	let key: string | null = null;
+	let lines: string[] = [];
+	const flush = (): void => {
+		if (key === null) {
+			return;
+		}
+		const inline = (lines[0] ?? '').slice(key.length + 1).trim();
+		const value =
+			lines.length > 1
+				? lines.slice(1).join('\n')
+				: inline.replace(/^"(.*)"$/, '$1');
+		entries.set(key, { value, lines: lines.join('\n') });
+	};
+	for (const line of yaml === '' ? [] : yaml.split('\n')) {
+		const top = /^([^\s:#][^:]*):/.exec(line);
+		if (top?.[1] !== undefined) {
+			flush();
+			key = top[1];
+			lines = [line];
+		} else {
+			lines.push(line);
+		}
+	}
+	flush();
+	return entries;
 }
 
 /**

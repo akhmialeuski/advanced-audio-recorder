@@ -15,7 +15,7 @@ import {
 	TranscriptDestination,
 	TranscriptFileFormat,
 } from '../transcription/TranscriptTypes';
-import { LlmTask } from '../transcription/llmPostProcess';
+import { LlmTask, TemplateOutput } from '../transcription/llmPostProcess';
 import type { LlmProviderId, TranscriptionProviderId } from './settingsSchema';
 import {
 	ConversionLinkAction,
@@ -92,6 +92,12 @@ export const LLM_TASK_LABELS: Record<LlmTask, string> = {
 	[LlmTask.Custom]: 'Custom',
 	[LlmTask.Translate]: 'Translate',
 	[LlmTask.Template]: 'Structure with a template',
+};
+
+/** Display labels for where a template's note goes. */
+export const TEMPLATE_OUTPUT_LABELS: Record<TemplateOutput, string> = {
+	[TemplateOutput.Note]: "Into the recording's note",
+	[TemplateOutput.Separate]: 'As a note of its own',
 };
 
 /**
@@ -171,6 +177,11 @@ export const TRANSCRIPT_FILE_FORMAT_OPTIONS = optionsFromLabels(
 
 /** LLM-task dropdown options, derived from the task label map. */
 export const LLM_TASK_OPTIONS = optionsFromLabels(LLM_TASK_LABELS);
+
+/** Template-output dropdown options, derived from its label map. */
+export const TEMPLATE_OUTPUT_OPTIONS = optionsFromLabels(
+	TEMPLATE_OUTPUT_LABELS,
+);
 
 /** LLM-provider dropdown options, derived from the provider label map. */
 export const LLM_PROVIDER_OPTIONS = optionsFromLabels(LLM_PROVIDER_LABELS);

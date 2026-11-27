@@ -40,6 +40,7 @@ export { SessionCostTracker } from './SessionCostTracker';
 export { TranscriptDestination } from './TranscriptTypes';
 export type { Transcript, TranscriptFileFormat } from './TranscriptTypes';
 export type { LlmTask } from './llmPostProcess';
+export { writesTemplateNote } from './llmPostProcess';
 /**
  * The LLM vendor registry, re-exported for the dialogs that let the user pick
  * the provider and model for one run. They read the descriptor rather than

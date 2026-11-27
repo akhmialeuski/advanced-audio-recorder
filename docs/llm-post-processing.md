@@ -128,6 +128,9 @@ Every part of a template is asked for in **one call**: the model reads the trans
 | `language="German"`      | Writes this part in another language than the rest.                                                                                                                                                                 |
 | `separate=true`          | Asks for the part in a call of its own.                                                                                                                                                                             |
 | `callout="success"`      | Puts the part's result in a callout of that type; `title="..."` and `folded=true` shape it, as they do for `{{transcript}}`.                                                                                        |
+| `property="summary"`     | Writes the part's result to that property of the note instead of its body. See [Properties and a note of its own](#properties-and-a-note-of-its-own).                                                               |
+| `inline=false`           | Keeps the part out of the place it stands, so `{{parts.title}}` writes it where it belongs, such as in a heading.                                                                                                   |
+| `model=false`            | Takes the part's body itself, with the facts of the run filled in, as its result. No model is asked and the part costs no call, for a fact such as the participants put in a property.                              |
 
 The formats:
 
@@ -227,13 +230,39 @@ Which template a run uses can also be picked in the **Transcribe** dialog, under
 
 The **Template variables** row on a template's page checks it as you type: a part without a name or an instruction, an unknown format or setting, a part inside a repeat, a profile no prompt profile is called, `{{parts.name}}` naming no part, and a transcript written twice or with a setting it does not take. The cost estimate before a run counts the calls the selected template makes.
 
+#### Properties and a note of its own
+
+A part with `property="name"` writes its result to the note's frontmatter instead of its body, so a summary or a decision becomes data a Dataview query or a Bases table reads. Nothing of the part is left in the body, heading and all, unless the template writes `{{parts.name}}` somewhere. The property is set as text, and every other property of the note is kept as it was. A part the model found nothing for leaves the property as it was too.
+
+A part with `model=false` is not asked of the model: its body, with the facts of the run filled in, is its result. With `property=` it puts a fact of the run into a property:
+
+<!-- prettier-ignore -->
+```handlebars
+{{#part "decision" property="decision"}}
+The one decision the meeting took, in a sentence.
+{{/part}}
+
+{{#part "people" property="participants" model=false}}{{join participants ", "}}{{/part}}
+```
+
+Reading a property sends its value to the model, and writing one sends nothing anywhere.
+
+**Template output**, a row under the template profiles and in the **Transcribe** dialog for one run, says where the note goes:
+
+- **Into the recording's note** (the default) inserts it under the **Transcript heading**, as a transcript goes, and its properties are written to that note.
+- **As a note of its own** creates the note next to the recording, named after the recording and the template (`standup - Daily sync.md`, with a number added when that name is taken), and inserts a link to it under the **Transcript heading** of the recording's note. The properties are written to the new note.
+
+![The LLM post-processing settings with Task set to Structure with a template, the Note template profile row set to Weekly sync, and the Template output row set to Into the recording's note](images/settings-llm-template-output.png)
+
+A run with no note to go into, such as **Transcribe audio** on the recording itself, writes the template's note as a note of its own instead of a transcript file, since what a template writes is a note.
+
 #### Structuring a transcript you already have
 
 **Structure transcript with a template**, in the recording's context menu, the editor menu of its embed and the command palette, applies a note template to the transcript the recording already has, without transcribing it again. Trying another template on the same meeting then costs only the template's calls: the engine is not asked again, and a paid engine does not bill the recognition twice.
 
-![The Structure transcript with a template dialog for a recording, with the Note template row set to Weekly sync, the note the result is inserted into, and the estimated cost of the template's calls for a ten-minute transcript above the Structure and Cancel buttons](images/dialog-structure-transcript.png)
+![The Structure transcript with a template dialog for a recording, with the Note template row set to Weekly sync, the Template output row set to Into the recording's note, the note the result is inserted into, and the estimated cost of the template's calls for a ten-minute transcript above the Structure and Cancel buttons](images/dialog-structure-transcript.png)
 
-The dialog finds the transcript the way [Generate chapters from transcript](transcription.md#auto-chapters) does, from the outputs recorded in the recording's sidecar first and then from transcript files and notes next to it. It opens on the template this recording was last structured with, else the selected one, shows the estimated cost of the template's calls for this transcript, and inserts the note into the note the recording was reached through, under your **Transcript heading**, as a transcription run would. It stays open with a **Cancel** while the model works, and closing it cancels the run. Without a transcript, without any note template, or without a note to write into, it says which is missing instead.
+The dialog finds the transcript the way [Generate chapters from transcript](transcription.md#auto-chapters) does, from the outputs recorded in the recording's sidecar first and then from transcript files and notes next to it. It opens on the template this recording was last structured with, else the selected one, shows the estimated cost of the template's calls for this transcript, and writes the note where **Template output** sends it: into the note the recording was reached through, under your **Transcript heading**, or as a note of its own, which the dialog lets you pick for this run. A recording reached without a note gets a note of its own. It stays open with a **Cancel** while the model works, and closing it cancels the run. Without a transcript or without any note template, it says which is missing instead.
 
 Two things differ from a template applied during a run:
 

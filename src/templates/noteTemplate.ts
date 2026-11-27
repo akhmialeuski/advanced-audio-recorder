@@ -57,7 +57,22 @@ export const SHARED_PART_OPTIONS: readonly string[] = [
 	'callout',
 	'title',
 	'folded',
+	'property',
+	'model',
+	'inline',
 ];
+
+/** The setting that sends a part's result to a property of the note. */
+export const PROPERTY_SETTING = 'property';
+
+/**
+ * The setting that, set to false, keeps a part out of the place it stands, so
+ * `{{parts.name}}` writes it where it belongs, such as in a heading.
+ */
+export const INLINE_SETTING = 'inline';
+
+/** The setting that, set to false, makes a part's body its own result. */
+export const MODEL_SETTING = 'model';
 
 /** One part of a template, as the run's facts made it. */
 export interface PartSpec {
@@ -77,6 +92,16 @@ export interface PartSpec {
 	readonly language?: string | undefined;
 	/** Whether the part is asked for in a call of its own. */
 	readonly separate: boolean;
+	/**
+	 * The property of the note the result is written to instead of the body;
+	 * undefined for a part written where it stands.
+	 */
+	readonly property?: string | undefined;
+	/**
+	 * Whether a model fills the part. A part with `model=false` is filled by
+	 * its own body, rendered with the facts of the run, and costs no call.
+	 */
+	readonly asksModel: boolean;
 	/** Every setting of the part, by name, as the template gave it. */
 	readonly options: Readonly<Record<string, unknown>>;
 }
@@ -126,7 +151,7 @@ export const NOTE_TEMPLATE_VARIABLES: TemplateCatalog = [
 const PART_DECLARATION: TemplateHelper = {
 	name: PART_HELPER,
 	description:
-		'A section a model fills from the transcript. The body is the instruction; settings: format (prose, bullets, numbered, tasks, decisions, terms, outline, quotes, table, callout), max, empty="remove|keep|text", profile, language, separate.',
+		'A section a model fills from the transcript. The body is the instruction; settings: format (prose, bullets, numbered, tasks, decisions, terms, outline, quotes, table, callout), max, empty="remove|keep|text", profile, language, separate, callout, property="name" to write the result to a property of the note instead, inline=false to write it only where {{parts.name}} names it, model=false to take the body itself as the result.',
 	example:
 		'{{#part "summary" format="bullets" max=3}}The three things that matter.{{/part}}',
 	fn: () => '',
@@ -205,6 +230,8 @@ function partSpec(
 				: EmptyPart.Remove,
 		language: textSetting(hash['language']),
 		separate: hash['separate'] === true,
+		property: textSetting(hash[PROPERTY_SETTING]),
+		asksModel: hash[MODEL_SETTING] !== false,
 		options: { ...hash },
 	};
 }
@@ -281,12 +308,19 @@ export function assembleNote(
 ): string {
 	const part: HelperDelegate = (...args: unknown[]) => {
 		const { name, options } = partCall(args);
+		const hash = options.hash as Record<string, unknown>;
+		// A part sent to a property, or kept out of its place, leaves nothing
+		// in the body, heading and all; `{{parts.name}}` still writes it
+		// wherever the template wants.
+		if (
+			textSetting(hash[PROPERTY_SETTING]) !== undefined ||
+			hash[INLINE_SETTING] === false
+		) {
+			return REMOVED;
+		}
 		const result =
 			typeof name === 'string' ? (results.get(name) ?? '') : '';
-		return partOutput(
-			result,
-			(options.hash as Record<string, unknown>)['empty'],
-		);
+		return partOutput(result, hash['empty']);
 	};
 	const rendered = noteTemplateEngine().render(
 		source,

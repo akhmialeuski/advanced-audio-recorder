@@ -45,6 +45,11 @@ import {
 	partFormat,
 	partFormats,
 } from './partFormats';
+import {
+	asksModel,
+	partOutputProblems,
+	sharedPropertyProblems,
+} from './partOutputCheck';
 
 /** One part as the template text declares it. */
 export interface DeclaredPart {
@@ -58,6 +63,8 @@ export interface DeclaredPart {
 	readonly profile: string | undefined;
 	/** Whether its block has an instruction in it. */
 	readonly hasInstruction: boolean;
+	/** Whether a model fills it; false for a part with `model=false`. */
+	readonly asksModel: boolean;
 	/** The part's own node, for where a problem is. */
 	readonly node: AstBlock | AstMustache;
 	/** Whether it stands inside a block that repeats, or another part. */
@@ -126,6 +133,7 @@ function declaredPart(
 		hasInstruction: hasInstruction(
 			'program' in node ? node.program : undefined,
 		),
+		asksModel: asksModel(node),
 		node,
 		nested,
 	};
@@ -219,7 +227,8 @@ function parse(source: string): AstProgram | undefined {
  * @param source - The template
  */
 export function planNoteTemplate(source: string): NoteTemplatePlan {
-	const parts = declaredParts(source);
+	// A part its own text fills costs no call and writes nothing billed.
+	const parts = declaredParts(source).filter((part) => part.asksModel);
 	const separate = parts.filter((part) => part.separate).length;
 	const shared = parts.length - separate > 0 ? 1 : 0;
 	const outputRatio = parts.reduce(
@@ -260,6 +269,9 @@ function partProblems(
 		...maxProblems(part, label, error),
 		...instructionProblems(part, label, error),
 		...profileProblems(part, label, isProfile),
+		...partOutputProblems(part.node).map((message) =>
+			error(`${label} ${message}`),
+		),
 		...(part.format === CALLOUT_FORMAT
 			? []
 			: calloutSettingProblems(part.node).map((message) =>
@@ -493,6 +505,10 @@ export function checkNoteTemplate(
 		seen.add(part.name);
 	}
 	problems.push(
+		...sharedPropertyProblems(parts.map((part) => part.node)).map(
+			({ node, message }) =>
+				problem(TemplateProblemSeverity.Error, node, message),
+		),
 		...partReferenceProblems(program, seen),
 		...transcriptProblems(program),
 	);

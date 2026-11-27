@@ -44,9 +44,11 @@ import {
 	formatTranscriptMarkdown,
 	transcriptMarkdownOptions,
 } from './transcriptFormat';
-import { insertTranscriptIntoNote } from './transcriptOutput';
+import type { TemplateOutput } from './llmPostProcess';
+import { writeTemplateNote } from './templateNoteOutput';
 import {
 	noteRendering,
+	type TemplateNote,
 	TemplatePass,
 	withTemplateProfileNotes,
 } from './templatePass';
@@ -79,10 +81,15 @@ export interface StructurerDeps {
 export interface StructureRequest {
 	/** The recording. */
 	readonly file: TFile;
-	/** The note the result goes into. */
+	/**
+	 * The recording's note, which the result goes into or links to; '' for
+	 * none, when the result is written as a note of its own.
+	 */
 	readonly notePath: string;
 	/** Id of the note template profile to apply. */
 	readonly templateId: string;
+	/** Where the note goes for this run; the settings' choice when absent. */
+	readonly output?: TemplateOutput | undefined;
 	/** The recording's transcript, as the dialog found it. */
 	readonly source: TranscriptLinesSource;
 	/** Ends the run when the user cancels. */
@@ -123,6 +130,16 @@ export function transcriptFromLines(source: TranscriptLinesSource): Transcript {
  */
 export function chaptersOf(markers: readonly PlayerMarker[]): PlayerMarker[] {
 	return markers.filter((marker) => marker.kind === MARKER_KIND.chapter);
+}
+
+/**
+ * What the user is told when the note could not be written.
+ * @param request - The structuring
+ */
+function unwrittenMessage(request: StructureRequest): string {
+	return request.notePath === ''
+		? `Could not write the note for ${request.file.name}.`
+		: `Could not write to ${request.notePath}; the note may have been moved or deleted.`;
 }
 
 /** Applies note templates to transcripts a recording already has. */
@@ -166,8 +183,8 @@ export class TranscriptStructurer {
 					message: 'That note template no longer exists.',
 				};
 			}
-			const markdown = await this.buildNote(request, settings, template);
-			return await this.insert(request, settings, markdown, template);
+			const note = await this.buildNote(request, settings, template);
+			return await this.insert(request, settings, note, template);
 		} catch (error) {
 			return this.failure(request, error);
 		}
@@ -197,7 +214,7 @@ export class TranscriptStructurer {
 		request: StructureRequest,
 		settings: AudioRecorderSettings,
 		template: { readonly name: string; readonly body: string },
-	): Promise<string> {
+	): Promise<TemplateNote> {
 		const { file, notePath, source, signal } = request;
 		const transcript = transcriptFromLines(source);
 		const links = timecodeLinkBuilder(this.app, file, notePath);
@@ -218,7 +235,7 @@ export class TranscriptStructurer {
 		const chapterMarkers = chaptersOf(
 			await this.sidecar.getMarkers(file.path),
 		);
-		const note = await new TemplatePass({
+		return new TemplatePass({
 			template: template.body,
 			templateName: template.name,
 			source: facts,
@@ -244,35 +261,34 @@ export class TranscriptStructurer {
 			costSink: this.costSink,
 			signal,
 		}).run();
-		return note.markdown;
 	}
 
 	/**
-	 * Inserts the note and records which template wrote it.
+	 * Writes the note where the run sends it, and records which template
+	 * wrote it.
 	 * @param request - The structuring
 	 * @param settings - The run's settings
-	 * @param markdown - The note the template wrote
+	 * @param note - The note the template wrote
 	 * @param template - The template applied
 	 */
 	private async insert(
 		request: StructureRequest,
 		settings: AudioRecorderSettings,
-		markdown: string,
+		note: TemplateNote,
 		template: { readonly id: string; readonly name: string },
 	): Promise<StructureOutcome> {
 		const { file, notePath } = request;
-		const inserted = await insertTranscriptIntoNote(
-			this.app,
+		const written = await writeTemplateNote(this.app, {
+			recording: file,
 			notePath,
-			markdown,
-			settings.transcriptHeading,
-			file,
-		);
-		if (!inserted) {
-			return {
-				written: false,
-				message: `Could not write to ${notePath}; the note may have been moved or deleted.`,
-			};
+			markdown: note.markdown,
+			heading: settings.transcriptHeading,
+			templateName: template.name,
+			properties: note.properties,
+			output: request.output ?? settings.llmTemplateOutput,
+		});
+		if (written === null) {
+			return { written: false, message: unwrittenMessage(request) };
 		}
 		await this.sidecar.recordAppliedTemplate(file.path, {
 			profileId: template.id,
@@ -281,7 +297,7 @@ export class TranscriptStructurer {
 		});
 		return {
 			written: true,
-			message: `Structured ${file.name} with "${template.name}" into ${notePath}.`,
+			message: `Structured ${file.name} with "${template.name}" into ${written}.`,
 		};
 	}
 

@@ -38,6 +38,7 @@ function spec(overrides: Partial<PartSpec>): PartSpec {
 		format: 'prose',
 		empty: 'remove',
 		separate: false,
+		asksModel: true,
 		options: {},
 		...overrides,
 	};
