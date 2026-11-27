@@ -227,13 +227,62 @@ interface Joined<T> {
 }
 
 /**
+ * Where the earlier part's line that the seam cut starts: the earliest start
+ * of its lines that reach the seam, but no earlier than the later part's
+ * audio, which cannot repeat what it never heard.
+ *
+ * When none of its lines reaches the seam, the earlier part is trusted only
+ * up to where its lines end. A part that ran late placed its last sentence
+ * past its own end, where it was trimmed away, so the stretch between its
+ * last line and the seam is held by the later part alone.
+ * @param earlier - The earlier part's lines, as joined
+ * @param from - Where the later part's audio starts
+ * @param seam - Where the earlier part's audio ends
+ * @returns Where the later part should take over from, at the latest
+ */
+function cutLineStart(
+	earlier: readonly PlacedLine[],
+	from: number,
+	seam: number,
+): number {
+	const heldUntil = earlier.reduce(
+		(last, line) => Math.max(last, line.end),
+		earlier.length > 0 ? from : seam,
+	);
+	const start = earlier
+		.filter((line) => line.end > seam - SEAM_REACH_SECONDS)
+		.reduce(
+			(first, line) => Math.min(first, line.start),
+			Math.min(seam, heldUntil),
+		);
+	return Math.max(start, from);
+}
+
+/**
+ * The later part's lines from the first one that reaches a point on.
+ * @param lines - The later part's lines
+ * @param point - Where the earlier part stops being trusted
+ * @returns Where the later part takes over, and the lines it keeps
+ */
+function takenOver(
+	lines: readonly PlacedLine[],
+	point: number,
+): { takeover: number; kept: PlacedLine[] } {
+	const takeover =
+		lines.find((line) => line.end > point - SEAM_REACH_SECONDS)?.start ??
+		point;
+	return { takeover, kept: lines.filter((line) => line.start >= takeover) };
+}
+
+/**
  * Joins a part to the parts before it across the lead-in they share.
  *
  * The seam is moved to a line break. The earlier part's audio ends at the
- * seam, so the sentence spoken across it is cut off there, while the later
- * part heard that sentence whole in its lead-in. The later part therefore
- * takes over from the first of its lines that reaches the seam, and the
- * earlier part gives up the lines that mostly lie after that point.
+ * seam, so the line spoken across it is cut off there, while the later part
+ * heard that line whole in its lead-in, and may have split it in two. The
+ * later part therefore takes over from the first of its lines that reaches
+ * where the cut line starts, and the earlier part gives up the lines that
+ * mostly lie after that point.
  *
  * A part whose earlier neighbour is missing (a part that failed, or a run
  * that asked for some stretches only) has nothing to be matched against: its
@@ -250,17 +299,17 @@ function acrossSeam<T extends SeamPart>(
 ): T {
 	const lines = placed(part);
 	const seam = part.offsetSeconds + leadIn;
-	const takeover =
-		lines.find((line) => line.end > seam - SEAM_REACH_SECONDS)?.start ??
-		seam;
-	const kept = lines.filter((line) => line.start >= takeover);
 	const earlier = joined.parts.at(-1);
 	const reaches =
 		Math.abs((joined.endSeconds ?? Number.NaN) - seam) <=
 		SEAM_REACH_SECONDS;
 	if (!earlier || !reaches) {
-		return rebuilt(part, kept, NO_RENAMES);
+		return rebuilt(part, takenOver(lines, seam).kept, NO_RENAMES);
 	}
+	const { takeover, kept } = takenOver(
+		lines,
+		cutLineStart(joined.lines, part.offsetSeconds, seam),
+	);
 	const matched = pairBySharedSeconds(
 		sharedSeconds(joined.lines, lines, part.offsetSeconds, seam),
 	);

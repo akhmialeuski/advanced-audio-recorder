@@ -98,6 +98,31 @@ describe('joinSeams', () => {
 		).toEqual(['Olga: A teraz przeczytamy tekst.']);
 	});
 
+	it('keeps a sentence once when the later part split the cut line in two', () => {
+		const joined = joinSeams([
+			part(0, [
+				[590.26, 592.26, 'Anatol', 'Aha.'],
+				[
+					592.26,
+					601.26,
+					'Olga',
+					'Mhm, dobrze. Otwieram. Jestem młodym i...',
+				],
+			]),
+			part(1, [
+				[590.26, 592.26, 'Speaker 2', 'Aha.'],
+				[592.5, 598.5, 'Speaker 1', 'Mhm, dobrze. Otwieram.'],
+				[598.52, 604.52, 'Speaker 1', 'Jestem młodym i aktywnym.'],
+			]),
+		]);
+
+		expect(spoken(joined)).toEqual([
+			'Anatol: Aha.',
+			'Olga: Mhm, dobrze. Otwieram.',
+			'Olga: Jestem młodym i aktywnym.',
+		]);
+	});
+
 	it('names the one speaker the shared stretch did not hold by elimination', () => {
 		const joined = joinSeams([
 			NAMED_FIRST,
