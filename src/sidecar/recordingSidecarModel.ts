@@ -146,6 +146,19 @@ export interface TranscriptProvenance {
 	createdAt?: string;
 }
 
+/**
+ * The note template a recording's note was last structured with, so the
+ * command offers it again on the next run.
+ */
+export interface AppliedTemplate {
+	/** Id of the note template profile. */
+	profileId: string;
+	/** Its name when it was applied, for a profile renamed or deleted since. */
+	name: string;
+	/** ISO-8601 timestamp of the apply. */
+	appliedAt: string;
+}
+
 /** One applied name mapping, recorded for undo. */
 export interface RenameHistoryEntry {
 	/** ISO-8601 timestamp of the apply. */
@@ -180,6 +193,8 @@ export interface TranscriptSection {
 	history: RenameHistoryEntry[];
 	/** Provenance of the last run that wrote outputs; absent until recorded. */
 	provenance?: TranscriptProvenance;
+	/** The note template last applied to the recording; absent until one is. */
+	appliedTemplate?: AppliedTemplate;
 }
 
 /**
@@ -261,7 +276,8 @@ export function isTranscriptSectionEmpty(section: TranscriptSection): boolean {
 		section.participants.length === 0 &&
 		section.noteOutputs.length === 0 &&
 		section.fileOutputs.length === 0 &&
-		section.history.length === 0
+		section.history.length === 0 &&
+		section.appliedTemplate === undefined
 	);
 }
 
@@ -541,6 +557,7 @@ export function parseTranscriptSection(value: unknown): TranscriptSection {
 	}
 	const record = value as Record<string, unknown>;
 	const provenance = parseProvenance(record.provenance);
+	const appliedTemplate = parseAppliedTemplate(record.appliedTemplate);
 	const profileId = trimmedString(record.participantProfileId);
 	return {
 		speakers: parseSpeakers(record.speakers),
@@ -552,7 +569,26 @@ export function parseTranscriptSection(value: unknown): TranscriptSection {
 		fileOutputs: parseFileOutputs(record.fileOutputs),
 		history: parseHistory(record.history),
 		...(provenance ? { provenance } : {}),
+		...(appliedTemplate ? { appliedTemplate } : {}),
 	};
+}
+
+/**
+ * Parses the applied template record, or null when any of its fields is
+ * missing: an id alone cannot be shown, and a name alone cannot be found.
+ * @param value - The stored record
+ */
+function parseAppliedTemplate(value: unknown): AppliedTemplate | null {
+	if (typeof value !== 'object' || value === null) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	const profileId = trimmedString(record.profileId);
+	const name = trimmedString(record.name);
+	const appliedAt = trimmedString(record.appliedAt);
+	return profileId && name && appliedAt
+		? { profileId, name, appliedAt }
+		: null;
 }
 
 /** Parses the run provenance, or null when absent or not object-shaped. */
@@ -610,6 +646,9 @@ export function cloneTranscriptSection(
 		})),
 		...(section.provenance
 			? { provenance: { ...section.provenance } }
+			: {}),
+		...(section.appliedTemplate
+			? { appliedTemplate: { ...section.appliedTemplate } }
 			: {}),
 	};
 }
@@ -697,6 +736,13 @@ export function serializeRecordingSidecar(
 			})),
 			...(sidecar.transcript.provenance
 				? { provenance: { ...sidecar.transcript.provenance } }
+				: {}),
+			...(sidecar.transcript.appliedTemplate
+				? {
+						appliedTemplate: {
+							...sidecar.transcript.appliedTemplate,
+						},
+					}
 				: {}),
 		};
 	}

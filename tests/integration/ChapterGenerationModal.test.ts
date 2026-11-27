@@ -19,9 +19,9 @@ import type {
 	AutoChapterService,
 	ChapterGenerationOptions,
 } from 'src/chapters/AutoChapterService';
-import type { TranscriptLinesSource } from 'src/chapters/transcriptSources';
 import { at, defined } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
+import { tenMinuteSource } from '../helpers/transcriptFixtures';
 import { modalInstances } from '../mocks/obsidian';
 
 const loadTranscriptLines = jest.fn();
@@ -31,13 +31,7 @@ jest.mock('src/chapters/transcriptSources', () => ({
 }));
 
 /** A transcript spanning ten minutes, enough to price a real estimate. */
-const SOURCE: TranscriptLinesSource = {
-	lines: [
-		{ time: 0, text: 'hello' },
-		{ time: 600, text: 'goodbye' },
-	],
-	origin: 'rec.json',
-};
+const SOURCE = tenMinuteSource('hello', 'goodbye');
 
 const file = { name: 'rec.wav', path: 'rec.wav' } as TFile;
 const app = {} as App;

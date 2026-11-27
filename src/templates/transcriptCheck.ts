@@ -22,7 +22,12 @@ import {
 	literal,
 	setting,
 } from './templateLiterals';
-import { TRANSCRIPT_HELPER, TRANSCRIPT_OPTIONS } from './transcriptPart';
+import {
+	chapterLevel,
+	MAX_HEADING_LEVEL,
+	TRANSCRIPT_HELPER,
+	TRANSCRIPT_OPTIONS,
+} from './transcriptPart';
 
 /** Settings of the transcript lines that are true or false. */
 const FLAGS: readonly string[] = ['timestamps', 'speakers'];
@@ -118,10 +123,27 @@ function settingProblems(node: AstCall): string[] {
 			const value = literal(setting(node, name));
 			return value !== undefined && typeof value !== 'boolean';
 		}).map((name) => `{{transcript}} needs ${name} to be true or false.`),
+		...chapterProblems(node),
 		...calloutSettingProblems(node).map(
 			(message) => `{{transcript}} ${message}`,
 		),
 	];
+}
+
+/**
+ * What is wrong with the `chapters` setting: it splits the transcript under
+ * headings of the level it names, so it takes true, false or a level.
+ * @param node - The `{{transcript}}` call
+ */
+function chapterProblems(node: AstCall): string[] {
+	const value = literal(setting(node, 'chapters'));
+	return value === undefined ||
+		value === false ||
+		chapterLevel(value) !== undefined
+		? []
+		: [
+				`{{transcript}} needs chapters to be true, false or a heading level from 1 to ${String(MAX_HEADING_LEVEL)}.`,
+			];
 }
 
 /**

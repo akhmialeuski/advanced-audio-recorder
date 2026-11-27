@@ -251,6 +251,60 @@ export function formatTranscriptMarkdown(
 	return lines.join('\n\n');
 }
 
+/** A chapter of the recording, where a transcript split by chapters starts a section. */
+export interface TranscriptChapter {
+	/** When the chapter starts, in seconds. */
+	readonly start: number;
+	/** Its title, written as the section's heading. */
+	readonly title: string;
+}
+
+/**
+ * Renders the transcript in sections, one per chapter: the chapter's title as
+ * a heading of the given level over the lines that start inside it. Lines
+ * before the first chapter come first, without a heading, and a chapter no
+ * line starts in is left out rather than written as an empty section.
+ * @param transcript - Source transcript
+ * @param options - Rendering options
+ * @param linkBuilder - Builds clickable timecode links (when enabled)
+ * @param chapters - The recording's chapters, in any order
+ * @param level - Heading level of a chapter, 1 to 6
+ * @returns Markdown string (lines and headings separated by blank lines)
+ */
+export function formatTranscriptByChapters(
+	transcript: Transcript,
+	options: TranscriptMarkdownOptions,
+	linkBuilder: TimecodeLinkBuilder,
+	chapters: readonly TranscriptChapter[],
+	level: number,
+): string {
+	const ordered = [...chapters].sort((a, b) => a.start - b.start);
+	const linesFrom = (from: number, to: number): string =>
+		formatTranscriptMarkdown(
+			{
+				...transcript,
+				segments: transcript.segments.filter(
+					(segment) => segment.start >= from && segment.start < to,
+				),
+			},
+			options,
+			linkBuilder,
+		);
+	const sections = [
+		linesFrom(Number.NEGATIVE_INFINITY, ordered[0]?.start ?? Infinity),
+		...ordered.map((chapter, index) => {
+			const lines = linesFrom(
+				chapter.start,
+				ordered[index + 1]?.start ?? Infinity,
+			);
+			return lines === ''
+				? ''
+				: `${'#'.repeat(level)} ${neutralizeWikilinks(chapter.title.trim())}\n\n${lines}`;
+		}),
+	];
+	return sections.filter((section) => section !== '').join('\n\n');
+}
+
 /** One speaker turn of a transcript, as a note template repeats it. */
 export interface TranscriptTurn {
 	/** Who spoke, '' without diarization. */

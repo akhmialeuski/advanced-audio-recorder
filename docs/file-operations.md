@@ -23,23 +23,24 @@ A **folder** carries one entry of its own rather than the file actions, because 
 
 The plugin recognizes a file as audio by its extension. Supported extensions are `webm`, `ogg`, `wav`, `mp3`, `flac`, `mp4`, `m4a`, and `aac` - see [Formats](formats.md) for what each one is.
 
-![The plugin's ten entries in the context menu of an audio file, from Audio file info through to Delete recording, with transcription, rename speakers and auto chapters all enabled](images/context-menu-file-explorer.png)
+![The plugin's eleven entries in the context menu of an audio file, from Audio file info through Structure transcript with a template to Delete recording, with transcription, rename speakers and auto chapters all enabled](images/context-menu-file-explorer.png)
 
 Which actions appear depends on where you click and on your settings:
 
-| Action                                | File Explorer | Embed link | Player | Condition                                                 |
-| ------------------------------------- | ------------- | ---------- | ------ | --------------------------------------------------------- |
-| **Audio file info**                   | Yes           | Yes        | Yes    | Always                                                    |
-| **Convert audio format**              | Yes           | Yes        | Yes    | Always                                                    |
-| **Split audio into parts**            | Yes           | Yes        | Yes    | Always                                                    |
-| **Clean up audio**                    | Yes           | Yes        | Yes    | Always                                                    |
-| **Transcribe audio**                  | Yes           | Yes        | Yes    | When transcription is enabled                             |
-| **Transcribe the parts that failed**  | Yes           | Yes        | Yes    | When transcription is enabled                             |
-| **Rename speakers**                   | Yes           | Yes        | Yes    | When **Rename speakers** is enabled                       |
-| **Generate chapters from transcript** | Yes           | Yes        | Yes    | When **Auto chapters** is enabled                         |
-| **Export chapters and markers**       | Yes           | Yes        | Yes    | Always                                                    |
-| **Delete recording**                  | Yes           | No         | No     | When reached on its own                                   |
-| **Delete recording & link to file**   | No            | Yes        | Yes    | When reached through a note or a link, not at a timestamp |
+| Action                                   | File Explorer | Embed link | Player | Condition                                                 |
+| ---------------------------------------- | ------------- | ---------- | ------ | --------------------------------------------------------- |
+| **Audio file info**                      | Yes           | Yes        | Yes    | Always                                                    |
+| **Convert audio format**                 | Yes           | Yes        | Yes    | Always                                                    |
+| **Split audio into parts**               | Yes           | Yes        | Yes    | Always                                                    |
+| **Clean up audio**                       | Yes           | Yes        | Yes    | Always                                                    |
+| **Transcribe audio**                     | Yes           | Yes        | Yes    | When transcription is enabled                             |
+| **Transcribe the parts that failed**     | Yes           | Yes        | Yes    | When transcription is enabled                             |
+| **Rename speakers**                      | Yes           | Yes        | Yes    | When **Rename speakers** is enabled                       |
+| **Generate chapters from transcript**    | Yes           | Yes        | Yes    | When **Auto chapters** is enabled                         |
+| **Structure transcript with a template** | Yes           | Yes        | Yes    | Always                                                    |
+| **Export chapters and markers**          | Yes           | Yes        | Yes    | Always                                                    |
+| **Delete recording**                     | Yes           | No         | No     | When reached on its own                                   |
+| **Delete recording & link to file**      | No            | Yes        | Yes    | When reached through a note or a link, not at a timestamp |
 
 Wherever the recording is reached through a note - its **embed link** in the editor, its **player**, or the palette in that note - plain **Delete recording** is replaced by **Delete recording & link to file**: deleting a file a note links should also clean up the link, rather than leave it broken. The two are never offered together. When you right-click an **enhanced player**, the menu also offers position-aware actions at the clicked point - **Add marker here**, **Add chapter here**, and **Copy timestamp link here** - alongside the file actions above. Those are documented in [Audio player](audio-player.md#markers-and-chapters).
 
@@ -197,23 +198,24 @@ If a recording has marker or chapter data, its sidecar (`recording.webm.markers.
 
 ## All context-menu actions
 
-| Action                                   | What it does                                                                            | Where available                                  | Doc                                                                 |
-| ---------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------- |
-| **Audio file info**                      | Shows file metadata in a modal with a Copy as Markdown button.                          | File Explorer, embed link, player                | [This page](#audio-file-info)                                       |
-| **Convert audio format**                 | Transcodes the file to another format and can update links and delete the source.       | File Explorer, embed link, player                | [This page](#convert-audio-format)                                  |
-| **Split audio into parts**               | Splits the file into fixed-duration parts and can update links and delete the source.   | File Explorer, embed link, player                | [Splitting](splitting.md)                                           |
-| **Clean up audio**                       | Runs offline DSP (high-pass, noise gate, leveling) and writes a cleaned WAV copy.       | File Explorer, embed link, player                | [Audio cleanup](audio-cleanup.md)                                   |
-| **Transcribe audio**                     | Transcribes the file with your configured engine.                                       | File Explorer, embed link, player (if on)        | [Transcription](transcription.md)                                   |
-| **Transcribe the parts that failed**     | Retries only the parts of a long recording whose transcription failed.                  | File Explorer, embed link, player (if on)        | [Transcription](transcription.md)                                   |
-| **Rename speakers**                      | Replaces diarized labels with participant names in an existing transcript.              | File Explorer, embed link, player (if on)        | [Transcription](transcription.md#naming-speakers)                   |
-| **Split selection into another speaker** | Gives the selected words of a transcript line to another speaker and fixes their times. | Editor menu on a selection in a transcript line  | [Transcription](transcription.md#splitting-a-line-between-speakers) |
-| **Merge selected lines into one**        | Joins consecutive transcript lines into one line of one speaker.                        | Editor menu on a selection over transcript lines | [Transcription](transcription.md#merging-lines-into-one)            |
-| **Generate chapters from transcript**    | Asks the configured LLM to divide the transcript into titled chapters.                  | File Explorer, embed link, player (if on)        | [Transcription](transcription.md)                                   |
-| **Export chapters and markers**          | Writes the markup as a timecoded list, a cue sheet, or a Markdown outline.              | File Explorer, embed link, player                | [Audio player](audio-player.md#exporting-chapters-and-markers)      |
-| **Delete recording**                     | Hands the audio file to Obsidian's own Deleted files handling.                          | File Explorer                                    | [This page](#delete-recording)                                      |
-| **Delete recording & link to file**      | Trashes the audio file and removes its embed link from the editor.                      | Embed link, player (not on a timestamp link)     | [This page](#delete-recording)                                      |
-| **Add marker here**                      | Adds a bookmark at the clicked point on the seek bar.                                   | Enhanced player (markers on, editing)            | [Audio player](audio-player.md#markers-and-chapters)                |
-| **Add chapter here**                     | Adds a chapter at the clicked point on the seek bar.                                    | Enhanced player (markers on, editing)            | [Audio player](audio-player.md#markers-and-chapters)                |
-| **Copy timestamp link here**             | Copies a link to the clicked position, e.g. `[[recording#t=90\|1:30]]`.                 | Enhanced player                                  | [Audio player](audio-player.md#timecode-links)                      |
+| Action                                   | What it does                                                                                        | Where available                                  | Doc                                                                                     |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| **Audio file info**                      | Shows file metadata in a modal with a Copy as Markdown button.                                      | File Explorer, embed link, player                | [This page](#audio-file-info)                                                           |
+| **Convert audio format**                 | Transcodes the file to another format and can update links and delete the source.                   | File Explorer, embed link, player                | [This page](#convert-audio-format)                                                      |
+| **Split audio into parts**               | Splits the file into fixed-duration parts and can update links and delete the source.               | File Explorer, embed link, player                | [Splitting](splitting.md)                                                               |
+| **Clean up audio**                       | Runs offline DSP (high-pass, noise gate, leveling) and writes a cleaned WAV copy.                   | File Explorer, embed link, player                | [Audio cleanup](audio-cleanup.md)                                                       |
+| **Transcribe audio**                     | Transcribes the file with your configured engine.                                                   | File Explorer, embed link, player (if on)        | [Transcription](transcription.md)                                                       |
+| **Transcribe the parts that failed**     | Retries only the parts of a long recording whose transcription failed.                              | File Explorer, embed link, player (if on)        | [Transcription](transcription.md)                                                       |
+| **Rename speakers**                      | Replaces diarized labels with participant names in an existing transcript.                          | File Explorer, embed link, player (if on)        | [Transcription](transcription.md#naming-speakers)                                       |
+| **Split selection into another speaker** | Gives the selected words of a transcript line to another speaker and fixes their times.             | Editor menu on a selection in a transcript line  | [Transcription](transcription.md#splitting-a-line-between-speakers)                     |
+| **Merge selected lines into one**        | Joins consecutive transcript lines into one line of one speaker.                                    | Editor menu on a selection over transcript lines | [Transcription](transcription.md#merging-lines-into-one)                                |
+| **Generate chapters from transcript**    | Asks the configured LLM to divide the transcript into titled chapters.                              | File Explorer, embed link, player (if on)        | [Transcription](transcription.md)                                                       |
+| **Structure transcript with a template** | Applies a note template to the transcript the recording already has, without transcribing it again. | File Explorer, embed link, player (if on)        | [LLM post-processing](llm-post-processing.md#structuring-a-transcript-you-already-have) |
+| **Export chapters and markers**          | Writes the markup as a timecoded list, a cue sheet, or a Markdown outline.                          | File Explorer, embed link, player                | [Audio player](audio-player.md#exporting-chapters-and-markers)                          |
+| **Delete recording**                     | Hands the audio file to Obsidian's own Deleted files handling.                                      | File Explorer                                    | [This page](#delete-recording)                                                          |
+| **Delete recording & link to file**      | Trashes the audio file and removes its embed link from the editor.                                  | Embed link, player (not on a timestamp link)     | [This page](#delete-recording)                                                          |
+| **Add marker here**                      | Adds a bookmark at the clicked point on the seek bar.                                               | Enhanced player (markers on, editing)            | [Audio player](audio-player.md#markers-and-chapters)                                    |
+| **Add chapter here**                     | Adds a chapter at the clicked point on the seek bar.                                                | Enhanced player (markers on, editing)            | [Audio player](audio-player.md#markers-and-chapters)                                    |
+| **Copy timestamp link here**             | Copies a link to the clicked position, e.g. `[[recording#t=90\|1:30]]`.                             | Enhanced player                                  | [Audio player](audio-player.md#timecode-links)                                          |
 
 See also: [Features](features.md) for the full feature list, [Settings reference](settings-reference.md) for the defaults these dialogs seed from, and [Troubleshooting](troubleshooting.md) if a conversion or cleanup fails.

@@ -81,6 +81,9 @@ export interface PartSpec {
 	readonly options: Readonly<Record<string, unknown>>;
 }
 
+/** Name of the variable that holds the recording's chapters. */
+export const CHAPTERS_VARIABLE = 'chapters';
+
 /**
  * Everything a note template can name: the facts of the run, the transcript
  * and the results of its parts.
@@ -99,6 +102,12 @@ export const NOTE_TEMPLATE_VARIABLES: TemplateCatalog = [
 			'The speaker turns of the transcript, to repeat with {{#each turns}}: speaker, start, time, link and text.',
 		example: '{{#each turns}}**{{speaker}}** {{link}}: {{text}}{{/each}}',
 		fields: TURN_FIELDS,
+	},
+	{
+		name: CHAPTERS_VARIABLE,
+		description:
+			'The chapters of the recording as a list linked to their moments, when the template is applied to a recording that has them; empty otherwise, as in a transcription run, which writes the chapters after the note.',
+		example: '{{#if chapters}}## Chapters\n\n{{chapters}}{{/if}}',
 	},
 	{
 		name: PARTS_ROOT,

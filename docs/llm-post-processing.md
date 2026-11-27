@@ -157,6 +157,9 @@ The instruction of a part, and the profile it names, can use every [fact of the 
 | `callout="quote"`                    | Puts the whole transcript in a callout of that type; `callout=true` uses a `note` callout.   |
 | `title="Transcript"`, `folded=true`  | The callout's title, and whether it starts closed (`true`) or open (`false`).                |
 | `timestamps=false`, `speakers=false` | Leaves the timestamp or the speaker off every line; `true` writes them whatever the setting. |
+| `chapters=true`, `chapters=2`        | Writes it in sections under the chapters, headed at that level, `true` meaning level 3.      |
+
+`chapters=` needs the recording's chapters, so it splits the transcript when you [structure a transcript you already have](#structuring-a-transcript-you-already-have). A transcription run writes the transcript in one piece, because its chapters are made after the note.
 
 <!-- prettier-ignore -->
 ```handlebars
@@ -221,6 +224,21 @@ A template is applied as best it can be:
 - **With no template selected**, the transcript is kept as it is, with a notice.
 
 The **Template variables** row on a template's page checks it as you type: a part without a name or an instruction, an unknown format or setting, a part inside a repeat, a profile no prompt profile is called, `{{parts.name}}` naming no part, and a transcript written twice or with a setting it does not take. The cost estimate before a run counts the calls the selected template makes.
+
+#### Structuring a transcript you already have
+
+**Structure transcript with a template**, in the recording's context menu, the editor menu of its embed and the command palette, applies a note template to the transcript the recording already has, without transcribing it again. Trying another template on the same meeting then costs only the template's calls: the engine is not asked again, and a paid engine does not bill the recognition twice.
+
+![The Structure transcript with a template dialog for a recording, with the Note template row set to Weekly sync, the note the result is inserted into, and the estimated cost of the template's calls for a ten-minute transcript above the Structure and Cancel buttons](images/dialog-structure-transcript.png)
+
+The dialog finds the transcript the way [Generate chapters from transcript](transcription.md#auto-chapters) does, from the outputs recorded in the recording's sidecar first and then from transcript files and notes next to it. It opens on the template this recording was last structured with, else the selected one, shows the estimated cost of the template's calls for this transcript, and inserts the note into the note the recording was reached through, under your **Transcript heading**, as a transcription run would. It stays open with a **Cancel** while the model works, and closing it cancels the run. Without a transcript, without any note template, or without a note to write into, it says which is missing instead.
+
+Two things differ from a template applied during a run:
+
+- **`{{transcript}}` and `turns` are written from the lines that were found.** A transcript read from a note or a file carries its timecodes as text, so its lines are written as they were found, without timecode links of their own, and the speakers stay in the text of each line.
+- **`{{chapters}}` is the recording's chapters**, as a list linked to their moments, or nothing for a recording without any. A run cannot offer it, since its chapters are made after the note.
+
+Which template was applied, and when, is kept in the recording's sidecar, so the dialog opens on it the next time.
 
 ---
 

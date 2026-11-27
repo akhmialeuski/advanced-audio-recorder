@@ -57,6 +57,16 @@ describe('{{transcript}}', () => {
 	});
 
 	it.each([
+		[true, 3],
+		[2, 2],
+		[false, undefined],
+		[9, undefined],
+		['3', undefined],
+	])('reads chapters=%p as the heading level %p', (value, level) => {
+		expect(transcriptOverrides({ chapters: value }).chapters).toBe(level);
+	});
+
+	it.each([
 		['{{transcript callout=true}}', '> [!note]\n> A\n>\n> B'],
 		['{{transcript callout=false}}', 'A\n\nB'],
 		[

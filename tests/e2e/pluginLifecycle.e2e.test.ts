@@ -152,6 +152,7 @@ describe('the command line', () => {
 				'retry-failed',
 				'speakers',
 				'chapters',
+				'structure',
 				'export-chapters',
 				'delete',
 				'delete-with-links',

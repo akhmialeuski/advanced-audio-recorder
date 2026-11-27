@@ -13,13 +13,18 @@
  * @module transcription/templatePass
  */
 
-import { Notice } from 'obsidian';
+import { type App, Notice } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { findPartProfile } from '../settings/profileResolution';
+import {
+	type ProfileNotesRead,
+	readProfileNotes,
+} from '../settings/ProfileNoteStore';
 import { ProfileKindId, selectedProfile } from '../settings/profiles';
 import { declaredParts } from '../templates/noteTemplateCheck';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
+	CHAPTERS_VARIABLE,
 	type PartSpec,
 	assembleNote,
 	collectParts,
@@ -40,8 +45,10 @@ import {
 } from '../templates/transcriptPart';
 import {
 	type TimecodeLinkBuilder,
+	type TranscriptChapter,
 	type TranscriptMarkdownOptions,
 	type TranscriptTurn,
+	formatTranscriptByChapters,
 	formatTranscriptMarkdown,
 	transcriptTurns,
 } from './transcriptFormat';
@@ -79,6 +86,8 @@ export interface TemplatePassRequest {
 	readonly glossary: readonly string[];
 	/** How the run writes the transcript and links into it. */
 	readonly rendering?: NoteRendering | undefined;
+	/** The recording's chapters as a linked list; '' or absent for none. */
+	readonly chapters?: string | undefined;
 	readonly llm: LlmProvider;
 	readonly maxTokens: number;
 	readonly costSink?: LlmCostSink | undefined;
@@ -106,6 +115,29 @@ export function templateProfileIds(settings: AudioRecorderSettings): string[] {
 	});
 }
 
+/**
+ * The settings of a run with the notes of the prompt profiles its note
+ * template names read as well, on top of the ones the run had read already:
+ * which profiles those are, only the template itself says.
+ * @param app - Obsidian App
+ * @param read - The run's settings with its selected profiles read
+ * @returns The settings with both read, and every profile left unread
+ */
+export async function withTemplateProfileNotes(
+	app: App,
+	read: ProfileNotesRead,
+): Promise<ProfileNotesRead> {
+	const named = templateProfileIds(read.settings);
+	if (named.length === 0) {
+		return read;
+	}
+	const again = await readProfileNotes(app, read.settings, named);
+	return {
+		settings: again.settings,
+		unread: new Set([...read.unread, ...again.unread]),
+	};
+}
+
 /** How a run writes its transcript and links into its recording. */
 export interface NoteRendering {
 	/** A link to a moment of the recording, labelled with its timecode. */
@@ -123,26 +155,34 @@ export interface NoteRendering {
  * @param transcript - The finished transcript
  * @param options - How the note writes the transcript
  * @param links - Builds a link to a moment of the recording
+ * @param chapters - The recording's chapters, which `chapters=` splits the
+ *   transcript under; none in a transcription run, which writes them later
  */
 export function noteRendering(
 	transcript: Transcript,
 	options: TranscriptMarkdownOptions,
 	links: TimecodeLinkBuilder,
+	chapters: readonly TranscriptChapter[] = [],
 ): NoteRendering {
 	return {
 		links: (seconds) => links(seconds, formatTimecode(seconds)),
-		renderTranscript: (overrides) =>
-			formatTranscriptMarkdown(
-				transcript,
-				{
-					...options,
-					includeTimestamps:
-						overrides.timestamps ?? options.includeTimestamps,
-					includeSpeakers:
-						overrides.speakers ?? options.includeSpeakers,
-				},
-				links,
-			),
+		renderTranscript: (overrides) => {
+			const lines = {
+				...options,
+				includeTimestamps:
+					overrides.timestamps ?? options.includeTimestamps,
+				includeSpeakers: overrides.speakers ?? options.includeSpeakers,
+			};
+			return overrides.chapters !== undefined
+				? formatTranscriptByChapters(
+						transcript,
+						lines,
+						links,
+						chapters,
+						overrides.chapters,
+					)
+				: formatTranscriptMarkdown(transcript, lines, links);
+		},
 		turns: transcriptTurns(
 			transcript,
 			options.mergeConsecutiveSpeaker,
@@ -221,6 +261,7 @@ export class TemplatePass {
 			...runTemplateContext(facts),
 			transcript: this.request.transcriptMarkdown,
 			turns: rendering?.turns ?? [],
+			[CHAPTERS_VARIABLE]: this.request.chapters ?? '',
 		};
 		const specs = collectParts(template, context);
 		const results = await this.fillParts(specs, facts);

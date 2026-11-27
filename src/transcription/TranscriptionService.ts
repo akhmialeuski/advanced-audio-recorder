@@ -145,7 +145,7 @@ import {
 	type TemplateNote,
 	TemplatePass,
 	noteRendering,
-	templateProfileIds,
+	withTemplateProfileNotes,
 } from './templatePass';
 import { TemplateRenderError } from '../templates/TemplateEngine';
 import {
@@ -2221,17 +2221,9 @@ export class TranscriptionService {
 	 */
 	private async readRunProfiles(): Promise<ProfileNotesRead> {
 		const read = await readProfileNotes(this.app, this.getSettings());
-		const named = read.settings.llmPostProcessEnabled
-			? templateProfileIds(read.settings)
-			: [];
-		if (named.length === 0) {
-			return read;
-		}
-		const again = await readProfileNotes(this.app, read.settings, named);
-		return {
-			settings: again.settings,
-			unread: new Set([...read.unread, ...again.unread]),
-		};
+		return read.settings.llmPostProcessEnabled
+			? withTemplateProfileNotes(this.app, read)
+			: read;
 	}
 
 	/**

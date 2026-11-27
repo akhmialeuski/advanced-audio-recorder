@@ -475,6 +475,15 @@ describe('the transcript in a note template', () => {
 			].join('\n'),
 		);
 	});
+
+	it('writes the transcript in one piece in a run, which has no chapters yet', async () => {
+		const { markdown } = await transcribe(
+			withTemplate('{{transcript chapters=true}}'),
+			scriptedLlm('{}'),
+		);
+
+		expect(markdown).toBe('Ben sends the deck.');
+	});
 });
 
 describe('the shipped templates', () => {

@@ -339,6 +339,30 @@ describe('RecordingSidecarStore', () => {
 				{ path: 'rec.srt', format: 'srt', writtenAt: 't2' },
 			]);
 		});
+
+		it('remembers the template a note was last structured with', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.recordAppliedTemplate('rec.wav', {
+				profileId: 'tpl-1',
+				name: 'Lecture',
+				appliedAt: 't1',
+			});
+			await store.recordAppliedTemplate('rec.wav', {
+				profileId: 'tpl-2',
+				name: 'Interview',
+				appliedAt: 't2',
+			});
+
+			const reloaded = new RecordingSidecarStore(app);
+			expect(
+				(await reloaded.getTranscript('rec.wav')).appliedTemplate,
+			).toEqual({
+				profileId: 'tpl-2',
+				name: 'Interview',
+				appliedAt: 't2',
+			});
+		});
 	});
 
 	describe('commitRename history', () => {

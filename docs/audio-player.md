@@ -259,7 +259,7 @@ Right-click the player to add a **marker** or **chapter**, or copy a **timestamp
 
 The player is reached through the note it is embedded in, so its menu ends with **Delete recording & link to file**, which trashes the recording and removes the embed it was drawn from, rather than plain **Delete recording**, which would leave the embed broken. The menu opens in the window the player was clicked in, a pop-out window included.
 
-![The player's right-click menu in a note, with Add marker here, Add chapter here and Copy timestamp link here above the file actions, from Audio file info through to Delete recording & link to file](images/player-context-menu.png)
+![The player's right-click menu in a note, with Add marker here, Add chapter here and Copy timestamp link here above the file actions, from Audio file info through Structure transcript with a template to Delete recording & link to file](images/player-context-menu.png)
 
 A player embedded at a timestamp, such as `![[standup.webm#t=90]]`, stands for that moment of the recording as a transcript's timestamp link does. Its menu keeps the marker, link and file actions and offers neither delete: a transcript holds dozens of links to moments of one recording, and trashing the recording from one of them would leave all the others pointing at nothing.
 

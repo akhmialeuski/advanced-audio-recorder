@@ -237,6 +237,10 @@ describe('checking the transcript of a template', () => {
 			'{{transcript title="T"}}',
 			'Line 2, column 1: {{transcript}} has title but no callout',
 		],
+		[
+			'{{transcript chapters="yes"}}',
+			'Line 2, column 1: {{transcript}} needs chapters to be true, false or a heading level from 1 to 6.',
+		],
 	])('finds what is wrong with %s', (source, message) => {
 		expect(check(source)).toEqual([expect.stringContaining(message)]);
 	});

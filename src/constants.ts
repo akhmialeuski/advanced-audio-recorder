@@ -1654,6 +1654,7 @@ export const COMMAND_IDS = {
 	splitTranscriptSelection: 'split-transcript-selection-to-speaker',
 	mergeTranscriptLines: 'merge-transcript-lines',
 	generateChapters: 'generate-chapters-from-transcript',
+	structureTranscript: 'structure-transcript-with-template',
 	deleteRecording: 'delete-recording',
 	deleteRecordingAndLink: 'delete-recording-and-link',
 	copyTimestampLink: 'copy-timestamp-link',

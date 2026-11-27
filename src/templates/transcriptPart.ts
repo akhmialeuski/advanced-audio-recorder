@@ -25,7 +25,14 @@ export const TRANSCRIPT_OPTIONS: readonly string[] = [
 	'folded',
 	'timestamps',
 	'speakers',
+	'chapters',
 ];
+
+/** Heading level of a chapter when `chapters=true` names none. */
+export const DEFAULT_CHAPTER_HEADING_LEVEL = 3;
+
+/** The deepest heading Markdown has. */
+export const MAX_HEADING_LEVEL = 6;
 
 /** What a template changes about the transcript lines themselves. */
 export interface TranscriptOverrides {
@@ -33,6 +40,11 @@ export interface TranscriptOverrides {
 	readonly timestamps?: boolean | undefined;
 	/** Whether each line carries its speaker; unset keeps the setting. */
 	readonly speakers?: boolean | undefined;
+	/**
+	 * Heading level the recording's chapters split the transcript under;
+	 * unset writes it in one piece, as does a run with no chapters yet.
+	 */
+	readonly chapters?: number | undefined;
 }
 
 /** Writes the transcript lines with a template's overrides. */
@@ -78,7 +90,25 @@ export function transcriptOverrides(
 	return {
 		timestamps: flag(hash['timestamps']),
 		speakers: flag(hash['speakers']),
+		chapters: chapterLevel(hash['chapters']),
 	};
+}
+
+/**
+ * The heading level `chapters` asks for: true is the default level, a whole
+ * number from 1 to 6 is that level, and anything else splits nothing.
+ * @param value - The setting as the template gave it
+ */
+export function chapterLevel(value: unknown): number | undefined {
+	if (value === true) {
+		return DEFAULT_CHAPTER_HEADING_LEVEL;
+	}
+	return typeof value === 'number' &&
+		Number.isInteger(value) &&
+		value >= 1 &&
+		value <= MAX_HEADING_LEVEL
+		? value
+		: undefined;
 }
 
 /**
@@ -88,7 +118,7 @@ export function transcriptOverrides(
 export const TRANSCRIPT_DECLARATION: TemplateHelper = {
 	name: TRANSCRIPT_HELPER,
 	description:
-		'Writes the transcript. Settings: callout="quote" puts it in a callout, title="..." and folded=true shape that callout, timestamps=false and speakers=false leave those out of every line.',
+		'Writes the transcript. Settings: callout="quote" puts it in a callout, title="..." and folded=true shape that callout, timestamps=false and speakers=false leave those out of every line, chapters=true writes it in sections under the recording\'s chapters when it has them.',
 	example: '{{transcript callout="quote" title="Transcript" folded=true}}',
 	fn: (...args: unknown[]) => {
 		const options = args[args.length - 1] as HelperOptions;
