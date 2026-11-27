@@ -212,6 +212,19 @@ describe('the Preset row of the Transcribe dialog', () => {
 		expect(sut.settings.transcriptionLanguage).toBe('auto');
 	});
 
+	it('keeps the focus on the list it was picked in, so the keys go on choosing', () => {
+		const sut = open();
+		activeDocument.body.appendChild(sut.modal.modalEl);
+		rowSelect(settingRow(sut.modal.contentEl, 'Preset')).focus();
+
+		pick(sut, 'Polish lesson');
+
+		expect(activeDocument.activeElement).toBe(
+			rowSelect(settingRow(sut.modal.contentEl, 'Preset')),
+		);
+		sut.modal.modalEl.remove();
+	});
+
 	it('has the pick remembered, as a picked profile is', () => {
 		const sut = open();
 

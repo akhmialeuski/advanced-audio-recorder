@@ -70,6 +70,7 @@ import {
 import type { SaveProgress } from '../types';
 import { presetBodyOf, settingsWithPreset } from '../transcription/runPreset';
 import { renderPresetRow } from './presetRow';
+import { focusPlace, restoreFocus } from './focusAcrossRender';
 import { createProgressBar, type ProgressBar } from './progressBar';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
@@ -371,6 +372,7 @@ export class TranscriptionModal extends PluginModal {
 		if (!container) {
 			return;
 		}
+		const focus = focusPlace(container);
 		container.empty();
 		const s = this.runSettings;
 		const profileText = new ProfileTextSource(this.app.vault);
@@ -722,6 +724,7 @@ export class TranscriptionModal extends PluginModal {
 				});
 			}
 		}
+		restoreFocus(container, focus);
 		// Re-evaluated on every rerender (the Engine dropdown triggers one),
 		// so the Transcribe button tracks the freshly selected engine.
 		this.refreshRunButtonState();
