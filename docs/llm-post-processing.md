@@ -256,6 +256,23 @@ Reading a property sends its value to the model, and writing one sends nothing a
 
 A run with no note to go into, such as **Transcribe audio** on the recording itself, writes the template's note as a note of its own instead of a transcript file, since what a template writes is a note.
 
+#### Templater commands
+
+With the [Templater](https://github.com/SilentVoid13/Templater) plugin installed and enabled, a note template can hold its commands, such as `<% tp.file.title %>`, `<% tp.date.now("YYYY-MM-DD") %>` or a `<%* %>` block with JavaScript. They run on the template before its parts and variables are read, so a command can also decide which parts the note has:
+
+<!-- prettier-ignore -->
+```handlebars
+# <% tp.file.title %>
+
+<%* if (tp.file.folder(true).startsWith("Clients")) { %>
+## Commitments to the client
+
+{{#part "commitments" format="bullets"}}What we promised the client.{{/part}}
+<%* } %>
+```
+
+`tp.file` is the note the recording is in, or the recording itself when it is in none. The commands run only on the template you wrote, never on what the model wrote or on the transcript, so a `<% %>` that a speaker said or a model returned stays text. Without Templater the commands stay in the note as typed, and a notice says so; a command Templater fails on is left as typed as well, with Templater's error in the notice. The cost estimate and the check on the template's page read the template as typed, before Templater runs.
+
 #### Which template a run applies
 
 A note can say which template it wants, so a daily sync is not structured as a lecture because the pick in the dialog was not changed back. When a run writes into a note, the template is chosen by the first of these that decides:

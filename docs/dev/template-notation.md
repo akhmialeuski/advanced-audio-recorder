@@ -10,21 +10,20 @@ changed only on purpose.
 Templates are **Handlebars**, the engine `obsidian-citation-extended` already uses
 for the same job, run through one shared `TemplateEngine` (`src/templates/`).
 
-| What a template says           | How it is written                                                      |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| A fact of the run              | `{{title}}`, `{{properties.project}}`                                  |
-| A date in a Moment format      | `{{date format="YYYY-MM-DD"}}`, or the core form `{{date:YYYY-MM-DD}}` |
-| A condition                    | `{{#if participants}}...{{else}}...{{/if}}`                            |
-| A repeat                       | `{{#each turns}}**{{speaker}}**: {{text}}{{/each}}`                    |
-| A helper                       | `{{join participants ", "}}`, `{{duration durationSeconds}}`           |
-| A part a model fills           | `{{#part "actions" format="tasks" max=5}}instruction{{/part}}`         |
-| A part from a prompt profile   | `{{part "actions" profile="Action items"}}`                            |
-| A part's value elsewhere       | `{{parts.summary}}`, `{{#if parts.actions}}...{{/if}}`                 |
-| Settings of the whole template | `{{use dictionary="Atlas" participants="Core team"}}`                  |
-| Templater commands             | `<% tp.file.title %>`, run after the note is assembled                 |
+| What a template says           | How it is written                                                        |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| A fact of the run              | `{{title}}`, `{{properties.project}}`                                    |
+| A date in a Moment format      | `{{date format="YYYY-MM-DD"}}`, or the core form `{{date:YYYY-MM-DD}}`   |
+| A condition                    | `{{#if participants}}...{{else}}...{{/if}}`                              |
+| A repeat                       | `{{#each turns}}**{{speaker}}**: {{text}}{{/each}}`                      |
+| A helper                       | `{{join participants ", "}}`, `{{duration durationSeconds}}`             |
+| A part a model fills           | `{{#part "actions" format="tasks" max=5}}instruction{{/part}}`           |
+| A part from a prompt profile   | `{{part "actions" profile="Action items"}}`                              |
+| A part's value elsewhere       | `{{parts.summary}}`, `{{#if parts.actions}}...{{/if}}`                   |
+| Templater commands             | `<% tp.file.title %>`, run on the template before anything else reads it |
 
-The part, `use` and transcript helpers arrive with the work that needs them; this
-record fixes their shape so that work does not have to.
+The part and transcript helpers arrive with the work that needs them. This record
+fixes their shape so that work does not have to.
 
 ### What the notation has to express, and where it does
 
@@ -73,11 +72,19 @@ user writes is lost.
 template text. Making it the engine would make a community plugin a hard
 requirement, which the plugin must not have, and would execute code from any
 template shared by copying. It is integrated instead as an optional last step:
-when Templater is installed, the assembled note text is handed to its
+when Templater is installed, the template's text is handed to its
 `templater.parse_template(config, text)`, which processes `<% %>` commands in a
 string without creating a file; when it is not, the commands stay in the text
 untouched and a notice says so. That keeps the trust model Templater users already
 accept for their own templates, and costs nothing to anyone else.
+
+The commands run on the template, before its parts and variables, and not on the
+assembled note, as first planned. Run on the note, they would also run any
+`<% %>` a model wrote into a part or a speaker said into the transcript: JavaScript
+from text nobody chose to trust. Run on the template, they see only what the user
+wrote, and their output can still write `{{#part}}` blocks or choose which ones the
+note has. `tp.file` is the note the recording is in, or the recording itself when it
+is in none.
 
 **Configuration of parts outside the template** (named slots in plain Markdown,
 settings per part on a separate page). The text would look exactly like the note
