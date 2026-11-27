@@ -42,6 +42,7 @@ import { jobVendorId, LlmJobId } from './llm/vendors';
 import { promptExpander } from './runFacts';
 import {
 	formatTranscriptMarkdown,
+	type TranscriptChapter,
 	transcriptMarkdownOptions,
 } from './transcriptFormat';
 import { insertTranscriptIntoNote } from './transcriptOutput';
@@ -123,6 +124,19 @@ export function transcriptFromLines(source: TranscriptLinesSource): Transcript {
  */
 export function chaptersOf(markers: readonly PlayerMarker[]): PlayerMarker[] {
 	return markers.filter((marker) => marker.kind === MARKER_KIND.chapter);
+}
+
+/**
+ * Chapter markers as the spans a transcript is split under.
+ * @param chapters - The recording's chapter markers
+ */
+export function transcriptChapters(
+	chapters: readonly PlayerMarker[],
+): TranscriptChapter[] {
+	return chapters.map((marker) => ({
+		start: marker.time,
+		title: marker.label,
+	}));
 }
 
 /** Applies note templates to transcripts a recording already has. */
@@ -233,10 +247,7 @@ export class TranscriptStructurer {
 				transcript,
 				options,
 				links,
-				chapterMarkers.map((marker) => ({
-					start: marker.time,
-					title: marker.label,
-				})),
+				transcriptChapters(chapterMarkers),
 			),
 			chapters: formatChapterOutline(chapterMarkers, links),
 			llm: this.createLlm(settings, vendorId),
