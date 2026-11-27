@@ -18,6 +18,7 @@ for the same job, run through one shared `TemplateEngine` (`src/templates/`).
 | A repeat                       | `{{#each turns}}**{{speaker}}**: {{text}}{{/each}}`                    |
 | A helper                       | `{{join participants ", "}}`, `{{duration durationSeconds}}`           |
 | A part a model fills           | `{{#part "actions" format="tasks" max=5}}instruction{{/part}}`         |
+| A part from a prompt profile   | `{{part "actions" profile="Action items"}}`                            |
 | A part's value elsewhere       | `{{parts.summary}}`, `{{#if parts.actions}}...{{/if}}`                 |
 | Settings of the whole template | `{{use dictionary="Atlas" participants="Core team"}}`                  |
 | Templater commands             | `<% tp.file.title %>`, run after the note is assembled                 |

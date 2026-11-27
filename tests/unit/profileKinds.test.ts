@@ -134,6 +134,7 @@ describe('the profile kinds together', () => {
 			'llmSummary',
 			'llmTranslate',
 			'llmCustom',
+			'llmTemplate',
 		]);
 	});
 });

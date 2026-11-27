@@ -119,9 +119,6 @@
 	"src/chapters/chapterGeneration.ts": {
 		"complexity": {
 			"count": 1
-		},
-		"max-lines-per-function": {
-			"count": 1
 		}
 	},
 	"src/chapters/transcriptSources.ts": {

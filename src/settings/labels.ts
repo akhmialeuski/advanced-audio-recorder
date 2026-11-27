@@ -91,6 +91,7 @@ export const LLM_TASK_LABELS: Record<LlmTask, string> = {
 	[LlmTask.Summary]: 'Summarize',
 	[LlmTask.Custom]: 'Custom',
 	[LlmTask.Translate]: 'Translate',
+	[LlmTask.Template]: 'Structure with a template',
 };
 
 /**

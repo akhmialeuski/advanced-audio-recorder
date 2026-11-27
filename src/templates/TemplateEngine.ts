@@ -19,7 +19,7 @@
  * @module templates/TemplateEngine
  */
 
-import Handlebars from 'handlebars';
+import Handlebars, { type HelperDelegate } from 'handlebars';
 import type { AstProgram } from './handlebarsAst';
 import {
 	type TemplateProblem,
@@ -97,6 +97,17 @@ export class TemplateEngine {
 	}
 
 	/**
+	 * Parses a template into its syntax tree, for a reader that needs more of
+	 * it than a check or a render answers.
+	 * @param source - The template as the user wrote it, core syntax already
+	 *   rewritten
+	 * @throws Error when the template does not parse
+	 */
+	parse(source: string): AstProgram {
+		return this.hbs.parse(source);
+	}
+
+	/**
 	 * Which fields of one top-level value a template reads, so a run collects
 	 * only those. A template that cannot be parsed reads nothing: it will not
 	 * render either, and nothing is collected for a render that fails.
@@ -148,6 +159,9 @@ export class TemplateEngine {
 	 * @param context - The values it reads
 	 * @param catalog - The names it may use. Given, a name outside it is left
 	 *   in the output as typed; omitted, every name is looked up as is
+	 * @param helpers - Helpers for this render only, replacing a registered
+	 *   helper of the same name, e.g. a part that collects in one pass and
+	 *   fills in the next
 	 * @returns The rendered text
 	 * @throws TemplateRenderError when the template cannot be parsed or a
 	 *   helper fails
@@ -156,10 +170,11 @@ export class TemplateEngine {
 		source: string,
 		context: TemplateContext,
 		catalog?: TemplateCatalog,
+		helpers?: Readonly<Record<string, HelperDelegate>>,
 	): string {
 		const text = this.prepare(normalizeCoreSyntax(source), catalog);
 		try {
-			return this.compiled(text)(context);
+			return this.compiled(text)(context, helpers ? { helpers } : {});
 		} catch (error) {
 			const location = parseErrorLocation(error);
 			throw new TemplateRenderError(parseErrorMessage(error), location);

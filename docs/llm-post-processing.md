@@ -1,14 +1,15 @@
 # LLM post-processing
 
-**LLM post-processing** is an optional step that passes a finished transcript through a large language model (LLM) before it is written to your note or sidecar file. Use it to **clean up** the raw machine transcript, **summarize** it into key points and action items, **translate** it into another language, or apply your own **custom** instruction. It is part of the transcription pipeline: it only runs when transcription runs, after the speech-to-text engine produces the transcript and before the output is saved.
+**LLM post-processing** is an optional step that passes a finished transcript through a large language model (LLM) before it is written to your note or sidecar file. Use it to **clean up** the raw machine transcript, **summarize** it into key points and action items, **translate** it into another language, apply your own **custom** instruction, or **structure** the note with a template whose sections the model fills. It is part of the transcription pipeline: it only runs when transcription runs, after the speech-to-text engine produces the transcript and before the output is saved.
 
 - [What it does and when it runs](#what-it-does-and-when-it-runs)
 - [Enabling it](#enabling-it)
-- [The four tasks](#the-four-tasks)
+- [The five tasks](#the-five-tasks)
     - [Clean up](#clean-up)
     - [Summarize](#summarize)
     - [Translate](#translate)
     - [Custom](#custom)
+    - [Structure with a template](#structure-with-a-template)
 - [Prompt profiles](#prompt-profiles)
 - [Default prompts](#default-prompts)
 - [Providers and models](#providers-and-models)
@@ -49,16 +50,17 @@ If transcription itself is off, there is nothing for this step to process, so th
 
 ---
 
-## The four tasks
+## The five tasks
 
 Pick what the LLM should do with the transcript from the **Task** dropdown.
 
-| Task          | What it does                                                                                                         | What it preserves                                                                |
-| ------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| **Clean up**  | Fixes punctuation, capitalization, and obvious speech-to-text errors; adds paragraph breaks; trims filler artifacts. | The speaker's exact wording and meaning, plus any speaker labels and timestamps. |
-| **Summarize** | Condenses the transcript into key points and action items as Markdown bullet lists under short headings.             | Both: the summary is added **above** the full transcript, which is kept intact.  |
-| **Translate** | Writes the transcript in another language, one line per spoken segment.                                              | Both: the translation is written **beside** the original, with the same timings. |
-| **Custom**    | Sends your own instruction to the LLM, verbatim, and uses the model's reply as the transcript body.                  | Whatever your instruction tells it to preserve.                                  |
+| Task                          | What it does                                                                                                                                                 | What it preserves                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| **Clean up**                  | Fixes punctuation, capitalization, and obvious speech-to-text errors; adds paragraph breaks; trims filler artifacts.                                         | The speaker's exact wording and meaning, plus any speaker labels and timestamps. |
+| **Summarize**                 | Condenses the transcript into key points and action items as Markdown bullet lists under short headings.                                                     | Both: the summary is added **above** the full transcript, which is kept intact.  |
+| **Translate**                 | Writes the transcript in another language, one line per spoken segment.                                                                                      | Both: the translation is written **beside** the original, with the same timings. |
+| **Custom**                    | Sends your own instruction to the LLM, verbatim, and uses the model's reply as the transcript body.                                                          | Whatever your instruction tells it to preserve.                                  |
+| **Structure with a template** | Writes the note from a note template: the model fills its parts, such as a summary or action items, and the plugin writes them into the template's sections. | The transcript, wherever the template writes `{{transcript}}`.                   |
 
 ### Clean up
 
@@ -82,18 +84,74 @@ Translation is a separate thing from the engine's own [speech translation](trans
 
 Your **Custom instruction** is sent to the model **verbatim** as the system prompt - no language clause and no wording are added, and only the facts of the run it names in double braces are filled in (see [Facts of the run in a prompt](#facts-of-the-run-in-a-prompt)). The model's reply **replaces** the transcript body. This is the most flexible task and the one where you are fully responsible for the result: if you want the output in a specific language, format, or structure, say so in the instruction.
 
+### Structure with a template
+
+The note is written from the selected **note template profile**: Markdown of your own with **parts** the model fills from the transcript. A part is a block standing where its result goes, and its body is the instruction for it:
+
+![A note template profile page with Source set to Typed text, a template holding a summary part, an action items part and the transcript typed into it, and the Template variables row saying no problems were found](images/settings-note-template-page.png)
+
+```handlebars
+#
+{{title}}
+
+{{date recordedAt format='dddd, D MMMM YYYY'}}
+·
+{{duration}}
+
+## Summary
+
+{{#part 'summary' format='bullets' max=3}}
+	The three things that matter from this meeting, most important first.
+{{/part}}
+
+## Action items
+
+{{part 'actions' profile='Action items'}}
+
+## Blockers
+
+{{#part 'blockers' format='bullets'}}
+	What stops a participant from moving on, and who is blocked.
+{{/part}}
+
+{{transcript}}
+```
+
+Every part of a template is asked for in **one call**: the model reads the transcript once and answers every part, which is cheaper and more consistent than a call per part. The model answers with data, never with Markdown, and the plugin writes the Markdown, so a list cannot come back broken. A part with `separate=true` is asked for in a call of its own, for a part whose instruction would crowd the others.
+
+| Setting of a part        | What it does                                                                                                                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format="..."`           | What the part is: `prose` (paragraphs, the default) or `bullets` (a bulleted list).                                                                                                                                 |
+| `max=5`                  | Most items a list keeps. The model is asked for no more, and the plugin cuts the list there.                                                                                                                        |
+| `empty="remove"`         | What a part the model found nothing for does: `remove` (the default) drops it with the heading right above it, `keep` leaves the section empty, any other text is written instead.                                  |
+| `profile="Action items"` | Takes the instruction from a cleanup, summary, or custom prompt profile of that name, looked up in that order, so one instruction serves every template. A part names a profile or writes an instruction, not both. |
+| `language="German"`      | Writes this part in another language than the rest.                                                                                                                                                                 |
+| `separate=true`          | Asks for the part in a call of its own.                                                                                                                                                                             |
+
+The instruction of a part, and the profile it names, can use every [fact of the run](#facts-of-the-run-in-a-prompt), so it can name the meeting and its people. A template can use them too, and also `{{transcript}}`, the transcript as the note would write it, and `{{parts.summary}}`, the result of a part, for example in `{{#if parts.actions}}...{{/if}}`. A part inside a condition is asked for only when the condition holds. The model is told the title, date, length and participants of the recording, the terms of the dictionary profile in use, and to write in the transcript's language.
+
+A template is applied as best it can be:
+
+- **A call that fails costs only its own parts.** They come out empty, the rest of the note is written, and a notice names the parts that are missing. Only when every call fails is the pass a failure, and the plain transcript is kept as for any task.
+- **A part naming a profile that does not exist** is left out, and a notice names the profile.
+- **A template that cannot be rendered**, such as one with two parts of the same name, keeps the plain transcript, with a notice naming the problem.
+- **With no template selected**, the transcript is kept as it is, with a notice.
+
+The **Template variables** row on a template's page checks it as you type: a part without a name or an instruction, an unknown format or setting, a part inside a repeat, a profile no prompt profile is called, and `{{parts.name}}` naming no part. The cost estimate before a run counts the calls the selected template makes.
+
 ---
 
 ## Prompt profiles
 
 Each task has its own catalogue of named prompts, shown below the **Task** dropdown. The catalogue that appears is the one belonging to the selected task:
 
-| Task          | Catalogue shown                 | Language handling                                                                                                                                            |
-| ------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Clean up**  | **Cleanup prompt profiles**     | The transcript language is **appended automatically** at request time, or every language of a transcript that switches language. You do not add it yourself. |
-| **Summarize** | **Summary prompt profiles**     | The transcript language is **appended automatically** at request time - you do not add it yourself.                                                          |
-| **Translate** | **Translation prompt profiles** | The **Translate into** language is **appended automatically** at request time.                                                                               |
-| **Custom**    | **Custom instruction profiles** | **Not** appended - sent verbatim. Include your own language directive.                                                                                       |
+| Task                          | Catalogue shown                 | Language handling                                                                                                                                            |
+| ----------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Clean up**                  | **Cleanup prompt profiles**     | The transcript language is **appended automatically** at request time, or every language of a transcript that switches language. You do not add it yourself. |
+| **Summarize**                 | **Summary prompt profiles**     | The transcript language is **appended automatically** at request time - you do not add it yourself.                                                          |
+| **Translate**                 | **Translation prompt profiles** | The **Translate into** language is **appended automatically** at request time.                                                                               |
+| **Custom**                    | **Custom instruction profiles** | **Not** appended - sent verbatim. Include your own language directive.                                                                                       |
+| **Structure with a template** | **Note template profiles**      | The model is told to write in the transcript's language, and a part's `language` setting overrides it.                                                       |
 
 A profile is a named prompt on a page of its own, with the prompt text, a switch named after the task that makes it the profile in use, and rename and delete - the same catalogue the dictionary, participant, and chapter guidance profiles use. Every task starts with one **Default** profile holding the built-in prompt shown below, and **Clean up** also ships a **Language lesson** profile for a recorded lesson that moves between two languages, not in use until you pick it. An upgrade from an earlier version moves whatever you had in the single prompt field into that profile, still in use. Add profiles for the cases you actually run: a cleanup for interviews and another for lectures, a summary for standups and another for client calls, and pick the one you want before a run.
 
@@ -392,12 +450,13 @@ All controls live under **Settings > Advanced Audio Recorder > Transcription > L
 | Setting                         | Description                                                                                                                                    | Default         |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | **Enable LLM post-processing**  | Run an LLM pass over the transcript after transcription. Reveals the controls below.                                                           | Off             |
-| **Task**                        | `Clean up`, `Summarize`, `Translate`, or `Custom`.                                                                                             | Clean up        |
+| **Task**                        | `Clean up`, `Summarize`, `Translate`, `Custom`, or `Structure with a template`.                                                                | Clean up        |
 | **Translate into**              | Language the translation is written in, English when it is empty. Shown when Task is Translate.                                                | empty           |
 | **Cleanup prompt profiles**     | Named prompts for Clean up (language clause appended). None = built-in default. Shown when Task is Clean up.                                   | Default profile |
 | **Summary prompt profiles**     | Named prompts for Summarize (language clause appended). None = built-in default. Shown when Task is Summarize.                                 | Default profile |
 | **Translation prompt profiles** | Named prompts for Translate (target language appended). None = built-in default. Shown when Task is Translate.                                 | Default profile |
 | **Custom instruction profiles** | Named instructions sent verbatim. Shown when Task is Custom.                                                                                   | Default profile |
+| **Note template profiles**      | Named note templates whose parts the model fills. None keeps the transcript as it is. Shown when Task is Structure with a template.            | None            |
 | **Post-processing engine**      | `OpenAI`, `Anthropic (Claude)`, `Google Gemini`, `Mistral`, or `DeepSeek`. Only the choice, since the service is configured under **Engines**. | OpenAI          |
 
 The rows that describe the service itself sit on its page under **Engines**, shared by every job that calls it:

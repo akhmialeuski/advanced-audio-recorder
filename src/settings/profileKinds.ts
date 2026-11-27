@@ -27,8 +27,20 @@ import { LlmTask } from '../transcription/llmPostProcess';
 import { parseParticipantBody } from '../speakers/participantRoster';
 import { RUN_PARAMS } from '../transcription/runOptions';
 import { presetOptionCount } from '../transcription/runPreset';
+import { findPartProfile } from './profileResolution';
 import { RUN_VARIABLES } from '../templates/runVariables';
 import type { TemplateCatalog } from '../templates/templateCatalog';
+import type { TemplateHelper } from '../templates/templateHelpers';
+import type { TemplateProblem } from '../templates/templateAnalysis';
+import { sharedTemplateEngine } from '../templates/TemplateEngine';
+import {
+	NOTE_TEMPLATE_VARIABLES,
+	noteTemplateEngine,
+} from '../templates/noteTemplate';
+import {
+	checkNoteTemplate,
+	declaredParts,
+} from '../templates/noteTemplateCheck';
 
 /**
  * Which block of the settings a kind's catalogue belongs to. Not stored: the
@@ -86,12 +98,51 @@ export interface ProfileKind {
 	/** Whether this kind is on screen at all. */
 	readonly visible: (settings: AudioRecorderSettings) => boolean;
 	/**
-	 * The facts of a run the body may name in double braces, for a kind whose
-	 * body is a prompt filled in per run. Absent for a list such as a glossary,
-	 * whose lines are taken as they stand.
+	 * How the body is read as a template, for a kind whose body is filled in
+	 * per run. Absent for a list such as a glossary, whose lines are taken as
+	 * they stand.
 	 */
-	readonly variables?: TemplateCatalog;
+	readonly template?: TemplateDialect;
 }
+
+/** What a body written as a template may use, and how it is checked. */
+export interface TemplateDialect {
+	/** The names the body may use in double braces. */
+	readonly variables: TemplateCatalog;
+	/** The helpers it may call. */
+	readonly helpers: () => readonly TemplateHelper[];
+	/**
+	 * What is wrong with a body.
+	 * @param body - The body as typed
+	 * @param settings - The settings it is checked against, e.g. for the
+	 *   profiles a note template names
+	 */
+	readonly check: (
+		body: string,
+		settings: AudioRecorderSettings,
+	) => readonly TemplateProblem[];
+}
+
+/** A prompt, which names the facts of a run. */
+const PROMPT_TEMPLATE: TemplateDialect = {
+	variables: RUN_VARIABLES,
+	helpers: () => sharedTemplateEngine().helpers,
+	check: (body) => sharedTemplateEngine().validate(body, RUN_VARIABLES),
+};
+
+/**
+ * A note template, which names the facts of a run, the transcript and the
+ * parts a model fills.
+ */
+const NOTE_TEMPLATE: TemplateDialect = {
+	variables: NOTE_TEMPLATE_VARIABLES,
+	helpers: () => noteTemplateEngine().helpers,
+	check: (body, settings) =>
+		checkNoteTemplate(
+			body,
+			(name) => findPartProfile(settings.profiles, name) !== undefined,
+		),
+};
 
 /** A kind as it is declared: the keys are the id's to give, not the author's. */
 type ProfileKindSpec = Omit<
@@ -139,6 +190,18 @@ function countSummary(count: number, one: string, many: string): string {
  */
 function promptSummary(profile: Profile): string {
 	return profile.body.trim() === '' ? 'no prompt' : 'prompt set';
+}
+
+/**
+ * What a note template says about itself: how many parts a model fills.
+ * @param profile - The profile being summarized
+ * @returns The entry's summary line
+ */
+function templateSummary(profile: Profile): string {
+	if (profile.body.trim() === '') {
+		return 'no template';
+	}
+	return countSummary(declaredParts(profile.body).length, 'part', 'parts');
 }
 
 /**
@@ -251,7 +314,7 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		bodyDesc: withVariables(
 			'How to divide the recording into chapters. Appended to the fixed base prompt; blank leaves the base behaviour.',
 		),
-		variables: RUN_VARIABLES,
+		template: PROMPT_TEMPLATE,
 		summary: promptSummary,
 		// Follows the chapters switch alone: the guidance steers a generation,
 		// and a generation is offered on any recording that already has a
@@ -270,7 +333,7 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		bodyDesc: withVariables(
 			'System instruction for the cleanup pass. The transcript language, or every language of a transcript that switches language, is appended automatically.',
 		),
-		variables: RUN_VARIABLES,
+		template: PROMPT_TEMPLATE,
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
@@ -288,7 +351,7 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		bodyDesc: withVariables(
 			'System instruction for the summary pass. The transcript language is appended automatically.',
 		),
-		variables: RUN_VARIABLES,
+		template: PROMPT_TEMPLATE,
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
@@ -306,7 +369,7 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		bodyDesc: withVariables(
 			'System instruction for the translation pass. The target language is appended automatically.',
 		),
-		variables: RUN_VARIABLES,
+		template: PROMPT_TEMPLATE,
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
@@ -328,11 +391,31 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		bodyDesc: withVariables(
 			'System instruction applied to the transcript text, sent verbatim apart from the facts below: no language clause is added.',
 		),
-		variables: RUN_VARIABLES,
+		template: PROMPT_TEMPLATE,
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
 			settings.llmPostProcessTask === LlmTask.Custom,
+	}),
+	defineKind({
+		id: ProfileKindId.LlmTemplate,
+		section: ProfileSection.Llm,
+		heading: 'Note template profiles',
+		catalogueDesc:
+			'Named note templates: Markdown with parts a model fills from the transcript, such as a summary, decisions or action items. Keep one per kind of meeting.',
+		selectionName: 'Note template profile',
+		// Not the shared sentence: there is no built-in template to fall back
+		// on, so None leaves the transcript as it is.
+		selectionDesc:
+			'Template the note is built from; None leaves the transcript as it is.',
+		bodyName: 'Note template',
+		bodyDesc:
+			'Markdown written into the note. {{#part "summary" format="bullets" max=3}}instruction{{/part}} marks a part the model fills, profile="Name" takes its instruction from a cleanup, summary or custom prompt profile, {{transcript}} writes the transcript, and facts of the run such as {{title}} are filled in. Template variables lists them all.',
+		template: NOTE_TEMPLATE,
+		summary: templateSummary,
+		visible: (settings) =>
+			postProcessing(settings) &&
+			settings.llmPostProcessTask === LlmTask.Template,
 	}),
 	defineKind({
 		id: ProfileKindId.QuickNote,

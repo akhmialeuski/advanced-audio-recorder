@@ -76,6 +76,7 @@ import {
 	buildPostProcessPrompt,
 	LlmTask,
 	postProcessFailureNotice,
+	type TextLlmTask,
 } from './llmPostProcess';
 import { TranscriptTranslator } from './llm/TranscriptTranslator';
 import { describeDictionaryOmission } from './dictionaryBias';
@@ -106,9 +107,16 @@ import {
 	resolveQuickNotePrompt,
 	resolveRunParticipants,
 } from '../settings/profileResolution';
-import { ProfileKindId, selectedProfileId } from '../settings/profiles';
+import {
+	ProfileKindId,
+	selectedProfile,
+	selectedProfileId,
+} from '../settings/profiles';
 import { ProfileTextSource } from '../settings/ProfileTextSource';
-import { readProfileNotes } from '../settings/ProfileNoteStore';
+import {
+	type ProfileNotesRead,
+	readProfileNotes,
+} from '../settings/ProfileNoteStore';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { sameEngine, vendorMaxTokens } from '../providers/providers';
 import { jobVendorId, LlmJobId } from './llm/vendors';
@@ -127,7 +135,13 @@ import type {
 	TranscriptSegment,
 	TranscriptionUsage,
 } from './TranscriptTypes';
-import { type PromptExpander, promptExpander } from './runFacts';
+import {
+	type PromptExpander,
+	type RunFactsSource,
+	promptExpander,
+} from './runFacts';
+import { TemplatePass, templateProfileIds } from './templatePass';
+import { TemplateRenderError } from '../templates/TemplateEngine';
 import {
 	costFromUsage,
 	resolveEnginePricing,
@@ -757,10 +771,7 @@ export class TranscriptionService {
 	): Promise<TranscribeRunResult> {
 		// The glossary, the roster, and the prompt a profile keeps in a note are
 		// read now, so the run applies the note as it stands when it starts.
-		const { settings, unread } = await readProfileNotes(
-			this.app,
-			this.getSettings(),
-		);
+		const { settings, unread } = await this.readRunProfiles();
 		// Whatever the provider kept for the run's parts, such as a recording
 		// uploaded once, goes with the run however it ended.
 		await using lent = releasedWithRun(this.createProvider(settings));
@@ -979,13 +990,14 @@ export class TranscriptionService {
 		let translation: TranscriptTranslation | undefined;
 		// The facts a prompt can name are the ones this run holds: the note
 		// the result goes to, the recording, and the finished transcript.
-		const expandPrompt = promptExpander({
+		const factsSource = {
 			app: this.app,
 			settings,
 			recording: file,
 			notePath: options.notePathForLinks,
 			transcript,
-		});
+		};
+		const expandPrompt = promptExpander(factsSource);
 		if (postProcessing) {
 			this.throwIfCancelled(token);
 			const translating =
@@ -1011,9 +1023,8 @@ export class TranscriptionService {
 						expandPrompt,
 					);
 				} else {
-					markdown = await this.postProcess(
-						settings,
-						transcript,
+					markdown = await this.rewrite(
+						factsSource,
 						markdown,
 						token,
 						expandPrompt,
@@ -2032,7 +2043,8 @@ export class TranscriptionService {
 	/**
 	 * Runs the configured LLM post-processing step and returns the new
 	 * Markdown body (cleanup/custom replace the body; summary is prepended).
-	 * @param settings - The run's settings
+	 * @param settings - The run's settings, with any task but a note template,
+	 *   which runs apart
 	 * @param transcript - The transcript the pass reads
 	 * @param markdown - The rendered body a cleanup or custom pass replaces
 	 * @param token - Cancellation for the run, so a Cancel pressed here ends
@@ -2040,20 +2052,19 @@ export class TranscriptionService {
 	 * @param expandPrompt - Fills the run's facts into the selected prompt
 	 */
 	private async postProcess(
-		settings: AudioRecorderSettings,
+		settings: AudioRecorderSettings & { llmPostProcessTask: TextLlmTask },
 		transcript: Transcript,
 		markdown: string,
 		token: CancellationToken,
 		expandPrompt: PromptExpander,
 	): Promise<string> {
+		const task = settings.llmPostProcessTask;
 		const vendorId = jobVendorId(settings, LlmJobId.PostProcess);
 		const llm = this.createLlm(settings, vendorId);
 		const prompt = buildPostProcessPrompt(
-			settings.llmPostProcessTask === LlmTask.Summary
-				? plainText(transcript)
-				: markdown,
+			task === LlmTask.Summary ? plainText(transcript) : markdown,
 			{
-				task: settings.llmPostProcessTask,
+				task,
 				language: transcript.language,
 				segmentLanguages: segmentLanguages(transcript.segments),
 				// A prompt may name facts of the run, filled in here so the
@@ -2088,10 +2099,113 @@ export class TranscriptionService {
 		if (!output) {
 			return markdown;
 		}
-		if (settings.llmPostProcessTask === LlmTask.Summary) {
+		if (task === LlmTask.Summary) {
 			return `### Summary\n\n${output}\n\n### Transcript\n\n${markdown}`;
 		}
 		return output;
+	}
+
+	/**
+	 * Runs the post-processing task that rewrites the body: a note template,
+	 * or a single prompt over the transcript.
+	 * @param source - The facts of the run, with its settings and transcript
+	 * @param markdown - The transcript as the note writes it
+	 * @param token - Cancellation for the run
+	 * @param expandPrompt - Fills the run's facts into the prompts
+	 * @returns The new body
+	 */
+	private async rewrite(
+		source: RunFactsSource & { readonly transcript: Transcript },
+		markdown: string,
+		token: CancellationToken,
+		expandPrompt: PromptExpander,
+	): Promise<string> {
+		const { settings } = source;
+		const task = settings.llmPostProcessTask;
+		if (task === LlmTask.Template) {
+			return this.applyNoteTemplate(
+				source,
+				markdown,
+				token,
+				expandPrompt,
+			);
+		}
+		return this.postProcess(
+			{ ...settings, llmPostProcessTask: task },
+			source.transcript,
+			markdown,
+			token,
+			expandPrompt,
+		);
+	}
+
+	/**
+	 * Builds the note from the selected note template, its parts filled by
+	 * the model, with the transcript where the template writes it.
+	 * @param source - The facts of the run, with its settings and transcript
+	 * @param markdown - The transcript as the note writes it
+	 * @param token - Cancellation for the run
+	 * @param expandPrompt - Fills the run's facts into a profile a part names
+	 * @returns The note, or the transcript unchanged when there is no
+	 *   template or it cannot be rendered
+	 */
+	private async applyNoteTemplate(
+		source: RunFactsSource,
+		markdown: string,
+		token: CancellationToken,
+		expandPrompt: PromptExpander,
+	): Promise<string> {
+		const { settings } = source;
+		const template = selectedProfile(settings, ProfileKindId.LlmTemplate);
+		if (!template || template.body.trim() === '') {
+			new Notice(
+				'No note template is selected, so the transcript was saved as it is.',
+			);
+			return markdown;
+		}
+		const vendorId = jobVendorId(settings, LlmJobId.PostProcess);
+		try {
+			return await new TemplatePass({
+				template: template.body,
+				templateName: template.name,
+				source,
+				transcriptMarkdown: markdown,
+				expandPrompt,
+				glossary: resolveDictionaryTermList(settings),
+				llm: this.createLlm(settings, vendorId),
+				maxTokens: vendorMaxTokens(settings, vendorId),
+				costSink: this.costSink,
+				signal: token.signal,
+			}).run();
+		} catch (error) {
+			if (!(error instanceof TemplateRenderError)) {
+				throw error;
+			}
+			new Notice(
+				`The note template "${template.name}" could not be rendered (${error.message}); the transcript was saved as it is.`,
+			);
+			return markdown;
+		}
+	}
+
+	/**
+	 * The settings a run applies, with the note of every profile it may use
+	 * read now: the selected ones, and for a note template the prompt
+	 * profiles its parts name, which only the template itself says.
+	 */
+	private async readRunProfiles(): Promise<ProfileNotesRead> {
+		const read = await readProfileNotes(this.app, this.getSettings());
+		const named = read.settings.llmPostProcessEnabled
+			? templateProfileIds(read.settings)
+			: [];
+		if (named.length === 0) {
+			return read;
+		}
+		const again = await readProfileNotes(this.app, read.settings, named);
+		return {
+			settings: again.settings,
+			unread: new Set([...read.unread, ...again.unread]),
+		};
 	}
 
 	/**

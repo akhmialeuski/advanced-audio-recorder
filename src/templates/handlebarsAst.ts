@@ -28,3 +28,11 @@ export type AstSubExpression = hbs.AST.SubExpression;
 export type AstPath = hbs.AST.PathExpression;
 /** The `key=value` arguments of a call. */
 export type AstHash = hbs.AST.Hash;
+/** `"text"`, as an argument or a hash value. */
+export type AstStringLiteral = hbs.AST.StringLiteral;
+/** `3`, as an argument or a hash value. */
+export type AstNumberLiteral = hbs.AST.NumberLiteral;
+/** `true` or `false`, as an argument or a hash value. */
+export type AstBooleanLiteral = hbs.AST.BooleanLiteral;
+/** Literal text between the braces. */
+export type AstContent = hbs.AST.ContentStatement;

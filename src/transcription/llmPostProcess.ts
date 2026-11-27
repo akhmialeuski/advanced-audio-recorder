@@ -31,10 +31,18 @@ export const LlmTask = {
 	Custom: 'custom',
 	/** Render the transcript in another language. */
 	Translate: 'translate',
+	/** Build the note from a template whose parts the model fills. */
+	Template: 'template',
 } as const;
 
 /** One post-processing task (derived from {@link LlmTask}). */
 export type LlmTask = (typeof LlmTask)[keyof typeof LlmTask];
+
+/**
+ * A task answered by one prompt over the transcript text. A note template
+ * builds its own prompts, one per call its parts need, and is run apart.
+ */
+export type TextLlmTask = Exclude<LlmTask, typeof LlmTask.Template>;
 
 /** A provider-neutral prompt: a system instruction and a user message. */
 export interface LlmPrompt {
@@ -45,7 +53,7 @@ export interface LlmPrompt {
 /** Options shaping the post-processing prompt. */
 export interface PostProcessOptions {
 	/** The task to perform. */
-	task: LlmTask;
+	task: TextLlmTask;
 	/** Detected/declared language name or code, when known. */
 	language?: string | undefined;
 	/**

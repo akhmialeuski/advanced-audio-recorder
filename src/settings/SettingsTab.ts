@@ -112,7 +112,6 @@ import {
 } from '../platform/capabilities';
 import { effectiveWordTimestamps } from '../transcription/providers/capabilities';
 import { errorMessage } from '../errors';
-import { sharedTemplateEngine } from '../templates/TemplateEngine';
 import { describeCheck } from '../templates/templateAnalysis';
 import { TemplateVariablesModal } from '../ui/TemplateVariablesModal';
 
@@ -781,28 +780,28 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						profile.id === selectedProfileId(settings, kindId),
 					),
 					status: this.profileText.status(profile),
-					templateCheck: kind.variables
+					templateCheck: kind.template
 						? describeCheck(
-								sharedTemplateEngine().validate(
-									profile.body,
-									kind.variables,
-								),
+								kind.template.check(profile.body, settings),
 							)
 						: '',
 				})),
 			visible: kind.visible,
-			templated: kind.variables !== undefined,
+			templated: kind.template !== undefined,
 			showVariables: (id): void => {
 				const profile = findProfile(ofKind(), id);
-				if (!profile || !kind.variables) {
+				const template = kind.template;
+				if (!profile || !template) {
 					return;
 				}
-				const engine = sharedTemplateEngine();
 				new TemplateVariablesModal(this.app, {
 					subject: profile.name,
-					variables: kind.variables,
-					helpers: engine.helpers,
-					problems: engine.validate(profile.body, kind.variables),
+					variables: template.variables,
+					helpers: template.helpers(),
+					problems: template.check(
+						profile.body,
+						this.plugin.settings,
+					),
 				}).open();
 			},
 			add: (): void => {

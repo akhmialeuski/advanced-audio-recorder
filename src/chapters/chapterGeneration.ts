@@ -15,6 +15,7 @@ import {
 	type PlayerMarker,
 } from '../markers/markerModel';
 import { formatTimecode, parseTimecode } from '../utils/TimeUtils';
+import { parseJsonAnswer } from '../transcription/llm/jsonAnswer';
 
 /** One transcript line with its start offset, the LLM's raw material. */
 export interface TimedLine {
@@ -214,24 +215,6 @@ function readChapterTime(value: unknown): number | null {
 }
 
 /**
- * Extracts the JSON array text from a raw LLM response, tolerating code
- * fences and surrounding prose: the substring from the first `[` to the
- * last `]` is taken, which covers "Here are the chapters: [...]" replies.
- * @param output - Raw model output
- * @returns Candidate JSON text, or null when no array brackets exist
- */
-function extractJsonArrayText(output: string): string | null {
-	const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(output);
-	const candidate = fenced?.[1] ?? output;
-	const start = candidate.indexOf('[');
-	const end = candidate.lastIndexOf(']');
-	if (start === -1 || end <= start) {
-		return null;
-	}
-	return candidate.slice(start, end + 1);
-}
-
-/**
  * Snaps a time to the nearest value in `times`, so a chapter start lands on a
  * real transcript line rather than a position the model invented between
  * lines. Returns the time unchanged when no snap targets are given.
@@ -286,17 +269,8 @@ export function parseChapterResponse(
 	minGapSeconds: number = DUPLICATE_TIME_TOLERANCE_SECONDS,
 	snapTimes: readonly number[] = [],
 ): GeneratedChapter[] {
-	const jsonText = extractJsonArrayText(output);
-	if (jsonText === null) {
-		return [];
-	}
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(jsonText);
-	} catch {
-		return [];
-	}
-	if (!Array.isArray(parsed)) {
+	const parsed = parseJsonAnswer(output, 'array');
+	if (!parsed) {
 		return [];
 	}
 	const candidates: GeneratedChapter[] = [];
