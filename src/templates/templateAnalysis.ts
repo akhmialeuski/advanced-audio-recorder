@@ -394,3 +394,32 @@ export function analyzeTemplate(
 ): TemplateAnalysis {
 	return new TemplateWalker(input).walk(program);
 }
+
+/**
+ * One problem as a line a user reads, with its place first.
+ * @param problem - What the check found
+ */
+export function describeProblem(problem: TemplateProblem): string {
+	if (!problem.location) {
+		return problem.message;
+	}
+	const { line, column } = problem.location;
+	return `Line ${String(line)}, column ${String(column)}: ${problem.message}`;
+}
+
+/**
+ * What a check found, in one sentence for the row under a template: nothing,
+ * or how many problems and the first of them.
+ * @param problems - What the check found
+ */
+export function describeCheck(problems: readonly TemplateProblem[]): string {
+	const [first] = problems;
+	if (!first) {
+		return 'No problems found.';
+	}
+	const count =
+		problems.length === 1
+			? '1 problem'
+			: `${String(problems.length)} problems`;
+	return `${count}. ${describeProblem(first)}`;
+}

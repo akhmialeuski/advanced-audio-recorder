@@ -245,6 +245,10 @@ export const MODAL = {
 	actions: '.modal-button-container',
 	/** A dialog whose body scrolls under a title and a footer that stay put. */
 	scrollableBody: '.mod-scrollable-content',
+	/** A table of the template variables dialog. */
+	templateVariables: '.aar-template-variables',
+	/** What the check of a template found, in the same dialog. */
+	templateCheck: '.aar-template-check',
 } as const;
 
 /** The transcription queue dialog. */

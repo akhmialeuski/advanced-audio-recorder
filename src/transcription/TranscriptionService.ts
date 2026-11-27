@@ -127,6 +127,7 @@ import type {
 	TranscriptSegment,
 	TranscriptionUsage,
 } from './TranscriptTypes';
+import { type PromptExpander, promptExpander } from './runFacts';
 import {
 	costFromUsage,
 	resolveEnginePricing,
@@ -976,6 +977,15 @@ export class TranscriptionService {
 		}
 
 		let translation: TranscriptTranslation | undefined;
+		// The facts a prompt can name are the ones this run holds: the note
+		// the result goes to, the recording, and the finished transcript.
+		const expandPrompt = promptExpander({
+			app: this.app,
+			settings,
+			recording: file,
+			notePath: options.notePathForLinks,
+			transcript,
+		});
 		if (postProcessing) {
 			this.throwIfCancelled(token);
 			const translating =
@@ -998,6 +1008,7 @@ export class TranscriptionService {
 						transcript,
 						token,
 						render,
+						expandPrompt,
 					);
 				} else {
 					markdown = await this.postProcess(
@@ -1005,6 +1016,7 @@ export class TranscriptionService {
 						transcript,
 						markdown,
 						token,
+						expandPrompt,
 					);
 				}
 			} catch (error) {
@@ -1250,6 +1262,7 @@ export class TranscriptionService {
 	 * @param transcript - The transcript to translate
 	 * @param token - Cancellation token for the run
 	 * @param render - Renders a transcript the way this run renders them
+	 * @param expandPrompt - Fills the run's facts into the translation prompt
 	 * @returns The translated transcript and its Markdown
 	 */
 	private async translate(
@@ -1257,6 +1270,7 @@ export class TranscriptionService {
 		transcript: Transcript,
 		token: CancellationToken,
 		render: (source: Transcript) => string,
+		expandPrompt: PromptExpander,
 	): Promise<TranscriptTranslation> {
 		const vendorId = jobVendorId(settings, LlmJobId.PostProcess);
 		const { transcript: translated, language } =
@@ -1267,6 +1281,7 @@ export class TranscriptionService {
 				maxTokens: vendorMaxTokens(settings, vendorId),
 				costSink: this.costSink,
 				signal: token.signal,
+				expandPrompt,
 			}).translate();
 		return {
 			transcript: translated,
@@ -2022,12 +2037,14 @@ export class TranscriptionService {
 	 * @param markdown - The rendered body a cleanup or custom pass replaces
 	 * @param token - Cancellation for the run, so a Cancel pressed here ends
 	 *   the request instead of leaving it to its own timeout and the bill
+	 * @param expandPrompt - Fills the run's facts into the selected prompt
 	 */
 	private async postProcess(
 		settings: AudioRecorderSettings,
 		transcript: Transcript,
 		markdown: string,
 		token: CancellationToken,
+		expandPrompt: PromptExpander,
 	): Promise<string> {
 		const vendorId = jobVendorId(settings, LlmJobId.PostProcess);
 		const llm = this.createLlm(settings, vendorId);
@@ -2039,9 +2056,17 @@ export class TranscriptionService {
 				task: settings.llmPostProcessTask,
 				language: transcript.language,
 				segmentLanguages: segmentLanguages(transcript.segments),
-				cleanupPrompt: resolveLlmPrompt(settings, LlmTask.Cleanup),
-				summaryPrompt: resolveLlmPrompt(settings, LlmTask.Summary),
-				customInstruction: resolveLlmPrompt(settings, LlmTask.Custom),
+				// A prompt may name facts of the run, filled in here so the
+				// model is told which meeting, when, and with whom.
+				cleanupPrompt: expandPrompt(
+					resolveLlmPrompt(settings, LlmTask.Cleanup),
+				),
+				summaryPrompt: expandPrompt(
+					resolveLlmPrompt(settings, LlmTask.Summary),
+				),
+				customInstruction: expandPrompt(
+					resolveLlmPrompt(settings, LlmTask.Custom),
+				),
 				// The user's Dictionary terms give the cleanup pass the canonical
 				// spellings, so even a single-pass run corrects garbled names and
 				// acronyms.

@@ -27,6 +27,8 @@ import { LlmTask } from '../transcription/llmPostProcess';
 import { parseParticipantBody } from '../speakers/participantRoster';
 import { RUN_PARAMS } from '../transcription/runOptions';
 import { presetOptionCount } from '../transcription/runPreset';
+import { RUN_VARIABLES } from '../templates/runVariables';
+import type { TemplateCatalog } from '../templates/templateCatalog';
 
 /**
  * Which block of the settings a kind's catalogue belongs to. Not stored: the
@@ -83,6 +85,12 @@ export interface ProfileKind {
 	readonly summary: (profile: Profile) => string;
 	/** Whether this kind is on screen at all. */
 	readonly visible: (settings: AudioRecorderSettings) => boolean;
+	/**
+	 * The facts of a run the body may name in double braces, for a kind whose
+	 * body is a prompt filled in per run. Absent for a list such as a glossary,
+	 * whose lines are taken as they stand.
+	 */
+	readonly variables?: TemplateCatalog;
 }
 
 /** A kind as it is declared: the keys are the id's to give, not the author's. */
@@ -131,6 +139,15 @@ function countSummary(count: number, one: string, many: string): string {
  */
 function promptSummary(profile: Profile): string {
 	return profile.body.trim() === '' ? 'no prompt' : 'prompt set';
+}
+
+/**
+ * The sentence a prompt's body description ends with, naming the facts it can
+ * use and where they are listed.
+ * @param desc - The rest of the description
+ */
+function withVariables(desc: string): string {
+	return `${desc} Facts of the run such as {{title}} or {{participants}} are filled in; Template variables lists them.`;
 }
 
 /** Whether the LLM post-processing pass runs at all, as configured. */
@@ -231,8 +248,10 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		selectionDesc:
 			'Prompt used by default when chapters are generated; None leaves the base behaviour.',
 		bodyName: 'Guidance prompt',
-		bodyDesc:
+		bodyDesc: withVariables(
 			'How to divide the recording into chapters. Appended to the fixed base prompt; blank leaves the base behaviour.',
+		),
+		variables: RUN_VARIABLES,
 		summary: promptSummary,
 		// Follows the chapters switch alone: the guidance steers a generation,
 		// and a generation is offered on any recording that already has a
@@ -248,8 +267,10 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		selectionName: 'Cleanup prompt profile',
 		selectionDesc: promptSelectionDesc('the cleanup pass'),
 		bodyName: 'Cleanup prompt',
-		bodyDesc:
+		bodyDesc: withVariables(
 			'System instruction for the cleanup pass. The transcript language, or every language of a transcript that switches language, is appended automatically.',
+		),
+		variables: RUN_VARIABLES,
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
@@ -264,8 +285,10 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		selectionName: 'Summary prompt profile',
 		selectionDesc: promptSelectionDesc('the summary pass'),
 		bodyName: 'Summary prompt',
-		bodyDesc:
+		bodyDesc: withVariables(
 			'System instruction for the summary pass. The transcript language is appended automatically.',
+		),
+		variables: RUN_VARIABLES,
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
@@ -280,8 +303,10 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		selectionName: 'Translation prompt profile',
 		selectionDesc: promptSelectionDesc('the translation pass'),
 		bodyName: 'Translation prompt',
-		bodyDesc:
+		bodyDesc: withVariables(
 			'System instruction for the translation pass. The target language is appended automatically.',
+		),
+		variables: RUN_VARIABLES,
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&
@@ -300,8 +325,10 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		selectionDesc:
 			'Instruction used for the custom task; None leaves only a neutral instruction, so the pass does little.',
 		bodyName: 'Custom instruction',
-		bodyDesc:
-			'System instruction applied to the transcript text, sent verbatim: no language clause is added.',
+		bodyDesc: withVariables(
+			'System instruction applied to the transcript text, sent verbatim apart from the facts below: no language clause is added.',
+		),
+		variables: RUN_VARIABLES,
 		summary: promptSummary,
 		visible: (settings) =>
 			postProcessing(settings) &&

@@ -3,6 +3,7 @@ import {
 	TemplateRenderError,
 } from 'src/templates/TemplateEngine';
 import type { TemplateCatalog } from 'src/templates/templateCatalog';
+import { describeCheck } from 'src/templates/templateAnalysis';
 import type { TemplateHelper } from 'src/templates/templateHelpers';
 
 /** What the templates below may name: a meeting with turns and properties. */
@@ -365,5 +366,32 @@ describe('TemplateEngine.validate', () => {
 		const names = engine.helpers.map((helper) => helper.name);
 
 		expect(names).toEqual(expect.arrayContaining(['eq', 'date', 'extra']));
+	});
+});
+
+describe('describeCheck', () => {
+	it('says when nothing was found', () => {
+		expect(describeCheck([])).toBe('No problems found.');
+	});
+
+	it('counts the problems and names the first with its place', () => {
+		const text = describeCheck([
+			{
+				severity: 'warning',
+				message: 'Unknown variable "a".',
+				location: { line: 1, column: 2 },
+			},
+			{ severity: 'error', message: 'b' },
+		]);
+
+		expect(text).toBe(
+			'2 problems. Line 1, column 2: Unknown variable "a".',
+		);
+	});
+
+	it('names a single problem without a place', () => {
+		expect(describeCheck([{ severity: 'error', message: 'Broken.' }])).toBe(
+			'1 problem. Broken.',
+		);
 	});
 });

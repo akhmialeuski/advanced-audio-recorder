@@ -40,6 +40,21 @@ export function completed(text: string): LlmCompletion {
 }
 
 /**
+ * An LLM answering every prompt with the text it was sent, so a cleanup keeps
+ * the transcript, and whose calls hold the system prompts a run sent.
+ * @returns The provider double
+ */
+export function echoingLlm(): LlmProvider & { complete: jest.Mock } {
+	return {
+		id: LLM_PROVIDER_IDS.GEMINI,
+		label: EngineLabel.Gemini,
+		complete: jest.fn((prompt: LlmPrompt) =>
+			Promise.resolve(completed(prompt.user)),
+		),
+	};
+}
+
+/**
  * A completion carrying the token counts a vendor reported, so a test can
  * drive the accounting off real usage rather than the estimate.
  * @param text - The assistant's text

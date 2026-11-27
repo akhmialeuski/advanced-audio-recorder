@@ -21,14 +21,13 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { emptyTranscriptSection } from 'src/sidecar/recordingSidecarModel';
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
-import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
-import { completed } from '../helpers/llmDoubles';
+import { echoingLlm } from '../helpers/llmDoubles';
 import { noticeMessages } from '../mocks/obsidian';
 import { asMockVault } from '../helpers/obsidianMock';
-import { EngineLabel } from 'src/providers/providers';
 
 const standup = partial<TFile>({
 	name: 'standup.webm',
@@ -103,21 +102,6 @@ function vaultWith(notes: Record<string, string>): App {
 		{ path: standup.path, data: new ArrayBuffer(8) },
 	]);
 	return app;
-}
-
-/**
- * An LLM that answers every prompt with the text it was sent, so a cleanup
- * keeps the transcript and a translation parses, and whose calls hold the
- * system prompts a run sent.
- */
-function echoingLlm(): LlmProvider & { complete: jest.Mock } {
-	return {
-		id: LLM_PROVIDER_IDS.GEMINI,
-		label: EngineLabel.Gemini,
-		complete: jest.fn((prompt: LlmPrompt) =>
-			Promise.resolve(completed(prompt.user)),
-		),
-	};
 }
 
 /** What a test run is given besides its settings. */

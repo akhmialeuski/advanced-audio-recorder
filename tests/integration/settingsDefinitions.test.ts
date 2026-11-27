@@ -97,6 +97,8 @@ describe('settings definitions', () => {
 	let removeProfile: jest.Mock;
 	let reorderProfile: jest.Mock;
 	let openProfileSource: jest.Mock;
+	let showProfileVariables: jest.Mock;
+	let profileTemplated: boolean;
 	let profileSourcePath: string;
 	let profileReadsNote: boolean;
 	let profileEntries: ReturnType<ProfileCatalogue['entries']>;
@@ -121,6 +123,8 @@ describe('settings definitions', () => {
 		removeProfile = jest.fn();
 		reorderProfile = jest.fn();
 		openProfileSource = jest.fn();
+		showProfileVariables = jest.fn();
+		profileTemplated = false;
 		profileSourcePath = '';
 		profileReadsNote = false;
 		profileEntries = [
@@ -129,12 +133,14 @@ describe('settings definitions', () => {
 				name: 'Standup',
 				summary: 'Typed text, 3 terms',
 				status: 'Uses the text typed in the settings.',
+				templateCheck: 'No problems found.',
 			},
 			{
 				id: 'b',
 				name: 'Legal',
 				summary: 'In use, note, 12 terms',
 				status: 'Uses the text of Glossaries/Legal.md.',
+				templateCheck: '',
 			},
 		];
 		selectedProfileId = 'b';
@@ -215,6 +221,8 @@ describe('settings definitions', () => {
 		openSource: openProfileSource as (id: string) => void,
 		entries: () => profileEntries,
 		visible: () => true,
+		templated: profileTemplated,
+		showVariables: showProfileVariables as (id: string) => void,
 		add: addProfile as () => void,
 		rename: renameProfile as (id: string) => void,
 		remove: removeProfile as (id: string) => void,
@@ -1542,6 +1550,45 @@ describe('settings definitions', () => {
 			expect(shown(rowIn(page, 'Open note').visible)).toBe(true);
 			rowIn(page, 'Open note').action?.(createDiv(), 0);
 			expect(openProfileSource).toHaveBeenCalledWith('a');
+		});
+
+		/**
+		 * Whether the group holding a page's Template variables row is shown.
+		 * @param page - A profile's page
+		 */
+		const variablesShown = (page: GroupDefinition): boolean => {
+			const group = (page.items as GroupDefinition[]).find((item) =>
+				(item.items ?? []).some(
+					(row) =>
+						(row as { name?: string }).name ===
+						'Template variables',
+				),
+			);
+			return (group?.visible as () => boolean)();
+		};
+
+		it('offers the template variables of a prompt with what its check found', () => {
+			const page = profilePageOf('Dictionary profiles', 'Standup');
+			const row = rowIn(page, 'Template variables');
+
+			row.action?.(createDiv(), 0);
+
+			expect(row.desc).toBe('No problems found.');
+			expect(showProfileVariables).toHaveBeenCalledWith('a');
+		});
+
+		it('hides the template variables of a kind whose body is a list', () => {
+			const page = profilePageOf('Dictionary profiles', 'Standup');
+
+			expect(variablesShown(page)).toBe(false);
+		});
+
+		it('shows the template variables of a kind whose body is a template', () => {
+			profileTemplated = true;
+
+			const page = profilePageOf('Dictionary profiles', 'Standup');
+
+			expect(variablesShown(page)).toBe(true);
 		});
 
 		it('names the text of the profile in use under the picker, on a line of its own', () => {
