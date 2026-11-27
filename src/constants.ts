@@ -929,10 +929,11 @@ export const GEMINI_OUTPUT_TOKENS_PER_SECOND = 60;
 export const GEMINI_MIN_OUTPUT_TOKENS = 4096;
 
 /**
- * Seconds of the previous part that a later part of a diarized recording is
- * sent with. The model numbers speakers per request, so the same stretch
- * heard by two neighbouring requests is what lets the run tell that one
- * request's "Speaker 2" is the other's "Olga". The lead-in is read for that
+ * Seconds of the previous part that a later part of a recording is sent
+ * with, whether or not the run labels speakers. The model numbers speakers
+ * per request, so the same stretch heard by two neighbouring requests is what
+ * lets the run tell that one request's "Speaker 2" is the other's "Olga". The
+ * lead-in is read for that, for how far the earlier part's timecodes drifted,
  * and for the sentence the cut fell in, and its other lines are dropped.
  */
 export const PART_LEAD_IN_SECONDS = 30;

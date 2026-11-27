@@ -151,8 +151,10 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
  * Bounded by a per-request duration cap: a recording longer than
  * {@link GEMINI_MAX_WHOLE_FILE_SECONDS} is uploaded once and asked for in
  * parts, several at a time, so one request never outlasts the timeout or
- * truncates its output. Each later part of a diarized run carries the end of
- * the part before it, which is what the speakers are matched across parts on.
+ * truncates its output. Each later part carries the end of the part before
+ * it, which is what the speakers are matched across parts on, what shows a
+ * drift of the earlier part's timecodes, and what holds the sentence the seam
+ * cut.
  */
 export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: GEMINI_MAX_REQUEST_BYTES,

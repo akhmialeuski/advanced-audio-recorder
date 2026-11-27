@@ -10,8 +10,9 @@
  * @module transcription/partSeams
  */
 
-import type { Transcript, TranscriptSegment } from './TranscriptTypes';
+import type { Transcript } from './TranscriptTypes';
 import { buildTranscript } from './transcriptModel';
+import { seamDrift, withoutDrift, type PlacedLine } from './seamDrift';
 
 /**
  * How close to the seam a line of the later part has to end, in seconds, to
@@ -33,13 +34,6 @@ export interface SeamPart {
 	readonly endSeconds?: number;
 	/** The part's lines, timed from {@link offsetSeconds}. */
 	readonly transcript: Transcript;
-}
-
-/** A line with the recording's own seconds beside it. */
-interface PlacedLine {
-	readonly segment: TranscriptSegment;
-	readonly start: number;
-	readonly end: number;
 }
 
 /**
@@ -224,6 +218,8 @@ interface Joined<T> {
 	lines: PlacedLine[];
 	/** Where the last part ends on the recording, when it was measured. */
 	endSeconds: number | undefined;
+	/** Where the last part's own audio starts, past its lead-in. */
+	ownStart: number;
 }
 
 /**
@@ -306,20 +302,27 @@ function acrossSeam<T extends SeamPart>(
 	if (!earlier || !reaches) {
 		return rebuilt(part, takenOver(lines, seam).kept, NO_RENAMES);
 	}
+	// The earlier part's lines are put back on time before anything is
+	// matched against them, so the cut line and the speakers are found where
+	// they were spoken.
+	const earlierLines = withoutDrift(
+		joined.lines,
+		joined.ownStart,
+		seam,
+		seamDrift(joined.lines, lines, { from: part.offsetSeconds, seam }),
+	);
 	const { takeover, kept } = takenOver(
 		lines,
-		cutLineStart(joined.lines, part.offsetSeconds, seam),
+		cutLineStart(earlierLines, part.offsetSeconds, seam),
 	);
 	const matched = pairBySharedSeconds(
-		sharedSeconds(joined.lines, lines, part.offsetSeconds, seam),
+		sharedSeconds(earlierLines, lines, part.offsetSeconds, seam),
 	);
 	// The earlier part's labels were settled when it was joined, so only its
-	// lines past the takeover change here.
+	// timing and its lines past the takeover change here.
 	joined.parts[joined.parts.length - 1] = rebuilt(
 		earlier,
-		placed(earlier).filter(
-			(line) => (line.start + line.end) / 2 < takeover,
-		),
+		earlierLines.filter((line) => (line.start + line.end) / 2 < takeover),
 		NO_RENAMES,
 	);
 	return rebuilt(
@@ -342,6 +345,7 @@ export function joinSeams<T extends SeamPart>(parts: readonly T[]): T[] {
 		known: new Set<string>(),
 		lines: [],
 		endSeconds: undefined,
+		ownStart: 0,
 	};
 	const ordered = [...parts].sort(
 		(a, b) => a.offsetSeconds - b.offsetSeconds,
@@ -352,6 +356,7 @@ export function joinSeams<T extends SeamPart>(parts: readonly T[]): T[] {
 		joined.parts.push(next);
 		joined.lines = placed(next);
 		joined.endSeconds = part.endSeconds;
+		joined.ownStart = part.offsetSeconds + leadIn;
 		for (const label of next.transcript.speakers) {
 			joined.known.add(label);
 		}

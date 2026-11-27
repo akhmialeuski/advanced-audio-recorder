@@ -373,10 +373,12 @@ export interface ProviderCapabilities {
 	 */
 	maxParallelRequests: number;
 	/**
-	 * Seconds of the part before it that a later part of a diarized recording
-	 * is sent with, for an engine that numbers speakers per request: the
-	 * shared stretch is what the run matches one part's labels to the next's
-	 * on. Zero for an engine whose parts start where the last one ended.
+	 * Seconds of the part before it that a later part is sent with, labelled
+	 * run or not, for an engine that numbers speakers per request and
+	 * estimates its timecodes: the shared stretch is what the run matches one
+	 * part's labels to the next's on, measures a drift of the earlier part's
+	 * timecodes on, and takes the sentence the seam cut from. Zero for an
+	 * engine whose parts start where the last one ended.
 	 */
 	partLeadInSeconds: number;
 }

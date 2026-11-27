@@ -292,3 +292,174 @@ describe('joinSeams', () => {
 		]);
 	});
 });
+
+/**
+ * Where a line starts in the joined transcript, by its text.
+ * @param parts - The joined parts
+ * @param text - The line's text
+ * @returns Its start on the recording, in seconds
+ */
+function startOf(parts: readonly SeamPart[], text: string): number | undefined {
+	for (const { offsetSeconds, transcript } of parts) {
+		const segment = transcript.segments.find((s) => s.text === text);
+		if (segment) {
+			return segment.start + offsetSeconds;
+		}
+	}
+	return undefined;
+}
+
+/** Lines spoken in the stretch both parts hear, as the later part times them. */
+const SHARED: readonly Line[] = [
+	[572, 579, 'Speaker 2', 'Mieszkam i pracuję w Warszawie.'],
+	[580, 588, 'Speaker 1', 'Andrzej to mój przyjaciel, jest Polakiem.'],
+	[589, 597, 'Speaker 2', 'Studiuje informatykę w Szczecinie.'],
+];
+
+/**
+ * A first part whose model let its clock run late, so the lines both parts
+ * heard come out a given number of seconds after the later part puts them.
+ * @param drift - How late the first part's shared lines are, in seconds
+ * @returns The first part
+ */
+function driftedFirst(drift: number): SeamPart {
+	return part(0, [
+		[10, 20, 'Olga', 'Dzień dobry, zaczynamy lekcję.'],
+		[
+			300 + drift / 2,
+			310 + drift / 2,
+			'Anatol',
+			'W połowie lekcji czytamy tekst.',
+		],
+		...SHARED.map(([start, end, , text]): Line => [
+			start + drift,
+			end + drift,
+			text.startsWith('Andrzej') ? 'Olga' : 'Anatol',
+			text,
+		]),
+	]);
+}
+
+describe('joinSeams on a part whose timecodes drifted', () => {
+	it('moves the late lines back by what the stretch both parts heard shows', () => {
+		const joined = joinSeams([driftedFirst(9), part(1, SHARED)]);
+
+		expect(
+			startOf(joined, 'Andrzej to mój przyjaciel, jest Polakiem.'),
+		).toBeCloseTo(580, 0);
+	});
+
+	it('moves a line by the share of the part elapsed before it', () => {
+		const joined = joinSeams([driftedFirst(9), part(1, SHARED)]);
+
+		expect(startOf(joined, 'W połowie lekcji czytamy tekst.')).toBeCloseTo(
+			300,
+			0,
+		);
+	});
+
+	it('barely moves the start of the part, where the model keeps time', () => {
+		const joined = joinSeams([driftedFirst(9), part(1, SHARED)]);
+
+		expect(startOf(joined, 'Dzień dobry, zaczynamy lekcję.')).toBeCloseTo(
+			10,
+			0,
+		);
+	});
+
+	it('matches a line the later part split in two by where it starts', () => {
+		const joined = joinSeams([
+			driftedFirst(9),
+			part(1, [
+				[572, 575, 'Speaker 2', 'Mieszkam i pracuję'],
+				[575, 579, 'Speaker 2', 'w Warszawie.'],
+				[580, 584, 'Speaker 1', 'Andrzej to mój przyjaciel,'],
+				[584, 588, 'Speaker 1', 'jest Polakiem.'],
+				[589, 597, 'Speaker 2', 'Studiuje informatykę w Szczecinie.'],
+			]),
+		]);
+
+		expect(startOf(joined, 'W połowie lekcji czytamy tekst.')).toBeCloseTo(
+			300,
+			0,
+		);
+	});
+
+	it('leaves a drift of under three seconds alone', () => {
+		const joined = joinSeams([driftedFirst(2), part(1, SHARED)]);
+
+		expect(startOf(joined, 'W połowie lekcji czytamy tekst.')).toBe(301);
+	});
+
+	it('takes no drift from a single line matched across the parts', () => {
+		const joined = joinSeams([
+			driftedFirst(9),
+			part(1, [
+				[
+					580,
+					588,
+					'Speaker 1',
+					'Andrzej to mój przyjaciel, jest Polakiem.',
+				],
+				[589, 597, 'Speaker 2', 'Coś zupełnie innego niż wcześniej.'],
+			]),
+		]);
+
+		expect(startOf(joined, 'W połowie lekcji czytamy tekst.')).toBe(304.5);
+	});
+
+	it('matches no short reply, which any two answers share', () => {
+		const joined = joinSeams([
+			part(0, [
+				[300, 310, 'Anatol', 'W połowie lekcji czytamy tekst.'],
+				[583, 584, 'Olga', 'Mhm.'],
+				[593, 594, 'Olga', 'Mhm.'],
+			]),
+			part(1, [
+				[572, 573, 'Speaker 1', 'Mhm.'],
+				[582, 583, 'Speaker 1', 'Mhm.'],
+			]),
+		]);
+
+		expect(startOf(joined, 'W połowie lekcji czytamy tekst.')).toBe(300);
+	});
+});
+
+// A part that runs late places the last sentence before the seam past its
+// own end, where the service trims it away before the parts are joined. The
+// later part heard that sentence whole, so it is the only copy left.
+describe('joinSeams on a part that lost its last sentence to its own end', () => {
+	it('keeps the sentence from the later part, which is the only one holding it', () => {
+		const joined = joinSeams([
+			part(0, [
+				[10, 20, 'Olga', 'Dzień dobry, zaczynamy lekcję.'],
+				[579.6, 586.7, 'Anatol', 'Mieszkam i pracuję w Warszawie.'],
+				[
+					587.7,
+					595.8,
+					'Olga',
+					'Andrzej to mój przyjaciel, jest Polakiem.',
+				],
+			]),
+			part(1, [
+				[572, 579, 'Speaker 2', 'Mieszkam i pracuję w Warszawie.'],
+				[
+					580,
+					588,
+					'Speaker 1',
+					'Andrzej to mój przyjaciel, jest Polakiem.',
+				],
+				[593, 598, 'Speaker 2', 'Studiuje informatykę w Szczecinie.'],
+				[601, 606, 'Speaker 1', 'A teraz przeczytamy następny tekst.'],
+			]),
+		]);
+
+		expect(spoken(joined)).toEqual([
+			'Olga: Dzień dobry, zaczynamy lekcję.',
+			'Anatol: Mieszkam i pracuję w Warszawie.',
+			'Olga: Andrzej to mój przyjaciel, jest Polakiem.',
+			'Anatol: Studiuje informatykę w Szczecinie.',
+			'Olga: A teraz przeczytamy następny tekst.',
+		]);
+	});
+});

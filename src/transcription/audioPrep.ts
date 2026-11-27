@@ -87,8 +87,9 @@ export interface AudioPrepOptions {
 	clipsUploadedFile: boolean;
 	/**
 	 * Seconds of the part before it that each later part carries, zero when
-	 * parts start where the last one ended. Already zero for a run without
-	 * speaker labels, which has nothing to match across parts.
+	 * parts start where the last one ended. Sent whether or not the run labels
+	 * speakers: the shared stretch also shows a drift of the earlier part's
+	 * timecodes and holds the sentence the seam cut.
 	 */
 	leadInSeconds: number;
 	/**
@@ -634,6 +635,9 @@ export function audioPrepOptions(
 		chunkSeconds,
 		diarize,
 		clipsUploadedFile: capabilities.clipsUploadedFile,
-		leadInSeconds: diarize ? capabilities.partLeadInSeconds : 0,
+		// The lead-in serves every run, labelled or not: the lines both parts
+		// hear show how far the earlier one's timecodes drifted, and the
+		// sentence the seam cuts is taken whole from the later part.
+		leadInSeconds: capabilities.partLeadInSeconds,
 	};
 }

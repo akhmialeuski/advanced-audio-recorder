@@ -84,7 +84,7 @@ function stretches(payloads: readonly PreparedPayload[]): number[][] {
 }
 
 describe('audioPrepOptions for Gemini', () => {
-	it('plans by clips, with a lead-in when the run labels speakers', () => {
+	it('plans by clips, with a lead-in for every part after the first', () => {
 		expect(geminiOptions()).toMatchObject({
 			clipsUploadedFile: true,
 			leadInSeconds: 30,
@@ -92,7 +92,7 @@ describe('audioPrepOptions for Gemini', () => {
 		});
 	});
 
-	it('plans no lead-in for a run without speaker labels', () => {
+	it('plans the same lead-in for a run without speaker labels', () => {
 		const options = audioPrepOptions(
 			GEMINI_CAPABILITIES,
 			'Google Gemini',
@@ -101,7 +101,7 @@ describe('audioPrepOptions for Gemini', () => {
 			false,
 		);
 
-		expect(options.leadInSeconds).toBe(0);
+		expect(options.leadInSeconds).toBe(30);
 	});
 });
 
@@ -160,7 +160,7 @@ describe('prepareAudio for an engine that clips an uploaded recording', () => {
 		expect(prepared.diarizationSplitWarning).toBe(false);
 	});
 
-	it('plans parts that tile the recording when no speakers are labelled', async () => {
+	it('plans parts that tile the recording when there is no lead-in', async () => {
 		const payloads = await prepareLesson(
 			geminiOptions({ diarize: false, leadInSeconds: 0 }),
 		);
