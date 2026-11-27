@@ -658,6 +658,35 @@ describe('AudioRecorderSettingTab', () => {
 			).toContain('Line 1, column 7: Unknown variable "titel".');
 		});
 
+		it('checks a note template against the prompt profiles its parts name', () => {
+			mockSettings.transcriptionEnabled = true;
+			mockSettings.llmPostProcessEnabled = true;
+			mockSettings.llmPostProcessTask = 'template';
+			mockSettings.profiles = [
+				profileOf('llmCustom', 'c', 'Action items', 'Who does what.'),
+				profileOf(
+					'llmTemplate',
+					't',
+					'Meeting',
+					'{{part "actions" profile="Action items"}}\n{{part "risks" profile="Risks"}}',
+				),
+			];
+			const row = rowIn(
+				pageOf(tab.getSettingDefinitions(), 'Meeting'),
+				'Template variables',
+			);
+
+			row.action?.(createDiv(), 0);
+
+			expect(row.desc).toBe(
+				'1 problem. Line 2, column 1: Part "risks" names the profile "Risks", which no cleanup, summary or custom prompt profile is called.',
+			);
+			const text = at(modalInstances, modalInstances.length - 1).contentEl
+				.textContent;
+			expect(text).toContain('{{transcript}}');
+			expect(text).toContain('part');
+		});
+
 		it('lists nothing for a profile deleted while its page was open', () => {
 			mockSettings.transcriptionAutoChaptersEnabled = true;
 			mockSettings.profiles = [chapterProfile('a', 'Standup', 'x')];

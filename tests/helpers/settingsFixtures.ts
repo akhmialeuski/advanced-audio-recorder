@@ -257,6 +257,7 @@ export function fullyPopulatedSettings(): Omit<
 			llmCustom: '',
 			quickNote: 'q1',
 			runPreset: '',
+			llmTemplate: '',
 		},
 		llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 		chaptersLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,

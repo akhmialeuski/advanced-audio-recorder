@@ -48,6 +48,8 @@ export const ProfileKindId = {
 	QuickNote: 'quickNote',
 	/** The choices of one transcription run, saved under a name. */
 	RunPreset: 'runPreset',
+	/** The note template the template task builds the note from. */
+	LlmTemplate: 'llmTemplate',
 } as const;
 
 /** Which kind of thing a profile holds (derived from {@link ProfileKindId}). */

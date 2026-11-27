@@ -120,7 +120,7 @@ export const BUILT_IN_HELPERS: readonly string[] = [
  * The location of a node, in the 1-based line and column a user reads.
  * @param node - A node Handlebars parsed
  */
-function locationOf(node: AstNode): TemplateLocation {
+export function locationOf(node: AstNode): TemplateLocation {
 	return { line: node.loc.start.line, column: node.loc.start.column + 1 };
 }
 

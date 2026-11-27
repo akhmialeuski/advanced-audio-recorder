@@ -8,6 +8,7 @@ import {
 	buildCostEstimate,
 	costEstimateNeedsDuration,
 	costFromUsage,
+	estimateLlmCallCost,
 	estimateStepCost,
 	formatUsd,
 	GEMINI_AUDIO_TOKENS_PER_SECOND,
@@ -739,6 +740,57 @@ describe('buildCostEstimate', () => {
 		expect(cleanup.lines[1]?.usd).toBeCloseTo(0.0031776, 10);
 		// The same input plus 1200 output.
 		expect(summary.lines[1]?.usd).toBeCloseTo(0.00144, 10);
+	});
+
+	describe('a note template', () => {
+		/**
+		 * Settings that build the note from a template on gpt-4o-mini.
+		 * @param body - The template; omitted for none selected
+		 */
+		const withTemplate = (body?: string) =>
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+				llmPostProcessEnabled: true,
+				llmPostProcessTask: 'template',
+				llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				llmOpenAiModel: 'gpt-4o-mini',
+				llmOpenAiMaxTokens: 4096,
+				profiles:
+					body === undefined
+						? []
+						: [{ id: 't', kind: 'llmTemplate', name: 'T', body }],
+				selectedProfileIds:
+					body === undefined ? {} : { llmTemplate: 't' },
+			});
+		const TEMPLATE =
+			'{{#part "a"}}x{{/part}}{{#part "b" format="bullets"}}x{{/part}}{{#part "c" separate=true}}x{{/part}}';
+
+		it('prices every call its parts make, sized by their formats', () => {
+			const estimate = buildCostEstimate(withTemplate(TEMPLATE), 600);
+
+			expect(estimate.lines[1]?.label).toBe(
+				'Post-processing (Structure with a template)',
+			);
+			// Two calls read 4800 tokens each at $0.15/M, and the parts write
+			// 0.15 + 0.08 + 0.15 of one reading, 1824 tokens at $0.60/M.
+			expect(estimate.lines[1]?.usd).toBeCloseTo(0.0025344, 10);
+		});
+
+		it('charges one call its share of the step', () => {
+			expect(
+				estimateLlmCallCost('postProcess', withTemplate(TEMPLATE), 600),
+			).toBeCloseTo(0.0012672, 10);
+		});
+
+		it('prices nothing without a template', () => {
+			expect(buildCostEstimate(withTemplate(), 600).lines[1]?.usd).toBe(
+				0,
+			);
+			expect(
+				estimateLlmCallCost('postProcess', withTemplate(), 600),
+			).toBe(0);
+		});
 	});
 
 	it('marks the free local engine as free and needs no link', () => {

@@ -25,8 +25,7 @@ import {
 	advancedTwoPassWillRun,
 } from './advanced/advancedBias';
 import { LLM_TASK_LABELS } from '../settings/labels';
-import { jobLlmVendor, jobVendorId, llmVendor, LlmJobId } from './llm/vendors';
-import { vendorMaxTokens } from '../providers/providers';
+import { jobLlmVendor, llmVendor, LlmJobId } from './llm/vendors';
 import {
 	billedRunFeatures,
 	matchRate,
@@ -39,6 +38,12 @@ import { resolveDictionaryTermList } from '../settings/profileResolution';
 
 export type { EnginePricing } from './providers/engines';
 import { LlmTask } from './llmPostProcess';
+import {
+	LLM_OUTPUT_RATIO,
+	estimatedPostProcessUsage,
+	estimatedTranscriptPassUsage,
+	transcriptTokens,
+} from './llmUsageEstimate';
 import type { TranscriptionUsage } from './TranscriptTypes';
 import type { LlmUsage } from './llm/llmResponse';
 
@@ -47,28 +52,6 @@ import type { LlmUsage } from './llm/llmResponse';
  * audio input tokenization).
  */
 export const GEMINI_AUDIO_TOKENS_PER_SECOND = 32;
-
-/**
- * Rough transcript tokens per second of speech (roughly 2.5 words/s plus
- * JSON structure overhead). Used both as the output size of a token-billed
- * transcription engine and as the input size of the LLM post-processing
- * pass, which reads that transcript back.
- */
-const ESTIMATED_OUTPUT_TOKENS_PER_SECOND = 8;
-
-/**
- * Fraction of the transcript an LLM task is expected to emit, used only for
- * the pre-run estimate: a cleanup or custom rewrite is about as long as its
- * input, whereas a summary is much shorter.
- */
-const LLM_OUTPUT_RATIO: Record<LlmTask, number> = {
-	[LlmTask.Cleanup]: 1,
-	[LlmTask.Summary]: 0.25,
-	[LlmTask.Custom]: 1,
-	// A translation is about as long as what it translates, so the pass is
-	// sized like a cleanup rather than like a summary.
-	[LlmTask.Translate]: 1,
-};
 
 /**
  * The advanced two-pass mode runs a fixed team of sequential LLM agents between
@@ -260,44 +243,6 @@ function estimatedUsage(
 		};
 	}
 	return { audioSeconds: durationSeconds };
-}
-
-/**
- * How many tokens a transcript of the given recording is expected to run to.
- * The input size of every LLM step that reads the whole transcript back, and
- * the output size of a token-billed transcription engine that writes it.
- * @param durationSeconds - Audio duration in seconds
- */
-function transcriptTokens(durationSeconds: number): number {
-	return Math.ceil(durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND);
-}
-
-/**
- * Synthesizes the usage one LLM pass over the whole transcript is expected to
- * bill: the transcript is the (text) input, the answer is a fraction of it, and
- * that fraction is capped by the ceiling of the engine the job names. Auto
- * chapters and post-processing are the same pass twice over, differing only in
- * how much they write and which engine they write it on, so they are the same
- * function twice over rather than two that have to be kept in step.
- * @param settings - Plugin settings
- * @param durationSeconds - Audio duration in seconds
- * @param job - The job making the pass, which names the engine and its ceiling
- * @param outputRatio - Share of the transcript the answer is expected to run to
- */
-function estimatedTranscriptPassUsage(
-	settings: AudioRecorderSettings,
-	durationSeconds: number,
-	job: LlmJobId,
-	outputRatio: number,
-): TranscriptionUsage {
-	const inputTokens = transcriptTokens(durationSeconds);
-	return {
-		inputTokens,
-		outputTokens: Math.min(
-			Math.ceil(inputTokens * outputRatio),
-			vendorMaxTokens(settings, jobVendorId(settings, job)),
-		),
-	};
 }
 
 /**
@@ -626,12 +571,7 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 				durationSeconds,
 				`Post-processing (${LLM_TASK_LABELS[settings.llmPostProcessTask]})`,
 				(seconds) =>
-					estimatedTranscriptPassUsage(
-						settings,
-						seconds,
-						LlmJobId.PostProcess,
-						LLM_OUTPUT_RATIO[settings.llmPostProcessTask] ?? 1,
-					),
+					estimatedPostProcessUsage(settings, seconds, false),
 			),
 		enabled: (settings) => settings.llmPostProcessEnabled,
 		needsDuration: llmStepIsPriced(LlmJobId.PostProcess),
@@ -784,6 +724,16 @@ export function estimateLlmCallCost(
 			durationSeconds,
 			CONTEXT_AGENTS_ESTIMATE_LABEL,
 			(seconds) => estimatedContextAgentsUsage(seconds, 1),
+		).usd;
+	}
+	if (step === RunCostStepId.PostProcess) {
+		// A note template may make several calls, each charged its share.
+		return llmLine(
+			settings,
+			LlmJobId.PostProcess,
+			durationSeconds,
+			'',
+			(seconds) => estimatedPostProcessUsage(settings, seconds, true),
 		).usd;
 	}
 	return estimateStepCost(step, settings, durationSeconds).usd;

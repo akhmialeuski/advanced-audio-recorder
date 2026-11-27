@@ -36,7 +36,42 @@ export const PROMPT_KIND_OF_TASK: Record<LlmTask, ProfileKindId> = {
 	[LlmTask.Summary]: ProfileKindId.LlmSummary,
 	[LlmTask.Custom]: ProfileKindId.LlmCustom,
 	[LlmTask.Translate]: ProfileKindId.LlmTranslate,
+	[LlmTask.Template]: ProfileKindId.LlmTemplate,
 };
+
+/**
+ * The kinds of prompt profile a part of a note template may name with
+ * `profile="..."`, in the order a name is looked up in: an instruction written
+ * for one part is a custom instruction first, then a summary or cleanup prompt
+ * kept for those tasks.
+ */
+export const PART_PROFILE_KINDS: readonly ProfileKindId[] = [
+	ProfileKindId.LlmCustom,
+	ProfileKindId.LlmSummary,
+	ProfileKindId.LlmCleanup,
+];
+
+/**
+ * The prompt profile a part of a note template names.
+ * @param profiles - Every stored profile
+ * @param name - The name the part gives, matched as typed and trimmed
+ * @returns The first profile of {@link PART_PROFILE_KINDS} by that name
+ */
+export function findPartProfile(
+	profiles: readonly Profile[],
+	name: string,
+): Profile | undefined {
+	const wanted = name.trim();
+	for (const kind of PART_PROFILE_KINDS) {
+		const found = profilesOfKind(profiles, kind).find(
+			(profile) => profile.name === wanted,
+		);
+		if (found) {
+			return found;
+		}
+	}
+	return undefined;
+}
 
 /**
  * The body of the profile a kind applies, or '' when none does. The one guard
