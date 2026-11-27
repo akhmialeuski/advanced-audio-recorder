@@ -118,7 +118,11 @@ import {
 } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from './llm/llmStep';
-import type { Transcript, TranscriptionUsage } from './TranscriptTypes';
+import type {
+	Transcript,
+	TranscriptSegment,
+	TranscriptionUsage,
+} from './TranscriptTypes';
 import {
 	costFromUsage,
 	resolveEnginePricing,
@@ -612,6 +616,25 @@ function estimatedSpan(part: PartRun): PartSpan | null {
 			recordingEndSeconds === undefined ||
 			prepared.endSeconds >= recordingEndSeconds,
 	};
+}
+
+/**
+ * An answer with every line ending inside the part it was sent for. The line
+ * the part's end cut off is kept, ending where the part ends.
+ * @param result - The answer kept for the part
+ * @param span - The part, when its timecodes are the model's estimate
+ * @returns The answer, trimmed to the part when there is a span to trim to
+ */
+function fittedToPart<T extends { segments: TranscriptSegment[] }>(
+	result: T,
+	span: PartSpan | null,
+): T {
+	return span
+		? {
+				...result,
+				segments: trimToPart(result.segments, span.durationSeconds),
+			}
+		: result;
 }
 
 /**
@@ -1813,15 +1836,9 @@ export class TranscriptionService {
 						endSeconds:
 							prepared.offsetSeconds + span.durationSeconds,
 					});
-					chunkResult = {
-						...chunkResult,
-						segments: trimToPart(
-							chunkResult.segments,
-							span.durationSeconds,
-						),
-					};
 				}
 			}
+			chunkResult = fittedToPart(chunkResult, span);
 			results.push({
 				offsetSeconds: payload.offsetSeconds,
 				...placeOf(prepared),

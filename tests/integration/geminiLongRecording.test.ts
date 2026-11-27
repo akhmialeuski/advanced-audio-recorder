@@ -227,6 +227,25 @@ describe('a long recording Gemini transcribes in parts', () => {
 		});
 	});
 
+	it('keeps a last line the part cut off once, ending it where the part ends', async () => {
+		const sent = queueResponses([
+			WHOLE_FIRST,
+			answer([
+				{ start: 141, end: 145, text: 'Andrzej to mój przyjaciel.' },
+				{ start: 720, end: 760, text: 'Do widzenia.' },
+			]),
+		]);
+
+		const result = await transcribe();
+
+		expect(sent).toHaveLength(2);
+		expect(result.missingParts).toEqual([]);
+		expect(result.transcript.segments.at(-1)).toMatchObject({
+			start: PART_SECONDS + 720,
+			end: RECORDING_SECONDS,
+		});
+	});
+
 	it('counts what the rejected answer was billed for', async () => {
 		queueResponses([
 			answer(
