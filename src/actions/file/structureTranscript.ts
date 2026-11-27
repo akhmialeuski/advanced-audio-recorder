@@ -9,6 +9,7 @@ import type { CliData, CliFlags } from 'obsidian';
 import { loadTranscriptLines } from '../../chapters/transcriptSources';
 import { valueParam, cliText } from '../../obsidian/cliArgs';
 import { ProfileKindId, profilesOfKind } from '../../settings/profiles';
+import { TemplateOutput } from '../../transcription/llmPostProcess';
 import { TranscriptStructurer } from '../../transcription/TranscriptStructurer';
 import {
 	StructureTranscriptModal,
@@ -23,7 +24,34 @@ export const STRUCTURE_PARAMS: CliFlags = {
 		'<template>',
 		'Note template profile, by name. Defaults to the one this recording was last structured with.',
 	),
+	output: valueParam(
+		'<note|separate>',
+		"Into the recording's note, or a note of its own next to the recording. Defaults to the setting.",
+	),
 };
+
+/** The values `output=` takes, by what is typed. */
+const CLI_OUTPUTS: ReadonlyMap<string, TemplateOutput> = new Map(
+	Object.values(TemplateOutput).map((output) => [output, output]),
+);
+
+/**
+ * Where the note goes, as typed after `output=`.
+ * @param typed - What was typed, null for nothing
+ * @returns The output, undefined for the setting's, or the answer when what
+ *   was typed is not one
+ */
+function cliOutput(
+	typed: string | null,
+): { output: TemplateOutput | undefined } | { refusal: string } {
+	if (typed === null) {
+		return { output: undefined };
+	}
+	const output = CLI_OUTPUTS.get(typed.trim().toLowerCase());
+	return output
+		? { output }
+		: { refusal: `output= takes ${[...CLI_OUTPUTS.keys()].join(' or ')}.` };
+}
 
 /**
  * The structurer an action runs, over the services every action shares.
@@ -102,7 +130,7 @@ async function cliTemplate(
 
 /**
  * Structures a recording's transcript from the command line, into the note
- * named beside it.
+ * named beside it, or into a note of its own when none is named.
  * @param context - The recording and the note
  * @param args - The arguments as typed
  * @returns The answer
@@ -112,9 +140,9 @@ export async function structureTranscriptFromCli(
 	args: CliData,
 ): Promise<string> {
 	const { file, services } = context;
-	const notePath = targetNote(context);
-	if (notePath === '') {
-		return 'Name the note to write into with note=<path>.';
+	const output = cliOutput(cliText(args, 'output'));
+	if ('refusal' in output) {
+		return output.refusal;
 	}
 	const template = await cliTemplate(context, cliText(args, 'template'));
 	if ('refusal' in template) {
@@ -130,8 +158,9 @@ export async function structureTranscriptFromCli(
 	}
 	const outcome = await structurerOf(services).structure({
 		file,
-		notePath,
+		notePath: targetNote(context),
 		templateId: template.id,
+		output: output.output,
 		source,
 	});
 	return outcome.message;

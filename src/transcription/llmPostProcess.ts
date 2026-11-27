@@ -39,6 +39,39 @@ export const LlmTask = {
 export type LlmTask = (typeof LlmTask)[keyof typeof LlmTask];
 
 /**
+ * Where the note a template writes goes. The template says what the note
+ * holds; where it goes depends on how the vault is kept, so it is a setting
+ * beside the template rather than part of it.
+ */
+export const TemplateOutput = {
+	/** Into the note the recording belongs to, under the transcript heading. */
+	Note: 'note',
+	/**
+	 * Into a note of its own next to the recording, with a link to it where
+	 * the transcript would go.
+	 */
+	Separate: 'separate',
+} as const;
+
+/**
+ * Whether a run's note is written by a note template, as its settings stand.
+ * @param settings - Whether post-processing runs, and its task
+ */
+export function writesTemplateNote(settings: {
+	readonly llmPostProcessEnabled: boolean;
+	readonly llmPostProcessTask: LlmTask;
+}): boolean {
+	return (
+		settings.llmPostProcessEnabled &&
+		settings.llmPostProcessTask === LlmTask.Template
+	);
+}
+
+/** Where a template's note goes (derived from {@link TemplateOutput}). */
+export type TemplateOutput =
+	(typeof TemplateOutput)[keyof typeof TemplateOutput];
+
+/**
  * A task answered by one prompt over the transcript text. A note template
  * builds its own prompts, one per call its parts need, and is run apart.
  */

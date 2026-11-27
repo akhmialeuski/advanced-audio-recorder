@@ -199,3 +199,68 @@ describe('noteTemplateEngine', () => {
 		expect(engine.render('{{#part "a"}}x{{/part}}', {})).toBe('');
 	});
 });
+
+describe('a part written to a property', () => {
+	const template = [
+		'# {{title}}',
+		'',
+		'## Summary',
+		'',
+		'{{#part "summary" property="summary"}}The points.{{/part}}',
+		'',
+		'## People',
+		'',
+		'{{#part "people" property="participants" model=false}}{{join participants ", "}}{{/part}}',
+		'',
+		'## Recap',
+		'',
+		'{{parts.summary}}',
+	].join('\n');
+
+	it('reads where the result goes and whether a model fills it', () => {
+		expect(collectParts(template, context)).toEqual([
+			expect.objectContaining({
+				name: 'summary',
+				property: 'summary',
+				asksModel: true,
+			}),
+			expect.objectContaining({
+				name: 'people',
+				property: 'participants',
+				asksModel: false,
+				instruction: 'Anna, Ben',
+			}),
+		]);
+	});
+
+	it('leaves nothing in the body, heading and all, but is still read by name', () => {
+		const results = new Map([
+			['summary', 'Ship on Friday.'],
+			['people', 'Anna, Ben'],
+		]);
+
+		expect(assembleNote(template, context, results)).toBe(
+			'# Weekly sync\n\n## Recap\n\nShip on Friday.',
+		);
+	});
+
+	// A value that belongs in a heading, such as a title the model writes,
+	// has no section of its own to stand in.
+	it('keeps a part written only by reference out of its place', () => {
+		const source = [
+			'# {{parts.title}}',
+			'',
+			'{{#part "title" inline=false}}A title in five words.{{/part}}',
+			'',
+			'Notes.',
+		].join('\n');
+
+		expect(
+			assembleNote(
+				source,
+				context,
+				new Map([['title', 'Ship on Friday']]),
+			),
+		).toBe('# Ship on Friday\n\nNotes.');
+	});
+});

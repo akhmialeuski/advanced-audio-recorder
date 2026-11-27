@@ -102,6 +102,13 @@ describe('effectiveTranscriptDestination', () => {
 		expect(effectiveTranscriptDestination('note', false)).toBe('file');
 	});
 
+	it('keeps a note destination without a host note when a template writes the note', () => {
+		// What a template writes is a note: it goes into one of its own.
+		expect(effectiveTranscriptDestination('note', false, true)).toBe(
+			'note',
+		);
+	});
+
 	it('keeps a note destination when a host note is available', () => {
 		expect(effectiveTranscriptDestination('note', true)).toBe('note');
 	});

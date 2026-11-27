@@ -1531,6 +1531,30 @@ describe('TranscriptionModal profile of the post-processing task', () => {
 		).toEqual(['None', 'Short']);
 	});
 
+	it('sends the note of this run apart when asked, without changing the setting', () => {
+		const settings = settingsWithTemplates();
+		const modal = openedOver(settings);
+		const output = rowSelect(
+			settingRow(modal.contentEl, 'Template output'),
+		);
+
+		expect(output.value).toBe('note');
+		output.value = 'separate';
+		output.dispatchEvent(new Event('change'));
+
+		expect(runSettingsOf(modal).llmTemplateOutput).toBe('separate');
+		expect(settings.llmTemplateOutput).toBe('note');
+	});
+
+	it('keeps writing a note when there is none open, since the template writes its own', () => {
+		const modal = openedOver({
+			...settingsWithTemplates(),
+			transcriptDestination: 'note',
+		});
+
+		expect(runSettingsOf(modal).transcriptDestination).toBe('note');
+	});
+
 	it('is not shown while post-processing is off', () => {
 		const modal = openedOver({
 			...settingsWithTemplates(),

@@ -214,6 +214,24 @@ describe('a run with a note template', () => {
 		);
 	});
 
+	it('writes a part only where the template names it when it is not inline', async () => {
+		const { markdown, prompts } = await transcribe(
+			withTemplate(
+				[
+					'# {{parts.title}}',
+					'',
+					'{{#part "title" inline=false}}A title in five words.{{/part}}',
+					'',
+					'{{transcript}}',
+				].join('\n'),
+			),
+			scriptedLlm(JSON.stringify({ title: 'Ben sends the deck' })),
+		);
+
+		expect(markdown).toBe('# Ben sends the deck\n\nBen sends the deck.');
+		expect(prompts).toHaveLength(1);
+	});
+
 	it('writes each format, linking a quote to its moment in the recording', async () => {
 		const llm = scriptedLlm(
 			JSON.stringify({

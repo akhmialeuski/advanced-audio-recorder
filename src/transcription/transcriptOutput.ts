@@ -27,15 +27,23 @@ import {
  * never do anything but fall back to a file, so it is downgraded to `file`
  * up front - the run does what it can without a misleading "could not insert"
  * outcome. `both`, `link`, and `file` already write a file and are unchanged.
+ *
+ * A run whose note a template writes is the exception: what a template writes
+ * is a note, so without one to go into it becomes a note of its own next to
+ * the recording rather than being lost to a transcript file.
  * @param destination - The configured/requested destination
  * @param hasHostNote - Whether an editable host note is available
+ * @param writesOwnNote - Whether a note template writes the run's note
  * @returns The destination to actually use for this run
  */
 export function effectiveTranscriptDestination(
 	destination: TranscriptDestination,
 	hasHostNote: boolean,
+	writesOwnNote = false,
 ): TranscriptDestination {
-	return !hasHostNote && destination === TranscriptDestination.Note
+	return !hasHostNote &&
+		!writesOwnNote &&
+		destination === TranscriptDestination.Note
 		? TranscriptDestination.File
 		: destination;
 }

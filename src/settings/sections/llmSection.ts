@@ -4,7 +4,7 @@
  */
 
 import { LLM_JOBS } from '../../transcription/llm/vendors';
-import { LLM_TASK_LABELS } from '../labels';
+import { LLM_TASK_LABELS, TEMPLATE_OUTPUT_LABELS } from '../labels';
 import { LlmTask } from '../../transcription/llmPostProcess';
 import {
 	SETTINGS_SECTION_CLASS,
@@ -78,6 +78,19 @@ export function llmGroup(
 				// The prompt profiles of whichever task is selected: each kind
 				// answers the task itself, so this is one entry, not a branch.
 				...profileCatalogues(ctx, ProfileSection.Llm),
+				{
+					name: 'Template output',
+					aliases: ['separate note', 'properties', 'frontmatter'],
+					desc: "Where the note a template writes goes: into the recording's note under the transcript heading, or into a note of its own next to the recording, with a link to it in the recording's note. A part with property= writes the frontmatter of whichever note that is.",
+					visible: (): boolean =>
+						postProcessing() &&
+						settings.llmPostProcessTask === LlmTask.Template,
+					control: {
+						type: 'dropdown',
+						key: 'llmTemplateOutput',
+						options: TEMPLATE_OUTPUT_LABELS,
+					},
+				},
 			],
 		},
 	];

@@ -22,7 +22,8 @@ import {
 	setSelectedProfileId,
 } from '../settings/profiles';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
-import { LlmTask } from '../transcription/llmPostProcess';
+import { LlmTask, TemplateOutput } from '../transcription/llmPostProcess';
+import { TEMPLATE_OUTPUT_OPTIONS } from '../settings/labels';
 import { estimateStepCost, formatUsd, LlmJobId } from '../transcription/api';
 import type { TranscriptStructurer } from '../transcription/TranscriptStructurer';
 import { CancellationSource } from '../utils/cancellation';
@@ -37,7 +38,10 @@ export interface StructureTranscriptModalOptions {
 	readonly structurer: TranscriptStructurer;
 	/** Where the recording's transcript and last template are read. */
 	readonly sidecar: TranscriptSectionReader;
-	/** The note the result goes into; '' when there is none to write to. */
+	/**
+	 * The recording's note, which the result goes into or links to; '' when
+	 * there is none, and the result is written as a note of its own.
+	 */
 	readonly notePath: string;
 }
 
@@ -70,6 +74,8 @@ export function initialTemplateId(
 export class StructureTranscriptModal extends PluginModal {
 	private source: TranscriptLinesSource | null = null;
 	private templateId = '';
+	/** Where this run's note goes, the settings' choice to begin with. */
+	private output: TemplateOutput = TemplateOutput.Note;
 	private loaded = false;
 	/** The cancellation of the run in flight, null when none is. */
 	private cancellation: CancellationSource | null = null;
@@ -103,6 +109,7 @@ export class StructureTranscriptModal extends PluginModal {
 			return;
 		}
 		this.renderTemplatePicker();
+		this.renderOutputPicker();
 		this.renderTarget();
 		this.renderCostEstimate();
 		this.renderActions(
@@ -130,10 +137,12 @@ export class StructureTranscriptModal extends PluginModal {
 		const section = await sidecar
 			.getTranscript(this.file.path)
 			.catch(() => null);
+		const settings = this.options.getSettings();
 		this.templateId = initialTemplateId(
-			this.options.getSettings(),
+			settings,
 			section?.appliedTemplate?.profileId,
 		);
+		this.output = settings.llmTemplateOutput;
 		this.loaded = true;
 	}
 
@@ -142,11 +151,8 @@ export class StructureTranscriptModal extends PluginModal {
 		if (!this.source || this.source.lines.length === 0) {
 			return 'No transcript found for this recording. Transcribe it first, then structure it with a template.';
 		}
-		if (this.templateId === '') {
-			return 'There is no note template yet. Add one under Note template profiles in the plugin settings.';
-		}
-		return this.options.notePath === ''
-			? 'Open the note the structured transcript should go into, then run this again.'
+		return this.templateId === ''
+			? 'There is no note template yet. Add one under Note template profiles in the plugin settings.'
 			: null;
 	}
 
@@ -173,11 +179,40 @@ export class StructureTranscriptModal extends PluginModal {
 			});
 	}
 
-	/** Where the note goes. */
+	/**
+	 * Whether the note goes into the recording's note or one of its own; not
+	 * offered when the recording has no note, and the note can only be its own.
+	 */
+	private renderOutputPicker(): void {
+		if (this.options.notePath === '') {
+			return;
+		}
+		new Setting(this.contentEl)
+			.setName('Template output')
+			.addDropdown((dropdown) => {
+				for (const option of TEMPLATE_OUTPUT_OPTIONS) {
+					dropdown.addOption(option.value, option.label);
+				}
+				dropdown.setValue(this.output).onChange((value) => {
+					this.output = value as TemplateOutput;
+					void this.render();
+				});
+			});
+	}
+
+	/** Where the note goes, in words. */
 	private renderTarget(): void {
+		const { notePath } = this.options;
+		const apart =
+			this.output === TemplateOutput.Separate || notePath === '';
+		const own = `Written as a note of its own next to ${this.file.name}`;
 		this.contentEl.createEl('p', {
 			cls: 'aar-modal-config',
-			text: `Inserted into ${this.options.notePath}.`,
+			text: !apart
+				? `Inserted into ${notePath}.`
+				: notePath === ''
+					? `${own}.`
+					: `${own}, linked from ${notePath}.`,
 		});
 	}
 
@@ -230,6 +265,7 @@ export class StructureTranscriptModal extends PluginModal {
 				file: this.file,
 				notePath: this.options.notePath,
 				templateId: this.templateId,
+				output: this.output,
 				source,
 				signal: cancellation.token.signal,
 			});

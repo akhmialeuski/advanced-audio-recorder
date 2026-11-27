@@ -31,6 +31,7 @@ import {
 	writeTranscriptFile,
 } from './transcriptOutput';
 import type { PartFailure } from './partFailure';
+import { writeTemplateNote } from './templateNoteOutput';
 
 /**
  * The sidecar surface a transcribe-and-write run needs: the service's name
@@ -74,6 +75,90 @@ function noteOutputTemplates(
 		timestampLinks: settings.transcriptTimestampLinks,
 		mergeConsecutiveSpeaker: settings.transcriptMergeConsecutiveSpeaker,
 	};
+}
+
+/**
+ * Writes the run's Markdown into a note: the recording's, or where the note
+ * template that wrote it sends it, with its properties.
+ * @param app - Obsidian App
+ * @param settings - The run's settings
+ * @param file - The recording
+ * @param notePath - The recording's note; '' when there is none
+ * @param result - What the run produced
+ * @returns The path of the note written, null when none could be
+ */
+async function writeNote(
+	app: App,
+	settings: AudioRecorderSettings,
+	file: TFile,
+	notePath: string,
+	result: TranscribeRunResult,
+): Promise<string | null> {
+	const markdown = result.translation
+		? `${result.markdown}\n\n### ${result.translation.language}\n\n${result.translation.markdown}`
+		: result.markdown;
+	const template = result.noteTemplate;
+	if (template) {
+		return writeTemplateNote(app, {
+			recording: file,
+			notePath,
+			markdown,
+			heading: settings.transcriptHeading,
+			templateName: template.name,
+			properties: template.properties,
+			output: settings.llmTemplateOutput,
+		});
+	}
+	const inserted = await insertTranscriptIntoNote(
+		app,
+		notePath,
+		markdown,
+		settings.transcriptHeading,
+		file,
+	);
+	return inserted ? notePath : null;
+}
+
+/**
+ * Where the run's transcript came from, as the sidecar keeps it.
+ * @param result - What the run produced
+ * @param writtenAt - When its outputs were written, for a transcript that
+ *   does not say when it was made
+ */
+function provenanceOf(
+	result: TranscribeRunResult,
+	writtenAt: string,
+): TranscriptProvenance {
+	const { language, model, createdAt } = result.transcript;
+	return {
+		...(language ? { language } : {}),
+		...(model ? { model } : {}),
+		createdAt: createdAt ?? writtenAt,
+	};
+}
+
+/**
+ * Records what the run could not transcribe. Written whatever the run
+ * produced, and before the output records: an absent record has to mean
+ * "nothing is missing", so a run that came back whole must clear what an
+ * earlier one left behind. Best-effort, as every sidecar write of a run is.
+ * @param sidecar - The recording's sidecar
+ * @param file - The recording
+ * @param result - What the run produced
+ */
+async function recordFailedParts(
+	sidecar: TranscriptOutputSidecar,
+	file: TFile,
+	result: TranscribeRunResult,
+): Promise<void> {
+	try {
+		await sidecar.setFailedParts(file.path, result.missingParts);
+	} catch (error) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Failed to record the missing parts of ${file.path}:`,
+			error,
+		);
+	}
 }
 
 /** Options for a full transcribe-and-write run. */
@@ -161,18 +246,12 @@ export async function transcribeFile(
 			result.translation.language,
 		);
 	}
-	let inserted = false;
-	if (wantsNote) {
-		inserted = await insertTranscriptIntoNote(
-			app,
-			options.notePathForLinks,
-			result.translation
-				? `${result.markdown}\n\n### ${result.translation.language}\n\n${result.translation.markdown}`
-				: result.markdown,
-			settings.transcriptHeading,
-			file,
-		);
-	}
+	// The note the transcript went into: the recording's, or the one a
+	// template wrote apart.
+	const notePath = wantsNote
+		? await writeNote(app, settings, file, options.notePathForLinks, result)
+		: null;
+	const inserted = notePath !== null;
 	let linkInserted = false;
 	if (wantsLink && transcriptFile) {
 		linkInserted = await insertTranscriptFileLink(
@@ -206,20 +285,7 @@ export async function transcribeFile(
 	// transcript", never "a transcript this feature ignored". Best-effort: a
 	// sidecar failure never fails a completed (and possibly billed) run.
 	if (options.sidecar) {
-		// Written whatever the run produced, and before the output records:
-		// an absent record has to mean "nothing is missing", so a run that
-		// came back whole must clear what an earlier one left behind.
-		try {
-			await options.sidecar.setFailedParts(
-				file.path,
-				result.missingParts,
-			);
-		} catch (error) {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Failed to record the missing parts of ${file.path}:`,
-				error,
-			);
-		}
+		await recordFailedParts(options.sidecar, file, result);
 	}
 	if (options.sidecar && (transcriptFile || inserted)) {
 		try {
@@ -241,22 +307,16 @@ export async function transcribeFile(
 			}
 			if (inserted) {
 				await options.sidecar.recordNoteOutput(file.path, {
-					path: options.notePathForLinks,
+					path: notePath ?? options.notePathForLinks,
 					templates: noteOutputTemplates(settings, result),
 					heading: settings.transcriptHeading,
 					writtenAt,
 				});
 			}
-			const provenance: TranscriptProvenance = {
-				...(result.transcript.language
-					? { language: result.transcript.language }
-					: {}),
-				...(result.transcript.model
-					? { model: result.transcript.model }
-					: {}),
-				createdAt: result.transcript.createdAt ?? writtenAt,
-			};
-			await options.sidecar.recordProvenance(file.path, provenance);
+			await options.sidecar.recordProvenance(
+				file.path,
+				provenanceOf(result, writtenAt),
+			);
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to record transcript outputs for ${file.path}:`,

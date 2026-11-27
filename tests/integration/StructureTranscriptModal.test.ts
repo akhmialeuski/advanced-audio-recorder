@@ -15,6 +15,7 @@ import {
 	StructureTranscriptModal,
 	initialTemplateId,
 } from 'src/ui/StructureTranscriptModal';
+import { at } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
 import { tenMinuteSource } from '../helpers/transcriptFixtures';
 import { noticeMessages } from '../mocks/obsidian';
@@ -124,7 +125,6 @@ describe('StructureTranscriptModal', () => {
 	it.each([
 		[{ lines: [] }, {}, 'No transcript found for this recording.'],
 		[SOURCE, { profiles: [] }, 'There is no note template yet.'],
-		[SOURCE, { notePath: '' }, 'Open the note the structured transcript'],
 	])('asks for what is missing first', async (source, options, text) => {
 		loadTranscriptLines.mockResolvedValue({ ...source, origin: 'x' });
 		const { modal, structure } = build(options);
@@ -174,6 +174,36 @@ describe('StructureTranscriptModal', () => {
 		await open(modal);
 
 		expect(modal.contentEl.textContent).not.toContain('Estimated cost');
+	});
+
+	it('writes a note of its own when the recording has no note', async () => {
+		const { modal } = build({ notePath: '' });
+
+		await open(modal);
+
+		expect(modal.contentEl.textContent).toContain(
+			'Written as a note of its own next to rec.webm.',
+		);
+		expect(modal.contentEl.querySelectorAll('select')).toHaveLength(1);
+	});
+
+	it('writes the note apart for this run when asked, linked from the note', async () => {
+		const { modal, structure } = build();
+		await open(modal);
+
+		const output = at([...modal.contentEl.querySelectorAll('select')], 1);
+		output.value = 'separate';
+		output.dispatchEvent(new Event('change'));
+		await flushMicrotasks();
+
+		expect(modal.contentEl.textContent).toContain(
+			'Written as a note of its own next to rec.webm, linked from Meetings/Sync.md.',
+		);
+		at(buttons(modal), 0).click();
+		await flushMicrotasks();
+		expect(structure).toHaveBeenCalledWith(
+			expect.objectContaining({ output: 'separate' }),
+		);
 	});
 
 	it('structures with the template picked and tells the outcome', async () => {

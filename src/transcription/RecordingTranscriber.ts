@@ -32,6 +32,7 @@ import {
 	type TranscribeRunResult,
 } from './TranscriptionService';
 import { effectiveTranscriptDestination } from './transcriptOutput';
+import { writesTemplateNote } from './llmPostProcess';
 import type { Transcript, TranscriptDestination } from './TranscriptTypes';
 
 /**
@@ -157,6 +158,7 @@ export class RecordingTranscriber {
 			transcriptDestination: effectiveTranscriptDestination(
 				request.settings.transcriptDestination,
 				request.notePath !== '',
+				writesTemplateNote(request.settings),
 			),
 		};
 		const refusal = unavailableEngineRefusal(

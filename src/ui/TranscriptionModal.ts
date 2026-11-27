@@ -58,6 +58,7 @@ import {
 	TranscriptDestination,
 	type TranscriptFileFormat,
 	type TranscriptionRunOutcome,
+	writesTemplateNote,
 } from '../transcription/api';
 import { CancellationSource } from '../utils/cancellation';
 import {
@@ -251,6 +252,7 @@ export class TranscriptionModal extends PluginModal {
 		this.runSettings.transcriptDestination = effectiveTranscriptDestination(
 			this.runSettings.transcriptDestination,
 			this.notePath !== '',
+			writesTemplateNote(this.runSettings),
 		);
 	}
 

@@ -18,6 +18,8 @@ import { modalInstances } from '../mocks/obsidian';
 
 const STANDUP = 'Recordings/standup.webm';
 const MEETING = 'Meetings/standup.md';
+/** The note a template writes apart, next to the recording. */
+const OWN_NOTE = 'Recordings/standup - Plain.md';
 
 /** A template with nothing for the model to fill, so no call is made. */
 const PLAIN: Profile = {
@@ -66,46 +68,65 @@ const WITH_TRANSCRIPT = [
 ].join('\n');
 
 describe('structuring a transcript from the command line', () => {
-	it('needs a note to write into', async () => {
-		const sut = createSut(WITH_TRANSCRIPT, RecordingOrigin.named(null));
+	it('writes into the note open in Obsidian when no note is named', async () => {
+		const sut = createSut(WITH_TRANSCRIPT, RecordingOrigin.direct());
+		jest.spyOn(sut.app.workspace, 'getActiveFile').mockReturnValue(
+			sut.file(MEETING),
+		);
 
-		await expect(structureTranscriptFromCli(sut.context, {})).resolves.toBe(
-			'Name the note to write into with note=<path>.',
+		await expect(
+			structureTranscriptFromCli(sut.context, { template: 'Plain' }),
+		).resolves.toBe(
+			`Structured standup.webm with "Plain" into ${MEETING}.`,
 		);
 	});
 
 	it.each([
-		[
-			'the note open in Obsidian',
-			MEETING,
-			`Structured standup.webm with "Plain" into ${MEETING}.`,
-		],
-		[
-			'never the recording itself',
-			STANDUP,
-			'Name the note to write into with note=<path>.',
-		],
+		['no note is named', RecordingOrigin.named(null), undefined],
+		['the recording itself is open', RecordingOrigin.direct(), STANDUP],
+		['nothing is open', RecordingOrigin.direct(), null],
 	])(
-		'writes into %s when no note is named',
-		async (_label, active, answer) => {
-			const sut = createSut(WITH_TRANSCRIPT, RecordingOrigin.direct());
-			jest.spyOn(sut.app.workspace, 'getActiveFile').mockReturnValue(
-				sut.file(active),
-			);
+		'writes a note of its own next to the recording when %s',
+		async (_label, origin, active) => {
+			const sut = createSut(WITH_TRANSCRIPT, origin);
+			if (active !== undefined) {
+				jest.spyOn(sut.app.workspace, 'getActiveFile').mockReturnValue(
+					active === null ? null : sut.file(active),
+				);
+			}
 
 			await expect(
 				structureTranscriptFromCli(sut.context, { template: 'Plain' }),
-			).resolves.toBe(answer);
+			).resolves.toBe(
+				`Structured standup.webm with "Plain" into ${OWN_NOTE}.`,
+			);
+			const text = await sut.app.vault.read(sut.file(OWN_NOTE));
+			expect(text).toContain('### Structured');
 		},
 	);
 
-	it('needs a note named when none is open either', async () => {
-		const sut = createSut(WITH_TRANSCRIPT, RecordingOrigin.direct());
-		jest.spyOn(sut.app.workspace, 'getActiveFile').mockReturnValue(null);
+	it('writes the note apart and links it when output=separate', async () => {
+		const sut = createSut(WITH_TRANSCRIPT);
 
-		await expect(structureTranscriptFromCli(sut.context, {})).resolves.toBe(
-			'Name the note to write into with note=<path>.',
+		await expect(
+			structureTranscriptFromCli(sut.context, {
+				template: 'Plain',
+				output: 'Separate',
+			}),
+		).resolves.toBe(
+			`Structured standup.webm with "Plain" into ${OWN_NOTE}.`,
 		);
+		const meeting = await sut.app.vault.read(sut.file(MEETING));
+		expect(meeting).toContain('[[standup - Plain]]');
+		expect(meeting).not.toContain('### Structured');
+	});
+
+	it('names the outputs there are when the one typed is not among them', async () => {
+		const sut = createSut(WITH_TRANSCRIPT);
+
+		await expect(
+			structureTranscriptFromCli(sut.context, { output: 'daily' }),
+		).resolves.toBe('output= takes note or separate.');
 	});
 
 	it('names the templates there are when the one typed is not among them', async () => {

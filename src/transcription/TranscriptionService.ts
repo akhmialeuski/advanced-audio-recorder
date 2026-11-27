@@ -147,6 +147,7 @@ import {
 	noteRendering,
 	withTemplateProfileNotes,
 } from './templatePass';
+import type { NoteProperties } from '../templates/partProperties';
 import { TemplateRenderError } from '../templates/TemplateEngine';
 import {
 	costFromUsage,
@@ -351,6 +352,32 @@ export interface TranscribeRunResult {
 	 * template decided it; undefined when the settings did.
 	 */
 	noteTimestamps?: boolean | undefined;
+	/**
+	 * The template that wrote the note and the properties its parts give it;
+	 * undefined when no template did.
+	 */
+	noteTemplate?: AppliedNoteTemplate | undefined;
+}
+
+/** What a note template a run applied adds to writing the note. */
+export interface AppliedNoteTemplate {
+	/** Name of the template, for the name of a note written apart. */
+	readonly name: string;
+	/** The properties its parts write to the note. */
+	readonly properties: NoteProperties;
+}
+
+/**
+ * The template a rewrite applied, as writing the note needs it.
+ * @param note - What the rewrite came to
+ * @returns Undefined when no template wrote it
+ */
+function appliedNoteTemplate(
+	note: TemplateNote,
+): AppliedNoteTemplate | undefined {
+	return note.templateName === undefined
+		? undefined
+		: { name: note.templateName, properties: note.properties };
 }
 
 /** A translated transcript and the Markdown rendered from it. */
@@ -1001,6 +1028,8 @@ export class TranscriptionService {
 		let translation: TranscriptTranslation | undefined;
 		// What a note template decided about the transcript's timestamps.
 		let noteTimestamps: boolean | undefined;
+		// The template that wrote the note, and the properties it gives it.
+		let noteTemplate: AppliedNoteTemplate | undefined;
 		// The facts a prompt can name are the ones this run holds: the note
 		// the result goes to, the recording, and the finished transcript.
 		const factsSource = {
@@ -1036,14 +1065,15 @@ export class TranscriptionService {
 						expandPrompt,
 					);
 				} else {
-					({ markdown, timestamps: noteTimestamps } =
-						await this.rewrite(
-							factsSource,
-							markdown,
-							token,
-							expandPrompt,
-							noteRendering(transcript, markdownOptions, links),
-						));
+					const note = await this.rewrite(
+						factsSource,
+						markdown,
+						token,
+						expandPrompt,
+						noteRendering(transcript, markdownOptions, links),
+					);
+					({ markdown, timestamps: noteTimestamps } = note);
+					noteTemplate = appliedNoteTemplate(note);
 				}
 			} catch (error) {
 				// The abort of the call in flight arrives as a transport
@@ -1076,6 +1106,7 @@ export class TranscriptionService {
 			missingParts,
 			sentSeconds: sentSeconds(payloads),
 			noteTimestamps,
+			noteTemplate,
 			...(translation ? { translation } : {}),
 		};
 	}
@@ -2158,6 +2189,7 @@ export class TranscriptionService {
 				expandPrompt,
 			),
 			timestamps: undefined,
+			properties: {},
 		};
 	}
 
@@ -2179,7 +2211,11 @@ export class TranscriptionService {
 		expandPrompt: PromptExpander,
 		rendering: NoteRendering,
 	): Promise<TemplateNote> {
-		const unchanged = { markdown, timestamps: undefined };
+		const unchanged: TemplateNote = {
+			markdown,
+			timestamps: undefined,
+			properties: {},
+		};
 		const { settings } = source;
 		const template = selectedProfile(settings, ProfileKindId.LlmTemplate);
 		if (!template || template.body.trim() === '') {

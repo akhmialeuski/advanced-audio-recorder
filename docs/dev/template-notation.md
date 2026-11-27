@@ -102,7 +102,7 @@ the decision.
   frontmatter of a note a profile body is read from, for every kind of profile.
   That stays as it is: a template note's own frontmatter describes the template
   (tags, aliases), not the note it produces. Properties of the produced note are
-  written by parts with a `target="property:name"` setting through
+  written by parts with a `property="name"` setting through
   `app.fileManager.processFrontMatter`, never by text that happens to start with
   `---`.
 - **Mobile.** A template is a plain note edited in the ordinary editor; Handlebars
