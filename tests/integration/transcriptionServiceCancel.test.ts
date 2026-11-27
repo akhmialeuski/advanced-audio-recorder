@@ -28,6 +28,9 @@ import { CancellationSource } from 'src/utils/cancellation';
 import { HttpError } from 'src/transcription/httpClient';
 import { outcomeOf, waitFor } from '../helpers/async';
 import { EngineLabel } from 'src/providers/providers';
+import { OpenAiCompatibleLlmProvider } from 'src/transcription/llm/LlmProvider';
+import { OPENAI_IDENTITY } from '../helpers/llmDoubles';
+import { withRequestUrl } from '../helpers/network';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -479,6 +482,49 @@ describe('a cancel that lands while a request is in flight', () => {
 		const result = (await runToCompletion(service)) as { markdown: string };
 
 		expect(result.markdown).toContain('hi');
+		expect(noticeMessages()).toContain(
+			'LLM post-processing failed; saving the raw transcript.',
+		);
+	});
+});
+
+// The real client against a scripted wire: a cleanup answer cut at the output
+// limit once replaced an hour-long transcript with the ten minutes it had
+// reached, because a truncated answer was read as a finished one.
+describe('a cleanup answer the vendor cut at its output limit', () => {
+	it('keeps the raw transcript and says the cleanup failed', async () => {
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: JSON.stringify({
+				choices: [
+					{
+						finish_reason: 'length',
+						message: { content: '[[recording' },
+					},
+				],
+			}),
+		}));
+		const service = serviceOver(
+			makeProvider(() => {
+				/* the request itself completes */
+			}),
+			withCleanup,
+			() =>
+				new OpenAiCompatibleLlmProvider(
+					{
+						baseUrl: 'https://llm.example',
+						apiKey: 'k',
+						model: 'deepseek-flash',
+					},
+					OPENAI_IDENTITY,
+				),
+		);
+
+		const result = (await runToCompletion(service)) as { markdown: string };
+
+		expect(result.markdown).toContain('hi');
+		expect(result.markdown).not.toContain('[[recording');
 		expect(noticeMessages()).toContain(
 			'LLM post-processing failed; saving the raw transcript.',
 		);

@@ -9,6 +9,59 @@
 import { isRecord } from '../providers/responseUtils';
 import { geminiCandidateText, geminiUsage } from '../providers/geminiShared';
 
+/** `finish_reason` of an OpenAI-style choice that stopped at its token limit. */
+const OPENAI_FINISH_LENGTH = 'length';
+
+/** `stop_reason` of an Anthropic message that stopped at its token limit. */
+const ANTHROPIC_STOP_MAX_TOKENS = 'max_tokens';
+
+/**
+ * Refuses an answer the vendor cut at its output token limit. Such an answer
+ * is the start of the text and reads as the whole of it: a cleanup cut this
+ * way replaced an hour-long transcript with its first nine minutes. The
+ * Gemini client refuses the same stop through `assertGeminiNotTruncated`.
+ * @param truncated - Whether the response names the limit as why it stopped
+ * @throws When it does
+ */
+function assertNotTruncated(truncated: boolean): void {
+	if (truncated) {
+		throw new Error(
+			'The model stopped because it reached its output token limit, so ' +
+				'the response is incomplete. Raise the max output tokens in ' +
+				'settings, shorten the input, or choose a model with a larger ' +
+				'output limit.',
+		);
+	}
+}
+
+/**
+ * Refuses an OpenAI Chat Completions response whose first choice stopped at
+ * the output token limit.
+ * @param body - Parsed JSON response
+ * @throws When the answer is incomplete
+ */
+export function assertOpenAiNotTruncated(body: unknown): void {
+	const first: unknown =
+		isRecord(body) && Array.isArray(body.choices)
+			? body.choices[0]
+			: undefined;
+	assertNotTruncated(
+		isRecord(first) && first.finish_reason === OPENAI_FINISH_LENGTH,
+	);
+}
+
+/**
+ * Refuses an Anthropic Messages response that stopped at the output token
+ * limit.
+ * @param body - Parsed JSON response
+ * @throws When the answer is incomplete
+ */
+export function assertAnthropicNotTruncated(body: unknown): void {
+	assertNotTruncated(
+		isRecord(body) && body.stop_reason === ANTHROPIC_STOP_MAX_TOKENS,
+	);
+}
+
 /**
  * Extracts the assistant message text from an OpenAI Chat Completions
  * (`chat/completions`) response.

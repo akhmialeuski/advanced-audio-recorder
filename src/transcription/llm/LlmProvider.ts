@@ -25,6 +25,8 @@ import {
 	extractAnthropicText,
 	extractAnthropicUsage,
 	extractGeminiText,
+	assertAnthropicNotTruncated,
+	assertOpenAiNotTruncated,
 	extractGeminiUsage,
 	extractOpenAiText,
 	extractOpenAiUsage,
@@ -246,6 +248,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 			// Recorded after the call rather than after the parse: an answer this
 			// client cannot read is still an answer the parameter was accepted for.
 			this.acceptedParam = param;
+			assertOpenAiNotTruncated(json);
 			return withUsage(extractOpenAiText(json), extractOpenAiUsage(json));
 		}
 		// Unreachable: the loop either returns or throws on its last attempt.
@@ -372,6 +375,7 @@ export class AnthropicLlmProvider implements LlmProvider {
 					timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 					signal: options?.signal,
 				});
+				assertAnthropicNotTruncated(json);
 				return withUsage(
 					extractAnthropicText(json),
 					extractAnthropicUsage(json),
