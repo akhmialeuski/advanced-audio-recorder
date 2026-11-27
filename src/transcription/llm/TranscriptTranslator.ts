@@ -19,6 +19,7 @@ import {
 } from '../../constants';
 import type { AudioRecorderSettings } from '../../settings/settingsSchema';
 import { resolveLlmPrompt } from '../../settings/profileResolution';
+import { type PromptExpander, VERBATIM } from '../runFacts';
 import { tokenUpperBound } from '../dictionaryBias';
 import { buildPostProcessPrompt, LlmTask } from '../llmPostProcess';
 import type { Transcript, TranscriptSegment } from '../TranscriptTypes';
@@ -51,6 +52,11 @@ export interface TranslationRequest {
 	costSink?: LlmCostSink | undefined;
 	/** Releases the calls when the run is cancelled. */
 	signal?: AbortSignal | undefined;
+	/**
+	 * Fills the run's facts into the translation prompt. Absent, the prompt
+	 * is sent as it was typed.
+	 */
+	expandPrompt?: PromptExpander | undefined;
 }
 
 /**
@@ -123,10 +129,25 @@ function decodeLine(line: string): { index: number; text: string } | null {
  * Translates one transcript through a language model.
  */
 export class TranscriptTranslator {
+	/** The translation prompt with the run's facts filled in, once per run. */
+	private expandedPrompt: string | undefined;
+
 	/**
 	 * @param request - The transcript, the provider, and how to account it
 	 */
 	constructor(private readonly request: TranslationRequest) {}
+
+	/**
+	 * The prompt every chunk is translated with. Filled in on first use and
+	 * kept, so a long transcript sent in many chunks reads the note's facts
+	 * once and reports a broken template once.
+	 */
+	private translatePrompt(): string {
+		this.expandedPrompt ??= (this.request.expandPrompt ?? VERBATIM)(
+			resolveLlmPrompt(this.request.settings, LlmTask.Translate),
+		);
+		return this.expandedPrompt;
+	}
 
 	/**
 	 * Returns the transcript translated into the configured language. Every
@@ -277,10 +298,7 @@ export class TranscriptTranslator {
 					.join('\n'),
 				{
 					task: LlmTask.Translate,
-					translatePrompt: resolveLlmPrompt(
-						this.request.settings,
-						LlmTask.Translate,
-					),
+					translatePrompt: this.translatePrompt(),
 					targetLanguage: this.targetLanguage(),
 				},
 			),

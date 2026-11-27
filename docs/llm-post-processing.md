@@ -80,7 +80,7 @@ Translation is a separate thing from the engine's own [speech translation](trans
 
 ### Custom
 
-Your **Custom instruction** is sent to the model **verbatim** as the system prompt - no language clause and no wording are added. The model's reply **replaces** the transcript body. This is the most flexible task and the one where you are fully responsible for the result: if you want the output in a specific language, format, or structure, say so in the instruction.
+Your **Custom instruction** is sent to the model **verbatim** as the system prompt - no language clause and no wording are added, and only the facts of the run it names in double braces are filled in (see [Facts of the run in a prompt](#facts-of-the-run-in-a-prompt)). The model's reply **replaces** the transcript body. This is the most flexible task and the one where you are fully responsible for the result: if you want the output in a specific language, format, or structure, say so in the instruction.
 
 ---
 
@@ -109,7 +109,47 @@ The transcript mixes uk, pl. Keep every line in the language it is written in, a
 
 For **Custom**, nothing is added: the instruction in the selected profile is the entire system prompt. A profile with an empty body, like None, leaves only the generic instruction above - write a real one.
 
-![A cleanup prompt profile page with Source set to Typed text and the prompt typed into the settings](images/settings-llm-prompt-editor.png)
+### Facts of the run in a prompt
+
+A prompt can name facts of the run in double braces, and they are filled in just before the prompt is sent. The notation is the one note templates use: [Handlebars](https://handlebarsjs.com/), with the date notation of Obsidian's core Templates accepted too. Cleanup, summary, translation and custom prompts are filled in, and so is chapter guidance.
+
+```handlebars
+Summarize the meeting "{{title}}" held on
+{{date recordedAt format='dddd, D MMMM'}}
+({{duration}}).
+{{#if participants}}The participants were
+	{{join participants ', '}}; name them when you attribute an action item.{{/if}}
+The project is
+{{properties.project}}.
+```
+
+| Variable                | What it holds                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `{{title}}`             | Name of the note the transcript goes to, or of the recording when there is none |
+| `{{notePath}}`          | Vault path of that note                                                         |
+| `{{recordingName}}`     | File name of the recording                                                      |
+| `{{recordingPath}}`     | Vault path of the recording                                                     |
+| `{{recordingLink}}`     | A link to the recording                                                         |
+| `{{recordedAt}}`        | When the recording was made; format it with `{{date recordedAt format="..."}}`  |
+| `{{durationSeconds}}`   | Length in seconds; `{{duration}}` writes it as `1:02:05`                        |
+| `{{language}}`          | Language of the transcript, when the engine reported it                         |
+| `{{participants}}`      | Names of the participant profile used for the run                               |
+| `{{speakers}}`          | Distinct speakers of the transcript                                             |
+| `{{dictionary}}`        | Terms of the dictionary profile used for the run                                |
+| `{{tags}}`              | Tags of the note                                                                |
+| `{{properties.<name>}}` | One property of the note                                                        |
+
+Lists such as `participants` are written with `{{join participants ", "}}` or repeated with `{{#each participants}}...{{/each}}`, and `{{#if ...}}...{{else}}...{{/if}}` leaves out a sentence when a fact is missing. The helpers are those of obsidian-citation-extended: `eq`, `ne`, `gt`, `lt`, `and`, `or`, `not`, `default`, `upper`, `lower`, `trim`, `truncate`, `replace`, `join`, `split`, `quote`, `date`, `time` and `duration`.
+
+Three rules keep a prompt safe to write:
+
+- **Only the properties a prompt names are read.** `{{properties.project}}` sends that one property to the model, never the rest of the note's frontmatter.
+- **A name the plugin does not know is sent as typed.** A JSON example such as `{"owner": "{{owner}}"}` reaches the model as written, and single braces are never touched.
+- **A prompt that cannot be filled in is sent as typed**, with a notice naming the problem, so a stray brace never costs you the pass.
+
+A profile page whose prompt is filled in this way has a **Template variables** row. Its description says whether the prompt has problems, such as an unknown variable or an unclosed block, and names the first one with its line and column. Selecting it opens the full list of variables and helpers with examples, the problems found, and a **Copy list** button that copies them as a Markdown table.
+
+![A cleanup prompt profile page with Source set to Typed text and the prompt typed into the settings, under a description naming the facts of the run the prompt can use and the Template variables row that lists them](images/settings-llm-prompt-editor.png)
 
 ![The same page with Source set to Note, naming the note the prompt is read from](images/settings-llm-prompt-source-note.png)
 

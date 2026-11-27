@@ -637,6 +637,42 @@ describe('AudioRecorderSettingTab', () => {
 			expect(updateSpy).toHaveBeenCalledTimes(1);
 		});
 
+		it('checks a prompt as a template on its page and lists its variables', () => {
+			mockSettings.transcriptionAutoChaptersEnabled = true;
+			mockSettings.profiles = [
+				chapterProfile('a', 'Standup', 'Split {{titel}} by speaker'),
+			];
+			const row = rowIn(
+				pageOf(tab.getSettingDefinitions(), 'Standup'),
+				'Template variables',
+			);
+
+			row.action?.(createDiv(), 0);
+
+			expect(row.desc).toBe(
+				'1 problem. Line 1, column 7: Unknown variable "titel".',
+			);
+			expect(
+				at(modalInstances, modalInstances.length - 1).contentEl
+					.textContent,
+			).toContain('Line 1, column 7: Unknown variable "titel".');
+		});
+
+		it('lists nothing for a profile deleted while its page was open', () => {
+			mockSettings.transcriptionAutoChaptersEnabled = true;
+			mockSettings.profiles = [chapterProfile('a', 'Standup', 'x')];
+			const row = rowIn(
+				pageOf(tab.getSettingDefinitions(), 'Standup'),
+				'Template variables',
+			);
+			const opened = modalInstances.length;
+			mockSettings.profiles = [];
+
+			row.action?.(createDiv(), 0);
+
+			expect(modalInstances).toHaveLength(opened);
+		});
+
 		it.each(PROFILE_KINDS.map((kind) => [kind.heading, kind.selectionKey]))(
 			'reads the tree again when %s picks another profile from the dropdown',
 			async (_heading, selectionKey) => {

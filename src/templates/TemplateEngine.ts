@@ -28,6 +28,7 @@ import {
 	analyzeTemplate,
 } from './templateAnalysis';
 import type { TemplateCatalog } from './templateCatalog';
+import { type FieldReads, fieldsRead } from './templatePaths';
 import { type TemplateHelper, TEMPLATE_HELPERS } from './templateHelpers';
 import {
 	type TemplateLocation,
@@ -93,6 +94,24 @@ export class TemplateEngine {
 	/** Every helper a template can call, for the list of variables. */
 	get helpers(): readonly TemplateHelper[] {
 		return this.helperList;
+	}
+
+	/**
+	 * Which fields of one top-level value a template reads, so a run collects
+	 * only those. A template that cannot be parsed reads nothing: it will not
+	 * render either, and nothing is collected for a render that fails.
+	 * @param source - The template as the user wrote it
+	 * @param root - Name of the value, e.g. `properties`
+	 */
+	fieldsRead(source: string, root: string): FieldReads {
+		try {
+			return fieldsRead(
+				this.hbs.parse(normalizeCoreSyntax(source)),
+				root,
+			);
+		} catch {
+			return new Set();
+		}
 	}
 
 	/**
@@ -198,4 +217,16 @@ export class TemplateEngine {
 		this.cache.set(text, compiled);
 		return compiled;
 	}
+}
+
+/** The engine the plugin shares, built on first use. */
+let shared: TemplateEngine | undefined;
+
+/**
+ * The plugin's one template engine. Its helpers never change, so one instance
+ * serves every caller and keeps one cache of compiled templates.
+ */
+export function sharedTemplateEngine(): TemplateEngine {
+	shared ??= new TemplateEngine();
+	return shared;
 }

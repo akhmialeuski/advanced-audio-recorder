@@ -138,6 +138,22 @@ function profilePage(
 				],
 			},
 			{
+				// A prompt names facts of the run, and the list of them sits
+				// next to the text being written, with what is wrong in it.
+				type: 'group',
+				cls: SETTINGS_SECTION_CLASS,
+				visible: () => catalogue.templated,
+				items: [
+					{
+						name: 'Template variables',
+						desc: entry.templateCheck,
+						action: (): void => {
+							catalogue.showVariables(entry.id);
+						},
+					},
+				],
+			},
+			{
 				type: 'group',
 				cls: SETTINGS_SECTION_CLASS,
 				items: [

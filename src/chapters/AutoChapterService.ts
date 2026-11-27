@@ -20,6 +20,7 @@ import type {
 	LlmProviderId,
 } from '../settings/settingsSchema';
 import { resolveChapterGuidance } from '../settings/profileResolution';
+import { promptExpander } from '../transcription/runFacts';
 import { ProfileTextSource } from '../settings/ProfileTextSource';
 import { readProfileNotes } from '../settings/ProfileNoteStore';
 import { createLlmProvider } from '../transcription/factories';
@@ -240,7 +241,16 @@ export class AutoChapterService {
 				configuredLanguageHint(settings.transcriptionLanguage);
 			// The selected chapter profile steers how the recording is split;
 			// an empty selection appends no guidance and keeps the base prompt.
-			const guidance = resolveChapterGuidance(settings);
+			// It may name facts of the recording, filled in from what this
+			// generation knows; there is no note it writes to by name here.
+			const guidance = promptExpander({
+				app: this.app,
+				settings,
+				recording: file,
+				transcript,
+				durationSeconds,
+				language,
+			})(resolveChapterGuidance(settings));
 			// Guidance kept in a note that went missing or could not be read is
 			// the text last read from it, and the run says so instead of passing
 			// it off as current.

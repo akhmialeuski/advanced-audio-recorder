@@ -143,6 +143,21 @@ export function formatDuration(value: unknown): string {
 }
 
 /**
+ * `{{duration seconds}}`, or `{{duration}}` for the recording's own length,
+ * read from `durationSeconds` at the root of what the template renders with.
+ * @param args - The seconds, if given, and the options Handlebars appends
+ */
+function durationHelper(...args: unknown[]): string {
+	const [value] = positional(args);
+	if (value !== undefined) {
+		return formatDuration(value);
+	}
+	const root = (optionsOf(args).data as { root?: unknown } | undefined)
+		?.root as { durationSeconds?: unknown } | undefined;
+	return formatDuration(root?.durationSeconds);
+}
+
+/**
  * Quotes a value for a YAML property when the bare text would not survive
  * there: a colon followed by a space, a leading character YAML reserves, or a
  * quote. Plain text stays bare so a property reads as the user would type it.
@@ -330,8 +345,9 @@ export const TEMPLATE_HELPERS: readonly TemplateHelper[] = [
 	},
 	{
 		name: 'duration',
-		description: 'Seconds as a clock reading, e.g. 1:02:03.',
-		example: '{{duration durationSeconds}}',
-		fn: formatDuration,
+		description:
+			'Seconds as a clock reading, e.g. 1:02:03; without an argument, the length of the recording.',
+		example: '{{duration}}',
+		fn: durationHelper,
 	},
 ];

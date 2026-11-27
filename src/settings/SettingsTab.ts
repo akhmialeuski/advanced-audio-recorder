@@ -112,6 +112,9 @@ import {
 } from '../platform/capabilities';
 import { effectiveWordTimestamps } from '../transcription/providers/capabilities';
 import { errorMessage } from '../errors';
+import { sharedTemplateEngine } from '../templates/TemplateEngine';
+import { describeCheck } from '../templates/templateAnalysis';
+import { TemplateVariablesModal } from '../ui/TemplateVariablesModal';
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -778,8 +781,30 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						profile.id === selectedProfileId(settings, kindId),
 					),
 					status: this.profileText.status(profile),
+					templateCheck: kind.variables
+						? describeCheck(
+								sharedTemplateEngine().validate(
+									profile.body,
+									kind.variables,
+								),
+							)
+						: '',
 				})),
 			visible: kind.visible,
+			templated: kind.variables !== undefined,
+			showVariables: (id): void => {
+				const profile = findProfile(ofKind(), id);
+				if (!profile || !kind.variables) {
+					return;
+				}
+				const engine = sharedTemplateEngine();
+				new TemplateVariablesModal(this.app, {
+					subject: profile.name,
+					variables: kind.variables,
+					helpers: engine.helpers,
+					problems: engine.validate(profile.body, kind.variables),
+				}).open();
+			},
 			add: (): void => {
 				const settings = this.plugin.settings;
 				const created = createProfile(

@@ -167,6 +167,11 @@ export interface ProfileEntry {
 	 * shown on its page and under the picker while it is the one in use.
 	 */
 	readonly status: string;
+	/**
+	 * What a check of the body as a template found, for a kind whose body
+	 * names facts of the run; '' for a kind whose body is not a template.
+	 */
+	readonly templateCheck: string;
 }
 
 /** One profile catalogue, as the definitions address it. */
@@ -208,6 +213,10 @@ export interface ProfileCatalogue {
 	entries(settings: AudioRecorderSettings): readonly ProfileEntry[];
 	/** Whether this catalogue is on screen at all. */
 	visible(settings: AudioRecorderSettings): boolean;
+	/** Whether a profile's body names facts of the run in double braces. */
+	readonly templated: boolean;
+	/** Opens the list of what a profile's body can name, and its problems. */
+	showVariables(id: string): void;
 	/** Adds an empty profile under a free name. */
 	add(): void;
 	/** Asks for a new name for a profile and applies it. */
