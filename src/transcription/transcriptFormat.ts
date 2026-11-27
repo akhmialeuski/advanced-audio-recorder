@@ -251,6 +251,44 @@ export function formatTranscriptMarkdown(
 	return lines.join('\n\n');
 }
 
+/** One speaker turn of a transcript, as a note template repeats it. */
+export interface TranscriptTurn {
+	/** Who spoke, '' without diarization. */
+	readonly speaker: string;
+	/** When the turn starts, in seconds. */
+	readonly start: number;
+	/** When it starts, as a clock reading. */
+	readonly time: string;
+	/** A link to that moment of the recording, labelled with the time. */
+	readonly link: string;
+	/** What was said, with wiki links shown as text. */
+	readonly text: string;
+}
+
+/**
+ * The turns of a transcript, grouped the way its lines are: consecutive
+ * segments of one speaker are one turn when the settings merge them.
+ * @param transcript - Source transcript
+ * @param merge - Whether consecutive same-speaker segments are one turn
+ * @param linkBuilder - Builds the timecode link of each turn
+ */
+export function transcriptTurns(
+	transcript: Transcript,
+	merge: boolean,
+	linkBuilder: TimecodeLinkBuilder,
+): TranscriptTurn[] {
+	return toRenderRows(transcript.segments, merge).map((row) => {
+		const time = formatTimecode(row.start);
+		return {
+			speaker: neutralizeWikilinks(row.speaker ?? ''),
+			start: row.start,
+			time,
+			link: linkBuilder(row.start, time),
+			text: neutralizeWikilinks(row.text.trim()),
+		};
+	});
+}
+
 /**
  * Renders one timecode as either a clickable link or a plain label.
  */

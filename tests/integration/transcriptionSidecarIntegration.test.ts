@@ -9,7 +9,10 @@
  * The store reaches the run through a single channel: the run options.
  */
 
-import { noSelectedProfiles } from 'src/settings/profiles';
+import {
+	noSelectedProfiles,
+	setSelectedProfileId,
+} from 'src/settings/profiles';
 import type { App, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
@@ -578,6 +581,56 @@ describe('transcribeFile output registration', () => {
 			'writtenAt',
 		]);
 		expect(recorded.path).toBe('note.md');
+	});
+
+	it('records the timestamps a note template wrote the transcript with', async () => {
+		// A later rename finds the note's lines by how they were written, so
+		// the record says what the template did, not what the setting was.
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		insertMock.mockReturnValue(true);
+		const settings = diarizedSettings({
+			transcriptDestination: 'note',
+			transcriptIncludeTimestamps: false,
+			llmPostProcessEnabled: true,
+			llmPostProcessTask: 'template',
+			profiles: [
+				{
+					id: 'tpl',
+					kind: 'llmTemplate',
+					name: 'Meeting',
+					body: '{{#part "summary"}}Points.{{/part}}\n{{transcript timestamps=true}}',
+				},
+			],
+		});
+		setSelectedProfileId(settings, 'llmTemplate', 'tpl');
+		await transcribeFile(
+			makeApp(),
+			() => settings,
+			// A template reads the recording's dates.
+			{
+				...audioFile,
+				basename: 'rec',
+				stat: { ctime: 0, mtime: 0, size: 4 },
+			},
+			{ notePathForLinks: 'note.md', sidecar },
+			{
+				createProvider: () => makeProvider(twoSpeakerSegments),
+				createLlm: () => ({
+					id: LLM_PROVIDER_IDS.GEMINI,
+					label: EngineLabel.Gemini,
+					complete: jest.fn(async () =>
+						completed('{"summary": "Short."}'),
+					),
+				}),
+			},
+		);
+
+		expect(sidecar.recordNoteOutput).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			expect.objectContaining({
+				templates: expect.objectContaining({ includeTimestamps: true }),
+			}),
+		);
 	});
 
 	it('registers the outputs of a non-diarized run too', async () => {

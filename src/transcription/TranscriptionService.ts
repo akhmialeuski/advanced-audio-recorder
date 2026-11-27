@@ -140,7 +140,13 @@ import {
 	type RunFactsSource,
 	promptExpander,
 } from './runFacts';
-import { TemplatePass, templateProfileIds } from './templatePass';
+import {
+	type NoteRendering,
+	type TemplateNote,
+	TemplatePass,
+	noteRendering,
+	templateProfileIds,
+} from './templatePass';
 import { TemplateRenderError } from '../templates/TemplateEngine';
 import {
 	costFromUsage,
@@ -340,6 +346,11 @@ export interface TranscribeRunResult {
 	 * actually says.
 	 */
 	translation?: TranscriptTranslation;
+	/**
+	 * Whether the note's transcript lines carry timestamps, when a note
+	 * template decided it; undefined when the settings did.
+	 */
+	noteTimestamps?: boolean | undefined;
 }
 
 /** A translated transcript and the Markdown rendered from it. */
@@ -988,6 +999,8 @@ export class TranscriptionService {
 		}
 
 		let translation: TranscriptTranslation | undefined;
+		// What a note template decided about the transcript's timestamps.
+		let noteTimestamps: boolean | undefined;
 		// The facts a prompt can name are the ones this run holds: the note
 		// the result goes to, the recording, and the finished transcript.
 		const factsSource = {
@@ -1023,13 +1036,14 @@ export class TranscriptionService {
 						expandPrompt,
 					);
 				} else {
-					markdown = await this.rewrite(
-						factsSource,
-						markdown,
-						token,
-						expandPrompt,
-						(seconds) => links(seconds, formatTimecode(seconds)),
-					);
+					({ markdown, timestamps: noteTimestamps } =
+						await this.rewrite(
+							factsSource,
+							markdown,
+							token,
+							expandPrompt,
+							noteRendering(transcript, markdownOptions, links),
+						));
 				}
 			} catch (error) {
 				// The abort of the call in flight arrives as a transport
@@ -1061,6 +1075,7 @@ export class TranscriptionService {
 			cost: runCost(),
 			missingParts,
 			sentSeconds: sentSeconds(payloads),
+			noteTimestamps,
 			...(translation ? { translation } : {}),
 		};
 	}
@@ -2113,16 +2128,16 @@ export class TranscriptionService {
 	 * @param markdown - The transcript as the note writes it
 	 * @param token - Cancellation for the run
 	 * @param expandPrompt - Fills the run's facts into the prompts
-	 * @param links - Writes a link to a moment of the recording
-	 * @returns The new body
+	 * @param rendering - How the transcript is written into a template
+	 * @returns The new body, and the timestamps a template decided on
 	 */
 	private async rewrite(
 		source: RunFactsSource & { readonly transcript: Transcript },
 		markdown: string,
 		token: CancellationToken,
 		expandPrompt: PromptExpander,
-		links: (seconds: number) => string,
-	): Promise<string> {
+		rendering: NoteRendering,
+	): Promise<TemplateNote> {
 		const { settings } = source;
 		const task = settings.llmPostProcessTask;
 		if (task === LlmTask.Template) {
@@ -2131,16 +2146,19 @@ export class TranscriptionService {
 				markdown,
 				token,
 				expandPrompt,
-				links,
+				rendering,
 			);
 		}
-		return this.postProcess(
-			{ ...settings, llmPostProcessTask: task },
-			source.transcript,
-			markdown,
-			token,
-			expandPrompt,
-		);
+		return {
+			markdown: await this.postProcess(
+				{ ...settings, llmPostProcessTask: task },
+				source.transcript,
+				markdown,
+				token,
+				expandPrompt,
+			),
+			timestamps: undefined,
+		};
 	}
 
 	/**
@@ -2150,7 +2168,7 @@ export class TranscriptionService {
 	 * @param markdown - The transcript as the note writes it
 	 * @param token - Cancellation for the run
 	 * @param expandPrompt - Fills the run's facts into a profile a part names
-	 * @param links - Writes a link to a moment of the recording
+	 * @param rendering - How the transcript is written into the template
 	 * @returns The note, or the transcript unchanged when there is no
 	 *   template or it cannot be rendered
 	 */
@@ -2159,15 +2177,16 @@ export class TranscriptionService {
 		markdown: string,
 		token: CancellationToken,
 		expandPrompt: PromptExpander,
-		links: (seconds: number) => string,
-	): Promise<string> {
+		rendering: NoteRendering,
+	): Promise<TemplateNote> {
+		const unchanged = { markdown, timestamps: undefined };
 		const { settings } = source;
 		const template = selectedProfile(settings, ProfileKindId.LlmTemplate);
 		if (!template || template.body.trim() === '') {
 			new Notice(
 				'No note template is selected, so the transcript was saved as it is.',
 			);
-			return markdown;
+			return unchanged;
 		}
 		const vendorId = jobVendorId(settings, LlmJobId.PostProcess);
 		try {
@@ -2178,7 +2197,7 @@ export class TranscriptionService {
 				transcriptMarkdown: markdown,
 				expandPrompt,
 				glossary: resolveDictionaryTermList(settings),
-				links,
+				rendering,
 				llm: this.createLlm(settings, vendorId),
 				maxTokens: vendorMaxTokens(settings, vendorId),
 				costSink: this.costSink,
@@ -2191,7 +2210,7 @@ export class TranscriptionService {
 			new Notice(
 				`The note template "${template.name}" could not be rendered (${error.message}); the transcript was saved as it is.`,
 			);
-			return markdown;
+			return unchanged;
 		}
 	}
 
