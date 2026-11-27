@@ -34,6 +34,7 @@ import { LlmJobId } from '../llm/vendors';
 import type { AudioRecorderSettings } from '../../settings/settingsSchema';
 import type { Transcript } from '../TranscriptTypes';
 import type { CancellationToken } from '../../utils/cancellation';
+import { similarity } from '../../utils/similarity';
 
 /**
  * Minimum similarity for a proper name to count as heard in the draft.
@@ -197,38 +198,6 @@ export function parseTermList(raw: string): string[] {
 		terms.push(term);
 	}
 	return dedupeTerms(terms);
-}
-
-/**
- * Normalized Levenshtein similarity in [0, 1], case-insensitive: 1 for equal
- * strings, 0 for nothing in common. Cheap two-row dynamic programming, ample
- * for term-sized inputs.
- * @param a - First string
- * @param b - Second string
- * @returns Similarity ratio
- */
-export function similarity(a: string, b: string): number {
-	const left = a.toLowerCase();
-	const right = b.toLowerCase();
-	if (left === right) {
-		return 1;
-	}
-	// Two empty strings are equal, so the check above already returned for
-	// them: maxLength is positive from here and the division below is safe.
-	const maxLength = Math.max(left.length, right.length);
-	let previous = Array.from({ length: right.length + 1 }, (_, i) => i);
-	for (let i = 1; i <= left.length; i++) {
-		const current = [i];
-		for (let j = 1; j <= right.length; j++) {
-			current[j] = Math.min(
-				(previous[j] ?? 0) + 1,
-				(current[j - 1] ?? 0) + 1,
-				(previous[j - 1] ?? 0) + (left[i - 1] === right[j - 1] ? 0 : 1),
-			);
-		}
-		previous = current;
-	}
-	return 1 - (previous[right.length] ?? 0) / maxLength;
 }
 
 /** Splits text into word tokens (Unicode letters/digits, inner ' . / -). */

@@ -20,7 +20,6 @@ import {
 	generateContext,
 	parseTermList,
 	sentenceRetainsTerms,
-	similarity,
 	withinPromptWindow,
 } from 'src/transcription/advanced/contextPipeline';
 import type {
@@ -31,6 +30,7 @@ import type {
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import { buildTranscript } from 'src/transcription/transcriptModel';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
+import { similarity } from 'src/utils/similarity';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
