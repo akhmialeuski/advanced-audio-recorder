@@ -62,7 +62,7 @@ describe('checkNoteTemplate', () => {
 		],
 		[
 			'{{#part "a" format="mermaid"}}x{{/part}}',
-			'Part "a" has an unknown format "mermaid"; use one of prose, bullets.',
+			'Part "a" has an unknown format "mermaid"; use one of prose, bullets, numbered, tasks,',
 		],
 		[
 			'{{#part "a" target="property:x"}}x{{/part}}',
@@ -80,6 +80,14 @@ describe('checkNoteTemplate', () => {
 			'{{#part "a" profile="P"}}x{{/part}}',
 			'Part "a" has both an instruction and profile="P"; keep one.',
 		],
+		[
+			'{{#part "t" format="table"}}x{{/part}}',
+			'Part "t" needs its columns, e.g. columns="Owner, Task, Due".',
+		],
+		[
+			'{{#part "t" format="tasks" style="org"}}x{{/part}}',
+			'Part "t" needs style to be plain, dataview or tasks.',
+		],
 		['{{#part "a"}}  {{/part}}', 'Part "a" has no instruction'],
 		[
 			'{{#part "a"}}x{{/part}}{{#part "a"}}y{{/part}}',
@@ -89,6 +97,12 @@ describe('checkNoteTemplate', () => {
 		expect(check(source, ['P'])).toEqual(
 			expect.arrayContaining([expect.stringContaining(message)]),
 		);
+	});
+
+	it('leaves a format setting given as an expression to the run', () => {
+		expect(
+			check('{{#part "t" format="tasks" style=title}}x{{/part}}'),
+		).toEqual([]);
 	});
 
 	it('warns about a profile and a part result nobody declared', () => {

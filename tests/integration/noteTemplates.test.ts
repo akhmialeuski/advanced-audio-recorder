@@ -202,6 +202,53 @@ describe('a run with a note template', () => {
 		);
 	});
 
+	it('writes each format, linking a quote to its moment in the recording', async () => {
+		const llm = scriptedLlm(
+			JSON.stringify({
+				actions: [
+					{ text: 'Send the deck', owner: 'Ben', due: '2026-10-01' },
+				],
+				said: [
+					{
+						quote: 'Ben sends the deck.',
+						speaker: 'Ben',
+						time: '0:42',
+					},
+				],
+				owners: [{ Owner: 'Ben', Task: 'Deck' }],
+			}),
+		);
+
+		const { markdown, prompts } = await transcribe(
+			withTemplate(
+				[
+					'{{#part "actions" format="tasks" style="dataview"}}Actions.{{/part}}',
+					'',
+					'{{#part "said" format="quotes"}}Quotes.{{/part}}',
+					'',
+					'{{#part "owners" format="table" columns="Owner, Task"}}Who.{{/part}}',
+				].join('\n'),
+			),
+			llm,
+		);
+
+		expect(markdown).toBe(
+			[
+				'- [ ] Send the deck [owner:: Ben] [due:: 2026-10-01]',
+				'',
+				'> Ben sends the deck.',
+				'> - Ben, [[standup.webm#t=42|0:42]]',
+				'',
+				'| Owner | Task |',
+				'| --- | --- |',
+				'| Ben | Deck |',
+			].join('\n'),
+		);
+		expect(prompts[0]?.system).toContain(
+			'"owners": an array of objects, one per item, with "Owner" (a short text), "Task" (a short text).',
+		);
+	});
+
 	it('asks for a separate part on its own and writes the rest when it fails', async () => {
 		silenceConsole('warn');
 		const llm = scriptedLlm(

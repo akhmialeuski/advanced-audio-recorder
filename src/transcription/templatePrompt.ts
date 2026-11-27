@@ -13,7 +13,7 @@
 
 import type { LlmPrompt } from './llmPostProcess';
 import type { PartSpec } from '../templates/noteTemplate';
-import { partFormat, DEFAULT_PART_FORMAT } from '../templates/partFormats';
+import { formatOf } from '../templates/partFormats';
 import type { RunFacts } from '../templates/runVariables';
 import { formatDuration } from '../templates/templateHelpers';
 import type { Transcript } from './TranscriptTypes';
@@ -95,9 +95,9 @@ function languageClause(language: string): string {
  */
 function partClause(part: PromptPart): string {
 	const { spec } = part;
-	const format = partFormat(spec.format) ?? partFormat(DEFAULT_PART_FORMAT);
+	const format = formatOf(spec.format);
 	const lines = [
-		`"${spec.name}": ${format?.contract ?? 'a string'}.`,
+		`"${spec.name}": ${format.contract({ max: spec.max, options: spec.options })}.`,
 		...(spec.max === undefined
 			? []
 			: [`At most ${String(spec.max)} items, the most important first.`]),

@@ -101,7 +101,7 @@ export const NOTE_TEMPLATE_VARIABLES: TemplateCatalog = [
 const PART_DECLARATION: TemplateHelper = {
 	name: PART_HELPER,
 	description:
-		'A section a model fills from the transcript. The body is the instruction; settings: format, max, empty="remove|keep|text", profile, language, separate.',
+		'A section a model fills from the transcript. The body is the instruction; settings: format (prose, bullets, numbered, tasks, decisions, terms, outline, quotes, table, callout), max, empty="remove|keep|text", profile, language, separate.',
 	example:
 		'{{#part "summary" format="bullets" max=3}}The three things that matter.{{/part}}',
 	fn: () => '',
