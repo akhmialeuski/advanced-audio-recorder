@@ -42,6 +42,7 @@ import { jobVendorId, LlmJobId } from './llm/vendors';
 import { promptExpander } from './runFacts';
 import {
 	formatTranscriptMarkdown,
+	type TranscriptChapter,
 	transcriptMarkdownOptions,
 } from './transcriptFormat';
 import type { TemplateOutput } from './llmPostProcess';
@@ -140,6 +141,19 @@ function unwrittenMessage(request: StructureRequest): string {
 	return request.notePath === ''
 		? `Could not write the note for ${request.file.name}.`
 		: `Could not write to ${request.notePath}; the note may have been moved or deleted.`;
+}
+
+/**
+ * Chapter markers as the spans a transcript is split under.
+ * @param chapters - The recording's chapter markers
+ */
+export function transcriptChapters(
+	chapters: readonly PlayerMarker[],
+): TranscriptChapter[] {
+	return chapters.map((marker) => ({
+		start: marker.time,
+		title: marker.label,
+	}));
 }
 
 /** Applies note templates to transcripts a recording already has. */
@@ -250,10 +264,7 @@ export class TranscriptStructurer {
 				transcript,
 				options,
 				links,
-				chapterMarkers.map((marker) => ({
-					start: marker.time,
-					title: marker.label,
-				})),
+				transcriptChapters(chapterMarkers),
 			),
 			chapters: formatChapterOutline(chapterMarkers, links),
 			llm: this.createLlm(settings, vendorId),
