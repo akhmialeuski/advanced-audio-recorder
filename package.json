@@ -117,6 +117,7 @@
 	"dependencies": {
 		"@mediabunny/flac-encoder": "1.61.4",
 		"@mediabunny/mp3-encoder": "1.61.4",
+		"handlebars": "4.7.8",
 		"mediabunny": "1.61.4"
 	}
 }
