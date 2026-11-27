@@ -12,6 +12,7 @@ import {
 	DEFAULT_SETTINGS,
 	type OutputMode,
 	type TrackAudioSources,
+	shippedProfiles,
 } from 'src/settings/settingsSchema';
 import {
 	mergeSettings,
@@ -159,10 +160,9 @@ describe('Settings', () => {
 			expect(DEFAULT_SETTINGS.selectedProfileIds.llmCleanup).not.toBe(
 				LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
 			);
-			expect(DEFAULT_SETTINGS.shippedProfileIds).toEqual([
-				LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
-				LANGUAGE_LESSON_PRESET_ID,
-			]);
+			expect(DEFAULT_SETTINGS.shippedProfileIds).toEqual(
+				shippedProfiles().map((profile) => profile.id),
+			);
 		});
 
 		// DeepSeek reasons before it answers and counts that against the
@@ -208,10 +208,9 @@ describe('Settings', () => {
 
 			expect(lessonIn(merged)).toHaveLength(1);
 			expect(merged.profiles[0]).toEqual(storedProfile);
-			expect(merged.shippedProfileIds).toEqual([
-				LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
-				LANGUAGE_LESSON_PRESET_ID,
-			]);
+			expect(merged.shippedProfileIds).toEqual(
+				shippedProfiles().map((profile) => profile.id),
+			);
 		});
 
 		it('gives an install that already holds the cleanup profile the preset, once', () => {
@@ -237,6 +236,54 @@ describe('Settings', () => {
 			});
 
 			expect(lessonIn(merged)).toEqual([]);
+		});
+
+		it('gives an install that predates the note templates each preset once', () => {
+			const edited: Profile = {
+				id: 'shipped-llm-template-daily-sync',
+				kind: 'llmTemplate',
+				name: 'Daily sync',
+				body: 'My own sync.',
+			};
+			const merged = mergeSettings({
+				profiles: [storedProfile, edited],
+				shippedProfileIds: [
+					LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+					'shipped-llm-template-daily-sync',
+				],
+			});
+			const ids = merged.profiles.map((profile) => profile.id);
+
+			// The one the user edited is kept as it is, the lesson profile
+			// they deleted stays deleted, and the rest arrive.
+			expect(merged.profiles).toContainEqual(edited);
+			expect(ids).not.toContain(LANGUAGE_LESSON_CLEANUP_PROFILE_ID);
+			expect(ids).toEqual(
+				expect.arrayContaining([
+					'shipped-llm-custom-action-items',
+					'shipped-llm-template-architecture',
+					'shipped-llm-template-lecture',
+					'shipped-llm-template-interview',
+					'shipped-llm-template-one-on-one',
+				]),
+			);
+			expect(merged.selectedProfileIds.llmTemplate).toBe('');
+		});
+
+		it('does not bring back a preset the user deleted on the next load', () => {
+			const first = mergeSettings({ profiles: [storedProfile] });
+			const kept = first.profiles.filter(
+				(profile) => profile.id !== 'shipped-llm-template-lecture',
+			);
+
+			const next = mergeSettings({
+				profiles: kept,
+				shippedProfileIds: first.shippedProfileIds,
+			});
+
+			expect(next.profiles.map((profile) => profile.id)).not.toContain(
+				'shipped-llm-template-lecture',
+			);
 		});
 
 		it('starts a fresh install with exactly one copy', () => {

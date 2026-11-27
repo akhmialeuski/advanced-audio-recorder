@@ -90,31 +90,31 @@ The note is written from the selected **note template profile**: Markdown of you
 
 ![A note template profile page with Source set to Typed text, a template holding a summary part, an action items part and the transcript typed into it, and the Template variables row saying no problems were found](images/settings-note-template-page.png)
 
+<!-- prettier-ignore -->
 ```handlebars
-#
-{{title}}
+# {{title}}
 
-{{date recordedAt format='dddd, D MMMM YYYY'}}
-·
-{{duration}}
+{{date recordedAt format="dddd, D MMMM YYYY"}} · {{duration}}{{#if participants}} · {{join participants ", "}}{{/if}}
 
 ## Summary
 
-{{#part 'summary' format='bullets' max=3}}
-	The three things that matter from this meeting, most important first.
+{{#part "summary" format="bullets" max=3}}
+The three things that matter from this meeting, most important first.
 {{/part}}
 
 ## Action items
 
-{{part 'actions' profile='Action items'}}
+{{part "actions" format="tasks" profile="Action items"}}
 
 ## Blockers
 
-{{#part 'blockers' format='bullets'}}
-	What stops a participant from moving on, and who is blocked.
+{{#part "blockers" format="bullets"}}
+What stops a participant from moving on, as they said it. Name who is blocked.
 {{/part}}
 
-{{transcript}}
+## Transcript
+
+{{transcript callout="quote" title="Full transcript" folded=true timestamps=false}}
 ```
 
 Every part of a template is asked for in **one call**: the model reads the transcript once and answers every part, which is cheaper and more consistent than a call per part. The model answers with data, never with Markdown, and the plugin writes the Markdown, so a list cannot come back broken. A part with `separate=true` is asked for in a call of its own, for a part whose instruction would crowd the others.
@@ -127,6 +127,7 @@ Every part of a template is asked for in **one call**: the model reads the trans
 | `profile="Action items"` | Takes the instruction from a cleanup, summary, or custom prompt profile of that name, looked up in that order, so one instruction serves every template. A part names a profile or writes an instruction, not both. |
 | `language="German"`      | Writes this part in another language than the rest.                                                                                                                                                                 |
 | `separate=true`          | Asks for the part in a call of its own.                                                                                                                                                                             |
+| `callout="success"`      | Puts the part's result in a callout of that type; `title="..."` and `folded=true` shape it, as they do for `{{transcript}}`.                                                                                        |
 
 The formats:
 
@@ -157,8 +158,9 @@ The instruction of a part, and the profile it names, can use every [fact of the 
 | `title="Transcript"`, `folded=true`  | The callout's title, and whether it starts closed (`true`) or open (`false`).                |
 | `timestamps=false`, `speakers=false` | Leaves the timestamp or the speaker off every line; `true` writes them whatever the setting. |
 
+<!-- prettier-ignore -->
 ```handlebars
-{{transcript callout='quote' title='Transcript' folded=true}}
+{{transcript callout="quote" title="Transcript" folded=true}}
 ```
 
 A long meeting then stays one line on the screen until you open it, below the summary instead of pushing it away. Renaming a speaker later still finds the lines inside the callout, and the timestamps the template chose are recorded with the note, so a rename reads the lines the way they were written.
@@ -169,16 +171,47 @@ A long meeting then stays one line on the screen until you open it, below the su
 
 To write the turns in a shape of your own, repeat a block over `turns`: each turn has `speaker`, `start` (seconds), `time` (`1:05`), `link` (a link to that moment of the recording) and `text`, with consecutive lines of one speaker merged as your settings merge them.
 
+<!-- prettier-ignore -->
 ```handlebars
 {{#each turns}}
-	-
-	{{link}}
-	**{{speaker}}**:
-	{{text}}
+- {{link}} **{{speaker}}**: {{text}}
 {{/each}}
 ```
 
 The transcript is written once: a template that writes `{{transcript}}` twice, or inside a repeat, is shown as an error.
+
+#### Shipped templates
+
+Five note templates ship with the plugin, one per kind of recording, together with the **Action items** custom prompt profile that four of them name for their tasks. None of them is selected: pick one under **Note template profiles**, or copy the closest and edit it. An install that predates them is given each of them once when it loads; one you edited keeps your edits, and one you deleted does not come back.
+
+| Template                    | Parts                                                                                                        | Transcript                          |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| **Daily sync**              | Summary (three points), action items, blockers                                                               | Folded, without timestamps          |
+| **Architecture discussion** | Decisions with their reasons and rejected alternatives in a callout, open questions, tasks, a table of terms | Folded                              |
+| **Lecture**                 | Notes as a nested list in the order taught, terms with definitions, up to seven questions to check yourself  | Folded                              |
+| **Interview**               | Topics, up to five quotes linked to their moment, agreements                                                 | Open, with timestamps and speakers  |
+| **One-on-one**              | What was discussed (up to five points), agreements, what to prepare for next time                            | Not written: the recording keeps it |
+
+The daily sync is the template shown at the top of this section. For a sync where nobody named a blocker or took on a task, the note is its header, three points and the folded transcript, with no empty sections:
+
+```markdown
+# Weekly sync
+
+Thursday, 26 November 2026 · 12:41 · Anna, Ben
+
+## Summary
+
+- The release moves to Friday, since QA needs one more day.
+- The new onboarding flow is ready for review.
+- Support tickets are back to the usual volume.
+
+## Transcript
+
+> [!quote]- Full transcript
+> **Anna** Morning, everyone. Let us start with the release.
+>
+> **Ben** QA needs one more day, so Friday.
+```
 
 A template is applied as best it can be:
 
@@ -221,14 +254,11 @@ For **Custom**, nothing is added: the instruction in the selected profile is the
 
 A prompt can name facts of the run in double braces, and they are filled in just before the prompt is sent. The notation is the one note templates use: [Handlebars](https://handlebarsjs.com/), with the date notation of Obsidian's core Templates accepted too. Cleanup, summary, translation and custom prompts are filled in, and so is chapter guidance.
 
+<!-- prettier-ignore -->
 ```handlebars
-Summarize the meeting "{{title}}" held on
-{{date recordedAt format='dddd, D MMMM'}}
-({{duration}}).
-{{#if participants}}The participants were
-	{{join participants ', '}}; name them when you attribute an action item.{{/if}}
-The project is
-{{properties.project}}.
+Summarize the meeting "{{title}}" held on {{date recordedAt format="dddd, D MMMM"}} ({{duration}}).
+{{#if participants}}The participants were {{join participants ", "}}; name them when you attribute an action item.{{/if}}
+The project is {{properties.project}}.
 ```
 
 | Variable                | What it holds                                                                   |

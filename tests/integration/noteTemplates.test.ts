@@ -28,6 +28,10 @@ import { asMockVault } from '../helpers/obsidianMock';
 import { EngineLabel } from 'src/providers/providers';
 import { noticeMessages } from '../mocks/obsidian';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
+import {
+	ARCHITECTURE_TEMPLATE,
+	DAILY_SYNC_TEMPLATE,
+} from 'src/templates/shippedTemplates';
 
 const recording = partial<TFile>({
 	name: 'standup.webm',
@@ -469,6 +473,65 @@ describe('the transcript in a note template', () => {
 				'- [[standup.webm#t=0|0:00]] Ben sends the deck.',
 				'- [[standup.webm#t=65|1:05]] Anna books \\[\\[the room\\]\\].',
 			].join('\n'),
+		);
+	});
+});
+
+describe('the shipped templates', () => {
+	it('writes a quiet daily sync as its header, three points and the folded transcript', async () => {
+		const { markdown } = await transcribe(
+			withTemplate(DAILY_SYNC_TEMPLATE.body),
+			scriptedLlm(
+				JSON.stringify({
+					summary: [
+						'Deck is late',
+						'Ship Friday',
+						'QA done',
+						'Extra',
+					],
+					actions: [],
+					blockers: [],
+				}),
+			),
+		);
+
+		expect(markdown).toBe(
+			[
+				'# Weekly sync',
+				'',
+				'Thursday, 1 January 1970 · 1:02',
+				'',
+				'## Summary',
+				'',
+				'- Deck is late',
+				'- Ship Friday',
+				'- QA done',
+				'',
+				'## Transcript',
+				'',
+				'> [!quote]- Full transcript',
+				'> Ben sends the deck.',
+			].join('\n'),
+		);
+	});
+
+	it('puts the decisions of an architecture discussion in a callout', async () => {
+		const { markdown } = await transcribe(
+			withTemplate(ARCHITECTURE_TEMPLATE.body),
+			scriptedLlm(
+				JSON.stringify({
+					decisions: [
+						{
+							decision: 'Use SQLite',
+							reason: 'One file; Postgres was too much',
+						},
+					],
+				}),
+			),
+		);
+
+		expect(markdown).toContain(
+			'## Decisions\n\n> [!success] Decided\n> - **Use SQLite**: One file; Postgres was too much\n\n## Transcript\n\n> [!quote]- Full transcript',
 		);
 	});
 });

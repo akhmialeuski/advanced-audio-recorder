@@ -112,41 +112,37 @@ the decision.
 
 The daily sync preset, as it ships:
 
+<!-- prettier-ignore -->
 ```handlebars
-#
-{{title}}
+# {{title}}
 
-{{date recordedAt format='dddd, D MMMM YYYY'}}
-·
-{{duration durationSeconds}}{{#if participants}}
-	·
-	{{join participants ', '}}{{/if}}
+{{date recordedAt format="dddd, D MMMM YYYY"}} · {{duration}}{{#if participants}} · {{join participants ", "}}{{/if}}
 
 ## Summary
 
-{{#part 'summary' format='bullets' max=3}}
-	The three things that matter from this meeting, most important first. Leave
-	out greetings, small talk and anything nobody acted on.
+{{#part "summary" format="bullets" max=3}}
+The three things that matter from this meeting, most important first. Leave out greetings, small talk and anything nobody acted on.
 {{/part}}
 
 ## Action items
 
-{{#part
-	'actions' format='tasks' profile='Action items' empty='remove'
-}}{{/part}}
+{{part "actions" format="tasks" profile="Action items"}}
 
 ## Blockers
 
-{{#part 'blockers' format='bullets' empty='remove'}}
-	What stops a participant from moving on, as they said it. Name who is
-	blocked.
+{{#part "blockers" format="bullets"}}
+What stops a participant from moving on, as they said it. Name who is blocked.
 {{/part}}
 
-{{transcript callout='quote' folded=true timestamps=false}}
+## Transcript
+
+{{transcript callout="quote" title="Full transcript" folded=true timestamps=false}}
 ```
 
-`empty="remove"` drops the part together with the heading right above it, so a
-sync without blockers has no empty "Blockers" section.
+A part the model found nothing for is removed together with the heading right
+above it (`empty="remove"`, the default), so a sync without blockers has no
+empty "Blockers" section. The transcript stands under a heading of its own,
+because a part's heading would otherwise own it and stay when the part goes.
 
 ## Tasks this decision adds examples to
 

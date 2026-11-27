@@ -18,6 +18,7 @@ import type {
 	AstStatement,
 } from './handlebarsAst';
 import {
+	calloutSettingProblems,
 	isCallTo,
 	literal,
 	literalSettings,
@@ -38,7 +39,12 @@ import {
 	SHARED_PART_OPTIONS,
 	noteTemplateEngine,
 } from './noteTemplate';
-import { DEFAULT_PART_FORMAT, partFormat, partFormats } from './partFormats';
+import {
+	CALLOUT_FORMAT,
+	DEFAULT_PART_FORMAT,
+	partFormat,
+	partFormats,
+} from './partFormats';
 
 /** One part as the template text declares it. */
 export interface DeclaredPart {
@@ -254,6 +260,11 @@ function partProblems(
 		...maxProblems(part, label, error),
 		...instructionProblems(part, label, error),
 		...profileProblems(part, label, isProfile),
+		...(part.format === CALLOUT_FORMAT
+			? []
+			: calloutSettingProblems(part.node).map((message) =>
+					error(`${label} ${message}`),
+				)),
 	];
 }
 

@@ -15,14 +15,17 @@ import {
 	TemplateProblemSeverity,
 	locationOf,
 } from './templateAnalysis';
-import { type AstCall, isCallTo, literal, setting } from './templateLiterals';
+import {
+	type AstCall,
+	calloutSettingProblems,
+	isCallTo,
+	literal,
+	setting,
+} from './templateLiterals';
 import { TRANSCRIPT_HELPER, TRANSCRIPT_OPTIONS } from './transcriptPart';
 
-/** Settings of the transcript that are true or false. */
-const FLAGS: readonly string[] = ['folded', 'timestamps', 'speakers'];
-
-/** Settings that shape the callout, and mean nothing without one. */
-const CALLOUT_SHAPE: readonly string[] = ['title', 'folded'];
+/** Settings of the transcript lines that are true or false. */
+const FLAGS: readonly string[] = ['timestamps', 'speakers'];
 
 /** One place the template writes the transcript. */
 interface TranscriptCall {
@@ -104,10 +107,8 @@ function callProblems(call: TranscriptCall, first: boolean): string[] {
  * @param node - The call
  */
 function settingProblems(node: AstCall): string[] {
-	const pairs = node.hash?.pairs ?? [];
-	const given = new Set(pairs.map((pair) => pair.key));
 	return [
-		...pairs
+		...(node.hash?.pairs ?? [])
 			.filter((pair) => !TRANSCRIPT_OPTIONS.includes(pair.key))
 			.map(
 				(pair) =>
@@ -117,12 +118,9 @@ function settingProblems(node: AstCall): string[] {
 			const value = literal(setting(node, name));
 			return value !== undefined && typeof value !== 'boolean';
 		}).map((name) => `{{transcript}} needs ${name} to be true or false.`),
-		...(given.has('callout')
-			? []
-			: CALLOUT_SHAPE.filter((name) => given.has(name)).map(
-					(name) =>
-						`{{transcript}} has ${name} but no callout; add callout="quote" or leave ${name} out.`,
-				)),
+		...calloutSettingProblems(node).map(
+			(message) => `{{transcript}} ${message}`,
+		),
 	];
 }
 
