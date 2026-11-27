@@ -135,6 +135,9 @@ const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
 	channelLimits: new Map(),
 };
 
+/** A field of a profile its page edits as text. */
+type ProfileTextField = 'body' | 'routeTag' | 'routeFolder';
+
 /**
  * Settings tab for the Audio Recorder plugin.
  */
@@ -199,6 +202,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * carries names the field here and the profile by id.
 	 */
 	private readonly profileAccess = new Map<string, ProfileKindId>();
+	/** Which text field of a profile each key of {@link profileAccess} edits. */
+	private readonly profileTextFields = new Map<string, ProfileTextField>();
 
 	/**
 	 * Base control keys addressing the note a profile's body is read from,
@@ -349,12 +354,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @returns The stored value
 	 */
 	override getControlValue(key: string): unknown {
-		const field = this.profileFieldFor(key, this.profileAccess);
+		const field = this.profileTextFieldFor(key);
 		if (field) {
 			// A profile deleted while its page was open leaves the controls of
 			// that page standing until the page is torn down; an empty body is
 			// what they read then.
-			return field.profile?.body ?? '';
+			return field.profile?.[field.name] ?? '';
 		}
 		const source = this.profileFieldFor(key, this.profileNotes);
 		if (source) {
@@ -448,10 +453,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		key: string,
 		value: unknown,
 	): void | Promise<void> {
-		const field = this.profileFieldFor(key, this.profileAccess);
+		const field = this.profileTextFieldFor(key);
 		if (field) {
 			if (field.profile) {
-				field.profile.body = String(value);
+				field.profile[field.name] = String(value);
 			}
 			// The body is a text area, so this fires per keystroke: the value
 			// is live in memory either way, only the write to disk waits.
@@ -589,6 +594,22 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * The profile a text control edits, and which of its text fields.
+	 * @param key - The control key to resolve
+	 * @returns The profile, undefined when it is gone, and the field; or
+	 *   undefined for a key no profile text answers
+	 */
+	private profileTextFieldFor(
+		key: string,
+	): { profile: Profile | undefined; name: ProfileTextField } | undefined {
+		const field = this.profileFieldFor(key, this.profileAccess);
+		const name = this.profileTextFields.get(
+			parseProfileControlKey(key)?.base ?? '',
+		);
+		return field && name ? { ...field, name } : undefined;
+	}
+
+	/**
 	 * The profile whose field a control key addresses. The key names the kind
 	 * the field belongs to and the profile it belongs to, so a row on one
 	 * profile's page can never write to another's.
@@ -715,6 +736,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const ofKind = (): Profile[] =>
 			profilesOfKind(this.plugin.settings.profiles, kindId);
 		this.profileAccess.set(kind.bodyKey, kindId);
+		this.profileTextFields.set(kind.bodyKey, 'body');
+		if (kind.routes) {
+			this.profileAccess.set(kind.routeTagKey, kindId);
+			this.profileTextFields.set(kind.routeTagKey, 'routeTag');
+			this.profileAccess.set(kind.routeFolderKey, kindId);
+			this.profileTextFields.set(kind.routeFolderKey, 'routeFolder');
+		}
 		this.profileNotes.set(kind.noteKey, kindId);
 		this.profileChoices.set(kind.choiceKey, kindId);
 		this.profileSelections.set(kind.selectionKey, kindId);
@@ -788,6 +816,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				})),
 			visible: kind.visible,
 			templated: kind.template !== undefined,
+			routes: kind.routes === true,
+			routeTagKey: kind.routeTagKey,
+			routeFolderKey: kind.routeFolderKey,
 			showVariables: (id): void => {
 				const profile = findProfile(ofKind(), id);
 				const template = kind.template;

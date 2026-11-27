@@ -10,6 +10,7 @@
  * @module transcription/runFacts
  */
 
+import type { RoutedNote } from '../templates/templateRouting';
 import { type App, type CachedMetadata, Notice, type TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { errorMessage } from '../errors';
@@ -67,6 +68,26 @@ function tagsOf(cache: CachedMetadata | null): string[] {
 		.map((tag) => tag.replace(/^#/, ''))
 		.filter((tag) => tag !== '');
 	return [...new Set(tags)];
+}
+
+/**
+ * What a note says of itself for picking its template: its path, properties
+ * and tags.
+ * @param app - The app, for the vault and the metadata cache
+ * @param notePath - Vault path of the note; '' for none
+ * @returns Null when there is no such note
+ */
+export function routedNoteOf(app: App, notePath: string): RoutedNote | null {
+	const note = notePath === '' ? null : app.vault.getFileByPath(notePath);
+	if (!note) {
+		return null;
+	}
+	const cache = app.metadataCache.getFileCache(note);
+	return {
+		path: note.path,
+		frontmatter: cache?.frontmatter,
+		tags: tagsOf(cache),
+	};
 }
 
 /**

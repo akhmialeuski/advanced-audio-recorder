@@ -5,7 +5,7 @@
  * @module tests/integration/StructureTranscriptModal.test
  */
 
-import type { App, TFile } from 'obsidian';
+import { App, type TFile } from 'obsidian';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
@@ -19,6 +19,7 @@ import { at } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
 import { tenMinuteSource } from '../helpers/transcriptFixtures';
 import { noticeMessages } from '../mocks/obsidian';
+import { asMockApp } from '../helpers/obsidianMock';
 
 const loadTranscriptLines = jest.fn();
 jest.mock('src/chapters/transcriptSources', () => ({
@@ -30,7 +31,7 @@ jest.mock('src/chapters/transcriptSources', () => ({
 const SOURCE = tenMinuteSource('Anna: hello', 'Ben: goodbye');
 
 const file = { name: 'rec.webm', path: 'rec.webm' } as TFile;
-const app = {} as App;
+const app = new App();
 
 /** Two templates of the user's own. */
 const TEMPLATES: Profile[] = [
@@ -119,6 +120,14 @@ describe('initialTemplateId', () => {
 		settings.profiles = [];
 		expect(initialTemplateId(settings, 'b')).toBe('');
 	});
+
+	it('opens on the template a rule of the note calls for before any other', () => {
+		const settings = mergeSettings({});
+		settings.profiles = TEMPLATES;
+
+		expect(initialTemplateId(settings, 'a', 'b')).toBe('b');
+		expect(initialTemplateId(settings, 'a', 'gone')).toBe('a');
+	});
 });
 
 describe('StructureTranscriptModal', () => {
@@ -149,6 +158,25 @@ describe('StructureTranscriptModal', () => {
 		);
 		expect(modal.contentEl.textContent).toContain('Estimated cost:');
 		expect(modal.contentEl.textContent).toContain('10:00 transcript');
+	});
+
+	it('opens on the template the folder of the note calls for, and says why', async () => {
+		asMockApp(app).vault.seed([{ path: 'Reviews/q3.md', content: '' }]);
+		const { modal } = build({
+			applied: 'a',
+			notePath: 'Reviews/q3.md',
+			profiles: [
+				at(TEMPLATES, 0),
+				{ ...at(TEMPLATES, 1), routeFolder: 'Reviews' },
+			],
+		});
+
+		await open(modal);
+
+		expect(modal.contentEl.querySelector('select')?.value).toBe('b');
+		expect(modal.contentEl.textContent).toContain(
+			'Applies, picked by the folder Reviews.',
+		);
 	});
 
 	it('says so when the selected model has no built-in rate', async () => {

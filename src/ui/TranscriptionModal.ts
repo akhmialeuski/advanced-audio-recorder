@@ -59,7 +59,12 @@ import {
 	type TranscriptFileFormat,
 	type TranscriptionRunOutcome,
 	writesTemplateNote,
+	routedNoteOf,
 } from '../transcription/api';
+import {
+	routeTemplate,
+	type TemplateRoute,
+} from '../templates/templateRouting';
 import { CancellationSource } from '../utils/cancellation';
 import {
 	profilesOfKind,
@@ -208,6 +213,11 @@ export class TranscriptionModal extends PluginModal {
 	 * note even if the active pane changes before it starts.
 	 */
 	private readonly notePath: string;
+	/**
+	 * Which template the note calls for, and why. Routed again on every
+	 * preset pick, since a preset starts the run's options over.
+	 */
+	private route: TemplateRoute | undefined;
 
 	constructor(
 		app: App,
@@ -254,6 +264,28 @@ export class TranscriptionModal extends PluginModal {
 			this.notePath !== '',
 			writesTemplateNote(this.runSettings),
 		);
+		this.route = this.routeTemplate();
+	}
+
+	/**
+	 * Selects for the run the template its note calls for, so the dialog
+	 * shows it before the run and a pick there overrides it.
+	 * @returns What chose it; undefined for a run without a template
+	 */
+	private routeTemplate(): TemplateRoute | undefined {
+		if (!writesTemplateNote(this.runSettings)) {
+			return undefined;
+		}
+		const route = routeTemplate(
+			this.runSettings,
+			routedNoteOf(this.app, this.notePath),
+		);
+		setSelectedProfileId(
+			this.runSettings,
+			ProfileKindId.LlmTemplate,
+			route.templateId,
+		);
+		return route;
 	}
 
 	/**
@@ -680,10 +712,15 @@ export class TranscriptionModal extends PluginModal {
 				// Drawn again so the profile row below offers the new task's.
 				rerender: true,
 			});
-			addTaskProfilePicker(advancedCtx, profileText, (kind, id) => {
-				// Affects this run and is remembered as the next one's.
-				void this.options.onProfileSelected?.(kind, id);
-			});
+			addTaskProfilePicker(
+				advancedCtx,
+				profileText,
+				(kind, id) => {
+					// Affects this run and is remembered as the next one's.
+					void this.options.onProfileSelected?.(kind, id);
+				},
+				this.route,
+			);
 		}
 		if (s.transcriptionAutoChaptersEnabled) {
 			addToggle(advancedCtx, {
@@ -1004,6 +1041,8 @@ export class TranscriptionModal extends PluginModal {
 				file: this.file,
 				settings,
 				notePath: this.notePath,
+				// The dialog showed the template and let it be changed.
+				templatePicked: true,
 				durationSeconds: () => this.durationSeconds,
 				// Reuse the bytes read for the estimate probe so a manual run
 				// does not read the whole file twice (undefined on an auto-run,

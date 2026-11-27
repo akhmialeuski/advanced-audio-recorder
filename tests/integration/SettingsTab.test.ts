@@ -687,6 +687,53 @@ describe('AudioRecorderSettingTab', () => {
 			expect(text).toContain('part');
 		});
 
+		it('keeps the tag and the folder a note template is applied to', async () => {
+			mockSettings.profiles = [
+				profileOf('llmTemplate', 't', 'Meeting', ''),
+			];
+			const page = pageOf(tab.getSettingDefinitions(), 'Meeting');
+			const tagKey = rowIn(page, 'Apply to notes tagged').control?.key;
+			const folderKey = rowIn(page, 'Apply to notes in folder').control
+				?.key;
+
+			await tab.setControlValue(tagKey ?? '', 'meeting');
+			await tab.setControlValue(folderKey ?? '', 'Meetings');
+
+			expect(mockSettings.profiles[0]).toMatchObject({
+				routeTag: 'meeting',
+				routeFolder: 'Meetings',
+			});
+			expect(tab.getControlValue(tagKey ?? '')).toBe('meeting');
+		});
+
+		it('offers the rules on a note template page alone', () => {
+			mockSettings.profiles = [
+				profileOf('llmTemplate', 't', 'Meeting', ''),
+				dictionaryProfile('g', 'Legal', ''),
+			];
+			/** Whether the group holding the rules is shown on the page. */
+			const rulesShown = (name: string): unknown => {
+				const group = pageOf(
+					tab.getSettingDefinitions(),
+					name,
+				).items.find(
+					(item): item is GroupDefinition =>
+						'items' in item &&
+						item.items.some(
+							(row) =>
+								'name' in row &&
+								row.name === 'Apply to notes tagged',
+						),
+				);
+				return typeof group?.visible === 'function'
+					? group.visible()
+					: group?.visible;
+			};
+
+			expect(rulesShown('Meeting')).toBe(true);
+			expect(rulesShown('Legal')).toBe(false);
+		});
+
 		it('lists nothing for a profile deleted while its page was open', () => {
 			mockSettings.transcriptionAutoChaptersEnabled = true;
 			mockSettings.profiles = [chapterProfile('a', 'Standup', 'x')];

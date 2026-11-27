@@ -10,6 +10,11 @@ import { loadTranscriptLines } from '../../chapters/transcriptSources';
 import { valueParam, cliText } from '../../obsidian/cliArgs';
 import { ProfileKindId, profilesOfKind } from '../../settings/profiles';
 import { TemplateOutput } from '../../transcription/llmPostProcess';
+import { routedNoteOf } from '../../transcription/runFacts';
+import {
+	noteRuleTemplateId,
+	routeTemplate,
+} from '../../templates/templateRouting';
 import { TranscriptStructurer } from '../../transcription/TranscriptStructurer';
 import {
 	StructureTranscriptModal,
@@ -105,6 +110,7 @@ export function openStructureTranscript(context: FileContext): void {
 async function cliTemplate(
 	context: FileContext,
 	name: string | null,
+	notePath: string,
 ): Promise<{ id: string } | { refusal: string }> {
 	const settings = context.services.getSettings();
 	const templates = profilesOfKind(
@@ -124,7 +130,15 @@ async function cliTemplate(
 	const section = await context.services.recordingSidecar
 		.getTranscript(context.file.path)
 		.catch(() => null);
-	const id = initialTemplateId(settings, section?.appliedTemplate?.profileId);
+	const route = routeTemplate(
+		settings,
+		routedNoteOf(context.services.app, notePath),
+	);
+	const id = initialTemplateId(
+		settings,
+		section?.appliedTemplate?.profileId,
+		noteRuleTemplateId(route),
+	);
 	return id === '' ? { refusal: 'There is no note template yet.' } : { id };
 }
 
@@ -144,7 +158,12 @@ export async function structureTranscriptFromCli(
 	if ('refusal' in output) {
 		return output.refusal;
 	}
-	const template = await cliTemplate(context, cliText(args, 'template'));
+	const notePath = targetNote(context);
+	const template = await cliTemplate(
+		context,
+		cliText(args, 'template'),
+		notePath,
+	);
 	if ('refusal' in template) {
 		return template.refusal;
 	}
@@ -158,7 +177,7 @@ export async function structureTranscriptFromCli(
 	}
 	const outcome = await structurerOf(services).structure({
 		file,
-		notePath: targetNote(context),
+		notePath,
 		templateId: template.id,
 		output: output.output,
 		source,

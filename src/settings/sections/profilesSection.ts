@@ -138,6 +138,40 @@ function profilePage(
 				],
 			},
 			{
+				// What a note template is applied to without being picked:
+				// declared here, beside its body, so a rule cannot outlive or
+				// drift from the template it names.
+				type: 'group',
+				cls: SETTINGS_SECTION_CLASS,
+				visible: () => catalogue.routes,
+				items: [
+					{
+						name: 'Apply to notes tagged',
+						desc: 'A tag such as meeting. A run into a note with this tag, or one nested under it such as meeting/weekly, uses this template. Empty for none.',
+						control: {
+							type: 'text',
+							key: profileControlKey(
+								catalogue.routeTagKey,
+								entry.id,
+							),
+							placeholder: 'meeting',
+						},
+					},
+					{
+						name: 'Apply to notes in folder',
+						desc: 'A folder such as Meetings. A run into a note in it, or in a folder inside it, uses this template; the deepest folder wins. Empty for none.',
+						control: {
+							type: 'text',
+							key: profileControlKey(
+								catalogue.routeFolderKey,
+								entry.id,
+							),
+							placeholder: 'Meetings',
+						},
+					},
+				],
+			},
+			{
 				// A prompt names facts of the run, and the list of them sits
 				// next to the text being written, with what is wrong in it.
 				type: 'group',

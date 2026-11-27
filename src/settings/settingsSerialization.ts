@@ -745,6 +745,21 @@ function migrateLegacyTranscriptionDictionary(
 }
 
 /**
+ * The routing rules a stored note template declares, each left out when empty.
+ * @param entry - The stored profile
+ */
+function routeFieldsOf(
+	entry: Record<string, unknown>,
+): Pick<Profile, 'routeTag' | 'routeFolder'> {
+	const routeTag = legacyString(entry.routeTag);
+	const routeFolder = legacyString(entry.routeFolder);
+	return {
+		...(routeTag === '' ? {} : { routeTag }),
+		...(routeFolder === '' ? {} : { routeFolder }),
+	};
+}
+
+/**
  * Reads the stored profiles and selections back into the shapes the plugin
  * addresses, dropping what a hand-edited data.json left unusable: an entry
  * that is not a record, one missing an id, a name, or a body, and one carrying
@@ -775,6 +790,7 @@ function normalizeProfiles(merged: AudioRecorderSettings): void {
 					name,
 					body: legacyString(entry.body),
 					...(sourcePath === '' ? {} : { sourcePath }),
+					...routeFieldsOf(entry),
 				},
 			];
 		},
