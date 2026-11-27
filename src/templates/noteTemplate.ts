@@ -54,6 +54,9 @@ export const SHARED_PART_OPTIONS: readonly string[] = [
 	'empty',
 	'language',
 	'separate',
+	'callout',
+	'title',
+	'folded',
 ];
 
 /** One part of a template, as the run's facts made it. */

@@ -3,6 +3,10 @@
  * @module settings/settingsSchema
  */
 
+import {
+	ACTION_ITEMS_PROFILE,
+	SHIPPED_TEMPLATES,
+} from '../templates/shippedTemplates';
 import { ConversionLinkAction, OutputMode } from '../types';
 import {
 	FORMAT_WEBM,
@@ -1009,6 +1013,11 @@ export function shippedProfiles(): Profile[] {
 			name: LANGUAGE_LESSON_CLEANUP_PROFILE_NAME,
 			body: LANGUAGE_LESSON_PRESET_BODY,
 		},
+		{ ...ACTION_ITEMS_PROFILE, kind: ProfileKindId.LlmCustom },
+		...SHIPPED_TEMPLATES.map((template) => ({
+			...template,
+			kind: ProfileKindId.LlmTemplate,
+		})),
 	];
 }
 

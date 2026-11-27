@@ -285,3 +285,27 @@ export function renderCallout(text: string, shape: PartShape): string {
 	const head = `> [!${type || 'note'}]${fold}${title ? ` ${title}` : ''}`;
 	return `${head}\n${quoted(text)}`;
 }
+
+/**
+ * Text in a callout when a part's or the transcript's settings ask for one:
+ * `callout="quote"` names its type, `callout=true` takes a note, and `title`
+ * and `folded` shape it. Text is returned as it is without `callout`.
+ * @param text - What goes in the callout
+ * @param settings - The settings of the part or of `{{transcript}}`
+ */
+export function inCallout(
+	text: string,
+	settings: Readonly<Record<string, unknown>>,
+): string {
+	const callout = settings['callout'];
+	if (callout === undefined || callout === false) {
+		return text;
+	}
+	return renderCallout(text, {
+		options: {
+			type: typeof callout === 'string' ? callout : 'note',
+			title: settings['title'],
+			folded: settings['folded'],
+		},
+	});
+}

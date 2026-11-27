@@ -11,7 +11,7 @@
  */
 
 import type { HelperDelegate, HelperOptions } from 'handlebars';
-import { renderCallout } from './partRenderers';
+import { inCallout } from './partRenderers';
 import type { TemplateCatalog } from './templateCatalog';
 import type { TemplateHelper } from './templateHelpers';
 
@@ -53,28 +53,6 @@ export const TURN_FIELDS: TemplateCatalog = [
  */
 function flag(value: unknown): boolean | undefined {
 	return typeof value === 'boolean' ? value : undefined;
-}
-
-/**
- * The transcript in a callout when the settings ask for one.
- * @param text - The transcript lines
- * @param hash - The helper's settings
- */
-function inCallout(
-	text: string,
-	hash: Readonly<Record<string, unknown>>,
-): string {
-	const callout = hash['callout'];
-	if (callout === undefined || callout === false) {
-		return text;
-	}
-	return renderCallout(text, {
-		options: {
-			type: typeof callout === 'string' ? callout : 'note',
-			title: hash['title'],
-			folded: hash['folded'],
-		},
-	});
 }
 
 /**

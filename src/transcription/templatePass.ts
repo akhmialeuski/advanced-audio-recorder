@@ -25,7 +25,8 @@ import {
 	collectParts,
 	noteTemplateEngine,
 } from '../templates/noteTemplate';
-import { formatOf } from '../templates/partFormats';
+import { CALLOUT_FORMAT, formatOf } from '../templates/partFormats';
+import { inCallout } from '../templates/partRenderers';
 import {
 	PROPERTIES_ROOT,
 	type RunFacts,
@@ -192,7 +193,11 @@ export function renderPart(
 	}
 	const format = formatOf(spec.format);
 	const shape = { max: spec.max, options: spec.options, links };
-	return format.render(format.read(answer, shape), shape).trim();
+	const markdown = format.render(format.read(answer, shape), shape).trim();
+	// A callout part is its own callout; any other is put in one on request.
+	return markdown === '' || format.id === CALLOUT_FORMAT
+		? markdown
+		: inCallout(markdown, spec.options);
 }
 
 /** Runs one template over one transcript. */

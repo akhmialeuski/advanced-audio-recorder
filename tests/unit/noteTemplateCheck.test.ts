@@ -241,3 +241,26 @@ describe('checking the transcript of a template', () => {
 		expect(check(source)).toEqual([expect.stringContaining(message)]);
 	});
 });
+
+describe('checking the callout of a part', () => {
+	it('takes callout, title and folded on any part', () => {
+		expect(
+			check(
+				'{{#part "a" format="bullets" callout="tip" title="T" folded=true}}A{{/part}}',
+			),
+		).toEqual([]);
+	});
+
+	it.each([
+		[
+			'{{#part "a" title="T"}}A{{/part}}',
+			'Part "a" has title but no callout',
+		],
+		[
+			'{{#part "a" callout="tip" folded="no"}}A{{/part}}',
+			'Part "a" needs folded to be true or false.',
+		],
+	])('finds what is wrong with %s', (source, message) => {
+		expect(check(source)).toEqual([expect.stringContaining(message)]);
+	});
+});

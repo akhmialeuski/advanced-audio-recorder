@@ -71,6 +71,9 @@ const TASK_STYLE_NAMES: readonly unknown[] = ['plain', 'dataview', 'tasks'];
 /** The format a part takes when it names none. */
 export const DEFAULT_PART_FORMAT = 'prose';
 
+/** The format that writes its paragraphs in a callout of its own. */
+export const CALLOUT_FORMAT = 'callout';
+
 /**
  * A value as text, '' for a list.
  * @param value - The value
@@ -249,7 +252,7 @@ const FORMATS: readonly PartFormat[] = [
 		render: (value, shape) => renderTable(asRecords(value), shape),
 	},
 	{
-		id: 'callout',
+		id: CALLOUT_FORMAT,
 		contract: () => 'a string of Markdown paragraphs',
 		description:
 			'Paragraphs in a callout; type="tip" picks its kind, title="..." its title, folded=true folds it.',

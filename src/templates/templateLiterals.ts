@@ -70,3 +70,28 @@ export function isCallTo(node: AstCall, helper: string): boolean {
 		path.original === helper
 	);
 }
+
+/** Settings that shape a callout, and mean nothing without one. */
+const CALLOUT_SHAPE: readonly string[] = ['title', 'folded'];
+
+/**
+ * What is wrong with the callout settings of a call that may be written in a
+ * callout: `folded` that is not true or false, and `title` or `folded` given
+ * without `callout`. Each message follows the call's name.
+ * @param node - The call
+ */
+export function calloutSettingProblems(node: AstCall): string[] {
+	const given = new Set((node.hash?.pairs ?? []).map((pair) => pair.key));
+	const folded = literal(setting(node, 'folded'));
+	return [
+		...(folded === undefined || typeof folded === 'boolean'
+			? []
+			: ['needs folded to be true or false.']),
+		...(given.has('callout')
+			? []
+			: CALLOUT_SHAPE.filter((name) => given.has(name)).map(
+					(name) =>
+						`has ${name} but no callout; add callout="quote" or leave ${name} out.`,
+				)),
+	];
+}

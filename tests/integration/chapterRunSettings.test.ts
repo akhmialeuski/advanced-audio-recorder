@@ -39,7 +39,11 @@ describe('applying typed choices to a run', () => {
 		expect(applyChapterRunChoices(run, { profile: 'LECTURE' })).toBeNull();
 
 		expect(selectedProfileId(run, ProfileKindId.ChapterPrompt)).toBe(
-			run.profiles.find((profile) => profile.name === 'Lecture')?.id,
+			run.profiles.find(
+				(profile) =>
+					profile.kind === ProfileKindId.ChapterPrompt &&
+					profile.name === 'Lecture',
+			)?.id,
 		);
 	});
 

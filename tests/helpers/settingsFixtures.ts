@@ -9,8 +9,6 @@
  */
 
 import {
-	LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
-	LANGUAGE_LESSON_PRESET_ID,
 	MODEL_SEED_GENERATION,
 	LLM_PROVIDER_IDS,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -244,8 +242,7 @@ export function fullyPopulatedSettings(): Omit<
 		// one does not ship, so nothing is added back over the list above.
 		shippedProfileIds: [
 			'shipped-retired-profile',
-			LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
-			LANGUAGE_LESSON_PRESET_ID,
+			...shippedProfiles().map((profile) => profile.id),
 		],
 		selectedProfileIds: {
 			participants: '',
