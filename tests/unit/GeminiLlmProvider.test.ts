@@ -117,9 +117,9 @@ describe('GeminiLlmProvider.complete', () => {
 		}));
 
 		// The LLM path does expose a max-tokens setting, so its remedy points
-		// there (unlike the transcription path).
+		// there (unlike the transcription path), on the engine's own page.
 		await expect(provider().complete(PROMPT, MAX_TOKENS)).rejects.toThrow(
-			/raise the max output tokens/i,
+			/Raise Max output tokens on the Google Gemini page under Engines/,
 		);
 	});
 

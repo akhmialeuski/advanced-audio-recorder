@@ -7,7 +7,12 @@
  */
 
 import { isRecord } from '../providers/responseUtils';
-import { geminiCandidateText, geminiUsage } from '../providers/geminiShared';
+import {
+	GEMINI_FINISH_MAX_TOKENS,
+	geminiCandidateText,
+	geminiFinishReason,
+	geminiUsage,
+} from '../providers/geminiShared';
 
 /** `finish_reason` of an OpenAI-style choice that stopped at its token limit. */
 const OPENAI_FINISH_LENGTH = 'length';
@@ -15,22 +20,59 @@ const OPENAI_FINISH_LENGTH = 'length';
 /** `stop_reason` of an Anthropic message that stopped at its token limit. */
 const ANTHROPIC_STOP_MAX_TOKENS = 'max_tokens';
 
+/** Whose limit an answer stopped at, and how large it was. */
+export interface OutputLimit {
+	/** The engine's name, as the user knows it. */
+	readonly label: string;
+	/** The output token limit the request carried. */
+	readonly maxTokens: number;
+}
+
 /**
- * Refuses an answer the vendor cut at its output token limit. Such an answer
- * is the start of the text and reads as the whole of it: a cleanup cut this
- * way replaced an hour-long transcript with its first nine minutes. The
- * Gemini client refuses the same stop through `assertGeminiNotTruncated`.
- * @param truncated - Whether the response names the limit as why it stopped
- * @throws When it does
+ * An answer the vendor cut at its output token limit. Such an answer is the
+ * start of the text and reads as the whole of it: a cleanup cut this way
+ * replaced an hour-long transcript with its first nine minutes. Every LLM
+ * client refuses the stop with this one error, so the notice that sizes the
+ * limit reads the same counts whichever vendor answered.
+ *
+ * The message names the engine, the limit and where it is set, and the counts
+ * the vendor reported ride along, so a caller that knows how long the answer
+ * should have been can say how large the limit has to be. The vendor bills
+ * the refused answer like a finished one, so its counts are also what the
+ * session total records for it.
  */
-function assertNotTruncated(truncated: boolean): void {
-	if (truncated) {
-		throw new Error(
-			'The model stopped because it reached its output token limit, so ' +
-				'the response is incomplete. Raise the max output tokens in ' +
-				'settings, shorten the input, or choose a model with a larger ' +
-				'output limit.',
+export class LlmAnswerTruncatedError extends Error {
+	/**
+	 * What the vendor billed for the refused answer, absent when it reported
+	 * nothing, as the usage of a finished completion is.
+	 */
+	readonly usage: LlmUsage | undefined;
+	/** Tokens of the prompt, when the vendor reported them. */
+	readonly inputTokens: number | undefined;
+
+	constructor(
+		limit: OutputLimit,
+		usage: LlmUsage,
+		/**
+		 * Tokens of the limit the model spent on reasoning before it answered,
+		 * when the vendor reported them. They count against the same limit:
+		 * `deepseek-flash` spent 17 552 of 50 000 on one cleanup.
+		 */
+		readonly reasoningTokens: number | undefined,
+	) {
+		super(
+			`${limit.label} stopped at its output token limit of ` +
+				`${String(limit.maxTokens)}` +
+				(reasoningTokens
+					? `, ${String(reasoningTokens)} of them spent on reasoning`
+					: '') +
+				', so the answer is incomplete. Raise Max output tokens on ' +
+				`the ${limit.label} page under Engines, or choose a model ` +
+				'with a larger output limit.',
 		);
+		this.name = 'LlmAnswerTruncatedError';
+		this.usage = Object.keys(usage).length > 0 ? usage : undefined;
+		this.inputTokens = usage.inputTokens;
 	}
 }
 
@@ -38,15 +80,28 @@ function assertNotTruncated(truncated: boolean): void {
  * Refuses an OpenAI Chat Completions response whose first choice stopped at
  * the output token limit.
  * @param body - Parsed JSON response
- * @throws When the answer is incomplete
+ * @param limit - The limit the request carried, and whose it is
+ * @throws {LlmAnswerTruncatedError} When the answer is incomplete
  */
-export function assertOpenAiNotTruncated(body: unknown): void {
+export function assertOpenAiNotTruncated(
+	body: unknown,
+	limit: OutputLimit,
+): void {
 	const first: unknown =
 		isRecord(body) && Array.isArray(body.choices)
 			? body.choices[0]
 			: undefined;
-	assertNotTruncated(
-		isRecord(first) && first.finish_reason === OPENAI_FINISH_LENGTH,
+	if (!isRecord(first) || first.finish_reason !== OPENAI_FINISH_LENGTH) {
+		return;
+	}
+	const usage = isRecord(body) && isRecord(body.usage) ? body.usage : {};
+	const details = isRecord(usage.completion_tokens_details)
+		? usage.completion_tokens_details
+		: {};
+	throw new LlmAnswerTruncatedError(
+		limit,
+		extractOpenAiUsage(body),
+		tokenCount(details.reasoning_tokens),
 	);
 }
 
@@ -54,11 +109,42 @@ export function assertOpenAiNotTruncated(body: unknown): void {
  * Refuses an Anthropic Messages response that stopped at the output token
  * limit.
  * @param body - Parsed JSON response
- * @throws When the answer is incomplete
+ * @param limit - The limit the request carried, and whose it is
+ * @throws {LlmAnswerTruncatedError} When the answer is incomplete
  */
-export function assertAnthropicNotTruncated(body: unknown): void {
-	assertNotTruncated(
-		isRecord(body) && body.stop_reason === ANTHROPIC_STOP_MAX_TOKENS,
+export function assertAnthropicNotTruncated(
+	body: unknown,
+	limit: OutputLimit,
+): void {
+	if (!isRecord(body) || body.stop_reason !== ANTHROPIC_STOP_MAX_TOKENS) {
+		return;
+	}
+	throw new LlmAnswerTruncatedError(
+		limit,
+		extractAnthropicUsage(body),
+		undefined,
+	);
+}
+
+/**
+ * Refuses a Gemini `generateContent` response that stopped at the output
+ * token limit. Gemini counts its thinking against the same limit, as
+ * `thoughtsTokenCount`.
+ * @param body - Parsed JSON response
+ * @param limit - The limit the request carried, and whose it is
+ * @throws {LlmAnswerTruncatedError} When the answer is incomplete
+ */
+export function assertGeminiAnswerNotTruncated(
+	body: unknown,
+	limit: OutputLimit,
+): void {
+	if (geminiFinishReason(body) !== GEMINI_FINISH_MAX_TOKENS) {
+		return;
+	}
+	throw new LlmAnswerTruncatedError(
+		limit,
+		extractGeminiUsage(body),
+		geminiUsage(body).thoughtsTokenCount,
 	);
 }
 

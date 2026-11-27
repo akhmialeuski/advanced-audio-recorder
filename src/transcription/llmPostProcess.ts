@@ -12,6 +12,8 @@ import {
 	DEFAULT_LLM_SUMMARY_PROMPT,
 	DEFAULT_LLM_TRANSLATE_PROMPT,
 } from '../constants';
+import { errorMessage } from '../errors';
+import { LlmAnswerTruncatedError } from './llm/llmResponse';
 
 /**
  * What the LLM should do with the transcript text.
@@ -187,4 +189,49 @@ export function buildPostProcessPrompt(
 				user: text,
 			};
 	}
+}
+
+/** What the user is told when the post-processing pass did not finish. */
+const POST_PROCESS_FAILED =
+	'LLM post-processing failed; saving the raw transcript.';
+
+/**
+ * The tasks whose answer is the transcript written again, so that it is about
+ * as long as the transcript the prompt carried.
+ */
+const REWRITES_WHOLE_TRANSCRIPT: ReadonlySet<LlmTask> = new Set([
+	LlmTask.Cleanup,
+	LlmTask.Translate,
+]);
+
+/**
+ * The notice for a post-processing pass that failed: that the raw transcript
+ * is kept, and why the pass failed in the words of whoever refused it. A
+ * limit above the model's maximum is refused by the service, which names the
+ * maximum, so its sentence is the instruction. For an answer cut at the
+ * output limit by a task that writes the whole transcript again, the notice
+ * adds how large the limit has to be: the transcript's own tokens, which the
+ * answer repeats, and what the model spent on reasoning on top of them.
+ * @param error - What the pass failed with
+ * @param task - The task the pass was running
+ * @returns The notice text
+ */
+export function postProcessFailureNotice(
+	error: unknown,
+	task: LlmTask,
+): string {
+	const reason = `${POST_PROCESS_FAILED} ${errorMessage(error)}`;
+	if (
+		!(error instanceof LlmAnswerTruncatedError) ||
+		error.inputTokens === undefined ||
+		!REWRITES_WHOLE_TRANSCRIPT.has(task)
+	) {
+		return reason;
+	}
+	const needed = error.inputTokens + (error.reasoningTokens ?? 0);
+	return (
+		`${reason} This task writes the whole transcript again, about ` +
+		`${String(error.inputTokens)} tokens here, so the limit has to be ` +
+		`at least ${String(needed)}.`
+	);
 }

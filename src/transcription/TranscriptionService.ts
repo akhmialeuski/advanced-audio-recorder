@@ -72,7 +72,11 @@ import {
 	transcriptMarkdownOptions,
 } from './transcriptFormat';
 import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
-import { buildPostProcessPrompt, LlmTask } from './llmPostProcess';
+import {
+	buildPostProcessPrompt,
+	LlmTask,
+	postProcessFailureNotice,
+} from './llmPostProcess';
 import { TranscriptTranslator } from './llm/TranscriptTranslator';
 import { describeDictionaryOmission } from './dictionaryBias';
 import {
@@ -1014,7 +1018,10 @@ export class TranscriptionService {
 					error,
 				);
 				new Notice(
-					'LLM post-processing failed; saving the raw transcript.',
+					postProcessFailureNotice(
+						error,
+						settings.llmPostProcessTask,
+					),
 				);
 			}
 		}

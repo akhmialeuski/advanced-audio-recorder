@@ -28,8 +28,12 @@ import { CancellationSource } from 'src/utils/cancellation';
 import { HttpError } from 'src/transcription/httpClient';
 import { outcomeOf, waitFor } from '../helpers/async';
 import { EngineLabel } from 'src/providers/providers';
-import { OpenAiCompatibleLlmProvider } from 'src/transcription/llm/LlmProvider';
-import { OPENAI_IDENTITY } from '../helpers/llmDoubles';
+import {
+	GeminiLlmProvider,
+	OpenAiCompatibleLlmProvider,
+	type LlmProvider,
+} from 'src/transcription/llm/LlmProvider';
+import { geminiCutAnswer, OPENAI_IDENTITY } from '../helpers/llmDoubles';
 import { withRequestUrl } from '../helpers/network';
 
 const audioFile = partial<TFile>({
@@ -483,7 +487,7 @@ describe('a cancel that lands while a request is in flight', () => {
 
 		expect(result.markdown).toContain('hi');
 		expect(noticeMessages()).toContain(
-			'LLM post-processing failed; saving the raw transcript.',
+			'LLM post-processing failed; saving the raw transcript. the LLM key is invalid',
 		);
 	});
 });
@@ -491,42 +495,142 @@ describe('a cancel that lands while a request is in flight', () => {
 // The real client against a scripted wire: a cleanup answer cut at the output
 // limit once replaced an hour-long transcript with the ten minutes it had
 // reached, because a truncated answer was read as a finished one.
-describe('a cleanup answer the vendor cut at its output limit', () => {
-	it('keeps the raw transcript and says the cleanup failed', async () => {
+describe('a cleanup pass the vendor did not finish', () => {
+	/**
+	 * A service whose transcription completes and whose cleanup goes through
+	 * the real OpenAI-compatible client to the scripted wire.
+	 * @param status - HTTP status the wire answers the cleanup with
+	 * @param body - The body it answers with
+	 * @param llm - The real client the cleanup goes through
+	 * @returns The service
+	 */
+	function serviceOverWire(
+		status: number,
+		body: object,
+		llm: () => LlmProvider = () =>
+			new OpenAiCompatibleLlmProvider(
+				{
+					baseUrl: 'https://llm.example',
+					apiKey: 'k',
+					model: 'deepseek-flash',
+				},
+				OPENAI_IDENTITY,
+			),
+	): TranscriptionService {
 		withRequestUrl(() => ({
-			status: 200,
+			status,
 			headers: {},
-			text: JSON.stringify({
-				choices: [
-					{
-						finish_reason: 'length',
-						message: { content: '[[recording' },
-					},
-				],
-			}),
+			text: JSON.stringify(body),
 		}));
-		const service = serviceOver(
+		return serviceOver(
 			makeProvider(() => {
 				/* the request itself completes */
 			}),
 			withCleanup,
-			() =>
-				new OpenAiCompatibleLlmProvider(
-					{
-						baseUrl: 'https://llm.example',
-						apiKey: 'k',
-						model: 'deepseek-flash',
-					},
-					OPENAI_IDENTITY,
-				),
+			llm,
 		);
+	}
+
+	it('keeps the raw transcript when the answer was cut at the output limit', async () => {
+		const service = serviceOverWire(200, {
+			choices: [
+				{
+					finish_reason: 'length',
+					message: { content: '[[recording' },
+				},
+			],
+		});
 
 		const result = (await runToCompletion(service)) as { markdown: string };
 
 		expect(result.markdown).toContain('hi');
 		expect(result.markdown).not.toContain('[[recording');
-		expect(noticeMessages()).toContain(
-			'LLM post-processing failed; saving the raw transcript.',
+	});
+
+	// What the user reads has to be enough to fix it: the transcript a
+	// cleanup writes again is as long as the one it read, and a model that
+	// reasons spends part of the same limit on that.
+	it('says how large the limit has to be for a cut answer', async () => {
+		const service = serviceOverWire(200, {
+			choices: [
+				{
+					finish_reason: 'length',
+					message: { content: '[[recording' },
+				},
+			],
+			usage: {
+				prompt_tokens: 36626,
+				completion_tokens: 50000,
+				completion_tokens_details: { reasoning_tokens: 17552 },
+			},
+		});
+
+		await runToCompletion(service);
+
+		expect(noticeMessages()).toContainEqual(
+			expect.stringMatching(
+				/^LLM post-processing failed; saving the raw transcript\. .* stopped at its output token limit of \d+, 17552 of them spent on reasoning, .*This task writes the whole transcript again, about 36626 tokens here, so the limit has to be at least 54178\.$/,
+			),
+		);
+	});
+
+	it('counts the transcript alone when the vendor reported no reasoning', async () => {
+		const service = serviceOverWire(200, {
+			choices: [
+				{
+					finish_reason: 'length',
+					message: { content: '[[recording' },
+				},
+			],
+			usage: { prompt_tokens: 36626, completion_tokens: 4096 },
+		});
+
+		await runToCompletion(service);
+
+		expect(noticeMessages()).toContainEqual(
+			expect.stringMatching(/so the limit has to be at least 36626\.$/),
+		);
+	});
+
+	it('says how large the limit has to be for an answer Gemini cut', async () => {
+		const service = serviceOverWire(
+			200,
+			geminiCutAnswer({
+				promptTokenCount: 36626,
+				thoughtsTokenCount: 17552,
+			}),
+			() =>
+				new GeminiLlmProvider({
+					baseUrl: 'https://gemini.example',
+					apiKey: 'gm-test',
+					model: 'gemini-4-hydrogen',
+				}),
+		);
+
+		await runToCompletion(service);
+
+		expect(noticeMessages()).toContainEqual(
+			expect.stringMatching(/so the limit has to be at least 54178\.$/),
+		);
+	});
+
+	// A limit above what the model allows is refused by the service, which
+	// names the maximum it accepts, and that sentence is the instruction.
+	it("shows the service's own refusal of a limit above the model's maximum", async () => {
+		const service = serviceOverWire(400, {
+			error: {
+				message:
+					'Invalid max_tokens value, the valid range of max_tokens is [1, 8192]',
+			},
+		});
+
+		const result = (await runToCompletion(service)) as { markdown: string };
+
+		expect(result.markdown).toContain('hi');
+		expect(noticeMessages()).toContainEqual(
+			expect.stringContaining(
+				'the valid range of max_tokens is [1, 8192]',
+			),
 		);
 	});
 });
