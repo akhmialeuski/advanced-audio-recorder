@@ -25,6 +25,7 @@ import {
 	parseParticipantBody,
 } from '../speakers/participantRoster';
 import { nextEntryPrefix } from '../utils/listLines';
+import { newDictionaryTerms } from './profileResolution';
 import { findNoteView } from '../utils/noteViews';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 
@@ -249,6 +250,27 @@ export class ProfileNoteStore {
 }
 
 /**
+ * A note with entries appended, each on a line of its own that continues the
+ * list the line before it belongs to: the same quote and bullet, the next
+ * number of an ordered list, an open box after a task.
+ * @param content - The note's text
+ * @param entries - The entries, without list markers
+ */
+function withEntriesAppended(
+	content: string,
+	entries: readonly string[],
+): string {
+	const text = content.trimEnd();
+	// Each entry continues the line before it, so an ordered list counts on.
+	let previous = text.slice(text.lastIndexOf('\n') + 1);
+	const lines = entries.map((entry) => {
+		previous = `${nextEntryPrefix(previous)}${entry}`;
+		return previous;
+	});
+	return withLinesAppended(content, lines.join('\n'));
+}
+
+/**
  * Adds names to a roster kept in a note, so a name applied in the rename dialog
  * is suggested next time exactly as it is for a roster typed into the settings.
  *
@@ -280,14 +302,34 @@ export async function appendParticipantsToNote(
 			return content;
 		}
 		added = true;
-		const text = content.trimEnd();
-		// Each name continues the line before it, so an ordered list counts on.
-		let previous = text.slice(text.lastIndexOf('\n') + 1);
-		const lines = fresh.map((name) => {
-			previous = `${nextEntryPrefix(previous)}${name}`;
-			return previous;
-		});
-		return withLinesAppended(content, lines.join('\n'));
+		return withEntriesAppended(content, fresh);
+	});
+	return added;
+}
+
+/**
+ * Appends terms to the note a dictionary profile is read from, each on a
+ * line of its own that continues the list the note's last line belongs to,
+ * as {@link appendParticipantsToNote} does for names. The terms already in
+ * the note are read inside the same atomic write.
+ * @param vault - The vault holding the note
+ * @param file - The note the dictionary is read from
+ * @param terms - Terms to add
+ * @returns How many terms were new
+ */
+export async function appendTermsToNote(
+	vault: Vault,
+	file: TFile,
+	terms: readonly string[],
+): Promise<number> {
+	let added = 0;
+	await vault.process(file, (content) => {
+		const fresh = newDictionaryTerms(noteBody(content), terms);
+		added = fresh.length;
+		if (fresh.length === 0) {
+			return content;
+		}
+		return withEntriesAppended(content, fresh);
 	});
 	return added;
 }

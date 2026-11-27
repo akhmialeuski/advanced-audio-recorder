@@ -74,6 +74,9 @@ export const DEFAULT_PART_FORMAT = 'prose';
 /** The format that writes its paragraphs in a callout of its own. */
 export const CALLOUT_FORMAT = 'callout';
 
+/** The format of a glossary, whose terms a run can offer to the dictionary. */
+export const TERMS_FORMAT = 'terms';
+
 /**
  * A value as text, '' for a list.
  * @param value - The value
@@ -197,7 +200,7 @@ const FORMATS: readonly PartFormat[] = [
 			renderLeads(records, shape, 'decision', 'reason'),
 	}),
 	recordFormat({
-		id: 'terms',
+		id: TERMS_FORMAT,
 		fields: [
 			['term', 'a name, term or acronym used in the recording'],
 			['definition', 'what it means there, in one sentence'],
@@ -283,4 +286,18 @@ export function formatOf(id: string): PartFormat {
 /** Every format, in the order the list of formats shows them. */
 export function partFormats(): readonly PartFormat[] {
 	return FORMATS;
+}
+
+/**
+ * The terms a glossary part's answer names, as the model spelled them.
+ * @param format - The part's format
+ * @param answer - What the model answered for the part
+ * @returns The terms; none for a part in another format
+ */
+export function answerTerms(format: string, answer: unknown): string[] {
+	if (format !== TERMS_FORMAT || answer === undefined || answer === null) {
+		return [];
+	}
+	const records = asRecords(formatOf(format).read(answer, { options: {} }));
+	return records.map((record) => record.term ?? '').filter(Boolean);
 }

@@ -365,6 +365,8 @@ export interface AppliedNoteTemplate {
 	readonly name: string;
 	/** The properties its parts write to the note. */
 	readonly properties: NoteProperties;
+	/** The terms its glossary parts named, to offer to the dictionary. */
+	readonly terms?: readonly string[] | undefined;
 }
 
 /**
@@ -377,7 +379,11 @@ function appliedNoteTemplate(
 ): AppliedNoteTemplate | undefined {
 	return note.templateName === undefined
 		? undefined
-		: { name: note.templateName, properties: note.properties };
+		: {
+				name: note.templateName,
+				properties: note.properties,
+				terms: note.terms,
+			};
 }
 
 /** A translated transcript and the Markdown rendered from it. */

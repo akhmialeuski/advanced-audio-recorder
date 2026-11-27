@@ -32,6 +32,11 @@ import {
 } from './transcriptOutput';
 import type { PartFailure } from './partFailure';
 import { writeTemplateNote } from './templateNoteOutput';
+import {
+	termsOfferOf,
+	type NoticeAction,
+	type TermsAction,
+} from './termsOffer';
 
 /**
  * The sidecar surface a transcribe-and-write run needs: the service's name
@@ -182,6 +187,30 @@ export interface TranscribeFileOptions {
 	 * re-applied nor renamable later, and no output record is kept.
 	 */
 	sidecar?: TranscriptOutputSidecar | undefined;
+	/**
+	 * Builds the button the final notice offers for the terms a note
+	 * template's glossary collected; without it, no terms are offered.
+	 */
+	termsAction?: TermsAction | undefined;
+}
+
+/**
+ * The button offering the run's new terms to its dictionary, or null when
+ * there are none or nothing builds the button.
+ * @param settings - The run's settings
+ * @param result - What the run came to
+ * @param action - Builds the button
+ */
+function termsActionOf(
+	settings: AudioRecorderSettings,
+	result: TranscribeRunResult,
+	action: TermsAction | undefined,
+): NoticeAction | null {
+	if (!action) {
+		return null;
+	}
+	const offer = termsOfferOf(settings, result.noteTemplate?.terms ?? []);
+	return offer ? action(offer) : null;
 }
 
 /**
@@ -324,13 +353,16 @@ export async function transcribeFile(
 			);
 		}
 	}
-	notifyTranscriptWritten({
-		inserted,
-		filePath: transcriptFile?.path ?? null,
-		noteRequested: wantsNote,
-		savedAsFallback,
-		linkRequested: wantsLink,
-		linkInserted,
-	});
+	notifyTranscriptWritten(
+		{
+			inserted,
+			filePath: transcriptFile?.path ?? null,
+			noteRequested: wantsNote,
+			savedAsFallback,
+			linkRequested: wantsLink,
+			linkInserted,
+		},
+		termsActionOf(settings, result, options.termsAction),
+	);
 	return result;
 }

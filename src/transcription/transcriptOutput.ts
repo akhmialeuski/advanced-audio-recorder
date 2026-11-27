@@ -4,7 +4,8 @@
  * @module transcription/transcriptOutput
  */
 
-import { Notice } from 'obsidian';
+import { ButtonComponent, Notice } from 'obsidian';
+import type { NoticeAction } from './termsOffer';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
@@ -304,10 +305,34 @@ export function describeTranscriptOutcome(
 	return 'Transcript ready.';
 }
 
+/** How long a notice offering an action stays, so there is time to press it. */
+const ACTION_NOTICE_MS = 15_000;
+
 /**
- * Notifies the user about where the transcript was written.
+ * Notifies the user about where the transcript was written, with a button
+ * for the action the run offers, if any.
  * @param outcome - What was written and what the user requested
+ * @param action - What the notice offers to do next; none for nothing
  */
-export function notifyTranscriptWritten(outcome: TranscriptWriteOutcome): void {
-	new Notice(describeTranscriptOutcome(outcome));
+export function notifyTranscriptWritten(
+	outcome: TranscriptWriteOutcome,
+	action?: NoticeAction | null,
+): void {
+	const text = describeTranscriptOutcome(outcome);
+	if (!action) {
+		new Notice(text);
+		return;
+	}
+	let notice: Notice | undefined;
+	const actionEl = createSpan();
+	new ButtonComponent(actionEl)
+		.setButtonText(action.label)
+		.setClass('aar-notice-action')
+		.onClick(() => {
+			notice?.hide();
+			action.run();
+		});
+	const fragment = createFragment();
+	fragment.append(createSpan({ text }), ' ', actionEl);
+	notice = new Notice(fragment, ACTION_NOTICE_MS);
 }

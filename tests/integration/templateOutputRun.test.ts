@@ -10,6 +10,8 @@ import { EngineLabel } from 'src/providers/providers';
 import type { Profile } from 'src/settings/profiles';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { transcribeFile } from 'src/transcription/runTranscription';
+import type { TermsAction } from 'src/transcription/termsOffer';
+import { noticeMessages } from '../mocks/obsidian';
 import { recordingVault } from '../helpers/recordingVault';
 import { completed } from '../helpers/llmDoubles';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
@@ -47,6 +49,12 @@ const SYNC: Profile = {
 async function run(
 	notePath: string,
 	settings: Partial<AudioRecorderSettings> = {},
+	extra: {
+		answer?: string;
+		termsAction?: TermsAction;
+		template?: string;
+		dictionary?: string;
+	} = {},
 ) {
 	const vault = recordingVault({
 		recordings: [STANDUP],
@@ -61,12 +69,28 @@ async function run(
 			...settings,
 		},
 	});
-	vault.settings.profiles = [...vault.settings.profiles, SYNC];
+	const dictionary: Profile = {
+		id: 'glossary',
+		kind: 'dictionary',
+		name: 'Platform',
+		body: extra.dictionary ?? '',
+	};
+	vault.settings.profiles = [
+		...vault.settings.profiles,
+		{ ...SYNC, body: extra.template ?? SYNC.body },
+		dictionary,
+	];
 	vault.settings.selectedProfileIds.llmTemplate = SYNC.id;
+	if (extra.dictionary !== undefined) {
+		vault.settings.selectedProfileIds.dictionary = dictionary.id;
+	}
 	const complete = jest
 		.fn()
 		.mockResolvedValue(
-			completed('{"summary": "Ship Friday.", "decision": "Go."}'),
+			completed(
+				extra.answer ??
+					'{"summary": "Ship Friday.", "decision": "Go."}',
+			),
 		);
 	const sidecar = {
 		...vault.services.recordingSidecar,
@@ -80,7 +104,11 @@ async function run(
 		vault.app,
 		() => vault.settings,
 		vault.file(STANDUP),
-		{ notePathForLinks: notePath, sidecar: sidecar as never },
+		{
+			notePathForLinks: notePath,
+			sidecar: sidecar as never,
+			termsAction: extra.termsAction,
+		},
 		{
 			createProvider: () =>
 				fakeProvider({
@@ -148,5 +176,46 @@ describe('a template run writing its note apart', () => {
 		const { read } = await run('');
 
 		expect(await read(OWN_NOTE)).toContain('## Summary\n\nShip Friday.');
+	});
+});
+
+describe('the terms a template run collected', () => {
+	/**
+	 * Runs a template with a glossary part, the dictionary in use holding
+	 * the given terms.
+	 * @param dictionary - The dictionary profile's terms
+	 */
+	async function runWithGlossary(dictionary: string): Promise<jest.Mock> {
+		const termsAction = jest.fn(() => ({
+			label: 'Add terms',
+			run: jest.fn(),
+		}));
+		await run(
+			MEETING,
+			{ transcriptionAdvancedSettingsEnabled: true },
+			{
+				template:
+					'## Glossary\n\n{{#part "terms" format="terms"}}The terms.{{/part}}',
+				answer: '{"terms": [{"term": "Argo CD", "definition": "Deploys."}, {"term": "Helm", "definition": "Packages."}]}',
+				termsAction,
+				dictionary,
+			},
+		);
+		return termsAction;
+	}
+
+	it('offers the terms the dictionary lacks on the notice of the run', async () => {
+		const termsAction = await runWithGlossary('Helm');
+
+		expect(termsAction).toHaveBeenCalledWith(
+			expect.objectContaining({ terms: ['Argo CD'] }),
+		);
+		expect(noticeMessages().join('\n')).toContain('Add terms');
+	});
+
+	it('offers nothing when the dictionary holds every term', async () => {
+		const termsAction = await runWithGlossary('Helm\nargo cd');
+
+		expect(termsAction).not.toHaveBeenCalled();
 	});
 });

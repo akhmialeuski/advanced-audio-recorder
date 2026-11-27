@@ -409,6 +409,10 @@ Names, abbreviations, and domain jargon are the words an engine mishears most of
 
 ![The Transcribe audio dialog rows for the participant and dictionary profiles, each naming the text it applies](images/transcribe-dialog-dictionary.png)
 
+**Terms a note template collected.** A [note template](llm-post-processing.md#structure-with-a-template) part with `format="terms"` collects the names, acronyms and systems said in the recording. After a run that collected some the dictionary in use does not hold yet, the notice that says where the transcript went gets an **Add new terms to the dictionary** button. It opens a list of those terms, each with a switch, so the common words and names a model also collects stay out; **Add** appends the terms switched on to the dictionary profile the run used, one per line after its own, or to the end of its note when it is read from one, continuing the note's list. Terms already in the profile, in any case, and names in the run's participant profile are not offered, and the notice has no button when there is nothing new, when no dictionary profile is selected, or when **Advanced settings** is off.
+
+![The Add terms to the dictionary dialog for dictionary profile Platform, with a switch for each of four collected terms, SLO and canary release switched on, above the Add and Cancel buttons](images/dialog-dictionary-terms.png)
+
 Each engine consumes the list the way its own API supports:
 
 - **Deepgram Nova-3** sends each term as a `keyterm` query parameter, Deepgram's keyterm prompting.

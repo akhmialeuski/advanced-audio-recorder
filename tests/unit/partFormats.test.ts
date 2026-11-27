@@ -5,6 +5,7 @@
  */
 
 import {
+	answerTerms,
 	DEFAULT_PART_FORMAT,
 	type PartShape,
 	formatOf,
@@ -264,5 +265,26 @@ describe('callout', () => {
 
 	it('writes nothing for nothing found', () => {
 		expect(written('callout', '')).toBe('');
+	});
+});
+
+describe('answerTerms', () => {
+	it('reads the terms of a glossary answer, as spelled', () => {
+		expect(
+			answerTerms('terms', [
+				{ term: 'Argo CD', definition: 'Deploys the services.' },
+				{ term: '', definition: 'Nothing.' },
+				{ definition: 'No term.' },
+				{ term: 'SLO' },
+			]),
+		).toEqual(['Argo CD', 'SLO']);
+	});
+
+	it.each([
+		['another format', 'bullets', ['Argo CD']],
+		['no answer', 'terms', undefined],
+		['a null answer', 'terms', null],
+	])('reads none from %s', (_label, format, answer) => {
+		expect(answerTerms(format, answer)).toEqual([]);
 	});
 });

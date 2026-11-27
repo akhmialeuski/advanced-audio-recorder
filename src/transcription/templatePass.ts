@@ -30,7 +30,12 @@ import {
 	collectParts,
 	noteTemplateEngine,
 } from '../templates/noteTemplate';
-import { CALLOUT_FORMAT, formatOf } from '../templates/partFormats';
+import {
+	answerTerms,
+	CALLOUT_FORMAT,
+	formatOf,
+} from '../templates/partFormats';
+import { dedupeTerms } from './dictionary';
 import { inCallout } from '../templates/partRenderers';
 import {
 	PROPERTIES_ROOT,
@@ -208,6 +213,11 @@ export interface TemplateNote {
 	 * undefined when it kept the setting or wrote no transcript.
 	 */
 	readonly timestamps: boolean | undefined;
+	/**
+	 * The terms its glossary parts named, for the run to offer to the
+	 * dictionary; none for a template without one.
+	 */
+	readonly terms?: readonly string[] | undefined;
 }
 
 /** The parts asked for in one call. */
@@ -251,6 +261,9 @@ export function renderPart(
 
 /** Runs one template over one transcript. */
 export class TemplatePass {
+	/** The terms the glossary parts named so far. */
+	private readonly terms: string[] = [];
+
 	constructor(private readonly request: TemplatePassRequest) {}
 
 	/**
@@ -282,6 +295,7 @@ export class TemplatePass {
 			...this.assemble(template, context, results),
 			properties: noteProperties(specs, results),
 			templateName: this.request.templateName,
+			terms: dedupeTerms(this.terms),
 		};
 	}
 
@@ -316,10 +330,9 @@ export class TemplatePass {
 				continue;
 			}
 			for (const { spec } of group) {
-				results.set(
-					spec.name,
-					renderPart(spec, answers.get(spec.name), links),
-				);
+				const answer = answers.get(spec.name);
+				results.set(spec.name, renderPart(spec, answer, links));
+				this.terms.push(...answerTerms(spec.format, answer));
 			}
 		}
 		this.reportFailures(groups, failed);
