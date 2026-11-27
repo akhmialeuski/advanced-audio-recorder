@@ -223,3 +223,47 @@ export function addParticipantsToProfile(
 			: profile,
 	);
 }
+
+/**
+ * The dictionary profile with the terms added after its own, each on a line
+ * of its own, so the text typed for it stays as it was. The terms go through
+ * {@link parseDictionary} with the profile's own, so a term it already holds
+ * in any case, a repeat or a blank adds nothing.
+ * @param profiles - All stored profiles
+ * @param id - Id of the dictionary profile to extend
+ * @param terms - Terms to add
+ * @returns A new list with that profile's terms extended, or undefined when
+ *   the id names no dictionary profile or every term was already there
+ */
+export function addTermsToProfile(
+	profiles: readonly Profile[],
+	id: string,
+	terms: readonly string[],
+): Profile[] | undefined {
+	const target = findProfile(profiles, id);
+	if (target?.kind !== ProfileKindId.Dictionary) {
+		return undefined;
+	}
+	const fresh = newDictionaryTerms(target.body, terms);
+	if (fresh.length === 0) {
+		return undefined;
+	}
+	const text = target.body.trimEnd();
+	const body = `${text}${text === '' ? '' : '\n'}${fresh.join('\n')}`;
+	return profiles.map((profile) =>
+		profile.id === id ? { ...profile, body } : profile,
+	);
+}
+
+/**
+ * The terms a dictionary's text does not hold yet, without regard to case.
+ * @param body - The dictionary's text
+ * @param terms - Terms to add
+ */
+export function newDictionaryTerms(
+	body: string,
+	terms: readonly string[],
+): string[] {
+	const current = parseDictionary(body);
+	return parseDictionary([body, ...terms].join('\n')).slice(current.length);
+}

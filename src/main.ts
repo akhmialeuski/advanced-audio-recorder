@@ -64,6 +64,7 @@ import {
 	renderQuickNoteStatusBar,
 } from './ui/StatusBar';
 import { RecordingBanner } from './ui/RecordingBanner';
+import { dictionaryTermsAction } from './ui/DictionaryTermsModal';
 import {
 	ICON_MIC,
 	ICON_QUICK_NOTE,
@@ -360,6 +361,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		);
 		this.recordingTranscriber = new RecordingTranscriber({
 			app: this.app,
+			termsAction: dictionaryTermsAction(this),
 			sidecar: this.sidecarStore,
 			costs: this.transcriptionCostTracker,
 			generateChapters: async (file, transcript, settings, signal) => {

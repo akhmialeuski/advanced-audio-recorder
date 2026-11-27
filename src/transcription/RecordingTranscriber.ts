@@ -34,6 +34,7 @@ import {
 import { effectiveTranscriptDestination } from './transcriptOutput';
 import { writesTemplateNote } from './llmPostProcess';
 import { type RoutedRun, routeRunTemplate } from './templateRouteRun';
+import type { TermsAction } from './termsOffer';
 import type { Transcript, TranscriptDestination } from './TranscriptTypes';
 
 /**
@@ -45,6 +46,11 @@ import type { Transcript, TranscriptDestination } from './TranscriptTypes';
  */
 export interface RecordingTranscriberServices {
 	readonly app: App;
+	/**
+	 * Builds the button a finished run's notice offers for the terms its
+	 * note template collected; without it, none is offered.
+	 */
+	readonly termsAction?: TermsAction | undefined;
 	/** Re-applies stored speaker names and registers what a run wrote. */
 	readonly sidecar: TranscriptOutputSidecar;
 	/**
@@ -189,6 +195,7 @@ export class RecordingTranscriber {
 					notePathForLinks: request.notePath,
 					token: request.token,
 					sidecar: this.services.sidecar,
+					termsAction: this.services.termsAction,
 					audioBytes: request.audioBytes,
 					onProgress: request.onProgress,
 					onCost: (cost) => {

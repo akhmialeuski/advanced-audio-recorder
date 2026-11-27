@@ -13,6 +13,7 @@
 
 import {
 	addParticipantsToProfile,
+	addTermsToProfile,
 	participantsOf,
 	resolveChapterGuidance,
 	resolveDictionaryTermList,
@@ -248,5 +249,43 @@ describe('addParticipantsToProfile', () => {
 			addParticipantsToProfile(base, 'missing', ['X']),
 		).toBeUndefined();
 		expect(addParticipantsToProfile(base, 'c1', ['X'])).toBeUndefined();
+	});
+});
+
+describe('addTermsToProfile', () => {
+	const base: Profile[] = [
+		profile('d1', 'dictionary', '- Kubernetes\n\n- kubernetes\n- Helm\n'),
+		profile('p1', 'participants', 'Alex'),
+	];
+
+	it('appends only the terms it lacks, keeping the text typed for it', () => {
+		const next = addTermsToProfile(base, 'd1', [
+			'HELM',
+			' Argo CD ',
+			'',
+			'Argo CD',
+			'Terraform',
+		]);
+
+		expect(next?.[0]?.body).toBe(
+			'- Kubernetes\n\n- kubernetes\n- Helm\nArgo CD\nTerraform',
+		);
+		expect(next?.[1]).toBe(base[1]);
+	});
+
+	it('writes into an empty dictionary without a leading blank line', () => {
+		expect(
+			addTermsToProfile([profile('d', 'dictionary', '')], 'd', [
+				'Helm',
+			])?.[0]?.body,
+		).toBe('Helm');
+	});
+
+	it.each([
+		['every term is already there', 'd1', ['helm', 'KUBERNETES']],
+		['the id names a profile of another kind', 'p1', ['Helm']],
+		['the id names no profile', 'gone', ['Helm']],
+	])('gives nothing to save when %s', (_label, id, terms) => {
+		expect(addTermsToProfile(base, id, terms)).toBeUndefined();
 	});
 });
