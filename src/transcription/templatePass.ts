@@ -25,7 +25,7 @@ import {
 	collectParts,
 	noteTemplateEngine,
 } from '../templates/noteTemplate';
-import { partFormat, DEFAULT_PART_FORMAT } from '../templates/partFormats';
+import { formatOf } from '../templates/partFormats';
 import {
 	PROPERTIES_ROOT,
 	type RunFacts,
@@ -62,6 +62,8 @@ export interface TemplatePassRequest {
 	readonly expandPrompt: PromptExpander;
 	/** Canonical spellings of names and terms. */
 	readonly glossary: readonly string[];
+	/** Writes a link to a moment of the recording, labelled with its timecode. */
+	readonly links?: ((seconds: number) => string) | undefined;
 	readonly llm: LlmProvider;
 	readonly maxTokens: number;
 	readonly costSink?: LlmCostSink | undefined;
@@ -109,15 +111,19 @@ export function groupCalls(parts: readonly PromptPart[]): CallGroup[] {
  * The Markdown of one part from the model's answer for it.
  * @param spec - The part
  * @param answer - What the model answered; undefined for nothing
+ * @param links - Writes a link to a moment of the recording
  */
-export function renderPart(spec: PartSpec, answer: unknown): string {
-	const format = partFormat(spec.format) ?? partFormat(DEFAULT_PART_FORMAT);
-	if (!format || answer === undefined || answer === null) {
+export function renderPart(
+	spec: PartSpec,
+	answer: unknown,
+	links?: (seconds: number) => string,
+): string {
+	if (answer === undefined || answer === null) {
 		return '';
 	}
-	return format
-		.render(format.read(answer), { max: spec.max, options: spec.options })
-		.trim();
+	const format = formatOf(spec.format);
+	const shape = { max: spec.max, options: spec.options, links };
+	return format.render(format.read(answer, shape), shape).trim();
 }
 
 /** Runs one template over one transcript. */
@@ -158,7 +164,11 @@ export class TemplatePass {
 			for (const { spec } of group) {
 				results.set(
 					spec.name,
-					renderPart(spec, answers.get(spec.name)),
+					renderPart(
+						spec,
+						answers.get(spec.name),
+						this.request.links,
+					),
 				);
 			}
 		}

@@ -1028,6 +1028,7 @@ export class TranscriptionService {
 						markdown,
 						token,
 						expandPrompt,
+						(seconds) => links(seconds, formatTimecode(seconds)),
 					);
 				}
 			} catch (error) {
@@ -2112,6 +2113,7 @@ export class TranscriptionService {
 	 * @param markdown - The transcript as the note writes it
 	 * @param token - Cancellation for the run
 	 * @param expandPrompt - Fills the run's facts into the prompts
+	 * @param links - Writes a link to a moment of the recording
 	 * @returns The new body
 	 */
 	private async rewrite(
@@ -2119,6 +2121,7 @@ export class TranscriptionService {
 		markdown: string,
 		token: CancellationToken,
 		expandPrompt: PromptExpander,
+		links: (seconds: number) => string,
 	): Promise<string> {
 		const { settings } = source;
 		const task = settings.llmPostProcessTask;
@@ -2128,6 +2131,7 @@ export class TranscriptionService {
 				markdown,
 				token,
 				expandPrompt,
+				links,
 			);
 		}
 		return this.postProcess(
@@ -2146,6 +2150,7 @@ export class TranscriptionService {
 	 * @param markdown - The transcript as the note writes it
 	 * @param token - Cancellation for the run
 	 * @param expandPrompt - Fills the run's facts into a profile a part names
+	 * @param links - Writes a link to a moment of the recording
 	 * @returns The note, or the transcript unchanged when there is no
 	 *   template or it cannot be rendered
 	 */
@@ -2154,6 +2159,7 @@ export class TranscriptionService {
 		markdown: string,
 		token: CancellationToken,
 		expandPrompt: PromptExpander,
+		links: (seconds: number) => string,
 	): Promise<string> {
 		const { settings } = source;
 		const template = selectedProfile(settings, ProfileKindId.LlmTemplate);
@@ -2172,6 +2178,7 @@ export class TranscriptionService {
 				transcriptMarkdown: markdown,
 				expandPrompt,
 				glossary: resolveDictionaryTermList(settings),
+				links,
 				llm: this.createLlm(settings, vendorId),
 				maxTokens: vendorMaxTokens(settings, vendorId),
 				costSink: this.costSink,

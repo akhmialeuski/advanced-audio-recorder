@@ -100,6 +100,21 @@ function setting(
 }
 
 /**
+ * The settings of a call written as literals, by name; a setting given as an
+ * expression is left out, since only a run knows its value.
+ * @param node - The call
+ */
+function literalSettings(
+	node: AstBlock | AstMustache,
+): Record<string, unknown> {
+	return Object.fromEntries(
+		(node.hash?.pairs ?? [])
+			.map((pair) => [pair.key, literal(pair.value)] as const)
+			.filter(([, value]) => value !== undefined),
+	);
+}
+
+/**
  * Whether a call is the part block.
  * @param node - A mustache or block
  */
@@ -341,12 +356,32 @@ function formatProblems(
 						`${label} has an unknown format "${part.format}"; use one of ${names}.`,
 					),
 				]),
+		...formatCheck(part, label, error),
 		...(part.node.hash?.pairs ?? [])
 			.filter((pair) => !known.has(pair.key))
 			.map((pair) =>
 				error(`${label} has an unknown setting "${pair.key}".`),
 			),
 	];
+}
+
+/**
+ * What the part's format says is wrong with its settings.
+ * @param part - The part
+ * @param label - How problems name it
+ * @param error - Makes an error at the part
+ */
+function formatCheck(
+	part: DeclaredPart,
+	label: string,
+	error: PartError,
+): TemplateProblem[] {
+	const check = partFormat(part.format)?.check;
+	return check
+		? check(literalSettings(part.node)).map((message) =>
+				error(`${label} ${message}`),
+			)
+		: [];
 }
 
 /**
