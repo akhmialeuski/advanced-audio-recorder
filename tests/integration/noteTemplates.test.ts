@@ -27,6 +27,7 @@ import { completed } from '../helpers/llmDoubles';
 import { asMockVault } from '../helpers/obsidianMock';
 import { EngineLabel } from 'src/providers/providers';
 import { noticeMessages } from '../mocks/obsidian';
+import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 
 const recording = partial<TFile>({
 	name: 'standup.webm',
@@ -121,19 +122,25 @@ function scriptedLlm(
  * @param settings - The settings the run reads
  * @param llm - The LLM the parts are asked of
  * @param token - Cancellation for the run
- * @returns The note's Markdown and the prompts the LLM was sent
+ * @param segments - What the recording says
+ * @returns The note's Markdown, what the template decided about its
+ *   timestamps, and the prompts the LLM was sent
  */
 async function transcribe(
 	settings: AudioRecorderSettings,
 	llm: LlmProvider & { complete: jest.Mock },
 	token = NEVER_CANCELLED,
-): Promise<{ markdown: string; prompts: LlmPrompt[] }> {
+	segments: readonly TranscriptSegment[] = [
+		{ start: 0, end: 62, text: 'Ben sends the deck.' },
+	],
+): Promise<{
+	markdown: string;
+	timestamps: boolean | undefined;
+	prompts: LlmPrompt[];
+}> {
 	const provider = fakeProvider({
 		capabilities: NO_DIARIZATION,
-		transcribe: () =>
-			Promise.resolve({
-				segments: [{ start: 0, end: 62, text: 'Ben sends the deck.' }],
-			}),
+		transcribe: () => Promise.resolve({ segments: [...segments] }),
 	});
 	const service = new TranscriptionService(vault(), () => settings, {
 		createProvider: () => provider,
@@ -145,6 +152,7 @@ async function transcribe(
 	});
 	return {
 		markdown: result.markdown,
+		timestamps: result.noteTimestamps,
 		prompts: llm.complete.mock.calls.map(([prompt]) => prompt as LlmPrompt),
 	};
 }
@@ -387,5 +395,80 @@ describe('a run with a note template', () => {
 				source.token,
 			),
 		).rejects.toBeInstanceOf(TranscriptionCancelledError);
+	});
+});
+
+describe('the transcript in a note template', () => {
+	/** Two turns of one meeting. */
+	const MEETING: readonly TranscriptSegment[] = [
+		{ start: 0, end: 30, text: 'Ben sends the deck.' },
+		{ start: 65, end: 90, text: 'Anna books [[the room]].' },
+	];
+
+	it('writes it in a folded callout with the timestamps it asks for', async () => {
+		const { markdown, timestamps } = await transcribe(
+			withTemplate(
+				[
+					'{{#part "summary"}}Points.{{/part}}',
+					'',
+					'{{transcript callout="quote" title="Transcript" folded=true timestamps=true}}',
+				].join('\n'),
+			),
+			scriptedLlm('{"summary": "Short."}'),
+			NEVER_CANCELLED,
+			MEETING,
+		);
+
+		expect(markdown).toBe(
+			[
+				'Short.',
+				'',
+				'> [!quote]- Transcript',
+				'> [[standup.webm#t=0|0:00]] Ben sends the deck.',
+				'>',
+				'> [[standup.webm#t=65|1:05]] Anna books \\[\\[the room\\]\\].',
+			].join('\n'),
+		);
+		expect(timestamps).toBe(true);
+	});
+
+	it('keeps the settings where the template says nothing', async () => {
+		const { markdown, timestamps } = await transcribe(
+			withTemplate(
+				'{{#part "summary"}}Points.{{/part}}\n\n{{transcript}}',
+			),
+			scriptedLlm('{"summary": "Short."}'),
+			NEVER_CANCELLED,
+			MEETING,
+		);
+
+		expect(markdown).toBe(
+			'Short.\n\nBen sends the deck.\n\nAnna books \\[\\[the room\\]\\].',
+		);
+		expect(timestamps).toBeUndefined();
+	});
+
+	it('repeats a block of its own for every turn', async () => {
+		const { markdown } = await transcribe(
+			withTemplate(
+				[
+					'{{#part "summary"}}Points.{{/part}}',
+					'{{#each turns}}',
+					'- {{link}} {{text}}',
+					'{{/each}}',
+				].join('\n'),
+			),
+			scriptedLlm('{"summary": "Short."}'),
+			NEVER_CANCELLED,
+			MEETING,
+		);
+
+		expect(markdown).toBe(
+			[
+				'Short.',
+				'- [[standup.webm#t=0|0:00]] Ben sends the deck.',
+				'- [[standup.webm#t=65|1:05]] Anna books \\[\\[the room\\]\\].',
+			].join('\n'),
+		);
 	});
 });

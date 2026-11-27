@@ -13,6 +13,7 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type {
 	FileOutput,
 	NoteOutput,
+	NoteOutputTemplates,
 	TranscriptProvenance,
 } from '../sidecar/recordingSidecarModel';
 import {
@@ -52,6 +53,27 @@ export interface TranscriptOutputSidecar extends TranscriptionSidecarAccess {
 	 * be asked for again. An empty list clears the previous record.
 	 */
 	setFailedParts(path: string, parts: readonly PartFailure[]): Promise<void>;
+}
+
+/**
+ * How the note's transcript was written, for a later rename to find its
+ * lines: the settings, with the timestamps a note template chose instead.
+ * @param settings - The run's settings
+ * @param result - What the run produced
+ */
+function noteOutputTemplates(
+	settings: AudioRecorderSettings,
+	result: TranscribeRunResult,
+): NoteOutputTemplates {
+	return {
+		lineFormat: settings.transcriptLineFormat,
+		speakerFormat: settings.transcriptSpeakerFormat,
+		timestampFormat: settings.transcriptTimestampFormat,
+		includeTimestamps:
+			result.noteTimestamps ?? settings.transcriptIncludeTimestamps,
+		timestampLinks: settings.transcriptTimestampLinks,
+		mergeConsecutiveSpeaker: settings.transcriptMergeConsecutiveSpeaker,
+	};
 }
 
 /** Options for a full transcribe-and-write run. */
@@ -220,15 +242,7 @@ export async function transcribeFile(
 			if (inserted) {
 				await options.sidecar.recordNoteOutput(file.path, {
 					path: options.notePathForLinks,
-					templates: {
-						lineFormat: settings.transcriptLineFormat,
-						speakerFormat: settings.transcriptSpeakerFormat,
-						timestampFormat: settings.transcriptTimestampFormat,
-						includeTimestamps: settings.transcriptIncludeTimestamps,
-						timestampLinks: settings.transcriptTimestampLinks,
-						mergeConsecutiveSpeaker:
-							settings.transcriptMergeConsecutiveSpeaker,
-					},
+					templates: noteOutputTemplates(settings, result),
 					heading: settings.transcriptHeading,
 					writtenAt,
 				});

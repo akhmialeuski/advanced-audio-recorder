@@ -188,3 +188,56 @@ describe('planNoteTemplate', () => {
 		expect(plan.outputRatio).toBeCloseTo(ratio);
 	});
 });
+
+describe('checking the transcript of a template', () => {
+	/**
+	 * What a check finds, as the lines a user reads.
+	 * @param source - The template
+	 */
+	function check(source: string): string[] {
+		return checkNoteTemplate(
+			`{{#part "a"}}A{{/part}}\n${source}`,
+			() => false,
+		).map(describeProblem);
+	}
+
+	it('accepts the settings it takes', () => {
+		expect(
+			check(
+				'{{transcript callout="quote" title="T" folded=true timestamps=false speakers=false}}',
+			),
+		).toEqual([]);
+		expect(check('{{#each turns}}{{speaker}}: {{text}}{{/each}}')).toEqual(
+			[],
+		);
+	});
+
+	it.each([
+		[
+			'{{transcript}}\n{{#if title}}{{transcript}}{{/if}}',
+			'Line 3, column 14: The transcript is written more than once',
+		],
+		[
+			'{{#each turns}}{{transcript}}{{/each}}',
+			'Line 2, column 16: {{transcript}} cannot stand inside a repeat',
+		],
+		[
+			'{{#transcript}}x{{/transcript}}',
+			'Line 2, column 1: {{transcript}} is not a block',
+		],
+		[
+			'{{transcript fold=true}}',
+			'Line 2, column 1: {{transcript}} has an unknown setting "fold"',
+		],
+		[
+			'{{transcript callout="quote" folded="yes"}}',
+			'Line 2, column 1: {{transcript}} needs folded to be true or false.',
+		],
+		[
+			'{{transcript title="T"}}',
+			'Line 2, column 1: {{transcript}} has title but no callout',
+		],
+	])('finds what is wrong with %s', (source, message) => {
+		expect(check(source)).toEqual([expect.stringContaining(message)]);
+	});
+});

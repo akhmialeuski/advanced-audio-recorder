@@ -26,6 +26,11 @@ import {
 	TemplateRenderError,
 } from './TemplateEngine';
 import { DEFAULT_PART_FORMAT } from './partFormats';
+import {
+	TRANSCRIPT_DECLARATION,
+	TRANSCRIPT_HELPER,
+	TURN_FIELDS,
+} from './transcriptPart';
 
 /** Name of the block that declares a part. */
 export const PART_HELPER = 'part';
@@ -80,9 +85,17 @@ export interface PartSpec {
 export const NOTE_TEMPLATE_VARIABLES: TemplateCatalog = [
 	...RUN_VARIABLES,
 	{
-		name: 'transcript',
-		description: 'The transcript, written the way the note writes it.',
-		example: '{{transcript}}',
+		name: TRANSCRIPT_HELPER,
+		description:
+			'The transcript, written the way the note writes it; the transcript helper takes settings.',
+		example: '{{transcript callout="quote" folded=true}}',
+	},
+	{
+		name: 'turns',
+		description:
+			'The speaker turns of the transcript, to repeat with {{#each turns}}: speaker, start, time, link and text.',
+		example: '{{#each turns}}**{{speaker}}** {{link}}: {{text}}{{/each}}',
+		fields: TURN_FIELDS,
 	},
 	{
 		name: PARTS_ROOT,
@@ -112,7 +125,7 @@ let engine: TemplateEngine | undefined;
 
 /** The engine with the part block, shared by every note template. */
 export function noteTemplateEngine(): TemplateEngine {
-	engine ??= new TemplateEngine([PART_DECLARATION]);
+	engine ??= new TemplateEngine([PART_DECLARATION, TRANSCRIPT_DECLARATION]);
 	return engine;
 }
 
@@ -244,12 +257,15 @@ function partOutput(result: string, empty: unknown): string {
  * @param source - The template
  * @param context - The facts it renders with
  * @param results - The Markdown of each part, by name; '' for nothing found
+ * @param helpers - Helpers this render writes with, e.g. the transcript as
+ *   the run renders it
  * @returns The note's Markdown
  */
 export function assembleNote(
 	source: string,
 	context: TemplateContext,
 	results: ReadonlyMap<string, string>,
+	helpers: Readonly<Record<string, HelperDelegate>> = {},
 ): string {
 	const part: HelperDelegate = (...args: unknown[]) => {
 		const { name, options } = partCall(args);
@@ -264,7 +280,7 @@ export function assembleNote(
 		source,
 		{ ...context, [PARTS_ROOT]: Object.fromEntries(results) },
 		NOTE_TEMPLATE_VARIABLES,
-		{ [PART_HELPER]: part },
+		{ ...helpers, [PART_HELPER]: part },
 	);
 	return removeEmptySections(rendered);
 }

@@ -11,17 +11,19 @@
 
 import type {
 	AstBlock,
-	AstBooleanLiteral,
 	AstContent,
-	AstExpression,
 	AstMustache,
 	AstNode,
-	AstNumberLiteral,
-	AstPath,
 	AstProgram,
 	AstStatement,
-	AstStringLiteral,
 } from './handlebarsAst';
+import {
+	isCallTo,
+	literal,
+	literalSettings,
+	setting,
+} from './templateLiterals';
+import { transcriptProblems } from './transcriptCheck';
 import {
 	type TemplateProblem,
 	TemplateProblemSeverity,
@@ -71,61 +73,11 @@ const PROSE_RATIO = partFormat(DEFAULT_PART_FORMAT)?.outputRatio ?? 0;
 const REPEATING_BLOCKS: ReadonlySet<string> = new Set(['each']);
 
 /**
- * The value of a literal argument, or undefined for anything else.
- * @param value - The argument
- */
-function literal(value: AstExpression | undefined): unknown {
-	switch (value?.type) {
-		case 'StringLiteral':
-			return (value as AstStringLiteral).value;
-		case 'NumberLiteral':
-			return (value as AstNumberLiteral).value;
-		case 'BooleanLiteral':
-			return (value as AstBooleanLiteral).value;
-		default:
-			return undefined;
-	}
-}
-
-/**
- * One setting of a call, as its node.
- * @param node - The call
- * @param key - The setting's name
- */
-function setting(
-	node: AstBlock | AstMustache,
-	key: string,
-): AstExpression | undefined {
-	return node.hash?.pairs.find((pair) => pair.key === key)?.value;
-}
-
-/**
- * The settings of a call written as literals, by name; a setting given as an
- * expression is left out, since only a run knows its value.
- * @param node - The call
- */
-function literalSettings(
-	node: AstBlock | AstMustache,
-): Record<string, unknown> {
-	return Object.fromEntries(
-		(node.hash?.pairs ?? [])
-			.map((pair) => [pair.key, literal(pair.value)] as const)
-			.filter(([, value]) => value !== undefined),
-	);
-}
-
-/**
  * Whether a call is the part block.
  * @param node - A mustache or block
  */
 function isPart(node: AstBlock | AstMustache): boolean {
-	const path = node.path as AstPath;
-	return (
-		path.type === 'PathExpression' &&
-		!path.data &&
-		path.parts.length === 1 &&
-		path.original === PART_HELPER
-	);
+	return isCallTo(node, PART_HELPER);
 }
 
 /**
@@ -529,7 +481,10 @@ export function checkNoteTemplate(
 		}
 		seen.add(part.name);
 	}
-	problems.push(...partReferenceProblems(program, seen));
+	problems.push(
+		...partReferenceProblems(program, seen),
+		...transcriptProblems(program),
+	);
 	return problems.sort(byPlace);
 }
 

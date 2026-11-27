@@ -32,6 +32,20 @@ import {
 	runTemplateContext,
 } from '../templates/runVariables';
 import type { TemplateContext } from '../templates/TemplateEngine';
+import {
+	TRANSCRIPT_HELPER,
+	type TranscriptRenderer,
+	transcriptHelper,
+} from '../templates/transcriptPart';
+import {
+	type TimecodeLinkBuilder,
+	type TranscriptMarkdownOptions,
+	type TranscriptTurn,
+	formatTranscriptMarkdown,
+	transcriptTurns,
+} from './transcriptFormat';
+import type { Transcript } from './TranscriptTypes';
+import { formatTimecode } from '../utils/TimeUtils';
 import type { LlmProvider } from './llm/LlmProvider';
 import { type LlmCostSink, runLlmStep } from './llm/llmStep';
 import { LlmJobId } from './llm/vendors';
@@ -62,8 +76,8 @@ export interface TemplatePassRequest {
 	readonly expandPrompt: PromptExpander;
 	/** Canonical spellings of names and terms. */
 	readonly glossary: readonly string[];
-	/** Writes a link to a moment of the recording, labelled with its timecode. */
-	readonly links?: ((seconds: number) => string) | undefined;
+	/** How the run writes the transcript and links into it. */
+	readonly rendering?: NoteRendering | undefined;
 	readonly llm: LlmProvider;
 	readonly maxTokens: number;
 	readonly costSink?: LlmCostSink | undefined;
@@ -89,6 +103,61 @@ export function templateProfileIds(settings: AudioRecorderSettings): string[] {
 				: findPartProfile(settings.profiles, part.profile);
 		return profile ? [profile.id] : [];
 	});
+}
+
+/** How a run writes its transcript and links into its recording. */
+export interface NoteRendering {
+	/** A link to a moment of the recording, labelled with its timecode. */
+	readonly links: (seconds: number) => string;
+	/** The transcript lines, with a template's overrides. */
+	readonly renderTranscript: TranscriptRenderer;
+	/** The speaker turns a template repeats. */
+	readonly turns: readonly TranscriptTurn[];
+}
+
+/**
+ * How a run's transcript is written into a note template: with the run's
+ * options, as `{{transcript}}` overrides them, and as the turns
+ * `{{#each turns}}` repeats.
+ * @param transcript - The finished transcript
+ * @param options - How the note writes the transcript
+ * @param links - Builds a link to a moment of the recording
+ */
+export function noteRendering(
+	transcript: Transcript,
+	options: TranscriptMarkdownOptions,
+	links: TimecodeLinkBuilder,
+): NoteRendering {
+	return {
+		links: (seconds) => links(seconds, formatTimecode(seconds)),
+		renderTranscript: (overrides) =>
+			formatTranscriptMarkdown(
+				transcript,
+				{
+					...options,
+					includeTimestamps:
+						overrides.timestamps ?? options.includeTimestamps,
+					includeSpeakers:
+						overrides.speakers ?? options.includeSpeakers,
+				},
+				links,
+			),
+		turns: transcriptTurns(
+			transcript,
+			options.mergeConsecutiveSpeaker,
+			links,
+		),
+	};
+}
+
+/** The note a template wrote, and what it changed about the transcript. */
+export interface TemplateNote {
+	readonly markdown: string;
+	/**
+	 * Whether the transcript lines carry timestamps, when the template said;
+	 * undefined when it kept the setting or wrote no transcript.
+	 */
+	readonly timestamps: boolean | undefined;
 }
 
 /** The parts asked for in one call. */
@@ -132,57 +201,108 @@ export class TemplatePass {
 
 	/**
 	 * Builds the note.
-	 * @returns The note's Markdown
+	 * @returns The note's Markdown, and the timestamps it decided on
 	 * @throws TemplateRenderError when the template cannot be rendered
 	 * @throws Error when every call the parts needed failed
 	 */
-	async run(): Promise<string> {
+	async run(): Promise<TemplateNote> {
 		const { template } = this.request;
 		const facts = collectRunFacts(
 			this.request.source,
 			noteTemplateEngine().fieldsRead(template, PROPERTIES_ROOT),
 		);
+		const { rendering } = this.request;
 		const context: TemplateContext = {
 			...runTemplateContext(facts),
 			transcript: this.request.transcriptMarkdown,
+			turns: rendering?.turns ?? [],
 		};
 		const specs = collectParts(template, context);
-		const parts = this.withInstructions(specs);
+		const results = await this.fillParts(specs, facts);
+		return this.assemble(context, results);
+	}
+
+	/**
+	 * Asks the model for every part, in as few calls as their settings allow,
+	 * and writes each answer as its format does.
+	 * @param specs - The parts the template asks for
+	 * @param facts - The facts of the run
+	 * @returns Every part's Markdown by name, empty for one that failed
+	 * @throws Error when every call the parts needed failed
+	 */
+	private async fillParts(
+		specs: readonly PartSpec[],
+		facts: RunFacts,
+	): Promise<Map<string, string>> {
+		const links = this.request.rendering?.links;
 		const results = new Map<string, string>(
 			specs.map((spec) => [spec.name, '']),
 		);
-		const groups = groupCalls(parts);
+		const groups = groupCalls(this.withInstructions(specs));
 		const failed: string[] = [];
-		let answered = 0;
 		for (const group of groups) {
 			const answers = await this.ask(group, facts);
 			if (!answers) {
 				failed.push(...group.map((part) => part.spec.name));
 				continue;
 			}
-			answered += 1;
 			for (const { spec } of group) {
 				results.set(
 					spec.name,
-					renderPart(
-						spec,
-						answers.get(spec.name),
-						this.request.links,
-					),
+					renderPart(spec, answers.get(spec.name), links),
 				);
 			}
 		}
-		if (groups.length > 0 && answered === 0) {
+		this.reportFailures(groups, failed);
+		return results;
+	}
+
+	/**
+	 * Tells the user which parts are missing, and fails the pass when all are.
+	 * @param groups - The calls the parts were asked in
+	 * @param failed - The parts whose call failed
+	 * @throws Error when every call failed
+	 */
+	private reportFailures(
+		groups: readonly CallGroup[],
+		failed: readonly string[],
+	): void {
+		const { templateName } = this.request;
+		const asked = groups.reduce((sum, group) => sum + group.length, 0);
+		if (asked > 0 && failed.length === asked) {
 			throw new Error(
-				`no part of the note template "${this.request.templateName}" could be filled`,
+				`no part of the note template "${templateName}" could be filled`,
 			);
 		}
 		if (failed.length > 0) {
 			new Notice(
-				`The note template "${this.request.templateName}" was written without ${failed.map((name) => `"${name}"`).join(', ')}: the model could not be reached for ${failed.length === 1 ? 'it' : 'them'}.`,
+				`The note template "${templateName}" was written without ${failed.map((name) => `"${name}"`).join(', ')}: the model could not be reached for ${failed.length === 1 ? 'it' : 'them'}.`,
 			);
 		}
-		return assembleNote(template, context, results);
+	}
+
+	/**
+	 * The note with every part's result in its place, and the transcript
+	 * written as the template asks.
+	 * @param context - What the template reads
+	 * @param results - Every part's Markdown, by name
+	 */
+	private assemble(
+		context: TemplateContext,
+		results: ReadonlyMap<string, string>,
+	): TemplateNote {
+		const { rendering, template } = this.request;
+		let timestamps: boolean | undefined;
+		const helpers = rendering
+			? {
+					[TRANSCRIPT_HELPER]: transcriptHelper((overrides) => {
+						timestamps = overrides.timestamps;
+						return rendering.renderTranscript(overrides);
+					}),
+				}
+			: {};
+		const markdown = assembleNote(template, context, results, helpers);
+		return { markdown, timestamps };
 	}
 
 	/**

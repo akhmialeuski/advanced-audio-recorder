@@ -147,6 +147,39 @@ Whatever the model writes, a `[[link]]` in it is written as text, so a model nev
 
 The instruction of a part, and the profile it names, can use every [fact of the run](#facts-of-the-run-in-a-prompt), so it can name the meeting and its people. A template can use them too, and also `{{transcript}}`, the transcript as the note would write it, and `{{parts.summary}}`, the result of a part, for example in `{{#if parts.actions}}...{{/if}}`. A part inside a condition is asked for only when the condition holds. The model is told the title, date, length and participants of the recording, the terms of the dictionary profile in use, and to write in the transcript's language.
 
+#### The transcript in a template
+
+`{{transcript}}` writes the transcript the way your [transcript output](transcription.md#output-where-the-transcript-goes) settings write it. Its settings change that for this template only:
+
+| Setting                              | What it does                                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `callout="quote"`                    | Puts the whole transcript in a callout of that type; `callout=true` uses a `note` callout.   |
+| `title="Transcript"`, `folded=true`  | The callout's title, and whether it starts closed (`true`) or open (`false`).                |
+| `timestamps=false`, `speakers=false` | Leaves the timestamp or the speaker off every line; `true` writes them whatever the setting. |
+
+```handlebars
+{{transcript callout='quote' title='Transcript' folded=true}}
+```
+
+A long meeting then stays one line on the screen until you open it, below the summary instead of pushing it away. Renaming a speaker later still finds the lines inside the callout, and the timestamps the template chose are recorded with the note, so a rename reads the lines the way they were written.
+
+![The Transcript section of a note in Reading view with the transcript in a folded quote callout titled Transcript, shown as one line until it is opened](images/transcript-callout-folded.png)
+
+![The same callout open, each line starting with a timecode link to its moment, the speaker in bold and what they said](images/transcript-callout-open.png)
+
+To write the turns in a shape of your own, repeat a block over `turns`: each turn has `speaker`, `start` (seconds), `time` (`1:05`), `link` (a link to that moment of the recording) and `text`, with consecutive lines of one speaker merged as your settings merge them.
+
+```handlebars
+{{#each turns}}
+	-
+	{{link}}
+	**{{speaker}}**:
+	{{text}}
+{{/each}}
+```
+
+The transcript is written once: a template that writes `{{transcript}}` twice, or inside a repeat, is shown as an error.
+
 A template is applied as best it can be:
 
 - **A call that fails costs only its own parts.** They come out empty, the rest of the note is written, and a notice names the parts that are missing. Only when every call fails is the pass a failure, and the plain transcript is kept as for any task.
@@ -154,7 +187,7 @@ A template is applied as best it can be:
 - **A template that cannot be rendered**, such as one with two parts of the same name, keeps the plain transcript, with a notice naming the problem.
 - **With no template selected**, the transcript is kept as it is, with a notice.
 
-The **Template variables** row on a template's page checks it as you type: a part without a name or an instruction, an unknown format or setting, a part inside a repeat, a profile no prompt profile is called, and `{{parts.name}}` naming no part. The cost estimate before a run counts the calls the selected template makes.
+The **Template variables** row on a template's page checks it as you type: a part without a name or an instruction, an unknown format or setting, a part inside a repeat, a profile no prompt profile is called, `{{parts.name}}` naming no part, and a transcript written twice or with a setting it does not take. The cost estimate before a run counts the calls the selected template makes.
 
 ---
 
