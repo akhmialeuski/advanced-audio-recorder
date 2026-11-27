@@ -804,11 +804,12 @@ export const GEMINI_INLINE_MAX_BYTES = 14 * 1024 * 1024;
  * the type this plugin gives both `m4a` and `mp4`: a 59-minute `mp4` and a
  * 24-minute `m4a` lesson were uploaded and transcribed as they were on
  * November 26, 2026, where decoding them to WAV first had turned 43 MB into
- * 114 MB of upload. Any other container is decoded to 16 kHz mono WAV before
- * upload. That includes `audio/webm`, which the guide lists too: the WebM a
- * live recorder writes carries no length and no seek index, and whether
- * Gemini cuts a stretch out of such a file has not been measured, so the
- * container this plugin records in by default keeps the path it always took.
+ * 114 MB of upload. `audio/webm` is the container this plugin records in by
+ * default, and the WebM a live recorder writes states no length and has no
+ * seek index. Gemini cut an 8:34 stretch out of such a 24-minute file on
+ * November 27, 2026, placing a known phrase within a second of where it is
+ * spoken, so it is sent as it stands too. Any other container is decoded to
+ * 16 kHz mono WAV before upload.
  */
 export const GEMINI_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
 	WAV_MIME,
@@ -818,6 +819,7 @@ export const GEMINI_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
 	`${MIME_TYPE_AUDIO_PREFIX}flac`,
 	`${MIME_TYPE_AUDIO_PREFIX}aiff`,
 	`${MIME_TYPE_AUDIO_PREFIX}mp4`,
+	`${MIME_TYPE_AUDIO_PREFIX}webm`,
 ]);
 
 /** Header carrying the Gemini API key on every request. */

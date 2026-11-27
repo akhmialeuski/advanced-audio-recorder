@@ -245,7 +245,7 @@ One of the pages under **Engines**, listed whether or not it is the engine trans
 
 ### Engine: Google Gemini
 
-One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on, and also the page the post-processing prompts are configured on when they run through Gemini. Google's multimodal `generateContent`. Audio up to 14 MB travels inline in that one request, and a longer recording up to 2 GB is uploaded once through the File API, in the container it was recorded in when that is `mp4`, `m4a`, `wav`, `mp3`, `aac`, `ogg`, `flac` or `aiff`, and as decoded WAV otherwise (`webm` included). A recording longer than 10 minutes is asked for in parts that Gemini cuts out of that upload, four at a time, and the speakers of a diarized run are matched across the parts. See [Gemini API key](use-cases/gemini-api-key.md).
+One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on, and also the page the post-processing prompts are configured on when they run through Gemini. Google's multimodal `generateContent`. Audio up to 14 MB travels inline in that one request, and a longer recording up to 2 GB is uploaded once through the File API, in the container it was recorded in when that is `webm`, `mp4`, `m4a`, `wav`, `mp3`, `aac`, `ogg`, `flac` or `aiff`, and as decoded WAV otherwise. A recording longer than 10 minutes is asked for in parts that Gemini cuts out of that upload, four at a time, and the speakers of a diarized run are matched across the parts. See [Gemini API key](use-cases/gemini-api-key.md).
 
 ![Google Gemini engine settings with the base URL, API key keychain picker, model and max output tokens rows](images/settings-llm-gemini-provider.png)
 

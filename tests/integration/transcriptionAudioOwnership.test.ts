@@ -292,9 +292,9 @@ async function runToCompletion(
 
 /**
  * A container Gemini does not read as it stands, so the run decodes it: the
- * one this plugin records in by default.
+ * one a phone's voice recorder may save in.
  */
-const DECODED_FOR_GEMINI = 'webm';
+const DECODED_FOR_GEMINI = '3gp';
 
 describe('a recording an engine refused for now, in a container it has decoded', () => {
 	it('is transcribed by Gemini on the attempt after the refusal', async () => {

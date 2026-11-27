@@ -50,12 +50,13 @@ const DECODED_WAV_ONLY: ContainerSupport = { accepts: () => false };
 
 /**
  * Gemini's File API, asked by MIME type - the unit Google documents the list
- * in. It covers the `mp4`/`m4a` this plugin can record. Everything else,
- * notably the `webm` it records by default, is decoded to WAV before upload.
+ * in. It covers every container this plugin records in: the default `webm`
+ * and the `mp4`/`m4a` it can record instead. Anything else is decoded to WAV
+ * before upload.
  */
 const GEMINI_CONTAINERS: ContainerSupport = {
 	accepts: ({ contentType }) => GEMINI_AUDIO_MIME_TYPES.has(contentType),
-	acceptedNames: 'mp4, m4a, mp3, aac, ogg, flac, aiff or wav',
+	acceptedNames: 'webm, mp4, m4a, mp3, aac, ogg, flac, aiff or wav',
 };
 
 /**

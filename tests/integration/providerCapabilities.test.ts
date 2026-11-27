@@ -743,7 +743,7 @@ describe('the containers each engine reads as they stand', () => {
 		{ extension: 'aac', reads: true },
 		{ extension: 'ogg', reads: true },
 		{ extension: 'flac', reads: true },
-		{ extension: 'webm', reads: false },
+		{ extension: 'webm', reads: true },
 		{ extension: 'm4a', reads: true },
 		{ extension: 'mp4', reads: true },
 		{ extension: '3gp', reads: false },
