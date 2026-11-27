@@ -60,6 +60,7 @@ import type { Transcript } from './TranscriptTypes';
 import { formatTimecode } from '../utils/TimeUtils';
 import type { LlmProvider } from './llm/LlmProvider';
 import { type LlmCostSink, runLlmStep } from './llm/llmStep';
+import { withTemplaterCommandsRun } from './templaterStep';
 import { LlmJobId } from './llm/vendors';
 import {
 	collectRunFacts,
@@ -259,7 +260,11 @@ export class TemplatePass {
 	 * @throws Error when every call the parts needed failed
 	 */
 	async run(): Promise<TemplateNote> {
-		const { template } = this.request;
+		const template = await withTemplaterCommandsRun(
+			this.request.source,
+			this.request.template,
+			this.request.templateName,
+		);
 		const facts = collectRunFacts(
 			this.request.source,
 			noteTemplateEngine().fieldsRead(template, PROPERTIES_ROOT),
@@ -274,7 +279,7 @@ export class TemplatePass {
 		const specs = collectParts(template, context);
 		const results = await this.fillParts(specs, facts);
 		return {
-			...this.assemble(context, results),
+			...this.assemble(template, context, results),
 			properties: noteProperties(specs, results),
 			templateName: this.request.templateName,
 		};
@@ -348,14 +353,16 @@ export class TemplatePass {
 	/**
 	 * The note with every part's result in its place, and the transcript
 	 * written as the template asks.
+	 * @param template - The template, its Templater commands run
 	 * @param context - What the template reads
 	 * @param results - Every part's Markdown, by name
 	 */
 	private assemble(
+		template: string,
 		context: TemplateContext,
 		results: ReadonlyMap<string, string>,
 	): Pick<TemplateNote, 'markdown' | 'timestamps'> {
-		const { rendering, template } = this.request;
+		const { rendering } = this.request;
 		let timestamps: boolean | undefined;
 		const helpers = rendering
 			? {

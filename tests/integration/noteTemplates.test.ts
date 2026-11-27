@@ -85,9 +85,19 @@ function withTemplate(
 /** Where a prompt profile a part names is kept as a note. */
 const PROMPT_NOTE = 'Prompts/Action items.md';
 
+/** The plugins the next run's app has enabled, by id; none by default. */
+let enabledPlugins: Record<string, unknown> = {};
+
+beforeEach(() => {
+	enabledPlugins = {};
+});
+
 /** An app whose vault holds the recording, the note and a prompt note. */
 function vault(): App {
 	const app = new App();
+	Object.assign(app, {
+		plugins: { getPlugin: (id: string): unknown => enabledPlugins[id] },
+	});
 	asMockVault(app.vault).seed([
 		{ path: recording.path, data: new ArrayBuffer(8) },
 		{ path: NOTE_PATH, content: 'Notes' },
@@ -417,6 +427,81 @@ describe('a run with a note template', () => {
 				source.token,
 			),
 		).rejects.toBeInstanceOf(TranscriptionCancelledError);
+	});
+});
+
+describe('Templater commands in a note template', () => {
+	/** A template naming its note through Templater, with one part. */
+	const TEMPLATE = [
+		'# <% tp.file.title %>',
+		'',
+		'## Summary',
+		'',
+		'{{#part "summary"}}The points.{{/part}}',
+	].join('\n');
+
+	/**
+	 * A Templater that writes the title of the file it is run for, as
+	 * `tp.file.title` does, and nothing else.
+	 */
+	function templater(): { parse_template: jest.Mock } {
+		const api = {
+			create_running_config: (
+				_template: TFile | undefined,
+				target: TFile,
+			): TFile => target,
+			parse_template: jest.fn((target: TFile, text: string) =>
+				Promise.resolve(
+					text.replaceAll('<% tp.file.title %>', target.basename),
+				),
+			),
+		};
+		enabledPlugins['templater-obsidian'] = { templater: api };
+		return api;
+	}
+
+	it('runs them on the template, for the note, and never on what the model wrote', async () => {
+		const { parse_template } = templater();
+		const llm = scriptedLlm(
+			'{"summary": "Run <% tp.file.title %> later."}',
+		);
+
+		const { markdown } = await transcribe(withTemplate(TEMPLATE), llm);
+
+		expect(markdown).toBe(
+			'# Weekly sync\n\n## Summary\n\nRun <% tp.file.title %> later.',
+		);
+		expect(parse_template).toHaveBeenCalledTimes(1);
+		expect(parse_template).toHaveBeenCalledWith(
+			expect.objectContaining({ path: NOTE_PATH }),
+			TEMPLATE,
+		);
+	});
+
+	it('leaves them as typed, and says why, when Templater is not there', async () => {
+		const llm = scriptedLlm('{"summary": "Ship."}');
+
+		const { markdown } = await transcribe(withTemplate(TEMPLATE), llm);
+
+		expect(markdown).toContain('# <% tp.file.title %>');
+		expect(noticeMessages()).toContain(
+			'The note template "Meeting" has Templater commands, and Templater is not installed or enabled, so they were left as they are.',
+		);
+	});
+
+	it('leaves them as typed, and says why, when Templater fails on them', async () => {
+		silenceConsole('warn');
+		templater().parse_template.mockRejectedValue(
+			new Error('tp.x is not defined'),
+		);
+		const llm = scriptedLlm('{"summary": "Ship."}');
+
+		const { markdown } = await transcribe(withTemplate(TEMPLATE), llm);
+
+		expect(markdown).toContain('# <% tp.file.title %>');
+		expect(noticeMessages()).toContain(
+			'Templater could not run the commands of the note template "Meeting" (tp.x is not defined), so they were left as they are.',
+		);
 	});
 });
 
