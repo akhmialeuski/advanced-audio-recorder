@@ -4,6 +4,7 @@
 
 import {
 	DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
+	formatTranscriptByChapters,
 	formatTranscriptMarkdown,
 	serializeTranscriptFile,
 } from 'src/transcription/transcriptFormat';
@@ -126,6 +127,74 @@ describe('formatTranscriptMarkdown', () => {
 		expect(md).not.toContain('[[host]]');
 		// The brackets are present but escaped
 		expect(md).toContain('\\[\\[secret-note\\]\\]');
+	});
+});
+
+describe('formatTranscriptByChapters', () => {
+	const transcript = buildTranscript([
+		seg(0, 5, 'Before the agenda', 'Alice'),
+		seg(10, 20, 'The deck is late', 'Bob'),
+		seg(30, 40, 'Budget is fine', 'Alice'),
+	]);
+	const options = {
+		...DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
+		timestampLinks: false,
+	};
+
+	it('writes each chapter as a heading over its own lines', () => {
+		expect(
+			formatTranscriptByChapters(
+				transcript,
+				options,
+				stubLink,
+				[
+					{ start: 30, title: 'Budget' },
+					{ start: 10, title: 'Deck' },
+				],
+				3,
+			),
+		).toBe(
+			[
+				'0:00 **Alice** Before the agenda',
+				'### Deck',
+				'0:10 **Bob** The deck is late',
+				'### Budget',
+				'0:30 **Alice** Budget is fine',
+			].join('\n\n'),
+		);
+	});
+
+	// A transcription run has no chapters yet, so chapters= writes the
+	// transcript in one piece there.
+	it('writes the transcript in one piece without chapters', () => {
+		expect(
+			formatTranscriptByChapters(transcript, options, stubLink, [], 3),
+		).toBe(formatTranscriptMarkdown(transcript, options, stubLink));
+	});
+
+	it('leaves out a chapter no line falls in, and shows a link a title holds as text', () => {
+		expect(
+			formatTranscriptByChapters(
+				transcript,
+				options,
+				stubLink,
+				[
+					{ start: 10, title: '[[Deck]] review' },
+					{ start: 12, title: 'Empty' },
+					{ start: 30, title: 'Budget' },
+				],
+				2,
+			),
+		).not.toContain('Empty');
+		expect(
+			formatTranscriptByChapters(
+				transcript,
+				options,
+				stubLink,
+				[{ start: 10, title: '[[Deck]] review' }],
+				2,
+			),
+		).toContain('## \\[\\[Deck\\]\\] review');
 	});
 });
 

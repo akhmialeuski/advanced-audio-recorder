@@ -217,7 +217,7 @@ Three tools under **Diagnostics** help you verify your setup and report problems
 
 Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_REPORTING_GUIDE.md)
 
-![The plugin's ten entries in the context menu of an audio file, from Audio file info through to Delete recording, with transcription, rename speakers and auto chapters all enabled](images/context-menu-file-explorer.png)
+![The plugin's eleven entries in the context menu of an audio file, from Audio file info through Structure transcript with a template to Delete recording, with transcription, rename speakers and auto chapters all enabled](images/context-menu-file-explorer.png)
 
 ---
 

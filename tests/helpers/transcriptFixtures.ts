@@ -3,6 +3,7 @@
  * @module tests/helpers/transcriptFixtures
  */
 
+import type { TranscriptLinesSource } from 'src/chapters/transcriptSources';
 import type {
 	Transcript,
 	TranscriptSegment,
@@ -86,5 +87,25 @@ export function cachedLink(
 			start: { line, col: startCol, offset: 0 },
 			end: { line, col: endCol, offset: 0 },
 		},
+	};
+}
+
+/**
+ * A transcript found for a recording that spans ten minutes, long enough to
+ * price a real estimate: one line at the start and one at the end.
+ * @param first - What the first line says
+ * @param last - What the last line says
+ * @returns The located transcript, read from the recording's JSON file
+ */
+export function tenMinuteSource(
+	first: string,
+	last: string,
+): TranscriptLinesSource {
+	return {
+		lines: [
+			{ time: 0, text: first },
+			{ time: 600, text: last },
+		],
+		origin: 'rec.json',
 	};
 }

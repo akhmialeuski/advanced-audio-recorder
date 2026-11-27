@@ -748,3 +748,48 @@ describe('the parts a run could not transcribe', () => {
 		).toBe(false);
 	});
 });
+
+describe('the template a recording was structured with', () => {
+	const applied = {
+		profileId: 'tpl-1',
+		name: 'Daily sync',
+		appliedAt: '2026-11-26T10:00:00Z',
+	};
+
+	it('survives a write and a read', () => {
+		const section = {
+			...emptyTranscriptSection(),
+			appliedTemplate: applied,
+		};
+		const text = serializeRecordingSidecar({
+			markers: [],
+			transcript: section,
+		});
+		const read = parseRecordingSidecar(text);
+		expect(read.transcript.appliedTemplate).toEqual(applied);
+		expect(cloneTranscriptSection(section).appliedTemplate).toEqual(
+			applied,
+		);
+		expect(cloneTranscriptSection(section).appliedTemplate).not.toBe(
+			applied,
+		);
+	});
+
+	it('keeps the sidecar on disk, since it is what the dialog opens on', () => {
+		const section = {
+			...emptyTranscriptSection(),
+			appliedTemplate: applied,
+		};
+		expect(isTranscriptSectionEmpty(section)).toBe(false);
+	});
+
+	it.each([
+		['without a name', { profileId: 'tpl-1', appliedAt: 't' }],
+		['without an id', { name: 'Daily sync', appliedAt: 't' }],
+		['without a time', { profileId: 'tpl-1', name: 'Daily sync' }],
+		['that is not a record', 'Daily sync'],
+	])('drops a record %s', (_label, appliedTemplate) => {
+		const section = parseTranscriptSection({ appliedTemplate });
+		expect(section.appliedTemplate).toBeUndefined();
+	});
+});

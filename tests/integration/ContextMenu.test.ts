@@ -335,6 +335,7 @@ describe('ContextMenu', () => {
 				'Convert audio format',
 				'Split audio into parts',
 				'Clean up audio',
+				'Structure transcript with a template',
 				'Export chapters and markers',
 				'Delete recording',
 			]);

@@ -68,6 +68,7 @@ An action added to the plugin appears in all three, so the three never drift apa
 | `retry-failed`       | Transcribe the parts that failed                 |
 | `speakers`           | Rename speakers                                  |
 | `chapters`           | Generate chapters from transcript                |
+| `structure`          | Structure transcript with a template             |
 | `export-chapters`    | Export chapters and markers                      |
 | `delete`             | Delete recording                                 |
 | `delete-with-links`  | Delete recording & link to file                  |
@@ -296,6 +297,14 @@ obsidian advanced-audio-recorder:chapters file=standup
 ```
 
 `chapters` generates the recording's chapters from its transcript with the LLM, as [Generate chapters from transcript](transcription.md#auto-chapters) does, and answers when they are written. A recording that already has generated chapters is refused unless `replace` is given, and bookmarks and chapters added by hand are kept either way. `profile=<profile>`, `llm=<engine>` and `model=<model>` choose what the dialog's pickers would, and are kept as the defaults, as there.
+
+## Structuring with a template
+
+```bash
+obsidian advanced-audio-recorder:structure file=standup template="Daily sync"
+```
+
+`structure` applies a note template to the transcript the recording already has, as [Structure transcript with a template](llm-post-processing.md#structuring-a-transcript-you-already-have) does, and inserts the note into the note named, under the transcript heading. `template=<template>` names a note template profile, whatever its case; without it, the template the recording was last structured with is used, else the selected one. A name that matches no template is answered with the names there are. It needs a note to write into, `file=<note>` or `note=<note>` beside the recording, and a transcript: a recording without one is told to be transcribed first.
 
 ## Transcript lines
 

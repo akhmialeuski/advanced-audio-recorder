@@ -172,6 +172,7 @@ export function commonActionServices(): {
 		recordingSidecar: partial<ActionServices['recordingSidecar']>({
 			getMarkers: jest.fn().mockResolvedValue([]),
 			getTranscript: jest.fn().mockResolvedValue(null),
+			recordAppliedTemplate: jest.fn().mockResolvedValue(undefined),
 		}),
 		onMarkersChanged: jest.fn(),
 		transcriber: transcriberDouble(),

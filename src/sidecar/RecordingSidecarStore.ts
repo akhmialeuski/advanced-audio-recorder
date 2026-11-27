@@ -36,6 +36,7 @@ import {
 	parseRecordingSidecar,
 	serializeRecordingSidecar,
 	SIDECAR_HISTORY_LIMIT,
+	type AppliedTemplate,
 	type FileOutput,
 	type NoteOutput,
 	type ParticipantUpdate,
@@ -416,6 +417,20 @@ export class RecordingSidecarStore {
 	): Promise<void> {
 		return this.mutate(path, (sidecar) => {
 			sidecar.transcript.provenance = { ...provenance };
+		});
+	}
+
+	/**
+	 * Records the note template a recording's note was structured with.
+	 * @param path - Vault-relative recording path
+	 * @param applied - The template and when it was applied
+	 */
+	async recordAppliedTemplate(
+		path: string,
+		applied: AppliedTemplate,
+	): Promise<void> {
+		return this.mutate(path, (sidecar) => {
+			sidecar.transcript.appliedTemplate = { ...applied };
 		});
 	}
 

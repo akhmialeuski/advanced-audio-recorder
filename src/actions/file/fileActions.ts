@@ -41,6 +41,11 @@ import {
 } from './audioJobsCli';
 import { TRANSCRIBE_PARAMS, transcribeFromCli } from './transcribeCli';
 import { WAIT_FLAG } from '../../obsidian/cliArgs';
+import {
+	STRUCTURE_PARAMS,
+	openStructureTranscript,
+	structureTranscriptFromCli,
+} from './structureTranscript';
 import { SPEAKER_PARAMS, speakersFromCli } from './speakersCli';
 import {
 	CHAPTER_PARAMS,
@@ -264,6 +269,24 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 			unavailable: (): string =>
 				'Auto chapters are switched off in settings.',
 			execute: generateChaptersFromCli,
+		},
+	},
+	{
+		commandId: COMMAND_IDS.structureTranscript,
+		title: 'Structure transcript with a template',
+		icon: 'layout-template',
+		// Whether the recording has a transcript needs a read, and
+		// availability is decided synchronously; the dialog reads it and asks
+		// for a transcription first when there is none.
+		isAvailable: always,
+		run: openStructureTranscript,
+		cli: {
+			name: 'structure',
+			description:
+				'Build a note from the transcript a recording already has, with a note template, without transcribing it again.',
+			params: STRUCTURE_PARAMS,
+			opensDialog: true,
+			execute: structureTranscriptFromCli,
 		},
 	},
 	{
