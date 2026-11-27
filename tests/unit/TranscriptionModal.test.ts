@@ -21,6 +21,7 @@ import {
 	settingNames,
 	rowDescription,
 	rowInput,
+	rowOptions,
 	rowSelect,
 	rowToggle,
 	rowToggleOn,
@@ -1471,5 +1472,73 @@ describe('TranscriptionModal progress', () => {
 				'aria-valuenow',
 			),
 		).toBe('0');
+	});
+});
+
+describe('TranscriptionModal profile of the post-processing task', () => {
+	function settingsWithTemplates(): AudioRecorderSettings {
+		return {
+			...DEFAULT_SETTINGS,
+			llmPostProcessEnabled: true,
+			llmPostProcessTask: 'template',
+			profiles: [
+				storedProfile('llmTemplate', 't1', 'Sync', '{{transcript}}'),
+				storedProfile('llmTemplate', 't2', 'Lecture', '{{transcript}}'),
+				storedProfile('llmSummary', 's1', 'Short', 'Three points.'),
+			],
+			selectedProfileIds: {
+				...DEFAULT_SETTINGS.selectedProfileIds,
+				llmTemplate: 't1',
+			},
+		};
+	}
+
+	it('offers the templates when the task structures with one, and runs the picked one', () => {
+		const settings = settingsWithTemplates();
+		const onProfileSelected = jest.fn().mockResolvedValue(undefined);
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{ transcriber, onProfileSelected },
+		);
+		modal.onOpen();
+		const row = settingRow(modal.contentEl, 'Note template profile');
+
+		expect(rowOptions(row)).toEqual(['None', 'Sync', 'Lecture']);
+		expect(rowSelect(row).value).toBe('t1');
+		rowSelect(row).value = 't2';
+		rowSelect(row).dispatchEvent(new Event('change'));
+
+		expect(onProfileSelected).toHaveBeenCalledWith('llmTemplate', 't2');
+		expect(runSettingsOf(modal).selectedProfileIds.llmTemplate).toBe('t2');
+		expect(settings.selectedProfileIds.llmTemplate).toBe('t1');
+	});
+
+	it('follows the task: a summary offers the summary prompts', async () => {
+		const modal = openedOver(settingsWithTemplates());
+
+		const task = rowSelect(settingRow(modal.contentEl, 'LLM task'));
+		task.value = 'summary';
+		task.dispatchEvent(new Event('change'));
+		await tick();
+
+		expect(hasSettingRow(modal.contentEl, 'Note template profile')).toBe(
+			false,
+		);
+		expect(
+			rowOptions(settingRow(modal.contentEl, 'Summary prompt profile')),
+		).toEqual(['None', 'Short']);
+	});
+
+	it('is not shown while post-processing is off', () => {
+		const modal = openedOver({
+			...settingsWithTemplates(),
+			llmPostProcessEnabled: false,
+		});
+
+		expect(hasSettingRow(modal.contentEl, 'Note template profile')).toBe(
+			false,
+		);
 	});
 });

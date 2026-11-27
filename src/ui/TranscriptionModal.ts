@@ -72,6 +72,7 @@ import { presetBodyOf, settingsWithPreset } from '../transcription/runPreset';
 import { renderPresetRow } from './presetRow';
 import { focusPlace, restoreFocus } from './focusAcrossRender';
 import { createProgressBar, type ProgressBar } from './progressBar';
+import { addTaskProfilePicker } from './taskProfilePicker';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
 const DEFAULT_TRANSCRIBE_LABEL = 'Transcribing...';
@@ -674,6 +675,12 @@ export class TranscriptionModal extends PluginModal {
 				options: LLM_TASK_OPTIONS,
 				get: () => s.llmPostProcessTask,
 				set: (v) => (s.llmPostProcessTask = v as LlmTask),
+				// Drawn again so the profile row below offers the new task's.
+				rerender: true,
+			});
+			addTaskProfilePicker(advancedCtx, profileText, (kind, id) => {
+				// Affects this run and is remembered as the next one's.
+				void this.options.onProfileSelected?.(kind, id);
 			});
 		}
 		if (s.transcriptionAutoChaptersEnabled) {
