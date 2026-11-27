@@ -23,3 +23,7 @@ export const audioContainerFromExtension = jest.fn((extension: string) => ({
 	extension,
 }));
 export const audioPrepOptions = jest.fn(() => ({}));
+// Pure arithmetic on a part the test itself supplied, so the real one serves.
+export const { ownStartSeconds } = jest.requireActual<
+	typeof import('src/transcription/audioPrep')
+>('src/transcription/audioPrep');

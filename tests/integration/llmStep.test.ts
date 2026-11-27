@@ -11,12 +11,17 @@ import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
 import { estimateLlmCallCost, estimateStepCost } from 'src/transcription/costs';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
-import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
+import {
+	GeminiLlmProvider,
+	type LlmProvider,
+} from 'src/transcription/llm/LlmProvider';
 import type { RunCostStepId } from 'src/transcription/costs';
 import { at, defined } from '../helpers/assertions';
-import { billed, completed } from '../helpers/llmDoubles';
+import { billed, completed, geminiCutAnswer } from '../helpers/llmDoubles';
+import { withRequestUrl } from '../helpers/network';
 import {
 	extractGeminiUsage,
+	LlmAnswerTruncatedError,
 	type LlmUsage,
 } from 'src/transcription/llm/llmResponse';
 import { EngineLabel } from 'src/providers/providers';
@@ -358,6 +363,40 @@ describe('runLlmStep', () => {
 		// A call that threw was not billed, and the caller's own error handling
 		// decides what happens next - the wrapper must not reshape either.
 		expect(sink.records).toEqual([]);
+	});
+
+	// The vendor bills an answer it cut at the output limit like any other,
+	// and the client refuses it as incomplete. Dropping its cost with the
+	// answer left a cleanup of an hour-long lesson out of the session total.
+	it('bills an answer the vendor cut at its limit and still lets the refusal through', async () => {
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: JSON.stringify(
+				geminiCutAnswer({
+					promptTokenCount: 1_000_000,
+					candidatesTokenCount: 0,
+					thoughtsTokenCount: 1_000_000,
+				}),
+			),
+		}));
+		const sink = stubSink();
+
+		await expect(
+			chapterStep(
+				new GeminiLlmProvider({
+					baseUrl: 'https://gemini.example',
+					apiKey: 'gm-test',
+					model: 'gemini-2.5-flash',
+				}),
+				sink,
+				pricedSettings,
+			),
+		).rejects.toThrow(LlmAnswerTruncatedError);
+
+		expect(sink.records).toEqual([
+			[LLM_PROVIDER_IDS.GEMINI, 'autoChapters', 2.8, false],
+		]);
 	});
 
 	it('runs without a sink for callers that do not account spending', async () => {

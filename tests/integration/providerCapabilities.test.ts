@@ -94,7 +94,7 @@ describe('transcription provider capabilities', () => {
 		// Gemini transcribes a whole file in one synchronous request, so a long
 		// recording must be split; Voxtral's endpoint takes three hours per
 		// request; the other whole-file APIs have no duration limit.
-		expect(GEMINI_CAPABILITIES.maxRequestSeconds).toBe(15 * 60);
+		expect(GEMINI_CAPABILITIES.maxRequestSeconds).toBe(10 * 60);
 		expect(VOXTRAL_CAPABILITIES.maxRequestSeconds).toBe(3 * 60 * 60);
 		expect(WHISPER_API_CAPABILITIES.maxRequestSeconds).toBe(
 			Number.POSITIVE_INFINITY,
@@ -743,9 +743,10 @@ describe('the containers each engine reads as they stand', () => {
 		{ extension: 'aac', reads: true },
 		{ extension: 'ogg', reads: true },
 		{ extension: 'flac', reads: true },
-		{ extension: 'webm', reads: false },
-		{ extension: 'm4a', reads: false },
-		{ extension: 'mp4', reads: false },
+		{ extension: 'webm', reads: true },
+		{ extension: 'm4a', reads: true },
+		{ extension: 'mp4', reads: true },
+		{ extension: '3gp', reads: false },
 	])('answers $reads for $extension on Gemini', ({ extension, reads }) => {
 		expect(readsAsItStands(GEMINI_CAPABILITIES, extension)).toBe(reads);
 	});

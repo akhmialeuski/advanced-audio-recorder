@@ -199,7 +199,7 @@ function createSut(
 					return reported.usd;
 				},
 			}),
-			generateChapters: (file, transcript, signal?: AbortSignal) => {
+			generateChapters: (file, transcript, _settings, signal) => {
 				chaptered.push({ path: file.path, transcript });
 				return (
 					options.chapters?.(file.path, signal) ?? Promise.resolve()

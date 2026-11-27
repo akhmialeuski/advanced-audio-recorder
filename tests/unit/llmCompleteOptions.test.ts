@@ -23,7 +23,7 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { withRequestUrl } from '../helpers/network';
-import { OPENAI_IDENTITY } from '../helpers/llmDoubles';
+import { geminiCutAnswer, OPENAI_IDENTITY } from '../helpers/llmDoubles';
 import { outcomeOf } from '../helpers/async';
 import { EngineLabel } from 'src/providers/providers';
 
@@ -229,4 +229,152 @@ describe('the usage each provider hands back', () => {
 			expect(await build().complete(PROMPT, 512)).toEqual({ text: 'ok' });
 		},
 	);
+});
+
+// An answer cut at the output limit is not the answer: taken as one, a
+// cleanup that stopped at 8:57 of an hour-long lesson replaced the whole
+// transcript with its first tenth.
+describe('an answer the vendor cut at its output limit', () => {
+	it('is refused on the OpenAI wire format, naming the limit', async () => {
+		capture(
+			JSON.stringify({
+				choices: [
+					{
+						finish_reason: 'length',
+						message: { content: '[[recording' },
+					},
+				],
+			}),
+		);
+
+		await expect(openAiProvider().complete(PROMPT, 512)).rejects.toThrow(
+			/output token limit/,
+		);
+	});
+
+	// The refusal has to say enough to act on: whose limit, how large it is,
+	// how much of it went to reasoning, and where the limit is set.
+	it('names the engine, the limit, the reasoning share and where to raise it', async () => {
+		capture(
+			JSON.stringify({
+				choices: [
+					{
+						finish_reason: 'length',
+						message: { content: '[[recording' },
+					},
+				],
+				usage: {
+					prompt_tokens: 36626,
+					completion_tokens: 512,
+					completion_tokens_details: { reasoning_tokens: 300 },
+				},
+			}),
+		);
+
+		const outcome = await outcomeOf(openAiProvider().complete(PROMPT, 512));
+
+		expect(outcome).toEqual({
+			error: expect.objectContaining({
+				message: `${OPENAI_IDENTITY.label} stopped at its output token limit of 512, 300 of them spent on reasoning, so the answer is incomplete. Raise Max output tokens on the ${OPENAI_IDENTITY.label} page under Engines, or choose a model with a larger output limit.`,
+				inputTokens: 36626,
+				reasoningTokens: 300,
+				usage: { inputTokens: 36626, outputTokens: 512 },
+			}),
+		});
+	});
+
+	it('is refused on the Anthropic wire format, naming the limit', async () => {
+		capture(
+			JSON.stringify({
+				stop_reason: 'max_tokens',
+				content: [{ type: 'text', text: '[[recording' }],
+			}),
+		);
+		const anthropic = new AnthropicLlmProvider({
+			baseUrl: 'https://anthropic.example',
+			apiKey: 'k',
+			model: 'claude-sonnet-5',
+		});
+
+		await expect(anthropic.complete(PROMPT, 512)).rejects.toThrow(
+			/output token limit/,
+		);
+	});
+
+	it('carries the counts an Anthropic response reported', async () => {
+		capture(
+			JSON.stringify({
+				stop_reason: 'max_tokens',
+				content: [{ type: 'text', text: '[[recording' }],
+				usage: { input_tokens: 900, output_tokens: 512 },
+			}),
+		);
+		const anthropic = new AnthropicLlmProvider({
+			baseUrl: 'https://anthropic.example',
+			apiKey: 'k',
+			model: 'claude-sonnet-5',
+		});
+
+		expect(await outcomeOf(anthropic.complete(PROMPT, 512))).toEqual({
+			error: expect.objectContaining({
+				inputTokens: 900,
+				usage: { inputTokens: 900, outputTokens: 512 },
+			}),
+		});
+	});
+
+	// The Gemini client refused the same stop with an error of its own, which
+	// carried no counts, so the notice could not say how large the limit has
+	// to be for a cleanup cut on Gemini.
+	it('is refused on the Gemini wire format with the counts the notice sizes by', async () => {
+		capture(
+			JSON.stringify(
+				geminiCutAnswer({
+					promptTokenCount: 36626,
+					candidatesTokenCount: 32448,
+					thoughtsTokenCount: 17552,
+				}),
+			),
+		);
+		const gemini = new GeminiLlmProvider({
+			baseUrl: 'https://gemini.example',
+			apiKey: 'k',
+			model: 'gemini-2.5-flash',
+		});
+
+		expect(await outcomeOf(gemini.complete(PROMPT, 50000))).toEqual({
+			error: expect.objectContaining({
+				message: `${EngineLabel.Gemini} stopped at its output token limit of 50000, 17552 of them spent on reasoning, so the answer is incomplete. Raise Max output tokens on the ${EngineLabel.Gemini} page under Engines, or choose a model with a larger output limit.`,
+				inputTokens: 36626,
+				reasoningTokens: 17552,
+				usage: { inputTokens: 36626, outputTokens: 50000 },
+			}),
+		});
+	});
+
+	it('takes an answer that stopped on its own as it is', async () => {
+		capture(
+			JSON.stringify({
+				choices: [
+					{ finish_reason: 'stop', message: { content: 'ok' } },
+				],
+			}),
+		);
+
+		expect(await openAiProvider().complete(PROMPT, 512)).toEqual({
+			text: 'ok',
+		});
+	});
+});
+
+// A body with no choice names no stop at all, so it is no truncated answer:
+// it is read as it was before, as an answer with no text.
+describe('an OpenAI-style body that carries no choice', () => {
+	it('is taken as an answer with no text', async () => {
+		capture(JSON.stringify({ id: 'chatcmpl-1' }));
+
+		expect(await openAiProvider().complete(PROMPT, 512)).toEqual({
+			text: '',
+		});
+	});
 });

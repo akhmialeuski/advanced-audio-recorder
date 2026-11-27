@@ -43,7 +43,15 @@ describe('judgePartTimeline', () => {
 		expect(judgePartTimeline([line(700, end)], MIDDLE)).toBeNull();
 	});
 
-	it('reports an answer whose lines end past the tolerance', () => {
+	it('accepts a last line the part cut off, ending well past the part', () => {
+		const end = PART_SECONDS + 4 * PART_OVERRUN_TOLERANCE_SECONDS;
+
+		expect(
+			judgePartTimeline([line(0, 300), line(715, end)], MIDDLE),
+		).toBeNull();
+	});
+
+	it('reports an answer whose lines start past the tolerance', () => {
 		expect(judgePartTimeline([line(0, 30), line(840, 842)], LAST)).toEqual({
 			kind: TimelineFaultKind.Overrun,
 			reachedSeconds: 842,

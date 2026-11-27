@@ -180,7 +180,7 @@ This is post-processing you invoke on demand, and it never changes how live reco
 
 A progress dialog shows the elapsed timer and lets you **Cancel** or **Minimize** the job to the status bar. The full reference - engines, language, diarization, output formats, and setup - is in [Transcription](transcription.md). For step-by-step provider setup, see the [use-case guides](use-cases/index.md).
 
-![The Transcribe audio dialog with the language, participant profile and destination rows up front and every other per-run option in a collapsed More options block above the Transcribe button](images/transcription-dialog.png)
+![The Transcribe audio dialog with the preset, language, participant profile and destination rows up front and every other per-run option in a collapsed More options block above the Transcribe button](images/transcription-dialog.png)
 
 ---
 

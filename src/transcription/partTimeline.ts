@@ -13,10 +13,12 @@ import type { TranscriptSegment } from './TranscriptTypes';
 import { formatTimecode } from '../utils/TimeUtils';
 
 /**
- * How far past the end of its part a line may end, in seconds, before the
+ * How far past the end of its part a line may start, in seconds, before the
  * answer is judged to have left the part. A last line rounded up to the next
- * second, or ending on the final breath, is the model being imprecise rather
- * than shifted.
+ * second is the model being imprecise rather than shifted. Where a line ends
+ * is not judged: the part's audio cuts the line spoken across its end, and
+ * the model writes that line's end where the speaker would have stopped,
+ * which can lie well past the part. Such an end is cut at the part.
  */
 export const PART_OVERRUN_TOLERANCE_SECONDS = 5;
 
@@ -41,7 +43,7 @@ export interface PartSpan {
 
 /** The ways an answer can disagree with the part it was sent for. */
 export const TimelineFaultKind = {
-	/** A line ends past the end of the part. */
+	/** A line starts past the end of the part. */
 	Overrun: 'overrun',
 	/** The lines stop well before the end of the part. */
 	Short: 'short',
@@ -72,10 +74,8 @@ export function judgePartTimeline(
 		0,
 		...segments.map((segment) => segment.end),
 	);
-	if (
-		reachedSeconds >
-		span.durationSeconds + PART_OVERRUN_TOLERANCE_SECONDS
-	) {
+	const lastStart = Math.max(0, ...segments.map((segment) => segment.start));
+	if (lastStart > span.durationSeconds + PART_OVERRUN_TOLERANCE_SECONDS) {
 		return { kind: TimelineFaultKind.Overrun, reachedSeconds };
 	}
 	if (

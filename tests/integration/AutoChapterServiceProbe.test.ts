@@ -11,7 +11,10 @@
 import { noSelectedProfiles } from 'src/settings/profiles';
 import { AutoChapterService } from 'src/chapters/AutoChapterService';
 import { AUTO_CHAPTER_ID_PREFIX } from 'src/chapters/chapterGeneration';
-import { loadTranscriptLines } from 'src/chapters/transcriptSources';
+import {
+	loadTranscriptLines,
+	type TranscriptLinesSource,
+} from 'src/chapters/transcriptSources';
 import { MARKER_KIND, type PlayerMarker } from 'src/markers/markerModel';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
@@ -41,6 +44,12 @@ const mockLoadTranscriptLines = loadTranscriptLines as jest.MockedFunction<
 >;
 
 const file = { path: 'Recordings/talk.webm', name: 'talk.webm' } as TFile;
+
+/** A transcript of one line, located by the caller before generation. */
+const ONE_LINE: TranscriptLinesSource = {
+	origin: 'talk.transcript.json',
+	lines: [{ time: 0, text: 'intro talk' }],
+};
 
 /** A marker store over a fixed marker list, recording what was written. */
 interface StoreDouble {
@@ -197,15 +206,17 @@ describe('AutoChapterService duration probe', () => {
 		);
 		const { service, written: writtenMarkers } = makeService(llm);
 		const generated = service.generate(file, undefined, {
-			origin: 'talk.transcript.json',
-			lines: [
-				{ time: 0, text: 'intro talk' },
-				{ time: 120, text: 'main topic' },
-				{
-					time: 400,
-					text: 'trailing line from an untrimmed transcript',
-				},
-			],
+			preloaded: {
+				origin: 'talk.transcript.json',
+				lines: [
+					{ time: 0, text: 'intro talk' },
+					{ time: 120, text: 'main topic' },
+					{
+						time: 400,
+						text: 'trailing line from an untrimmed transcript',
+					},
+				],
+			},
 		});
 
 		// The metadata load answers with a recording shorter than the transcript
@@ -231,8 +242,7 @@ describe('AutoChapterService duration probe', () => {
 		);
 		const { service } = makeService(llm);
 		const generated = service.generate(file, undefined, {
-			origin: 'talk.transcript.json',
-			lines: [{ time: 0, text: 'intro talk' }],
+			preloaded: ONE_LINE,
 		});
 
 		(await untilProbeStarted()).emit('error');
@@ -247,8 +257,7 @@ describe('AutoChapterService duration probe', () => {
 		);
 		const { service } = makeService(llm);
 		const generated = service.generate(file, undefined, {
-			origin: 'talk.transcript.json',
-			lines: [{ time: 0, text: 'intro talk' }],
+			preloaded: ONE_LINE,
 		});
 		await untilProbeStarted();
 
@@ -269,11 +278,13 @@ describe('AutoChapterService duration probe', () => {
 		);
 		const { service, written: writtenMarkers } = makeService(llm);
 		const generated = service.generate(file, undefined, {
-			origin: 'talk.transcript.json',
-			lines: [
-				{ time: 0, text: 'intro talk' },
-				{ time: 400, text: 'trailing line' },
-			],
+			preloaded: {
+				origin: 'talk.transcript.json',
+				lines: [
+					{ time: 0, text: 'intro talk' },
+					{ time: 400, text: 'trailing line' },
+				],
+			},
 		});
 
 		// This plugin's own recordings load reporting Infinity, so the probe
@@ -298,8 +309,7 @@ describe('AutoChapterService duration probe', () => {
 		);
 		const { service } = makeService(llm);
 		const generated = service.generate(file, undefined, {
-			origin: 'talk.transcript.json',
-			lines: [{ time: 0, text: 'intro talk' }],
+			preloaded: ONE_LINE,
 		});
 
 		const audio = await untilProbeStarted();

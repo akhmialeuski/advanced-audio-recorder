@@ -120,9 +120,13 @@ describe('DeepSeek LLM vendor', () => {
 		// deepseek-flash at peak is 0.30/1.20 per million tokens, exactly twice
 		// gpt-4o-mini's 0.15/0.60, so with the same transcript and the same
 		// answer ceiling the DeepSeek line has to cost twice the OpenAI one.
+		// The ceilings are set alike here because the two engines no longer
+		// start at the same one, and the estimate caps the answer at it.
 		const base = {
 			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			llmPostProcessEnabled: true,
+			llmDeepSeekMaxTokens: 4096,
+			llmOpenAiMaxTokens: 4096,
 		};
 		const deepSeek = buildCostEstimate(
 			mergeSettings({ ...base, llmProvider: LLM_PROVIDER_IDS.DEEPSEEK }),

@@ -25,7 +25,8 @@
  * Error handling stays with the caller on purpose - the three steps want
  * different things from a failure (post-processing falls back to the raw
  * transcript, an agent degrades its own stage, chapters report and stop) - so
- * this wrapper never swallows or reshapes an error.
+ * this wrapper never swallows or reshapes an error. The one failure it
+ * accounts is an answer cut at the output limit, which the vendor billed.
  * @module transcription/llm/llmStep
  */
 
@@ -35,9 +36,13 @@ import {
 	llmCallCostFromUsage,
 	type RunCostStepId,
 } from '../costs';
-import type { LlmUsage } from './llmResponse';
+import { LlmAnswerTruncatedError, type LlmUsage } from './llmResponse';
 import type { LlmPrompt } from '../llmPostProcess';
-import type { LlmCompleteOptions, LlmProvider } from './LlmProvider';
+import type {
+	LlmCompleteOptions,
+	LlmCompletion,
+	LlmProvider,
+} from './LlmProvider';
 
 /**
  * Receives the estimated cost of each LLM call a run makes. Implemented by the
@@ -103,29 +108,52 @@ export async function runLlmStep(request: LlmStepRequest): Promise<string> {
 	// A run cancelled between two calls must not pay for the next one, so the
 	// spend is refused before it starts rather than aborted mid-flight.
 	request.signal?.throwIfAborted();
-	const completion = await request.llm.complete(
-		request.prompt,
-		request.maxTokens,
-		request.signal
-			? { ...request.options, signal: request.signal }
-			: request.options,
-	);
-	// Reported only after the call returns: a failed call was not billed, and
-	// the caller's own error handling decides what happens next. Priced per
-	// call, not per step: a step that makes several calls (the context agents)
-	// must not charge each call the whole team's cost. Priced only when
-	// something is accounting, which is what the optional chaining used to do
-	// for free by never evaluating the argument.
-	if (request.costSink) {
-		const cost = billedCost(request, completion.usage);
-		request.costSink.recordLlmCall(
-			request.llm.id,
-			request.step,
-			cost.usd,
-			cost.estimated,
+	let completion: LlmCompletion;
+	try {
+		completion = await request.llm.complete(
+			request.prompt,
+			request.maxTokens,
+			request.signal
+				? { ...request.options, signal: request.signal }
+				: request.options,
 		);
+	} catch (error) {
+		// An answer cut at the output limit was generated and billed in full,
+		// though the client refuses it, so it is recorded like a finished one.
+		// Any other failure was not billed, and is left to the caller.
+		if (error instanceof LlmAnswerTruncatedError) {
+			recordCall(request, error.usage);
+		}
+		throw error;
 	}
+	recordCall(request, completion.usage);
 	return completion.text;
+}
+
+/**
+ * Reports one billed call to the sink, when something is accounting.
+ *
+ * Priced per call, not per step: a step that makes several calls (the
+ * context agents) must not charge each call the whole team's cost. Priced
+ * only when there is a sink, which is what the optional chaining used to do
+ * for free by never evaluating the argument.
+ * @param request - The call being accounted
+ * @param usage - Token counts the vendor reported, if any
+ */
+function recordCall(
+	request: LlmStepRequest,
+	usage: LlmUsage | undefined,
+): void {
+	if (!request.costSink) {
+		return;
+	}
+	const cost = billedCost(request, usage);
+	request.costSink.recordLlmCall(
+		request.llm.id,
+		request.step,
+		cost.usd,
+		cost.estimated,
+	);
 }
 
 /**

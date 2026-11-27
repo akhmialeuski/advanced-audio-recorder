@@ -15,6 +15,7 @@
 - [Shared API keys](#shared-api-keys)
 - [Base URL](#base-url)
 - [Max output tokens](#max-output-tokens)
+    - [How large to set it](#how-large-to-set-it)
 - [Worked examples](#worked-examples)
 - [Behavior and reliability](#behavior-and-reliability)
 - [Settings summary](#settings-summary)
@@ -246,19 +247,42 @@ Leave it at the default unless you are routing requests through an OpenAI-compat
 
 **Max output tokens** caps the length of the LLM's reply. The ceiling belongs to the engine that has to honour it, so it lives on that engine's page under **Engines** and applies to every job calling it rather than to post-processing alone.
 
-| Setting               | Range      | Default | Step |
-| --------------------- | ---------- | ------- | ---- |
-| **Max output tokens** | 512-200000 | 4096    | 1    |
+| Setting               | Range      | Default                      | Step |
+| --------------------- | ---------- | ---------------------------- | ---- |
+| **Max output tokens** | 512-200000 | 4096, and 64000 for DeepSeek | 1    |
 
 Any whole number in that range is accepted, so the budgets a model's own documentation quotes - 8000, 32000, 128000 - can be typed straight in. The upper end of the field is a guard against a typo rather than a claim about any service: how long an answer may be is the model's own limit, it differs between models of one provider, and it moves with every release, so a budget above what your model allows is refused by the service itself, which names the maximum it accepts.
 
 On an OpenAI-compatible endpoint the budget is sent under whichever name that endpoint takes, which the plugin discovers rather than guesses. OpenAI renamed the field and its current models refuse the original name, while Groq, LM Studio, llama.cpp and the rest still speak it and are reached through the same **Base URL**, so no fixed choice works everywhere and a list of "new" model families would go stale with the next release. The request therefore goes out under the original name first, and only an endpoint that refuses it by name is asked again under the current one. That order matters because a server which does not recognise a field may drop it silently instead of refusing it, and a dropped budget is a truncation guard that is not there and says nothing about it. The answer is remembered for as long as the plugin is talking to that endpoint, so a run that makes several calls negotiates once.
 
-Why it matters: the model stops generating once it hits this budget. If the cap is too low for a long cleanup, the reply is **truncated** - you could lose the end of the transcript. Raise it for long recordings or detailed summaries; the default of `4096` suits short notes and most summaries. Bear in mind:
+Why it matters: the model stops generating once it hits this budget. If the cap is too low for a long cleanup, the reply is **truncated**, the step fails, and the raw transcript is kept in its place. Raise it for long recordings or detailed summaries; the default of `4096` suits short notes and most summaries. Bear in mind:
 
 - Higher caps allow longer replies but cost more and take longer.
 - A summary is short, so the default is usually plenty.
 - A full **Clean up** pass returns the whole transcript, so a long recording needs a higher cap (and a model whose own output limit is large enough).
+
+### How large to set it
+
+A **Clean up** or **Translate** pass writes the whole transcript again, so the cap has to cover the transcript itself. A two-speaker lesson of an hour, written into a note with timecode links and speaker names, measured 36 626 tokens on November 27, 2026, which is about 600 tokens per minute of recording. A summary is short and fits the default.
+
+A model that reasons before it answers spends part of the same cap on the reasoning. DeepSeek reasons by default: on that lesson `deepseek-flash` spent 17 552 of a 50 000 cap on reasoning in one run and nearly all of it in another, and both answers were cut short. For such a model allow at least as much again as the transcript needs, which is why DeepSeek starts at 64000, the value DeepSeek itself applies in thinking mode when no limit is sent.
+
+The table below follows from that one measurement, so read it as a starting point:
+
+| Recording, min | Transcript alone, tokens | With a reasoning model, tokens |
+| -------------- | ------------------------ | ------------------------------ |
+| 10             | 6000                     | 12000                          |
+| 30             | 18000                    | 36000                          |
+| 60             | 37000                    | 74000                          |
+| 120            | 73000                    | 146000                         |
+
+When an answer is cut at the cap, the notice names the engine, the cap, how much of it went to reasoning, and where to raise it. For a clean-up or a translation it also says how large the cap has to be for that transcript, counted from the tokens the service reported:
+
+```text
+LLM post-processing failed; saving the raw transcript. DeepSeek stopped at its output token limit of 50000, 17552 of them spent on reasoning, so the answer is incomplete. Raise Max output tokens on the DeepSeek page under Engines, or choose a model with a larger output limit. This task writes the whole transcript again, about 36626 tokens here, so the limit has to be at least 54178.
+```
+
+A cap above what the model allows is refused by the service before anything is generated, and the notice quotes the service's own sentence, which names the maximum it accepts. Lower the cap to that number.
 
 ---
 
@@ -313,10 +337,10 @@ The exact headings come from the model following the summary prompt; the `### Su
 
 ## Behavior and reliability
 
-- **Best-effort.** Post-processing never throws away a transcript you already paid to produce. If the LLM call fails (bad key, network error, timeout, or a blocked/empty response), the plugin keeps the **raw transcript**, shows a notice (`LLM post-processing failed; saving the raw transcript.`), and continues. The transcript is still saved.
+- **Best-effort.** Post-processing never throws away a transcript you already paid to produce. If the LLM call fails (bad key, network error, timeout, or a blocked/empty response), the plugin keeps the **raw transcript**, shows a notice (`LLM post-processing failed; saving the raw transcript.`, followed by the reason in the words of the service or the plugin), and continues. The transcript is still saved.
 - **Request timeout.** Each LLM request is bounded by a fixed 5-minute timeout (longer than the transcription floor, because cleaning or summarizing a long transcript can legitimately take minutes). This is separate from the transcription **Request timeout** setting.
 - **Cancellation.** Cancel reaches the LLM request itself, so pressing it during post-processing stops the run at once instead of waiting out the call's 5-minute timeout. The call already sent cannot be stopped mid-flight, so it finishes in the background, its answer is dropped, and the provider may still bill it. A run stopped that way is reported as the cancellation it is and writes nothing, rather than being reported as a failed pass that falls back to the raw transcript. The same signal reaches every other model call the run makes, including the [advanced context agents](transcription.md#advanced-two-pass-transcription) and [auto chapters](transcription.md#auto-chapters). Closing the dialog cancels the job exactly as the button does, while [Minimize](transcription.md#progress-and-minimizing) keeps it running in the status bar.
-- **Token truncation is surfaced.** On Gemini, a response cut off by the output-token limit (or blocked by a safety policy) fails the post-processing step loudly rather than silently replacing the transcript with a partial result - so you fall back to the raw transcript instead of getting a half-cleaned one. Raise **Max output tokens** or shorten the input if this happens.
+- **Token truncation is surfaced.** On every vendor, a response cut off by the output-token limit (or, on Gemini, blocked by a safety policy) fails the post-processing step loudly rather than silently replacing the transcript with a partial result - so you fall back to the raw transcript instead of getting a half-cleaned one. The notice says how large the cap has to be, as [How large to set it](#how-large-to-set-it) describes.
 - **Incomplete-transcription warnings survive.** If part of a long recording could not be transcribed, the plugin prepends its warning callout **after** post-processing, so a cleanup/custom pass that replaces the body cannot strip it.
 
 ---
@@ -338,13 +362,13 @@ All controls live under **Settings > Advanced Audio Recorder > Transcription > L
 
 The rows that describe the service itself sit on its page under **Engines**, shared by every job that calls it:
 
-| Setting               | What it does                                                                                                                        | Default          |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| **Base URL**          | API endpoint for that provider.                                                                                                     | Provider default |
-| **API key**           | Entered once per provider, so a service that also transcribes reuses it.                                                            | -                |
-| **Model**             | Dropdown over the saved ids, with the provider's catalogue link at the end of its description.                                      | See table above  |
-| **Model catalogue**   | The saved ids themselves, where one is added, removed, or put to work.                                                              | Seeded list      |
-| **Max output tokens** | Upper bound on the reply length (truncation guard). Any whole number from 512 to 200000; the model's own maximum is the real limit. | 4096             |
+| Setting               | What it does                                                                                                                        | Default                      |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| **Base URL**          | API endpoint for that provider.                                                                                                     | Provider default             |
+| **API key**           | Entered once per provider, so a service that also transcribes reuses it.                                                            | -                            |
+| **Model**             | Dropdown over the saved ids, with the provider's catalogue link at the end of its description.                                      | See table above              |
+| **Model catalogue**   | The saved ids themselves, where one is added, removed, or put to work.                                                              | Seeded list                  |
+| **Max output tokens** | Upper bound on the reply length (truncation guard). Any whole number from 512 to 200000; the model's own maximum is the real limit. | 4096, and 64000 for DeepSeek |
 
 ---
 

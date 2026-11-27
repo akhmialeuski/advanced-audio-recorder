@@ -208,13 +208,9 @@ export async function generateChaptersFromCli(
 		await services.saveSettings();
 	}
 	const said = collectingNotify();
-	await services.autoChapters.generate(
-		file,
-		undefined,
-		undefined,
-		undefined,
-		said.notify,
-	);
+	await services.autoChapters.generate(file, undefined, {
+		notify: said.notify,
+	});
 	return said.messages.join('\n');
 }
 

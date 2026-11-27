@@ -19,6 +19,7 @@
 - [Output: where the transcript goes](#output-where-the-transcript-goes)
 - [In-note formatting](#in-note-formatting)
 - [The Transcribe dialog (per-run overrides)](#the-transcribe-dialog-per-run-overrides)
+    - [Transcription presets](#transcription-presets)
 - [Progress and minimizing](#progress-and-minimizing)
 - [Transcribing a folder](#transcribing-a-folder)
 - [Transcribing the parts that failed](#transcribing-the-parts-that-failed)
@@ -153,10 +154,13 @@ Settings to fill:
 Behavior and limits:
 
 - **Short audio in one request.** Audio up to 14 MB, which covers a quick note and about seven minutes of decoded WAV, is sent inline in the `generateContent` request, with no upload, no wait for the file to be processed and no cleanup afterwards. When Google Gemini is also the quick note rewrite engine, that one request carries the quick note profile's instruction and returns the rewritten text, as [Quick notes](quick-notes.md#choosing-the-engines) describes.
-- **Up to 2 GB uploaded whole** via the File API, then transcribed in one request - so diarization keeps consistent speaker numbering across the whole file.
-- **Container conversion.** Containers Gemini does not accept directly (notably `webm`, `mp4`, and `m4a`) are decoded to **16 kHz mono WAV** before upload. WAV, MP3, AAC, OGG, FLAC, and AIFF are sent as-is.
-- **Long recordings are split.** A recording **longer than 15 minutes** is split into parts of equal length, each transcribed and stitched back onto the timeline; a recording of exactly 15 minutes still goes in one request. Splitting **resets Gemini's per-request speaker numbering**, so a diarized split shows a warning that speaker labels may differ between parts; the message suggests using Deepgram or splitting the recording for consistent speakers.
-- **A part whose timecodes do not fit it is sent again.** Gemini writes the start and end of every segment itself rather than measuring them on the audio, and on a long part they can drift from one request to the next. An answer whose lines end more than 5 seconds past the end of the part, or stop more than a minute before its end on any part but the recording's last, is set aside and the part is sent once more, which is billed like any other request. When the second answer does not fit either, the lines inside the part are kept, the lines past its end are dropped, and the part is listed in the incomplete-transcription warning with the reason, so [Transcribe the parts that failed](#transcribing-the-parts-that-failed) can ask for it again. When sending the part again fails, the first answer is kept the same way, and the reason names that failure too. An answer that spreads too little speech over the whole part still passes, because its lines stay inside the part and reach its end.
+- **A longer recording is uploaded once.** A recording of up to 2 GB goes to the File API a single time, and every request for it points at that upload. The upload is deleted when the run ends, however it ended.
+- **Recordings go as they are.** WebM, MP4, M4A, WAV, MP3, AAC, OGG, FLAC and AIFF are sent in the container they were recorded in, with nothing decoded on your device, and that covers the `webm` this plugin records by default. Any other container is decoded to **16 kHz mono WAV** before upload. A long recording whose length the plugin cannot read is decoded too, because its parts are planned by that length.
+- **A recording longer than 10 minutes is asked for in parts.** The parts are of equal length, and Gemini cuts each one out of the uploaded file itself, so the plugin sends a start and an end and is billed for that stretch alone. Up to four parts are transcribed at the same time, which is why an hour-long recording takes about as long as two of its parts. A recording of exactly 10 minutes still goes in one request.
+- **Speakers are matched across parts.** Every part after the first is sent with the last 30 seconds of the part before it. Gemini numbers speakers per request and names them only where it hears a name, so the plugin compares who speaks in that shared stretch and gives each later part the names of the earlier one. The shared stretch is written once. When nobody speaks in it, the later part keeps its own labels, and **Rename speakers** settles them.
+- **A part whose timecodes drifted is put back on time.** Gemini keeps time well near the start of the audio it is given and can lose it further on: on a 24-minute lesson the middle part of two runs ended 8 to 10 seconds late. The lines both neighbouring parts transcribed in their shared 30 seconds show by how much, because the later part has just started there. When at least two such lines agree on 3 seconds or more, the earlier part's lines are moved back by that much at the seam and by nothing at its start, in proportion to the time in between. On those two runs this halved the drifted part's error and placed a phrase spoken at 14:29 at 14:28. The last part has no later neighbour to check it against.
+- **A runaway answer is cut short.** Each request may answer with a number of tokens that follows from the length of its audio, so a model that starts repeating one word stops early and the part is split in two and asked for again.
+- **A part whose timecodes do not fit it is sent again.** Gemini writes the start and end of every segment itself rather than measuring them on the audio, and on a long part they can drift from one request to the next. An answer with a line that starts more than 5 seconds past the end of the part, or whose lines stop more than a minute before its end on any part but the recording's last, is set aside and the part is sent once more, which is billed like any other request. A line that only ends past the part is the sentence the part's end cut off, so it is kept and ends where the part ends, and the next part, which heard that sentence whole, takes over from its start. When the second answer does not fit either, the lines inside the part are kept, the lines past its end are dropped, and the part is listed in the incomplete-transcription warning with the reason, so [Transcribe the parts that failed](#transcribing-the-parts-that-failed) can ask for it again. When sending the part again fails, the first answer is kept the same way, and the reason names that failure too. An answer that spreads too little speech over the whole part still passes, because its lines stay inside the part and reach its end.
 - **Diarization supported.** Turn on **Speaker diarization** to request speaker labels.
 - **Several languages in one recording.** The only engine that reads a list of languages. With **Language** set to codes separated by commas, every segment comes back in the language it was spoken in and is tagged with its code. See [Several languages in one recording](#several-languages-in-one-recording).
 
@@ -298,6 +302,8 @@ What the list changes on Gemini:
 - **Advanced two-pass transcription keeps working.** The second pass is told the same languages, and it is not discarded when the language most of the text is in differs between the passes. It is discarded when any of its parts comes back in a language outside the list that the first pass did not hear in that part.
 
 The plugin names no language of its own in the instruction it sends: the codes come from the field and nowhere else, so any pair or triple works the same way, for example `pl, uk, be` or `de, en`.
+
+A recording of this kind usually needs Google Gemini and its own cleanup profile as well as the list, and a [transcription preset](#transcription-presets) sets all three in one pick.
 
 ---
 
@@ -506,9 +512,10 @@ How the templates compose: each line takes its **timestamp** (wrapped by **Times
 
 ## The Transcribe dialog (per-run overrides)
 
-When you run **Transcribe audio** from the context menu or the command palette, the dialog lets you override the global defaults **for that run only** - your saved settings are never changed. The dialog shows the source file name, three rows up front, and the estimated cost above the **Transcribe** button:
+When you run **Transcribe audio** from the context menu or the command palette, the dialog lets you override the global defaults **for that run only** - your saved settings are never changed. The dialog shows the source file name, four rows up front, and the estimated cost above the **Transcribe** button:
 
-- **Language** - `auto` or an ISO code.
+- **Preset** - sets the options of the run at once from a named set. See [Transcription presets](#transcription-presets).
+- **Language** - `auto`, an ISO code, or several codes separated by commas.
 - **Participant profile** - shown only when the run will actually produce speaker labels. Picks the roster of names stored with this recording, so **Rename speakers** suggests the right people afterwards. The last pick is remembered and also applies to transcribe-on-save; profiles are created in the rename dialog. See [Naming speakers](#naming-speakers). It follows **Speaker diarization** under **More options**.
 - **Destination** - Insert into note / Save to file / Note and file / Save to file and link it in the note.
 
@@ -527,9 +534,41 @@ The detailed in-note templates (note heading, timestamp/speaker/line format) sta
 
 Options toggled mid-run do **not** change an in-flight job: the run snapshots its options when you press **Transcribe**, so edits only affect the next attempt after a failure.
 
-![The Transcribe audio dialog with the Language, Participant profile and Destination rows up front and the collapsed More options block below them, above the cost line and the Transcribe, Minimize and Close buttons](images/transcription-dialog.png)
+![The Transcribe audio dialog with the Preset row set to None and its save button, the Language, Participant profile and Destination rows, and the collapsed More options block below them, above the cost line and the Transcribe, Minimize and Close buttons](images/transcription-dialog.png)
 
 ![The same dialog with the More options block open, listing Engine, Speaker diarization, disabled Word-level timestamps, Advanced settings, Dictionary, Advanced two-pass transcription, File format, Include timestamps, Include speakers, LLM post-processing, LLM task and Generate chapters](images/transcription-dialog-advanced.png)
+
+### Transcription presets
+
+A preset keeps the options of one kind of recording under a name: the engine, its model, the language, the switches and the profiles. Picking it in the **Preset** row sets all of them at once, which replaces changing the engine, the language and the cleanup profile by hand before a lesson and back after it.
+
+![The Transcribe audio dialog with the Polish lesson preset picked in the Preset row and the Language row below it holding pl, uk](images/transcription-dialog-preset.png)
+
+The row behaves as follows:
+
+- Picking a preset starts the options over from your saved settings with the preset laid over them, so a second pick keeps nothing of the first, and **None** goes back to the settings as they stand.
+- An option the preset does not name stays as your settings have it.
+- A row changed after the pick applies to that run only. The preset and your saved settings stay as they were.
+- The pick is remembered. The dialog opens on it next time, which includes the transcription a recording starts on its own.
+- A preset that cannot be applied, for example one naming a profile that was deleted, says why on the row and changes nothing.
+
+The save button beside the dropdown stores the options as the dialog shows them under a name you give. That is the quickest way to make a preset: set the dialog up once for a lesson, and save it.
+
+Presets are profiles, kept under **Settings > Advanced Audio Recorder > Transcription > Transcription presets**, where each has a page of its own. Its **Options** field holds one option per line as `name: value`, with the names the [transcribe command](command-line.md) takes, and a line starting with `#` is a remark:
+
+```text
+engine: gemini
+model: gemini-4-hydrogen
+language: pl, uk
+diarize: on
+postprocess: on
+task: cleanup
+cleanup: Language lesson
+```
+
+![The page of the Polish lesson preset with its Preset switch on, the Source row set to typed text, and the Options field holding one option per line](images/settings-preset-page.png)
+
+The plugin ships a **Language lesson** preset that picks Google Gemini, speaker labels and the Language lesson cleanup profile. It names no language, so add a `language` line to it, or save a preset of your own from the dialog. Like any profile, a preset can take its text from a note, as [Biasing recognition toward your own terms](#biasing-recognition-toward-your-own-terms) describes for a glossary.
 
 ---
 
@@ -634,7 +673,7 @@ Cloud transcription is a paid API call, and nobody likes a surprise bill. With *
 - **During a long multi-part run**, a live "Cost so far" line accumulates what the completed transcription parts actually billed.
 - **After the run**, a notice reports the transcription cost together with the running session total, and the dialog shows a **Session spending** block under its own heading. **"Spent this session"** is a per-session counter of everything priced since Obsidian started, kept per engine, and the block states that the run estimated above is not counted in it yet. The line names what the total is made of: runs that could not be priced at all, and steps whose figure is an estimate rather than a count the vendor reported.
 
-Below the breakdown, a **Check current pricing** line links straight to the pricing page of each provider the run uses, so the built-in rates are one click from the authoritative numbers. The transcription cost is computed from what the provider **actually reported billing for** - Deepgram's, OpenAI's and AssemblyAI's billed audio duration, Gemini's token counts split by modality (audio input and the text prompt are billed at different rates) - and falls back to the duration-based estimate when a provider reports nothing. Estimates use **built-in, approximate pay-as-you-go rates** for the common models (`whisper-1`, Groq's `whisper-large-v3`(-turbo), Deepgram `nova`/`enhanced`/`base` and its hosted Whisper models, Gemini 2.x and 3.x, the Voxtral models, the two AssemblyAI models, and the OpenAI, Anthropic, Gemini, and Mistral post-processing models); providers change prices, so always verify against the linked pricing page. A model the plugin has no rate for shows "no built-in rate" instead of a wrong number, and such runs are counted separately in the session total rather than silently added as zero. The **local whisper.cpp engine is free** and shows no cost. The LLM steps (context agents, post-processing, auto chapters) are counted in the session total too, and they are priced the same way the transcription is: OpenAI, Anthropic, and Gemini all return the token counts they billed in the same response the text comes from, so a completed step is recorded at **what it cost** rather than at what it was expected to cost. Reasoning tokens, which the models that produce them report separately, are billed at the output rate. The pre-run estimate is the fallback, used for a model with no built-in rate and for a vendor that reported no counts, and the session line says how many steps were priced that way, so an estimate is never presented as a measurement.
+Below the breakdown, a **Check current pricing** line links straight to the pricing page of each provider the run uses, so the built-in rates are one click from the authoritative numbers. The transcription cost is computed from what the provider **actually reported billing for** - Deepgram's, OpenAI's and AssemblyAI's billed audio duration, Gemini's token counts split by modality (audio input and the text prompt are billed at different rates) - and falls back to the duration-based estimate when a provider reports nothing. Estimates use **built-in, approximate pay-as-you-go rates** for the common models (`whisper-1`, Groq's `whisper-large-v3`(-turbo), Deepgram `nova`/`enhanced`/`base` and its hosted Whisper models, Gemini 2.x and 3.x, the Voxtral models, the two AssemblyAI models, and the OpenAI, Anthropic, Gemini, and Mistral post-processing models); providers change prices, so always verify against the linked pricing page. A model the plugin has no rate for shows "no built-in rate" instead of a wrong number, and such runs are counted separately in the session total rather than silently added as zero. The **local whisper.cpp engine is free** and shows no cost. The LLM steps (context agents, post-processing, auto chapters) are counted in the session total too, and they are priced the same way the transcription is: OpenAI, Anthropic, and Gemini all return the token counts they billed in the same response the text comes from, so a completed step is recorded at **what it cost** rather than at what it was expected to cost. A step whose answer the vendor cut at the output token limit fails, yet the vendor billed that answer, so it is recorded the same way. Reasoning tokens, which the models that produce them report separately, are billed at the output rate. The pre-run estimate is the fallback, used for a model with no built-in rate and for a vendor that reported no counts, and the session line says how many steps were priced that way, so an estimate is never presented as a measurement.
 
 ---
 
@@ -733,7 +772,7 @@ Per-engine fields (base URL, key, model picker, upload chunk size) are documente
 - **"Transcribe audio" is missing from the menu** - enable **Enable transcription** in settings first.
 - **The Transcribe audio palette command does nothing** - it runs only when the active file is an audio file and transcription is enabled. Open the audio file (or its note) and try again.
 - **Speaker labels never appear** - Deepgram, Gemini, Mistral Voxtral and AssemblyAI diarize, and so does the Whisper API once **Endpoint returns speaker labels** is on for a server that diarizes. Local whisper.cpp never does. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
-- **Speaker numbers change partway through a Gemini transcript** - a recording longer than 15 minutes is split into parts and Gemini renumbers speakers per part. Use **Deepgram** (sends the whole file) or split the recording for consistent speakers. A recording of exactly 15 minutes is not split and shows no such warning.
+- **Speaker names change partway through a Gemini transcript** - a recording longer than 10 minutes is transcribed in parts, and the speakers of each part are matched to the part before it on the 30 seconds the two share. When nobody speaks in that stretch there is nothing to match on, and the later part keeps its own labels. **Rename speakers** merges them, and **Deepgram** sends the whole file in one request.
 - **"Could not insert the transcript into the note"** - the note could not be written to, typically because it was deleted or moved while the transcription was running. The transcript is saved as a sidecar file as a fallback; the notice shows its path. The view mode does not matter: a note in Reading view takes the transcript like one being edited.
 - **A request times out** - raise **Request timeout** (up to 60 minutes) for slow connections or very large uploads, or split the file first.
 - **A local whisper.cpp run is stopped before it finishes** - the process outlived **Local run timeout**. Raise it (up to 720 minutes) or point the engine at a smaller model; a large model on a slow CPU can take longer than the recording itself.

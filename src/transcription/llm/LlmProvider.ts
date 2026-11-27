@@ -25,6 +25,9 @@ import {
 	extractAnthropicText,
 	extractAnthropicUsage,
 	extractGeminiText,
+	assertAnthropicNotTruncated,
+	assertGeminiAnswerNotTruncated,
+	assertOpenAiNotTruncated,
 	extractGeminiUsage,
 	extractOpenAiText,
 	extractOpenAiUsage,
@@ -32,7 +35,6 @@ import {
 } from './llmResponse';
 import {
 	assertGeminiNotBlocked,
-	assertGeminiNotTruncated,
 	geminiGenerateContentUrl,
 	geminiGenerationControls,
 } from '../providers/geminiShared';
@@ -246,6 +248,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 			// Recorded after the call rather than after the parse: an answer this
 			// client cannot read is still an answer the parameter was accepted for.
 			this.acceptedParam = param;
+			assertOpenAiNotTruncated(json, { label: this.label, maxTokens });
 			return withUsage(extractOpenAiText(json), extractOpenAiUsage(json));
 		}
 		// Unreachable: the loop either returns or throws on its last attempt.
@@ -372,6 +375,10 @@ export class AnthropicLlmProvider implements LlmProvider {
 					timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 					signal: options?.signal,
 				});
+				assertAnthropicNotTruncated(json, {
+					label: this.label,
+					maxTokens,
+				});
 				return withUsage(
 					extractAnthropicText(json),
 					extractAnthropicUsage(json),
@@ -474,11 +481,7 @@ export class GeminiLlmProvider implements LlmProvider {
 		// A MAX_TOKENS stop yields a partial/empty answer; a safety/policy block
 		// yields no candidate. Fail loudly instead of silently replacing the
 		// transcript with a truncated or empty result.
-		assertGeminiNotTruncated(
-			json,
-			'Raise the max output tokens in settings, shorten the input, or ' +
-				'choose a model with a larger output limit.',
-		);
+		assertGeminiAnswerNotTruncated(json, { label: this.label, maxTokens });
 		assertGeminiNotBlocked(json);
 		return withUsage(extractGeminiText(json), extractGeminiUsage(json));
 	}

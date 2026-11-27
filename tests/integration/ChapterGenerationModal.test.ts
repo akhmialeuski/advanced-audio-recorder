@@ -15,7 +15,10 @@ import { mergeSettings } from 'src/settings/settingsSerialization';
 import { estimateStepCost, formatUsd } from 'src/transcription/api';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import type { AutoChapterService } from 'src/chapters/AutoChapterService';
+import type {
+	AutoChapterService,
+	ChapterGenerationOptions,
+} from 'src/chapters/AutoChapterService';
 import type { TranscriptLinesSource } from 'src/chapters/transcriptSources';
 import { at, defined } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
@@ -205,12 +208,10 @@ describe('ChapterGenerationModal run settings', () => {
 		expect(settings.chaptersLlmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
 		expect(settings.llmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
 		expect(saveSettings).toHaveBeenCalled();
-		expect(generate).toHaveBeenCalledWith(
-			file,
-			undefined,
-			SOURCE,
-			expect.any(AbortSignal),
-		);
+		expect(generate).toHaveBeenCalledWith(file, undefined, {
+			preloaded: SOURCE,
+			signal: expect.any(AbortSignal),
+		});
 	});
 
 	it('moves only the model of the engine it generates with', async () => {
@@ -319,12 +320,10 @@ describe('ChapterGenerationModal run settings', () => {
 
 		// The service must receive the located source, so it does not scan the
 		// sidecar and the notes a second time.
-		expect(generate).toHaveBeenCalledWith(
-			file,
-			undefined,
-			SOURCE,
-			expect.any(AbortSignal),
-		);
+		expect(generate).toHaveBeenCalledWith(file, undefined, {
+			preloaded: SOURCE,
+			signal: expect.any(AbortSignal),
+		});
 		expect(loadTranscriptLines).toHaveBeenCalledTimes(1);
 	});
 });
@@ -385,11 +384,10 @@ describe('a generation the user can stop', () => {
 			(
 				_file: unknown,
 				_transcript: unknown,
-				_preloaded: unknown,
-				signal: AbortSignal,
+				{ signal }: ChapterGenerationOptions,
 			) =>
 				new Promise<boolean>((resolve) => {
-					signal.addEventListener('abort', () => {
+					signal?.addEventListener('abort', () => {
 						resolve(false);
 					});
 				}),
@@ -422,7 +420,10 @@ describe('a generation the user can stop', () => {
 	function handedSignal(
 		running: jest.Mock<Promise<boolean>, unknown[]>,
 	): AbortSignal {
-		return at(at(running.mock.calls, 0), 3) as AbortSignal;
+		return defined(
+			(at(at(running.mock.calls, 0), 2) as ChapterGenerationOptions)
+				.signal,
+		);
 	}
 
 	it('stays open while the chapters are being generated', async () => {
@@ -463,7 +464,10 @@ describe('a generation the user can stop', () => {
 		at(buttons(modal), 0).click();
 		await flushMicrotasks();
 
-		const signal = at(at(generate.mock.calls, 0), 3) as AbortSignal;
+		const signal = defined(
+			(at(at(generate.mock.calls, 0), 2) as ChapterGenerationOptions)
+				.signal,
+		);
 		expect(signal.aborted).toBe(false);
 	});
 

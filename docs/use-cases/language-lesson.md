@@ -10,6 +10,7 @@ This guide turns a recorded lesson with a tutor into a transcript where every pa
     - [3. Turn on speaker labels](#3-turn-on-speaker-labels)
     - [4. Clean up with the Language lesson profile](#4-clean-up-with-the-language-lesson-profile)
     - [5. Record or transcribe the lesson](#5-record-or-transcribe-the-lesson)
+    - [6. Keep the setup as a preset](#6-keep-the-setup-as-a-preset)
 - [What the transcript looks like](#what-the-transcript-looks-like)
 - [Limits](#limits)
 
@@ -56,6 +57,16 @@ The profile tells the model to fix punctuation and clear recognition errors and 
 
 Record the lesson, or right-click an existing recording and choose **Transcribe audio**. The **Language** field of the Transcribe dialog holds the same list and can be changed for one run.
 
+### 6. Keep the setup as a preset
+
+Steps 1 to 4 change the engine, the language, the speaker labels and the cleanup profile, and a recording that is no lesson wants them back. A [transcription preset](../transcription.md#transcription-presets) keeps the lesson's options under one name, so the settings can stay on whatever the other recordings need.
+
+Open the Transcribe dialog on a lesson, set it up as above, and press the save button beside **Preset**. From then on a lesson is one pick in that row, and **None** returns the dialog to your settings. The plugin also ships a **Language lesson** preset with Google Gemini, speaker labels and the Language lesson cleanup profile, to which you add a `language` line with the languages of your own lessons.
+
+![The Transcribe audio dialog with the Polish lesson preset picked in the Preset row and the Language row below it holding pl, uk](../images/transcription-dialog-preset.png)
+
+The pick is remembered, so the dialog opens on it next time, including when a recording starts its own transcription. Pick **None** after the lesson when the next recording is an ordinary one.
+
 ## What the transcript looks like
 
 A lesson that opens in Ukrainian and goes on in Polish comes back with each line in its own language, including a question that switches language halfway:
@@ -71,6 +82,6 @@ The JSON transcript file additionally records the language of every segment, as 
 ## Limits
 
 - **Only Google Gemini reads the list.** Whisper API, Deepgram, AssemblyAI and local whisper.cpp transcribe the whole lesson in the first language listed, and Mistral Voxtral detects one language for the whole recording.
-- **A lesson longer than 15 minutes is sent in parts.** Each part is transcribed with the same languages, but speaker numbering can restart between parts, which renaming the speakers fixes.
+- **A lesson longer than 10 minutes is transcribed in parts.** Each part is transcribed with the same languages, and the speakers of each part are matched to the part before it on the 30 seconds the two share. Those 30 seconds also show when Gemini's timecodes drifted in a part, and the plugin moves that part back on time. When nobody speaks in that stretch the labels can differ, which renaming the speakers fixes.
 - **A language you did not list is tagged with the closest listed one.** Its text is still written in its own script, so list every language the lesson regularly uses.
 - **Cleanup cannot recover what recognition lost.** A passage the engine heard in the wrong language is garbled before the model sees it, and the cleanup leaves it as it is rather than guessing what was said.

@@ -14,15 +14,18 @@ import type { CliData } from 'obsidian';
 import {
 	describeTranscriptionOutcome,
 	transcribeFromCli,
-	transcriptionRun,
 } from 'src/actions/file/transcribeCli';
+import { transcriptionRun } from 'src/transcription/runOptions';
 import type { FileContext } from 'src/actions/file/FileContext';
 import {
 	ProfileKindId,
 	selectedProfileId,
 	type Profile,
 } from 'src/settings/profiles';
-import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import {
+	LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from 'src/constants';
 import type {
 	RecordingTranscriptionRequest,
 	TranscriptionRunOutcome,
@@ -211,6 +214,43 @@ describe('the choices a command line makes for one run', () => {
 		});
 	});
 
+	it('picks the prompt profile of a post-processing task by its name', () => {
+		const run = valueOrThrow(runOf({ cleanup: 'language lesson' }));
+
+		expect(run.picks).toEqual([
+			{
+				kind: ProfileKindId.LlmCleanup,
+				id: LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+			},
+		]);
+	});
+
+	it('sets the model of the engine typed beside it', () => {
+		const run = applied({ engine: 'gemini', model: 'gemini-4-neon' });
+
+		expect(run.geminiModel).toBe('gemini-4-neon');
+		expect(run.whisperApiModel).toBe(createSut().settings.whisperApiModel);
+	});
+
+	it('sets the model of the engine the settings name when none is typed', () => {
+		expect(applied({ model: 'gpt-transcribe' }).whisperApiModel).toBe(
+			'gpt-transcribe',
+		);
+	});
+
+	it('refuses a model for an engine that has none to choose', () => {
+		expect(runOf({ engine: 'local-whisper', model: 'large-v3' })).toEqual({
+			refusal:
+				'model=large-v3 cannot be applied: the local-whisper engine has no model to choose.',
+		});
+	});
+
+	it('refuses a model typed beside an engine that does not exist', () => {
+		expect(runOf({ engine: 'whisperx', model: 'large-v3' })).toEqual({
+			refusal: expect.stringContaining('engine=whisperx is not one of'),
+		});
+	});
+
 	it('leaves the plugin settings as they are', () => {
 		const sut = createSut();
 		const run = valueOrThrow(
@@ -269,6 +309,23 @@ describe('the choices a command line makes for one run', () => {
 		});
 	});
 });
+
+/**
+ * Saves a transcription preset among the profiles of a command line's settings.
+ * @param sut - The command line under test
+ * @param name - The preset's name
+ * @param body - Its options, one per line
+ */
+function savePreset(
+	sut: ReturnType<typeof createSut>,
+	name: string,
+	body: string,
+): void {
+	sut.settings.profiles = [
+		...sut.settings.profiles,
+		{ id: 'preset-lesson', kind: ProfileKindId.RunPreset, name, body },
+	];
+}
 
 describe('starting a transcription from the command line', () => {
 	it('starts the run typed in Obsidian, with no dialog', async () => {
@@ -331,6 +388,87 @@ describe('starting a transcription from the command line', () => {
 		await transcribeFromCli(sut.context, { diarize: 'on' });
 
 		expect(sut.saveSettings).not.toHaveBeenCalled();
+	});
+
+	it('starts the run a preset states, with what was typed beside it on top', async () => {
+		const sut = createSut();
+		savePreset(sut, 'Polish lesson', 'language: pl, uk\ndiarize: on');
+		runEnds(sut, { status: 'cancelled' });
+
+		await transcribeFromCli(sut.context, {
+			preset: 'polish lesson',
+			language: 'pl, be',
+		});
+
+		expect(runAskedFor(sut).settings).toMatchObject({
+			transcriptionLanguage: 'pl, be',
+			transcriptionDiarize: true,
+		});
+	});
+
+	// A preset is the choices of one kind of recording, so the profile it
+	// names serves the run it starts and is not left as the next default:
+	// the next ordinary run would otherwise clean a meeting as a lesson.
+	describe('a preset that names a profile', () => {
+		/**
+		 * A run started from a preset that picks the lesson cleanup profile.
+		 * @param typed - What is typed beside the preset
+		 * @returns The command line under test
+		 */
+		async function runLesson(
+			typed: CliData = {},
+		): Promise<ReturnType<typeof createSut>> {
+			const sut = createSut();
+			savePreset(sut, 'Lesson', 'cleanup: Language lesson');
+			runEnds(sut, { status: 'cancelled' });
+			await transcribeFromCli(sut.context, {
+				preset: 'Lesson',
+				...typed,
+			});
+			return sut;
+		}
+
+		it('runs with the profile the preset names', async () => {
+			const sut = await runLesson();
+
+			expect(
+				selectedProfileId(
+					runAskedFor(sut).settings,
+					ProfileKindId.LlmCleanup,
+				),
+			).toBe(LANGUAGE_LESSON_CLEANUP_PROFILE_ID);
+		});
+
+		it('keeps the default profile as it was', async () => {
+			const sut = await runLesson();
+
+			expect(
+				selectedProfileId(sut.settings, ProfileKindId.LlmCleanup),
+			).not.toBe(LANGUAGE_LESSON_CLEANUP_PROFILE_ID);
+			expect(sut.saveSettings).not.toHaveBeenCalled();
+		});
+
+		it('still keeps a profile typed beside the preset as the next default', async () => {
+			const sut = await runLesson({ participants: 'Team' });
+
+			expect(
+				selectedProfileId(sut.settings, ProfileKindId.Participants),
+			).toBe(TEAM.id);
+			expect(
+				selectedProfileId(sut.settings, ProfileKindId.LlmCleanup),
+			).not.toBe(LANGUAGE_LESSON_CLEANUP_PROFILE_ID);
+		});
+	});
+
+	it('starts nothing for a preset that does not exist', async () => {
+		const sut = createSut();
+
+		const answer = await transcribeFromCli(sut.context, {
+			preset: 'Lectures',
+		});
+
+		expect(answer).toContain('No profile named "Lectures"');
+		expect(sut.services.transcriber.transcribe).not.toHaveBeenCalled();
 	});
 
 	it('starts nothing for a value typed wrong', async () => {

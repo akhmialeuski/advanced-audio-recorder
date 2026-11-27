@@ -36,14 +36,6 @@
 			"count": 1
 		}
 	},
-	"src/actions/file/transcribeCli.ts": {
-		"complexity": {
-			"count": 1
-		},
-		"max-lines-per-function": {
-			"count": 1
-		}
-	},
 	"src/actions/position/positionActions.ts": {
 		"complexity": {
 			"count": 1
@@ -634,13 +626,8 @@
 	},
 	"src/transcription/advanced/contextPipeline.ts": {
 		"complexity": {
-			"count": 2
-		},
-		"max-lines-per-function": {
 			"count": 1
-		}
-	},
-	"src/transcription/audioPrep.ts": {
+		},
 		"max-lines-per-function": {
 			"count": 1
 		}

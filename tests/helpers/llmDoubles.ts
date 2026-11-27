@@ -90,3 +90,21 @@ export function contextAgentsLlm(): { llm: LlmProvider; calls: LlmPrompt[] } {
 	};
 	return { llm, calls };
 }
+
+/**
+ * A Gemini `generateContent` body cut at the output token limit, with the
+ * counts Gemini reports beside such a stop: the prompt and the thinking.
+ * @param usage - The `usageMetadata` Gemini reported
+ * @returns The response body
+ */
+export function geminiCutAnswer(usage: Record<string, number>): object {
+	return {
+		candidates: [
+			{
+				finishReason: 'MAX_TOKENS',
+				content: { parts: [{ text: '[[recording' }] },
+			},
+		],
+		usageMetadata: usage,
+	};
+}

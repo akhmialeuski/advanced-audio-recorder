@@ -211,23 +211,46 @@ describe('the options a transcription run is opened with', () => {
 		).toHaveBeenCalled();
 	});
 
+	it('keeps a preset saved in the dialog and opens the next dialog on it', async () => {
+		const { plugin, modalOptions } = await options();
+
+		const id = await modalOptions.onPresetSaved?.(
+			'Polish lesson',
+			'engine: gemini',
+		);
+
+		expect(plugin.settings.profiles).toContainEqual({
+			id,
+			kind: 'runPreset',
+			name: 'Polish lesson',
+			body: 'engine: gemini',
+		});
+		expect(plugin.settings.selectedProfileIds.runPreset).toBe(id);
+	});
+
 	it('generates chapters from the transcript the run just produced', async () => {
 		// Working from the in-memory transcript is what lets chapters appear
 		// without a second read of the note that was only just written.
-		await options();
+		const { plugin } = await options();
 		const file = { path: 'Recordings/take.webm' } as TFile;
 		const transcript: Transcript = { segments: [], speakers: [] };
+		const run = { ...plugin.settings };
 		const { signal } = new AbortController();
 
-		await transcriberServices().generateChapters(file, transcript, signal);
+		await transcriberServices().generateChapters(
+			file,
+			transcript,
+			run,
+			signal,
+		);
 
 		// The run's cancellation reaches the paid call, so a stopped queue
-		// ends the chapters it has in flight.
+		// ends the chapters it has in flight, and the run's own settings
+		// carry the guidance it picked.
 		expect(chapterService().generate).toHaveBeenCalledWith(
 			file,
 			transcript,
-			undefined,
-			signal,
+			{ signal, runSettings: run },
 		);
 	});
 
@@ -282,6 +305,7 @@ describe('a collaborator that fails under the plugin', () => {
 			transcriberServices().generateChapters(
 				{ path: 'Recordings/take.webm' } as TFile,
 				{ segments: [], speakers: [] },
+				plugin.settings,
 			),
 		).rejects.toThrow('note is read-only');
 		// The plugin is still the one holding the service afterwards, so a

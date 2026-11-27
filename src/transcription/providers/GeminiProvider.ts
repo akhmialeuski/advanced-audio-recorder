@@ -3,11 +3,14 @@
  * an inline request and through the File API otherwise, then asks
  * `generateContent` for a structured JSON transcript with timecodes
  * and optional speaker labels. The orchestrator sends a short recording whole
- * (one payload, so speaker numbering stays consistent across it) and splits a
- * recording too long for one request into parts. A container Gemini does not
- * read (e.g. webm) arrives already decoded to 16 kHz mono WAV: the service
- * converts it once per run, so this provider uploads the bytes it is lent and
- * nothing else.
+ * (one payload, so speaker numbering stays consistent across it) and asks for
+ * a recording too long for one request in parts. A part that names a stretch
+ * of the recording is cut out by Gemini itself: the recording is uploaded
+ * once for the run, every part's request points at that upload with the
+ * stretch it is for, and the upload is deleted when the run disposes of the
+ * provider. A container Gemini does not read arrives already decoded to
+ * 16 kHz mono WAV: the service converts it once per run, so this provider
+ * uploads the bytes it is lent and nothing else.
  * @module transcription/providers/GeminiProvider
  */
 
@@ -16,6 +19,8 @@ import {
 	GEMINI_API_KEY_HEADER,
 	GEMINI_GENERATE_MIN_TIMEOUT_MS,
 	GEMINI_INLINE_MAX_BYTES,
+	GEMINI_MIN_OUTPUT_TOKENS,
+	GEMINI_OUTPUT_TOKENS_PER_SECOND,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import { EngineLabel } from '../../providers/providers';
@@ -27,8 +32,13 @@ import {
 	fileProcessingWaitMs,
 	uploadFile,
 	waitUntilActive,
+	type GeminiFile,
 } from './geminiFileApi';
-import { mapGeminiResponse, mapGeminiRewrite } from './geminiResponse';
+import {
+	mapGeminiResponse,
+	mapGeminiRewrite,
+	rebaseToClip,
+} from './geminiResponse';
 import {
 	assertGeminiNotBlocked,
 	assertGeminiNotTruncated,
@@ -38,6 +48,7 @@ import {
 import type { WhisperResult } from './whisperResponse';
 import { OTHER_SEGMENT_LANGUAGE } from '../TranscriptTypes';
 import type {
+	AudioClip,
 	AudioPayload,
 	ProviderCapabilities,
 	TranscribeOptions,
@@ -166,26 +177,83 @@ const REWRITE_SCHEMA = {
 };
 
 /**
+ * What a request for a stretch of an uploaded recording adds to the
+ * instruction. Asked the same two stretches of one lesson, the model counted
+ * one from the start of the recording (12:06 to 24:06) and the other from the
+ * start of the stretch (0:00 to 2:00), so the request says which it wants and
+ * the answer is still checked (see `rebaseToClip`).
+ */
+const CLIP_INSTRUCTION =
+	'The audio is an excerpt of a longer recording. Count every timecode ' +
+	'from the start of this excerpt, whose first second is 00:00.';
+
+/**
+ * A clip boundary in the form `Part.audioMetadata` takes: seconds with an
+ * `s` suffix, to the millisecond.
+ * @param seconds - The boundary, in seconds from the start of the file
+ * @returns The offset string
+ */
+function clipOffset(seconds: number): string {
+	return `${String(Number(seconds.toFixed(3)))}s`;
+}
+
+/**
+ * The most output tokens a request for this much audio may spend, or
+ * undefined when the length of the audio was never measured.
+ * @param durationSeconds - How much audio the request covers
+ * @returns The limit to send as `maxOutputTokens`
+ */
+function outputTokenLimit(
+	durationSeconds: number | undefined,
+): number | undefined {
+	if (durationSeconds === undefined) {
+		return undefined;
+	}
+	return Math.max(
+		GEMINI_MIN_OUTPUT_TOKENS,
+		Math.ceil(durationSeconds * GEMINI_OUTPUT_TOKENS_PER_SECOND),
+	);
+}
+
+/**
+ * What the request says about the language of the recording: every
+ * configured language when there are several, the one declared, or nothing
+ * but the request to detect it.
+ * @param options - The run's options
+ * @returns The sentences about language
+ */
+function languageInstruction(options: TranscribeOptions): string {
+	if (options.languages) {
+		return languageListInstruction(options.languages);
+	}
+	return options.language
+		? `The primary language is "${options.language}", but transcribe each segment in the language actually spoken.`
+		: 'Detect the spoken language(s) and transcribe each segment in the language actually spoken.';
+}
+
+/**
  * Builds the per-run instruction text sent alongside the audio. A rewrite
  * instruction turns the task into hearing the audio and answering with the
  * rewritten text; the user's instruction is quoted last and verbatim, so it
  * controls every directive about the result, while the system prompt keeps
  * the transcription rules.
+ * @param options - The run's options
+ * @param clipped - Whether the request names a stretch of a longer upload
  */
-function buildInstruction(options: TranscribeOptions): string {
+function buildInstruction(
+	options: TranscribeOptions,
+	clipped: boolean,
+): string {
 	const { rewrite } = options;
 	const lines = [
 		rewrite === undefined
 			? 'Transcribe the attached audio into ordered segments.'
 			: 'Transcribe the attached audio, then rewrite the transcription as the instruction below asks, and return only the rewritten text in the text field.',
-		options.languages
-			? languageListInstruction(options.languages)
-			: options.language
-				? `The primary language is "${options.language}", but transcribe each segment in the language actually spoken.`
-				: 'Detect the spoken language(s) and transcribe each segment in the language actually spoken.',
+		languageInstruction(options),
 		options.diarize
 			? 'Identify distinct speakers and label each segment (e.g. "Speaker 1", "Speaker 2"); use real names when clearly stated.'
 			: 'Do not include speaker labels.',
+		...(clipped ? [CLIP_INSTRUCTION] : []),
 	];
 	if (options.dictionary?.length) {
 		lines.push(
@@ -215,12 +283,25 @@ function buildInstruction(options: TranscribeOptions): string {
 
 /**
  * The audio part of a `generateContent` request, in the shape of the official
- * client's `Part`: `inlineData` is its `Blob` (`data` a base64 string,
- * `mimeType`), `fileData` its `FileData` (`fileUri`, `mimeType`).
+ * client's `Part` (`@google/genai` 3.6.1, `dist/genai.d.ts`): `inlineData` is
+ * its `Blob` (`data` a base64 string, `mimeType`), `fileData` its `FileData`
+ * (`fileUri`, `mimeType`), and `audioMetadata` its `AudioMetadata`, whose
+ * `startOffset` and `endOffset` cut a stretch out of the audio beside it:
+ *
+ *     export declare interface AudioMetadata {
+ *         startOffset?: string;
+ *         endOffset?: string;
+ *     }
+ *
+ * A request with offsets is billed for the stretch alone: a 726 s stretch of
+ * a 1453 s upload was counted as 23 783 prompt tokens, at 32 a second.
  */
 type GeminiAudioPart =
 	| { inlineData: { mimeType: string; data: string } }
-	| { fileData: { mimeType: string; fileUri: string } };
+	| {
+			fileData: { mimeType: string; fileUri: string };
+			audioMetadata?: { startOffset: string; endOffset: string };
+	  };
 
 /** Google Gemini multimodal transcription provider. */
 export class GeminiProvider implements TranscriptionProvider {
@@ -229,12 +310,22 @@ export class GeminiProvider implements TranscriptionProvider {
 	readonly requiresNetwork = true;
 	readonly capabilities: ProviderCapabilities = GEMINI_CAPABILITIES;
 
+	/**
+	 * Recordings uploaded for this run, by the bytes they were uploaded from.
+	 * Every part of a recording is lent the same buffer, so the first part
+	 * to arrive uploads it and the rest wait on that upload.
+	 */
+	private readonly uploads = new Map<ArrayBuffer, Promise<GeminiFile>>();
+
 	constructor(private readonly config: GeminiConfig) {}
 
 	async transcribe(
 		payload: AudioPayload,
 		options: TranscribeOptions,
 	): Promise<WhisperResult> {
+		if (payload.clip) {
+			return this.transcribeClip(payload, payload.clip, options);
+		}
 		// Already in a container Gemini reads (see the capability's
 		// originalContainers), and only read here: the same payload is sent
 		// again when the service waits out a refusal.
@@ -283,6 +374,159 @@ export class GeminiProvider implements TranscriptionProvider {
 	}
 
 	/**
+	 * Deletes the recordings this run uploaded for its parts. Best effort: a
+	 * file that could not be deleted expires on Google's side.
+	 */
+	async dispose(): Promise<void> {
+		const uploads = [...this.uploads.values()];
+		this.uploads.clear();
+		await Promise.all(
+			uploads.map(async (upload) => {
+				try {
+					const file = await upload;
+					await deleteFile(
+						this.config.baseUrl,
+						this.config.apiKey,
+						file.name,
+					);
+				} catch {
+					// Nothing was uploaded, or the delete failed.
+				}
+			}),
+		);
+	}
+
+	/**
+	 * Transcribes one stretch of a recording uploaded once for the run.
+	 * @param payload - The whole recording, lent to every part alike
+	 * @param clip - The stretch this request is for
+	 * @param options - The run's options
+	 * @returns The transcript, timed from the start of the stretch
+	 */
+	private async transcribeClip(
+		payload: AudioPayload,
+		clip: AudioClip,
+		options: TranscribeOptions,
+	): Promise<WhisperResult> {
+		const file = await this.uploaded(payload, options.signal);
+		const result = await this.generate(payload, options, {
+			fileData: { mimeType: payload.contentType, fileUri: file.uri },
+			audioMetadata: {
+				startOffset: clipOffset(clip.startSeconds),
+				endOffset: clipOffset(clip.endSeconds),
+			},
+		});
+		return { ...result, segments: rebaseToClip(result.segments, clip) };
+	}
+
+	/**
+	 * The upload of a recording, started by the first part that asks for it.
+	 * An upload that failed is forgotten, so the part that is sent again
+	 * after a refusal uploads anew instead of meeting the same failure.
+	 * @param payload - The recording
+	 * @param signal - The run's cancel
+	 * @returns The uploaded file, ready to be read
+	 */
+	private uploaded(
+		payload: AudioPayload,
+		signal: AbortSignal | undefined,
+	): Promise<GeminiFile> {
+		const known = this.uploads.get(payload.data);
+		if (known) {
+			return known;
+		}
+		const upload = this.upload(payload, signal);
+		this.uploads.set(payload.data, upload);
+		upload.catch(() => {
+			this.uploads.delete(payload.data);
+		});
+		return upload;
+	}
+
+	/**
+	 * Uploads a recording and waits until Gemini can read it.
+	 * @param payload - The recording
+	 * @param signal - The run's cancel
+	 * @returns The uploaded file
+	 */
+	private async upload(
+		payload: AudioPayload,
+		signal: AbortSignal | undefined,
+	): Promise<GeminiFile> {
+		const file = await uploadFile(
+			this.config.baseUrl,
+			this.config.apiKey,
+			payload.data,
+			payload.contentType,
+			payload.filename,
+			this.config.requestTimeoutMs,
+			signal,
+		);
+		try {
+			await waitUntilActive(
+				this.config.baseUrl,
+				this.config.apiKey,
+				file.name,
+				fileProcessingWaitMs(payload.data.byteLength),
+				signal,
+			);
+		} catch (error) {
+			try {
+				await deleteFile(
+					this.config.baseUrl,
+					this.config.apiKey,
+					file.name,
+				);
+			} catch {
+				// Ignore cleanup failures.
+			}
+			throw error;
+		}
+		return file;
+	}
+
+	/**
+	 * The `generateContent` body for one audio part.
+	 *
+	 * Transcription is deterministic, so the request asks for as little
+	 * reasoning as this model's generation allows and for the temperature
+	 * that generation is tuned for. Both follow from the generation, so both
+	 * are answered in one place. The output limit follows from how much audio
+	 * the request covers, when that was measured.
+	 * @param payload - The audio, for its length and whether it is a clip
+	 * @param options - The run's options
+	 * @param audio - The audio part: inline bytes or an uploaded file
+	 * @returns The request body, ready to serialize
+	 */
+	private requestBody(
+		payload: AudioPayload,
+		options: TranscribeOptions,
+		audio: GeminiAudioPart,
+	): object {
+		const maxOutputTokens = outputTokenLimit(payload.durationSeconds);
+		const instruction = buildInstruction(
+			options,
+			payload.clip !== undefined,
+		);
+		return {
+			contents: [{ parts: [audio, { text: instruction }] }],
+			systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+			generationConfig: {
+				responseMimeType: 'application/json',
+				responseSchema:
+					options.rewrite === undefined
+						? transcriptSchema(options.languages)
+						: REWRITE_SCHEMA,
+				...geminiGenerationControls(
+					this.config.model,
+					DETERMINISTIC_TEMPERATURE,
+				),
+				...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+			},
+		};
+	}
+
+	/**
 	 * Asks `generateContent` for the structured transcript of the audio part.
 	 * @param payload - The audio, for the size the timeout scales with
 	 * @param options - The run's options
@@ -294,14 +538,6 @@ export class GeminiProvider implements TranscriptionProvider {
 		options: TranscribeOptions,
 		audio: GeminiAudioPart,
 	): Promise<WhisperResult> {
-		// Transcription is deterministic, so the request asks for as little
-		// reasoning as this model's generation allows and for the temperature
-		// that generation is tuned for. Both follow from the generation, so
-		// both are answered in one place.
-		const controls = geminiGenerationControls(
-			this.config.model,
-			DETERMINISTIC_TEMPERATURE,
-		);
 		const json = await requestJson({
 			url: geminiGenerateContentUrl(
 				this.config.baseUrl,
@@ -310,20 +546,7 @@ export class GeminiProvider implements TranscriptionProvider {
 			method: 'POST',
 			headers: authHeader(GEMINI_API_KEY_HEADER, this.config.apiKey),
 			contentType: 'application/json',
-			body: JSON.stringify({
-				contents: [
-					{ parts: [audio, { text: buildInstruction(options) }] },
-				],
-				systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-				generationConfig: {
-					responseMimeType: 'application/json',
-					responseSchema:
-						options.rewrite === undefined
-							? transcriptSchema(options.languages)
-							: REWRITE_SCHEMA,
-					...controls,
-				},
-			}),
+			body: JSON.stringify(this.requestBody(payload, options, audio)),
 			timeoutMs: inferenceTimeoutMs(
 				payload.data.byteLength,
 				GEMINI_GENERATE_MIN_TIMEOUT_MS,

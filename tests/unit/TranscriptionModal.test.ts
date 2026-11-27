@@ -936,7 +936,7 @@ describe('TranscriptionModal per-run options', () => {
 
 	// The dialog must fit without scrolling to Transcribe, so only the rows
 	// most runs touch sit outside the collapsed block.
-	it('shows language, participant profile and destination up front', () => {
+	it('shows the preset, language, participant profile and destination up front', () => {
 		const { modal } = openWithEverything();
 		const advanced = advancedBlock(modal);
 		const advancedNames = settingNames(advanced);
@@ -946,6 +946,7 @@ describe('TranscriptionModal per-run options', () => {
 		);
 
 		expect(upFront).toEqual([
+			'Preset',
 			'Language',
 			'Participant profile',
 			'Destination',

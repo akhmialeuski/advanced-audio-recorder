@@ -41,6 +41,7 @@ import {
 	audioContainerFromExtension,
 	audioPrepOptions,
 	prepareAudio,
+	ownStartSeconds,
 	type PreparedAudio,
 	type PreparedPayload,
 } from './audioPrep';
@@ -71,7 +72,11 @@ import {
 	transcriptMarkdownOptions,
 } from './transcriptFormat';
 import { timecodeLinkBuilder } from '../obsidian/timecodeRefs';
-import { buildPostProcessPrompt, LlmTask } from './llmPostProcess';
+import {
+	buildPostProcessPrompt,
+	LlmTask,
+	postProcessFailureNotice,
+} from './llmPostProcess';
 import { TranscriptTranslator } from './llm/TranscriptTranslator';
 import { describeDictionaryOmission } from './dictionaryBias';
 import {
@@ -117,7 +122,11 @@ import {
 } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from './llm/llmStep';
-import type { Transcript, TranscriptionUsage } from './TranscriptTypes';
+import type {
+	Transcript,
+	TranscriptSegment,
+	TranscriptionUsage,
+} from './TranscriptTypes';
 import {
 	costFromUsage,
 	resolveEnginePricing,
@@ -125,6 +134,9 @@ import {
 	sumUsage,
 } from './costs';
 import { errorMessage } from '../errors';
+import { joinSeams } from './partSeams';
+import { runBounded } from '../utils/workerPool';
+import { probeDurationSeconds } from '../utils/AudioFileAnalyzer';
 import {
 	judgePartTimeline,
 	timelineFaultMessage,
@@ -236,7 +248,7 @@ export function selectRanges(
 		}
 		return ranges.some(
 			(range) =>
-				payload.offsetSeconds < range.endSeconds &&
+				ownStartSeconds(payload) < range.endSeconds &&
 				end > range.startSeconds,
 		);
 	});
@@ -371,6 +383,12 @@ export interface TranscriptionServiceDeps {
 		settings: AudioRecorderSettings,
 		vendorId: LlmProviderId,
 	) => LlmProvider;
+	/**
+	 * Reads how long a recording is without decoding it, or null when
+	 * neither its container nor the browser could say. Asked only for an
+	 * engine that plans its parts from the length instead of decoding.
+	 */
+	readDurationSeconds?: (file: TFile) => Promise<number | null>;
 }
 
 /**
@@ -395,6 +413,20 @@ interface PassContext {
 		((fraction: number, label: string) => void) | undefined;
 	readonly onCost?: ((cost: TranscribeRunCost) => void) | undefined;
 	readonly runCost: () => TranscribeRunCost;
+}
+
+/** One pass over the parts: what it sends and where its outcome goes. */
+interface PassRun {
+	/** Provider options this pass sends. */
+	readonly options: TranscribeOptions;
+	/** Where this pass's transcribed parts accumulate (mutated). */
+	readonly results: PassResult[];
+	/** Where this pass's failures accumulate (mutated). */
+	readonly failed: PartFailure[];
+	/** How the stage is named while this pass runs. */
+	readonly verb: string;
+	/** The pass's progress so far, as a fraction of the run. */
+	readonly progress: () => number;
 }
 
 /**
@@ -591,6 +623,25 @@ function estimatedSpan(part: PartRun): PartSpan | null {
 }
 
 /**
+ * An answer with every line ending inside the part it was sent for. The line
+ * the part's end cut off is kept, ending where the part ends.
+ * @param result - The answer kept for the part
+ * @param span - The part, when its timecodes are the model's estimate
+ * @returns The answer, trimmed to the part when there is a span to trim to
+ */
+function fittedToPart<T extends { segments: TranscriptSegment[] }>(
+	result: T,
+	span: PartSpan | null,
+): T {
+	return span
+		? {
+				...result,
+				segments: trimToPart(result.segments, span.durationSeconds),
+			}
+		: result;
+}
+
+/**
  * Tells the user when an endpoint they declared as diarizing answered a
  * diarized run without a single speaker label. That is the one sign the
  * declaration is wrong, so it is named rather than passed off as a transcript
@@ -609,6 +660,61 @@ function reportUndeliveredDiarization(
 }
 
 /**
+ * The payload a provider is lent for a part: its bytes, and what the plan
+ * knows about the stretch they cover.
+ * @param prepared - The planned part
+ * @param data - Its bytes, materialized
+ * @returns The payload
+ */
+function payloadOf(prepared: PreparedPayload, data: ArrayBuffer): AudioPayload {
+	const { contentType, filename, offsetSeconds, endSeconds, clip } = prepared;
+	return {
+		data,
+		contentType,
+		filename,
+		offsetSeconds,
+		...(endSeconds === undefined
+			? {}
+			: { durationSeconds: endSeconds - offsetSeconds }),
+		...(clip ? { clip } : {}),
+	};
+}
+
+/**
+ * Where a transcribed part sits among its neighbours: what the pass needs to
+ * join it to the part before it.
+ * @param prepared - The planned part
+ * @returns Its lead-in and its end, each when the plan has one
+ */
+function placeOf(
+	prepared: PreparedPayload,
+): Pick<PassResult, 'leadInSeconds' | 'endSeconds'> {
+	const { leadInSeconds, endSeconds } = prepared;
+	return {
+		...(leadInSeconds === undefined ? {} : { leadInSeconds }),
+		...(endSeconds === undefined ? {} : { endSeconds }),
+	};
+}
+
+/**
+ * Binds a provider to the run it serves, so that an `await using` releases
+ * what the provider kept for the run's parts when the run ends, however it
+ * ended. A provider that keeps nothing has nothing to release.
+ * @param provider - The run's provider
+ * @returns The provider, released with the scope it is bound in
+ */
+function releasedWithRun(
+	provider: TranscriptionProvider,
+): { provider: TranscriptionProvider } & AsyncDisposable {
+	return {
+		provider,
+		[Symbol.asyncDispose]: async () => {
+			await provider.dispose?.();
+		},
+	};
+}
+
+/**
  * Runs the full transcription pipeline for an audio file.
  */
 export class TranscriptionService {
@@ -621,6 +727,9 @@ export class TranscriptionService {
 	) => LlmProvider;
 	/** Where LLM spending is reported; undefined when nothing accounts it. */
 	private readonly costSink: LlmCostSink | undefined;
+	private readonly readDurationSeconds: (
+		file: TFile,
+	) => Promise<number | null>;
 
 	constructor(
 		private readonly app: App,
@@ -631,6 +740,9 @@ export class TranscriptionService {
 			deps.createProvider ?? createTranscriptionProvider;
 		this.createLlm = deps.createLlm ?? createLlmProvider;
 		this.costSink = deps.costSink;
+		this.readDurationSeconds =
+			deps.readDurationSeconds ??
+			((file) => probeDurationSeconds(app, file));
 	}
 
 	/**
@@ -648,8 +760,11 @@ export class TranscriptionService {
 			this.app,
 			this.getSettings(),
 		);
+		// Whatever the provider kept for the run's parts, such as a recording
+		// uploaded once, goes with the run however it ended.
+		await using lent = releasedWithRun(this.createProvider(settings));
+		const provider = lent.provider;
 		const token = options.token ?? NEVER_CANCELLED;
-		const provider = this.createProvider(settings);
 		// One gate for the whole run: a stale "on" left from a diarizing engine
 		// is ignored and a non-diarizing engine never sends a field it would
 		// silently drop. The same value decides both whether to request speaker
@@ -694,13 +809,16 @@ export class TranscriptionService {
 			new Notice(lostSourceNotice);
 		}
 		options.onProgress?.(0, 'Preparing audio...');
+		const bytes =
+			options.audioBytes ?? (await this.app.vault.readBinary(file));
 		const prepared = await this.prepareParts(
-			options.audioBytes ?? (await this.app.vault.readBinary(file)),
+			bytes,
 			file.name,
 			file.extension,
 			settings,
 			provider,
 			transcribeOptions.diarize,
+			await this.knownDurationSeconds(provider, file),
 		);
 		this.throwIfCancelled(token);
 
@@ -900,7 +1018,10 @@ export class TranscriptionService {
 					error,
 				);
 				new Notice(
-					'LLM post-processing failed; saving the raw transcript.',
+					postProcessFailureNotice(
+						error,
+						settings.llmPostProcessTask,
+					),
 				);
 			}
 		}
@@ -1332,6 +1453,39 @@ export class TranscriptionService {
 	}
 
 	/**
+	 * The recording's length, for an engine that plans its parts from it.
+	 *
+	 * Read only when it will be used: the engine cuts its parts out of the
+	 * file it is sent once, and it reads the file's container as it stands.
+	 * Any other run measures the recording by decoding it, or never needs its
+	 * length at all. The read is the cheap one, the container's headers and
+	 * then the browser, and never a decode. A read that fails leaves the
+	 * length unknown, which sends the recording down the decode path.
+	 * @param provider - The engine of the run
+	 * @param file - The recording's file
+	 * @returns The length in seconds, or undefined when it is not known
+	 */
+	private async knownDurationSeconds(
+		provider: TranscriptionProvider,
+		file: TFile,
+	): Promise<number | undefined> {
+		const { capabilities } = provider;
+		if (
+			!capabilities.clipsUploadedFile ||
+			!capabilities.originalContainers.accepts(
+				audioContainerFromExtension(file.extension),
+			)
+		) {
+			return undefined;
+		}
+		try {
+			return (await this.readDurationSeconds(file)) ?? undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
 	 * Plans the parts one run will send.
 	 *
 	 * The bytes come from the caller, which reads a recording from the vault
@@ -1345,6 +1499,8 @@ export class TranscriptionService {
 	 * @param settings - Live settings, read for the chunk size
 	 * @param provider - The engine, whose limits decide how the audio is split
 	 * @param diarize - Whether this run asks for speaker labels
+	 * @param knownDurationSeconds - The recording's length as its container
+	 *   states it, when the engine plans its parts from it
 	 * @returns The prepared payloads for the run
 	 */
 	private async prepareParts(
@@ -1354,18 +1510,22 @@ export class TranscriptionService {
 		settings: AudioRecorderSettings,
 		provider: TranscriptionProvider,
 		diarize: boolean,
+		knownDurationSeconds?: number,
 	): Promise<PreparedAudio> {
 		const prepared = await prepareAudio(
 			bytes,
 			fileName,
 			audioContainerFromExtension(extension),
-			audioPrepOptions(
-				provider.capabilities,
-				provider.label,
-				provider.requiresNetwork,
-				Math.max(1, settings.transcriptionChunkMb) * BYTES_PER_MB,
-				diarize,
-			),
+			{
+				...audioPrepOptions(
+					provider.capabilities,
+					provider.label,
+					provider.requiresNetwork,
+					Math.max(1, settings.transcriptionChunkMb) * BYTES_PER_MB,
+					diarize,
+				),
+				knownDurationSeconds,
+			},
 		);
 		if (prepared.diarizationSplitWarning) {
 			// The recording was too long (or too large) for one request and had
@@ -1405,50 +1565,86 @@ export class TranscriptionService {
 		progressSpan: number,
 		verb: string,
 	): Promise<void> {
-		const { payloads, partCount, provider, token, recordingEndSeconds } =
-			context;
-		for (let i = 0; i < partCount; i++) {
-			this.throwIfCancelled(token);
-			const payload = payloads[i];
-			if (!payload) {
-				continue;
-			}
-			const partLabel =
-				partCount > 1 ? this.describePart(payload, i, partCount) : '';
-			const partProgress = progressBase + (i / partCount) * progressSpan;
-			context.onProgress?.(
-				partProgress,
-				partLabel ? `${verb} ${partLabel}...` : `${verb}...`,
-			);
-			await this.transcribePart({
-				provider,
-				prepared: payload,
-				providerOptions: passOptions,
-				token,
-				label: partLabel,
-				recordingEndSeconds,
-				results: passResults,
-				failedParts: passFailed,
-				discardedUsage: context.discardedUsage,
-				onRetryWait: (waitMs, label) => {
-					// A pause is the run still working, and a progress line
-					// that stopped moving reads as a hang. It says what is
-					// happening and not why: the same pause covers a rate
-					// limit and a provider fault, this line cannot tell them
-					// apart, and naming one of them told a user waiting out a
-					// 502 that they had been sending too many requests. Which
-					// refusal it was reaches them in the error the run reports
-					// if the attempts run out.
-					context.onProgress?.(
-						partProgress,
-						`Retrying ${label || 'the audio'} in ${String(
-							Math.ceil(waitMs / MS_PER_SECOND),
-						)}s...`,
-					);
-				},
-			});
-			context.onCost?.(context.runCost());
+		const { partCount, provider } = context;
+		// Progress counts the parts that are done, since with several in
+		// flight the one that started last says nothing about how far the
+		// pass has got.
+		let done = 0;
+		const pass: PassRun = {
+			options: passOptions,
+			results: passResults,
+			failed: passFailed,
+			verb,
+			progress: () => progressBase + (done / partCount) * progressSpan,
+		};
+		await runBounded(
+			partCount,
+			provider.capabilities.maxParallelRequests,
+			async (index) => {
+				await this.sendPart(context, pass, index);
+				done++;
+				context.onCost?.(context.runCost());
+			},
+		);
+		// Parts answered out of order go back in timeline order, and parts
+		// sent with the end of the one before them are joined on it: their
+		// speakers renamed to match and the shared stretch kept once.
+		passResults.splice(0, passResults.length, ...joinSeams(passResults));
+		// Failures arrive in the order their requests ended too, and the
+		// warning names the parts and quotes the first of them.
+		passFailed.sort((a, b) => a.startSeconds - b.startSeconds);
+	}
+
+	/**
+	 * Transcribes the part at one position of a pass.
+	 * @param context - What does not change between the two passes
+	 * @param pass - The pass the part belongs to
+	 * @param index - Zero-based position of the part
+	 */
+	private async sendPart(
+		context: PassContext,
+		pass: PassRun,
+		index: number,
+	): Promise<void> {
+		const { partCount, token } = context;
+		this.throwIfCancelled(token);
+		const payload = context.payloads[index];
+		if (!payload) {
+			return;
 		}
+		const partLabel =
+			partCount > 1 ? this.describePart(payload, index, partCount) : '';
+		context.onProgress?.(
+			pass.progress(),
+			partLabel ? `${pass.verb} ${partLabel}...` : `${pass.verb}...`,
+		);
+		await this.transcribePart({
+			provider: context.provider,
+			prepared: payload,
+			providerOptions: pass.options,
+			token,
+			label: partLabel,
+			recordingEndSeconds: context.recordingEndSeconds,
+			results: pass.results,
+			failedParts: pass.failed,
+			discardedUsage: context.discardedUsage,
+			onRetryWait: (waitMs, label) => {
+				// A pause is the run still working, and a progress line
+				// that stopped moving reads as a hang. It says what is
+				// happening and not why: the same pause covers a rate
+				// limit and a provider fault, this line cannot tell them
+				// apart, and naming one of them told a user waiting out a
+				// 502 that they had been sending too many requests. Which
+				// refusal it was reaches them in the error the run reports
+				// if the attempts run out.
+				context.onProgress?.(
+					pass.progress(),
+					`Retrying ${label || 'the audio'} in ${String(
+						Math.ceil(waitMs / MS_PER_SECOND),
+					)}s...`,
+				);
+			},
+		});
 	}
 
 	/**
@@ -1581,12 +1777,7 @@ export class TranscriptionService {
 		this.throwIfCancelled(token);
 		// Materialize this payload's bytes only now, so a multi-chunk job never
 		// holds more than one chunk's WAV in memory at a time.
-		const payload: AudioPayload = {
-			data: await prepared.createData(),
-			contentType: prepared.contentType,
-			filename: prepared.filename,
-			offsetSeconds: prepared.offsetSeconds,
-		};
+		const payload = payloadOf(prepared, await prepared.createData());
 		try {
 			let chunkResult = await this.transcribeWithRetries(part, payload);
 			const span = estimatedSpan(part);
@@ -1648,21 +1839,16 @@ export class TranscriptionService {
 								? { firstFault }
 								: { retryFailure },
 						),
-						startSeconds: prepared.offsetSeconds,
+						startSeconds: ownStartSeconds(prepared),
 						endSeconds:
 							prepared.offsetSeconds + span.durationSeconds,
 					});
-					chunkResult = {
-						...chunkResult,
-						segments: trimToPart(
-							chunkResult.segments,
-							span.durationSeconds,
-						),
-					};
 				}
 			}
+			chunkResult = fittedToPart(chunkResult, span);
 			results.push({
 				offsetSeconds: payload.offsetSeconds,
+				...placeOf(prepared),
 				transcript: buildTranscript(chunkResult.segments, {
 					language: chunkResult.language,
 				}),
@@ -1731,7 +1917,7 @@ export class TranscriptionService {
 			failedParts.push({
 				label,
 				message: detail,
-				startSeconds: prepared.offsetSeconds,
+				startSeconds: ownStartSeconds(prepared),
 				...(prepared.endSeconds === undefined
 					? {}
 					: { endSeconds: prepared.endSeconds }),
@@ -1796,8 +1982,9 @@ export class TranscriptionService {
 	 * @returns A human label for the part's time range
 	 */
 	private partTimeLabel(part: PreparedPayload): string {
-		const reference = part.endSeconds ?? part.offsetSeconds;
-		const start = formatTimecode(part.offsetSeconds, reference);
+		const ownStart = ownStartSeconds(part);
+		const reference = part.endSeconds ?? ownStart;
+		const start = formatTimecode(ownStart, reference);
 		if (part.endSeconds === undefined) {
 			return `the segment at ${start}`;
 		}

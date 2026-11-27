@@ -10,6 +10,7 @@
 
 import {
 	LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+	LANGUAGE_LESSON_PRESET_ID,
 	MODEL_SEED_GENERATION,
 	LLM_PROVIDER_IDS,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -244,6 +245,7 @@ export function fullyPopulatedSettings(): Omit<
 		shippedProfileIds: [
 			'shipped-retired-profile',
 			LANGUAGE_LESSON_CLEANUP_PROFILE_ID,
+			LANGUAGE_LESSON_PRESET_ID,
 		],
 		selectedProfileIds: {
 			participants: '',
@@ -254,6 +256,7 @@ export function fullyPopulatedSettings(): Omit<
 			llmTranslate: '',
 			llmCustom: '',
 			quickNote: 'q1',
+			runPreset: '',
 		},
 		llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
 		chaptersLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
